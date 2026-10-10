@@ -1,0 +1,254 @@
+# FX ColorCorrection MPC — BP-only 구현 계획 (Codex 자율 실행판)
+
+- 상태: 계획 재정정 (2026-07-10, 유저 의도 반영). 기존 4파라미터/EUW/Mirror 설계는 폐기하고, 5파라미터 + MCPWeather식 에디터 틱 구조로 재구현한다.
+- 실행 주체: 티브렛-MCP (Codex). 이 문서 하나로 부트스트랩부터 커밋까지 자율 완주할 수 있게 작성됨.
+- 원본 초안: 유저 데스크탑 `FX_ColorCorrection_MPC_BP_Editor_Runtime_계획.md` (이 문서가 그 초안을 대체함).
+- 엔진: UE 5.6.1 (`C:\Program Files\Epic Games\UE_5.6`), 브릿지 `127.0.0.1:55561`.
+
+## 0. 절대 제약 (위반 시 작업 중단하고 보고)
+
+1. **산출물은 BP-only.** 프로젝트 C++(`MCPGameProject/Source/**`, 비-MCP 플러그인) 생성/수정 금지 — `codex/docs/policies/project-cpp-approval-gate.md`의 토큰 `c++1218` 없이는 §9의 "향후 C++ 인계 지점"을 절대 구현하지 않는다. **UnrealMCP 플러그인 C++(`MCPGameProject/Plugins/UnrealMCP/**`)는 예외**: 기존 MCP 툴 표면으로 이 계획의 authoring 단계가 막힐 때, 좁은 툴링 확장(프로브/inspect/노드 조립 helper 수준)을 추가해도 된다. 조건: (a) Python/기존 툴 경로를 먼저 시도하고 왜 막혔는지 §11에 기록, (b) 확장은 에디터 전용 툴링에 한정하고 생성 콘텐츠에 MCP 의존을 만들지 않을 것, (c) C++ 변경 시 표준 UE 5.6 Build.bat + Python 게이트 + 툴 등록 스모크를 통과시킬 것, (d) 커밋에서 플러그인 변경과 콘텐츠 에셋을 구분해 보고할 것.
+2. **MCP 무의존.** 생성되는 모든 에셋(`MPC`, `BPC`, `BPFL`, `BP`, `EditorTickDriver`, 머티리얼)은 UnrealMCP 플러그인이 없어도 로드/컴파일/쿡/패키징돼야 한다. 완료 전 `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal` 하드 레퍼런스 감사 필수.
+3. **맵 스위칭 금지.** generic `execute_unreal_python`으로 맵을 열거나 만들지 않는다. 필요 시 `open_editor_level`(dry-run 먼저) / `safe_new_preview_map`만 사용.
+4. **최종 에셋 경로**: `/Game/FXColor/` (콘텐츠 `MCPGameProject/Content/FXColor`). 검증용 임시 산출물은 `/Game/_MCP_Temp/FXColor_Validation/` 아래에만 두고 스테이징하지 않는다.
+5. Git: 이 레포 스코프만. 커밋 subject `[Codex]` 프리픽스. push 전 `git pull --ff-only`.
+
+## 1. 목적
+
+언릿 FX가 레벨별 Post Process Volume(컬러 그레이딩·화이트밸런스·LUT) 영향으로 색이 달라지는 문제를 줄인다. FX 머티리얼이 `MPC_FXColor`의 `FXIntensity`, `FXContrast`, `FXSaturate`, `FXHue`, `FXTint`를 읽어 룩을 보정하고, 드라이버가 현재 카메라 위치 기준으로 PP Volume 블렌딩 순서·가중치를 근사해 매 프레임 그 값을 갱신한다.
+
+**PP 값을 역산하지 않는다.** 각 PP Volume에 `BPC_FXColorCorrection`을 붙이고, 사람이 튜닝한 5개 FXColor 값을 해당 PP Volume의 실제 `Priority`, `BlendRadius`, `BlendWeight`, `bUnbound`, `bEnabled` 규칙에 맞춰 섞는 것이 전부다.
+
+## 2. 성공 기준
+
+- 런타임과 에디터 프리뷰가 같은 BPFL 함수 + 같은 PP/BPC 데이터를 계산한다 (같은 카메라 위치 → 같은 5개 MPC 결과).
+- PP Volume의 실제 Priority, BlendRadius, BlendWeight, Unbound, Enabled를 반영한다. 별도 Mirror 변수는 기본 설계에서 제거한다.
+- 맵에는 `BP_FXColorRuntimeDriver` 1개만 필요하다. 에디터 프리뷰는 MCPWeather와 같은 EditorTickDriver 패턴으로 자동 동작하며, `EUW_FXColorEditorDriver`는 폐기한다.
+- 최소 사용은 Unbound PP Volume 1개에 `BPC_FXColorCorrection`을 붙이는 것이다. 구역별 보정이 필요하면 Local PP Volume에도 컴포넌트를 붙인다.
+- `PDA_FXColorPreset`이 지정되면 프리셋의 5개 값이 컴포넌트 로컬 5개 값보다 우선한다. `Preset=None`이면 컴포넌트 로컬 값을 사용한다.
+- 최종 콘텐츠는 MCP 무의존 감사 통과.
+- 예상 정확도: 에디터↔런타임 일치 ~90%, BP 근사↔엔진 실제 블렌딩 유사도 ~75–85% (그 이상은 향후 C++ 영역, 이번 범위 아님).
+
+## 3. 핵심 설계 원칙
+
+1. **PP Volume이 source of truth.** 계산은 런타임/에디터 모두 컴포넌트의 Owner PP Volume에서 실제 `Priority`, `BlendRadius`, `BlendWeight`, `bUnbound`, `bEnabled`를 읽는다. Mirror 변수와 Sync 버튼은 최종 설계에서 제거한다.
+2. **BPFL은 런타임-safe만.** `Get Editor World`, `Get Level Viewport Camera Info` 등 에디터 전용 노드는 `/Game/FXColor/Editor/BP_FXColorEditorTickDriver`에만 둔다. BPFL에 에디터 전용 노드가 하나라도 들어가면 런타임 쿡이 깨진다.
+3. **`EncompassesPoint`에 의존하지 않는다.** BP에 노출되지 않음. 거리 쿼리는 Phase 0 프로브 결과에 따라 결정한다 (§5).
+4. **가중치 수식 (원본 초안의 의사코드 버그 수정판):**
+
+```text
+LocalWeight = Clamp(PostProcessVolume.BlendWeight, 0, 1)
+if not BPC.bAffectsFX:               return 0
+if not PostProcessVolume.bEnabled:   return 0
+if PostProcessVolume.bUnbound:       return LocalWeight
+
+Distance = 카메라 → 볼륨 표면 거리 (내부면 0)
+
+if Distance <= 0:                         return LocalWeight        # 볼륨 내부 = full weight
+if Distance > PostProcessVolume.BlendRadius: return 0
+if PostProcessVolume.BlendRadius >= 1:
+    LocalWeight *= 1 - (Distance / PostProcessVolume.BlendRadius)
+return Clamp(LocalWeight, 0, 1)
+```
+
+5. **합성:** entries를 Owner PP Volume `Priority` 오름차순 정렬 → 기본값에서 5개 값을 각각 `Result = Lerp(Result, EffectiveValue, LocalWeight)`로 누적. 기본값은 `FXIntensity=1`, `FXContrast=1`, `FXSaturate=1`, `FXHue=0`, `FXTint=(1,1,1,1)`.
+
+## 4. 에셋 목록 (경로 고정)
+
+| 에셋 | 경로 | 타입 |
+|---|---|---|
+| `MPC_FXColor` | `/Game/FXColor/MPC_FXColor` | MaterialParameterCollection |
+| `BPC_FXColorCorrection` | `/Game/FXColor/BPC_FXColorCorrection` | Blueprint (ActorComponent) |
+| `PDA_FXColorPreset` | `/Game/FXColor/PDA_FXColorPreset` | Blueprint (PrimaryDataAsset 서브클래스) |
+| `BPFL_FXColorBlend` | `/Game/FXColor/BPFL_FXColorBlend` | Blueprint Function Library |
+| `BP_FXColorRuntimeDriver` | `/Game/FXColor/BP_FXColorRuntimeDriver` | Blueprint (Actor) |
+| `BPI_FXColorEditorTickHandler` | `/Game/FXColor/Editor/BPI_FXColorEditorTickHandler` | Blueprint Interface |
+| `BP_FXColorEditorTickDriver` | `/Game/FXColor/Editor/BP_FXColorEditorTickDriver` | Editor Utility Blueprint |
+| `M_FXColorSwatch` | `/Game/FXColor/Test/M_FXColorSwatch` | 검증용 언릿 머티리얼 |
+
+### 4.1 `MPC_FXColor` 파라미터
+
+- `FXIntensity` Scalar `1.0`.
+- `FXContrast` Scalar `1.0`.
+- `FXSaturate` Scalar `1.0`.
+- `FXHue` Scalar `0.0` — degree 단위. `30`은 +30도 hue shift, `-45`는 -45도 hue shift.
+- `FXTint` Vector `(1,1,1,1)`.
+
+기존 `FXCorrection`, `FXCorrectionStrength`, `FXCinematicTint`, `FXCinematicStrength`는 제거 대상이다.
+
+### 4.2 `PDA_FXColorPreset` (공유 프리셋)
+
+PrimaryDataAsset 서브클래스 Blueprint. 변수:
+
+- `FXIntensity` Float `1.0`
+- `FXContrast` Float `1.0`
+- `FXSaturate` Float `1.0`
+- `FXHue` Float `0.0` — degree
+- `FXTint` LinearColor `(1,1,1,1)`
+
+여러 레벨/볼륨이 같은 룩을 공유할 때 쓰는 초기값 소스. **런타임에 프리셋 에셋 값을 변경하지 않는다** (데이터에셋 런타임 뮤테이션 금지). 프리셋 인스턴스 에셋은 `/Game/FXColor/Presets/DA_FXColor_<이름>` 경로.
+
+### 4.3 `BPC_FXColorCorrection` 변수 (전부 Instance Editable)
+
+- `Preset` `PDA_FXColorPreset` 오브젝트 참조, 기본 `None` — 지정 시 5개 MPC 입력값 소스로 사용
+- `bAffectsFX` Bool `true`
+- `FXIntensity` Float `1.0` — Expose to Cinematics. Preset이 `None`일 때만 사용
+- `FXContrast` Float `1.0` — Expose to Cinematics. Preset이 `None`일 때만 사용
+- `FXSaturate` Float `1.0` — Expose to Cinematics. Preset이 `None`일 때만 사용
+- `FXHue` Float `0.0` — degree, Expose to Cinematics. Preset이 `None`일 때만 사용
+- `FXTint` LinearColor `(1,1,1,1)` — Expose to Cinematics. Preset이 `None`일 때만 사용
+
+기존 `CorrectionColor`, `CorrectionStrength`, `SequencerColorMultiplier`, `SequencerOverrideStrength`, `bMirrorEnabled`, `MirrorPriority`, `MirrorBlendRadius`, `MirrorBlendWeight`, `bMirrorUnbound`는 제거 대상이다.
+
+### 4.4 `BPFL_FXColorBlend` 함수
+
+- `ComputeAndApplyFXColor(WorldContext, CameraLocation, CachedEntries)` — §3-5 흐름 실행 후 `MPC_FXColor` 5개 파라미터에 기록.
+- `ComputeLocalWeight(VolumeActor, CorrectionComponent, CameraLocation)` — §3-4 수식. **이 함수만** 향후 C++ 교체 경계로 격리 (내부 로직을 다른 함수에 인라인하지 않는다).
+- `ComputeEffectiveFXColorValues(CorrectionComponent)` — 프리셋 폴백 체인 포함:
+
+```text
+if Preset != None:
+    FXIntensity = Preset.FXIntensity
+    FXContrast  = Preset.FXContrast
+    FXSaturate  = Preset.FXSaturate
+    FXHue       = Preset.FXHue
+    FXTint      = Preset.FXTint
+else:
+    FXIntensity = Component.FXIntensity
+    FXContrast  = Component.FXContrast
+    FXSaturate  = Component.FXSaturate
+    FXHue       = Component.FXHue
+    FXTint      = Component.FXTint
+return values
+```
+
+- `SortEntriesByPriorityAscending(Entries)`.
+
+### 4.5 `BP_FXColorRuntimeDriver`
+
+- BeginPlay: `PostProcessVolume + BPC_FXColorCorrection` 목록 캐시 (Tick에서 `GetAllActorsOfClass` 금지).
+- Tick: `GetPlayerCameraManager(0) → GetCameraLocation` → `ComputeAndApplyFXColor`.
+- 수동 `RefreshCache` 커스텀 이벤트 제공 (스트리밍 레벨 대응).
+- `EditorPreviewTick(CameraLocation, DeltaSeconds)` 커스텀 이벤트/함수 제공. 에디터 TickDriver가 호출하며, 런타임 Tick과 같은 BPFL 계산 경로를 사용한다.
+- Construction Script 또는 에디터 전용 초기화 경로에서 MCPWeather와 같은 방식으로 `/Game/FXColor/Editor/BP_FXColorEditorTickDriver`를 생성하고 자기 자신을 넘긴다.
+
+### 4.6 `/Game/FXColor/Editor/BP_FXColorEditorTickDriver`
+
+- MCPWeather의 `/Game/MCPWeather/Editor/BP_MCPWeatherEditorTickDriver` 패턴을 따른다.
+- 에디터 전용 `Get Level Viewport Camera Info`로 뷰포트 카메라 위치를 읽는다.
+- 저장된 `BP_FXColorRuntimeDriver` 참조가 유효하면 `EditorPreviewTick(CameraLocation, DeltaSeconds)`를 호출한다.
+- 최종 콘텐츠에 UnrealMCP 참조를 남기지 않는다.
+- `EUW_FXColorEditorDriver`는 폐기 대상이다. 남아 있으면 삭제하거나 최종 감사에서 제외될 수 없는 경우 사용하지 않는 레거시로 남기지 않는다.
+
+## 5. Phase 0 — 라이브 프로브 (구현 전 필수, 결과를 이 문서에 추기)
+
+라이브 에디터 브릿지가 필요하다. 프로브 전에 프리플라이트로 읽기 전용 라이브 스모크를 실행한다:
+
+```powershell
+uv --directory .\Python run python scripts\smoke_live_bridge.py
+```
+
+exit 2(에디터 미접속)면 여기서 멈추고 "에디터 실행 필요"를 보고한다. 스모크 실패(exit≠0, ≠2)면 브릿지 문제를 먼저 해결하고 프로브로 진행한다. 이번 작업은 Python/C++ 코드 변경이 없으므로 오프라인 Python 게이트(py_compile/ruff/registration smoke)와 UE 빌드는 요구되지 않는다 — 단, 작업 중 부득이하게 `Python/**`를 수정하게 되면 그 시점에 표준 게이트 전체를 적용한다. 각 프로브는 `/Game/_MCP_Temp/FXColor_Validation/` 임시 레벨(`safe_new_preview_map`, dry-run 먼저)에서 수행.
+
+- **P0-A 거리 쿼리:** 임시 PP Volume을 스폰하고 BrushComponent에 `GetClosestPointOnCollision`을 (내부점/외부점 각각) 호출. 반환 `-1`(collision 미지원)이면 **폴백 확정**: `GetActorBounds` 기반 Box 근사 거리 (내부 판정 = point-in-box, 외부 거리 = 박스 표면까지). 어느 쪽이 채택됐는지 결과를 §11에 기록하고 `ComputeLocalWeight`를 그 경로로 구현.
+- **P0-B 인스턴스 컴포넌트:** 배치된 PostProcessVolume 액터에 `BPC_FXColorCorrection` 인스턴스 컴포넌트를 MCP/Python으로 부착 가능한지 확인. 불가하면 폴백: 컴포넌트 부착은 에디터 Details 패널에서 수동으로 안내하고, 검증 레벨에서는 Python `new_object` outer actor 경로를 기록.
+- **P0-C 에디터 MPC 쓰기:** 에디터 월드 컨텍스트로 MPC scalar/vector write가 즉시 머티리얼에 반영되는지 확인 (스와치 머티리얼로 시각 확인).
+
+프로브 3종 모두 결과 확정 전에는 Phase 1로 진행하지 않는다.
+
+## 6. 구현 페이즈 (각 페이즈 끝 = 컴파일 체크포인트)
+
+멀티스텝 브릿지 작업은 `execute_batch` 사용. 각 페이즈 종료 시 `compile_and_save_blueprint`(또는 머티리얼 컴파일)로 `compile_error_count=0` 확인 후 다음 페이즈로.
+
+1. **Step 1:** 이 문서를 5파라미터 + EditorTickDriver 구조로 정정. 검증: 문서에 구 파라미터/EUW/Mirror가 공식 설계로 남아 있지 않은지 검색.
+2. **Step 2:** `MPC_FXColor`, `PDA_FXColorPreset`, `BPC_FXColorCorrection`, 기본 프리셋을 5파라미터 구조로 수정. 검증: readback에서 새 5개가 있고 기존 4개/레거시 변수는 제거 또는 사용 불가 상태.
+3. **Step 3:** `/Game/FXColor/Editor/BPI_FXColorEditorTickHandler`, `/Game/FXColor/Editor/BP_FXColorEditorTickDriver` 구현. 검증: 컴파일 0 에러 + `Get Level Viewport Camera Info`가 EditorTickDriver 안에만 존재.
+4. **Step 4:** `BPFL_FXColorBlend`와 `BP_FXColorRuntimeDriver`를 런타임/에디터 공통 Tick 계산 경로로 수정. 검증: 컴파일 0 에러 + Tick에 `GetAllActorsOfClass` 없음 + BPFL에 에디터 전용 노드 없음.
+5. **Step 5:** 하네스 테스트. 검증: 임시 레벨에서 Unbound PP + Local PP + Preset 케이스가 5개 MPC 기대값과 일치, 에디터 TickDriver readback과 SIE/PIE runtime readback을 기록.
+6. **완료:** MCP 무의존 감사 + 문서 갱신 + `[Codex]` 커밋 (§10).
+
+## 7. 진단/검증 규칙
+
+검사 항목: BPC가 붙은 PP Volume 목록 / **BPC가 없는 PP Volume 목록(경고 — 해당 볼륨은 FX 보정 계산에서 조용히 제외되므로, 컬러 그레이딩·화이트밸런스·LUT를 쓰는 볼륨이면 부착 필요)** / `bAffectsFX=false` 항목 / **Priority 중복(강한 경고 — 엔진도 동일 Priority 순서는 undefined)** / Brush·Root Primitive 미발견 / `BlendRadius<0`·`BlendWeight` 범위 이탈 / 5개 FX 값 비정상값 / **Preset 지정 상태인데 로컬 5개 값이 기본값이 아닌 항목(경고 — 로컬 값이 무시되고 있음을 표시)**.
+
+## 8. 자율 검증 계획 (Phase 7)
+
+임시 검증 레벨에 배치: Unbound PP 1개 + 로컬 PP 볼륨 2개(겹침 구간 포함) + 각각 BPC 부착 + 스와치 액터. 로컬 볼륨 중 1개는 `Preset`(`DA_FXColor_Default` 복제본에 비기본 색 지정)을 참조시켜 프리셋 폴백 체인이 로컬 파라미터 대신 프리셋 값을 읽는지도 수치로 확인한다.
+
+Codex가 자율로 검증 가능한 항목 (Python으로 카메라 위치를 인자로 BPFL 직접 호출 → MPC readback):
+
+- 5개 기준 위치(Unbound만 / 볼륨 내부 / BlendRadius 안 / 겹침 / 볼륨 밖)에서 `FXIntensity`, `FXContrast`, `FXSaturate`, `FXHue`, `FXTint` 기대값 vs 실제값 수치 비교. 기대값은 §3 수식으로 손계산해 표로 기록.
+- Preset 참조 볼륨에서 로컬 5개 값이 무시되고 Preset 5개 값이 사용되는지 수치로 확인.
+- EditorTickDriver 호출 후 editor world MPC readback 확인.
+- SIE/PIE runtime Tick 후 game world MPC readback 확인.
+- 스와치 시각 확인: `capture_viewport_bookmark_screenshot`.
+
+**수동 인계 항목 (Codex가 완료 보고에 명시할 것, 자율 검증 불가):** 실제 프로젝트 맵에서 아티스트가 보는 시각적 룩, 시퀀서 Camera Cut 튐 여부, 실제 FX 마스터 머티리얼 적용 품질. 이건 유저가 에디터에서 확인한다 — 됐다고 거짓 보고하지 않는다.
+
+## 9. 향후 C++ 인계 지점 (이번 태스크에서 구현 금지)
+
+토큰 `c++1218` 승인 후에만: `GetExactPPVolumeWeightAtLocation`, `GetSortedPostProcessVolumeStack`, `GetActiveLevelViewportCameraInfoExact`. 교체 경계는 `BPFL.ComputeLocalWeight` 내부뿐 — 나머지 구조는 유지.
+
+## 10. 완료 절차
+
+1. `/Game/FXColor/**` 전체에 MCP 하드 레퍼런스 감사 (§0-2 토큰 목록).
+2. `/Game/_MCP_Temp/FXColor_Validation/` 산출물은 스테이징 제외.
+3. 이 문서 §11에 프로브 결과·검증 수치·잔여 리스크 추기, `README.md` 인덱스 포인터 확인.
+4. `[Codex]` 커밋: `Content/FXColor/**` + 이 문서. push는 유저가 명시 요청했을 때만.
+
+## 11. 실행 기록 (Codex가 추기)
+
+- Hotfix - `Preset=None` 런타임 오류 수정(2026-07-10): 플레이 시 `Blueprint Runtime Error: Accessed None trying to read (real) property Preset in BPC_FXColor...`가 반복된 원인은 `BPFL_FXColorBlend`의 5개 `ComputeEffective*` 함수가 pure `Select` 노드로 프리셋/컴포넌트 값을 고르면서, `Preset`이 `None`이어도 `Preset.FX*` getter 입력핀이 선평가되는 구조였기 때문이다. `ComputeEffectiveCorrectionColor`, `ComputeEffectiveFXIntensity`, `ComputeEffectiveFXContrast`, `ComputeEffectiveFXSaturate`, `ComputeEffectiveFXHue` 모두 `IsValid(Preset) -> Branch -> local result set -> Return` 구조로 교체했다. 이제 프리셋 getter는 Branch true 실행 경로에서만 평가되고, false 경로는 컴포넌트 노출 파라미터만 읽는다. 프로젝트 C++ 변경 없음, UnrealMCP 플러그인 C++ 변경 없음.
+- Hotfix 정적 검증(2026-07-10): `BPFL_FXColorBlend` topology 감사 결과 5개 함수 모두 `select_count=0`, `branch_count=1`, `local_set_count=2`, Return 값은 각 `LocalEffective*Safe` getter 하나에만 연결됨을 확인했다. 전체 컴파일 체크포인트: `PDA_FXColorPreset`, `BPC_FXColorCorrection`, `BPFL_FXColorBlend`, `BP_FXColorRuntimeDriver`, `BPI_FXColorEditorTickHandler`, `BP_FXColorEditorTickDriver` 모두 `compile_error_count=0`, `compile_warning_count=0`, dirty after compile `false`.
+- Hotfix 하네스 검증(2026-07-10): `/Game/_MCP_Temp/FXColor_Validation/M_FXColor_5Param_Harness_20260710`에서 `Preset=None` BPC 2개를 포함한 상태로 `EditorPreviewTick` 호출 성공(`PP=3`, `BPC=3`, `driver=1`, `CachedEntries=3`). 같은 하네스에서 SIE를 시작해 PIE world `/Game/_MCP_Temp/FXColor_Validation/UEDPIE_0_M_FXColor_5Param_Harness_20260710.M_FXColor_5Param_Harness_20260710`를 확인했고, PIE world도 `PP=3`, `BPC=3`, `Preset=None=2`, `driver=1`, `CachedEntries=3`. 각 실행 직후 새 로그 구간에서 `Blueprint Runtime Error`, `Accessed None`, `BPC_FXColor`+`Preset` 의심 라인 `0`.
+- Hotfix 완료 감사(2026-07-10): `/Game/FXColor` AssetRegistry 감사 `asset_count=9`, forbidden dependency hit `0`, redirector `0`, dirty package under root `0`. `/Game/FXColor/**` raw `.uasset` 바이트 스캔도 `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal` hit `0`. `_MCP_Temp/FXColor_Validation/` 산출물은 스테이징 제외 유지.
+- P0-B 정정 / Details-visible 컴포넌트 부착(2026-07-10): 기존 P0-B의 `unreal.new_object(GeneratedClass, outer=PPVolume)` 경로는 `get_components_by_class`에는 잡히지만 `PostProcessVolume` Details 컴포넌트 트리에는 표시되지 않는 불완전 부착이었다. Details-visible 인스턴스 컴포넌트 authoring 경로는 `unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)` + `k2_gather_subobject_data_for_instance(PPVolume)` + `AddNewSubobjectParams(parent_handle=root_actor_handle, new_class=BPC_FXColorCorrection_C)` + `add_new_subobject`로 정정한다. 검증 하네스 `/Game/_MCP_Temp/FXColor_Validation/M_FXColor_5Param_Harness_20260710`는 3개 PP 모두 `is_instanced_component=true`인 `BPC_FXColorCorrection_*` 1개씩만 남도록 값을 이관했고, 숨은 `new_object` BPC는 `destroy_component(self)`로 제거했다. 같은 하네스에 누락됐던 `BP_FXColorRuntimeDriver`도 재배치했고 `RefreshCache` 결과 `CachedEntries=3`.
+
+- Step 5 하네스 검증(2026-07-10): `/Game/_MCP_Temp/FXColor_Validation/M_FXColor_5Param_Harness_20260710`를 `safe_new_preview_map` dry-run 후 생성했다. 배치: Unbound PP 1개, Local PP 2개, `BP_FXColorRuntimeDriver`, temp preset `/Game/_MCP_Temp/FXColor_Validation/DA_FXColor_Preset5_20260710`, `/Game/FXColor/Test/M_FXColorSwatch` 적용 swatch cube. BPC는 각 PP에서 1개씩 감지됐고, driver `RefreshCache` 후 `CachedEntries=3`. 스와치 머티리얼은 구 MPC 파라미터 참조를 제거하고 `FXTint`, `FXIntensity`, `FXContrast`, `FXSaturate`, `FXHue` 5개 CollectionParameter + Custom node로 재구성했으며 material compile error `0`. `ComputeLocalWeight`는 순수 노드 선평가로 `BlendRadius=0`에서 divide-by-zero warning이 날 수 있어 `Max(BlendRadius, 1.0)`을 분모 앞에 추가했고, 이후 BP 전체 재컴파일 `compile_error_count=0`, `compile_warning_count=0`, 하네스 실행 warning `0`.
+
+| Case | 위치 | weight (U/A/B) | 기대 `(I,C,S,H,Tint)` | 실제 `(I,C,S,H,Tint)` | Max err |
+|---|---:|---:|---|---|---:|
+| UnboundOnly_Left | `(-700,0,0)` | `1 / 0 / 0` | `1.1, 0.9, 0.8, 10, (0.8,0.9,1.1,1)` | `1.10000002, 0.89999998, 0.80000001, 10, (0.80000001,0.89999998,1.10000002,1)` | `2.38e-08` |
+| LocalA_Interior | `(0,0,0)` | `1 / 1 / 0.3` | `0.94, 1.02, 1.06, -0.5, (1.03,0.85,0.63,1)` | `0.94, 1.01999998, 1.05999994, -0.499999, (1.02999997,0.85000002,0.63,1)` | `7.75e-07` |
+| LocalA_BlendRadius | `(-250,0,0)` | `1 / 0.75 / 0` | `0.8, 1.125, 1.175, -12.5, (1.175,0.75,0.725,1)` | `0.80000001, 1.125, 1.17499995, -12.5, (1.17499995,0.75,0.72500002,1)` | `4.77e-08` |
+| Overlap_A_BPreset | `(200,0,0)` | `1 / 1 / 0.6` | `1.18, 0.84, 0.82, 19, (0.76,1,0.66,1)` | `1.18000007, 0.84000003, 0.81999993, 19.0000019, (0.75999993,1,0.66000003,1)` | `1.91e-06` |
+| OutsideLocals_Right | `(900,0,0)` | `1 / 0 / 0` | `1.1, 0.9, 0.8, 10, (0.8,0.9,1.1,1)` | `1.10000002, 0.89999998, 0.80000001, 10, (0.80000001,0.89999998,1.10000002,1)` | `2.38e-08` |
+
+- Step 5 프리셋 폴백 검증: `LocalB_Preset`은 temp preset `FXIntensity=1.5`, `FXContrast=0.6`, `FXSaturate=0.5`, `FXHue=45`, `FXTint=(0.4,1.2,0.7,1)`을 참조했다. 같은 컴포넌트의 로컬 값 `0.25 / 2.0 / 2.0 / -90 / (2,0.1,0.1,1)`은 무시됐고, `Overlap_A_BPreset` 및 SIE expected 계산에서 preset 값이 사용됨을 확인했다.
+- Step 5 EditorTickDriver 검증: `BP_FXColorRuntimeDriver` Construction Script가 생성한 `EditorTickHandler`에 대해 `HandleEditorCameraMoved(Location=(200,0,0), Rotation=(0,0,0), ViewportType=Perspective, ViewIndex=0)`를 호출했다. MPC readback은 `Overlap_A_BPreset` 기대값과 일치, max error `1.91e-06`, warning `0`.
+- Step 5 SIE runtime 검증: `LevelEditorSubsystem.editor_play_simulate`로 SIE 시작 후 PIE world `/Game/_MCP_Temp/FXColor_Validation/UEDPIE_0_M_FXColor_5Param_Harness_20260710.M_FXColor_5Param_Harness_20260710` 확인. PP 3개/BPC 3개/Driver 1개가 복제됐고 runtime driver cache `3`. PlayerCameraManager 위치 `(0,-300,150)` 기준 weight는 `U=1`, `A=0.5`, `B=0.17573594`; 기대 `FXIntensity=1.00544157`, `FXContrast=0.97091884`, `FXSaturate=0.95334522`, `FXHue=3.78679692`, `FXTint=(0.93577163,0.87029437,0.82363963,1)`. PIE MPC readback은 `1.00544155`, `0.97091877`, `0.95334518`, `3.78679681`, `(0.93577158,0.87029433,0.82363963,1)`로 일치. SIE 종료 후 `is_in_pie=false`. 스와치 캡처: `MCPGameProject/Saved/MCP_Screenshots/FXColor_5Param_Harness_Swatch.png`. 실제 프로젝트 맵의 아티스트 시각 룩과 시퀀서 Camera Cut 튐 여부는 수동 인계 항목으로 남긴다.
+- 완료 전 최종 감사(2026-07-10): BPC 5개 파라미터 `FXIntensity`, `FXContrast`, `FXSaturate`, `FXHue`, `FXTint`에 `Expose to Cinematics`를 명시 적용했고 `BPC_FXColorCorrection` 재컴파일 `compile_error_count=0`. 최종 컴파일 체크포인트: `PDA_FXColorPreset`, `BPC_FXColorCorrection`, `BPFL_FXColorBlend`, `BP_FXColorRuntimeDriver`, `BPI_FXColorEditorTickHandler`, `BP_FXColorEditorTickDriver` 모두 `compile_error_count=0`, `compile_warning_count=0`; `M_FXColorSwatch` material compile error `0`. MPC asset/runtime 값은 `FXIntensity=1`, `FXContrast=1`, `FXSaturate=1`, `FXHue=0`, `FXTint=(1,1,1,1)`로 복원. `/Game/FXColor/EUW_FXColorEditorDriver`는 폐기 설계에 따라 삭제했다. `/Game/FXColor/**` 바이트 스캔에서 `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal` hit `0`; AssetRegistry dependency audit도 MCP hit `0`. 구조 readback: MPC는 scalar 4 + vector 1만 존재, BPC는 `Preset`, `bAffectsFX`, 5개 MPC 변수만 존재, PDA는 5개 preset 변수만 존재, swatch CollectionParameter는 5개 모두 collection parameter found + id match. `README.md` 인덱스 포인터를 최종 5파라미터/EditorTickDriver 설명으로 갱신. `_MCP_Temp/FXColor_Validation/` 산출물은 스테이징 제외.
+- Step 4 체크포인트(2026-07-10): `BPFL_FXColorBlend`는 PP Volume 실제 `bEnabled`, `bUnbound`, `BlendWeight`, `BlendRadius`, `Priority`와 BPC/Preset 5파라미터 폴백 체인을 기준으로 계산하도록 수정했다. `BP_FXColorRuntimeDriver`는 런타임 Tick과 `EditorPreviewTick(CameraLocation, DeltaSeconds)`가 같은 BPFL 계산 경로를 호출하며, Construction Script는 생성한 `/Game/FXColor/Editor/BP_FXColorEditorTickDriver`에 `BPI_FXColorEditorTickHandler.ConstructedHandler(self)` 메시지를 보낸다. 직접 `Run` 호출은 런타임 BP에서 에디터 전용 함수 컴파일 오류를 내므로 제거했고, TickDriver의 `ConstructedHandler` 이벤트가 전달받은 Driver를 `TargetManager`에 저장한 뒤 기존 `HandleEditorTickNextFrame` 타이머 delegate를 시작하도록 연결했다. 검증: `PDA_FXColorPreset`, `BPC_FXColorCorrection`, `BPFL_FXColorBlend`, `BP_FXColorRuntimeDriver`, `BPI_FXColorEditorTickHandler`, `BP_FXColorEditorTickDriver` 모두 `compile_error_count=0`, `compile_warning_count=0`. BPFL의 `UnrealEditorSubsystem`, `GetEditorWorld`, `GetLevelViewportCameraInfo`, `Blutility`, `EditorUtility` 참조는 0. RuntimeDriver Event Tick exec-reachable 노드는 `Branch`와 `ComputeAndApplyFXCorrection`뿐이며, `GetAllActorsOfClass`는 `RefreshCache` 경로에만 있고 Tick에서 도달 불가.
+- Step 3 체크포인트(2026-07-10): `EditorUtilityBlueprintFactory` 직접 생성은 ensure로 브릿지를 막아 fallback 처리했다. 에디터 재시작 후 MCPWeather의 검증된 EditorUtilityBlueprint asset을 `/Game/FXColor/Editor/BP_FXColorEditorTickDriver`로 복제하고, MCPWeather `TargetManager` 변수/호출/캐스트/GetActorOfClass 노드를 제거했다. 새 `TargetManager` 타입은 `/Game/FXColor/BP_FXColorRuntimeDriver.BP_FXColorRuntimeDriver_C`이며, `/Game/FXColor/Editor/BPI_FXColorEditorTickHandler`에는 `ConstructedHandler(ManagerActor Actor)`를 추가했다. 전체 FXColor BP 컴파일 체크포인트: `PDA_FXColorPreset`, `BPC_FXColorCorrection`, `BPFL_FXColorBlend`, `BP_FXColorRuntimeDriver`, `BPI_FXColorEditorTickHandler`, `BP_FXColorEditorTickDriver` 모두 `compile_error_count=0`. `UnrealEditorSubsystem` 참조는 `BP_FXColorEditorTickDriver`에만 존재(BPFL/RuntimeDriver는 0). TickDriver 그래프의 MCPWeather 노드 참조는 0. Step 4에서 실제 5파라미터 계산/호출 경로를 채운다.
+- Step 3 진행 중 브릿지 복구 기록(2026-07-10): `/Game/FXColor/Editor/BP_FXColorEditorTickDriver` 생성을 위해 기존 Python/Factory 경로를 먼저 검증했다. `BlueprintInterfaceFactory`는 임시 BPI 생성/삭제까지 통과했으나, `EditorUtilityBlueprintFactory`의 지원 AssetClass를 확인하기 위한 임시 probe에서 `AssetClass->IsChildOf(Factory->GetSupportedClass())` ensure가 발생했다. 이후 UnrealMCP bridge는 새 `ping` 요청을 큐에 넣지만 실행하지 못하는 상태가 되어 Step 3 검증을 계속할 수 없었다. 최종 에셋은 아직 생성하지 않았고, fallback은 에디터 재시작 후 MCPWeather asset duplication/repair 또는 안전한 factory-supported class 확인 경로로 Step 3을 재시도한다. 프로젝트 C++ 변경 없음.
+- Step 1 계획 정정(2026-07-10): 프리플라이트 `uv --directory .\Python run python scripts\smoke_live_bridge.py` 통과. 유저 재정의에 따라 공식 설계를 `FXIntensity`, `FXContrast`, `FXSaturate`, `FXHue(degree)`, `FXTint` 5개 MPC 파라미터로 변경했다. `EUW_FXColorEditorDriver`와 Mirror 변수 설계는 폐기하고, MCPWeather식 `/Game/FXColor/Editor/BP_FXColorEditorTickDriver`가 에디터 뷰포트 카메라를 읽어 `BP_FXColorRuntimeDriver.EditorPreviewTick`을 호출하는 구조로 확정했다. Step 1 검색 검증에서 구 용어는 제거/폐기 대상 설명과 과거 실행 기록에만 남김.
+- Step 2 체크포인트(2026-07-10): 기존 Python/MCP 툴로 진행. `/Game/FXColor/MPC_FXColor`는 `FXIntensity=1`, `FXContrast=1`, `FXSaturate=1`, `FXHue=0`, `FXTint=(1,1,1,1)`만 남기고 기존 `FXCorrection*`/`FXCinematic*` 파라미터를 제거했다. `/Game/FXColor/BPC_FXColorCorrection`은 `Preset`, `bAffectsFX`, 5개 MPC 입력 변수만 남겼고, `/Game/FXColor/PDA_FXColorPreset`은 5개 프리셋 변수만 남겼다. `CorrectionColor`, `CorrectionStrength`, Sequencer 변수, Mirror 변수는 제거했다. 기본 프리셋 `/Game/FXColor/Presets/DA_FXColor_Default` 값도 5개 기본값으로 저장했다. 검증: MPC readback 새 5개 통과, BPC/PDA legacy absent, 새 변수 instance editable, `compile_error_count=0/0`.
+- P0-A 거리 쿼리 결과: 프리플라이트 `uv --directory .\Python run python scripts\smoke_live_bridge.py` 통과. `/Game/_MCP_Temp/FXColor_Validation/M_FXColor_Phase0_Probe`를 `safe_new_preview_map` dry-run 후 생성했다. 임시 `PostProcessVolume`의 `BrushComponent.get_closest_point_on_collision` 호출 성공: 내부점 distance `0.0`, 외부점 distance 약 `599.9999`, closest point 정상 반환. 채택 경로: `GetClosestPointOnCollision`.
+- P0-B 인스턴스 컴포넌트 결과: 임시 `/Game/_MCP_Temp/FXColor_Validation/BPC_FXColorProbeComponent` ActorComponent BP 생성/컴파일 `compile_error_count=0`. `PostProcessVolume` Python 표면에는 `add_component_by_class`, `add_instance_component`, `add_owned_component`, `register_component`가 노출되지 않았지만, `unreal.new_object(GeneratedClass, outer=PPVolume)`로 만든 컴포넌트가 `get_components_by_class(ActorComponent)`에서 감지됐다. 채택 경로: Python `new_object` outer actor 부착 경로. 폴백 기록: Details 패널 수동 부착 안내는 필요 시 EUW 경고로 유지 가능.
+- P0-C 에디터 MPC 쓰기 결과: 임시 `/Game/_MCP_Temp/FXColor_Validation/MPC_FXColor_P0C` 생성 후 native `set_material_parameter_collection_values(set_runtime=true)`로 editor world runtime instance write/readback 성공. `FXCorrection=(0.25,0.5,1.5,1.0)` runtime readback 일치, `has_world=true`, `world_type=Editor`, `has_runtime_instance=true`. 시각 프로브용 temp swatch 첫 그래프는 `float3 * float4` compile error를 냈고, 사용 중인 temp material을 삭제/재작성하려다 `EditorAssetLibrary.delete_asset` ensure로 bridge queue가 막혔다. 이 temp-material 삭제 경로는 최종 구현에 사용하지 않는다. 최종 Phase 6 swatch는 MPC vector를 RGB component-mask로 잘라 `float3` 연산만 사용해야 한다.
+- Phase 1 체크포인트: `/Game/FXColor/MPC_FXColor` 생성. `FXCorrection=(1,1,1,1)`, `FXCorrectionStrength=1`, `FXCinematicTint=(1,1,1,1)`, `FXCinematicStrength=0` asset default readback 확인.
+- Phase 2 체크포인트: `/Game/FXColor/PDA_FXColorPreset`, `/Game/FXColor/BPC_FXColorCorrection`, `/Game/FXColor/Presets/DA_FXColor_Default` 생성. `PDA`/`BPC` 최종 컴파일 `compile_error_count=0`, `BPC` 변수 11종 및 Sequencer 노출 대상 확인.
+- Phase 3 체크포인트: `/Game/FXColor/BPFL_FXColorBlend` 4함수 구현. `ComputeEffectiveCorrectionColor`는 `Preset != None`이면 프리셋 값을 쓰고, `None`이면 컴포넌트 노출 파라미터를 쓴 뒤 Sequencer 레이어를 적용한다. `SortEntriesByPriorityAscending`, `ComputeLocalWeight`, `ComputeAndApplyFXCorrection` 최종 컴파일 `compile_error_count=0`.
+- Phase 4 체크포인트: `/Game/FXColor/BP_FXColorRuntimeDriver` 구현. `RefreshCache`에서만 `GetAllActorsOfClass(PostProcessVolume)`를 사용하고 Tick에는 카메라 위치와 캐시 배열 기반 BPFL 호출만 둔다. 최종 컴파일 `compile_error_count=0`.
+- Phase 5 authoring blocker / UnrealMCP 툴링 확장: 기존 `create_umg_widget_blueprint`가 `path`/`parent_class`를 무시하고 `/Game/Widgets` + `UserWidget`만 만들었으며, Python 생성 EUW는 `WidgetTree` 보호 접근으로 버튼/체크박스 authoring이 막혔다. 기존 툴/Python 경로를 먼저 시도한 뒤, 좁은 에디터 전용 UMG authoring 확장만 추가했다: `create_umg_widget_blueprint`의 경로/부모 클래스 지원, full path widget edit, `add_checkbox_to_widget`, bound widget event 생성. 생성 콘텐츠에는 UnrealMCP 클래스/모듈 참조를 넣지 않았다. C++ 변경 후 UE 5.6 `Build.bat` 성공, `py_compile`, server import, `ruff --select F821`, `smoke_tool_registration.py`, `smoke_live_bridge.py` 통과.
+- Phase 5 체크포인트: `/Game/FXColor/EUW_FXColorEditorDriver` 구현. Run/Stop, Sync Mirror, Auto Sync off 기본 체크박스, Validate 버튼과 Tick 호출 그래프 생성. 버튼/체크박스 이벤트 노드 바인딩 확인, 최종 컴파일 `compile_error_count=0`.
+- Phase 6 체크포인트: `/Game/FXColor/Test/M_FXColorSwatch` 언릿 스와치 구현. MPC vector는 RGB component mask 후 연산하며 `FXCorrectionStrength`, `FXCinematicTint`, `FXCinematicStrength`를 반영한다. Material compile `compile_error_count=0`.
+- Phase 7 수치 검증 환경: `/Game/_MCP_Temp/FXColor_Validation/M_FXColor_Phase7_Validation`을 `safe_new_preview_map` dry-run 후 생성. Unbound PP 1개, Local PP 2개, temp preset `/Game/_MCP_Temp/FXColor_Validation/DA_FXColor_PresetCase`, swatch actor 배치. Mirror Sync copy 후 mismatch `0`. Entries는 일부러 `[LocalB_Preset, Unbound, LocalA]` 순서로 넘겨 priority sort를 검증했다. 최대 절대 오차 `6e-08`.
+
+| Case | 위치 | 기여 weight (U/A/B) | 기대 `FXCorrection` | 실제 `FXCorrection` | Max err |
+|---|---:|---:|---:|---:|---:|
+| UnboundOnly_Left | `(-500,0,0)` | `1 / 0 / 0` | `(0.9,0.9,1.05,1)` | `(0.9,0.9,1.05,1)` | `6e-08` |
+| LocalA_Interior | `(0,0,0)` | `1 / 1 / 0` | `(0.62,0.96,0.6,1)` | `(0.62,0.96,0.6,1)` | `3e-08` |
+| LocalA_BlendRadius | `(-250,0,0)` | `1 / 0.5 / 0` | `(0.76,0.93,0.825,1)` | `(0.76,0.93,0.825,1)` | `5e-08` |
+| Overlap_A_BPreset | `(75,0,0)` | `1 / 1 / 0.7` | `(0.97,0.8767,0.586,1)` | `(0.97,0.8767,0.586,1)` | `3e-08` |
+| OutsideLocals_Right | `(500,0,0)` | `1 / 0 / 0` | `(0.9,0.9,1.05,1)` | `(0.9,0.9,1.05,1)` | `6e-08` |
+
+- Phase 7 프리셋 케이스 세부: `LocalB_Preset`은 temp preset `CorrectionColor=(1.2,0.7,0.3,1)`, `CorrectionStrength=0.6`을 참조했고 컴포넌트 로컬 `CorrectionColor=(0.1,2.0,0.1,1)`, `CorrectionStrength=0.2`는 무시됐다. Sequencer multiplier/override는 프리셋 기반 색 위에 적용됐다. 스와치 캡처: `MCPGameProject/Saved/MCP_Screenshots/FXColor_Phase7_Swatch.png`.
+- Phase 8 감사: `/Game/FXColor/**` 8개 `.uasset` 바이트 스캔에서 `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal` hit `0`. AssetRegistry dependency audit도 MCP hit `0`. `/Game/_MCP_Temp/FXColor_Validation/` 산출물은 스테이징 제외 대상이다.
+- 완료 전 최종 체크포인트: `PDA_FXColorPreset`, `BPC_FXColorCorrection`, `BPFL_FXColorBlend`, `BP_FXColorRuntimeDriver`, `EUW_FXColorEditorDriver` 모두 `compile_error_count=0`; `M_FXColorSwatch` material compile error `0`; `MPC_FXColor` asset defaults 유지 확인. `README.md` 인덱스 포인터 확인.
+- 잔여 리스크 / 수동 인계 항목: P0-C temp material 삭제/재작성 시도 후 live bridge가 응답하지 않아 에디터 재시작으로 복구했다. 최종 `/Game/FXColor` 에셋 생성 전 발생한 `_MCP_Temp` 프로브 이슈이며, 최종 콘텐츠 설계 변경은 없다. PIE 런타임 드라이버 대 에디터 프리뷰 비교, 시퀀서 Camera Cut 튐 여부, 시퀀서 MirrorBlendWeight 키프레임 반영은 자율 검증하지 않았고 수동 인계 항목으로 남긴다.
+- QA 검증 추가 실행(2026-07-10): live bridge smoke 통과 후 `/Game/_MCP_Temp/FXColor_Validation/M_FXColor_QA_Harness`를 `safe_new_preview_map` dry-run 후 생성. 배치: Unbound PP + Local PP + `BP_FXColorRuntimeDriver` + PlayerStart + CameraActor 2개 + temp Level Sequence `/Game/_MCP_Temp/FXColor_Validation/LS_FXColor_QA_20260710_012359`.
+- QA - 에디터 프리뷰/드라이버 데이터: editor-world `RefreshCache`에서 driver `CachedEntries=2`; BPFL 직접 계산은 `Cam_Local=(0.9,0.9,1.05,1)`, `Cam_Unbound=(0.9,0.9,1.05,1)`, local 내부 `(0.6,1.0,0.6,1)`.
+- QA - Sequencer Camera Cut: `create_level_sequence`, camera actor binding 2개, transform keys, camera cut sections `[0,30)`, `[30,60)` 생성 및 `get_level_sequence_info` readback 성공(`binding_count=2`, `has_camera_cut_track=true`). Sequencer editor scrub frame 29/30에서 `camera_cut_locked=true`, 오류 없음. 캡처 증거: `MCPGameProject/Saved/MCP_Screenshots/FXColor_QA_CameraCut_Frame29.png`, `FXColor_QA_CameraCut_Frame30.png` (빈 temp map이라 화면은 어둡지만 capture metadata에서 view location이 `(0,-900,250)` -> `(600,-900,250)`로 전환됨).
+- QA - Sequencer `MirrorBlendWeight`: Local BPC possessable에 `MovieSceneFloatTrack` `MirrorBlendWeight` 생성, key readback `0:1.0`, `30:0.0`, `60:1.0`. Sequencer editor evaluation 결과 frame 0에서 실제 컴포넌트 `MirrorBlendWeight=1.0`, frame 30에서 `0.0`. 같은 위치 `(0,0,0)`에서 BPFL 결과가 frame 0 `(0.6,1.0,0.6,1)` -> frame 30 `(0.9,0.9,1.05,1)`로 변해 키프레임 반영 확인. frame 60은 section upper bound 때문에 평가 대상에서 제외.
+- QA - SIE 런타임 드라이버: `LevelEditorSubsystem.editor_play_simulate`로 SIE 시작. PIE world `/Game/_MCP_Temp/FXColor_Validation/UEDPIE_0_M_FXColor_QA_Harness.M_FXColor_QA_Harness`에서 driver actor 발견, `CachedEntries=2`, player camera `(0,-600,150)`. PIE BPC 속성 복제 확인: Unbound `CorrectionColor=(0.8,0.8,1.1,1)`, `CorrectionStrength=0.5`, `MirrorBlendWeight=1`, `bMirrorUnbound=true`; Local `MirrorBlendWeight=0`(Sequencer 평가 상태). 첫 즉시 readback에서 한 번 `FXCorrection=(0,0,0,1)`이 관찰되어 BPFL 분리 호출로 조사했고, 같은 game world/driver entries 직접 호출은 `(0.9,0.9,1.05,1)`로 정상이었다. 이후 게임 월드 MPC를 흰색 `(1,1,1,1)`으로 리셋한 뒤 2초 대기하면 runtime driver Tick만으로 `FXCorrection=(0.9,0.9,1.05,1)` 재작성 확인. SIE 종료는 `LevelEditorSubsystem.editor_request_end_play` 성공.

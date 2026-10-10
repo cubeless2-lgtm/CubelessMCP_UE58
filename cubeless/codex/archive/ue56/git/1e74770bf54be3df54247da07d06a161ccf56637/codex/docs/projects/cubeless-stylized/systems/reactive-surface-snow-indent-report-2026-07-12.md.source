@@ -1,0 +1,66 @@
+# Reactive Surface Snow Indentation Report - 2026-07-12
+
+## Verdict
+
+`PASS`
+
+Ground footprint generation remains Blueprint + Niagara. Ultra Dynamic Sky was used only as a visual/material reference and as the source of two project-owned duplicated texture assets. Production content has no `/Game/UltraDynamicSky`, MCP, or UnrealMCP dependency.
+
+## Production Assets
+
+- `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`
+- `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`
+- `/Game/ReactiveSurface/Ground/NS_RS_Ground`
+- `/Game/ReactiveSurface/Ground/MF_RS_SnowSurface`
+- `/Game/ReactiveSurface/Ground/T_RS_Footprint_Debug_L`
+- `/Game/ReactiveSurface/Ground/T_RS_Footprint_Debug_R`
+- `/Game/ReactiveSurface/Ground/Textures/T_RS_Snow_Normal`
+- `/Game/ReactiveSurface/Ground/Textures/T_RS_Snow_Scatter`
+- `/Game/ReactiveSurface/Demo/M_RS_Demo_Snow`
+
+## Implementation
+
+- `NS_RS_Ground` remains the RT writer. Packed output is `R=indent depth`, `G=compaction/tread`, `B=raised rim`, `A=coverage/depth`.
+- The Snow material reconstructs the footprint normal from finite Ground RT differences, combines it with project-owned snow micro-normal/scatter textures, and applies pixel-depth offset for indentation.
+- Left/right footprint masks are sampled with an area-aware footprint at the current 40 m Ground window scale.
+- A transient one-element Array DI was proven unreliable even though BP and Niagara getters contained every input. Ground now writes position and FootMeta to the same fixed 8-slot ring index and replays the bounded recent array for 30 Tick updates.
+- Replay does not delay contact input and does not move old stamps. The Niagara HLSL max-composition makes repeated slots idempotent.
+
+## Runtime Evidence
+
+Primary evidence: `evidence/reactive-surface-snow-indent-results-2026-07-12.json`
+
+Replay evidence: `evidence/reactive-surface-ground-stamp-replay-results-2026-07-12.json`
+
+- Production foot pulses: `7`, alternating sides `[1,0,1,0,1,0,1]`.
+- Separated RT runs: `8` (a mask can split into more than one axis run).
+- Replay matrix: `8/8` observed pulse world regions nonzero; per-region counts `18-39`; queue maximum `8`.
+- `R`: nonzero `183`, sum `172.501892`, max `1.0`.
+- `G`: nonzero `183`, sum `170.800171`, max `1.0`.
+- `B`: nonzero `118`, sum `73.215477`, max `0.999512`.
+- `A`: nonzero `183`, sum `172.501892`, max `1.0`; matches depth coverage.
+- Consecutive C++ RGBA16F readbacks remained stable after Controller/Niagara freeze.
+- Blueprint runtime errors, Accessed None, and infinite-loop hits: `0`.
+
+## Gates
+
+- Controller Blueprint compile: `0 errors / 0 warnings`.
+- Snow material function compile: `0 errors`.
+- Snow material compile: `0 errors`.
+- Ground Niagara compile: `0 errors / 0 warnings`.
+- `/Game/ReactiveSurface` dependency audit: `40` assets, `0` forbidden dependency hits, `0` redirectors.
+- Editor dirty packages: `0`.
+- Production map hash unchanged: `668d4865896df5e9c669d932fe69dee61bea7c5f5d6add5134860a777cc2220d`.
+- Protected ReactiveSurface assets outside this task: unchanged.
+- UDS reference assets: hash-locked and unchanged.
+
+## Visual Evidence
+
+![Snow footprint trajectory](evidence/screenshots/reactive-surface-snow-indent-production-2026-07-12.png)
+
+The final `1280x720` capture passed content checks: Snow-surface pixels `369181`, footprint-strip dark pixels `4885`, and the image is not a sky-only capture.
+
+## Residual Risk
+
+- At 512 resolution over a 40 m Ground window, a 24 cm footprint radius has limited texel detail. The current result is stable and readable, but final footprint-mask art and perceived depth remain a user visual gate.
+- Temp ChildActor/World packages were intentionally not force-deleted in-session because UE 5.6 reproduced an access violation during that cleanup. They are isolated under `/Game/_MCP_Temp`, are not production dependencies, and are excluded from promotion.

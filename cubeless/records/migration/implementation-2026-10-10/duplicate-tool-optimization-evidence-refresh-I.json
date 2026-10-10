@@ -1,0 +1,172 @@
+{
+  "schema": "cubeless_duplicate_evidence_refresh_v1",
+  "captured_utc": "2026-10-10T10:05:01.391482+00:00",
+  "scope": "Append-only current-evidence addendum; historical audit and feature ledgers unchanged",
+  "old_audit": {
+    "path": "cubeless/records/migration/implementation-2026-10-10/duplicate-tool-optimization.json",
+    "sha256": "7927be68abb0c28ff3994b62da6711cea207698895100f809efdf146c8f15d2c",
+    "bytes": 2329704
+  },
+  "old_registered_count": 28,
+  "current_registered_count": 27,
+  "removed_public_names": [
+    "CubelessMCPUE58Editor.CubelessNativeToolset.CompileBlueprintValidation"
+  ],
+  "added_public_names": [],
+  "preserved_blueprint_compile_names": [
+    "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_save_blueprint",
+    "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_validate_blueprint",
+    "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_blueprint"
+  ],
+  "stale_evidence_items": [
+    {
+      "topic": "registered_surface",
+      "historical": "G recorded 6 toolsets / 28 tools; correct for G, stale when described as current",
+      "current": "I actual discovery has 6 toolsets / 27 tools; only the newly exposed native CompileBlueprintValidation entry disappeared",
+      "evidence": [
+        "registered-schemas-and-diagnostics-G.json",
+        "registered-schemas-and-diagnostics-I.json"
+      ],
+      "remaining": "No legacy public identity deleted. Native helper still used internally. This does not prove all legacy compile semantics."
+    },
+    {
+      "topic": "batch_cold_validation",
+      "historical": "operations-batch-pipeline.json status cold_runtime_pending",
+      "current": "Actual G2 cold reload has 3 passing stages and independent verifier PASS",
+      "evidence": [
+        "batch-author-G.json",
+        "batch-reload-G2.json",
+        "batch-reload-G2-independent.json"
+      ],
+      "remaining": "Actual Undo, full legacy batch command parity, large workloads and performance statistical confidence remain unverified."
+    },
+    {
+      "topic": "material_add_set_contract",
+      "historical": "G2 optional array registration required explicit arrays; H primitive parser and I array converter were not verified",
+      "current": "I registered node_position optional default [0,0], min/max 2 and int32 bounds. Fresh I2 edge author passes 42 stages after exact converter error-message validator correction. I2 probes omission, explicit coordinates, primitive JSON, quoted strings, type rejection and unrelated official arrays",
+      "evidence": [
+        "registered-schemas-and-diagnostics-I.json",
+        "material-add-set-edges-author-I.json",
+        "material-add-set-edges-author-I2.json",
+        "material-add-set-edges-author-I2-independent.json"
+      ],
+      "remaining": "I failure remains historical validator failure before mutation. Null may be skipped by upper converter and is explicitly observational; no mandatory-null-rejection claim. Shader completion not verified."
+    },
+    {
+      "topic": "material_v2_execution",
+      "historical": "E3 proved 9-tool v1; later Add/Set was source-only in earlier documents",
+      "current": "I v2 author 43 stages and cold reload passed; includes new Add/Set independent property readbacks",
+      "evidence": [
+        "material-author-I.json",
+        "material-reload-I.json"
+      ],
+      "remaining": "Explicit recompile return with no reported errors is not shader completion, rendered output or broad Material parity."
+    },
+    {
+      "topic": "mpc_base_chain_semantics",
+      "historical": "G2 partial author stopped on live schema requirements; inheritance runtime proof pending",
+      "current": "Fresh I author 30 stages and cold reload passed. Strengthened independent verifier also passes actual file hashes and both reports; 12 offline tampering tests reject G2 partial and fabricated type/value/owner/GUID/reference/scope/parent evidence",
+      "evidence": [
+        "mpc-inheritance-author-G2.json",
+        "mpc-inheritance-author-I.json",
+        "mpc-inheritance-reload-I.json",
+        "operations-mpc-inheritance-author-I-independent.json",
+        "operations-mpc-inheritance-reload-I-independent.json",
+        "operations-mpc-inheritance-verifier-tests-A.json"
+      ],
+      "remaining": "Private asset override maps, runtime overrides, cycle/ambiguous-corruption runtime fixtures, CollectionTransform/nested functions, rendering and packaging remain not_run."
+    },
+    {
+      "topic": "repeated_mpc_read_work",
+      "historical": "G/I Capture -> Execute -> Capture recalculates exact MPC read payload three times; source-line numbers in old audit refer to that revision",
+      "current": "J candidate source locally reuses only GetCollectionValues / ListCollectionNodes Before payload; independent After capture, dirty comparison and mutation path retained. Read-only source review found no blocker",
+      "evidence": [],
+      "remaining": "J source review is not built/runtime equivalence or speedup proof. I/G have no new counters, so before counts cannot be described as measured. Smaller/mid/budget-bound and failure cases plus semantic comparison still needed."
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/registered-schemas-and-diagnostics-G.json",
+      "sha256": "7f57ee48e8a1fcbc051e6d5b90f5f1cd264aba35f1e1f73c23df7f14f3b2a3f8",
+      "bytes": 177892
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/registered-schemas-and-diagnostics-I.json",
+      "sha256": "2cb951834ab24ac756c9b78f1e13b654ea13aadb284bc5501451d4501f98cc86",
+      "bytes": 177195
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/batch-author-G.json",
+      "sha256": "b5d93219eee287c9351557ca1488cab6d250913ecc47263be5f9f9f14ac26002",
+      "bytes": 361549
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/batch-reload-G2.json",
+      "sha256": "5273e854597228777169a6ba3537618ddbbd8d5091406c07f8e684853fca202d",
+      "bytes": 110043
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/batch-reload-G2-independent.json",
+      "sha256": "828fcd1ba463ddc6832b5fbea74fec2790818025954c48fd0ddf75687aaed1eb",
+      "bytes": 272
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-add-set-edges-author-I.json",
+      "sha256": "a775195f61283010f7d42deef1223992a5590860b829672e8eff9a22d584a7d3",
+      "bytes": 143336
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-add-set-edges-author-I2.json",
+      "sha256": "014148fd8bc2a99791b4a7068e4d1680237c25079fdcabafb2c9c32a0265b6f4",
+      "bytes": 1509305
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-add-set-edges-author-I2-independent.json",
+      "sha256": "dc19dfef0171c75ca34c1da02e5d159b8144a63a5178167329bf22e059006f1c",
+      "bytes": 308
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-author-I.json",
+      "sha256": "3127f87c61a68df88b68dabda39bc26cb491fefdfe784a339856fdaabb05df29",
+      "bytes": 1499276
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-reload-I.json",
+      "sha256": "f92187eb06f9b26c069c258ae8cf9a5fe455f9e71ac925ba175bc2fa5d8b093b",
+      "bytes": 263129
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/mpc-inheritance-author-G2.json",
+      "sha256": "f2e2d887e2ed522aae026be0aedb6089827ddc03772cab1448d4dd5727e922d3",
+      "bytes": 145320
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/mpc-inheritance-author-I.json",
+      "sha256": "9b6d34011cd629049249abe75300e2de66b26ffb12bd00824c851f96ab16dd52",
+      "bytes": 362418
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/mpc-inheritance-reload-I.json",
+      "sha256": "3830e29a74d143202a0d27dca8485da332c767b279896edaa9b7942075c13b3e",
+      "bytes": 355548
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/operations-mpc-inheritance-author-I-independent.json",
+      "sha256": "7d8f7ccb28ffc7803a2b513f55aae55cbef1de62413019a58af97c8d2ac529a4",
+      "bytes": 185
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/operations-mpc-inheritance-reload-I-independent.json",
+      "sha256": "decedd2375424f62983e8b6764f37afb420481ec3ded7203be2d38f47db25202",
+      "bytes": 185
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/operations-mpc-inheritance-verifier-tests-A.json",
+      "sha256": "6d81cdc730edcf0710013bb305b7bfda6e4d0ac5d4ecb7af361b18f03797da7c",
+      "bytes": 2144
+    }
+  ],
+  "new_official_equivalence_proofs": 0,
+  "legacy_identity_removals": 0,
+  "complete_legacy_migration": false
+}

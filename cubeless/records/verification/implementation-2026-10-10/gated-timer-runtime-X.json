@@ -1,0 +1,524 @@
+{
+  "schema": "cubeless_gated_timer_runtime_v1",
+  "success": true,
+  "stage": "complete",
+  "started_ns": 1791644501514707900,
+  "process_id": 23012,
+  "expected_process_id": null,
+  "package": "/Game/CubelessMCPTests/GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e/BP_GatedTimer",
+  "function": "CFNL_GatedAdvance",
+  "expected_asset_sha256": "7d99275c2e0d544f4037b624f8f06f04b27d2835671c77098de09aee6d9f8115",
+  "expected_cdo": {
+    "FieldResourcesReady": false,
+    "PawnInside": false,
+    "VisibilityInputAllowed": false,
+    "LastDelta": 0.0,
+    "TimeSinceLastClick": 0.0
+  },
+  "steps": [
+    {
+      "index": 1,
+      "gates": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true
+      },
+      "delta": 0.25,
+      "expected_timer": 0.0,
+      "before": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      },
+      "gate_updates": [
+        {
+          "name": "FieldResourcesReady",
+          "requested": false,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "PawnInside",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "VisibilityInputAllowed",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        }
+      ],
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "prepared": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      },
+      "return_type": "NoneType",
+      "after": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.25,
+        "TimeSinceLastClick": 0.0
+      },
+      "cdo_after": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      }
+    },
+    {
+      "index": 2,
+      "gates": {
+        "FieldResourcesReady": true,
+        "PawnInside": false,
+        "VisibilityInputAllowed": true
+      },
+      "delta": 0.5,
+      "expected_timer": 0.0,
+      "before": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.25,
+        "TimeSinceLastClick": 0.0
+      },
+      "gate_updates": [
+        {
+          "name": "FieldResourcesReady",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "PawnInside",
+          "requested": false,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "VisibilityInputAllowed",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        }
+      ],
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "prepared": {
+        "FieldResourcesReady": true,
+        "PawnInside": false,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.25,
+        "TimeSinceLastClick": 0.0
+      },
+      "return_type": "NoneType",
+      "after": {
+        "FieldResourcesReady": true,
+        "PawnInside": false,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.5,
+        "TimeSinceLastClick": 0.0
+      },
+      "cdo_after": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      }
+    },
+    {
+      "index": 3,
+      "gates": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": false
+      },
+      "delta": 1.25,
+      "expected_timer": 0.0,
+      "before": {
+        "FieldResourcesReady": true,
+        "PawnInside": false,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.5,
+        "TimeSinceLastClick": 0.0
+      },
+      "gate_updates": [
+        {
+          "name": "FieldResourcesReady",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "PawnInside",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "VisibilityInputAllowed",
+          "requested": false,
+          "attempted": true,
+          "returned": true
+        }
+      ],
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "prepared": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.5,
+        "TimeSinceLastClick": 0.0
+      },
+      "return_type": "NoneType",
+      "after": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 1.25,
+        "TimeSinceLastClick": 0.0
+      },
+      "cdo_after": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      }
+    },
+    {
+      "index": 4,
+      "gates": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true
+      },
+      "delta": 0.25,
+      "expected_timer": 0.25,
+      "before": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 1.25,
+        "TimeSinceLastClick": 0.0
+      },
+      "gate_updates": [
+        {
+          "name": "FieldResourcesReady",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "PawnInside",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "VisibilityInputAllowed",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        }
+      ],
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "prepared": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 1.25,
+        "TimeSinceLastClick": 0.0
+      },
+      "return_type": "NoneType",
+      "after": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.25,
+        "TimeSinceLastClick": 0.25
+      },
+      "cdo_after": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      }
+    },
+    {
+      "index": 5,
+      "gates": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true
+      },
+      "delta": 0.5,
+      "expected_timer": 0.75,
+      "before": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.25,
+        "TimeSinceLastClick": 0.25
+      },
+      "gate_updates": [
+        {
+          "name": "FieldResourcesReady",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "PawnInside",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "VisibilityInputAllowed",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        }
+      ],
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "prepared": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.25,
+        "TimeSinceLastClick": 0.25
+      },
+      "return_type": "NoneType",
+      "after": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.5,
+        "TimeSinceLastClick": 0.75
+      },
+      "cdo_after": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      }
+    },
+    {
+      "index": 6,
+      "gates": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true
+      },
+      "delta": 1.25,
+      "expected_timer": 0.75,
+      "before": {
+        "FieldResourcesReady": true,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.5,
+        "TimeSinceLastClick": 0.75
+      },
+      "gate_updates": [
+        {
+          "name": "FieldResourcesReady",
+          "requested": false,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "PawnInside",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        },
+        {
+          "name": "VisibilityInputAllowed",
+          "requested": true,
+          "attempted": true,
+          "returned": true
+        }
+      ],
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "prepared": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 0.5,
+        "TimeSinceLastClick": 0.75
+      },
+      "return_type": "NoneType",
+      "after": {
+        "FieldResourcesReady": false,
+        "PawnInside": true,
+        "VisibilityInputAllowed": true,
+        "LastDelta": 1.25,
+        "TimeSinceLastClick": 0.75
+      },
+      "cdo_after": {
+        "FieldResourcesReady": false,
+        "PawnInside": false,
+        "VisibilityInputAllowed": false,
+        "LastDelta": 0.0,
+        "TimeSinceLastClick": 0.0
+      }
+    }
+  ],
+  "gate_updates_attempted": 18,
+  "calls_attempted": 6,
+  "calls_returned": 6,
+  "calls_verified": 6,
+  "automatic_retries": 0,
+  "atomic_rollback": false,
+  "outcome_unknown": false,
+  "compile": {
+    "explicit_calls": 0,
+    "implicit_load_compilation": "not_measured"
+  },
+  "save": {
+    "explicit_calls": 0
+  },
+  "settings_writes": 0,
+  "settings_scope": "Project descriptor/Config ini bytes protected; Saved editor ini observed only; no unverified global settings getter",
+  "scope": "Own gated caller on an ownerless transient ActorComponent: always-path LastDelta plus three-condition timer gate",
+  "lifetime_policy": "Probe reference retained until the disposable process exits",
+  "unverified": [
+    "inherited Tick",
+    "external component call",
+    "original host",
+    "press/release reset",
+    "hardware input",
+    "automatic EndPlay",
+    "Shipping/packaging",
+    "arbitrary callback side effects"
+  ],
+  "source_hashes": {
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\verify_gated_timer_runtime.py": "fe306de80f0602fe32174f0c7e8be368821b4106cda5c80794ed118be6c9d2a1",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\verify_function_timer_runtime.py": "3953abac7afe099696ef19f55e5df7c6e03958e59c85510e6e866b11d7e5014b",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\create_component_read_fixture.py": "707eed131bc0c60cf7eb3e0ccd2b73f07fe2cb3fb79ad47e39518ed73562f6bb",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_fixture_without_mcp.py": "75c56b251657ca45d4a052461328263923732e7662d8b800f86c045bdabf946b"
+  },
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\CubelessRuntimeProof.uproject",
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "asset_file_before": {
+    "sha256": "7d99275c2e0d544f4037b624f8f06f04b27d2835671c77098de09aee6d9f8115",
+    "bytes": 58517,
+    "mtime_ns": 1791644446820885300
+  },
+  "project_config_before": {
+    "CubelessRuntimeProof.uproject": "410c8597f4826d26c1036a2b7ac8ef722aea5d59961665bd74ca5afa08bb381b",
+    "Config\\DefaultEngine.ini": "29d599b499badda52258ada450106a8ad9b55a5e4ae25e71938e4824071dc715",
+    "Config\\DefaultGame.ini": "066ac6d262fa72a278640bbc2e54d26f84992b36254e775fda75ea272796d067"
+  },
+  "saved_editor_config_before": {
+    "Saved\\Config\\WindowsEditor\\Editor.ini": "0f6e5f6ee35d1d08016aa73927d665b380165b85189cb086957465d6a40923c6",
+    "Saved\\Config\\WindowsEditor\\EditorPerProjectUserSettings.ini": "3313fe628375464b1dd23673ea4a0cea9edcc6682fbe75be094634eb64311828",
+    "Saved\\Config\\WindowsEditor\\GameUserSettings.ini": "5dc2a48b33129cb3b047f56b04c3d43ace470abb6fe661916d7be48bf40db2b8"
+  },
+  "plugins_before": {
+    "names": [
+      "ContentBrowserFileDataSource",
+      "EditorScriptingUtilities",
+      "PythonScriptPlugin"
+    ],
+    "forbidden_enabled": [],
+    "passed": true
+  },
+  "dirty_before": [],
+  "blueprint": {
+    "object_path": "/Game/CubelessMCPTests/GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e/BP_GatedTimer.BP_GatedTimer",
+    "parent_class": "/Script/Engine.ActorComponent",
+    "generated_class": "/Game/CubelessMCPTests/GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e/BP_GatedTimer.BP_GatedTimer_C",
+    "status_before": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+    "cdo_path": "/Game/CubelessMCPTests/GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e/BP_GatedTimer.Default__BP_GatedTimer_C",
+    "cdo_values_before": {
+      "FieldResourcesReady": false,
+      "PawnInside": false,
+      "VisibilityInputAllowed": false,
+      "LastDelta": 0.0,
+      "TimeSinceLastClick": 0.0
+    }
+  },
+  "probe": {
+    "path": "/Engine/Transient.BP_GatedTimer_C_0",
+    "class": "/Game/CubelessMCPTests/GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e/BP_GatedTimer.BP_GatedTimer_C",
+    "outer": "/Engine/Transient",
+    "owner": "",
+    "explicit_registration_calls": 0,
+    "construction_flags_from_source": "RF_Transactional; RF_Transient flag not asserted"
+  },
+  "accumulated_seconds": 0.75,
+  "final_observations": {
+    "dirty_final": [],
+    "plugins_after": {
+      "names": [
+        "ContentBrowserFileDataSource",
+        "EditorScriptingUtilities",
+        "PythonScriptPlugin"
+      ],
+      "forbidden_enabled": [],
+      "passed": true
+    },
+    "asset_file_after": {
+      "sha256": "7d99275c2e0d544f4037b624f8f06f04b27d2835671c77098de09aee6d9f8115",
+      "bytes": 58517,
+      "mtime_ns": 1791644446820885300
+    },
+    "cdo_values_after": {
+      "FieldResourcesReady": false,
+      "PawnInside": false,
+      "VisibilityInputAllowed": false,
+      "LastDelta": 0.0,
+      "TimeSinceLastClick": 0.0
+    },
+    "probe_values_after": {
+      "FieldResourcesReady": false,
+      "PawnInside": true,
+      "VisibilityInputAllowed": true,
+      "LastDelta": 1.25,
+      "TimeSinceLastClick": 0.75
+    },
+    "blueprint_status_after": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+    "project_config_after": {
+      "CubelessRuntimeProof.uproject": "410c8597f4826d26c1036a2b7ac8ef722aea5d59961665bd74ca5afa08bb381b",
+      "Config\\DefaultEngine.ini": "29d599b499badda52258ada450106a8ad9b55a5e4ae25e71938e4824071dc715",
+      "Config\\DefaultGame.ini": "066ac6d262fa72a278640bbc2e54d26f84992b36254e775fda75ea272796d067"
+    },
+    "saved_editor_config_after": {
+      "Saved\\Config\\WindowsEditor\\Editor.ini": "0f6e5f6ee35d1d08016aa73927d665b380165b85189cb086957465d6a40923c6",
+      "Saved\\Config\\WindowsEditor\\EditorPerProjectUserSettings.ini": "3313fe628375464b1dd23673ea4a0cea9edcc6682fbe75be094634eb64311828",
+      "Saved\\Config\\WindowsEditor\\GameUserSettings.ini": "5dc2a48b33129cb3b047f56b04c3d43ace470abb6fe661916d7be48bf40db2b8"
+    }
+  },
+  "saved_editor_config_changed": false,
+  "preservation": {
+    "passed": true,
+    "scope": "Target SHA/mtime, CDO fields/status, dirty packages, enabled plugins and project configuration; Saved editor bookkeeping observed separately"
+  },
+  "finished_ns": 1791644501650344800
+}

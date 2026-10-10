@@ -1,0 +1,25 @@
+# AvatarSample_A Chaos Cloth authoring decision (UE 5.6.1)
+
+## 티브렛에게 전달할 지시
+
+`/Game/_MCP_Temp/AvatarSample_A`에서 Avatar Skeletal FBX를 범위형 Interchange 우회+레거시 FbxFactory로 임포트한다. Piper를 소스, Avatar를 타깃으로 IK Rig/IK Retargeter와 이동 애니메이션을 생성한다. 원본 `BP_Piper`를 복제한 테스트 Pawn과 전용 테스트 맵에서 PIE 이동·점프·Chaos Cloth 동작을 검증한다. Python 경로가 Cloth 에셋 생성 또는 핀 웨이트맵 베이크를 안정적으로 제공하지 못할 때만 `MCPGameProject/Plugins/UnrealMCP` 내부의 에디터 전용 C++ 명령을 최소 범위로 추가한다. 모든 결과는 UnrealMCP 없이 로드·실행 가능해야 하며, 원본 Piper와 기존 `Empty.umap` 변경은 건드리지 않는다. 중단 조건은 임포트 실패, 리타게팅 체인 불일치, Cloth 에셋 생성 불가, 또는 PIE에서 시뮬레이션이 유효하지 않은 경우다.
+
+## C++ promotion basis
+
+UE 5.6 exposes existing Cloth Dataflow tuning to Python, but it does not expose legacy section-to-clothing creation or paint-weight writing. The Dataflow graph-construction symbols required for the standalone Chaos Cloth asset route are not exported to external editor modules. The authoring bridge therefore adds one editor-only, temporary-root command using the supported Skeletal Mesh Clothing factory:
+
+`create_legacy_chaos_clothing_from_skeletal_sections`
+
+It duplicates the imported Avatar Skeletal Mesh to a new temporary-root output, creates one engine `UClothingAssetCommon` per requested garment section, attaches a light-fabric `UChaosClothConfig`, and writes Blender `Cloth_PinGuide` vertex-color values into the engine `MaxDistance` paint map. If Skeletal FBX import has discarded the colors, the deterministic fallback pins the top 18% of that garment's local Z range. The legacy Clothing path is integrated directly into the Skeletal Mesh, so multiple skirt/bow sections share its Chaos simulation without serializing an UnrealMCP type or reference.
+
+The command accepts a list of existing skeletal-mesh sections in one call, requires a new output path below `/Game/_MCP_Temp`, checks the expected material slot, validates Skeletal Mesh and Clothing material usage, and checks both anchor/free guide values before mutation. A per-section `material_path` can populate only the duplicated output when the source slot is empty. It rejects PIE, existing output paths, invalid sections, material mismatches, and failed bindings. VRoid collision bodies scale proportionally from the reference upper-leg lengths, and a failed creation removes every newly owned output asset whenever exact rollback succeeds.
+
+## Verification and rollback
+
+1. Run dry-run validation for each garment section.
+2. Create the one duplicated Cloth Skeletal Mesh containing the three sections: outer skirt, inner skirt, bow tails.
+3. Inspect each section binding for its Chaos config and a `MaxDistance` map with both zero and positive values.
+4. Assign the duplicated Skeletal Mesh to the final Pawn; no extra `UChaosClothComponent` or UnrealMCP class is serialized into the final Pawn or map.
+5. Build the UnrealMCP editor module and run its native Chaos automation plus the Python registration/policy gates before final PIE validation.
+
+The DCC source remains recoverable in the local `AvatarSample_A_Unreal/AvatarSample_A_ChaosClothPrep.blend` workspace. The temporary project output can be safely re-authored without modifying the original Avatar mesh, Piper assets, or `Empty.umap`.

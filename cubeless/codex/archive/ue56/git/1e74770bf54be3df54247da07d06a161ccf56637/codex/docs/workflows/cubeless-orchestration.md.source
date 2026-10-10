@@ -1,0 +1,54 @@
+# Cubeless Orchestration
+
+## Goal
+
+- The embedded `codex/` directory is the command center for `UnrealMCP5_6_1`.
+- Durable policy, coordination rules, and reusable workflows for the UE 5.6.1 MCP line live in `codex/`.
+- The command center should let MCP upgrades happen inside this repository without depending on sibling repositories, submodules, or local machine state.
+
+## Authority Model
+
+- `codex/AGENTS.md` is the embedded operating root.
+- The repository root `AGENTS.md` resolves `codex/AGENTS.md` first, then reads `codex/projects/UnrealMCP5_6_1.md`.
+- Project bindings define local facts: default paths, branch expectations, engine versions, bridge ports, safe asset roots, verification gates, and local exceptions.
+- If a local adapter and embedded Codex disagree, follow the stricter rule and report the conflict.
+
+## Managed Repositories
+
+- `UnrealMCP5_6_1`: Python MCP server, UnrealMCP plugin sample project, embedded `codex/` operating docs, and UE 5.6.1 compatibility branch.
+- No sibling repository or submodule is required for routine work in this folder.
+- External repositories are reference-only unless the user explicitly names them.
+
+## Work Routing
+
+- Start from the active checkout.
+- For this MCP repository, read the root adapter, embedded Codex, and `projects/UnrealMCP5_6_1.md`.
+- For MCP tooling work, read `agents/tivret-mcp.md` and `docs/workflows/mcp-upstream-update.md` when upstream sync is involved.
+- For explicitly requested external project work, keep implementation and Git summaries separated by repository.
+
+## MCP Agent Chain
+
+- Ieta coordinates MCP direction, reviews project impact, and prepares implementation instructions.
+- Tivret-MCP implements MCP tooling inside `UnrealMCP5_6_1`.
+- The MCP Upstream Manager handles sync from `chongdashu/unreal-mcp`.
+- The MCP Release Verifier checks MCP changes before they are treated as ready inside this repository.
+
+## Permission Baseline
+
+- Local Windows workstations should use the broad local-work Codex profile from `docs/policies/local-permission-profile.md`.
+- New or repaired PCs may run `scripts/grant-local-workspace-full-control.ps1` from this repository if ACL repair is explicitly needed.
+- Runtime sandbox settings still come from the Codex app/session launcher; filesystem ACLs do not override the active Codex permission profile.
+
+## Upgrade Loop
+
+1. Update or verify embedded `codex/` rules first when the requested behavior changes repository policy.
+2. Update `UnrealMCP5_6_1` on its integration branch when tooling must grow.
+3. Verify MCP Python import/compile checks and any targeted bridge checks.
+4. Verify any explicitly requested external project smoke tests only when that external scope is part of the task.
+5. Commit and push only the explicitly requested repository scope.
+
+## Boundaries
+
+- Do not stage generated project assets, package outputs, `_MCP_Temp`, `_MCP_Sample`, or unrelated dirty files.
+- Do not rewrite public default branches unless the user explicitly approves that exact history operation.
+- Do not modify credentials, secrets, remotes, account settings, or GitHub repository settings unless explicitly requested.

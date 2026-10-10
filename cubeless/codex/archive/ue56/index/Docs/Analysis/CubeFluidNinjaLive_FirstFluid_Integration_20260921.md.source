@@ -1,0 +1,329 @@
+# Tutorial01 첫 Fluid 통합 작업
+
+## 목표와 경계
+
+승인된 3시간 계획의 목표는 `NinjaLive15_0` 사례를 독립 Study 레벨에
+통합하고 기술 검증 및 서밋 후보 정리까지 완료하는 것이다. 다른 13개 Fluid
+사례, 전체 59레벨 완성, 사용자 시각 검수는 이 묶음의 완료 주장에 포함하지 않는다.
+원본은 읽기 전용이며 원본 그래프/모듈/스크래치 패드를 복제하지 않는다.
+프로젝트 C++ 변경, 커밋, 푸시는 이 실행 범위에 포함하지 않는다.
+
+## 실행 순서
+
+1. 현재 체크아웃/에디터/후보의 상태와 기존 증거를 재확인한다.
+2. 부모 MovingBall과 Fluid의 좌표/근접 활성화 계약을 대조한다.
+3. 임시 PIE에서 부모 연결, 실제 이동, 접근/이탈/재진입을 검증한다.
+4. 음수 좌표와 셀 경계에서 CPU 표면 위치/GPU 소비 결과를 비교한다.
+5. 검증된 자체 호스트/솔버를 최종 Study 경로로 통합하고 레벨에 배치한다.
+6. 최종 참조 closure, NoMCP 로드, frozen candidate 전체 offline 검사를 한다.
+7. 원리, 측정 결과, 제한, 서밋 포함/제외 파일을 정리한다.
+
+시간은 예상 예산이며 미검증 결과를 통과로 바꾸는 기준이 아니다.
+
+## 원본 계약
+
+- Fluid: `NinjaLive15_0`, 표시명 `NinjaLive15`.
+- 부모: `MovingBall15_0`, 표시명 `MovingBall18`, `Root` 컴포넌트.
+- 상대 위치: `(16.965821, 36, -6)`, 상대 yaw `45`도.
+- 부모 시작 위치: `(-7883.315725738786, -27916.436299563276, -505.9992754301839)`.
+- 부모 이동: AbsoluteLocation=True, Speed=1, Amplitude=1,
+  Xmult=0, Ymult=100, Zmult=0, Yfreq=4.13. 액터 루트가 이동하므로 자식이 따라간다.
+- 근접 검사 주기 0.1초, 활성 영역 반경 `(1500,1500,1500)`.
+- Activator=None은 PlayerPawn fallback이며, 명시적 Pawn 시험만으로 이 경로를
+  통과했다고 주장하지 않는다.
+- Interaction 영역 반경 `(150,150,12.5)`, 시뮬레이션 표면 scale `(3,3,1)`.
+- IgnoreSystemRotation=True. 부모/자식의 yaw와 시뮬레이션 좌표축은 구분한다.
+- 공통 System Position을 CPU renderer와 GPU Painter/NDC에서 소비한다.
+  이전에 발견된 음수 frac CPU/GPU 차이를 다시 도입하지 않는다.
+
+## 현재 확인 결과
+
+- HEAD `95e6e2b80`; 다수 Cloud/MCP 도구 변경은 이 작업 소유가 아니므로 보존한다.
+- 에디터 PID 16400, 정확한 프로젝트 경로 및 Study Tutorial01 맵 확인.
+- PIE 종료 상태, dirty package 0.
+- Study에 `CFNL_Source_MovingBall15_0` 태그의 부모가 정확히 하나 존재하며
+  위치와 독립 `BP_CFNL_MovingBall1` 클래스가 원본 계약에 대응한다.
+- 최종 통합 및 서밋 준비는 아직 미완료다. 아래에 실제 검증 결과를 추가한다.
+
+## 임시 런타임 실측
+
+`tutorial01/t01_first_fluid_attachment_v003/report.json`에서 원본 위치의 자체
+MovingBall 루트에 자체 후보를 붙여 두 번의 접근/이탈을 검사했다. 수동 Replay나
+Niagara 재질 바인딩 덮어쓰기 없이 ReplayCount 0→1→2, StopCount 0→1→2,
+상대 위치 유지, yaw 45도, 부모 실제 이동, 재진입 RT 교체가 통과했다.
+
+v004는 CPU 기대값을 정확한 나눗셈으로 계산해 실패했다. CPU/GPU delta는 당시에도
+일치했다. 기존 조사와 UE VectorVM의 근사 역수 계약에 맞춰 현재 CPU의
+Sse.Reciprocal을 독립 실행했고, unit=1.171875에 reciprocal=0.853271484375를
+측정했다. GPU 출력에서 역수를 추정하지 않았다. binary32 연산과 signed frac를
+반영한 v005에서는 음수 X의 셀 경계 양측 8표본 모두 CPU 위치가 기대값과
+일치했고 CPU/GPU 누적 이동량 차이는 0이었다. 경계 측정 동안만 임시 부모
+Tick을 정지했고 측정 후 복구했다. 솔버 연산이나 원본은 수정하지 않았다.
+
+v005의 두 번째 접근에서는 초기 clear 색만 읽은 것을 성공으로 치지 않도록
+유한값뿐 아니라 RGB 비영값을 기다렸다. 두 번째 이탈까지 정상 통과했다.
+PIE stop은 성공했으나 직후 종료 상태 읽기가 GC 보호장치에서
+`command_executed=false`로 거부되어 원 보고서의 success는 False로 보존했다.
+`t01_first_fluid_attachment_v005_cleanup_reconciled/report.json`에서 PIE 종료,
+dirty 0, 419개 보호 패키지 해시 불변을 읽기 전용으로 재확인했다. stop이나
+전체 시험을 반복하지 않았다. 이 보완 증거와 원 보고서를 함께 사용한다.
+
+현재 검증 한계: 명시적 Pawn activator 시험이다. 최종 배치의 PlayerPawn fallback,
+최종 경로 의존성 및 최종 저장 맵 런타임은 아직 별도로 검증해야 한다.
+
+## 최종 승격 사전 검사와 전체 검사 실패
+
+`t01_first_fluid_integration_plan_v001`은 자체 솔버에서 최종
+`/Game/Study/CubeFluidNinjaLive/Niagara/Tutorial01/NS_CFNL_NinjaLive15_0`으로
+no-overwrite 승격하는 dry-run을 통과했다. 원본/임시 의존성 허용을 넓히지 않았다.
+아직 실제 승격이나 호스트/레벨 저장은 실행하지 않았다.
+
+`presubmit/20260920T153419Z`에서 canonical full을 실행했다. 11,928개 입력의
+검사 전후 해시는 동일했지만 exit 1이다. 40번째 Niagara authoring gate의
+workspace_path_portability 검사에서 `tmp/AnimeCloud360_Blender`에 있는
+13개 기존 Cloud 스크립트의 고정 체크아웃 경로 15곳을 발견했다. 이는 이 작업
+시작 때부터 존재하던 타 작업의 untracked 파일이다. 검사를 제외하거나 실패를
+통과로 취급하지 않았고, 파일을 임의 수정/삭제하지 않았다. full의 이후 두
+항목은 fail-fast에 따라 실행되지 않았다.
+
+사용자에게 Cloud 스크립트의 경로만 수정할 수 있는지 비동기로 질문했다.
+답변 전에는 자체 런타임 검증만 계속하며, 전체 gate 통과를 요구하는 최종
+Study 승격/서밋 준비 완료 선언은 하지 않는다.
+
+## PlayerPawn fallback 검증 절차
+
+v006/v007은 PIE 초기화 직후 플레이어 컨트롤러가 아직 없는 프레임에서
+검사 준비를 시작해 실패했다. 별도 읽기 전용 진단으로 일반 PIE에 GameModeBase,
+PlayerController, DefaultPawn이 정상 생성되는 것을 확인했다. 에셋 결함으로
+단정하거나 GameMode를 변경하지 않았다. 검증 스크립트는 일반 PIE 시작 후
+컨트롤러와 Pawn 준비를 읽기 전용으로 기다린 뒤 transient Pawn을 possess한다.
+Activator는 None을 유지하므로 저장된 호스트의 GetPlayerPawn fallback을 실제로
+통과한다. 이는 키보드 이동 조작 검증과는 구별한다.
+
+`t01_first_fluid_attachment_v008/report.json` 최종 결과는 PASS다. Activator=None,
+로컬 PlayerController가 possess한 Pawn으로 두 번 접근/이탈했고, 실제 부모 이동과
+상대 위치 유지 및 RT 재생성을 확인했다. X/Y 각각 8개, 총 16개 경계 표본의
+CPU 위치가 독립 binary32/SSE 기대값과 일치했다. 모든 표본의 CPU/GPU delta
+최대 차이는 0이다. PIE 종료와 419개 패키지 전후 해시 동일도 같은 실행에서
+통과했다. 최종 승격 스크립트는 이 더 강한 증거를 입력으로 사용한다.
+
+## 재개 지점
+
+현재 변경 파일은 이 문서와 다음 두 실행 스크립트뿐이다.
+
+- `Python/scripts/analysis/verify_cube_fluid_ninja_first_fluid_attachment.py`
+- `Python/scripts/analysis/integrate_cube_fluid_ninja_first_fluid.py`
+
+원본, Study 에셋, Study 맵은 아직 이 작업에서 저장하지 않았다. 서밋 준비 완료가
+아니며, 전체 검사 실패를 해결한 후 다음 순서로 이어간다.
+
+1. 현재 입력을 다시 고정하고 `run_cube_fluid_ninja_presubmit_gates`를 실행한다.
+2. 통과한 report를 `integrate_cube_fluid_ninja_first_fluid solver --full-report ...`에
+   전달한다. 기존 no-overwrite manifest를 재검증하며 실패 결과를 자동 반복하지 않는다.
+3. `host`, `place` 단계로 자체 호스트 기본값과 원본 부모 연결을 저장한다.
+4. `verify_cube_fluid_ninja_first_fluid_attachment --placed --player-fallback --boundaries`
+   로 저장된 최종 에셋/맵을 다시 검증한다. 새 run-id를 사용한다.
+5. 최종 `audit`, NoMCP root/맵 로드, 최종 frozen full, 제출 목록을 완성한다.
+
+실제 검증 명령은 저장소 루트에서 `uv --directory ./Python run python -m
+scripts.analysis.<module>` 형식이다. 기존 실행 기록은 Saved 아래 보존하며,
+다른 작업의 파일과 실패 보고서는 삭제하지 않는다.
+
+## 목표 변경: 첫 사례 학습과 저장 배치까지
+
+사용자는 서밋 준비보다 기존 학습의 1~3번(원리 대조, 부족분 보완, 첫 사례
+Study 배치)을 요청했다. 다른 13개 사례, 시각 검수 및 커밋/푸시는 진행하지
+않는다. 저장하는 에셋은 학습용 통합이며 전체 레벨 동등성이나 배포 준비 완료를
+뜻하지 않는다. 기존 full 실패 기록은 그대로 보존한다.
+
+### 원본과 자체 구현의 데이터 흐름
+
+1. **입력/좌표:** MovingBall의 액터 Root 이동을 자식 호스트가 상속한다.
+   표면의 yaw 45도와 시뮬레이션 축은 별개다. IgnoreSystemRotation=True이므로
+   Painter와 Fluid 계산은 identity 축을 사용한다. 근접 영역은 호스트와 같이
+   이동하며 0.1초마다 명시적 Activator 또는 PlayerPawn을 확인한다.
+2. **Painter:** 추적 대상의 배열/NDC 브러시를 Painter grid로 처리한다.
+   공통 System Position을 받아 이전 프레임과의 상대 이동 및 누적 offset을
+   계산한다. 이 상태를 GPU grid에 기록하므로 Fluid가 CPU 위치를 따로 추정하거나
+   GPU에서 음수 frac를 다시 계산하지 않는다.
+3. **FluidGather:** 이전 advection과 pressure를 가져온다. 리셋 시 해당 상태와
+   age를 초기화한다. 이전 advection을 명시적으로 carry해야 후속 stage가 덮어쓴
+   grid의 다른 상태와 혼동하지 않는다.
+4. **FluidComposite:** Painter/브러시 입력, 노이즈, 직접 속도 등 현재 입력을
+   합성한다. 이 사례의 추가 height/MDF/RVT/spline 입력은 원본에서 비활성이다.
+   빈 충돌/속도 입력에는 독립 black texture가 연결되고, 두 noise texture는
+   로컬 Art 경로를 사용한다. 직접 속도와 이동 유래 속도는 구별하며 이 사례의
+   VeloFromSimAreaMotion은 0이다.
+5. **FluidAdvection → FluidDivergence → FluidPressureX → FluidPressureY:**
+   속도로 역추적한 위치에서 합성 필드를 샘플링해 이류시키고, 발산과 압력을
+   원본에서 조사한 순서로 계산한다. pressure X/Y는 별도 패스이며 순서를
+   바꾸거나 수치가 비슷하다는 이유로 합치지 않는다. 이전 프레임 보존과 stage간
+   grid ping-pong을 구분해야 한다. 자체 source-order recipe의 ORDER 및 diagnostic
+   RT들은 이 순서와 중간 입력을 관측할 수 있게 작성되어 있다.
+6. **출력:** Fluid/Painter/pressure 출력 크기는 각각 256/128/128이다.
+   표시 재질의 VelocityDensityBuffer에는 raw FluidRT가 아닌 FluidSurfaceRT를
+   연결한다. PainterRT는 PaintBuffer/HeightMap에 연결한다. native Niagara mesh
+   renderer는 System.CFNL_SurfacePosition 및 scale (3,3,1)을 소비한다.
+7. **재진입:** 준비/RT 생성·크기 조정/DI 바인딩/MID 생성 및 텍스처 설정/
+   User.CFNL_SurfaceMaterial 설정을 끝낸 뒤 Activate한다. 예전 StaticMesh Surface는
+   MID 생성 용도로만 남기고 숨겨 두 겹으로 렌더링하지 않는다. 이탈의 Deactivate는
+   비동기 종료이므로 StopCount 증가만으로 완전 정지를 판정하지 않는다.
+
+이는 기존 독립 recipe/저장 호스트/실측 결과의 연결 설명이다. 모든 픽셀의 원본
+동등성, 모든 레벨, 모든 비활성 옵션의 구현을 주장하지 않는다.
+
+### 저장 단계에서 발견한 보완점
+
+처음 지정한 새 호스트 이름 `BP_CFNL_FluidHost`는 Core의 기존 조상 Blueprint와
+같았다. 자체 후보를 복제한 후 컴파일에서 `Overriden function is not compatible
+with the parent function <None>` 오류 1개가 발생했다. 원 보고서는 실패로 보존했다.
+방금 만든 자산만 `BP_CFNL_T01Fluid_NinjaLive15_0`로 이름을 변경한 뒤 동일한
+그래프를 컴파일했더니 error=0, warning=0, validation_pass=True, saved=True였다.
+이 결과는 동일 이름이 관여한 문제임을 뒷받침하지만 엔진 내부 원인의 완전한
+진단을 주장하지 않는다. 기존 Core 부모나 원본 그래프는 수정하지 않았다.
+
+### 저장된 위치
+
+- 호스트: `/Game/Study/CubeFluidNinjaLive/Blueprints/Tutorial01/Fluid/NinjaLive15_0/BP_CFNL_T01Fluid_NinjaLive15_0`
+- 솔버: `/Game/Study/CubeFluidNinjaLive/Niagara/Tutorial01/NS_CFNL_NinjaLive15_0`
+- 맵: `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial01_Basics`
+- 액터 라벨 `NinjaLive15`, 태그 `CFNL_Source_NinjaLive15_0`.
+- 부모 태그 `CFNL_Source_MovingBall15_0`; 상대 위치 `(16.965821,36,-6)`.
+
+`t01_first_fluid_integration_place_v001`은 기존 액터들의 클래스/라벨/transform/
+부모가 불변임을 비교하고 하나만 추가한 뒤 맵을 저장했다. 원본 Tutorial01과
+두 자체 임시 후보 해시는 그대로다. 저장된 배치의 런타임 결과는 아래에 기록한다.
+
+### 저장된 배치의 핵심 검증
+
+- `t01_first_fluid_attachment_placedv001`: PASS. 맵에 저장된 호스트를 사용하고
+  새 호스트를 spawn하지 않았다. Activator=None PlayerPawn fallback, 부모 실제 이동,
+  상대 transform 유지, 2회 접근/이탈/재진입, RT 재생성 및 실제 비영 출력 통과.
+  X/Y 셀 경계 16표본에서 CPU/GPU delta 최대 차이 0. PIE 종료와 보호 파일 해시
+  보존도 같은 실행에서 통과했다.
+- `t01_first_fluid_integration_audit_v001`: 저장된 호스트/솔버/맵에서 시작한
+  85개 프로젝트 패키지와 46개 외부 참조를 검사했다. 원본 FluidNinjaLive,
+  임시 MCP 경로 및 MCP 전용 런타임 참조가 없고, 프로젝트 참조는 Study 안에서
+  닫힌다. 기존 맵의 모든 시각 요소가 원본과 같다는 증거는 아니다.
+- `AssetReviews/CFNL_FirstFluid_Placed_NoMCP_20260921_v001`: 별도 UE 5.6
+  프로세스에서 UnrealMCP를 끄고 최종 Blueprint/NiagaraSystem/World 3개를
+  로드했으며 실제 클래스가 기대값과 일치했다. static scan도 통과했다.
+  이 NullRHI 로드 검사는 패키징이나 GPU 화면 동등성 검사를 대신하지 않는다.
+
+최종 호스트 SHA256:
+`d8254f54085b83f0ac2cb0ad73b3d62d7790f74721decbed757ec03a4f470e47`.
+최종 솔버 SHA256:
+`f65f60d724233b54d37f096fd49443aa7e95f396a67995430133c47f3eced6d9`.
+저장 맵 SHA256:
+`cb364f548890f9969032942222b8f827aefb8dbb2cf97b332cd4c83c11206262`.
+
+다음 사용자 시각 검수 대상은 Tutorial01의 `NinjaLive15` 한 사례다.
+나머지 13개 Fluid의 완료 또는 Tutorial01 전체 완료로 확대하지 않는다.
+
+## 추가 학습: 화면 밖 CPU 입력 차단과 재진입 보간
+
+앞선 저장 배치 검증 이후 원본 `NinjaLiveComponent`의 `Blocker2`에서 아직
+구현하지 않은 동작을 확인했다. 따라서 앞선 PASS만으로 첫 사례의 동작 대조가
+끝났다고 판단하지 않는다. 원본은 변경하지 않았다.
+
+- 근거: 읽기 전용 조사 기록 `reference/blueprints/NinjaLiveComponent/graphs/053__Blocker2__DD0CE0894CE07D8136F9E8B874A32C69.json`.
+- 실제 호출 위치: `023__EventGraph__0F731ACE4944B7DB56DE5CAB41152635.json`의
+  `Blocker2 → Branch → Set Timers → Sequence`. 하위 흐름에는 출력 재질 갱신,
+  입력 배열 초기화, 위치 계산, 객체 처리 및 Niagara 배열 전달이 있다.
+- `PauseSimWhenNotVisible=False`이면 차단 없이 통과한다.
+- True이면 소유 액터의 native `WasRecentlyRendered(WaitBeforePause)`를 사용한다.
+  첫 사례의 `WaitBeforePause`는 0.2초다. 이것은 엄밀한 화면 픽셀 가시성이나
+  직접적인 frustum 검사와 동일한 개념이 아니며 엔진의 최근 렌더 이력을 따른다.
+- 최근 렌더되지 않았으면 `PosInterpolation=False`와 Painter 매개변수를 설정하고
+  CPU 후속 실행을 차단한다. Niagara 전체의 Pause/Deactivate 호출은 아니다.
+- 최근 렌더되었으면 Sequence의 첫 출력으로 현재 CPU 입력 처리를 진행하고,
+  두 번째 출력에서 일반 `Delay(0.05)` 후 초기 보간값을 복구한다. 복귀 프레임의
+  큰 위치 차이가 긴 보간 자국으로 이어지는 것을 방지하는 구조다.
+- 일반 Delay의 중복 호출 및 이미 대기 중인 복구의 의미도 보존한다. 이를
+  재시작형 타이머나 GPU 전체 정지로 바꾸지 않는다.
+
+자체 구현은 기존 독립 제작 Input/Camera/Field 계층을 첫 사례 전용 Support
+계층으로 분리해 재사용하고, 입력 Tick의 **부모 근접 처리 이후**에 새 분기를
+작성한다. 화면 밖에서도 근접 영역의 접근/이탈 판정은 계속해야 한다. Field의
+후속 위치 매개변수 갱신에도 같은 허용 상태를 적용한다. 공유 Core 부모와
+다른 사례는 수정하지 않는다. 원본 그래프나 Niagara 모듈을 복제하지 않는다.
+
+작성 스크립트는 `Python/scripts/analysis/build_cube_fluid_ninja_first_visibility.py`다.
+첫 작성 실행은 새 변수 선언 뒤 generated class 갱신 이전에 setter를 만들려다
+`Variable not found: VisibilityInitialInterpolation`로 중단했다. 기존 에셋이나
+원본에는 변경이 없었다. 재개는 새 Input의 노드/링크 수가 기존 자체 Input과 같고
+다섯 변수 선언만 추가된 상태임을 읽어서 확인한 후, 선언 컴파일을 먼저 수행한다.
+실패 실행 기록을 덮어쓰거나 전체 생성을 무조건 반복하지 않는다.
+
+### 저장 연결과 실제 검증 결과
+
+- `t01_first_visibility_author_v002`: 전용 Input/Camera/Field Blueprint 3개를
+  컴파일·저장했다. 그 이전의 원본/Study 에셋 해시는 유지됐다.
+- `t01_first_visibility_integrate_v002`: 첫 호스트를 전용 Field 계층으로 연결했다.
+  기존 CDO 설정 69개와 배치 액터 설정 68개, transform과 부모 연결을 보존했다.
+  v001의 검증은 Unreal Struct의 문자열에 들어간 메모리 주소를 값으로 비교해
+  실패했다. 실제 값 차이가 없음을 별도 읽기로 확인한 후 주소를 제외해 대조하고
+  저장을 마쳤다. reparent 자체는 반복하지 않았다.
+- `t01_first_visibility_input_observer_v001`: 입력 처리 직전 보간값을 transient
+  `VisibilityLastInputInterpolation`에 기록한다. 입력을 바꾸는 테스트 강제값이
+  아니라 실제 데이터 경계 관측용 값이다.
+- `t01_first_visibility_topology_v002`: native Actor visibility, 일반 Delay 0.05초,
+  근접 부모 Tick 선행, 새 입력 계층에 Niagara Pause/Deactivate 호출 없음 확인.
+- `t01_first_fluid_attachment_visibilityv005`: 저장된 액터로 실제 PIE 실행 PASS.
+  카메라 이동은 테스트용이며, 액터의 렌더 판정이나 Tick을 강제로 대체하지 않았다.
+  422개 보호 파일 해시 불변, PIE 종료 및 미저장 패키지 없음도 확인했다.
+  - 화면 밖에서는 입력/필드 카운터가 고정되고 Niagara active=True 유지.
+  - 화면 밖에서 옵션을 끄면 CPU 입력이 재개되며 보간값을 임의로 복구하지 않음.
+  - 다시 옵션을 켜면 입력 차단. 복귀 첫 입력에서 보간값 0, 다음 입력에서는 1.
+  - 화면 밖 상태에서도 근접 영역 이탈 판정과 최종 Niagara 비활성화 성공.
+  - 두 번의 접근/이탈/재진입, RT 재생성·유효 출력, 부모 이동/상대 좌표 유지 성공.
+  - X/Y 좌표 경계 16개 표본의 CPU/GPU 위치 delta 최대 차이 0.
+- `t01_first_visibility_dependencies_v001`: 호스트/솔버/맵의 재귀 의존성
+  88개 프로젝트 패키지, 46개 외부 참조 검사 PASS. 프로젝트 참조는 Study 내부로
+  닫히며 원본 FluidNinjaLive, 임시 경로, MCP 전용 런타임 참조 없음.
+- `CFNL_FirstFluid_Visibility_NoMCP_20260921_v001`: UnrealMCP 비활성 별도
+  UE 5.6.1 프로세스에서 호스트·지원 BP 3개·솔버·맵 총 6개 로드와 클래스 확인 PASS.
+  정적 marker 검사도 PASS. NullRHI 로드 결과이며 패키징/GPU 시각 동등성은 아니다.
+
+검증에서 배운 점: Niagara bounds는 약 `(1414,1414,1000)`이었다. 바로 위의
+카메라 방향만 돌리면 bounds가 계속 렌더 대상이 될 수 있으므로, 이를 원본의
+visibility 분기 오류로 오판하면 안 된다. 실제 검사는 카메라를 충분히 멀리 옮겨
+native 판정이 False가 되는 것을 관측했다. 또한 이번 에디터는 약 3fps로
+실행되어 0.05초 Delay가 복귀 프레임 안에서 끝날 수 있었다. 프레임 종료 시점의
+현재 변수값만으로는 첫 입력의 보간 상태를 판단할 수 없어 입력 직전 값을 별도로
+관측했다. 원본과 동일한 일반 Delay 동작을 프레임 수 고정 지연으로 바꾸지 않았다.
+
+현재 파일 SHA256:
+
+- 호스트: `408acfa0b9945b9334f251bda4b08d6e2ae17ae89609d125f5f0e4b3e6332902`
+- Input: `18d757363b19acb072816ceebfdb011fa3a14f62d7626623d1f2b4f306220653`
+- Camera: `b91d73a8e34b52479b74dc43b009408f2217052efab7fc02dbc5c3174ea4d25a`
+- Field: `ef402c9658c9b226daaf6831f5ff18c68e4cd647aed533f05fb7c09ef4be120c`
+- 맵: `ff14ca3e18f24d8b3a4cc3f0de46f834e835239d5b86c9d8602a8d9f31ae7e77`
+- 솔버는 앞선 저장 해시와 동일하다.
+
+새 지원 계층은 모두 첫 호스트 폴더의 `Support/`에 있다. 프로젝트 C++나
+원본 에셋은 수정하지 않았고, 원본 Niagara 모듈/스크래치 패드 복제도 없다.
+기술 검증의 범위는 이 문서의 첫 사례다. Tutorial01 전체 또는 나머지 13개 Fluid의
+동등성이나 사용자 시각 검수 완료를 주장하지 않는다.
+
+### 이번 1~3번의 종료 검증
+
+최종 구현 후보의 canonical `full`은 `20260920T164122Z` 실행에서 42/42 PASS,
+exit=0이었다. 입력 11,856개를 실행 전후 SHA256으로 대조했고 변경은 없었다.
+Windows / Python 3.11.8 / HEAD `95e6e2b809a3f4141b2eee30b96d23a1fa4fb9f9`.
+동일 저장소의 기존 분리 검증 worktree `D:/Git/cfnl-first-fluid-audit`에서 수행했으며
+근거는 그 worktree의 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/presubmit/20260920T164122Z/`다.
+진행 중인 다른 Cloud 작업은 이 완료 범위가 아니다. 기존 격리 범위를 유지하고
+이번 소유 파일 10개만 검증 후보에 갱신했다. Cloud 문서/아트의 후속 변경을
+검증했다거나 활성 checkout 전체가 제출 가능하다는 뜻은 아니다.
+
+원래 checkout의 변경 스크립트 4개는 `py_compile`과 `uvx --offline ruff check
+--select F821`도 통과했다. 저장된 에셋은 `t01_first_visibility_current_state_v001`에서
+최종 런타임 증거의 해시와 동일함을 다시 확인했다. 첫 액터의 설정은 원래
+`PauseSimWhenNotVisible=True`, `WaitBeforePause=0.2`, 보간=1,
+Activator=None이고 부모/상대 위치가 유지됐다. PIE=False, dirty=0.
+
+따라서 이번 요청의 첫 사례 원리 학습·독립 구현 보완·해당 기술 검증까지
+완료했다. 이 절은 검증 이후 결과를 기록한 문서 전용 추가이며 구현은 바꾸지
+않았다. 사용자 시각 검수, 다음 사례, 커밋/푸시는 수행하지 않았다.

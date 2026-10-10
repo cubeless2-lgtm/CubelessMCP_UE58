@@ -1,0 +1,81 @@
+# CubeFluidNinjaLive 실제 RenderTarget 출력 후보
+
+2026-09-06. 사용자는 시각 검수 전까지 일반 기술 판단과 검증을 에이전트에 맡겼다.
+프로젝트 C++ 토큰 승인, 원본 수정, 커밋/푸시 승인을 새로 받은 것으로 해석하지 않는다.
+
+## 구현 경로
+
+새 자산 `/Game/_MCP_Temp/NiagaraGenerated/CFNLSolverOutputV001/NS_SolverOutput`.
+SHA-256 `94972b8232443ea49bcf03e060e7e11618e85668bc1a4a9dd9a13f99f0350668`.
+원본/기존 자산을 복제하지 않고 독립 SplitPainter builder를 이용해 새로 구성했다.
+
+기존 Painter32→State64 7stage 계산을 유지하면서 Composite의 최종 velocity와
+density를 엔진 RenderTarget2D DI의 `SetRenderTargetValue`에 전달한다. 채널은
+RG=velocity.xy, B=density, A=1이다. User.CFNL_OutputRT는 런타임 RT 객체 바인딩,
+모듈 입력은 Module.OutputRT이며 크기와 형식은 바인딩한 RT에서 상속한다.
+기본 자산에는 외부 RT를 저장하지 않는다. MCP 클래스/함수는 저장하지 않는다.
+
+이 raw 출력은 원본 CopyGridToRenderTarget의 인코딩·마스킹·선택 버퍼·캐시 포맷을
+구현한 것이 아니다. 원본을 읽어 실제 SetRenderTargetValue 경로를 확인했지만,
+복잡한 출력 분기를 단순 raw 출력으로 대체 완료했다고 주장하지 않는다.
+
+## GPU 검증
+
+기존 TemporalPainter preview 소유권을 확인하고 새 후보를 열었다. 각 run마다
+hard_reset 후 실제 4×4 palette 입력과 64×64 RGBA16F 출력 RT를 생성했다.
+출력의 초기 알파는 -1로 두어 미기록 픽셀이 A=1 검증을 통과할 수 없게 했다.
+엔진 NiagaraComponent.SetVariableTextureRenderTarget으로 출력 객체를 연결했다.
+
+1/64초 고정 틱 4프레임×2회 실행 결과:
+
+- 실제 Grid32/64의 18채널 finite 및 min/max/mean/abs_mean/rms가 독립 oracle와 일치.
+- 모서리4개, 중앙2개, 내부3개 총9픽셀×4frame×2run 원시 RT readback PASS.
+- R/G=0, A=1, B=계산된 밀도. B 허용 오차 frame×3e-6, 비유한수 거절.
+- 두 run의 RT 표본 값과 각 Grid 전체 값 hash 일치.
+- 저장 자산 SHA 불변, reference frozen audit 및 forbidden dependency audit PASS.
+
+픽셀 검증은 표본9개이며 RT 전체4096픽셀 검증으로 확대 해석하지 않는다. 이동 유체,
+출력 RT 해상도 변경, RT 교체 수명, 캐시 재입력, 렌더 머티리얼 표시도 아직 미검증이다.
+검사 후 입력을 기본 black으로, 출력 바인딩을 None으로 복원하고 기존
+TemporalPainterV002 preview를 다시 열었다. 기존 자산이나 원본은 변경하지 않았다.
+
+## 오프라인 및 의존성 증거
+
+저작 compile errors0/warnings0/GPU UpToDate. authoring/runtime 보고서:
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/NinjaLiveComponent/SetParams/`
+아래 `20260906_solver_output_authoring_v001.json`, `20260906_solver_output_runtime_v001.json`.
+
+unit4 PASS: 정상 oracle, 미기록 sentinel 거절, 잘못된 밀도/NaN/Inf 거절, 누락 표본 거절.
+`CFNL_SolverOutput_20260906_v001`: MCP 없는 별도 에디터 load 및 정적 scan PASS.
+별도 load는 cook/package 검증을 대신하지 않는다.
+
+다음: 원본 출력 채널 수식과 캐시 규칙 연결, FieldCapture, 전체 호스트/레벨.
+프로젝트 C++ 변경0, 영구 ledger22/최종 승인 레벨0/59 유지, 서밋/시각 검수 준비 완료 아님.
+
+최종 동결 `solver_output_checkpoint_v001`: 입력2897개 전후 변화0, unit41 PASS,
+full42/42 PASS. 보고서는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/solver_output_checkpoint_v001/report.json`.
+이후 변경은 결과 문서와 handoff뿐이며 커밋·푸시 없음.
+
+## 후속 읽기 전용 조사 — raw 출력과 캐시 디코드 구분
+
+사용자 재확인: 시각 검수 전 일반 기술 판단은 에이전트가 진행. 기존 원본/프로젝트
+C++/의존성 권한 경계는 유지한다. 이번 후속 조사는 자산·코드 변경 없이 frozen JSON을 읽었다.
+
+`reference/niagara-scripts/Core__Modules__Output__CopyGridToRenderTarget.json`:
+SelectedBuffer=2가 ParameterMapSet_6으로 이어진다. PressureGrid의
+GetPreviousVector2DValue(FunctionCall_0).Value가 Convert_9.RG로 직접 들어가고
+Convert_9.RGBA가 Local.Module.Output 및 SetRenderTargetValue.Value로 간다.
+이 국소 경로에는 RG remap이 없다. 전체 출력/저장 워크플로에 remap이 없다는 뜻은 아니다.
+
+`reference/niagara-scripts/Core__Modules__ReadCachedSimData.json`:
+FunctionCall_27는 Module.PressureDivergenceCache Texture를 샘플링한다.
+Value→Convert_5.RG→Op_4 Subtract(B=0.5)→Op_1 Multiply(B=2)→
+FunctionCall_25 SetVector2DValue.Value이다. 따라서 pressure cache 디코드는
+`(sample.RG - 0.5) * 2`다. Core에서 해당 Cache Texture DI는 별도 입력 객체로 바인딩된다.
+
+의사결정: 현재 raw 출력 RT를 해당 캐시 입력에 직결하지 않는다. 예를 들어 raw RG=0을
+그대로 넘기면 복원 결과는 -1이 되어 초기 상태가 바뀐다. 입력을 0.5*값+0.5로 만드는
+것은 수학적 역변환이지만 아직 원본 캐시 생산 경로로 확인한 것은 아니다.
+원본 오류로 단정하거나 새 편차 승인을 추정하지 않는다. 캐시 생성·저장/텍스처 설정
+경로를 추적한 후 독립 재구현한다. 기존 raw RT GPU PASS의 유효 범위는 그대로 유지한다.

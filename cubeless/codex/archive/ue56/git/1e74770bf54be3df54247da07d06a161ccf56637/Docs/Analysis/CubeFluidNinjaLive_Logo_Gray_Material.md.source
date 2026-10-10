@@ -1,0 +1,167 @@
+# CubeFluidNinjaLive Gray 로고 Material Instance clean-room 계약
+
+## 목적과 현재 상태
+
+downstream Blueprint와 level reconstruction이 요구하는 다음 leaf dependency 하나를
+독립적으로 저작한다.
+
+```text
+/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_FluidNinjaLiveLogo_Gray
+```
+
+원본 `/Game/FluidNinjaLive/Misc/Logo/MI_FluidNinjaLiveLogo_Gray`는 읽기
+전용 frozen evidence로만 사용한다. 원본 asset을 load, duplicate, migrate,
+rename하거나 parent/template로 사용하지 않는다. 결과의 parent는 이미 clean-room
+저작과 target-only dependency audit를 통과한 다음 localized Material이다.
+
+```text
+/Game/Study/CubeFluidNinjaLive/Materials/Decor/M_CFNL_FluidNinjaLiveLogo
+```
+
+2026-09-01의 read-only dry-run과 SHA-bound 단일 실행을 거쳐 영구 Gray asset을
+fresh 생성했다. 아래 frozen contract와 실행 증거가 현재 승인 기준이다.
+
+## Frozen source evidence
+
+| Evidence | bytes | SHA-256 |
+| --- | ---: | --- |
+| analysis | 26,850 | `6f6c793f48f81220393a2ff4b58d7f88aaa765629a7cf713c45741ffee2f453a` |
+| catalog | 932 | `3200a9f1b8612254be2db78694e05de349d3e1a54d1d3366bf6f9ebf70c592bc` |
+| full MI inspection | 43,216 | `8f0720815069a9e48a32487575be39f8c2c24b576188b1299e6c73f12a814e6c` |
+| inspection catalog | 1,248 | `695a64a4e4f07dbbd8cf3725c772d775faff029d77494c088c0b3b6e5495020f` |
+
+catalog와 inspection catalog는 `source_mutation_performed=false`,
+`capture_complete=true`를 증명한다. inspection은 단일 complete response이며
+truncation이 없다.
+
+### 관찰된 직접 override
+
+| Parameter | Direct value |
+| --- | ---: |
+| `Desaturate` | `1.0` |
+| `Power` | `2.027353048324585` |
+| `RefractionDepthBias` | `0.0` |
+
+`Hue`와 `Multiplier`는 직접 override가 아니며 localized parent 값을 상속한다.
+vector, double-vector, texture, static-switch override는 모두 비어 있다. UE 5.6
+structured inspector가 별도 배열로 제공하지 않는 font, texture collection, runtime
+virtual texture, sparse volume texture, user-scene texture 배열도 complete editable
+property export에서 모두 비어 있다. base-property override flag도 없다.
+
+원본의 thumbnail과 같은 editor-only 프레젠테이션 subobject는 runtime/material
+semantic 계약이 아니므로 재현하지 않는다.
+
+## Localized parent lineage
+
+parent는 성공한 common-decor report에 묶는다.
+
+| Field | Frozen value |
+| --- | --- |
+| Report | `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/20260901_common_decor_materials_recovery_v3_execute_v001/common_decor_material_builder_report.json` |
+| Report bytes | `3,982,372` |
+| Report SHA-256 | `59e0532c456d7a6f543699f8b2c418728dca84874910637b399dd0d4899fbfd4` |
+| Authoring contract | `6bb9c4957eaa840f8fff3794ccd6d38bc492c542ae2862b7f1b57b8524ff762f` |
+| Recovery contract | `567bdc5bb45480972056d45a8b2d0135900973163a1684ef65783a151afed796` |
+| Parent structural revision | `737b51fe3a6a402affb94473f21f2014ba1f75de` |
+| Parent query hash | `7fed201b3a384b127453d4daa7f434015ca97f8f` |
+| Parent returned-property hash | `2efbbd517562e4c827d93f3e549cad71cdc6c4ca` |
+
+dry-run은 같은 full-inspection query로 parent의 11 expressions, Masked/Unlit,
+two-sided settings와 위 세 hash를 다시 확인한다. Decor root도 정확히 기존 7개
+asset, Material 3개, MaterialInstanceConstant 4개, dirty/redirector/forbidden
+dependency 0이어야 한다. 이 exact inventory 때문에 unsaved target이 이미 editor에
+있어도 생성 전에 거절된다.
+
+## Authoring 및 저장 원리
+
+builder:
+
+```text
+Python/scripts/analysis/build_cube_fluid_ninja_logo_gray_material.py
+```
+
+계약 SHA-256:
+
+```text
+c9e7056f19bbb54d6364c649f522aa131c74223ec2573e6ea8250548d1210b5d
+```
+
+dry-run이 출력하는 confirmation token:
+
+```text
+cfnl-logo-gray-c9e7056f19bbb54d6364
+```
+
+execute 경로는 다음 순서를 바꿀 수 없다.
+
+1. token, exact 7-asset root, clean packages, target registry/disk absence,
+   localized parent class/path를 다시 검사한다.
+2. blank `MaterialInstanceConstant`를 exact target package에 fresh 생성한다.
+3. localized parent와 scalar 세 개만 설정한다. source object는 load하지 않는다.
+4. UE 5.6 Material Instance setter의 알려진 false-return은 기록하되 성공 판정에
+   사용하지 않는다.
+5. asset을 저장하지 않은 상태에서 native `inspect_material_asset` full readback으로
+   parent, 정확한 세 scalar, 다른 모든 override 배열의 부재, base override 부재를
+   검증한다.
+6. exact root inventory가 8개이고 Gray 하나만 dirty이며 target `.uasset`이 아직
+   없을 때만 Gray package 하나를 저장한다.
+7. 저장 후 native inspection과 target-only dependency audit를 반복한다. 최종 root는
+   Material 3개, MaterialInstanceConstant 5개이며 source/MCP dependency,
+   redirector, dirty package가 모두 0이어야 한다.
+
+생성 이후 어떤 단계든 실패하면 삭제나 overwrite로 자동 복구하지 않는다.
+`do_not_retry=true`, `manual_recovery_required=true`로 보고하고 새 live
+read-only state를 기반으로 별도 recovery 계약을 작성해야 한다.
+
+## 명령
+
+read-only dry-run:
+
+```powershell
+uv --directory .\Python run python -m scripts.analysis.build_cube_fluid_ninja_logo_gray_material --run-id 20260901_logo_gray_dryrun_v001 --json
+```
+
+dry-run 결과와 token을 검토한 뒤에만 허용되는 execute:
+
+```powershell
+uv --directory .\Python run python -m scripts.analysis.build_cube_fluid_ninja_logo_gray_material --execute --confirmation-token cfnl-logo-gray-c9e7056f19bbb54d6364 --run-id 20260901_logo_gray_execute_v001 --json
+```
+
+report:
+
+```text
+MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/<run_id>/logo_gray_material_builder_report.json
+```
+
+## 2026-09-01 실행 및 검수 증거
+
+`20260901_logo_gray_execute_v001`은 확인 token을 한 번만 사용해 성공했다.
+
+| Evidence | Value |
+| --- | --- |
+| Execute report | `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/20260901_logo_gray_execute_v001/logo_gray_material_builder_report.json` |
+| Report bytes / SHA-256 | `111,741` / `ac64392c75646b428bc92dbde84c9c50b131c13687eb85c239d3181c4e2d2f23` |
+| Target `.uasset` bytes / SHA-256 | `8,874` / `190fe3ae8ab6fc91f93f1dcb832e4ace18139a7f379d21de59ba73926c07bc22` |
+| Fresh create / saved packages | `1` / Gray package 하나 |
+| Native pre-save exact readback | pass |
+| Native post-save exact readback | pass |
+| Final Decor inventory | asset 8; Material 3; MaterialInstanceConstant 5 |
+| Final dirty / redirector | `0 / 0` |
+| Forbidden source/MCP dependency assets / hits | `0 / 0` |
+
+최종 readback은 localized parent와 `Desaturate=1.0`,
+`Power=2.027353048324585`, `RefractionDepthBias=0.0` 세 직접 scalar만 확인했고
+나머지 override family는 비어 있었다. source 파일의 확인 시각은 실행보다 이전인
+`2026-08-31T16:18:37.4820488Z`로 유지되었고, 실행 payload는 source 경로를
+load/duplicate/template 입력으로 사용하지 않았다.
+
+## Offline 검증
+
+```powershell
+uv --directory .\Python run python -m py_compile scripts\analysis\build_cube_fluid_ninja_logo_gray_material.py scripts\analysis\test_cube_fluid_ninja_logo_gray_material_builder.py
+
+uv --directory .\Python run python -m scripts.analysis.test_cube_fluid_ninja_logo_gray_material_builder
+```
+
+결과 asset은 Engine MaterialInstanceConstant와 localized Material만 참조하며
+UnrealMCP는 저작 도구일 뿐 load/cook/package/runtime dependency가 아니다.

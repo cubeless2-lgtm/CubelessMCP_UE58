@@ -1,0 +1,16 @@
+# Reactive Surface Water Always-Visible Normal Report - 2026-07-06
+
+- Verdict: PASS
+- Scope: Water visual-iteration path only. Puddle/submersion/PhysMat Water gating is intentionally deferred.
+- Contract: Niagara keeps internal height/current-history and exports `/Game/ReactiveSurface/Water/RT_RS_Water` as packed normal RGB.
+- Tuning: HTML no-rain profile, speed=0.31, damping=0.928, impulse radius=6 RT pixels, normal scale=30.
+
+## Tests
+- APPLY_ALWAYS_VISIBLE_NORMAL_TUNING: PASS
+- SIE_STATIONARY_WATER_NORMAL_FLAT_SMOKE: PASS
+- SIE_ALWAYS_VISIBLE_WATER_NORMAL_SMOKE: PASS
+- COMPILE_AUDIT_DIRTY: PASS
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-always-visible-normal-results-2026-07-06.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterAlwaysVisible\water_always_visible_bridge_results.json`

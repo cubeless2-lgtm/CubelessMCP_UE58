@@ -1,0 +1,281 @@
+# Play Asset Inspector: RX engine access
+
+`Ctrl+Alt+I` starts region selection during regular in-process PIE. The
+controller retains the existing SIE, standalone, dedicated-viewport, and
+ambiguous-viewport rejection rules.
+
+## Engine routing
+
+The inspector resolves its route once at initialization and logs
+`Play Asset Inspector: engine access=Standard` or `engine access=RX`.
+
+- Standard UE 5.6.1 uses the original session-info/current-mode checks and
+  `UEngine::GetWorldContexts()` enumeration, including its ordering.
+- RX is detected through the running engine's reflected
+  `DefaultRXChanRampLUTTexture` or `DefaultRXChanRampLUTTextureName` property.
+  The project name and compile-time engine version are not detection signals.
+- RX session checks use the host's exported play-command functions. World
+  enumeration uses live `UWorld` objects and the exported
+  `GetWorldContextFromWorld()` function. It does not assume PIE instance zero
+  exists and includes dedicated-server worlds for pause/restore.
+- RX cursor/lock queries dispatch through `FViewportClient`, avoiding local
+  compilation of `UGameViewportClient` inline member reads.
+- Double-clicking an asset in RX resolves the asset editor subsystem through
+  the exported subsystem library instead of `UEditorEngine`'s inline getter.
+- RX tiles use engine-owned static asset thumbnails. The selected asset uses
+  a host UMG Viewport live preview, without allocating a stock-layout
+  `FEditorViewportClient` or `FPreviewScene`. Listing uses asset metadata;
+  selecting or double-clicking can load that one asset. Host thumbnails may
+  be generated for loaded assets rather than read from a disk cache.
+  Standard keeps its existing live preview renderer.
+- An empty RX result is returned as empty; it never retries stock offsets.
+
+An explicit opt-in is available in the editor's per-project configuration
+(`GEditorPerProjectIni`), followed by an editor restart:
+
+```ini
+[UnrealMCP.PlayAssetInspector]
+EngineAccess=RX
+```
+
+The default is `Auto`. `Standard` is accepted only without an RX marker; it
+cannot override detected RX. Unknown values log a warning and use `Auto`.
+These settings affect this inspector only, not every MCP command handler.
+
+## Verification
+
+From the repository root, run the complete offline verification:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_verification.py --profile full
+```
+
+Build `MCPGameProjectEditor Win64 Development` against UE 5.6.1. Run the native
+automation group `UnrealMCP.PlayAssetInspector` for route decisions, registered
+world enumeration (multiple non-contiguous instances, dedicated server,
+unregistered world exclusion, removal), host viewport virtual dispatch, and
+asset editor subsystem resolution.
+The world fixtures are transient and do not start PIE or save content.
+
+The donor's `scripts/check_unrealmcp_abi_guard.ps1 -InspectorOnly` helper was
+not included in the transfer bundle and is not available in this checkout.
+Historical guard results below refer to the donor environment.
+
+The offline checks and native tests do not certify the rest of the plugin's RX
+ABI compatibility. Before shipping to RX, verify its startup route log and a
+real PIE cycle: hotkey, region selection, results, re-selection, cancellation,
+cursor/focus restoration, and PIE termination. Stock tests of the RX algorithm
+are not evidence that the newly built DLL has been loaded or exercised in RX.
+
+## Local verification checkpoint (2026-09-05)
+
+- `MCPGameProjectEditor Win64 Development`, stock UE 5.6.1: build succeeded.
+- `UnrealMCP.PlayAssetInspector`: 4/4 native tests passed with Auto selecting
+  Standard, and 4/4 passed with an RX configuration override on the stock host.
+- `run_verification.py --profile full`: all 41 dispatcher entries passed.
+- Inspector-scoped ABI guard and `git diff --check`: passed.
+- Independent C++ review (including the asset-opening follow-up): no actionable
+  findings. No assets, project runtime code, or RX deployment files were changed.
+- Actual RX engine/UI smoke remains pending deployment and restart.
+
+Local logs are under `MCPGameProject/Saved/Logs/`: `InspectorBuildFinal.log`,
+`InspectorEngineAccessTestsFinal.log`, `InspectorEngineAccessTestsRXRoute.log`,
+and `InspectorFullVerificationFinal.log`.
+
+## RX preview crash follow-up (2026-09-05)
+
+The deployed first fix passed PIE detection and entered selection. The later
+RX log reports an access violation in the plugin DLL's inline
+`FEditorViewportClient::UseAppTime()` while drawing the custom preview.
+RX rendering headers contain additional show flags, but the available header
+set does not establish the precise object-size/offset mismatch. The crash
+location is confirmed; the detailed ABI mechanism remains a hypothesis.
+
+RX results now use host `FAssetThumbnail` rendering for both selected assets
+and tiles. No plugin custom preview viewport is constructed in this route.
+Standard UE retains live previews. The inspector logs scan completion and
+result-window creation separately to distinguish scanning from UI failures.
+
+The forced-RX native suite contains five tests, including result-window
+construction/closure without a new preview world. This construction test does
+not certify delayed tile rendering or actual RX engine drawing; those remain
+live validation tasks. The host may generate a static thumbnail for loaded
+assets rather than only displaying an existing cached image.
+
+Follow-up logs: `InspectorPreviewFixBuild.log`, `InspectorPreviewFixTests.log`,
+and `InspectorPreviewFixFull.log` under `MCPGameProject/Saved/Logs/`.
+
+## RX empty results follow-up (2026-09-05)
+
+The deployed preview fix reaches the results window but logs zero matching
+actors. A read-only host query in the same running RX world returned 4,346
+actors, a valid player controller, and successful screen deprojection.
+Header comparison identifies an unsafe scanner path: stock `TActorIterator`
+inlines the active-level filter using `ULevel` fields after RX's inserted
+`RXGIClipmapData`. This can filter out actors using incorrect offsets.
+The exact filter values in the old DLL have not been observed in a debugger.
+
+RX now enumerates actors through exported `UGameplayStatics` code in the host.
+It also reads assigned static-mesh and Niagara assets through reflected
+properties, avoiding shifted component fields, and obtains component bounds
+through the host. Standard retains its iterator and asset getters. Diagnostic
+logs distinguish projection failures, enumeration, each bounds/range filter,
+matched actors, and collected asset counts.
+
+RX animation collection avoids the non-reflected `MontageInstances` array,
+which also follows inserted RX fields. It reports the host's current active
+montage per animation instance; additional concurrent or blending-out
+montages may be omitted. Active sequence collection through host sync-group
+and ungrouped-player APIs remains enabled.
+
+`ScannerActorsAndAssets` uses a transient world to check region, distance,
+hidden-actor filtering, mesh reference recovery, and deduplication across
+two actors. Run it in both Standard and forced-RX modes on the stock host.
+This fixture does not certify the full screenshot projection path or actual
+RX runtime compatibility. Deployment and a fresh RX selection remain the
+final live check.
+
+Follow-up logs: `InspectorScannerFixBuild.log`,
+`InspectorScannerFixTestsRX.log`, `InspectorScannerFixTestsStandard.log`,
+and `InspectorScannerFixFull.log` under `MCPGameProject/Saved/Logs/`.
+
+Scanner checkpoint: UE 5.6.1 build passed; the forced-RX native group passed
+6/6 tests. The Standard run passed its applicable tests (the RX-only window
+test returns without constructing a window). Both scanner runs found two
+fixture actors contributing one deduplicated mesh. The full offline profile
+passed all 41 entries; scoped ABI guard, whitespace check, and independent
+C++ review passed. Actual RX DLL replacement/restart and live scan are pending.
+
+## Mouse control after selection
+
+After completing a region selection, results open with Shift+F1-style mouse
+control. Closing the results keeps the mouse released; click the PIE viewport
+to resume gameplay capture. Cancelling the first selection still restores the
+original input state. Re-selection temporarily enables selection input again,
+then returns to released mouse control on completion or cancellation.
+
+This applies to the configured inspector shortcut (default Ctrl+Alt+I), on
+both Standard and RX. It does not change the shortcut. The controller restores
+gameplay capture settings, then uses the UE 5.6 mouse-control focus/reset path
+instead of immediately recapturing the viewport. No synthetic Shift+F1 input
+or persistent game input-mode changes are used.
+
+Mouse-control verification logs: `InspectorMouseReleaseBuild.log`,
+`InspectorMouseReleaseTests.log`, and `InspectorMouseReleaseFull.log`.
+The existing native suite is regression coverage, not a live PIE mouse/focus
+test. Confirm results open/close, re-selection/cancel, and click-to-recapture
+after replacing the plugin and restarting RX.
+
+## Persistent results and RX live preview
+
+The results window belongs to the editor tool, independently of a PIE session.
+Stopping PIE, changing PIE/SIE mode, or opening an asset editor does not destroy
+it. New results replace its content in the same window. Re-selection temporarily
+hides the window; completion or cancellation shows it again. After PIE ends,
+start PIE again to scan a new region. The saved list remains browsable while
+its weak actor references may expire. Explicit Close/X and plugin/editor
+shutdown still destroy the window and release its preview resources.
+
+RX's selected-asset live preview uses the engine's native `UViewport` widget,
+the same native base as RX's `BW_LivePreView` Blueprint, without depending on
+that project asset. The host constructs and ticks its own preview scene and
+viewport. It never adds actors to
+the project level or saves preview content. Static/skeletal meshes rotate,
+animation assets play, and Niagara effects simulate. Tiles remain static on RX
+to avoid one live simulation per list item. The previous static-only selected
+preview and PIE-coupled window behavior described in historical checkpoints
+above have been replaced.
+
+Verification for this follow-up: the UE 5.6.1 editor target built successfully.
+The forced-RX route on stock UE with a real RHI passed all eight inspector
+tests, including native window reuse/PIE-cleanup/cancel and live rendering.
+The rendering fixture covered the engine cube, the local
+`/Game/Cubeless/Character/Animation/MM_Walk_InPlace` animation, and Niagara's
+`/Niagara/DefaultAssets/Templates/Systems/DirectionalBurst` template. It
+checked animation time advancement, active Niagara, rendered pixels, and
+preview release. Screenshots were visually inspected after the final lighting
+and particle-framing adjustments. These fixtures do not certify every RX asset
+or actual RX ABI/rendering; replacement/restart and the real double-click,
+PIE-stop, and re-selection cycle remain live validation steps.
+
+The full offline profile passed all 41 entries, and the inspector ABI guard,
+whitespace check, and independent C++ review passed. Follow-up logs are
+`InspectorLivePersistentBuild.log`, `InspectorLivePersistentTests.log`,
+`InspectorLivePersistentStandardTests.log`, and `InspectorLivePersistentFull.log`.
+Images: `InspectorHostLivePreview.png`, `InspectorHostAnimationPreview.png`,
+and `InspectorHostNiagaraPreview.png`, all under `MCPGameProject/Saved/Logs/`.
+
+## Actual RX engine verification
+
+The new DLL was subsequently exercised by the actual RX executable,
+`D:/RX/Main/UE5/Engine/Binaries/Win64/UnrealEditor-Cmd.exe`, in an isolated
+content-only harness at `MCPGameProject/Saved/Tests/RXInspector`. The harness
+uses a copy of the new plugin binaries, the existing RX deployment's module
+manifest (RX BuildId), and the development project's content via a junction.
+It uses D3D12/SM6 and disables PlasticSourceControl/N10XSourceCodeAccess,
+matching the two disabled plugins in the RX project. The running user's RX
+project and plugin files were not replaced or restarted.
+
+`InspectorActualRXTests.log` confirms engine `5.6.1-0+++depot+Program` and
+`engine access=RX (RX reflected marker=true, requested=Auto)`. All eight native
+inspector tests passed, including real rendered mesh/animation/Niagara,
+animation time advancement, preview release, and result-window lifecycle.
+The RX screenshots were visually inspected under
+`Saved/Tests/RXInspector/Saved/Logs/InspectorHost*Preview.png`.
+
+This is actual RX engine binary coverage, not an override on stock UE. It is
+still an isolated harness: the deployed RX project's gameplay-specific
+double-click/end-PIE/re-selection flow awaits DLL replacement and restart.
+The log also contains three generic `LogAutomationTest: Condition failed`
+messages during engine startup, before test execution; none was attributed to
+an inspector test, and the inspector suite and process completed successfully.
+
+## RX live-preview camera controls
+
+The host `UViewport` preview now receives navigation through its owning Slate
+wrapper. Camera transforms use host exports; the plugin does not allocate an
+editor viewport client, access its private layout, or use SceneCapture.
+
+| Input | Action |
+| --- | --- |
+| Alt + LMB drag | Orbit around the preview target |
+| MMB drag / Alt + MMB drag / LMB + RMB drag | Pan |
+| Alt + RMB drag / Alt + LMB + MMB drag | Dolly |
+| Wheel | Dolly towards/away from the target |
+| RMB drag / LMB drag | Orbit around the current asset bounds center, including after pan/movement |
+| RMB + WASD / arrow keys | Fly forward/back/left/right |
+| RMB + QE / PageDown/PageUp | Move down/up in world space |
+| RMB + R | Move up along the camera's vertical axis |
+| Shift while flying | Four-times movement speed |
+| RMB + wheel | Adjust flight speed (0.05x–32x) |
+| F (also while RMB is held) / Frame button | Center and tightly fit the asset AABB, retaining the viewing angle |
+| Auto rotate checkbox | Toggle mesh rotation |
+| Escape during a drag | Release camera input |
+
+Manual navigation disables automatic framing until Frame/F or a new asset
+selection, so Niagara bounds updates cannot overwrite the user's camera.
+Framing projects all eight AABB corners with a 2% edge margin and near-clip
+clearance. RX uses the host's exported view-projection matrix to respect its
+actual FOV and axis constraint. Focus loss, asset changes and teardown clear navigation state. The
+destructor avoids querying Slate capture after the last shared reference dies.
+Standard UE uses its editor viewport with the same AABB fitting, F shortcut,
+and asset-centered LMB/RMB rotation; its editor FOV-axis settings are respected.
+
+This restores movement, rotation, orbit, pan, distance zoom and speed controls.
+It does not reproduce C/Z optical FOV changes: UE 5.6 `UViewport` has no public
+FOV setter. Editor user-specific inversion/sensitivity settings are also not
+mirrored by this wrapper.
+
+Camera checkpoint (2026-09-06): UE 5.6.1 editor build succeeded, and all nine
+inspector tests passed in the actual RX D3D12/SM6 harness with automatic RX
+detection. The new `CameraInput` test routes native Slate mouse/key events and
+checks orbit, pan, look, flight, zoom, speed, and capture/high-precision release
+on mouse-up, focus loss and asset removal. Fixtures use Slate's actual cursor
+pointer index and send matching release events. Existing rendering and window
+lifecycle tests also passed; rendered screenshots were visually inspected.
+The initial teardown assertion was fixed by guarding shared-instance lifetime.
+Logs: `InspectorCameraBuild.log` and `InspectorCameraRXTests.log` under
+`MCPGameProject/Saved/Logs/`. The RX harness is still isolated; the primary RX
+project's installed DLL has not been replaced by this verification.
+The final full offline profile passed all 41 entries (`InspectorCameraFull.log`);
+the scoped ABI guard, whitespace check and independent C++ review passed.

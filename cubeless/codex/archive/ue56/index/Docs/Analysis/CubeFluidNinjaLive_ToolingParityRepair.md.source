@@ -1,0 +1,31 @@
+# 기존 도구 등록 누락 복구 — 2026-09-05
+
+사용자가 기존 도구 파일까지 수정 범위를 넓히는 것을 승인했다.
+native `inspect_geometry_collection_pair_mcp`는 이미 구현·라우팅됐지만 Python 등록이 없었다.
+`Python/tools/project_tools.py`에 기존 handler의 네 필수 경로 인자와 optional
+`reference_replacements`를 그대로 전달하는 read-only wrapper를 추가했다.
+native failure/comparison flags는 원문 그대로 반환한다. inspection 성공과 pair 동등성을
+동일하게 취급하지 않는다. save/compile/localize API를 추가하지 않았다.
+
+## 변경 범위
+
+- Python wrapper, 전용 payload/response golden test, project tool 문서.
+- policy/discovery/benchmark의 낡은 registry count 446을 실제 등록값 449로 갱신.
+  작업 전 실제 등록값도 이미 448이었고 이번 wrapper는 1개만 추가했다.
+- 기존 discovery byte/SHA snapshots는 수정하지 않았고 그대로 통과했다.
+- C++·uproject·Content·editor lifecycle 변경 없음. commit/push 안 함.
+
+## 검증
+
+- 새 wrapper: 성공/비교 false 보존, remap 생략·빈 값·명시 값, native error,
+  connection 없음, response 없음, exception 표준 오류 응답 검사 PASS.
+- focused catalog 9/9 PASS, native/Python route 누락 및 중복 0.
+- `run_verification.py --profile full`: 39/39 PASS.
+- `scripts/smoke_live_bridge.py`: read-only live checks 6/6 PASS.
+- 새 public Python wrapper로 원본/지역화 ChaosDummyGeoCollection_1chunk 비교를 호출,
+  기존 A13 strict `_validate` 판정 PASS. 원본은 읽기 전용.
+- Schema audit 109 shapes, parse_errors 0, golden audit 파일 updated=no.
+
+full 통과는 현재 MCP tooling offline gate의 결과다. CubeFluidNinjaLive의 전체
+Component/Solver/59-level 구현, cold/plugin-disabled/cook/package 완료를 의미하지 않는다.
+이전 handoff의 tool_parity blocker는 이 체크포인트로 해결됐다.

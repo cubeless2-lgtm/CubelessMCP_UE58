@@ -1,0 +1,8 @@
+{
+  "schema": "cubeless_source_snapshot_v1",
+  "status": "pass",
+  "checked": 124,
+  "binary_copy": "not_copied_hash_only",
+  "archive": "source-snapshots/plugin-Y",
+  "source": "registered-schemas-and-diagnostics-Y.json"
+}

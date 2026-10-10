@@ -1,0 +1,89 @@
+# Bitmap decode와 UV — 실제 GPU 검증, 2026-09-05
+
+## 현재 결과
+
+- 새 decode Niagara probe: 실제 GPU 9-case PASS, saved routing BFL 연결 4-case PASS.
+- 새 UV Niagara probe: runtime scalar binding 수정 후 실제 GPU 7-case PASS.
+- 두 자산은 독립적인 temp 검증 자산이며 최종 Solver/레벨로 승격하지 않았다.
+- 원본 graph/module/scratch 붙여넣기 없음. 원본은 읽기 전용. C++ 변경 없음.
+- 두 자산 dependency audit: 원본 및 UnrealMCP 참조 0, redirector 0, global dirty 0.
+- readback 검증기 자체의 정상/중복/비유한/불완전 Grid/통계 불일치/잘림 테스트 6 PASS.
+- 이번 체크포인트 `run_verification.py --profile full` 39/39 PASS (exit 0).
+  도구 회귀 검증이며 전체 FluidNinja 기술 완료 판정은 아니다.
+
+## 새 자산과 계산
+
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLDecodeGPUV001/NS_DecodeGPU`
+
+SHA256: `a1007bcd78a2aee899c0bf49f2931f9add2e622fca8a62d140a7902272ceacfa`
+
+기본 factory GPU emitter에 새 Grid initializer와 새 scratch simulation stage를 작성했다.
+`User.VelocityDensityInputTexture → Module.InputTexture → Texture DI → HLSL → Grid`.
+1×1 예외를 포함한 원리는 `CubeFluidNinjaLive_PainterInputDecode.md`를 따른다.
+packed/density-only 두 모드 결과를 동시에 6개 채널에 쓰고 실제 Texture DI 크기를
+Width/Height에 써 총 8개 채널로 확인한다. 모드 전환 bool 자체를 검증한 것은 아니다.
+
+각 채널의 4,096 samples가 모두 유한이고 min/max가 예상값과 일치해야 한다.
+입력은 transient RGBA16F RT이며 테스트 값은 정확한 이진 표현이 가능한 값을 사용했다.
+기본 black, RGBA=(.25,.75,.5,1), alpha=0, 중립속도, 음수/HDR, 1×1,
+1×4,4×1, 기본 black 복원까지 9개 사례를 같은 system instance에서 확인했다.
+추가 4개 사례는 저장된 `BFL_CFNL_TextureRouting.ApplyTextureInputs` 호출로
+white 우선/black 우선/RT fallback/black fallback을 실제 decode GPU에 전달했다.
+이는 density 입력 leg의 통합이며 이 probe에 없는 다른 3개 texture leg의 검증은 아니다.
+
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLUVGPUV001/NS_UVGPU`
+
+SHA256: `03b12b4d37ea93be8283ff72c637af00907b86bcf1330d636a0a9f9fc9f435cb`
+
+8개 float User 입력은 WorldX/Y, Scale, ScrollX/Y, Time, RandomX/Y다.
+별도로 작성한 HLSL은 `(Unit+WorldOffset)*(1+Scale)+Scroll*Time+RandomOffset`를
+UVX/UVY Grid 채널에 기록한다. Unit은 UE5.6 `NiagaraDataInterfaceRW.cpp`의
+ExecutionIndexToUnit 구현에 따라 `(cellIndex+.5)/64`를 기준으로 비교했다.
+
+identity, offset, scroll, scale=-1 collapse, scale=-2 reflect, scale=2 enlarge,
+identity 복원 7개 사례에서 같은 instance의 값을 바꿨다. CPU가 4,096셀을 계산한
+min/max/mean/abs_mean/rms와 GPU readback 통계를 허용오차 1e-5로 비교했다.
+모든 sample이 유한해야 하며 채널 중복/잘림은 실패 처리한다.
+이는 통계 일치 증거이고 개별 셀의 공간 배치까지 비교한 것은 아니다.
+UV로 비균일 텍스처를 샘플링하는 통합 검증 또한 아직 수행하지 않았다.
+
+## 발견한 문제와 해결
+
+1. Decode 첫 저장 도중 D3D12/Slate swapchain 80070005로 editor가 종료됐다.
+   메모리 compile은 성공했지만 응답이 끊겼으므로 저장 완료로 처리하지 않았다.
+   같은 엔진 설정으로 재실행(PID101064) 후 디스크 자산을 검사했다.
+   기본 emitter만 있고 Scratch Pads/User/Grid가 0인 것을 확인한 뒤 누락 단계만 재작성했다.
+   저장 응답과 hash 변화, 실제 8채널 GPU readback을 확인했다.
+   완성된 decode 자산의 재시작 cold-load 검증은 아직 별도로 하지 않았다.
+2. Routed decode의 실제 4사례는 통과했지만 마지막 audit 호출 직전 authoring adapter가
+   forbidden 목록의 원본 문자열도 차단했다. 자산 변경 문제가 아니었다.
+   별도 read-only checkpoint에서 저장된 4사례를 재검증하고 audit을 정상 수행했다.
+3. UV의 첫 direct User ParameterMapGet 연결은 identity만 통과하고 runtime 변경을
+   소비하지 않았다. 우리 자산에만 기존 rewire 도구를 사용해
+   `User → stack Module input → HLSL`로 명시적으로 연결했다.
+   같은 7-case GPU 검사로 수정을 확인했다. 원본/C++ 변경은 필요 없었다.
+
+## 증거와 재개 안전성
+
+증거 루트는 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/NinjaLiveComponent/SetParams/`.
+
+- `20260905_decode_gpu_authoring_v001.json`: 최초 save 중 연결 종료, 실패 보존.
+- `20260905_decode_gpu_runtime_v001.json`: base-only cold 상태, Grid 0 실패 보존.
+- `20260905_decode_gpu_recovery_v001.json`: 누락 stage 복구 및 save PASS.
+- `20260905_decode_gpu_runtime_v002.json`: GPU 9-case PASS, 기본값 복원.
+- `20260905_routed_decode_gpu_v001.json`: 4사례 PASS, 마지막 audit dispatch 차단 기록.
+- `20260905_decode_gpu_checkpoint_v001.json`: 4사례 재검증 및 dependency/dirty audit PASS.
+- `20260905_uv_gpu_authoring_v001.json`: 최초 direct User 형태.
+- `20260905_uv_gpu_runtime_v001.json`: offset 갱신 실패 증거.
+- `20260905_uv_gpu_binding_v001.json`: 명시적 Module 연결, compile/save PASS.
+- `20260905_uv_gpu_runtime_v002.json`: 7사례 및 audit PASS, 기본값 복원.
+
+위 builder/recovery/fix는 exact-hash 또는 fresh-only의 일회성 스크립트다.
+기존 출력 파일을 지우고 재실행하지 않는다. 현재 preview는 UVGPU identity 기본값이다.
+원래 RoutedGPU preview는 editor crash로 사라졌으며 이전 경로를 owner로 가정하지 않는다.
+
+## 남은 작업
+
+UV → 비균일 텍스처 sampling → decode → Painter 합성 → Solver 주입을 통합해야 한다.
+두 probe가 개별 통과했다고 full Painter 또는 59개 레벨이 완료된 것은 아니다.
+최종 Study 자산으로 승격할 때 cold/plugin-disabled/cook 등 해당 범위의 독립성 검증이 필요하다.

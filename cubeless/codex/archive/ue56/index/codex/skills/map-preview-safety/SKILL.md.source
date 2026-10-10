@@ -1,0 +1,53 @@
+---
+name: map-preview-safety
+description: Guide safe Unreal Editor map opens, map transitions, temporary preview maps, viewport screenshots, preview actor cleanup, and crash triage for UnrealMCP-assisted work. Use when Codex or Claude is asked to open a map, switch levels, create a preview map, capture screenshots or videos, diagnose map-open crashes, handle dirty package blockers, or decide whether to use native open_editor_level/safe_new_preview_map instead of generic execute_python map loading.
+---
+
+# Map Preview Safety
+
+Use this skill to avoid editor crashes and accidental map saves during MCP-assisted map and preview work. It improves procedure and recovery, not the raw Unreal map load time.
+
+## Start Here
+
+1. Read `references/ops-references.md`.
+2. Check Git and editor dirty state before map mutation or preview capture.
+3. Prefer read-only inspection and dry-run preflight before any real map open or preview-map creation.
+4. If the user asks for speed, explain that this skill reduces mistakes and retries; Unreal load time must be optimized in MCP/Unreal code.
+
+## Hard Rules
+
+- Do not open, reload, create, or switch maps through generic `execute_python`.
+- Do not use Python map APIs such as `EditorLoadingAndSavingUtils.load_map`, `new_blank_map`, `load_map_with_dialog`, or `new_map_from_template` through MCP Python.
+- Use native `open_editor_level` for existing map opens.
+- Use native `safe_new_preview_map` for temporary preview maps.
+- Keep dirty-package blockers enabled unless the user explicitly approves overriding them.
+- Do not treat the first socket response as proof that a map changed; poll the status command and verify the final world package.
+
+## Existing Map Workflow
+
+1. Dry-run `open_editor_level` first.
+2. Confirm the target map exists and dirty blockers are clear.
+3. Perform the real open only after preflight passes.
+4. Poll `get_editor_level_open_status` or the matching status surface.
+5. Continue asset work only after the final world package matches the requested map.
+6. If the editor crashes, report the last accepted request id, target map, dirty blockers, and whether the load was deferred.
+
+## Preview Workflow
+
+1. Use existing lightweight preview maps when possible.
+2. For new temporary preview maps, dry-run `safe_new_preview_map`.
+3. Keep generated preview content under disposable MCP temp roots.
+4. Spawn preview actors with unique labels and clean them up after capture.
+5. Capture without reloading or saving the user's current map unless explicitly approved.
+6. Verify `map_dirty_after_preview=false` or report the dirty package list before continuing.
+
+## Output Standard
+
+Report:
+
+1. Target map or preview map path.
+2. Dry-run/preflight result.
+3. Dirty blockers and whether any override was used.
+4. Actual load status and final world package.
+5. Preview actors spawned and cleaned up.
+6. Any skipped live validation or remaining crash risk.

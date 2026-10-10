@@ -1,0 +1,27 @@
+# Reactive Surface Snow Kaylan Footprint Report
+
+- 날짜: `2026-07-14`
+- 판정: `PASS`
+- 범위: Snow/Ground 발 스탬프 좌·우 Texture2D만 교체.
+- 원화: 케일란 생성본에서 외곽 실루엣만 취하고 내부는 단일 검정으로 정규화.
+- 방향: 뒤꿈치 위(-V), 발끝 아래(+V), 왼발 안쪽 아치는 이미지 오른쪽.
+- 좌우: 오른발은 최종 왼발 1024 격자의 정확한 U축 미러이며 별도 재해석하지 않음.
+- 패킹: R=부호 거리장, G=균일 압설, B=실루엣 테두리, A=미사용.
+
+| 항목 | 결과 |
+| --- | --- |
+| 원본/파생 전부 1024 POT | `PASS` |
+| 실루엣 bbox | `[292, 41, 741, 977]` / `[450, 937]` |
+| 임시 Niagara 4방향·좌우 | `PASS` |
+| Production 직접 스모크 | `PASS` |
+| 실제 PIE footfall | `PASS` |
+| 4방향 리센터 | `PASS` |
+| compile 0/0 | `True` |
+| audit/dirty/runtime log | `PASS` |
+| 비대상 ReactiveSurface 해시 유지 | `True` |
+
+- 원본 왼발: `codex/assets/reactive_surface/snow/kaylan-snow-boot-footprint-2026-07-14-source-left-1024.png`
+- 패킹 왼발: `codex/assets/reactive_surface/snow/kaylan-snow-boot-footprint-2026-07-14-packed-left-1024.png`
+- 임시 캡처: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowKaylanFootprint/reactive-surface-snow-kaylan-temp-2026-07-14.exr`
+- Production 캡처: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowKaylanFootprint/reactive-surface-snow-kaylan-production-2026-07-14.png`
+- C++ RT readback 확대 프리뷰: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowKaylanFootprint/reactive-surface-snow-kaylan-rt-preview-2026-07-14.png`

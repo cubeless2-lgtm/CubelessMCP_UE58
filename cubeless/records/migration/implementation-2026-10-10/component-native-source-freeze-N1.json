@@ -1,0 +1,48 @@
+{
+  "schema": "cubeless_native_source_freeze_v1",
+  "slice": "component-read-N1",
+  "status": "source_frozen_for_build",
+  "independent_source_review": "pending",
+  "build": "not_run",
+  "actual_mcp": "not_run",
+  "public_mcp_tools_added": 0,
+  "hidden_library": "CubelessComponentLibrary",
+  "files": [
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessComponentApi.h",
+      "sha256": "140464b22ab93b1854454856dce8a96df5fb37bd5d7cafc886afbc12998b4b44",
+      "bytes": 719
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessComponentApi.cpp",
+      "sha256": "3bc776dc9644f4aa115b6b5c4c6772aef8a1c164536d06fb3508426275c8eac7",
+      "bytes": 16545
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Operations/CubelessComponentOperations.h",
+      "sha256": "2286722166d08a0342cf09c97cdb052d16150ae260d53e5806f780e54ef75993",
+      "bytes": 262
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Operations/CubelessComponentOperations.cpp",
+      "sha256": "66a43f7216b21d59902b411070c60e51fc61e281cca4c780e00f01beb2d3f98f",
+      "bytes": 3928
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessComponentLibrary.h",
+      "sha256": "1413d01fa6f561fecc5ee98bbe6c69a8943752c30526f44dc59d9044bb3100ae",
+      "bytes": 800
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessComponentLibrary.cpp",
+      "sha256": "7be0a55f3ef11419673fe80bc6ebcf681553f8074205e071c49325aef4436d8c",
+      "bytes": 706
+    }
+  ],
+  "build_cs_changed": false,
+  "existing_actor_material_sources_changed": false,
+  "notes": [
+    "Two hidden AIIgnore helpers only; Python public registration is separate.",
+    "Rooted local SCS only; inherited effective values, native CDO components and orphan AllNodes entries remain outside scope."
+  ]
+}

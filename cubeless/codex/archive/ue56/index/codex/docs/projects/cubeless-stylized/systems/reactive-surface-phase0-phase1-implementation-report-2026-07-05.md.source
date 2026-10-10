@@ -1,0 +1,61 @@
+# Reactive Surface Phase 0-1 Implementation Report - 2026-07-05
+
+## Scope
+
+Executed Phase 0 and the allowed Phase 1 continuation from `reactive-surface-implementation-plan-2026-07-05.md`.
+
+Phase 2 was not started.
+
+## Assets Created
+
+| Asset | Status |
+| --- | --- |
+| `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor` | Created, compiled, saved |
+| `/Game/ReactiveSurface/Core/BPC_ReactivePoint` | Created as `SceneComponent` Blueprint, compiled, saved |
+| `/Game/ReactiveSurface/Core` | Created |
+| `/Game/ReactiveSurface/Materials` | Created |
+| `/Game/ReactiveSurface/Niagara` | Created |
+
+Empty production folders are preserved in Git with `.gitkeep` files under `Core`, `Materials`, and `Niagara`.
+
+## Phase 0 Result
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Production folders exist | PASS | `phase0_phase1_results.json`, `folders` all `true` |
+| Production assets compile/save | PASS | `compile_error_count=0`, `compile_warning_count=0`, `saved=true` for both Blueprints |
+| MCP-only dependency audit | PASS | `forbidden_hit_count=0`, `asset_hits=[]`, `file_hits=[]` |
+| Dirty package audit | PASS | `dirty_packages=[]` |
+
+## Phase 1 Result
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Controller skeleton | PASS | `BP_ReactiveSurfaceControllerActor` created under `/Game/ReactiveSurface/Core` |
+| ReactivePoint marker | PASS | `BPC_ReactivePoint` CDO is a `SceneComponent`; `point_is_scene_component=true` in follow-up audit |
+| Marker no-tick | PASS | `point_tick_enabled=false` in follow-up audit |
+| Controller tick group | PASS | `PrimaryActorTick.TickGroup=TG_POST_UPDATE_WORK`, `bStartWithTickEnabled=True`, `TickInterval=0.0` |
+| Collection window component | PASS | `ReactiveCollectionWindow` BoxComponent exists |
+| Channel namespace contract | PASS | Controller variables include `RS_Ground_UserPrefix=User.RS_Ground_`, `RS_Grass_UserPrefix=User.RS_Grass_`, `RS_Water_UserPrefix=User.RS_Water_` |
+| Source bus skeleton | PASS | Controller variables include `RS_Ground_Positions`, `RS_Grass_Positions`, `RS_Water_Positions` vector arrays |
+| Slot budgets | PASS | Controller defaults: Ground `64`, Grass `32`, Water `32` |
+| Function stubs | PASS | `RS_CollectReactiveSources`, `RS_CompactGroundSources`, `RS_CompactGrassSources`, `RS_CompactWaterSources`, `RS_ClearSourceBuses` |
+
+## Evidence
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_phase0_phase1_builder.py`
+- Evidence JSON: `MCPGameProject/Saved/MCP/ReactiveSurfaceImplementation/phase0_phase1_results.json`
+
+## Notes
+
+- The first builder attempt created `BPC_ReactivePoint` through the generic `create_blueprint` command, which produced an Actor Blueprint for this parent-class case. The runner now uses Unreal Python `BlueprintFactory(parent_class=SceneComponent)` and replaced only that Phase-owned incorrect asset.
+- UE 5.6 Python protects direct SCS template access for the BoxComponent. The Phase 1 shell stores the intended extent in `ReactiveCollectionExtent`; detailed component-template tuning can happen when the collection graph is authored.
+- No `/Game/_MCP_Temp` assets were promoted. The only temp use was a deleted SceneComponent Blueprint canary.
+
+## Verdict
+
+Phase 0: PASS.
+
+Phase 1 shell: PASS.
+
+Stop point: do not start Phase 2 in this round.

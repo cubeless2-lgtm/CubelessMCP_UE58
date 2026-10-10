@@ -1,0 +1,27 @@
+# Reactive Surface Water BP User Parameter Contract
+
+- Date: 2026-07-13
+- Verdict: **PASS**
+- Niagara User parameters: `32`
+- Scope: Water only. Grass, Ground, and Snow content were not authored.
+
+## Contract
+
+- `niagara_parameter_count_32`: `True`
+- `parameter_mapping_complete`: `True`
+- `all_parameters_have_bp_variables`: `True`
+- `all_parameter_setters_bp_backed`: `True`
+- `water_tooltip_variable_set_complete`: `True`
+- `all_water_variables_have_korean_tooltips`: `True`
+- `canonical_beginplay_float_push_complete`: `True`
+- `no_exec_cycle`: `True`
+
+## Runtime
+
+- Runtime BP values available: `True`
+- Water component bound: `True`
+- Water RT nonzero: `True`
+- Stable consecutive readback: `True`
+- Runtime log clean: `True`
+
+Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-bp-user-parameter-contract-results-2026-07-13.json`

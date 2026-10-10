@@ -1,0 +1,60 @@
+# Cloud 3 — Wisp HDRI v01
+
+## Assets and controls
+
+Asset folder: `/Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/Cloud3_Wisp`
+
+- `T_Cloud3_Wisp_HDRI_v01`: 4096 × 2048 RGBA half-float EXR, linear, alpha retained, wrap U / clamp V.
+- `M_Cloud3_Wisp_HDRI` and `MI_Cloud3_Wisp_HDRI`: standalone UV2 wisp material for preview/reuse.
+- Current `BP_RXSkySystem_PaintedAltitude_v04`: editable `Cloud 3 | Wisp HDRI` category. The active sky and independent composite materials both include the third layer behind clouds 1 and 2.
+
+| Control | Default | Meaning |
+| --- | --- | --- |
+| Cloud3Texture | New wisp texture | Full lat-long Texture2D with alpha |
+| Cloud3Opacity | 0.45 | Layer coverage; 0 disables |
+| Cloud3Rotation | 0 | Azimuth in degrees |
+| Cloud3RotationSpeed | 0.01 | Degrees per second, following existing sky time controls |
+| Cloud3Contrast | 1 | Shading exponent; higher darkens intermediate values |
+| Cloud3HeightOffset | 0 | Offset in full panorama V units |
+| Cloud3Brightness | 1 | Layer shade multiplier |
+| Cloud3ZenithV | 0 | Source V at the dome zenith; HDRI Range category |
+| Cloud3HorizonV | 0.5 | Source V at the dome horizon; lower values crop above the source horizon |
+| Cloud3VerticalScale | 1 | Vertical extent about the horizon; >1 expands upward, <1 compresses toward the horizon |
+| Cloud3Tint | White | Independent RGB tint, exposed under `Cloud 3 | Shading`; opacity remains separate |
+
+The active BP drives the parameters on its sky MIDs, not the standalone preview MI. Day/night coloring follows the existing sky palette. Wisps retain fractional alpha rather than the solid-interior restoration used by the painted clouds.
+
+Cloud 3 tint is independent of the shared `CloudTint` used by clouds 1 and 2. The sky-colored, independent composite, night palette, and standalone preview paths all consume `Cloud3Tint`. White is neutral. A blue test tint was read back on both live MIDs while their shared tint remained unchanged, then restored to white.
+
+Solar visibility: in both integrated sky rendering paths, cloud 3 coverage is suppressed over the solar disc, including the disc softness and antialias footprint. The mask uses the sky's existing sun azimuth, elevation, radius and softness parameters. Clouds 1 and 2 are unchanged. This is a solar-disc pass-through; the broad atmospheric halo outside the disc and the moon/stars keep their existing behavior. Both materials compile without errors; the live sky was updated. No visual overlap capture was made for this follow-up.
+
+Star visibility follow-up: the existing star shader now provides a `Cloud3StarPass` output for visible star pixels. Only cloud 3 coverage is suppressed there, so stars remain visible above cloud 3 while clouds 1 and 2 keep occluding them. Star count, appearance, day/night gating and lunar wash remain unchanged. Both material paths compile successfully; dependency audit passed. This follow-up was verified structurally, without a nighttime before/after capture.
+
+Companion layer controls: the BP also exposes `Cloud 1 | Shading / Cloud 1 Contrast` and `Cloud 2 | Shading / Cloud 2 Contrast`, both default 1. They independently exponentiate the selected layer's shade channel before coloring, preserving coverage and density. `Cloud 2 | Transform / Cloud 2 Scale` defaults to 1 and uses the same polar-center UV scaling as cloud 1; values above 1 enlarge the layer, below 1 shrink it. Out-of-bounds coverage is masked. Both sky MIDs were tested with distinct contrast values and scale 0.75/1.25, then restored. BP and both materials compile without errors.
+
+## UV and source
+
+`SM_RXSky_Dome_SkyboxUV` has three UV channels. Coordinate index **2** maps the upper dome from V=0 at zenith to V=1 at horizon. The shader remaps that into `Cloud3ZenithV` through `Cloud3HorizonV`, default 0 through 0.5. The selected interval and height offset are clamped to the HDRI upper hemisphere, so the ground below V=0.5 cannot enter the sky. U rotation wraps. This expects a complete 2:1 lat-long image, not an already-cropped upper-half image. The generated cloud artwork is packed into the upper hemisphere with transparent zenith/horizon margins and transparent seam endpoints.
+
+`Wisp_Generated_Source.png` is the original generated artwork (1774 × 887). The 4K delivery is resampled and packed from that source, not native 4K detail. The EXR stores 0..1 generated radiance and alpha; it is a panoramic cloud layer, not a measured high-dynamic-range lighting environment. PNG is the readable companion source. `Wisp_HDRI_Review.png` is an opaque review composite only.
+
+## Validation
+
+Celestial BP controls: `Stars / Star Count Multiplier` defaults to 1; 0 disables stars and 2 selects approximately twice as many existing hashed star cells. Existing star positions, individual brightness and radius remain unchanged. Density saturates at all available cells. `Moon / Moon Size (Degrees)` exposes the existing `MoonAngularRadius` parameter (angular radius, 0.1–3 degrees, default 1). Values were verified on both live MIDs and restored. BP and materials compile without errors; no nighttime screenshot comparison was performed for this follow-up.
+
+Seam follow-up: panorama U remains unwrapped until the wrap sampler, with explicit sample gradients. This avoids the coarse-mip discontinuity introduced by `frac(U)` at the tile seam. Source alpha has a 17-column zero guard and a smooth transition ending at column 64 on both horizontal ends; RGB and alpha farther inside are unchanged. The original texture asset was reimported. The reported dashed seam is no longer visible in the reviewed viewport. Vertical scale 0.65 and 1.5 were read back on both live MIDs, then restored to 1. Out-of-range vertical samples are masked instead of stretching the cropped edge.
+
+- BP compile: zero errors/warnings. All three affected materials: zero compile errors.
+- Live sky and independent MIDs: texture assignment and opacity/rotation/contrast changes read back correctly; defaults restored.
+- Imported EXR exported back from Unreal: 4096 × 2048, alpha 0..0.984375, nonzero coverage approximately 30.58%.
+- Direct dependencies of the six affected/new assets contain no MCP-only references. No project C++ was added. No cook/package test was run.
+- Current level visually reviewed with the wisp layer enabled. Original camera restored.
+- Full offline verification attempted; blocked by pre-existing fixed checkout paths in historical `tmp/AnimeCloud360_Blender/import_reference_*.py` and related scripts (`test_workspace_path_portability`). Those unrelated files were left unchanged.
+
+Prior BP/material copies are retained under project `Saved/Cloud3Wisp_Before`.
+
+## Final layer controls and ordering
+
+Cloud 2 controls are grouped under `Cloud 2`; star count and moon size are under `Celestial Controls`. Cloud 3 has independent tint and vertical scale. The sun, stars, lunar disc and a soft lunar glow holdout pass through cloud 3. Cloud 1/2 source coverage masks cloud 3 even when their shading blends toward the sky color. These changes preserve cloud 1/2 celestial occlusion.
+
+The placed sky actor's 122 editable parameters were copied into BP defaults and verified after compilation. Sunset colors use a stronger orange horizon and rose mid-sky. The distant Cloud 2 module 07 replacement and its source live in the neighboring `ClearZenith_B_Distant_v10/Module07Replacement` directory. Material/BP compilation completed without errors. Full validation and submission status are recorded in the task handoff; visual appearance of the night overlay has not been independently captured.

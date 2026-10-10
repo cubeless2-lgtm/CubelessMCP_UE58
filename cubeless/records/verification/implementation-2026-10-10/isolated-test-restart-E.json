@@ -1,0 +1,12 @@
+{
+  "schema": "cubeless_owned_test_session_end_v1",
+  "pid": 3760,
+  "source_report": "bootstrap-additional-calls-E2.json",
+  "source_report_sha256": "01259d08eca471343126a78be65dbb14dc9efcf0d6620baf5a3c081c24406d24",
+  "dirty_packages": [
+    "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract"
+  ],
+  "reason": "compile/refresh without save test complete; discard only recorded owned in-memory compile state before Material fixture, on-disk original remains intact",
+  "stop_requested": true,
+  "user_project_editor_targeted": false
+}

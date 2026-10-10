@@ -1,0 +1,111 @@
+# Reactive Surface 3RT 50-slot Future Smoke Report - 2026-07-05
+
+## Scope
+
+This was a future-only feasibility smoke, not a current implementation plan.
+
+Question tested: can three always-active reactive RT systems (Ground / Grass / Water) run together while a 50-candidate fixture pushes the nearest 20 slots into Niagara Array DI per channel?
+
+Runner:
+
+- `codex/scripts/reactive_surface/reactive_surface_50_agent_insights_runner.py`
+
+Temp asset root:
+
+- `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_50Load`
+
+Runtime evidence root:
+
+- `MCPGameProject/Saved/MCP/ReactiveGhost_50Load/`
+
+## Step Result
+
+| Step | Check | Result | Evidence |
+| --- | --- | --- | --- |
+| 1 | Spawn Ground / Grass / Water Niagara systems simultaneously | PASS | Three systems cloned/compiled and spawned in SIE/game world. |
+| 2 | Bind three separate RTs | PASS | Runtime bind routes reported `set_variable_texture_render_target`; RTs were RGBA16F 512x512. |
+| 3 | Distinct signatures R/G/B | FAIL | Simultaneous runs consistently wrote only Water/B. Ground and Grass RTs stayed zero. |
+| 4 | 50 candidates -> nearest 20 arrays per channel | PASS | CPU getter reported 20 pushed slots per system/component. |
+| 5 | Keep active 10-20s | PASS as harness | Systems stayed active long enough to collect readback/profile artifacts; output still failed. |
+| 6 | Full RT scan: own color, no cross-talk | FAIL | Ground/Grass `nonzero=0`; Water `selected=20`, `dominant=b`. |
+| 7 | GPU/Profile artifact | PASS | Trace files written; ProfileGPU numeric baseline captured, but failed visual/write path means timing is not a shipping baseline. |
+
+## Primary Failing Run
+
+Evidence:
+
+- `MCPGameProject/Saved/MCP/ReactiveGhost_50Load/reactive_surface_3rt_sustained_fail_run1_20260705.json`
+
+Mode:
+
+- Three independent cloned systems
+- Distinct per-channel RT, Array DI parameter, and constant HLSL color
+- 50 real temp `BP_Piper` characters, nearest 20 pushed
+- 20 seconds sustained active
+
+Readback:
+
+| Channel | Selected hits | Signature hits | Full-scan nonzero | Dominant | RGBA sums |
+| --- | ---: | ---: | ---: | --- | --- |
+| Ground | 0 | 0 | 0 | r | `[0, 0, 0, 0]` |
+| Grass | 0 | 0 | 0 | r | `[0, 0, 0, 0]` |
+| Water | 20 | 20 | 243 | b | `[0, 0, 26763, 16510]` |
+
+Profile:
+
+- `numeric_gpu_ms=3.97`
+- Trace size `115,496,865` bytes
+
+## Diagnostic Matrix
+
+| Run | Result | Key numeric evidence |
+| --- | --- | --- |
+| Ground only | PASS | `selected=20`, `signature=20`, `nonzero=230`, `R sum=26991` |
+| Grass only | PASS | `selected=20`, `signature=20`, `nonzero=230`, `G sum=26991` |
+| Ground + Grass | FAIL | Ground PASS, Grass `nonzero=0` |
+| Ground + Grass + Water, separated locations | FAIL | Water only: `selected=20`, Ground/Grass zero |
+| Ground + Grass + Water, stacked locations | FAIL | Water only, so location/frustum was not the root cause |
+| Shared one Niagara system, three components | FAIL | Water only; common RT parameter did not isolate per component |
+| Three systems, common Array/Color param names | FAIL | Water only |
+| Three systems, common RT/Array/Color param names | FAIL | Water only |
+| Three systems, common params, ForceSolo on | FAIL | Water only |
+
+## Interpretation
+
+This is not a general "RT is broken" result.
+
+Already proven elsewhere:
+
+- Single-channel Array DI -> GPU sim stage -> RT is viable.
+- Multi-RT non-array baseline is viable.
+- Material consumption and RT lifecycle paths have separate PASS evidence.
+
+What failed here is narrower:
+
+- Multiple simultaneous Array-DI Custom-HLSL RT writer systems cloned from the same Niagara template do not behave independently in this fixture.
+- The failure is deterministic enough to treat as a real design risk for "always run Ground + Grass + Water as separate Array-DI RT systems."
+- Runtime Array DI CPU setters reported correct counts, so the failure is on the GPU sim / parameter binding / system instance isolation side, not candidate collection.
+- Cause attribution is unresolved: current evidence does not prove whether this is a harness/cloned-template binding problem or a structural multi-system Niagara isolation problem.
+
+Current future-path verdict:
+
+- `NO-GO` for three always-active Array-DI RT systems as tested.
+- `GO` remains for single active channel and for the current practical plan that avoids drawing every reactive effect all the time.
+
+## API / C++ Follow-up List
+
+No UnrealMCP C++ change was made in this round.
+
+Useful MCP hardening targets if we revisit this future path:
+
+1. Add a live runtime-state capture step before cleanup for Niagara components, including resolved User parameter store values and render target DI object identities per component.
+2. Add a Niagara GPU sim diagnostic command that can report compiled script identity / shader map key / data interface binding key for a system instance.
+3. Research whether `UNiagaraDataInterfaceArray*` and `UNiagaraDataInterfaceRenderTarget2D` require explicit per-instance data reset/reinitialize after runtime parameter binding for multiple GPU sim stages.
+4. Add a no-cleanup debug mode to the runner for editor-side inspection, guarded under `/Game/_MCP_Temp`.
+
+## Cleanup
+
+Final cleanup audit:
+
+- `_MCP_Temp` test root remaining: `false`
+- Dirty packages: `0`

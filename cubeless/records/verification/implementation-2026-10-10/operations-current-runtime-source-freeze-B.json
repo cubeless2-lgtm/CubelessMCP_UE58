@@ -1,0 +1,49 @@
+{
+  "schema": "cubeless_current_runtime_source_freeze_v1",
+  "revision": "B",
+  "status": "source_and_offline_checks_passed",
+  "engine_execution_performed_by_this_agent": false,
+  "peer_review": {
+    "agent": "/root/python_toolset_implementation",
+    "completed": true,
+    "findings_addressed": [
+      "Use confirmed BlueprintEditorLibrary.get_blueprint_parent_class instead of non-exported ParentClass",
+      "Preflight EditorActorSubsystem before clone mutation",
+      "Persist per-spawn intent, returned actor path, label and component progress plus map-copy save intent"
+    ],
+    "further_api_or_ownership_blockers_found": false
+  },
+  "files": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\current_runtime_manifest.py",
+      "sha256": "b5b8b621536a383e6741958516f9a90e30a430be9feaa00bf8dce61e0209156a"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\create_current_runtime_fixture.py",
+      "sha256": "3cde0d03c7f85622cf628e6f2a4d3604502895c542dfa56992868436177a121e"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_current_runtime_fixture.py",
+      "sha256": "8d70acd3990b8cf3989e24a88f5a04a6df231d895aae480d67cdc3c6cc5396e5"
+    }
+  ],
+  "manifest_sha256": "5050a15d3e6a27708130b5435d3d4cb9891109c2a1f1dbb404fba80a582f28f1",
+  "checks": [
+    "3 source AST parse",
+    "actual manifest independently rederived from parent reports",
+    "all19 source and19 copied hashes checked",
+    "project descriptor/config exact owned path and default map checked"
+  ],
+  "prior_failed_run": {
+    "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\current-runtime-fixture-A.json",
+    "reason": "Blueprint.parent_class is not Python exposed",
+    "scope": "source_readback before mutations; original record preserved"
+  },
+  "remaining": [
+    "root actual author B",
+    "fresh-process cold validation",
+    "independent external report checks",
+    "Shipping cook/Pak/fresh marker proof"
+  ],
+  "scope": "Specific current saved fixture cohort, not all legacy migration or shader/render completion"
+}

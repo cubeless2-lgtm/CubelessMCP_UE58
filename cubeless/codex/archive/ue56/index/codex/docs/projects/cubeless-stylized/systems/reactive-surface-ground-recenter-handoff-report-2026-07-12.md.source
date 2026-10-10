@@ -1,0 +1,19 @@
+# Reactive Surface Ground Recenter Handoff Report
+
+- Date: `2026-07-12`
+- Verdict: `PASS`
+- Scope: Snow/Ground only. Grass and Water are hash regression controls.
+- Fix: Niagara output, persistent display/history, and Canvas recenter scratch use three distinct Ground RT roles.
+- Commit handoff: skip stale output commit for `2` ticks after recenter.
+
+## Ownership Follow-up
+
+This report's original single-jump runtime test did not count PIE Controller owners. On 2026-07-13, a stale ChildActor preview produced two Controllers writing the same Ground RT/MPC. The child-parent-map reinstance repair and four-direction regression supersede that gap; see `reactive-surface-ground-recenter-single-owner-report-2026-07-13.md` and its evidence JSON.
+
+| Check | Temp | Production |
+| --- | --- | --- |
+| Multi-stamp count preserved | None | True |
+| World anchor preserved | None | True |
+| No duplicate history | None | True |
+| Graph audit | None | PASS |
+| Grass/Water unchanged | n/a | True |

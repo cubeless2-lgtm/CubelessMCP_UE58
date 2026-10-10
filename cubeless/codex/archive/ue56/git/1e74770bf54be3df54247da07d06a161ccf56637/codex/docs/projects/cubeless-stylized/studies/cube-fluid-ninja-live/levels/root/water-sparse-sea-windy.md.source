@@ -1,0 +1,73 @@
+# 레벨 카드: `Water_Sparse_Sea_Windy`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Water_Sparse_Sea_Windy` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Sea_Windy` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `71` |
+| Direct external | `10` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+Sparse 방식의 바람 부는 바다 표현을 다루는 레벨이다. 이 설명은 레벨 이름과 원본 계층에서 확실히 읽히는 범위를 넘지 않는다.
+
+### 정적 판정
+
+- **Observed:** area sand/water와 내장 LocalJet, ship/excluder trigger, underwater plankton/rain 제어가 공존한다.
+- **Inferred:** windy sea에서 광역 solver와 국소 상호작용·환경 전환을 비교한다.
+- **Unknown:** trigger 순서, ship/buoyancy behavior, runtime/parity.
+- **Target fixture:** `TF_WaterSparse_SeaWindy` 제안.
+
+## Actor
+
+- manifest 합계 `116 actors / 216 components / 12 pages`.
+- exact class histogram: `StaticMeshActor=48; TextRenderActor=31; MovingBall1_C=12; NiagaraActor=4; NinjaLive_C=3; PostProcessVolume=3; TriggerVolume=2; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; MovingBall1_NinjaComponentAdded_C=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; SpotLight=1; ThirdPersonCharacter_C=1; VolumetricCloud=1; Water_Sparse_Sea_Windy_C=1`.
+- Landscape=`19=9+9+root`, coast Composite2; CruiserBoard/Excluder TriggerVolume 2, driver 1, LocalJet embedded host 1, sequence actor 0.
+
+## Runtime
+
+- Level BP `167 nodes / 4 variables`: camera altitude/sea level, ship 탑승 시 sand solver disable, underwater cloud/rain hide와 plankton show, light tower, fog/cloud quality, PP tint.
+- 실제 branch/timing/성능은 `pending`.
+
+## Niagara
+
+- host 4(직접 3+embedded 1), 전부 NinjaLiveCore/preset=None/overrides non-empty; resolution `2048²×2, 256², 512²`; extents `100/100/1,20/20/1,8/8/1,80/80/2`; Simple=1, SVOL=2; PVD=`FTT×2,FTF,TFF`; input=`height×3,default×1`.
+- standalone: `SurfaceAlignedMeshes`, FlowBalls, passive plankton(false), passive rain(false). 내부 topology/runtime `pending`.
+
+## Material
+
+- AreaSand density black + `MI_Sandy_SeaCoastComposite2`; AreaWater `MI_Water_Windy_Sharp_Norm_NoiseTile`; local jet `MI_JetMaterial8`; local sand SVOL Sand1 + HVOL Trail3.
+- Landscape coast Composite2의 runtime wet/caustics 결과는 `pending`.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- native manifest revision `b065501dd39664cc91fb1eded459574a`, query `2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- Level BP EventGraph 1, 167/4, error 0. [family observation](../../concepts/root-water-surface-media-observation.md).
+- `pending`: PIE/SIE, target, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

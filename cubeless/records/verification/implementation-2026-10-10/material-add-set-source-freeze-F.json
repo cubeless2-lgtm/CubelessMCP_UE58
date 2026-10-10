@@ -1,0 +1,163 @@
+{
+  "schema": "cubeless.material_add_set_source_freeze.v1",
+  "created_utc": "2026-10-10T09:31:41.094679+00:00",
+  "status": "source_frozen_offline_tests_passed",
+  "expected_total_cubeless_tools": 28,
+  "expected_cubeless_toolsets": 6,
+  "new_functions": [
+    {
+      "name": "add_material_node",
+      "signature": "def add_material_node(material_path: str, expression_class: str, graph_type: str='auto', node_position: list[int] | None=None, selected_asset: str | None=None, properties_json: str | None=None, operation_id: str | None=None) -> CubelessPythonOperationResult"
+    },
+    {
+      "name": "set_material_node_property",
+      "signature": "def set_material_node_property(material_path: str, node_id: str, property_name: str, value_json: str, graph_type: str='auto', operation_id: str | None=None) -> CubelessPythonOperationResult"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\compatibility\\ue58\\material.py",
+      "relative_path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/compatibility/ue58/material.py",
+      "sha256": "26dcb186f704ed102b6e133ba905ed870a172ab26d9273f8ca035ea1df70946d",
+      "size_bytes": 3415
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\operations\\material.py",
+      "relative_path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/material.py",
+      "sha256": "2836c93ee223c6f21cc10f6c256302d3c261b6d9a479f9912cba3c167354b42b",
+      "size_bytes": 12045
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\registration\\material_toolset.py",
+      "relative_path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/registration/material_toolset.py",
+      "sha256": "b6924ebb9037db4e7174840056987ac05daf1895c44736d314c2c045e98ffed0",
+      "size_bytes": 11538
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\test_material_python_contracts.py",
+      "relative_path": "cubeless/tools/verification/test_material_python_contracts.py",
+      "sha256": "9e347c1f40bf3f47c6a728081cf5e15d16fe87ba06fe1ceef6c41997ec5dc1f7",
+      "size_bytes": 19860
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\pipelines\\material_graph_smoke.py",
+      "relative_path": "cubeless/tools/pipelines/material_graph_smoke.py",
+      "sha256": "6e07b5262488bf78ee4ad4cd72a361d57def1e20b5984cf239576ab27b91ae14",
+      "size_bytes": 27533
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\material_pipeline_report.py",
+      "relative_path": "cubeless/tools/verification/material_pipeline_report.py",
+      "sha256": "e5d0a6b702e8de97bdffafb9ad2b3b6fe261c1b16599b1885eb49abd92a3aa9b",
+      "size_bytes": 17454
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\test_material_pipeline.py",
+      "relative_path": "cubeless/tools/verification/test_material_pipeline.py",
+      "sha256": "49b6bb8f36a24affa68a6a0f9e80c8e41c14238b8f3098bbce81f34c9d23cd4b",
+      "size_bytes": 20613
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\operations\\graph.py",
+      "relative_path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/graph.py",
+      "sha256": "935bc6bbe2959f7a25a7f3e5900da9436c07247f91e0eab411e5bae2dfa014b5",
+      "size_bytes": 10722
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Content\\Python\\tests\\test_graph_failure_evidence.py",
+      "relative_path": "Plugins/CubelessMCP_UE58/Content/Python/tests/test_graph_failure_evidence.py",
+      "sha256": "e0bdc0448717cbbdac8d693ebbfb13d197a3c288473d6deddf9f3e027962567d",
+      "size_bytes": 8003
+    }
+  ],
+  "tests": [
+    {
+      "argv": [
+        "C:\\Git\\UnrealMCP5_6_1\\Python\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification",
+        "-p",
+        "test_material_python_contracts.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.6486557999742217,
+      "stdout": "",
+      "stderr": "test_add_defaults_normalize_and_replay_without_second_native_call (test_material_python_contracts.MaterialTests.test_add_defaults_normalize_and_replay_without_second_native_call) ... ok\ntest_add_native_guard_failure_preserves_no_change_and_no_compile_save (test_material_python_contracts.MaterialTests.test_add_native_guard_failure_preserves_no_change_and_no_compile_save) ... ok\ntest_add_partial_cleanup_is_preserved_without_rollback_claim (test_material_python_contracts.MaterialTests.test_add_partial_cleanup_is_preserved_without_rollback_claim) ... ok\ntest_all_eleven_bindings_use_native_methods_and_exact_positional_contract (test_material_python_contracts.MaterialTests.test_all_eleven_bindings_use_native_methods_and_exact_positional_contract) ... ok\ntest_before_snapshot_failure_prevents_mutation (test_material_python_contracts.MaterialTests.test_before_snapshot_failure_prevents_mutation) ... ok\ntest_checkpoint_failure_prevents_native_mutation (test_material_python_contracts.MaterialTests.test_checkpoint_failure_prevents_native_mutation) ... ok\ntest_engine_and_plugin_mutation_paths_rejected_but_game_fixture_allowed (test_material_python_contracts.MaterialTests.test_engine_and_plugin_mutation_paths_rejected_but_game_fixture_allowed) ... ok\ntest_invalid_json_and_positions_fail_before_snapshot_or_mutation (test_material_python_contracts.MaterialTests.test_invalid_json_and_positions_fail_before_snapshot_or_mutation) ... ok\ntest_invalid_native_response_keeps_uncertain_dispatch_no_retry (test_material_python_contracts.MaterialTests.test_invalid_native_response_keeps_uncertain_dispatch_no_retry) ... ok\ntest_missing_native_binding_fails_explicitly (test_material_python_contracts.MaterialTests.test_missing_native_binding_fails_explicitly) ... ok\ntest_mutation_checkpoint_is_durable_before_native_dispatch (test_material_python_contracts.MaterialTests.test_mutation_checkpoint_is_durable_before_native_dispatch) ... ok\ntest_named_signature_defaults_match_captured_legacy_catalog (test_material_python_contracts.MaterialTests.test_named_signature_defaults_match_captured_legacy_catalog) ... ok\ntest_native_failure_preserves_actual_partial_change_and_stage (test_material_python_contracts.MaterialTests.test_native_failure_preserves_actual_partial_change_and_stage) ... ok\ntest_native_preflight_failure_reports_no_mutation (test_material_python_contracts.MaterialTests.test_native_preflight_failure_reports_no_mutation) ... ok\ntest_native_success_without_postcondition_is_not_verified_success (test_material_python_contracts.MaterialTests.test_native_success_without_postcondition_is_not_verified_success) ... ok\ntest_property_json_is_canonical_and_quoted_strings_reach_native (test_material_python_contracts.MaterialTests.test_property_json_is_canonical_and_quoted_strings_reach_native) ... ok\ntest_read_preserves_native_data_and_never_creates_mutation_journal (test_material_python_contracts.MaterialTests.test_read_preserves_native_data_and_never_creates_mutation_journal) ... ok\ntest_registration_normalizes_reflected_array_before_strict_operation (test_material_python_contracts.MaterialTests.test_registration_normalizes_reflected_array_before_strict_operation) ... ok\ntest_replay_does_not_repeat_snapshot_or_native_mutation (test_material_python_contracts.MaterialTests.test_replay_does_not_repeat_snapshot_or_native_mutation) ... ok\ntest_set_before_checkpoint_failure_never_dispatches_property_write (test_material_python_contracts.MaterialTests.test_set_before_checkpoint_failure_never_dispatches_property_write) ... ok\ntest_unresolved_read_keeps_candidates_and_error_stage (test_material_python_contracts.MaterialTests.test_unresolved_read_keeps_candidates_and_error_stage) ... ok\n\n----------------------------------------------------------------------\nRan 21 tests in 0.394s\n\nOK\n",
+      "scope": "offline synthetic APIs only"
+    },
+    {
+      "argv": [
+        "C:\\Git\\UnrealMCP5_6_1\\Python\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification",
+        "-p",
+        "test_material_pipeline.py",
+        "-v"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 4.57530389999738,
+      "stdout": "",
+      "stderr": "test_compile_error_is_uncertain_and_never_saved_or_retried (test_material_pipeline.PipelineTests.test_compile_error_is_uncertain_and_never_saved_or_retried) ... ok\ntest_entire_author_and_cold_reload_contracts (test_material_pipeline.PipelineTests.test_entire_author_and_cold_reload_contracts) ... ok\ntest_extended_add_set_author_and_cold_reload (test_material_pipeline.PipelineTests.test_extended_add_set_author_and_cold_reload) ... ok\ntest_extended_invalid_property_with_hidden_change_is_caught (test_material_pipeline.PipelineTests.test_extended_invalid_property_with_hidden_change_is_caught) ... ok\ntest_extended_verifier_rejects_counterfeit_property_or_shader_claim (test_material_pipeline.PipelineTests.test_extended_verifier_rejects_counterfeit_property_or_shader_claim) ... ok\ntest_invalid_pin_with_changed_state_is_not_accepted (test_material_pipeline.PipelineTests.test_invalid_pin_with_changed_state_is_not_accepted) ... ok\ntest_missing_native_postcondition_stops_before_compile_save (test_material_pipeline.PipelineTests.test_missing_native_postcondition_stops_before_compile_save) ... ok\ntest_package_path_is_not_accepted_as_object_reference (test_material_pipeline.PipelineTests.test_package_path_is_not_accepted_as_object_reference) ... ok\ntest_project_identity_uses_windows_resolved_path_semantics (test_material_pipeline.PipelineTests.test_project_identity_uses_windows_resolved_path_semantics) ... ok\ntest_same_editor_cannot_pass_cold_reload (test_material_pipeline.PipelineTests.test_same_editor_cannot_pass_cold_reload) ... ok\ntest_verifier_rechecks_official_readback_and_mpc_values (test_material_pipeline.PipelineTests.test_verifier_rechecks_official_readback_and_mpc_values) ... ok\ntest_verifier_rejects_missing_stage_and_counterfeit_summaries (test_material_pipeline.PipelineTests.test_verifier_rejects_missing_stage_and_counterfeit_summaries) ... ok\ntest_verifier_rejects_unverified_null_spellings_and_missing_field (test_material_pipeline.PipelineTests.test_verifier_rejects_unverified_null_spellings_and_missing_field) ... ok\n\n----------------------------------------------------------------------\nRan 13 tests in 4.290s\n\nOK\n",
+      "scope": "offline synthetic APIs only"
+    },
+    {
+      "argv": [
+        "C:\\Git\\UnrealMCP5_6_1\\Python\\.venv\\Scripts\\python.exe",
+        "-B",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Content\\Python\\tests",
+        "-v"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.4700834999675862,
+      "stdout": "",
+      "stderr": "test_admission_strict_types_unknown_arguments_and_nesting (test_batch_contract.BatchContractTests.test_admission_strict_types_unknown_arguments_and_nesting) ... ok\ntest_budget_checked_between_actions_never_claims_engine_cancellation (test_batch_contract.BatchContractTests.test_budget_checked_between_actions_never_claims_engine_cancellation) ... ok\ntest_capability_parameters_and_defaults_match_registered_individual_tools (test_batch_contract.BatchContractTests.test_capability_parameters_and_defaults_match_registered_individual_tools) ... ok\ntest_checkpoint_disk_failure_before_engine_call_preserves_no_dispatch (test_batch_contract.BatchContractTests.test_checkpoint_disk_failure_before_engine_call_preserves_no_dispatch) ... ok\ntest_compile_wrappers_preserve_distinct_defaults (test_batch_contract.BatchContractTests.test_compile_wrappers_preserve_distinct_defaults) ... ok\ntest_crash_after_api_write_keeps_durable_intent_and_blocks_replay (test_batch_contract.BatchContractTests.test_crash_after_api_write_keeps_durable_intent_and_blocks_replay) ... ok\ntest_create_compile_and_read_follow_order_use_one_journal_and_no_nested_gate (test_batch_contract.BatchContractTests.test_create_compile_and_read_follow_order_use_one_journal_and_no_nested_gate) ... ok\ntest_duplicate_json_keys_and_nonfinite_constants_are_rejected (test_batch_contract.BatchContractTests.test_duplicate_json_keys_and_nonfinite_constants_are_rejected) ... ok\ntest_existing_mutation_gate_remains_nonreentrant (test_batch_contract.BatchContractTests.test_existing_mutation_gate_remains_nonreentrant) ... ok\ntest_finalize_failure_does_not_return_success_or_allow_replay (test_batch_contract.BatchContractTests.test_finalize_failure_does_not_return_success_or_allow_replay) ... ok\ntest_in_flight_marker_forces_failure_even_if_child_claims_success (test_batch_contract.BatchContractTests.test_in_flight_marker_forces_failure_even_if_child_claims_success) ... ok\ntest_known_failure_false_continues_but_overall_fails (test_batch_contract.BatchContractTests.test_known_failure_false_continues_but_overall_fails) ... ok\ntest_known_failure_stop_true_preserves_created_prefix (test_batch_contract.BatchContractTests.test_known_failure_stop_true_preserves_created_prefix) ... ok\ntest_native_compile_failure_has_known_effect_and_false_can_continue (test_batch_contract.BatchContractTests.test_native_compile_failure_has_known_effect_and_false_can_continue) ... ok\ntest_normalized_default_replay_never_runs_again_and_conflict_rejected (test_batch_contract.BatchContractTests.test_normalized_default_replay_never_runs_again_and_conflict_rejected) ... ok\ntest_read_only_batch_uses_no_transaction_and_replay_is_historical (test_batch_contract.BatchContractTests.test_read_only_batch_uses_no_transaction_and_replay_is_historical) ... ok\ntest_result_checkpoint_failure_after_effect_stops_no_later_action (test_batch_contract.BatchContractTests.test_result_checkpoint_failure_after_effect_stops_no_later_action) ... ok\ntest_save_failure_retains_compile_outcome_and_requested_save (test_batch_contract.BatchContractTests.test_save_failure_retains_compile_outcome_and_requested_save) ... ok\ntest_successful_engine_write_then_readback_failure_forces_stop_even_false (test_batch_contract.BatchContractTests.test_successful_engine_write_then_readback_failure_forces_stop_even_false) ... ok\ntest_unsupported_last_command_rejects_before_prefix_write (test_batch_contract.BatchContractTests.test_unsupported_last_command_rejects_before_prefix_write) ... ok\ntest_branch_add_preserves_before_when_later_graph_readback_fails (test_graph_failure_evidence.GraphFailureEvidenceTests.test_branch_add_preserves_before_when_later_graph_readback_fails) ... ok\ntest_branch_at_node_limit_rejects_before_api_or_checkpoint (test_graph_failure_evidence.GraphFailureEvidenceTests.test_branch_at_node_limit_rejects_before_api_or_checkpoint) ... ok\ntest_connect_preserves_original_links_when_readback_fails (test_graph_failure_evidence.GraphFailureEvidenceTests.test_connect_preserves_original_links_when_readback_fails) ... ok\ntest_delete_preserves_removed_node_when_readback_fails (test_graph_failure_evidence.GraphFailureEvidenceTests.test_delete_preserves_removed_node_when_readback_fails) ... ok\ntest_interrupted_journal_distinguishes_initial_checkpoint_from_actual_failure (test_graph_failure_evidence.GraphFailureEvidenceTests.test_interrupted_journal_distinguishes_initial_checkpoint_from_actual_failure) ... ok\ntest_move_preserves_original_coordinates_when_readback_fails (test_graph_failure_evidence.GraphFailureEvidenceTests.test_move_preserves_original_coordinates_when_readback_fails) ... ok\ntest_checkpoint_failure_stops_before_next_mutation (test_operation_journal.JournalTests.test_checkpoint_failure_stops_before_next_mutation) ... ok\ntest_checkpoint_outside_active_operation_is_rejected (test_operation_journal.JournalTests.test_checkpoint_outside_active_operation_is_rejected) ... ok\ntest_checkpoint_survives_interrupt_without_claiming_actual_changes (test_operation_journal.JournalTests.test_checkpoint_survives_interrupt_without_claiming_actual_changes) ... ok\ntest_exclusive_create_race_does_not_overwrite_other_editor_journal (test_operation_journal.JournalTests.test_exclusive_create_race_does_not_overwrite_other_editor_journal) ... ok\ntest_finalize_failure_keeps_started_record_and_reports_uncertain_outcome (test_operation_journal.JournalTests.test_finalize_failure_keeps_started_record_and_reports_uncertain_outcome) ... ok\ntest_identical_request_replays_without_repeating_mutation (test_operation_journal.JournalTests.test_identical_request_replays_without_repeating_mutation) ... ok\ntest_initial_journal_scope_is_backward_compatible (test_operation_journal.JournalTests.test_initial_journal_scope_is_backward_compatible) ... ok\ntest_interrupted_mutation_is_not_rerun (test_operation_journal.JournalTests.test_interrupted_mutation_is_not_rerun) ... ok\ntest_multiple_checkpoints_preserve_request_identity_and_increment (test_operation_journal.JournalTests.test_multiple_checkpoints_preserve_request_identity_and_increment) ... ok\ntest_path_traversal_is_rejected_before_mutation (test_operation_journal.JournalTests.test_path_traversal_is_rejected_before_mutation) ... ok\n\n----------------------------------------------------------------------\nRan 36 tests in 1.223s\n\nOK\n",
+      "scope": "offline synthetic APIs only"
+    }
+  ],
+  "legacy_E3_verifier_compatibility": {
+    "author": {
+      "schema": "cubeless_material_report_verification_v1",
+      "passed": true,
+      "errors": [],
+      "phase": "author",
+      "scope": "Independent report consistency/required-stage checks; execution authenticity requires attached live official-MCP evidence",
+      "full_material_migration_complete": false
+    },
+    "reload": {
+      "schema": "cubeless_material_report_verification_v1",
+      "passed": true,
+      "errors": [],
+      "phase": "reload",
+      "scope": "Independent report consistency/required-stage checks; execution authenticity requires attached live official-MCP evidence",
+      "full_material_migration_complete": false
+    },
+    "author_sha256": "8a2da97aa3078665a3079b7387856800cf8254aa96442715b923d2e72129f901",
+    "reload_sha256": "ae95dd2e10799a40cdfa93ba35028830fbff1f9c58742f05f0b341f264daba3b",
+    "mutated_evidence_files": false
+  },
+  "ast_parse": "passed",
+  "batch_logic_and_state_unchanged": true,
+  "batch_F_superseded_paths": [
+    "operations/graph.py",
+    "tests/test_graph_failure_evidence.py"
+  ],
+  "reason": "Root-approved graph >=2048 rejection before Branch mutation/checkpoint",
+  "new_UE58_runtime_registration": "not_run_by_this_agent",
+  "new_UE58_runtime_calls": "not_run_by_this_agent",
+  "full_material_parity": false,
+  "cpp_changes_by_this_agent": false,
+  "documentation_path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\material-add-set-python-F.md"
+}

@@ -1,0 +1,807 @@
+{
+  "schema": "cubeless_actor_runtime_cold_v1",
+  "success": false,
+  "stage": "dependency_audit",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58ActorRuntimeProof\\CubelessActorRuntimeProof.uproject",
+  "process_id": 60236,
+  "started_ns": 1791630562646615400,
+  "manifest": {
+    "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-actor-runtime-manifest-A.json",
+    "sha256": "34105281d245cd27beeafc6fe1a746ff4944289e1bcd2521bf872a2ae92a728f"
+  },
+  "fixture_report": {
+    "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\actor-runtime-fixture-A.json",
+    "sha256": "4449d9ddf8dc215c7ae7535de724bcd6d15b85aa814b7d66ea441402c3ed454f"
+  },
+  "script_sha256": "b5c3b1d31c2942fd4bc80c239e300852af285f44c54a75077b7910ee6940b68e",
+  "save": {
+    "requested": false,
+    "attempted": false
+  },
+  "compile": [],
+  "automatic_retry": false,
+  "atomic_rollback": false,
+  "runtime_marker_created": false,
+  "packaging": "not_run",
+  "full_actor_parity": false,
+  "rendering_lighting_verified": false,
+  "configuration": {
+    "project_sha256": "6b1514c29cf077fac00bd5efd9d6ae3574b1169544582213c182d161158fbd82",
+    "default_engine_sha256": "722d301861c4b19cbed1fecb25c28dd85e3c66a89c6849da49ba47cde79461b3",
+    "default_game_sha256": "3b610a08bd80985ba3f066289d26a7001b693284c2c8d075f5227d8bf5b4e8a3"
+  },
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "plugins_before": {
+    "names": [
+      "ContentBrowserFileDataSource",
+      "EditorScriptingUtilities",
+      "PythonScriptPlugin"
+    ],
+    "forbidden_enabled": [],
+    "passed": true
+  },
+  "dirty_before": [],
+  "engine_api_sources": {
+    "Source/Editor/UnrealEd/Public/FileHelpers.h": "e94e824796d608def25021b339a3796438379f80d0885ac96607b549b38c964b",
+    "Source/Editor/UnrealEd/Public/Subsystems/EditorActorSubsystem.h": "3d5b1c76f7061444cdcedccb4a756cbdc2f25f18785fe536538ab2797c41a7f0",
+    "Source/Editor/UnrealEd/Public/Subsystems/EditorAssetSubsystem.h": "dd312842f330126160d5398fe6c0b565ac1abd9c70cf85fa14b53517c3131f56",
+    "Source/Runtime/Engine/Classes/GameFramework/Actor.h": "2ee1effb7ab4ac4cf65cf6caa90a27cea45361feefaae0cb673f7265e00bc5c9",
+    "Source/Runtime/AssetRegistry/Private/AssetRegistry.cpp": "0200285704dd44d2a43e4143d9cb78c5918c9a8f5381bc8dc946aca1534aeafe"
+  },
+  "marker_blueprints": {
+    "actor": {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+      "generated_class": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C",
+      "parent": "/Script/Engine.Actor"
+    },
+    "save_game": {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+      "generated_class": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.BP_MarkerData_C",
+      "parent": "/Script/Engine.SaveGame"
+    }
+  },
+  "map_readback": {
+    "world": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof",
+    "actors": [
+      {
+        "name": "AbstractNavData-Default",
+        "class_path": "/Script/NavigationSystem.AbstractNavData",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.AbstractNavData-Default",
+        "label": "AbstractNavData-Default",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "BP_RuntimeProof_C_0",
+        "class_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.BP_RuntimeProof_C_0",
+        "label": "CubelessActorRuntimeMarker",
+        "location": [
+          500.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Brush_0",
+        "class_path": "/Script/Engine.Brush",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Brush_0",
+        "label": "Brush0",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "ChaosDebugDrawActor",
+        "class_path": "/Script/Engine.Actor",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.ChaosDebugDrawActor",
+        "label": "Actor",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_Alias_0763b341",
+        "class_path": "/Script/Engine.PointLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_Alias_0763b341",
+        "label": "PointLight",
+        "location": [
+          40.0,
+          50.0,
+          60.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_DirectionalLight_0763b341",
+        "class_path": "/Script/Engine.DirectionalLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_DirectionalLight_0763b341",
+        "label": "DirectionalLight",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_PointLight_0763b341",
+        "class_path": "/Script/Engine.PointLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_PointLight_0763b341",
+        "label": "PointLight",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_SpotLight_0763b341",
+        "class_path": "/Script/Engine.SpotLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_SpotLight_0763b341",
+        "label": "SpotLight",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_StaticMeshActor_0763b341",
+        "class_path": "/Script/Engine.StaticMeshActor",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_StaticMeshActor_0763b341",
+        "label": "DisplayOnly_0763b341",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "DefaultPhysicsVolume_0",
+        "class_path": "/Script/Engine.DefaultPhysicsVolume",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.DefaultPhysicsVolume_0",
+        "label": "DefaultPhysicsVolume0",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "GameplayDebuggerPlayerManager_0",
+        "class_path": "/Script/GameplayDebugger.GameplayDebuggerPlayerManager",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.GameplayDebuggerPlayerManager_0",
+        "label": "GameplayDebuggerPlayerManager0",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "WorldSettings",
+        "class_path": "/Script/Engine.WorldSettings",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.WorldSettings",
+        "label": "WorldSettings",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    ],
+    "verified_actors": [
+      {
+        "name": "BP_RuntimeProof_C_0",
+        "class_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.BP_RuntimeProof_C_0",
+        "label": "CubelessActorRuntimeMarker",
+        "location": [
+          500.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_Alias_0763b341",
+        "class_path": "/Script/Engine.PointLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_Alias_0763b341",
+        "label": "PointLight",
+        "location": [
+          40.0,
+          50.0,
+          60.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_DirectionalLight_0763b341",
+        "class_path": "/Script/Engine.DirectionalLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_DirectionalLight_0763b341",
+        "label": "DirectionalLight",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_PointLight_0763b341",
+        "class_path": "/Script/Engine.PointLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_PointLight_0763b341",
+        "label": "PointLight",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_SpotLight_0763b341",
+        "class_path": "/Script/Engine.SpotLight",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_SpotLight_0763b341",
+        "label": "SpotLight",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "Cubeless_StaticMeshActor_0763b341",
+        "class_path": "/Script/Engine.StaticMeshActor",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_StaticMeshActor_0763b341",
+        "label": "DisplayOnly_0763b341",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      {
+        "name": "WorldSettings",
+        "class_path": "/Script/Engine.WorldSettings",
+        "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.WorldSettings",
+        "label": "WorldSettings",
+        "location": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    ],
+    "deleted_camera_absent": true,
+    "rendering_lighting_verified": false
+  },
+  "expected_saved_actors": [
+    {
+      "name": "BP_RuntimeProof_C_0",
+      "class_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.BP_RuntimeProof_C_0",
+      "label": "CubelessActorRuntimeMarker",
+      "location": [
+        500.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Cubeless_Alias_0763b341",
+      "class_path": "/Script/Engine.PointLight",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_Alias_0763b341",
+      "label": "PointLight",
+      "location": [
+        40.0,
+        50.0,
+        60.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Cubeless_DirectionalLight_0763b341",
+      "class_path": "/Script/Engine.DirectionalLight",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_DirectionalLight_0763b341",
+      "label": "DirectionalLight",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Cubeless_PointLight_0763b341",
+      "class_path": "/Script/Engine.PointLight",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_PointLight_0763b341",
+      "label": "PointLight",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Cubeless_SpotLight_0763b341",
+      "class_path": "/Script/Engine.SpotLight",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_SpotLight_0763b341",
+      "label": "SpotLight",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Cubeless_StaticMeshActor_0763b341",
+      "class_path": "/Script/Engine.StaticMeshActor",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.Cubeless_StaticMeshActor_0763b341",
+      "label": "DisplayOnly_0763b341",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "name": "WorldSettings",
+      "class_path": "/Script/Engine.WorldSettings",
+      "actor_path": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof.Map_ActorRuntimeProof:PersistentLevel.WorldSettings",
+      "label": "WorldSettings",
+      "location": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "dirty_after_readback": [],
+  "dependency_audit": {
+    "scope": "AssetRegistry disk package references and currently available management references",
+    "root_packages": [
+      "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof"
+    ],
+    "max_packages": 2048,
+    "max_depth": 64,
+    "max_edges": 16384,
+    "packages": [
+      {
+        "package": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof",
+        "depth": 0,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58ActorRuntimeProof\\Content\\CubelessMCPTests\\ActorRuntime_c5f44294924240bf8e053f722eef60f4\\Map_ActorRuntimeProof.umap",
+        "sha256": "ec45f8bf2376a9711f70be6aef1353faf19eb11b174cb1aede7da4efa95ab5af",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Engine/EngineMaterials/WorldGridMaterial",
+        "depth": 1,
+        "file": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Content\\EngineMaterials\\WorldGridMaterial.uasset",
+        "sha256": "a11b00e3ac0f981bb4f988915f2dcab17b2ac62a15be502e8c04606fff8ad20e",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "depth": 1,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58ActorRuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_RuntimeProof.uasset",
+        "sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+        "registry_asset_count": 2
+      },
+      {
+        "package": "/Engine/EditorResources/LightIcons/S_LightError",
+        "depth": 1,
+        "file": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Content\\EditorResources\\LightIcons\\S_LightError.uasset",
+        "sha256": "3245467f0dd165f4ea0bb60660f848ad830f9b14239cb3544fee05be680358e6",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Engine/EngineMaterials/T_Default_Material_Grid_M",
+        "depth": 2,
+        "file": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Content\\EngineMaterials\\T_Default_Material_Grid_M.uasset",
+        "sha256": "36d0dfd022425117ea951fff26c2c7914d9cc6a20e8df4d8eb85cbcd657e40bb",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Engine/EngineMaterials/T_Default_Material_Grid_N",
+        "depth": 2,
+        "file": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Content\\EngineMaterials\\T_Default_Material_Grid_N.uasset",
+        "sha256": "52398fc100bf9e377c6e5f94a921f004f6c98a2a0fad30dfc9a7cb1940d03fbb",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade",
+        "depth": 2,
+        "file": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Content\\Functions\\Engine_MaterialFunctions01\\Opacity\\CameraDepthFade.uasset",
+        "sha256": "f520819ca5ab664be49159373e92d616cb796692d5fa8e92f7980d8ca2011c67",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "depth": 2,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58ActorRuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_MarkerData.uasset",
+        "sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+        "registry_asset_count": 2
+      }
+    ],
+    "edges": [
+      {
+        "from": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof",
+        "to": "/Engine/EngineMaterials/WorldGridMaterial",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof",
+        "to": "/Script/NavigationSystem",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/ActorRuntime_c5f44294924240bf8e053f722eef60f4/Map_ActorRuntimeProof",
+        "to": "/Engine/EditorResources/LightIcons/S_LightError",
+        "category": "soft_package"
+      },
+      {
+        "from": "/Engine/EngineMaterials/WorldGridMaterial",
+        "to": "/Engine/EngineMaterials/T_Default_Material_Grid_M",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Engine/EngineMaterials/WorldGridMaterial",
+        "to": "/Engine/EngineMaterials/T_Default_Material_Grid_N",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Engine/EngineMaterials/WorldGridMaterial",
+        "to": "/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "category": "hard_package"
+      }
+    ],
+    "native_script_terminals": [
+      "/Script/NavigationSystem"
+    ],
+    "forbidden_references": [],
+    "query_none_observations": [],
+    "complete": true,
+    "query_options": {
+      "hard_package": {
+        "include_hard_package_references": true,
+        "include_soft_package_references": false,
+        "include_hard_management_references": false,
+        "include_soft_management_references": false,
+        "include_game_package_references": false,
+        "include_editor_only_package_references": false,
+        "include_searchable_names": false
+      },
+      "soft_package": {
+        "include_hard_package_references": false,
+        "include_soft_package_references": true,
+        "include_hard_management_references": false,
+        "include_soft_management_references": false,
+        "include_game_package_references": false,
+        "include_editor_only_package_references": false,
+        "include_searchable_names": false
+      },
+      "hard_management": {
+        "include_hard_package_references": false,
+        "include_soft_package_references": false,
+        "include_hard_management_references": true,
+        "include_soft_management_references": false,
+        "include_game_package_references": false,
+        "include_editor_only_package_references": false,
+        "include_searchable_names": false
+      },
+      "soft_management": {
+        "include_hard_package_references": false,
+        "include_soft_package_references": false,
+        "include_hard_management_references": false,
+        "include_soft_management_references": true,
+        "include_game_package_references": false,
+        "include_editor_only_package_references": false,
+        "include_searchable_names": false
+      }
+    },
+    "limitations": [
+      "Native /Script packages are terminals; native module binary dependencies are not traversed.",
+      "Searchable-name references and dynamic string-based loads are outside this audit.",
+      "AssetManager management rules are not generated or refreshed; management queries describe only the current registry.",
+      "Editor-only package references are included. This is not a cooked package or Shipping executable audit.",
+      "None from a category query can mean no registry entry/dependencies; these observations are retained."
+    ],
+    "visited_count": 9,
+    "passed_within_declared_scope": true
+  },
+  "error": "Engine class reference evidence missing",
+  "traceback": "Traceback (most recent call last):\n  File \"C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/tools/verification/validate_actor_runtime_fixture.py\", line 55, in main\n    report[\"required_dependencies\"]=check_dependencies(manifest,report[\"dependency_audit\"])\n                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/tools/verification/validate_actor_runtime_fixture.py\", line 26, in check_dependencies\n    require(\"/Script/Engine\" in audit[\"native_script_terminals\"],\"Engine class reference evidence missing\")\n  File \"C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\current_runtime_manifest.py\", line 25, in require\n    if not condition: raise RuntimeError(message)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nRuntimeError: Engine class reference evidence missing\n",
+  "preservation": {
+    "files": [
+      {
+        "package": "/Game/CubelessMCPTests/Actors_0763b341767c49b299cfcd3d26ab35c6/Map_Actors",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      }
+    ],
+    "passed": true
+  },
+  "new_map_unchanged": true,
+  "finished_ns": 1791630562809708400
+}

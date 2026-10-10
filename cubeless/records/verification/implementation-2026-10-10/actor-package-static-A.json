@@ -1,0 +1,69 @@
+{
+  "schema": "cubeless_package_independence_v2",
+  "stage": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\ActorRuntimeShipping-20261010-A\\Windows",
+  "scope": "static_staged_files_receipts_and_direct_pak_listings_with_optional_fixture_log",
+  "violations": [],
+  "incomplete_reasons": [],
+  "runtime": {
+    "status": "not_run"
+  },
+  "limitations": [
+    "Does not parse serialized UObject references or execute/cook/build a game.",
+    "Clean filenames, receipts and mounted entry names are not a complete dependency proof.",
+    "IoStore content inspection is not implemented."
+  ],
+  "file_count": 23,
+  "inventory_sha256": "68f108eded8a96e47fb79ee84dad07d64964d5543ea7dc0ce8e2f6c3b55b3d43",
+  "containers": [
+    "CubelessActorRuntimeProof/Content/Paks/CubelessActorRuntimeProof-Windows.pak"
+  ],
+  "receipts": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58ActorRuntimeProof\\Binaries\\Win64\\CubelessActorRuntimeProof-Win64-Shipping.target",
+      "sha256": "95535eafdade4f7326cbeb60dd80e50318093b0d52418815824b14130d2a9475",
+      "inactive_plugin_references": [],
+      "TargetName": "CubelessActorRuntimeProof",
+      "TargetType": "Game",
+      "Platform": "Win64",
+      "Configuration": "Shipping",
+      "staged_executable_name_matches": [
+        "$(ProjectDir)/Binaries/Win64/CubelessActorRuntimeProof-Win64-Shipping.exe"
+      ]
+    }
+  ],
+  "receipt_binding_scope": "target_type_platform_and_staged_executable_basename; not a cryptographic build-to-receipt binding",
+  "pak_listings": [
+    {
+      "pak": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\ActorRuntimeShipping-20261010-A\\Windows\\CubelessActorRuntimeProof\\Content\\Paks\\CubelessActorRuntimeProof-Windows.pak",
+      "status": "pass",
+      "pak_sha256_before": "9aec4f8d571ae8bd4c9faa38b4a8627357e2aaedd9601f2643dd4327ef719861",
+      "command": [
+        "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealPak.exe",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\ActorRuntimeShipping-20261010-A\\Windows\\CubelessActorRuntimeProof\\Content\\Paks\\CubelessActorRuntimeProof-Windows.pak",
+        "-List",
+        "-UTF8Output"
+      ],
+      "listing": "cubeless\\records\\verification\\implementation-2026-10-10\\actor-package-static-A-pak-listings\\0-CubelessActorRuntimeProof-Windows-9aec4f8d571a.log",
+      "exit_code": 0,
+      "listing_sha256": "fa4b1f2c0d61012987b4e9cf2030625d2f10402a8a9d9271add3b79d3d101dd7",
+      "pak_sha256_after": "9aec4f8d571ae8bd4c9faa38b4a8627357e2aaedd9601f2643dd4327ef719861",
+      "recognized_entries": 1780,
+      "reported_entry_totals": [
+        1780
+      ]
+    }
+  ],
+  "unrealpak": {
+    "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealPak.exe",
+    "sha256": "cb72a5001f62938d1961124f43aae7613c48cd6c6ba3fc49dce1feb791fb2ed8"
+  },
+  "pak_coverage": {
+    "expected": 1,
+    "direct_listing_records": 1,
+    "complete_listings": 1
+  },
+  "static_status": "pass",
+  "status": "static_pass",
+  "packaging_independence_proven": false,
+  "full_migration_complete": false
+}

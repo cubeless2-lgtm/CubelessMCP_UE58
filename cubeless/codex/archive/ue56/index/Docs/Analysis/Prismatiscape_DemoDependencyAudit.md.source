@@ -1,0 +1,149 @@
+# Prismatiscape Demo Dependency Audit
+
+작성일: 2026-06-26
+
+목적: `/Game/PrismatiscapeStudy` clean material/map에는 demo texture 직접 의존성이 없는데도 staged build에 plugin demo entries가 남는 원인을 분리한다.
+
+## 결론
+
+demo dependency는 세 갈래다.
+
+| 경로 | 원인 | 판정 |
+| --- | --- | --- |
+| `Prismatiscape_CloudNoise` | `/Prismatiscape/Prismatiscape_NiagaraGridDrawer` 직접 dependency | Manager/Niagara 대체 전까지 남음 |
+| `YeetoMosquito` | 학습용 project material 복제본 또는 character BP의 plugin example character material | clean/segment map에는 직접 의존 없음 |
+| `ExampleCharacter` | `BP_PrisStudy_CharacterDeformProxy`의 skeletal mesh override | character deform 학습 후보에서만 허용 |
+
+`/Prismatiscape/Demo` 전체를 `NeverCookDir`로 막는 것은 아직 안전하지 않다. Manager BP가 의존하는 `Prismatiscape_NiagaraGridDrawer`가 `Prismatiscape_CloudNoise`를 사용하기 때문이다.
+
+## AssetRegistry Evidence
+
+`/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Clean`:
+
+```text
+/Prismatiscape/RenderTargets/Prismatiscape_Deform_RT
+/Prismatiscape/RenderTargets/Prismatiscape_Wind_RT
+```
+
+`/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Clean`:
+
+```text
+/Prismatiscape/RenderTargets/Prismatiscape_InteractionBubble_RT
+/Prismatiscape/RenderTargets/Prismatiscape_Wind_RT
+```
+
+`/Game/PrismatiscapeStudy/Maps/M_PrisStudy_CleanMaterialVerification`:
+
+```text
+/Engine/BasicShapes/BasicShapeMaterial
+/Engine/BasicShapes/Cube
+/Engine/BasicShapes/Plane
+/Engine/EditorResources/LightIcons/S_LightError
+/Game/PrismatiscapeStudy/BP/BP_PrisStudy_BushPushBall
+/Game/PrismatiscapeStudy/BP/BP_PrisStudy_InteractionDeformBall
+/Game/PrismatiscapeStudy/BP/BP_PrisStudy_WindBall
+/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Clean
+/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Clean
+/Script/MCPGameProject
+/Script/NavigationSystem
+/Script/Prismatiscape
+```
+
+Forbidden refs in the clean material/map dependency list:
+
+```text
+none
+```
+
+## CloudNoise Chain
+
+`/Prismatiscape/Demo/ExampleMaterials/Textures/Prismatiscape_CloudNoise` has many plugin demo material referencers, but the runtime-relevant chain for the clean/segment/character verification maps is:
+
+```text
+/Prismatiscape/Prismatiscape_Manager_BP
+-> /Prismatiscape/Prismatiscape_NiagaraGridDrawer
+-> /Prismatiscape/Demo/ExampleMaterials/Textures/Prismatiscape_CloudNoise
+```
+
+AssetRegistry dependency evidence:
+
+| Asset | Relevant dependencies |
+| --- | --- |
+| `/Prismatiscape/Prismatiscape_Manager_BP` | `/Prismatiscape/Prismatiscape_NiagaraGridDrawer`, render targets, simulation profiles |
+| `/Prismatiscape/Prismatiscape_NiagaraGridDrawer` | `/Prismatiscape/Demo/ExampleMaterials/Textures/Prismatiscape_CloudNoise`, render targets, Niagara modules |
+
+Manager spawn path:
+
+```text
+UPrismatiscapeSettings::UPrismatiscapeSettings()
+  -> PrismatiscapeManagerClass = /Prismatiscape/Prismatiscape_Manager_BP_C
+UPrismatiscapeWorldSubsystem::OnWorldBeginPlay()
+  -> SpawnManager()
+```
+
+## Yeeto Chain
+
+`YeetoMosquito` is not a dependency of the clean project materials. Known project-side referencers are:
+
+```text
+/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Project
+/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Project
+```
+
+Those two materials are kept as learning copies, not production candidates.
+
+Character deform staged builds also include:
+
+```text
+/Prismatiscape/Demo/ExampleCharacter/Example_CharacterMaterial
+-> /Prismatiscape/Demo/ExampleMaterials/Textures/YeetoMosquito
+```
+
+This is expected for the current `CharacterDeform` pass because the BP child intentionally overrides its skeletal mesh with the plugin demo character. The native parent no longer hard-loads that mesh, so clean and segment maps do not inherit this dependency through the C++ class CDO.
+
+## Hard-load Removal Result
+
+`APrismatiscapeStudyCharacterDeformProxy` now creates only the `USkeletalMeshComponent` and `UPrismatiscapeDeformComponentCharacter`. Its native CDO has no default skeletal mesh. The sample mesh is stored on:
+
+```text
+/Game/PrismatiscapeStudy/BP/BP_PrisStudy_CharacterDeformProxy
+```
+
+Latest staged manifest checks:
+
+| Target map | ExampleCharacter | YeetoMosquito | CloudNoise | Plugin Demo entries | Smoke |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `M_PrisStudy_CleanMaterialVerification` | `0` | `0` | `3` | `3` | exit `0` |
+| `M_PrisStudy_SegmentDeformVerification` | `0` | `0` | `3` | `3` | exit `0` |
+| `M_PrisStudy_CharacterDeformVerification` | `8` | `2` | `3` | `13` | exit `0` |
+
+## Script Update
+
+`scripts/cook_prismatiscape_clean_map.ps1` now reports these stage manifest buckets separately:
+
+| Bucket | Meaning |
+| --- | --- |
+| `Prismatiscape Manager BP` | plugin manager BP entry count |
+| `Prismatiscape NiagaraGridDrawer` | Niagara system entry count |
+| `Prismatiscape SimulationProfiles` | simulation/style profile entries |
+| `Prismatiscape DefaultStyleProfiles` | default style profile entries |
+| `Prismatiscape ExampleCharacter` | demo character mesh/material entries |
+| `Prismatiscape ExampleMaterials` | demo example material entries |
+| `Prismatiscape ExampleMaterial textures` | demo texture entries |
+| `Prismatiscape CloudNoise` | exact CloudNoise file count |
+| `Prismatiscape YeetoMosquito` | exact Yeeto file count |
+
+## Next Safe Cut
+
+이에타 판단:
+
+1. plugin content mutation은 보류한다.
+2. project-owned Manager/Niagara replacement는 큰 작업이다. Manager BP의 `PostTick`, `SetInitialParams`, RT location calculation, Niagara array bindings, MPC updates를 모두 대체해야 한다.
+3. 최소 안전 패스는 완료됐다. clean/segment map은 `ExampleCharacter=0`, `YeetoMosquito=0`으로 내려갔고, character map만 학습용 demo character dependency를 유지한다. 다음 큰 변경은 Manager/Niagara 대체 범위를 separate implementation plan으로 확정하는 것이다.
+4. config override와 `/Prismatiscape/Demo` NeverCook 실험은 `Docs/Analysis/Prismatiscape_ManagerReplacementGate.md`에 따로 기록했다. native Manager 단독은 RT가 모두 `0`이고, `/Prismatiscape/Demo` NeverCook는 `Prismatiscape_NiagaraGridDrawer -> Prismatiscape_CloudNoise` 참조 때문에 cook error가 난다.
+
+티브렛 판단:
+
+1. C++ component/BP 학습 루트는 이미 안정화됐다.
+2. demo texture 제거는 component/BP 문제가 아니라 Manager/Niagara asset 문제다.
+3. runtime packaging gate에서는 `DemoMap=0`, `_MCP_Temp=0`, clean project material direct demo dependency `0`을 계속 기준으로 삼고, `CloudNoise`는 Manager replacement 전까지 known dependency로 기록한다.

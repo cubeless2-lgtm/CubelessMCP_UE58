@@ -1,0 +1,110 @@
+# CubeFluidNinjaLive 해상도 분리 계약
+
+2026-09-06. 원본 저장 자산과 frozen JSON은 읽기 전용. 이 절은 정적 연결 분석이며
+원본 런타임 크기, 최종 레벨 동등성, 통합 솔버 완료를 입증하지 않는다.
+
+## 계산 Grid와 출력 버퍼를 구분해야 한다
+
+`NinjaInitGrids`의 다섯 `SetNumCells` 호출을 Grid 입력부터 해상도 입력까지
+역추적했다. Reroute를 제거한 의미상 수식은 다음과 같다.
+
+| 대상 | X/Y 크기 |
+| --- | --- |
+| AdvectionGrid | NumCellsX / NumCellsY |
+| CompositeGrid | NumCellsX / NumCellsY |
+| PressureGrid | NumCellsX / NumCellsY |
+| PainterGrid | 각 축 NumCells ÷ PaintGridResolutionDownScaleFactor |
+| FieldCaptureGrid | 각 축 NumCells ÷ FieldCaptureResolutionDownScaleFactor |
+
+여기서 표 첫 세 행의 `/`는 X와 Y 구분이며 나눗셈이 아니다.
+원본 내부 정수 나눗셈의 0/비정상 입력 및 실제 DI 크기 보정은 아직 검증하지 않았다.
+
+`NinjaLiveCore` PainterAndSim 호출부의 `User.Pressure.BufferDownScaleFactor`는
+두 입력으로 이어진다.
+
+- `AssignBuffersToRenderTargets.RT_PressureResolutionDownScaleFactor`
+- `ReadCachedSimData.PressureBufferDownscaleFactor`
+
+따라서 기본값 2만 보고 압력 **계산 Grid**를 절반으로 낮추면 안 된다.
+기존 CFNLMultiGridV001의 64→32→64 검증은 DI 간 전송 기능의 증거로 유지하지만,
+이를 원본 압력 솔버 해상도 정책이나 전체 통합 완료로 간주하지 않는다.
+
+Painter 다운스케일 호출에는 엔진 `MakeCustomIntFromBool`이 연결된다.
+Bool은 `Emitter.FluidNinja.SimplePainterMode`, False INT는
+`User.Painter.PaintBufferDownScaleFactor`에서 온다. True INT의 유효 기본값은
+이번 검사 범위에서 확정하지 않았다. FieldCapture는
+`User.FieldBufferDownScaleFactor`가 연결된다.
+
+## 차분 간격
+
+`SimStep`은 상수 1을 `float2(Module.NumCellsX, Module.NumCellsY)`로 나누어
+`Emitter.GridCellSizeInUnitSpace`에 쓴다. 따라서 Painter 또는 출력 RT의
+해상도로 차분 간격을 대체할 근거가 없다. Core 호출부 SimStep.NumCellsX/Y는
+Emitter.FluidNinja.NumCellsX/Y에 연결되어 있다.
+
+주의: 오래된 `ninja_live_core_analysis.tmp.json`은 node_count 779이나 links를
+포함하지 않는다. 호출부 분석에는 links 1404개가 있는
+`reference/niagara/NinjaLiveCore.json`을 사용했다. rapid-iteration 값 0 또는
+unresolved_default를 실제 GPU 해상도 0의 증거로 해석하지 않는다.
+
+## 재현 가능한 검사
+
+`Python/scripts/analysis/analyze_cube_fluid_ninja_grid_resolution.py`는 로컬 frozen
+JSON 세 개만 읽고 의미상 수식과 입력 SHA-256을 stdout에 출력한다.
+원본 그래프/HLSL을 새 자산에 내보내거나 복제하지 않으며 에디터에 접속하지 않는다.
+누락 링크, 다중 입력, 순환, 지원하지 않는 연산은 오류로 중단한다.
+
+입력 SHA-256:
+
+- NinjaInitGrids: `92f58e721be3b7400fb7ed7b23c502af9d43dcc2c3ed56857e7cf006205269d5`
+- SimStep: `4ba9d267d359beef85d18bb04d75904727d960bc7396e95acccef47dc2e44715`
+- NinjaLiveCore: `49e4b4a326ad7bc87c788b9ddadf1118ced917e37b2d0069af09e4163d2ccc3b`
+
+직접 단위 검사 4개 PASS: 원본 해상도 계약, 누락 링크 거절, 다중 입력 거절,
+순환 거절. transport checkpoint에 포함하여 후속 검사에서도 유지한다.
+
+## 남은 구현 순서
+
+1. 초기화 실행/자동 바인딩과 SimplePainter true 분기 유효값 확인.
+2. Painter·FieldCapture의 독립 Grid를 계산 해상도와 분리해 연결.
+3. 압력 계산과 별개로 출력 RT 축소/캐시 재입력 구현 및 GPU 검증.
+4. 전체 runtime host와 레벨 연결, 기술 검증 후 사용자 시각 검수.
+
+이번에는 자산·프로젝트 C++·원본 변경 없음. 영구 ledger 22, 최종 동등성 승인
+레벨 0/59 유지. 이 문서를 기존 임시 기반 테스트보다 큰 완료 주장에 사용하지 않는다.
+
+최종 오프라인 체크포인트 `grid_resolution_checkpoint_v001`: 입력 2885개 전후
+변화 0, 직접 단위 검사 합계 29개 PASS, full profile 42/42 PASS. 결과는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/grid_resolution_checkpoint_v001/report.json`.
+이후 변경은 본 결과 문구와 handoff뿐이다. 에디터/GPU 테스트는 이번에 실행하지 않았다.
+
+## 후속 구현 — SimplePainter 분기와 독립 해상도 구성
+
+동일 frozen Core의 `MakeCustomIntFromBool` resolved stack input을 추가 검사했다.
+`Module.True INT`는 rapid_iteration, has_value=true, value=1이다. Bool/False INT
+링크도 자동 검사한다. 따라서 정적 설정상 SimplePainter=true이면 Painter 배율1,
+false이면 User.Painter.PaintBufferDownScaleFactor이다. 위 미확정 항목 중 True INT
+설정값만 해결했다. 런타임 초기화/resize는 여전히 미검증이다.
+
+새 `Python/scripts/analysis/cube_fluid_ninja_grid_layout.py`는 참조 그래프를 복사하지
+않는 순수 구성 코드다. 직사각형 크기와 별도 Painter/Field/압력출력 배율을 받아
+다섯 개 독립 엔진 Grid DI의 parameter/class/properties를 만든다. PressureOutput은
+RT 크기 계약으로만 반환하며 여섯 번째 계산 Grid를 만들지 않는다. 차분 간격은
+기본 계산 크기의 역수다. 이 코드는 아직 live builder나 런타임 host에 연결하지 않았다.
+
+저작 후보 입력은 양의 int 및 나누어떨어지는 크기로 제한한다. bool을 int로 받지
+않고 0/음수/비유한수/소수/과대배율과 비정수 비율을 거절한다. 이는 불명확한
+엔진 보정을 추정하지 않기 위한 **우리의 저작 입력 제한**이지 원본 기능의 제한이 아니다.
+SimplePainter=true에서는 유효한 양수 painter 배율의 나누어떨어짐은 요구하지 않는다.
+
+UE5.6 로컬 `NiagaraDataInterfaceGrid2DCollection.cpp`의 VMSetNumCells 및 후속
+재할당 조건을 읽었다. setter 호출과 양수 크기 재할당은 별개이므로 captured NumCells=0을
+자동 바인딩 성공이나 GPU 크기0 증거로 사용하지 않는다. 엔진/프로젝트 C++ 수정 없음.
+
+직접 unit9 PASS(기존4 + 구성5). 이 후속 코드 변경으로 앞선 full42 결과를 새 코드의
+최종 승격 근거로 재사용할 수 없다. 현재는 미통합 구현 반복 단계이며 새 live/GPU
+검증 및 최종 동결 full은 통합 후보에서 수행해야 한다.
+
+후속 focused dispatcher `--profile niagara` PASS(exit0), 실행 증거 디렉터리
+`MCPGameProject/Saved/MCP/NiagaraReviews/niagara_authoring_offline_gates_20260906_182739`.
+오류 응답 거절 로그는 negative contract fixture이며 live 저작 실패가 아니다.

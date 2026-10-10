@@ -1,0 +1,104 @@
+# 레벨 카드: `_StartingGuide`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/_Starter/_StartingGuide` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_StartingGuide` |
+| 문서 계층 | `_starter` |
+| 상태 | `target-authored; technical-checks-recorded; user-visual-parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `11` |
+| Direct external | `4` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+네이티브 manifest에서 47개 TextRenderActor와 10개 StaticMeshActor로
+이루어진 순수 안내 gallery로 관찰됐다. solver host, Niagara actor,
+캐릭터는 없다. 따라서 기능 학습은 Tutorial01부터 시작하고,
+이 레벨의 target은 안내 문구·배치·화면 구도 동등성에 집중한다.
+
+- **Observed:** 안내 text/logo/background actor와 material/mesh binding.
+- **Inferred:** simulation 구현이 아니라 6개 tutorial로 이동시키는
+  navigation shell.
+- **Unknown:** canonical camera와 문구별 화면 parity.
+- **Target fixture:** `TF_StartingGuide_Navigation`; solver 책임은 두지 않는다.
+
+## Actor
+
+| Class | 수 |
+| --- | ---: |
+| `TextRenderActor` | 47 |
+| `StaticMeshActor` | 10 |
+| level-script actor | 1 |
+| `Brush` | 1 |
+| `PostProcessVolume` | 1 |
+
+합계 60 actor, 106 component다. actor/component/property truncation은 0이다.
+level-script actor의 정확한 class는 `_StartingGuide_C`다.
+
+## Runtime
+
+- Level BP는 EventGraph 1개, 연결되지 않은 BeginPlay/Tick 2 nodes,
+  variable 0이다.
+- `pending` — camera/navigation replay와 화면 동등성. simulation
+  runtime 책임은 이 레벨에 없다.
+
+## Niagara
+
+- actor manifest에 Niagara actor/component가 없다. 이 레벨에는 시뮬레이션
+  재구현 책임을 배정하지 않는다.
+- solver host count=0이며 preset/output/core/system/instance override는
+  모두 N/A다.
+
+## Material
+
+- TextRender actor는 `M_TextMaterialEmissive`를 사용한다.
+- logo meshes는 `SM_NinjaLogo_LIVE2`, `SM_NinjaLogo_N`,
+  `SM_NinjaLogo_TEXT2`; material은
+  `MI_SolidColorRedLogo_Gradient0/1/2`,
+  `MI_SolidColorWhiteLogo`, `MI_SolidColorDarkGrayLogo`다.
+- background는 `SM_geosphere01` +
+  `MI_FluidNinjaLiveBaseGray4`다. 이 binding은 **Observed**이며
+  target visual parity는 `pending`이다.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+2026-09-06: 새 target map 생성. 구현·변경점·검증 증거의 최신 기준은
+`Docs/Analysis/CubeFluidNinjaLive_StartingGuide.md`다. 표시 actor 58개, 재질7개 추가,
+382개 property 대조와 plugin-disabled load를 확인했다. 아래 pending 항목은 초기
+계획 기록이며, 최종 시각 판정은 여전히 사용자 담당이다.
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- `reference/levels/_Starter___StartingGuide.json`.
+- capture complete, 6 pages, 60 actors, 106 components, truncation 0.
+- revision `7a4d7da9fb0cdd0a948bfdf398ee380f`.
+- query `dbe118d962f805ea0f2e882742c27311`.
+- source package dirty false; source tree hash 1,796/1,796 일치.
+- `reference/level_blueprints/Levels___Starter___StartingGuide/**`:
+  2 nodes, 0 variables, capture error/truncation 0.
+- `concepts/starter-core-level-observation.md`의 13/13 ledger.
+- `pending`: canonical camera screenshot, 텍스트 문구별 target mapping,
+  target 구현과 Source/Target 화면 비교.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

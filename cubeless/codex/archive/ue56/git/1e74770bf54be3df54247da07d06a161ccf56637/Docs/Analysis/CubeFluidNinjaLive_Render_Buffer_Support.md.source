@@ -1,0 +1,153 @@
+# CubeFluidNinjaLive Render Buffer 지원 자산 클린룸 재구현
+
+## 결과
+
+`NinjaLiveComponent`의 직접 선행 자산 두 개를 원본 package 복제 없이 새로 저작했다.
+
+| 역할 | 원본(읽기 전용) | 새 target | 결과 |
+| --- | --- | --- | --- |
+| packed buffer 저장 Material | `/Game/FluidNinjaLive/Core/Assets/M_RenderBufferSaver` | `/Game/Study/CubeFluidNinjaLive/Materials/Core/M_CFNL_RenderBufferSaver` | hot/cold/plugin-disabled PASS |
+| black RT sentinel | `/Game/FluidNinjaLive/Core/Assets/RT_Black` | `/Game/Study/CubeFluidNinjaLive/RenderTargets/RT_CFNL_Black` | hot/cold/plugin-disabled PASS |
+
+완성 자산은 각각 `/Script/Engine.Material`과
+`/Script/Engine.TextureRenderTarget2D`이며 UnrealMCP class/module을 직렬화하지 않는다.
+
+## 동결한 원본 증거
+
+저작 payload는 원본 자산을 로드하지 않았다. 아래 읽기 전용 캡처와 원본 `.uasset`
+identity만 오프라인에서 먼저 검증했다.
+
+| 증거 | bytes | SHA-256 |
+| --- | ---: | --- |
+| `reference/materials/Core__Assets__M_RenderBufferSaver/analysis.json` | 15,629 | `65fb25b74abb2aeb59326b5a2bde3ce8c8e054b8010c26119f4b79b957bfa0aa` |
+| `reference/materials/Core__Assets__M_RenderBufferSaver/nodes.json` | 50,669 | `b4ee8ec78d4afb3a48367264cc3723cb78ef1c72a80d0ed6872fe869649de481` |
+| `reference/materials/Core__Assets__M_RenderBufferSaver/inspection/000000.json` | 285,727 | `7311968cf03d09c92f3f41f2962882c9ff72784538011f97cdbabd55c97a61db` |
+| `reference/support/Core__Assets__RT_Black/reference_inspection.json` | 74,605 | `5fc910c207dbed6a89ef27f193c16d0ecc96cb6a6440ff68eafdb3633fe82efc` |
+| source `M_RenderBufferSaver.uasset` | 20,173 | `a29a2419f681935ca08557e7e991cfd7f2d4efc123e969f68344f9234899eef6` |
+| source `RT_Black.uasset` | 4,347 | `83d1b5c7dc2d1b6881eeb5670d16a0c344e2fd46096bc750f8a24e1c08352166` |
+
+최종 검수 뒤에도 두 source `.uasset`의 bytes와 SHA-256은 위 값과 같았다.
+
+## Material 구현 원리
+
+원본은 Post Process/Unlit/Opaque Material이다. 입력 `Texture`의 signed 채널을
+저장 가능한 `[0,1]` 범위로 옮기되 blue 채널은 그대로 통과시킨다.
+
+```text
+encoded.rg = (Texture.rg + 1) * 0.5
+encoded.b  = Texture.b
+opacity    = (Texture.a + 1) * 0.5
+Emissive   = append(encoded.rg, encoded.b)
+Opacity    = opacity
+```
+
+새 graph는 engine-native expression 10개로 직접 구성했다.
+
+| expression class | 개수 | 책임 |
+| --- | ---: | --- |
+| `MaterialExpressionTextureSampleParameter2D` | 1 | public `Texture` 입력; Engine DefaultTexture |
+| `MaterialExpressionAdd` | 2 | RG와 A에 `+1` |
+| `MaterialExpressionMultiply` | 2 | RG와 A에 `×0.5` |
+| `MaterialExpressionComponentMask` | 3 | RG, B, A 분리 |
+| `MaterialExpressionReroute` | 1 | B passthrough 정리 |
+| `MaterialExpressionAppendVector` | 1 | encoded RG와 B 결합 |
+
+내부 연결 10개와 Material root 연결 2개를 저장 전과 저장 후에 모두 검사했다.
+원본 node GUID, 화면 위치, package object, graph object를 가져오지 않았고 새 target
+expression이 새 GUID를 소유한다. 화면 배치는 가독성을 위한 새 배치이며 동등성 판정은
+수식, parameter surface, expression class multiset, 연결 topology, root output으로 했다.
+
+## RT 구현 원리
+
+`RT_CFNL_Black`은 출력/초기화 경로에서 사용하는 black sentinel이다.
+
+| 설정 | exact 값 |
+| --- | --- |
+| 크기 | `256 × 256` |
+| RenderTargetFormat | `RTF_RGBA16f` |
+| pixel format | `PF_FloatRGBA` (`10`) |
+| ClearColor | `(0,0,0,1)` |
+| Address X/Y | `TA_Wrap` |
+| ForceLinearGamma | `true` |
+| SupportsUAV / AutoGenerateMips | `false / false` |
+| Filter | `TF_Default` |
+| LODGroup | `TEXTUREGROUP_RenderTarget` |
+| Mips Address U/V | `TA_Clamp / TA_Clamp` |
+| MipsSamplerFilter | `TF_Default` |
+| SRGB / NeverStream / TargetGamma | `true / true / 0` |
+
+UE 5.6 Python은 `bForceLinearGamma`를 편집 프로퍼티로 노출하지 않는다. 엔진 5.6의
+`TextureRenderTarget2D.cpp` 생성자는 이 값을 `true`로 초기화한다. 따라서 새 C++ setter를
+추가하거나 숨겨진 값을 강제로 쓰지 않고, blank factory 생성자의 engine default를 사용한
+뒤 저장 전 native read-only inspection에서 `force_linear_gamma=true`를 확인했다. 이 방식은
+프로젝트 C++과 UnrealMCP C++ 변경 모두 필요 없고 결과 자산의 runtime dependency도 늘리지 않는다.
+
+## 빌더와 안전 계약
+
+재현 스크립트:
+
+```text
+Python/scripts/analysis/build_cube_fluid_ninja_render_buffer_support.py
+Python/scripts/analysis/test_cube_fluid_ninja_render_buffer_support_builder.py
+```
+
+최종 contract:
+
+- contract SHA-256: `6292b12d372589ae1b78f75604f850d73c2ae57c60f7db6d0bc8403f030b6a61`
+- confirmation token: `cfnl-render-support-6292b12d372589ae1b78`
+- authoring target: 위 두 package만 허용
+- source path in authoring payload: `0`
+- duplicate/template/import/delete/overwrite: 사용하지 않음
+- 프로젝트 C++ 변경: 없음
+- runtime UnrealMCP dependency: 없음
+
+빌더는 다음 순서를 강제한다.
+
+1. 동결 JSON/source bytes와 기존 `Materials/Core` 두 자산의 SHA를 검사한다.
+2. disk와 Asset Registry 양쪽에서 두 target 부재를 증명한다.
+3. UE 5.6 API와 Study root dirty `0`을 읽기 전용으로 확인한다.
+4. 두 blank asset을 만들되 저장하지 않는다.
+5. native Material/RT inspector로 exact 구조와 값을 읽는다.
+6. 검사가 통과한 경우에만 각 package를 한 번 저장한다.
+7. same-session 검수와 folder dependency audit를 수행한다.
+8. 새 editor에서 cold 검수하고 UnrealMCP-disabled isolated load를 수행한다.
+
+## 실패와 복구 이력
+
+저장 전 실패는 모두 별도 durable report에 남겼고, target `.uasset` 부재와 source SHA를
+확인한 뒤 해당 에디터 프로세스를 종료하여 미저장 package를 폐기했다. 실패 상태에서
+mutating command를 자동 재전송하거나 기존 target을 delete/overwrite하지 않았다.
+
+| run | 관찰 | 복구/학습 |
+| --- | --- | --- |
+| `20260905_02_render_support_execute` | `ComponentMask` 입력을 Python 이름 `Input`으로 연결하면 실패 | UE 5.6 API는 빈 입력 이름을 요구하고 inspector raw name은 `Input`임을 분리 |
+| `20260905_04_render_support_execute_v2` | factory asset에 `resize_target()` 미노출 | 편집 가능한 `size_x/size_y`를 직접 설정 |
+| `20260905_06_render_support_execute_v3` | `force_linear_gamma` Python 편집 프로퍼티 미노출 | 엔진 생성자 default와 native inspection을 권위로 사용 |
+| `20260905_08_render_support_execute_v4` | Material inspector 문자 budget을 서버 상한보다 크게 요청 | UE 5.6 bridge 상한 `1,048,576` chars / `131,072` work로 고정 |
+
+## 최종 검수 증거
+
+| 단계 | report | bytes | SHA-256 | 결과 |
+| --- | --- | ---: | --- | --- |
+| 최종 read-only preflight | `.../20260905_09_render_support_preflight_v5/render_buffer_support_builder_report.json` | 22,951 | `ad56e06cd18eb861e1b0d214c7e5b8bfdddb35463b6075564ba004969ffd619a` | PASS |
+| fresh author + hot readback | `.../20260905_10_render_support_execute_v5/render_buffer_support_builder_report.json` | 45,145 | `68294b545c41ff2efd957dfb4d81cbcd61e141bd7bd601a53d83467fb223f426` | PASS |
+| cold editor readback | `.../20260905_11_render_support_cold/render_buffer_support_builder_report.json` | 28,490 | `8b5d4961c3324c2cb012611706b5e02e37182e4a913ba3fd82667ee47f10209f` | PASS |
+| UnrealMCP-disabled load | `.../20260905_12_plugin_disabled_report.json` | 12,163 | `b492323300015f5f24ac7ac42e53f853c897ff2b1ef6000c5fe26557b371198f` | PASS |
+
+최종 target identity:
+
+| target file | bytes | SHA-256 |
+| --- | ---: | --- |
+| `M_CFNL_RenderBufferSaver.uasset` | 14,758 | `b902dadd6378aeec601febe5fe8e312fbe3a70e627780134650a7e693d880b18` |
+| `RT_CFNL_Black.uasset` | 4,140 | `8b9ea2401678bfdd0e0a07cb2639e536fc3c5697e28a6591a27e4d61afa6384a` |
+
+최종 folder audit는 `Materials/Core`의 3개 자산과 `RenderTargets`의 1개 자산에 대해
+dirty package `0`, redirector `0`, forbidden dependency hit `0`을 확인했다. 플러그인 비활성
+검사는 두 target의 정적 marker `0`과 격리 에디터 load/class 일치를 모두 통과했다.
+
+## 범위 제한
+
+이번 완료 판정은 두 선행 자산의 구조·설정·독립성 계약에 한정된다. Material의 encoder
+방향은 동결 관찰과 일치하지만 전체 `NinjaLiveComponent`의 producer/consumer round-trip,
+세 개 runtime RT의 생성/resize/clear ordering, 실제 buffer 값과 최종 화면 parity는 Component와
+레벨 구현 단계의 paired fixture에서 별도로 검수한다.

@@ -1,0 +1,13 @@
+# Reactive Surface Ground Foot Rotation Report - 2026-07-13
+
+- Verdict: **PASS**
+- Root cause: attached Controller `self` kept a fixed world yaw while the parent player rotated.
+- Repair: `FootMeta.X` reads validated attach-parent yaw and Ground HLSL adds the vertical sole mask's `+PI/2` basis.
+- ChildActor owner chain: `{'child_compile_0_0': True, 'parent_compile_0_0': True, 'target_map_saved': True}`.
+- Production Controller counts: `[1, 1, 1, 1]`.
+- Temp cardinal bboxes: `[(88, 41), (41, 88), (88, 41), (41, 88)]`.
+- Production FootMeta yaw: `[0.0, 89.9985, 179.997, -89.9985]`.
+- Production RT: `{'size': [512, 512], 'region': [0, 511, 0, 511], 'nonzero_count': 66, 'sum': 37.160186767578125, 'max': 0.99755859375, 'hit_bbox': [254, 251, 335, 260], 'hit_width': 82, 'hit_height': 10, 'centroid': [293.3253957369227, 255.74645571647375], 'readback': 'FTextureRenderTargetResource::ReadLinearColorPixels'}`.
+- Final checks: `{'status': 'PASS', 'audit_count': 0, 'dirty_packages': [], 'runtime_log_hits': {'Accessed None': 0, 'Blueprint Runtime Error': 0, 'Infinite loop detected': 0, 'NCS_Error': 0}, 'log_marker_found': True}`.
+
+The temp harness does not duplicate or load a World asset; L_RS_Demo is only a transient SIE host.

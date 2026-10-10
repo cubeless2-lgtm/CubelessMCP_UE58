@@ -1,0 +1,171 @@
+# inspect_physics_asset_constraints_guarded Design
+
+Date: 2026-06-27
+
+Status: Implemented first pass in the UnrealMCP editor bridge after explicit
+Ieta/Tivret proceed request. Keep future changes read-only and non-simulating.
+
+Scope: editor-only, read-only PhysicsAsset inventory for animation physics
+work. Runtime/gameplay code, simulation, and asset mutation are out of scope.
+
+## Purpose
+
+`inspect_physics_asset_constraints_guarded` is a narrow UnrealMCP
+bridge command for requests that need PhysicsAsset body, constraint, profile,
+and solver information without mutating or simulating anything.
+
+The command should help animation work around RigidBody AnimGraph nodes,
+secondary motion, ragdoll setup review, and physical animation profiles by
+returning bounded, structured data from `UPhysicsAsset`.
+
+The command exists because current MCP tools can set a narrow subset of
+RigidBody AnimGraph node settings, but they do not expose the PhysicsAsset
+bodies, constraints, limits, drives, or profiles that explain the node's asset
+inputs.
+
+## Ieta Review
+
+Request class: inspect PhysicsAsset bodies, collision shape counts,
+constraints, limits, drives, constraint profiles, physical animation profiles,
+or RBAN solver settings for animation work.
+
+Existing routes checked:
+
+- `inspect_anim_graph_node_settings` can read RigidBody AnimGraph node settings.
+- `set_anim_graph_rigidbody_settings` can modify a narrow sample RigidBody
+  AnimGraph node.
+- `sample_anim_node_pre_post_runtime_pose` can prove selected node behavior for
+  supported cases.
+
+Why existing routes are insufficient: they do not read the PhysicsAsset's
+`SkeletalBodySetups`, `ConstraintSetup`, body geometry summaries, profile data,
+or RBAN solver settings.
+
+Asset mutation boundary: read-only. The command must not save, compile, tick,
+simulate, cook collision, apply profiles to components, or mark packages dirty.
+
+Implemented command: `inspect_physics_asset_constraints_guarded`.
+
+Default safety guard: load only a `UPhysicsAsset` or resolve one from a supplied
+`USkeletalMesh`; bound arrays by caller-provided limits; return
+`unsupported_class` for other assets.
+
+Approval state: user approved Ieta/Tivret to proceed. This command is limited to
+the UnrealMCP editor bridge and does not add runtime/gameplay code.
+
+## UE 5.6 API Anchors
+
+Use installed UE 5.6 headers as local truth:
+
+| Need | UE 5.6 anchor | Safe access rule |
+| --- | --- | --- |
+| PhysicsAsset body and constraint arrays | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/PhysicsAsset.h` | Read `SkeletalBodySetups`, `ConstraintSetup`, `SolverSettings`, profile names, and preview mesh only. |
+| Body setup and physical animation profiles | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/SkeletalBodySetup.h` | Read `GetPhysicalAnimationProfiles()` and `bSkipScaleFromAnimation`; do not add, remove, rename, or update profiles. |
+| Collision geometry summary | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/BodySetup.h` and `AggregateGeom.h` | Report counts and simple extents from `AggGeom`; avoid unbounded convex vertex dumps. |
+| Constraint template | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/PhysicsConstraintTemplate.h` | Read `DefaultInstance` and `ProfileHandles`; do not call editor mutation helpers. |
+| Constraint instance | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/ConstraintInstance.h` | Use getters for bone names, linear limits, angular limits, projection, breakability, plasticity, and drives. |
+| SkeletalMesh fallback | `Engine/Source/Runtime/Engine/Classes/Engine/SkeletalMesh.h` | If a mesh path is supplied, resolve its PhysicsAsset only as read-only input. |
+
+## Command Schema
+
+Proposed input fields:
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `physics_asset_path` | string | optional | Preferred explicit `UPhysicsAsset` path. |
+| `skeletal_mesh_path` | string | optional | Resolve PhysicsAsset from mesh when asset path is absent. |
+| `include_bodies` | bool | `true` | Include body setup summaries. |
+| `include_constraints` | bool | `true` | Include constraint summaries. |
+| `include_profiles` | bool | `true` | Include constraint and physical animation profile names and bounded settings. |
+| `include_solver_settings` | bool | `true` | Include RBAN solver settings. |
+| `include_collision_summary` | bool | `true` | Include shape counts and bounded simple dimensions. |
+| `max_bodies` | int | `128` | Truncate body list above this count. |
+| `max_constraints` | int | `128` | Truncate constraint list above this count. |
+| `max_profiles_per_item` | int | `16` | Truncate per-body or per-constraint profiles. |
+| `max_shapes_per_body` | int | `32` | Truncate detailed shape summaries per body. |
+
+At least one of `physics_asset_path` or `skeletal_mesh_path` is required.
+
+## Response Schema
+
+Return structured evidence:
+
+| Field | Meaning |
+| --- | --- |
+| `success` | Whether inspection completed. |
+| `physics_asset_path` | Resolved PhysicsAsset path. |
+| `source_skeletal_mesh_path` | Mesh path when used for resolution. |
+| `preview_skeletal_mesh` | PhysicsAsset preview mesh when available. |
+| `solver_settings` | RBAN solver settings summary. |
+| `constraint_profile_names` | Asset-level constraint profile names. |
+| `physical_animation_profile_names` | Asset-level or per-body physical animation profile names. |
+| `body_count` | Total bodies before truncation. |
+| `constraint_count` | Total constraints before truncation. |
+| `bodies` | Bounded body summaries. |
+| `constraints` | Bounded constraint summaries. |
+| `truncated` | Per-section truncation flags and omitted counts. |
+| `warnings` | Missing meshes, null entries, unsupported fields, or skipped detail. |
+
+Body summaries should include body name, body index, bounds-body flag,
+collision trace/collision enabled summary when safely available, geometry
+counts, simple shape dimensions, mass override summary when available, and
+physical animation profile summaries.
+
+Constraint summaries should include constraint index, joint name, child and
+parent bone names, profile names, linear limit/motion, angular swing and twist
+limits/motions, projection flags, breakability, plasticity, disable-collision,
+parent-dominates, mass-conditioning, and drive enable/target summaries.
+
+## Guardrails
+
+Forbidden patterns:
+
+- starting, ticking, or sampling physics simulation;
+- applying constraint profiles to component instances;
+- calling editor mutation helpers such as add, remove, rename, duplicate, or
+  update profile functions;
+- saving, compiling, cooking collision, or rebuilding body setups;
+- dumping unbounded convex hull vertices, cooked data, or private binary
+  collision buffers;
+- broad Python reflection over every property of `UPhysicsAsset`,
+  `USkeletalBodySetup`, or `FConstraintInstance`;
+- using the inspector as proof of runtime RigidBody node output.
+
+Keep claims limited to static source PhysicsAsset data unless paired with a
+separate runtime probe.
+
+## Verification
+
+Docs-only verification for this design:
+
+- `git diff --check`
+- Markdown link and trailing-whitespace sanity checks.
+
+Implementation verification:
+
+1. Inspect a PhysicsAsset by direct path and confirm body/constraint counts
+   match the asset arrays.
+2. Inspect the same asset via a SkeletalMesh path and confirm the resolved path
+   matches.
+3. Confirm null body or constraint entries are reported as warnings rather than
+   crashes.
+4. Confirm truncation flags are set when limits are exceeded.
+5. Confirm no package is dirty after inspection.
+6. Pair with `inspect_anim_graph_node_settings` only when the user also needs
+   the RigidBody node's AnimGraph settings.
+
+## Tivret Maintenance Notes
+
+When this design becomes an approved implementation task, Tivret should:
+
+- implement a read-only C++ inspector first;
+- keep the response bounded and explicit rather than returning raw property
+  bags;
+- add Python wrapper and server registration only after the C++ response schema
+  is stable;
+- document the command in `Docs/Tools/node_tools.md` or a narrow animation
+  tools document;
+- avoid runtime simulation, component mutation, asset saves, collision cooking,
+  or gameplay module changes;
+- verify with direct asset path, mesh-derived asset path, truncation, and
+  no-dirty-package checks.

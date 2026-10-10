@@ -1,0 +1,25 @@
+# Reactive Surface Water V40 Alternating Foot Pulse Report
+
+- Date: 2026-07-11
+- Verdict: **PASS**
+- Pulse interval: `0.09s`.
+- Wave speed: `0.40`.
+- Contact strength: `0.18`.
+- Damping/radius remain `0.90` / `1px`.
+
+## Runtime
+
+- Status: `PASS`.
+- Pulse events: `39`.
+- Side sequence: `[False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, True, False, False, True, False, True, False, True, False, True, False, True, False, True]`.
+- Alternation ratio: `0.9736842105263158`.
+- Stable R/G nonzero: `9037` / `9109`.
+- Captured RT frames: `8`.
+
+## Graph
+
+- One selected foot is appended per pulse; Position/Velocity/Swim arrays stay length-matched at one.
+- Preferred-foot trace failure falls back to the other traced foot.
+- All `User.RS_Water_DefaultStrength` setters read the BP variable; legacy constant `0.58` is removed from the runtime path.
+
+Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v40-alternating-foot-pulse-results-2026-07-11.json`

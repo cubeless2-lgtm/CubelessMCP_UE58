@@ -1,0 +1,61 @@
+# ControlRig Stable Authoring Phase 3 Contract
+
+Date: 2026-06-30
+
+`Python/scripts/analysis/controlrig_stable_authoring_phase3_contract.py` is a
+filesystem-only guard for the Phase 3 transaction hardening boundary.
+
+## Command
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase3_contract.py
+```
+
+Optional JSON output:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase3_contract.py --json
+```
+
+## Checks
+
+- `FUnrealMCPControlRigBuildReport` keeps transaction report fields:
+  `planned_writes`, `performed_writes`, `skipped_writes`, `reused_items`,
+  `cleanup_suggestions`, and `next_action`.
+- `ReportToJson` serializes target mutation, compile/save, dependency audit,
+  transaction evidence, cleanup, and next-action fields.
+- `MarkNoMutationStop` keeps `target_modified=false`,
+  `partial_target_modified=false`, and `asset_mutation_not_started`.
+- `MarkBuildFailure` derives `partial_target_modified` from target mutation and
+  routes partial failures to
+  `inspect_then_cleanup_or_retry_sample_temp_target`.
+- Phase 3 design, execution-plan, tool, test, release, and handoff markers
+  remain present.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` does not contain a static
+  dependency string for `UnrealMCPControlRigToolsEditor` or
+  `UnrealMCPControlRigToolsEditor`.
+
+## Explicitly Excluded
+
+- Unreal Editor launch.
+- Live MCP bridge calls.
+- UnrealBuildTool C++ build.
+- ControlRig build, compile, save, solve, or asset mutation.
+- Original asset mutation.
+
+## Current Verification
+
+2026-06-30:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase3_contract.py --json
+```
+
+Result: passed with `issue_count=0`; `unreal_editor`, `cpp_build`, and
+`asset_mutation` were skipped.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase3_contract.py
+```
+
+Result: passed, 7 tests.

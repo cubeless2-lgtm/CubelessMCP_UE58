@@ -1,0 +1,639 @@
+# Prismatiscape 학습 기록
+
+작성일: 2026-06-26
+
+대상 플러그인: `MCPGameProject/Plugins/Prismatiscape`
+
+버전: Prismatiscape `1.04.02`
+
+## 현재 결론
+
+Prismatiscape는 액터 컴포넌트가 매 프레임 모은 캡슐/버블 데이터를 Manager BP로 넘기고, Manager BP가 Niagara Grid, RenderTarget, Material Parameter Collection을 갱신해서 머티리얼 WPO/표면/물/바람 반응을 만드는 구조다.
+
+자동화로 BP 내부 그래프를 직접 컴파일하거나 BP 생성 컴포넌트를 SCS에 붙이는 경로는 현재 에디터 크래시를 만들 수 있다. 그래서 학습용 BP는 안전한 네이티브 C++ 부모 액터/컴포넌트를 먼저 만들고, 그 클래스를 부모로 하는 BP 에셋을 생성하는 방식으로 진행한다.
+
+## 핵심 런타임 구조
+
+- `UPrismatiscapeWorldSubsystem`
+  - Game/PIE에서 Manager를 자동 생성한다.
+  - 기본 Manager 클래스는 `/Prismatiscape/Prismatiscape_Manager_BP.Prismatiscape_Manager_BP_C`다.
+
+- `APrismatiscapeManager`
+  - Tick에서 위치 추적, visibility 갱신, 배열 flush, 등록 컴포넌트 shape 수집, `PostTick`, debug draw 순서로 처리한다.
+  - `Prismatiscape_Manager_BP`가 `PostTick` 이후 Niagara/MPC/RT 작업을 이어받는다.
+
+- `UPrismatiscapeDrawComponent`
+  - `BeginPlay`에서 `bDrawByDefault`에 따라 drawing 등록을 켠다.
+  - Owner Z scale을 `ActorScale`로 저장한다.
+
+- Deform/Wind/Interaction 컴포넌트
+  - Deform 배열: `CapsuleStartLocationAndRadius`, `CapsuleEndLocationAndRadius`, `CapsuleStartVelocityAndStrength`, `CapsuleEndVelocityAndStrength`
+  - Wind 배열: `WindCapsuleStartLocationAndRadius`, `WindCapsuleEndLocationAndRadius`, `WindCapsuleStartVelocityAndStrength`, `WindCapsuleEndVelocityAndStrength`
+  - Interaction 배열: `InteractionBubbleLocationAndRadius`, `InteractionBubbleVelocityAndStrength`
+
+## Manager BP가 갱신하는 데이터
+
+`Prismatiscape_Manager_BP`는 다음 흐름을 가진다.
+
+1. `BeginPlay`
+   - RenderTarget 크기와 포맷을 설정한다.
+   - `Prismatiscape_MPC`에 simulation size, RT 위치, 해상도 값을 넣는다.
+
+2. `PostTick`
+   - pulse 처리
+   - Niagara array 변수 설정
+   - RT 위치/offset 계산
+   - water sim delta smoothing
+
+3. Niagara/MPC/RT 출력
+   - Deform RT: 트램플/눌림
+   - Wind RT: 바람 방향과 세기
+   - InteractionBubble RT: 큰 foliage pushing
+   - Surface/Water/Paint RT: 표면, 물, 페인트 계열 샘플
+
+상세 node-flow는 별도 문서로 분리했다.
+
+- `Docs/Analysis/Prismatiscape_Manager_BP_NodeFlow.md`
+
+## 머티리얼 연결 기준
+
+주요 머티리얼 함수:
+
+- `/Prismatiscape/MaterialFunctions/Prismatiscape_SampleTrampleDeform`
+- `/Prismatiscape/MaterialFunctions/Prismatiscape_SampleWind`
+- `/Prismatiscape/MaterialFunctions/Prismatiscape_SampleInteractionBubbles`
+- `/Prismatiscape/MaterialFunctions/Prismatiscape_SampleSurface`
+- `/Prismatiscape/MaterialFunctions/Prismatiscape_SampleWater`
+
+EasyMode 함수:
+
+- `/Prismatiscape/MaterialFunctions/EasyMode/Pris_GrassWPO`
+- `/Prismatiscape/MaterialFunctions/EasyMode/Pris_LargeSingleBushWPO`
+
+BP/레벨 실습에서는 먼저 플러그인 예제 머티리얼을 그대로 쓰고, 그 다음 프로젝트 머티리얼에 위 함수들을 이식한다.
+
+Grass 이식 기준:
+
+- 빠른 경로는 `Pris_GrassWPO`를 World Position Offset에 연결하는 것이다.
+- 내부적으로 `Prismatiscape_SampleWind`, `Prismatiscape_SampleTrampleDeform`, `Prismatiscape_SampleWater`, `Prismatiscape_FoliageBender`, `Prismatiscape_FoliageWiggler`, `Pris_EasyHeightmaskLocalZ` 흐름을 사용한다.
+- 검수는 ground-aligned ball actor, Deform/Wind RT nonzero, viewport screenshot으로 한다.
+
+Large bush 이식 기준:
+
+- 빠른 경로는 `Pris_LargeSingleBushWPO`를 사용하는 것이다.
+- 내부적으로 `Prismatiscape_SampleInteractionBubbles`, `Prismatiscape_SampleWind`, `Prismatiscape_PivotData3D`, `Prismatiscape_FoliagePivotPusher`, `Prismatiscape_FoliageBender`, `Prismatiscape_FoliageWiggler`, `Prismatiscape_FoliagePusherDowner` 계열을 사용한다.
+- Grass보다 pivot/vertex 데이터 의존성이 강하므로, 플러그인 예제 bush mesh/material 조합에서 먼저 비교한다.
+
+현재 만든 material transplant 1차 자산:
+
+- `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_GrassWPO_MCP`
+  - source: `/Prismatiscape/Demo/ExampleMaterials/Prismatiscape_Grass_Example_02`
+  - 직접 dependency: `Prismatiscape_SampleTrampleDeform`, `Prismatiscape_SampleWind`, `Prismatiscape_SampleWater`, `Prismatiscape_FoliageBender`, `Prismatiscape_FoliageWiggler`
+  - RT dependency: Deform, Wind, Water, WaterVelocity
+- `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_BushWPO_MCP`
+  - source: `/Prismatiscape/Demo/ExplainerMats/Pris_LargeSingleBushWPO_Example`
+  - 직접 dependency: `Pris_LargeSingleBushWPO`, `Prismatiscape_SampleInteractionBubbles`, `Prismatiscape_SampleWind`, pivot/pusher/wiggler 계열
+  - RT dependency: InteractionBubble, Wind
+
+검수 맵의 `PrisStudy_Surface_Grass_00` ... `06`에는 Grass material을, `PrisStudy_Surface_Bush_00` ... `02`에는 Bush material을 적용했다.
+
+## 안전한 BP 제작 순서
+
+1. 네이티브 C++ 컴포넌트 또는 액터를 만든다.
+   - BP 그래프 없이도 Prismatiscape 배열을 직접 채울 수 있게 한다.
+   - `BlueprintType`, `BlueprintSpawnableComponent`, `EditAnywhere`, `BlueprintReadWrite`를 필요한 곳에 둔다.
+
+2. C++ 빌드가 성공한 뒤 에디터를 실행한다.
+
+3. C++ 클래스를 부모로 하는 BP 에셋을 만든다.
+   - 현재 생성 위치: `/Game/_MCP_Temp/PrismatiscapeStudy`
+   - BP 내부에 BP-generated component를 자동으로 붙이는 MCP 경로는 사용하지 않는다.
+
+4. BP의 Details 패널에서 Radius, Strength, profile 등을 조정한다.
+
+5. 플러그인 TestMap 또는 안전한 실습 맵에서 PIE로 확인한다.
+   - Manager는 PIE/Game에서 자동 생성된다.
+   - 에디터 월드 단순 배치만으로는 RT/MPC/Niagara 실시간 결과를 완전히 확인할 수 없다.
+
+## 현재 만든 학습용 C++ API
+
+파일:
+
+- `MCPGameProject/Source/MCPGameProject/PrismatiscapeStudyActors.h`
+- `MCPGameProject/Source/MCPGameProject/PrismatiscapeStudyActors.cpp`
+
+클래스:
+
+- `APrismatiscapeStudyNativeManager`
+  - `APrismatiscapeManager` project-owned subclass.
+  - native base manager 단독으로는 비어 있던 visibility/RT path를 학습용으로 보강한다.
+  - Deform/Wind/Interaction shape arrays를 world XY 기준으로 RT pixel space에 매핑해 Canvas spatial placeholder를 그린다.
+  - `bUseSpatialStudyRenderTargets=false`이면 이전 coarse clear fallback으로 되돌릴 수 있다.
+  - `ComponentToFollow`가 없으면 등록된 Deform/Wind/Interaction component owner 평균 위치를 `FollowLocationThisFrame`으로 사용한다.
+  - `Prismatiscape_MPC`에 RT resolution, RT location, `SimulationSizeWS` 값을 갱신한다.
+  - `LastStudyRenderStats`를 BP-readable diagnostics로 노출해 RT update bool, shape count, array mismatch count, RT size, failure count를 읽을 수 있다.
+  - `RefreshStudyDiagnosticsFromCurrentArrays()`를 BP/automation callable로 제공한다. 이 함수는 Gather/Flush 없이 현재 shape 배열 그대로 MPC/RT/stat를 갱신하고 `LastStudyRenderStats`를 반환한다.
+  - 정확한 Niagara grid/spatial RT simulation 대체가 아니라 project-owned manager replacement prototype이다.
+
+- `UPrismatiscapeStudyDeformTrailComponent`
+  - Owner 위치와 이전 위치를 capsule trail로 변환한다.
+  - `Radius`, `Strength`, `MinimumTrailLength`를 BP에서 조정한다.
+
+- `UPrismatiscapeStudyWindTrailComponent`
+  - Deform trail과 같은 방식으로 Wind capsule을 만든다.
+  - `Radius`, `Strength`, `MinimumTrailLength`를 BP에서 조정한다.
+
+- `UPrismatiscapeStudySegmentDeformComponent`
+  - 두 local endpoint를 deform capsule로 변환한다.
+  - `StartLocalOffset`, `EndLocalOffset`, `StartRadius`, `EndRadius`, `Strength`를 BP에서 조정한다.
+  - 플러그인 demo cube mesh hard-load를 제거하기 위해 추가했다.
+
+- `APrismatiscapeStudyInteractionDeformBall`
+  - sphere mesh
+  - `UPrismatiscapeInteractionBubbleComponent`
+  - `UPrismatiscapeStudyDeformTrailComponent`
+
+- `APrismatiscapeStudyWindBall`
+  - sphere mesh
+  - `UPrismatiscapeStudyWindTrailComponent`
+
+- `APrismatiscapeStudyTwoSocketStick`
+  - Engine basic cube mesh
+  - `UPrismatiscapeStudySegmentDeformComponent`
+  - 이름은 처음 학습 의도 때문에 `TwoSocketStick`으로 남겼지만, 현재 구현은 socket asset 의존성이 없는 segment proxy다.
+
+- `APrismatiscapeStudyCharacterDeformProxy`
+  - BP child가 skeletal mesh를 override할 수 있는 Movable skeletal mesh slot
+  - `UPrismatiscapeDeformComponentCharacter`
+  - 기본 profile은 `OnlyFeet`
+
+## 현재 만든 BP 에셋
+
+위치: `MCPGameProject/Content/_MCP_Temp/PrismatiscapeStudy`
+
+- `BP_PrisStudy_CPP_InteractionDeformBall`
+- `BP_PrisStudy_CPP_WindBall`
+- `BP_PrisStudy_CPP_TwoSocketStick`
+- `BP_PrisStudy_CPP_CharacterDeformProxy`
+
+이 BP들은 네이티브 C++ 클래스를 부모로 갖는다. 생성 후 GeneratedClass/CDO 기준으로 컴포넌트와 기본값 로드 검증을 통과했다.
+
+샘플 BP와 학습 BP의 대응 관계는 별도 문서로 분리했다.
+
+- `Docs/Analysis/Prismatiscape_SampleBPInventory.md`
+
+## 샘플 BP 인벤토리
+
+| 샘플 | 배우는 내용 | 구동 데이터 |
+| --- | --- | --- |
+| `Prismatiscape_CharlieBall` | 공이 잔디를 누르고 큰 foliage를 밀어내는 기본 패턴 | Interaction bubble, Deform capsule |
+| `Prismatiscape_ExampleBallDrawer` | BP 컴포넌트가 Owner 위치/속도로 deform capsule을 만드는 방식 | Deform arrays |
+| `Prismatiscape_BalldWind` | BP 컴포넌트가 Owner 위치/속도로 wind capsule을 만드는 방식 | Wind arrays |
+| `Prismatiscape_CharlieStick` | 두 소켓 사이를 capsule로 변환하는 방식 | Two-socket Deform capsule |
+| `PS_BP_PlayerCharacter` | 캐릭터 bone/profile 기반 발자국/몸통 deform | Character Deform profile |
+| `Prismatiscape_PeriodicExploder` | Manager BP의 pulse API 호출 | Wind pulse struct |
+
+## 현재 피해야 하는 자동화 경로
+
+- `compile_and_validate_blueprint`
+  - 새 임시 BP에서 에디터 크래시가 발생했다.
+  - 크래시 폴더: `MCPGameProject/Saved/Crashes/UECC-Windows-24BF95BE4A632D74A21046B090E5A0B6_0000`
+  - 콜스택 근거: `UnrealMCPBlueprintCommands.cpp:370`, `HandleCompileAndValidateBlueprint`
+
+- `add_component_to_blueprint`로 BP-generated component class 붙이기
+  - 예: `Prismatiscape_ExampleBallDrawer_C`
+  - SCS 추가 과정에서 에디터 크래시가 발생했다.
+  - 크래시 폴더: `MCPGameProject/Saved/Crashes/UECC-Windows-A8C08B054FA80E2342209B9239793A6B_0000`
+  - 콜스택 근거: `UnrealMCPBlueprintCommands.cpp:824`, `HandleAddComponentToBlueprint`
+
+현재는 C++ 부모 클래스 + Python asset 생성 + C++ build 검증 조합이 안정적인 루트다.
+
+안전 제작 절차는 별도 문서로 분리했다.
+
+- `Docs/Analysis/Prismatiscape_SafeBPAuthoringRecipe.md`
+
+## 현재 검증 결과
+
+- C++ 빌드
+  - UE 5.6 UBT `MCPGameProjectEditor Win64 Development` 성공.
+  - Live Coding이 켜져 있으면 UBT가 거부하므로 에디터 종료 후 빌드했다.
+  - `UPrismatiscapeStudySegmentDeformComponent` 추가 뒤 재빌드도 성공했다.
+
+- 에디터 재시작 후 BP 로드
+  - 네 BP의 GeneratedClass가 모두 로드됐다.
+  - inherited mesh 컴포넌트는 `Movable`로 확인됐다.
+  - Interaction/Deform/Wind/TwoSocket/CharacterDeform 기본값이 CDO에서 확인됐다.
+  - `BP_PrisStudy_CPP_TwoSocketStick`은 `/Engine/BasicShapes/Cube.Cube`와 `PrismatiscapeStudySegmentDeformComponent`로 갱신됐다.
+
+- 안전 검수 맵
+  - 생성 경로: `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_Verification`
+  - `safe_new_preview_map` dry-run 통과 후 실제 생성/저장했다.
+  - Python map open/new API는 사용하지 않았다.
+  - 배치 배우:
+    - `PrisStudy_InteractionDeformBall`
+    - `PrisStudy_WindBall`
+    - `PrisStudy_TwoSocketStick`
+    - `PrisStudy_CharacterDeformProxy`
+  - 시각 검수 표면:
+    - `PrisStudy_Surface_TessellatedFloor`
+    - `PrisStudy_Surface_Grass_00` ... `PrisStudy_Surface_Grass_06`
+    - `PrisStudy_Surface_Bush_00` ... `PrisStudy_Surface_Bush_02`
+  - 지면 정렬:
+    - sphere actors: `Z=55`
+    - two-socket stick: `Z=30`
+    - character proxy: `Z=0`
+    - 처음 `Z=120` 배치에서는 Deform RT가 0으로 남았고, 지면 정렬 뒤 Deform RT가 갱신됐다.
+  - Visual QA 조명:
+    - `PrisStudy_VisualQA_DirectionalLight`
+    - `PrisStudy_VisualQA_SkyLight`
+    - material screenshot 가독성을 위해 `_MCP_Temp` 검수 맵에 추가했다.
+
+- PIE 런타임 스모크
+  - PIE world: `/Game/_MCP_Temp/PrismatiscapeStudy/UEDPIE_0_M_PrisStudy_Verification`
+  - Manager 자동 생성 확인: `Prismatiscape_Manager_BP_C_0`
+  - 첫 샘플 배열 count:
+    - Deform capsule arrays: `4`
+    - Wind capsule arrays: `1`
+    - Interaction bubble arrays: `1`
+  - 런타임 이동 후 샘플:
+    - `PrisStudy_InteractionDeformBall` 위치: `[-120, -120, 120]`
+    - `PrisStudy_WindBall` 위치: `[160, -70, 120]`
+    - Deform start sample: `[-120, -120, 120, 50]`
+    - Deform end sample: `[-170, -120, 120, 50]`
+    - Wind start sample: `[160, -70, 120, 90]`
+    - Wind end sample: `[85, -70, 120, 90]`
+    - Interaction sample: `[-120, -120, 120, 125]`
+  - PIE 종료 후 dirty content/map packages: `0`
+
+- Material runtime smoke
+  - PIE world: `/Game/_MCP_Temp/PrismatiscapeStudy/UEDPIE_0_M_PrisStudy_Verification`
+  - 런타임 이동 actor:
+    - `PrisStudy_InteractionDeformBall`
+    - `PrisStudy_WindBall`
+    - `PrisStudy_TwoSocketStick`
+    - `PrisStudy_CharacterDeformProxy`
+  - Manager 배열 count:
+    - Deform: `4`
+    - Wind: `1`
+    - Interaction: `1`
+  - 적용 material 확인:
+    - `PrisStudy_Surface_Grass_00`: `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_GrassWPO_MCP`
+    - `PrisStudy_Surface_Bush_00`: `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_BushWPO_MCP`
+  - RT sampled readback:
+    - `Prismatiscape_Deform_RT`: `3 / 4096`, max abs `0.98095703125`
+    - `Prismatiscape_Wind_RT`: `2715 / 4096`, max abs `0.1375732421875`
+    - `Prismatiscape_InteractionBubble_RT`: `17 / 4096`, max abs `0.5830078125`
+  - End PIE 후 dirty content/map packages: `0`
+
+- Cook/stage smoke
+  - 명령:
+    - `RunUAT BuildCookRun -project=... -noP4 -platform=Win64 -clientconfig=Development -cook -map=/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_Verification -stage -skippackage -nopak`
+  - Cook 결과:
+    - Cook commandlet `Done!`
+    - `Success - 0 error(s), 3 warning(s)`
+    - cooked packages: `1097`
+  - Cook warning:
+    - Lumen project setting이 scalability보다 우선한다는 console warning 2건
+    - `Prismatiscape_SimulationProfile`의 `/Script/PrismatiscapeEditor` `VerifyImport` warning 1건
+  - 첫 stage 결과:
+    - cook 이후 `MCPGameProject.target` receipt가 없어 stage만 실패했다.
+    - 이는 cook 실패가 아니라 game target build 없이 stage를 요청한 문제다.
+  - 후속 조치:
+    - `MCPGameProject Win64 Development` game target build 성공.
+    - `RunUAT BuildCookRun -skipcook -stage -skippackage -nopak` 재실행 성공.
+
+- RT readback 스모크
+  - 지면 정렬 뒤 PIE에서 ball actors를 런타임 이동했다.
+    - `PrisStudy_InteractionDeformBall`: `[-140, -110, 55]`
+    - `PrisStudy_WindBall`: `[140, -80, 55]`
+  - Manager 배열 count:
+    - Deform: `4`
+    - Wind: `1`
+    - Interaction: `1`
+  - RT nonzero pixels:
+    - `Prismatiscape_Deform_RT`: `119 / 65536`, max abs `0.7763671875`
+    - `Prismatiscape_Wind_RT`: `43323 / 65536`, max abs `0.039459228515625`
+    - `Prismatiscape_InteractionBubble_RT`: `341 / 65536`, max abs `0.66845703125`
+    - `Prismatiscape_DeformInput_RT`: `0 / 147456`
+  - static viewport screenshots:
+    - `MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_Verification_GroundedClose.png`
+    - `MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_Verification_ActorFrame.png`
+    - `MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_Verification_Static.png`
+    - `MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_MaterialTransplant_LitBalanced.png`
+
+- 로그 스캔
+  - `Fatal`, `LogBlueprint: Error`, `LogScript: Error`, `Accessed None`은 현재 스모크 이후 발견되지 않았다.
+  - 이전 세션 시작 로그에는 기존 프로젝트 설정 오류가 있었다:
+    - `GameFeatureData` PrimaryAssetTypesToScan rule 누락
+    - `Water Body Collision` collision profile 누락
+  - 다음 config 추가 뒤 재시작 로그에서 위 두 오류는 재발하지 않았다:
+    - `MCPGameProject/Config/DefaultGame.ini`: `GameFeatureData` primary asset scan
+    - `MCPGameProject/Config/DefaultEngine.ini`: `WaterBodyCollision` collision profile
+  - 플러그인 자체 asset warning이 남아 있다:
+    - `Prismatiscape_SimulationProfile`이 `/Script/PrismatiscapeEditor` import를 찾지 못한다.
+    - 현재 학습 map/BP recursive dependency에는 `/Script/PrismatiscapeEditor`가 잡히지 않았다.
+    - cook에서도 같은 warning 1건이 남았다.
+  - 이전 `Prismatiscape_SM_LiterallyACube` hard-load로 발생하던 `/Game/Prismatica/Core/PrisPhysMaterials/*` missing warning은 `TwoSocketStick`을 Engine cube + segment proxy로 바꾼 뒤 새 세션에서 재발하지 않았다.
+  - 검수 중 Python 출력 스크립트에서 `Vector` 직렬화 실수 1건이 있었고, 이후 수정된 스크립트로 재검증했다.
+  - PIE 반복 중 일부 MCP socket 응답 타임아웃이 있었지만, 에디터 프로세스는 응답 상태였고 종료 후 dirty package 0과 no-new-crash를 확인했다.
+
+- Fresh session 추가 검증
+  - `open_editor_level` dry-run 통과 후 `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_Verification` 로드 성공.
+  - MapCheck: 0 errors, 0 warnings.
+  - 변경 후 PIE smoke:
+    - `TwoSocketDeform` component class: `PrismatiscapeStudySegmentDeformComponent`
+    - Deform capsule arrays: `4`
+    - Wind capsule arrays: `1`
+    - Interaction bubble arrays: `1`
+  - End PIE 후 dirty content/map packages: `0`
+  - 01:02 이후 새 crash folder 없음.
+
+- Project-owned native manager prototype
+  - 추가 class: `/Script/MCPGameProject.PrismatiscapeStudyNativeManager`
+  - clean material verification map에서 transient settings override로 PIE/SIE 검증했다.
+  - Manager: `PrismatiscapeStudyNativeManager_0`
+  - Registered components:
+    - Deform `2`
+    - Wind `1`
+    - Interaction `2`
+  - Shape arrays:
+    - Deform capsules `2`
+    - Wind capsules `1`
+    - Interaction bubbles `2`
+  - Canvas spatial placeholder readback:
+    - `bUseSpatialStudyRenderTargets=true`
+    - `Prismatiscape_Deform_RT`: step4 sampled `58 / 4096`, max abs `0.94970703125`, bounds `[104, 116, 148, 132]`
+    - `Prismatiscape_Wind_RT`: step4 sampled `11 / 4096`, max abs `0.599609375`, bounds `[116, 132, 132, 140]`
+    - `Prismatiscape_InteractionBubble_RT`: step4 sampled `42 / 4096`, max abs `0.599609375`, bounds `[116, 116, 148, 136]`
+  - BP-readable diagnostics readback:
+    - `LastStudyRenderStats.bUsedSpatialRenderer=true`
+    - RT update bools `[true, true, true]`
+    - shape counts `[2, 1, 2]`
+    - array mismatch counts `[0, 0, 0]` (parallel shape 배열에서 짝이 맞지 않아 렌더에 쓰이지 못한 row 수)
+    - `FailedRenderTargetUpdateCount=0`
+    - RT sizes `[[256, 256], [256, 256], [256, 256]]`
+    - `FollowLocation=[31.25, -46.25, 61.0]`
+    - `SimulationSizeWS=4096.0`
+  - BP-callable diagnostics API readback:
+    - API: `RefreshStudyDiagnosticsFromCurrentArrays()`
+    - `-nullrhi` SIE에서 manager tick을 잠깐 끄고 deform start 배열에만 transient row를 1개 추가했다.
+    - baseline array lengths `[2,2,2]`, mismatch `[0,0,0]`
+    - injected array lengths `[3,2,2]`, mismatch `[1,0,0]`
+    - restored array lengths `[2,2,2]`, mismatch `[0,0,0]`
+    - `-nullrhi`에서는 RT update bools가 `[false,false,false]`이고 failure count가 `3`이다. 이 run은 render-target write가 아니라 현재 배열 기반 stat/API readback 검증으로만 해석한다.
+    - settings manager class는 `/Prismatiscape/Prismatiscape_Manager_BP.Prismatiscape_Manager_BP_C`로 복구했고, PIE 종료 후 dirty content/map packages는 `0`이었다.
+  - MPC readback:
+    - `FollowLocationThisFrame`: `[31.25, -46.25, 61.0]`
+    - scalar values: `Deform Resolution=256.0`, `Wind Resolution=256.0`, `Water Resolution=512.0`, `SurfaceResolution=768.0`, `SimulationSizeWS=4096.0`
+    - vector values: `Deform/Wind/Water/Surface RT Location=[31.25, -46.25, 61.0, 0.0]`
+  - PIE 종료 후 dirty content/map packages: `0`
+  - source `DefaultGame.ini`는 변경하지 않았다.
+
+- Native manager cook/stage/smoke
+  - 명령:
+    - `.\scripts\cook_prismatiscape_clean_map.ps1 -Map /Game/PrismatiscapeStudy/Maps/M_PrisStudy_CleanMaterialVerification -BuildGame -UseStudyNativeManager -SmokeLaunch -SmokeTimeoutSeconds 60`
+  - Game target build: `Succeeded`
+  - BuildCookRun: `BUILD SUCCESSFUL`
+  - staged `PrismatiscapeManagerClass`: `/Script/MCPGameProject.PrismatiscapeStudyNativeManager`
+  - staged manifest:
+    - `DemoMap=0`
+    - `_MCP_Temp=0`
+    - `ExampleCharacter=0`
+    - `YeetoMosquito=0`
+    - `CloudNoise=3`
+    - plugin demo entries `3`
+  - Smoke launch exit code: `0`
+  - 이 검증은 Manager BP 없는 project-owned path, lightweight MPC parameter parity, Canvas spatial RT placeholder를 증명하지만, plugin hard-load chain 제거 또는 full Niagara/grid/water/surface parity를 증명하지는 않는다.
+
+## 의존성 판단
+
+이번 학습 API는 프로젝트 Runtime 모듈에 `Prismatiscape` 의존성을 명시적으로 추가한다.
+
+- `MCPGameProject/Source/MCPGameProject/MCPGameProject.Build.cs`
+- `MCPGameProject/MCPGameProject.uproject`
+
+따라서 이 학습 브랜치/프로젝트는 Prismatiscape 플러그인이 없으면 열기/빌드가 깨질 수 있다. 현재 목표가 Prismatiscape 학습과 BP 제작이므로 의도된 의존성으로 본다. 정식 프로젝트 승격 전에 이 의존성을 유지할지, 별도 study/plugin module로 분리할지 결정한다.
+
+`MCPGameProject/Content/_MCP_Temp/PrismatiscapeStudy` 바이너리 문자열 스캔에서는 `UnrealMCP` 또는 `/Script/UnrealMCP` 하드 참조가 발견되지 않았다.
+
+AssetRegistry recursive dependency audit 결과:
+
+- 대상:
+  - `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_Verification`
+  - 네 개 학습 BP
+- 플래그 조건:
+  - `/Script/PrismatiscapeEditor`
+  - `/Game/Prismatica`
+  - `/Script/UnrealEd`
+  - `/Game/UltraDynamicSky/Maps/DemoMap`
+- 결과:
+  - 대상 map/BP recursive dependency에서 위 경로는 발견되지 않았다.
+  - map은 플러그인 demo material/mesh와 `Prismatiscape` runtime, `MCPGameProject` runtime에 의존한다.
+  - 개별 BP는 주로 `/Script/MCPGameProject`와 필요한 경우 `/Script/Prismatiscape`만 직접 의존한다.
+  - 새 Grass/Bush temp material에서도 위 위험 경로는 발견되지 않았다.
+
+## 한국어 용어 메모
+
+- RT: RenderTarget. Manager/Niagara가 그린 시뮬레이션 결과 텍스처.
+- MPC: Material Parameter Collection. 머티리얼들이 공유하는 전역 파라미터 묶음.
+- Niagara Grid: RT를 갱신하기 위한 Niagara 기반 grid 시뮬레이션.
+- Simulation Stage: Niagara에서 grid/RT 계산을 단계별로 처리하는 구간.
+- WPO: World Position Offset. 머티리얼에서 vertex 위치를 밀어내는 출력.
+- Draw Component: Manager에 shape 데이터를 등록하는 Prismatiscape 컴포넌트 계열.
+- Manager: 모든 shape 데이터를 모아 RT/MPC/Niagara를 갱신하는 중앙 BP.
+- Profile: Character/Simulation/Style별 처리 옵션 묶음.
+
+## 다음 학습 단계
+
+1. 구조 학습
+   - Manager BP의 RT/MPC/Niagara 갱신 흐름을 그래프 단위로 읽는다.
+
+2. Shape 학습
+   - Interaction bubble, Deform trail, Wind trail, TwoSocket, Character profile을 각각 별도 BP로 배치한다.
+
+3. 머티리얼 학습
+   - 예제 머티리얼에서 EasyMode 함수를 확인한다.
+   - 프로젝트용 머티리얼에 `Pris_GrassWPO`부터 연결한다.
+
+4. 레벨 검수
+   - dirty map을 건드리지 않는 안전한 테스트 맵을 만든다.
+   - PIE에서 Manager 생성, RT 갱신, actor 이동 반응을 확인한다.
+
+5. 정리
+   - 안정 검증이 끝난 BP만 `/Game/_MCP_Temp`에서 정식 학습 폴더로 승격한다.
+   - 크래시 경로는 UnrealMCP 쪽 이슈로 따로 분리한다.
+
+승격 기준은 별도 문서로 분리했다.
+
+- `Docs/Analysis/Prismatiscape_PromotionGate.md`
+
+## 이에타/티브렛 다음 계획
+
+1. 이에타 검증
+   - Output Log에서 `Fatal`, `LogBlueprint: Error`, `LogScript: Error`, `Accessed None`, missing socket/class 경고를 최종 확인한다.
+   - Prismatiscape plugin이 없는 환경을 지원해야 하는지 분리 판단을 남긴다.
+
+2. 티브렛 학습 정리
+   - Manager BP graph를 `BeginPlay`, `PostTick`, `Set Grid Tick Variables`, `SetInitialParams` 단위로 더 세분화한다.
+   - 머티리얼 이식 실습은 `Pris_GrassWPO`부터 시작하고, visual result 기준을 별도 기록한다.
+
+3. 메인 구현
+   - 현재 `_MCP_Temp` 검수 맵을 기준으로 material/visual QA를 이어간다.
+   - 검증된 BP만 이후 정식 학습 폴더로 승격한다.
+
+## 티브렛 2차 계획 반영
+
+티브렛 검수 결과에 따라 다음 산출물을 먼저 고정했다.
+
+| 산출물 | 목적 | 상태 |
+| --- | --- | --- |
+| `Prismatiscape_Manager_BP_NodeFlow.md` | Manager BP의 BeginPlay/PostTick/RT/MPC/Niagara 흐름 정리 | 작성 |
+| `Prismatiscape_SampleBPInventory.md` | 샘플 BP를 입력 배열과 학습 패턴 기준으로 분류 | 작성 |
+| `Prismatiscape_SafeBPAuthoringRecipe.md` | C++ parent -> BP child -> PIE 검증 루트 고정 | 작성 |
+| `Prismatiscape_PromotionGate.md` | `_MCP_Temp` 자산 승격 조건 정의 | 작성 |
+| `Prismatiscape_GrassTramplePass.md` | 첫 정식 승격 후보와 Grass runtime QA 기록 | 작성 |
+| `Prismatiscape_BushPushPass.md` | BushPush 정식 후보, formal map, cook/stage QA 기록 | 작성 |
+| `Prismatiscape_SegmentDeformPass.md` | TwoSocket/segment deform 정식 BP child, PIE/cook-stage QA 기록 | 작성 |
+| `Prismatiscape_CharacterDeformPass.md` | Character `OnlyFeet` profile 정식 BP child, runtime motion/PIE/cook-stage QA 기록 | 작성 |
+| `Prismatiscape_DemoDependencyAudit.md` | staged plugin demo dependency chain과 Manager/Niagara 대체 범위 분석 | 작성 |
+| `Prismatiscape_ManagerReplacementGate.md` | native Manager/config/NeverCook 실험과 Manager 대체 gate | 작성 |
+
+현재 정식 경로에는 interaction/deform ball, wind ball, bush push, clean material, segment deform BP/map, character deform BP/map까지 올라갔다. 다음 구현 후보는 Prismatiscape plugin demo texture 제거를 위한 project-owned manager/Niagara 대체 asset이다.
+
+주의: demo texture 제거는 material/BP 문제가 아니라 plugin Manager/Niagara 문제다. `/Prismatiscape/Prismatiscape_Manager_BP`가 `/Prismatiscape/Prismatiscape_NiagaraGridDrawer`를 참조하고, NiagaraGridDrawer가 `Prismatiscape_CloudNoise`를 직접 참조한다. 자세한 dependency chain은 `Docs/Analysis/Prismatiscape_DemoDependencyAudit.md`에 기록했다.
+
+추가 검증에서 `PrismatiscapeManagerClass`를 native `APrismatiscapeManager`로 override하는 것은 적용됐지만, native Manager 단독은 shape arrays/RT가 모두 0이라 기능이 불충분했다. `/Prismatiscape/Demo` NeverCook도 `NiagaraGridDrawer -> CloudNoise` 참조 때문에 cook error가 났다. 따라서 Manager replacement는 `Docs/Analysis/Prismatiscape_ManagerReplacementGate.md` 기준으로 별도 구현한다.
+
+첫 project-owned manager prototype인 `APrismatiscapeStudyNativeManager`는 clean map PIE와 cook/stage/smoke를 통과했다. 이 단계는 BP Manager를 쓰지 않는 실행 경로, Canvas spatial RT placeholder output, MPC resolution/location parameter update를 증명한다. 다만 아직 Niagara/grid temporal simulation, water/surface simulation과 동등하지 않으며, `CloudNoise=3`은 plugin hard-load chain 때문에 known dependency다.
+
+## 정식 승격 후보 1차
+
+`_MCP_Temp`에서 검증한 자산 중 일부를 `/Game/PrismatiscapeStudy`로 복제했다.
+
+| 자산 | 상태 |
+| --- | --- |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_InteractionDeformBall` | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_WindBall` | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Project` | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_BushPushBall` | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Project` | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification` | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_SegmentDeformStick` | 생성/저장/컴파일 완료 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_SegmentDeformVerification` | 생성/PIE/cook-stage 완료 |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_CharacterDeformProxy` | 생성/저장/컴파일 완료 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_CharacterDeformVerification` | 생성/PIE/cook-stage/smoke 완료 |
+
+위 정식 자산은 recursive dependency audit에서 `/Game/_MCP_Temp`, `/Script/UnrealMCP`, `/Script/UnrealEd`, `/Script/PrismatiscapeEditor`, `/Game/Prismatica`, `DemoMap` 의존성이 없었다.
+
+단, `M_PrisStudy_GrassWPO_Project`는 플러그인 예제 material 복제본이라 `/Prismatiscape/Demo/ExampleMaterials/Textures/YeetoMosquito`를 아직 참조한다. 학습 승격 후보로는 유효하지만, 최종 production material은 다음 단계에서 프로젝트 grass material에 WPO만 분리 이식한다.
+
+## BushPush 정식 후보
+
+`APrismatiscapeStudyInteractionBubbleBall` native parent를 추가해 deform trail 없는 interaction-only BP를 만들었다.
+
+| 자산 | 역할 |
+| --- | --- |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_BushPushBall` | 큰 foliage push 전용 interaction bubble actor |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Project` | `Pris_LargeSingleBushWPO` 학습용 material 후보 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification` | `_MCP_Temp` 없이 정식 후보만 cook/stage하는 formal 검증맵 |
+
+formal map PIE 결과:
+
+- Manager: `Prismatiscape_Manager_BP_C_0`
+- Deform array count: `1`
+- Wind array count: `1`
+- Interaction array count: `2`
+- BushPush sample: `[-35.0, -105.0, 62.0, 66.5]`
+- `Prismatiscape_InteractionBubble_RT`: `9 / 4096`, max abs `0.56787109375`
+- `Prismatiscape_Wind_RT`: `758 / 1024`, max abs `0.0244140625`
+
+formal map cook/stage:
+
+- `BuildCookRun -cook -map=/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification -stage -skippackage -nopak` 성공.
+- Cook: `0 error(s)`, `3 warning(s)`.
+- Stage manifest: `PrismatiscapeStudy` 항목 `12`, `_MCP_Temp` 항목 `0`.
+- 남은 warning은 Lumen priority 2건과 plugin `Prismatiscape_SimulationProfile`의 `/Script/PrismatiscapeEditor` VerifyImport 1건이다.
+
+자세한 기록:
+
+- `Docs/Analysis/Prismatiscape_BushPushPass.md`
+
+## Clean Material Pass
+
+예제 material 복제본(`M_PrisStudy_GrassWPO_Project`, `M_PrisStudy_BushWPO_Project`)은 학습용으로 유지하고, demo texture dependency 없는 production 후보를 별도로 만들었다.
+
+| 자산 | 판정 |
+| --- | --- |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Clean` | Deform/Wind RT 직접 sample, demo texture dependency 없음 |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Clean` | InteractionBubble/Wind RT 직접 sample, demo texture dependency 없음 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_CleanMaterialVerification` | clean material 전용 formal verification map |
+
+PIE 검증에서는 Manager가 `DeformComponents=2`, `WindComponents=1`, `InteractionBubbleComponents=2`로 잡혔고, Deform/Wind/InteractionBubble RT 모두 nonzero sample을 확인했다.
+
+Clean verification map cook/stage는 ExitCode `0`으로 통과했으며 `_MCP_Temp` staged entry는 `0`이었다. 단, project default/startup map이 `/Game/UltraDynamicSky/Maps/DemoMap`을 가리켜 stage manifest에는 DemoMap/demo texture가 남는다. clean-only packaged build는 default map 정책을 별도 패스로 분리해야 한다.
+
+자세한 기록:
+
+- `Docs/Analysis/Prismatiscape_CleanMaterialPass.md`
+
+## Segment Deform 정식 후보
+
+`APrismatiscapeStudyTwoSocketStick` native parent를 사용해 `_MCP_Temp`가 아닌 정식 BP child와 검증 맵을 만들었다.
+
+| 자산 | 역할 |
+| --- | --- |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_SegmentDeformStick` | `TwoSocketDeform` 컴포넌트를 상속한 segment deform BP |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_SegmentDeformVerification` | clean grass material 표면 위에서 segment deform RT를 검증하는 맵 |
+
+PIE 검증:
+
+- Manager: `Prismatiscape_Manager_BP_C_0`
+- DeformComponents: `1`
+- WindComponents: `0`
+- InteractionBubbleComponents: `0`
+- `Prismatiscape_Deform_RT`: `65529 / 65536`, max abs `0.4258262813091278`
+- Screenshot: `MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_SegmentDeformVerification_Framed.png`
+
+Cook/stage 검증:
+
+- `.\scripts\cook_prismatiscape_clean_map.ps1 -Map /Game/PrismatiscapeStudy/Maps/M_PrisStudy_SegmentDeformVerification`
+- `BUILD SUCCESSFUL`
+- Stage manifest: `Segment map=2`, `Segment BP=2`, `PrismatiscapeStudy=6`, `_MCP_Temp=0`, `UltraDynamicSky/Maps/DemoMap=0`
+
+자세한 기록:
+
+- `Docs/Analysis/Prismatiscape_SegmentDeformPass.md`
+
+## Character Deform 정식 후보
+
+`APrismatiscapeStudyCharacterDeformProxy` native parent를 사용해 `UPrismatiscapeDeformComponentCharacter`의 `OnlyFeet` profile을 정식 BP child로 검증했다.
+
+| 자산 | 역할 |
+| --- | --- |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_CharacterDeformProxy` | `OnlyFeet` profile character deform BP |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_CharacterDeformVerification` | clean grass material 표면 위에서 character deform RT를 검증하는 맵 |
+
+정지/텔레포트 방식에서는 capsule 2개가 생성되어도 velocity가 0으로 돌아가 `Prismatiscape_Deform_RT`가 0으로 남았다. 그래서 parent class에 BP-editable runtime study motion을 추가해 PIE와 packaged smoke에서 자동으로 움직이도록 했다.
+
+PIE 검증:
+
+- Manager: `Prismatiscape_Manager_BP_C_0`
+- DeformComponents: `1`
+- Character profile: `OnlyFeet`
+- PrevFramePositions: `4`
+- CapsuleStart/End arrays: `2`
+- `Prismatiscape_Deform_RT`: center 64x64 area `4088 / 4096`, max abs `0.624969482421875`
+- Screenshot: `MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_CharacterDeformVerification_Clean.png`
+
+Cook/stage/smoke 검증:
+
+- `.\scripts\cook_prismatiscape_clean_map.ps1 -Map /Game/PrismatiscapeStudy/Maps/M_PrisStudy_CharacterDeformVerification -BuildGame -SmokeLaunch -SmokeTimeoutSeconds 60`
+- `BUILD SUCCESSFUL`
+- Stage manifest: `Character map=2`, `Character BP=2`, `PrismatiscapeStudy=6`, `_MCP_Temp=0`, `DemoMap=0`, `ExampleCharacter=8`, `YeetoMosquito=2`, `CloudNoise=3`
+- Smoke launch exit code: `0`
+
+이 pass는 plugin demo character skeletal mesh를 학습용 BP child override로 사용한다. Native parent CDO의 skeletal mesh는 `null`이라 clean/segment map은 `ExampleCharacter=0`, `YeetoMosquito=0`으로 cook/stage된다. 최종 production character asset은 별도 교체 대상이다.
+
+자세한 기록:
+
+- `Docs/Analysis/Prismatiscape_CharacterDeformPass.md`

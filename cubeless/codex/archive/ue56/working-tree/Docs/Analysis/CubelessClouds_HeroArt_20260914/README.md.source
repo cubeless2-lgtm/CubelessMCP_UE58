@@ -1,0 +1,69 @@
+# Hero Cloud 아트 1차 조정 — 2026-09-14
+
+사용자가 검수한 배치를 유지하면서 주 타워·연결부의 밀도를 보강하고, 하단의 얇은 잔여 밀도와 명암을 정리했습니다. 최종 선택은 `Shaded`입니다. 구름 편집 기능은 `ff5e71bbc`로 `main`에 제출·푸시했고, 이 문서의 아트 조정은 그 이후 로컬에 저장한 작업입니다.
+
+## 현재 결과
+
+![최종 타워와 하부](Images/Shaded_Hero.png)
+
+| 변경 전 | 최종 하부 |
+| --- | --- |
+| ![변경 전 하부](Images/Baseline_Lower.png) | ![최종 하부](Images/Shaded_Lower.png) |
+
+타워의 큰 돌출부와 하부 음영이 조금 더 분명해졌습니다. 얇은 외곽과 일부 거친 경계는 남아 있어 아트 검수 대상입니다. 위 이미지는 일반 에디터 뷰포트의 빠른 비교 캡처이며, 최종 품질·성능 측정용 이미지가 아닙니다. 비교 캡처 뒤에는 사용자가 보고 있던 카메라로 복원했습니다.
+
+## 적용 값과 수정 위치
+
+Outliner에서 다음 구름을 선택하고 Details의 `Density`와 `EdgeCut`을 수정합니다. 위치·회전·크기·VDB 소스는 변경하지 않았습니다.
+
+| 구름 | Density 전 → 후 | EdgeCut 전 → 후 |
+| --- | --- | --- |
+| `CLOUD_S03_T01_Tower_Main` | 1.30 → 1.70 | 0.027 → 0.036 |
+| `CLOUD_S03_L01_Base_West` | 2.7825 → 3.10 | 0.0198 → 0.038 |
+| `CLOUD_S03_N01_Connector_West` | 2.1817 → 2.60 | 0.0198 → 0.026 |
+| `CLOUD_S03_N02_Connector_East` | 1.8335 → 2.20 | 0.02475 → 0.033 |
+| `CLOUD_S03_E01_Soft_West` | 1.2262 → 1.23 | 0.0132 → 0.025 |
+
+전체 구름에 영향을 주는 공통 값은 다음과 같습니다.
+
+| 위치 | 값 | 전 → 후 |
+| --- | --- | --- |
+| `MI_VC_CloudAuthoring` | `ExtinctionPerMeter` | 0.003 → 0.0038 |
+| `MI_VC_CloudAuthoring` | `CloudAlbedo` RGBA | (0.96, 0.98, 1, 1) → (0.98, 0.99, 1, 1) |
+| 레벨의 `CloudLayout > CloudRenderer` | `Sky Light Cloud Bottom Occlusion` | 0.25 → 0.50 |
+
+머티리얼 인스턴스는 `/Game/CubelessClouds/VolumetricCloud/LiveEditing/Authoring/MI_VC_CloudAuthoring`입니다. Bottom Occlusion은 배치된 렌더러 컴포넌트의 값입니다. 마스터 머티리얼 그래프와 산란 함수는 변경하지 않았습니다. 수정 후에는 레벨과 인스턴스를 함께 저장합니다.
+
+## 보존·저장 확인
+
+- 현재 28개 구름·7개 그룹·SVT 11종을 유지했습니다. 편집 용량은 기존 32개 슬롯입니다.
+- 스냅샷의 70개 액터에서 위치·회전·크기 변화는 수치 오차 `1.43e-14` 이하, 부모 변경은 0개입니다. 위 5개 외의 23개 구름은 개별 밀도·가장자리 값도 유지했습니다.
+- 사용자가 이동한 `CLOUD_S03_T02_Tower_Mid`, `CLOUD_S03_L02_Base_East`와 검수용 GameMode·PlayerStart를 유지했습니다.
+- 사용자가 PIE를 종료한 뒤 Study 03 맵과 머티리얼 인스턴스를 저장했습니다. 저장 직후 dirty content/map은 0개입니다.
+- 새 베이크, Polar UV, 프로젝트 C++, Obsidian 별도 기록은 만들지 않았습니다.
+
+저장된 맵은 `/Game/CubelessClouds/Studies/Study_03_AnvilCrown/L_Study_03_AnvilCrown`입니다. [저장 상태와 파일 SHA-256](saved.json), [배치 보존 비교](preservation.json), [최종 배치](Final_layout.json), [최종 수치](current_art.json)를 연결합니다.
+
+## 검증
+
+| 검사 | 결과와 범위 |
+| --- | --- |
+| 오프라인 `full` | **42/42 통과**, 새로 실행. 분리된 동일 저장소 검증 작업 트리에서 입력 6,537개를 전후 해시 비교했고 변경은 0개입니다. [실행 결과](Verification/summary.json), [로그](Verification/full.log), [전체 입력 해시](Verification/inputs.json) |
+| 조정 스크립트 | `py_compile`, Ruff F821 통과. 실제 적용은 최종 수치 readback으로 확인했습니다. |
+| 별도 프로세스 재로드 | **통과**. UnrealMCP를 비활성화하고 맵을 로드한 뒤 native Blueprint BeginPlay 초기화에서 28개 슬롯을 확인했습니다. 5개 구름의 수치·소스와 공통 광학 값·Bottom Occlusion도 저장값과 일치했습니다. [결과](cold_result.json), [로그](Verification/cold.log) |
+| 지정 맵 DX12/SM6 cook | **115개 패키지, 오류 0개**. UnrealMCP 비활성, 에디터 유틸리티 cook 제외, 머티리얼 fallback 없음. 기존 Lumen 설정 우선순위 경고 2개만 있습니다. [결과](cook_result.json), [로그](Verification/cook_sm6.log) |
+| 현재 맵·인스턴스 의존성 | 도달한 패키지 166개에서 MCP·Python·프로젝트 에디터 유틸리티 참조 0개. [의존성 감사](dependency_audit.json) |
+| 최종 에디터 상태 | PIE 종료, 최종 아트 수치 일치, dirty content/map 0개. [상태](final_editor_state.json) |
+
+검증 작업 트리는 이전에 소유권을 확인한 동일 저장소의 분리된 후보를 사용했습니다. 관련 없는 동시 작업은 포함하지 않았습니다. 검증 뒤 변경은 설명용 MD와 결과 증거뿐이며, 조정 스크립트와 저장 에셋은 검증한 값과 일치합니다. [최종 동등성 확인](Verification/final_equivalence.json). 이전 편집 기능의 검증은 [제출된 편집 기록](../CubelessClouds_Authoring_20260914/README.md)에 있습니다.
+
+지원 기준은 **UE 5.6.1 DX12/SM6**입니다. 기존 DX11/SM5 SVT 샘플러 한도 문제는 해결 범위에 포함하지 않았습니다. 전체 실행 파일 패키징, 실제 게임 실행, 목표 GPU 성능 검증 완료를 의미하지 않습니다.
+
+첫 Form 적용에서는 UE 5.6.1 머티리얼 인스턴스 setter가 실제 적용 후에도 `False`를 반환하여 스크립트 검사가 중단됐습니다. 실제 값을 읽어 적용 상태를 확인했고, 이후 setter의 반환값 대신 수치 readback으로 검증하도록 수정했습니다. [중단 시 readback](Form_partial_readback.json)과 [최종 적용 증거](Shaded_values.json)를 보존합니다. PIE 읽기 검사는 사용자 종료 시점과 겹쳐 중단됐으며 통과로 집계하지 않습니다.
+
+## 재현 자료
+
+- [조정·비교 스크립트](../../../scripts/refine_cloud_hero_art_ue.py): 최초 checkpoint를 덮어쓰지 않으며, 사용자 수치가 중간에 바뀌면 다음 preset 적용을 중단합니다.
+- [초기 상태](before.json), [초기 렌더러 값](renderer_before.json)
+- [변경 전 타워](Images/Baseline_Hero.png), [밀도 조정](Images/Form_Hero.png), [광학 값 조정](Images/Optical_Hero.png), [최종 사용자 시점](Images/Final_UserView.png)
+- [전체 아트 구성 계획](../CubelessClouds_ArtCompositionPlan_20260913.md)

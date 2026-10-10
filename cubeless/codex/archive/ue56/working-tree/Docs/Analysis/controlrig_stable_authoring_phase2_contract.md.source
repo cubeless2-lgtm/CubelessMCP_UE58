@@ -1,0 +1,63 @@
+# ControlRig Stable Authoring Phase 2 Contract
+
+Date: 2026-06-30
+
+`Python/scripts/analysis/controlrig_stable_authoring_phase2_contract.py` is a
+filesystem-only guard for deterministic profile-to-recipe planning readiness.
+
+## Command
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase2_contract.py
+```
+
+Optional JSON output:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase2_contract.py --json
+```
+
+## Checks
+
+- `compile_controlrig_profile_recipe` and `_compile_profile_preset_request`
+  exist in `Python/tools/controlrig_authoring_tools.py`.
+- The compiler keeps sample/temp target validation, `save=false`,
+  `target_modified=false`, `partial_target_modified=false`, stable
+  `preset_request_json`, and `deterministic_profile_recipe_compiler` evidence.
+- Ambiguous required aliases still require explicit `bone_overrides`.
+- The MCP-facing wrapper may call `make_preset` for optional recipe JSON, but
+  does not call build, validate, dry-run, bridge commands, or binding
+  orchestration.
+- Phase 2 design, tool, workflow, recommendation, and unit-test markers remain
+  present.
+- Analysis README, Phase 2 handoff, release gate, release verification, and
+  Phase 1 handoff records keep linking this contract and its no-mutation skip
+  evidence.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` does not contain a static
+  dependency string for `UnrealMCPControlRigToolsEditor` or
+  `UnrealMCPControlRigToolsEditor`.
+
+## Explicitly Excluded
+
+- Unreal Editor launch.
+- Live MCP bridge calls.
+- UnrealBuildTool C++ build.
+- ControlRig build, compile, save, solve, or asset mutation.
+- AnimBP binding or input-default promotion.
+
+## Current Verification
+
+2026-06-30:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase2_contract.py --json
+```
+
+Result: passed with `issue_count=0`; `unreal_editor`, `cpp_build`, and
+`asset_mutation` were skipped.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase2_contract.py
+```
+
+Result: passed, 8 tests.

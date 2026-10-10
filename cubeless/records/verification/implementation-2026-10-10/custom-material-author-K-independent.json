@@ -1,0 +1,9 @@
+{
+  "schema": "cubeless_custom_material_verification_v1",
+  "passed": true,
+  "errors": [],
+  "phase": "author",
+  "full_legacy_custom_parity": false,
+  "shader_completion_verified": false,
+  "report_sha256": "82aa36f06e61517c8978d6c2b15cae83eab4eeedcf3e665be3299e514c9a9312"
+}

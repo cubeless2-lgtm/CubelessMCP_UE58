@@ -1,0 +1,138 @@
+# BP Authoring Manifest Executor Policy
+
+This policy defines the Section 40 execution layer between a structured
+Blueprint authoring manifest and live UnrealMCP commands.
+
+## Required Flow
+
+1. A user request must first pass through the planner and Section 12-39 job
+   manifest contract.
+2. The live runner must build a Section 40 executor policy for every manifest.
+3. Only manifests with `can_execute=true` may reach temporary live authoring.
+4. The executor is temporary-scope only: output must stay under
+   `/Game/_MCP_Temp`.
+5. Durable authoring, save, overwrite, rename, and delete behavior remains
+   disabled.
+6. The executor report must expose its version, command plan, blocked reasons,
+   section results, structural validation results, and failure diagnostics.
+7. Failure diagnostics must use the Section 41 category/replay-safety schema
+   before a failed run is considered reviewable.
+8. Section 42-45 capability coverage must report whether typed defaults, graph
+   layout/dataflow, function graph execution, dispatcher lifecycle execution,
+   and AnimBP sample/read/default assignment execution have the required
+   validation evidence.
+9. Section 46-48 durable gate coverage must prove durable requests are limited
+   to read-only live preflight and expose zero save/delete/rename/authoring
+   command allowance.
+10. Section 51 durable enable coverage must prove target allowlist,
+    overwrite/rename decision, rollback readiness, and ownership marker gates
+    stay separated and do not open durable executor execution.
+11. Section 52 ownership marker coverage must prove delete without marker and
+    preexisting asset delete/overwrite/rename remain forbidden.
+12. Section 53 dry-run plan coverage must prove durable plans contain no live
+    execution commands and cannot execute.
+13. Section 54 save simulator coverage must prove save prerequisites can be
+    evaluated without allowing `save=true`, `save_asset`, or live commands.
+14. Section 55 canary prep coverage must prove the canary target is limited to
+    `/Game/_MCP_Temp/DurableCanary` and still allows no live canary, save, or
+    delete commands.
+15. Section 56 canary approval coverage must prove approval is explicit and
+    scoped while still allowing no executor-open, live canary, save, or delete
+    commands.
+16. Section 57 canary live preflight coverage must prove the only live canary
+    operation is read-only asset-exists and still allows no canary execution,
+    save, delete, or cleanup commands.
+17. Section 58 recovery matrix coverage must prove recovery scenarios are
+    defined while cleanup, delete, save, and authoring commands remain disabled.
+18. Section 59 release boundary v2 coverage must consolidate Section 51-58 as
+    blocking-safe while still reporting durable authoring disabled.
+19. Section 60 MVP decision coverage must mark temporary authoring MVP-ready
+    while keeping durable authoring not enabled.
+
+## Execution Boundary
+
+The Section 40 executor may run only planner-safe, executable manifests whose
+parent/read-only class is covered by the job contract allowlist. It must block:
+
+- non-safe manifests
+- non-executable manifests
+- durable authoring requests
+- parent classes outside the current allowlist
+- temporary package paths outside `/Game/_MCP_Temp`
+- unknown live commands
+- save/delete/rename commands
+- any compile request with `save=true`
+- any durable gate that unexpectedly enables saved asset authoring, save,
+  delete, rename, overwrite, or replacement behavior
+- any Section 51 enable contract that reports `durable_executor_may_open=true`
+- any ownership marker contract that allows delete without marker or delete of
+  a preexisting asset
+- any Section 53 dry-run plan with a non-empty execution command plan or live
+  command count
+- any Section 54 simulator that allows `save=true`, `save_asset`, compile-save,
+  or live command execution
+- any Section 55 canary prep contract that allows live canary execution,
+  general `/Game/Blueprints` output, `save=true`, `save_asset`, or `delete_asset`
+- any Section 56 canary approval gate that allows executor open, live canary
+  execution, general `/Game/Blueprints` output, `save=true`, `save_asset`,
+  `delete_asset`, or any live command
+- any Section 57 canary live preflight contract that allows canary execution,
+  authoring, save/delete, cleanup, or any non-read-only live command
+- any Section 58 canary recovery matrix that allows cleanup, delete, save,
+  authoring, or any live cleanup/delete/save/authoring command
+
+## Validation
+
+- Offline tests must prove the executor policy count: 16 executable temporary
+  manifests and 7 blocked manifests for the default request set.
+- Offline tests must prove the durable gate count: 1 durable requested manifest,
+  1 read-only live preflight allowed manifest, and 0 durable executor/save/delete
+  command allowance.
+- Offline tests must prove the Section 51 enable contract count: 1 durable
+  requested manifest, 0 enable-contract-satisfied manifests, 0 durable executor
+  may-open manifests, 0 forbidden command allowance, and independent gate counts
+  for target allowlist, overwrite/rename, rollback readiness, and ownership
+  marker.
+- Offline tests must prove the Section 52 ownership marker count: 1 durable
+  marker request, 1 marker policy ready request, 0 delete-without-marker
+  allowance, and 0 preexisting asset delete allowance.
+- Offline tests must prove the Section 53 dry-run plan count: 1 durable plan
+  created, 1 valid no-command plan, 0 executor may-execute plans, and 0 live
+  commands.
+- Offline tests must prove the Section 54 simulator count: 1 simulation
+  evaluated, 0 future-save-ready simulations, 0 save=true allowance, 0
+  save_asset allowance, 0 compile-save command allowance, and 0 live commands.
+- Offline tests must prove the Section 55 canary prep count: 1 canary prep
+  ready contract, 0 live canary allowance, 0 general Blueprints package
+  allowance, 0 save=true allowance, 0 save_asset allowance, and 0 delete_asset
+  allowance.
+- Offline tests must prove the Section 56 canary approval count: 1 approval
+  record, 1 approval gate pass, 1 canary package scope match, 0 executor-open
+  allowance, 0 live canary allowance, 0 save/delete allowance, and 0 live
+  commands.
+- Offline tests must prove the Section 57 canary live preflight count: 1
+  read-only canary preflight allowance, 0 canary execution allowance, 0
+  authoring command allowance, 0 save/delete allowance, 0 cleanup allowance, and
+  0 live authoring/save/delete/cleanup command counts.
+- Offline tests must prove the Section 58 recovery matrix count: 1 ready
+  recovery matrix, 6 recovery scenarios, 0 cleanup/delete/save/authoring
+  allowance, and 0 live cleanup/delete/save/authoring command counts.
+- Offline tests must prove the Section 59 release boundary v2 row reports
+  Section 51-58 blocking contracts ready and durable authoring still disabled.
+- Offline tests must prove the Section 60 MVP decision reports temporary MVP
+  ready, durable MVP not ready, and durable save/delete/cleanup still disabled.
+- The planner-driven live smoke must report the executor version and executor
+  executable count.
+- The planner-driven live smoke may perform only the read-only durable
+  asset-exists preflight and must report that no durable authoring or
+  save/delete command was attempted.
+- The live smoke still owns the Unreal bridge adapter, cleanup, and temp asset
+  inspection, but section orchestration must go through
+  `bp_authoring_manifest_executor.py`.
+- Generated assets must be deleted unless explicitly kept for debugging.
+
+## Decision
+
+Section 40 does not enable durable asset authoring. It only makes temporary safe
+manifest execution explicit, inspectable, and reusable before later durable
+gates are considered.

@@ -1,0 +1,104 @@
+# CubeFluidNinjaLive component enum 클린룸 구현
+
+## 결과
+
+`NinjaLiveComponent`가 직접 요구하는 미완성 UserDefinedEnum 3개를 원본 package를 복제하지 않고 새 target package로 작성했다.
+
+| target | visible 항목 | 바이트 | SHA-256 |
+|---|---:|---:|---|
+| `/Game/Study/CubeFluidNinjaLive/Data/Enums/E_CFNL_OutputMaterialUsage` | 3 | 2,008 | `bbf214e6c405fc3f3c8c62c1184118888a4bc1c2f74b47a7b31130e638da4ffb` |
+| `/Game/Study/CubeFluidNinjaLive/Data/Enums/E_CFNL_QuantizerMode` | 15 | 4,217 | `565192587774b64423d18b7035235b3a858fc93de01281004d62617d977f5a84` |
+| `/Game/Study/CubeFluidNinjaLive/Data/Enums/E_CFNL_RenderTargetList` | 5 | 2,255 | `27055d140ff7b513422bb93ac58d53cbce904c8ebefc06afd17da19796f5b6b8` |
+
+모두 fresh internal name `NewEnumerator0..N`, target 자체의 native auto MAX `E_CFNL_MAX`, 연속 ordinal `0..N`을 가진다. source internal name이나 source GUID는 저작 입력으로 사용하지 않았다.
+
+## 학습한 의미
+
+### OutputMaterialUsage
+
+이 enum은 하나의 출력 consumer가 component에 등록된 세 material slot 중 무엇을 쓸지 선택한다.
+
+| ordinal | 표시 의미 |
+|---:|---|
+| 0 | Use Primary Output Material |
+| 1 | Use Secondary Output Material |
+| 2 | Use Tertiary Output Material |
+
+### QuantizerMode
+
+0~3은 quantization을 끈 상태에서 simulation-buffer offset을 어떻게 정할지 선택한다. 4~14는 자동 texture offset과 함께 world-space quantization step을 고른다.
+
+| ordinal | 의미 |
+|---:|---|
+| 0 | quantizer 없음, sim-buffer offset 없음 |
+| 1 | quantizer 없음, offset 수동 |
+| 2 | quantizer 없음, offset 자동 및 극값 clamp |
+| 3 | quantizer 없음, offset 자동 |
+| 4~14 | step 1, 2, 3, 4, 5, 10, 20, 30, 50, 100, 500 unit |
+
+이 ordinal은 preset map의 정수 직렬화와 Blueprint switch에서 관측되므로 label만 비슷하게 만드는 것으로는 부족하다. 정확한 순서를 유지해야 한다.
+
+### RenderTargetList
+
+legacy buffer export가 선택하는 대상이다.
+
+| ordinal | buffer |
+|---:|---|
+| 0 | RT_VelocityDensity |
+| 1 | RT_Divergence |
+| 2 | RT_Pressure |
+| 3 | RT_Painter |
+| 4 | RT_Output |
+
+이는 core solver의 내부 `SelectedBuffer` ordinal과 같은 enum이 아니다. component의 legacy exporter 계약으로 분리해 유지한다.
+
+## 클린룸 저작 방식
+
+동결된 read-only enum inspection에서 visible display label과 ordinal만 의미 입력으로 추출했다. live authoring program에는 다음 정보만 전달했다.
+
+- 새 `/Game/Study/CubeFluidNinjaLive/Data/Enums/*` target path
+- 순서가 고정된 display label
+- 빈 tooltip
+- `skip_if_exists=false`, fresh-only 생성 및 save
+
+원본 `/Game/FluidNinjaLive/Core/Enums/*` package, `OutputMaterialUsage_MAX` 같은 원본 MAX internal name, 원본의 건너뛴 `NewEnumerator` 번호, source GUID는 editor authoring command에 전달하지 않았다. UE가 새 package에서 새 internal identity와 auto MAX를 발급하게 했다.
+
+빌더는 실행 전에 기존 enum 4개의 파일 SHA를 고정한다. 따라서 같은 target folder에 새 3개를 추가하면서 `E_CFNL_InactiveBehaviour`, `E_CFNL_QuantizerAxisIgnore`, `E_CFNL_SimPrecision`, `E_CFNL_UserInput`을 우발적으로 변경하지 않았음을 증명한다.
+
+## 검증 결과
+
+| gate | 결과 |
+|---|---|
+| frozen source/reference identity | PASS |
+| live absence/preflight/dry-run | PASS |
+| fresh create/save | PASS |
+| same-session exact readback | PASS |
+| 새 프로세스 cold verify-existing | PASS |
+| 7개 enum folder class count | 정확히 `UserDefinedEnum: 7` |
+| dirty package / redirector | `0 / 0` |
+| source/temp/MCP forbidden dependency | `0` |
+| source 파일 전후 identity | 동일 |
+| 기존 target enum 4개 전후 identity | 동일 |
+| UnrealMCP-disabled isolated load/class | 3개 모두 PASS |
+| project/runtime C++ | 사용 안 함 |
+
+authoring PID `65400`을 종료한 뒤 다른 cold PID `58568`에서 readback했다. cold 검증은 compile/save/mutation을 호출하지 않았다. 마지막 plugin-disabled 검증은 `-DisablePlugins=UnrealMCP`인 별도 `UnrealEditor-Cmd` 프로세스에서 세 자산을 `/Script/Engine.UserDefinedEnum`으로 로드했다.
+
+## 증거
+
+계약 SHA-256은 `c083859152726ae8308d5407487a1d2e4910d0d7e188c2bc657276972057d830`, one-shot confirmation token은 `cfnl-component-enums-c083859152726ae8308d`다.
+
+| 리포트 | 바이트 | SHA-256 |
+|---|---:|---|
+| live preflight | 20,136 | `eb3bc4597aeb0154f089aa71aeb5576b12056b88400e9535bd94e4f66761877e` |
+| execute | 26,389 | `347cae17116ce7e03da881f2b51357a844f0ba0a16d2576a766f182aec0a1c03` |
+| cold verify | 24,279 | `6620476acd6c875950e63f574850f74152af683096daf8371c197e5fb4799a7f` |
+| plugin-disabled | 13,348 | `13d925add68bdb3e267ee7fe5bd2488646bde099302b0a8d4731b903470514bc` |
+
+구현과 집중 테스트:
+
+- `Python/scripts/analysis/build_cube_fluid_ninja_component_enums.py`
+- `Python/scripts/analysis/test_cube_fluid_ninja_component_enum_builder.py`
+- focused offline test 8개 PASS
+
+이 3개 enum은 순수 데이터 asset이므로 UnrealMCP authoring 도구는 생성 시점에만 사용된다. 완성 asset에는 UnrealMCP class/function/module 참조가 없으며 plugin이 없어도 로드된다.

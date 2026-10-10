@@ -1,0 +1,1472 @@
+{
+  "schema": "cubeless_blueprint_pipeline_v1",
+  "legacy_id": "OPS56-VERIFY-002",
+  "phase": "author",
+  "run_id": "7f53ee14c15b44d0be1d622d263a0079",
+  "endpoint": "http://127.0.0.1:8001/mcp",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+  "asset_path": "/Game/CubelessMCPTests/Run_7f53ee14c15b44d0be1d622d263a0079/BP_MutationContract",
+  "started_utc": "2026-10-10T08:07:04.735834+00:00",
+  "status": "fail",
+  "stages": [
+    {
+      "name": "preflight",
+      "passed": true,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 49932,
+        "instance_id": "48258B7A-4A34-04B7-DCF1-F79580162A59",
+        "session_id": "8D0ADC0A-2450-48FD-8000-00000000F800",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.34410133957862854
+      },
+      "elapsed_seconds": 0.017051
+    },
+    {
+      "name": "invalid_create_rejected",
+      "passed": true,
+      "result": {
+        "success": false,
+        "operation_id": "7f53ee14c15b44d0be1d622d263a0079_create_blueprint_2",
+        "stage": "preflight",
+        "error_code": "invalid_asset_name",
+        "error": "name must be a nonempty single asset identifier without path/object separators",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "status": "not_run"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Inspect the recorded result before issuing another mutation.",
+          "replayed": false
+        },
+        "data": {
+          "elapsed_seconds": 0.037001
+        }
+      },
+      "elapsed_seconds": 0.059561
+    },
+    {
+      "name": "create",
+      "passed": false,
+      "result": {
+        "success": false,
+        "operation_id": "7f53ee14c15b44d0be1d622d263a0079_create_blueprint_3",
+        "stage": "preflight",
+        "error_code": "python_operation_failed",
+        "error": "'Class' object has no attribute 'get_super_class'",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "status": "not_run"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Inspect the recorded result before issuing another mutation.",
+          "replayed": false
+        },
+        "data": {
+          "elapsed_seconds": 0.039458
+        }
+      },
+      "error": "Operation failed: {'success': False, 'operation_id': '7f53ee14c15b44d0be1d622d263a0079_create_blueprint_3', 'stage': 'preflight', 'error_code': 'python_operation_failed', 'error': \"'Class' object has no attribute 'get_super_class'\", 'changes': [], 'compile': {'attempted': False, 'requested': False, 'status': 'not_requested'}, 'save': {'attempted': False, 'requested': False, 'saved': False}, 'validation': {'complete_dependency_scan': 'not_run', 'disk_reload': 'not_run', 'packaged_runtime': 'not_run', 'status': 'not_run'}, 'retry': {'atomic_rollback': False, 'automatic_retry': False, 'duplicate_risk': 'none_observed', 'policy': 'Inspect the recorded result before issuing another mutation.', 'replayed': False}, 'data': {'elapsed_seconds': 0.039458}}",
+      "elapsed_seconds": 0.060796
+    }
+  ],
+  "compile": {
+    "status": "not_run"
+  },
+  "save": {
+    "status": "not_run"
+  },
+  "reload": {
+    "status": "not_run"
+  },
+  "cleanup": {
+    "status": "deferred_to_explicit_cleanup_phase"
+  },
+  "packaging": {
+    "status": "not_run"
+  },
+  "outcome_unknown": false,
+  "automatic_retries": 0,
+  "atomic_rollback": false,
+  "legacy_scope": "Actor Blueprint / two Branch nodes / exec connect / position / delete / readback, augmented compile+save+cold reload. General graph tool parity is separate.",
+  "input_fingerprint": "3eaf6280c6d8235ac993dafe2ee5d972986bfd03607ac6e3cbe2f25811fd06f3",
+  "server": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "resources": {},
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "serverInfo": {
+      "name": "",
+      "title": "",
+      "version": ""
+    }
+  },
+  "top_level_schema": {
+    "tools": [
+      {
+        "name": "list_toolsets",
+        "description": "List all available toolsets with names and descriptions.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "describe_toolset",
+        "description": "Get detailed information about a toolset including all tool names, descriptions, and input schemas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "toolset_name": {
+              "type": "string",
+              "description": "Name of the toolset to describe. Use list_toolsets to see available names."
+            }
+          },
+          "required": [
+            "toolset_name"
+          ]
+        }
+      },
+      {
+        "name": "call_tool",
+        "description": "Call a tool by name. Provide toolset_name to call a toolset tool, or omit it to call a top-level MCP tool. Use list_toolsets and describe_toolset to discover available tools and their input schemas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "toolset_name": {
+              "type": "string",
+              "description": "Optional. Name of the toolset containing the tool. Omit to call a top-level MCP tool. Use list_toolsets to discover toolset names."
+            },
+            "tool_name": {
+              "type": "string",
+              "description": "Name of the tool to call, without toolset prefix. Use describe_toolset to discover tool names and input schemas."
+            },
+            "arguments": {
+              "type": "object",
+              "description": "Arguments to pass to the tool. Must match the tool's input schema. Defaults to an empty object."
+            }
+          },
+          "required": [
+            "tool_name"
+          ]
+        }
+      }
+    ]
+  },
+  "discovered_schemas": {
+    "CubelessMCPUE58Editor.CubelessNativeToolset": {
+      "name": "CubelessMCPUE58Editor.CubelessNativeToolset",
+      "version": "0.1.0",
+      "description": "Cubeless native editor diagnostics, asset verification and compiler operations. Never reference this editor class from game assets.",
+      "tools": [
+        {
+          "description": "Read imported skeletal mesh sections for one LOD, including enabled state and source section identity.\nSkeletalMeshPath is an object path such as /Game/Meshes/SK_Test.SK_Test; LODIndex is zero-based.\nReturns JSON matching the legacy GetSections data fields plus operation status. Loads the mesh but never edits or saves it.\nIf mesh compilation is pending, returns a retryable read error instead of forcing synchronous compilation.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.GetSkeletalMeshSections",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "skeletalMeshPath": {
+                "type": "string"
+              },
+              "lODIndex": {
+                "type": "integer",
+                "default": 0
+              }
+            },
+            "required": [
+              "skeletalMeshPath"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Return JSON with engine/project identity, dirty packages, PIE state and MCP plugin state. Does not save, compile, close, or modify assets.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.GetEditorDiagnostics",
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Compile a Blueprint and return JSON with actual compiler errors, warnings and tokenized messages.\nBlueprintPath is the asset object path. Optional node refresh occurs before compilation; optional save occurs only after compilation passes.\nThis mutates compiler/generated-class state, is not atomic, and never retries or rolls back. Rejects PIE/SIE.\nA successful compile is not proof of runtime behavior or a reload; see saved and validation_scope separately.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.CompileBlueprintValidation",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprintPath": {
+                "type": "string"
+              },
+              "bSave": {
+                "type": "boolean",
+                "default": false
+              },
+              "bRefreshNodes": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "blueprintPath"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Audit saved package dependencies for Cubeless, legacy MCP, official MCP, Toolset Registry, Python and EditorScriptingUtilities references.\nPackageNames are long package names such as /Game/Tests/BP_Test, without object suffixes.\nIncludes hard and soft package references. Optional recursion has a strict MaxPackages budget (1..4096).\nReturns JSON containing edges, violations, incomplete reasons and dirty packages. Incomplete scans never pass.\nSaved Asset Registry data only: not proof of unsaved object references, all possible editor-only classes, or plugin-free packaging.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.AuditPackageDependencies",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "packageNames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "bRecursive": {
+                "type": "boolean",
+                "default": true
+              },
+              "maxPackages": {
+                "type": "integer",
+                "default": 256
+              }
+            },
+            "required": [
+              "packageNames"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        }
+      ]
+    },
+    "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools": {
+      "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools",
+      "version": "1.0",
+      "description": "Cubeless Blueprint lifecycle tools with explicit compile, save, partial-failure and retry results.",
+      "tools": [
+        {
+          "description": "Refresh nodes if requested, compile and collect native diagnostics; save only after successful compilation.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            save: Save on successful compile; defaults to legacy False.\n            refresh_nodes: Refresh all nodes before compile; defaults to legacy True and may change graph serialization.\n            operation_id: Optional durable request ID. A prior interrupted mutation requires inspection before retry.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_validate_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "save": {
+                "type": "boolean",
+                "default": false
+              },
+              "refresh_nodes": {
+                "type": "boolean",
+                "default": true
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Compile once and optionally save once after successful compilation. Save failure fails the overall result.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            save: Save after successful compilation; defaults to legacy True.\n            operation_id: Optional durable request ID for identical-request replay protection.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_save_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "save": {
+                "type": "boolean",
+                "default": true
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Compile one Blueprint with native compiler diagnostics; does not save or refresh nodes.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            operation_id: Optional durable request ID; never automatically retry an uncertain result.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Read Blueprint identity, status, graph/variable names and direct parent chain. Does not compile or save.\n\n        Args:\n            blueprint_name: Full /Game package or object path; a bare name means /Game/Blueprints/name.\n\n        Returns:\n            data_json describes loaded editor state. validation_json explicitly does not claim disk reload or complete dependency verification.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.inspect_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Create a Blueprint without overwriting, explicit compile, or save. Parent must resolve; known MCP/editor-tool parent chains are rejected.\n\n        Args:\n            name: New asset name. Use a single identifier, not a path.\n            parent_class: Native class name (Actor/Pawn etc.) or full native/generated class path; empty means Actor.\n            package_path: Directory under /Game; empty uses legacy /Game/Blueprints. No object suffix.\n            operation_id: Optional unique request ID for durable replay protection. Reuse only with identical arguments.\n\n        Returns:\n            Structured result. data_json includes name, path, asset_path and actual parent; creation remains unsaved.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.create_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "parent_class": {
+                "type": "string"
+              },
+              "package_path": {
+                "type": "string"
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "parent_class",
+              "package_path",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        }
+      ]
+    },
+    "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools": {
+      "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools",
+      "version": "1.0",
+      "description": "Cubeless Branch/exec-link graph editing with mutation_result_v1 readback; compilation and saving are separate.",
+      "tools": [
+        {
+          "description": "Connect free output/input exec pins and verify both directions; refuse replacing links. Typed/conversion links are pending.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            source_node_id: Output node object-path node_id.\n            source_pin_name: Exact output pin name, such as then.\n            target_node_id: Input node object-path node_id.\n            target_pin_name: Exact input pin name, such as execute.\n            graph_name: Existing graph name.\n            operation_id: Optional unique durable request ID.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.connect_graph_pins",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "source_node_id": {
+                "type": "string"
+              },
+              "source_pin_name": {
+                "type": "string"
+              },
+              "target_node_id": {
+                "type": "string"
+              },
+              "target_pin_name": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "source_node_id",
+              "source_pin_name",
+              "target_node_id",
+              "target_pin_name",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Delete a K2 node and verify absence plus no dangling links. Linked exec deletion requires explicit opt-in.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            node_id: Exact object-path node_id returned by this Toolset.\n            graph_name: Existing graph name.\n            allow_exec_linked_delete: Permit removing a node with connected exec pins.\n            operation_id: Optional unique durable request ID.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.delete_node",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "node_id": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "allow_exec_linked_delete": {
+                "type": "boolean",
+                "default": false
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "node_id",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Move one K2 node, checking optional previous coordinates and reading back the final position; no compile/save.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            node_id: Exact object-path node_id returned by inspect_graph/add_branch_node.\n            x: New horizontal position.\n            y: New vertical position.\n            graph_name: Existing graph name.\n            expected_x: If supplied, refuse when the prior x differs.\n            expected_y: If supplied, refuse when the prior y differs.\n            operation_id: Optional unique durable request ID.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.set_node_position",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "node_id": {
+                "type": "string"
+              },
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "expected_x": {
+                "default": null,
+                "type": "integer"
+              },
+              "expected_y": {
+                "default": null,
+                "type": "integer"
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "node_id",
+              "x",
+              "y",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Add a Branch node and verify its existence. data_json.node_id is its object path, not a legacy GUID.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            graph_name: Existing graph name.\n            x: Node horizontal position.\n            y: Node vertical position.\n            operation_id: Optional unique durable request ID.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.add_branch_node",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "x": {
+                "type": "integer",
+                "default": 0
+              },
+              "y": {
+                "type": "integer",
+                "default": 0
+              },
+              "operation_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "operation_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Read up to 2048 K2 nodes and pins, positions and links; comments excluded, no compile/save or forced reload.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            graph_name: Existing graph name, defaults to EventGraph.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.inspect_graph",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "editor": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 49932,
+    "instance_id": "48258B7A-4A34-04B7-DCF1-F79580162A59",
+    "session_id": "8D0ADC0A-2450-48FD-8000-00000000F800",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.34410133957862854
+  },
+  "error": "Operation failed: {'success': False, 'operation_id': '7f53ee14c15b44d0be1d622d263a0079_create_blueprint_3', 'stage': 'preflight', 'error_code': 'python_operation_failed', 'error': \"'Class' object has no attribute 'get_super_class'\", 'changes': [], 'compile': {'attempted': False, 'requested': False, 'status': 'not_requested'}, 'save': {'attempted': False, 'requested': False, 'saved': False}, 'validation': {'complete_dependency_scan': 'not_run', 'disk_reload': 'not_run', 'packaged_runtime': 'not_run', 'status': 'not_run'}, 'retry': {'atomic_rollback': False, 'automatic_retry': False, 'duplicate_risk': 'none_observed', 'policy': 'Inspect the recorded result before issuing another mutation.', 'replayed': False}, 'data': {'elapsed_seconds': 0.039458}}",
+  "retry_guidance": "No automatic retry. Inspect operation journal and fixture first; retain failed-stage evidence.",
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.02117
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 0.016524
+    },
+    {
+      "method": "tools/list",
+      "request_id": 2,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.033152
+    },
+    {
+      "method": "tools/call",
+      "request_id": 3,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.017074
+    },
+    {
+      "method": "tools/call",
+      "request_id": 4,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.033309
+    },
+    {
+      "method": "tools/call",
+      "request_id": 5,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.03356
+    },
+    {
+      "method": "tools/call",
+      "request_id": 6,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016749
+    },
+    {
+      "method": "tools/call",
+      "request_id": 7,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016581
+    },
+    {
+      "method": "tools/call",
+      "request_id": 8,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.059464
+    },
+    {
+      "method": "tools/call",
+      "request_id": 9,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.060715
+    }
+  ],
+  "call_count": 10,
+  "elapsed_seconds": 0.315367,
+  "finished_utc": "2026-10-10T08:07:05.066217+00:00",
+  "report_verification": {
+    "schema": "cubeless_pipeline_report_verification_v1",
+    "passed": false,
+    "errors": [
+      "Pipeline phase did not pass",
+      "Missing/failed stage: create",
+      "Missing/failed stage: duplicate_create_rejected",
+      "Missing/failed stage: add_first_branch",
+      "Missing/failed stage: add_second_branch",
+      "Missing/failed stage: connect",
+      "Missing/failed stage: readback_connection",
+      "Missing/failed stage: move",
+      "Missing/failed stage: readback_position",
+      "Missing/failed stage: delete",
+      "Missing/failed stage: readback_deleted",
+      "Missing/failed stage: compile_save",
+      "Missing/failed stage: saved_readback",
+      "Missing/failed stage: dependency_audit",
+      "A recorded stage failed",
+      "Compilation did not pass",
+      "Asset was not saved",
+      "No compile evidence in actual stage result",
+      "No save evidence in actual stage result",
+      "Compile summary differs from stage result",
+      "Save summary differs from stage result",
+      "No independent dependency pass"
+    ],
+    "phase": "author",
+    "verified_scope": "Report contract and included assertions; authenticity and engine behavior depend on attached live evidence"
+  }
+}

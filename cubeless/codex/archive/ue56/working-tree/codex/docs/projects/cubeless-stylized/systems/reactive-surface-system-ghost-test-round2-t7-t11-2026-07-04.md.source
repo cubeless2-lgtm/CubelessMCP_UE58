@@ -1,0 +1,267 @@
+# Reactive Surface System Ghost Test Round 2: T7-T11
+
+Date: 2026-07-04  
+Role: ghost tester / verifier  
+Scope: additional smoke tests independent from T1-T6
+
+## Reference Documents
+
+- Primary plan: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-validation-plan.md`
+- Previous ghost report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-ghost-test-report-2026-07-04.md`
+- Residual V1-V6 report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-residual-ghost-test-report-v1-v6-2026-07-04.md`
+- Interaction field reference: `codex/docs/projects/cubeless-stylized/systems/interaction-field-system.md`
+
+## Hard Rules
+
+- Do not create or modify production assets.
+- All temporary test content must stay under `/Game/_MCP_Temp/ReactiveGhost4/`.
+- Do not use `/Game/ReactiveSurface/*`.
+- Follow safe preview-map rules before map changes.
+- End every test with evidence JSON flushed to disk.
+- Clean `/Game/_MCP_Temp/ReactiveGhost4/` at the end.
+- Confirm dirty package count is 0 after cleanup.
+- Every result must be `PASS`, `FAIL`, or `BLOCKED` with numeric evidence. No inference-only claims.
+- If the G1 Grid2D -> RT probe cannot produce trusted nonzero readback, mark T7/T8/T9/T10 `BLOCKED` and report immediately.
+
+Suggested evidence path:
+
+```text
+MCPGameProject/Saved/MCP/ReactiveGhost4/reactive_surface_ghost_round2_t7_t11_20260704.json
+```
+
+## T7. Sleep/Wake Grid2D Persistence
+
+Goal: verify whether Ground hold behavior in plan §11.2 is actually valid when a Niagara component sleeps and wakes.
+
+Procedure:
+
+1. Spawn or reuse a G1-style Grid2D -> RT probe.
+2. Stamp the RT center.
+3. Read back RT and confirm nonzero center evidence before sleep.
+4. Call `NiagaraComponent.Deactivate`.
+5. While deactivated, read back the RT.
+6. Reactivate the component.
+7. Wait 1 to 3 ticks.
+8. Read back the RT again.
+9. Compare `reset_system` and `reinitialize_system` behavior separately, and record whether each clears the Grid2D/RT.
+
+Required evidence:
+
+- Pre-deactivate center RGBA.
+- Pre-deactivate 17x17 nonzero ratio.
+- Deactivated-state center RGBA.
+- Deactivated-state 17x17 nonzero ratio.
+- Reactivated 1 to 3 tick center RGBA.
+- Reactivated 1 to 3 tick 17x17 nonzero ratio.
+- `reset_system` post-call center RGBA and nonzero ratio.
+- `reinitialize_system` post-call center RGBA and nonzero ratio.
+
+Judgment:
+
+- `PASS`: RT data is preserved through deactivate/reactivate. Plan §11.2 Ground hold stands.
+- `FAIL`: wake/export overwrites the RT with zero. Plan §11.2 must require wake-time restamp or export gating.
+- `FAIL`: stale old source data is re-exported after wake. Add a checklist item for stale source re-output.
+- `BLOCKED`: G1 probe cannot provide trusted nonzero readback.
+
+Document amendment if failed:
+
+```text
+§11.2 Ground hold cannot assume Niagara sleep/wake preserves the exported RT. On wake, the component must either restamp the current hold state before export, or gate RT export until the Grid2D source has valid current-frame data. The implementation checklist must include a stale-source re-output test after Reactivate, ResetSystem, and ReinitializeSystem.
+```
+
+## T8. Material Consumption + V-Flip In PIE
+
+Goal: verify that a material consuming the exported RT maps world XY to UV correctly in PIE, with no U/V inversion.
+
+Procedure:
+
+1. Create a debug plane under `/Game/_MCP_Temp/ReactiveGhost4/`.
+2. Create a debug emissive material that samples the reactive RT.
+3. Material UV must be derived from world XY and the same window origin/size contract used by the system.
+4. Stamp two asymmetric world positions:
+   - one marker offset in +X
+   - one marker offset in +Y
+5. Run in PIE.
+6. Capture the viewport.
+7. Compare expected world/stamp positions to visible emissive pixels on the plane.
+8. Record whether U or V is flipped.
+
+Required evidence:
+
+- Stamp world positions.
+- Window origin and window size.
+- Expected UV for each stamp.
+- Readback coordinates for each stamp.
+- Viewport capture path.
+- Pixel coordinate comparison for each marker.
+
+Judgment:
+
+- `PASS`: both markers display at the expected plane locations in PIE; no U-flip or V-flip.
+- `FAIL`: either axis is inverted, offset, scaled incorrectly, or mismatched between readback and material display.
+- `BLOCKED`: G1 probe or PIE capture/readback cannot produce trusted evidence.
+
+Document amendment if failed:
+
+```text
+The material consumer contract must explicitly define the world XY -> RT UV transform, including V orientation. All Ground/Grass/Water consumers must use the shared transform function or material function proven by the PIE V-flip test.
+```
+
+## T9. Three-System Concurrent Run
+
+Goal: verify that three independent reactive systems can run at the same time without RT or User parameter cross-talk.
+
+Procedure:
+
+1. Spawn three G1-style systems in the same test map.
+2. Use three independent render targets.
+3. Use separated user parameter names and component instances.
+4. Stamp each system at a distinct position or color/channel signature.
+5. Read back all three RTs.
+6. Confirm all three are nonzero.
+7. Confirm each RT contains only its own expected stamp/signature.
+8. Capture one GPU timing baseline using `stat GPU`, `ProfileGPU`, or the best available MCP/editor console route.
+
+Required evidence:
+
+- System instance names.
+- RT asset paths.
+- User parameter names.
+- Per-RT center RGBA or stamp RGBA.
+- Per-RT 17x17 nonzero ratio.
+- Cross-talk check result for all three RTs.
+- GPU timing method and captured total time, if available.
+
+Judgment:
+
+- `PASS`: all three RTs are nonzero, signatures remain separated, and a first GPU baseline is recorded or explicitly marked unavailable.
+- `FAIL`: RTs share data, parameter names collide, only some RTs update, or GPU timing shows an immediate unacceptable spike.
+- `BLOCKED`: G1 probe cannot provide trusted nonzero readback.
+
+Document amendment if failed:
+
+```text
+The plan must not assume slot independence across Ground/Grass/Water until three simultaneous Niagara/RT instances prove isolated User parameters, independent RT exports, and acceptable first-pass GPU cost.
+```
+
+## T10. PIE Parity For G1
+
+T10 is tracked separately even though it can be satisfied by T8.
+
+Goal: confirm that the G1 Grid2D -> RT export path works in PIE, not only in editor/SIE.
+
+T10 can be marked `PASS` if T8 uses the same G1-style export path in PIE and records both:
+
+- nonzero RT readback in PIE
+- visible material consumption in the PIE viewport
+
+If T8 does not reuse the G1 export path, run a separate G1 PIE nonzero readback test.
+
+Required evidence:
+
+- PIE world/session identifier.
+- Center RGBA.
+- 17x17 nonzero ratio.
+- Confirmation that readback came from the PIE game world, not editor preview state.
+
+Judgment:
+
+- `PASS`: PIE readback is nonzero and matches the expected stamp.
+- `FAIL`: SIE/editor export works but PIE export is zero, stale, or mismatched.
+- `BLOCKED`: no trusted PIE readback route is available.
+
+Document amendment if failed:
+
+```text
+The implementation plan must split editor/SIE validation from PIE validation. Runtime approval requires PIE-world readback parity before Phase 1/2 work depends on Grid2D -> RT export.
+```
+
+## T11. Window Size / Resolution Runtime Change Decision
+
+T11 is not a smoke test. It is a document decision request.
+
+Proposed Phase 0-2 decision:
+
+```text
+WindowSize and RT resolution are fixed at BeginPlay for the first implementation scope. Runtime WindowSize or resolution changes are unsupported. Changing them requires component/system recreation, RT reallocation, and a fresh clear/reseed path.
+```
+
+Reason:
+
+- Runtime resize adds reprojection, clear/reseed, consumer material parameter sync, RT reallocation, and transient artifact handling.
+- This is outside the core proof target: player-attached reactive control of bounded nearby characters/effects.
+- Deferring runtime resize reduces ghost-test surface and avoids mixing window movement bugs with resize bugs.
+
+User confirmation needed:
+
+- Confirm `BeginPlay fixed, runtime resize unsupported` for Phase 0-2.
+- If rejected, add a dedicated V-test for resize/reallocation/reprojection before Phase 2.
+
+## Claude/Codex Execution Prompt
+
+```text
+리액티브 서피스 시스템 두 번째 고스트 테스트 라운드 T7-T11을 실행해줘.
+역할: 검수자 + 고스트 테스터.
+목적: 문서가 가정한 Sleep/Wake hold, material 소비 UV 방향, PIE parity, 3-system 동시 구동, WindowSize 런타임 정책을 구현 전 실측/결정으로 확정하는 것.
+
+기준 문서:
+codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-validation-plan.md
+
+참고 문서:
+codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-ghost-test-report-2026-07-04.md
+codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-residual-ghost-test-report-v1-v6-2026-07-04.md
+codex/docs/projects/cubeless-stylized/systems/interaction-field-system.md
+
+테스트 명세:
+codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-ghost-test-round2-t7-t11-2026-07-04.md
+
+절대 규칙:
+- production 자산 생성/수정 금지.
+- 모든 테스트 자산은 /Game/_MCP_Temp/ReactiveGhost4/ 아래에만 생성.
+- /Game/ReactiveSurface/* 경로 사용 금지.
+- 맵 전환은 safe preview-map 규칙 준수.
+- 각 테스트 후 evidence JSON 즉시 flush.
+- 테스트 종료 시 /Game/_MCP_Temp/ReactiveGhost4/ 정리.
+- dirty package 0 확인.
+- 모든 판정은 PASS / FAIL / BLOCKED + 수치 증거로 보고.
+- G1 Grid2D -> RT probe nonzero readback이 신뢰되지 않으면 T7/T8/T9/T10은 즉시 BLOCKED 처리하고 보고.
+
+실행 항목:
+
+T7. Sleep/Wake Grid2D 지속성
+- 중앙 stamp -> RT nonzero 확인 -> NiagaraComponent Deactivate
+- Deactivate 상태 RT readback
+- Reactivate -> 1~3 tick -> RT readback
+- reset_system/reinitialize_system 호출 시 Grid2D/RT가 지워지는지도 대조
+- 보존이면 PASS, 0 overwrite면 §11.2 wake restamp/export gate 수정안 제시, 옛 데이터 유령 재출력이면 stale source 재출력 FAIL 근거로 기록
+
+T8. Material 소비 + V-flip in PIE
+- 디버그 plane + RT 샘플 emissive material
+- world XY -> UV 변환 포함
+- 알려진 월드 좌표 2곳에 비대칭 stamp(+X, +Y)
+- PIE viewport capture + pixel coordinate 대조
+- U/V flip 여부 판정
+
+T9. 3-system 동시 구동
+- G1 클론 3개 + RT 3장 + 분리된 User parameter로 동시 spawn
+- 3장 전부 nonzero 확인
+- User parameter/RT 혼선 없음 확인
+- stat GPU 또는 ProfileGPU 등 가능한 방법으로 3-system 합산 GPU 시간 1회 기록
+
+T10. PIE parity for G1
+- T8이 동일 G1 export path를 PIE에서 사용하고 nonzero readback + material 표시를 증명하면 T10 PASS로 연결
+- 아니면 별도 G1 PIE nonzero readback 실행
+
+T11. 문서 결정 요청
+- smoke 대신 사용자 확인 항목으로 보고:
+  "Phase 0-2에서는 WindowSize와 RT resolution을 BeginPlay 고정으로 두고, 런타임 변경은 미지원으로 못 박을지?"
+- 권장안은 BeginPlay 고정/런타임 미지원.
+
+출력 형식:
+1. T7/T8/T9/T10별 PASS/FAIL/BLOCKED + 수치 증거 + 임시 자산 경로
+2. FAIL/BLOCKED 항목별 문서 수정안
+3. T11 사용자 결정 요청과 권장안
+4. 종합 go/no-go 및 Phase 0-2 착수 순서 조정안
+5. evidence JSON 경로
+6. 정리 확인: /Game/_MCP_Temp/ReactiveGhost4/ 잔여물 0, dirty package 0
+```

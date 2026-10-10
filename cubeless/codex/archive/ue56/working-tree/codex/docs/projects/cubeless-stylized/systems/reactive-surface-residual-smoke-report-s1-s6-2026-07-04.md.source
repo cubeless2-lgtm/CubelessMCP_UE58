@@ -1,0 +1,290 @@
+# Reactive Surface Residual Smoke Report S1-S6
+
+> 2026-07-04 superseded note: 이 리포트의 S1/T8 BLOCKED 판정은 이후 `reactive-surface-smoke-1-4-report-2026-07-04.md`에서 PASS로 해소됐다. S3 Array DI No-Go 역시 `reactive-surface-array-di-gpu-pass-report-2026-07-04.md`에서 3단 체인 PASS로 뒤집혔다. 이 리포트는 당시 실행 기록으로 보존하고, 최신 판정은 index/current decision snapshot과 validation plan을 기준으로 한다.
+
+Date: 2026-07-04  
+Executor: Codex, continuing after Claude T7-T11 run  
+Role: fellow ghost tester + follow-up smoke executor
+
+## Inputs Reviewed
+
+- Claude execution report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-t7-t11-execution-report-2026-07-04.md`
+- Claude runner: `codex/scripts/reactive_surface/reactive_surface_t7_t11_handoff_runner.py`
+- Claude runtime evidence: `MCPGameProject/Saved/MCP/ReactiveGhost4/reactive_surface_t7_t11_handoff_execution.json`
+
+Accepted Claude run-7 verdicts:
+
+| Test | Verdict | Evidence accepted |
+|---|---|---|
+| T7 Sleep/Wake | PASS | Deactivate holds RT values exactly; wake zero-overwrite disproven. |
+| T8 Material V-flip | BLOCKED | RT write proven; material consumer proof remains. |
+| T9 3-system concurrent | PASS | Three RTs write simultaneously; identical pattern left cross-talk caveat. |
+| T10 PIE parity | PASS | `game_world` readback + nonzero full scan. |
+| T11 WindowSize policy | DECISION PENDING | BeginPlay-fixed remains recommended. |
+
+## Follow-Up Runner
+
+Tracked runner:
+
+```text
+codex/scripts/reactive_surface/reactive_surface_remaining_smoke_runner.py
+```
+
+Runtime evidence:
+
+```text
+MCPGameProject/Saved/MCP/ReactiveGhost5/reactive_surface_remaining_smokes_20260704.json
+MCPGameProject/Saved/MCP/ReactiveGhost5/reactive_surface_remaining_smoke_commands.jsonl
+MCPGameProject/Saved/MCP/ReactiveGhost5/reactive_surface_remaining_smoke_bridge_results.json
+```
+
+Temp content root used:
+
+```text
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5
+```
+
+Cleanup result:
+
+```text
+ReactiveGhost5 content root exists after cleanup: false
+dirty package count observed by cleanup: 0
+```
+
+## S1. T8 Material V-Flip Completion
+
+Verdict: `BLOCKED`
+
+What ran:
+
+- API/capability precheck under `S1_T8_MATERIAL_VFLIP`.
+- No production assets were created.
+
+Evidence:
+
+```json
+{
+  "AutomationLibrary": true,
+  "RenderingLibrary": true,
+  "Canvas": true,
+  "MaterialEditingLibrary": true,
+  "MaterialFactoryNew": true,
+  "MaterialExpressionWorldPosition": true,
+  "MaterialExpressionTextureSample": true,
+  "MaterialExpressionComponentMask": true,
+  "MaterialExpressionSubtract": true,
+  "MaterialExpressionDivide": true
+}
+```
+
+Automation screenshot routes exposed:
+
+```text
+finish_loading_before_screenshot
+get_default_screenshot_options_for_gameplay
+get_default_screenshot_options_for_rendering
+take_automation_screenshot
+take_automation_screenshot_at_camera
+take_automation_screenshot_of_ui
+take_high_res_screenshot
+```
+
+Blocked reason:
+
+```text
+Material and screenshot APIs are present, but the follow-up runner does not yet author the worldXY->UV material graph or perform PIE viewport pixel-coordinate comparison.
+```
+
+Next exact work:
+
+1. Author `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/M_T8_WorldXY_RT_Emissive`.
+2. Material transform must use the same contract as the plan: `UV = (WorldPos.xy - WindowCenter.xy) / WindowSize + 0.5`.
+3. Generate or stamp asymmetric +X/+Y markers.
+4. Place a plane using the material.
+5. Capture the PIE viewport with an exposed AutomationLibrary screenshot route.
+6. Apply the review-image alpha rule to the display PNG.
+7. Compare expected pixel coordinates against captured marker pixels.
+
+## S2. T9 Signature Isolation
+
+Verdict: `PASS`
+
+Goal:
+
+Complete the T9 cross-talk proof by assigning distinct `CircleColor` signatures per system.
+
+Systems:
+
+```text
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/NS_S2_Ground
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/NS_S2_Grass
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/NS_S2_Water
+```
+
+RTs:
+
+```text
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/RT_S2_Ground_RGBA16F
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/RT_S2_Grass_RGBA16F
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost5/RT_S2_Water_RGBA16F
+```
+
+Bridge route:
+
+- `promote_niagara_system_candidate`
+- `set_niagara_simulation_stage_settings`
+- `set_niagara_render_target2d_module_input`
+- `set_niagara_module_input_user_parameter`
+  - `CircleLocation -> User.StampUV_*`
+  - `CircleColor -> User.CircleColor_*`
+- `set_niagara_module_inputs_batch`
+- SIE start, realtime viewport, split spawn/readback
+
+Judgment rule:
+
+```text
+Dominant RGB channel in full RT step-16 scan must match the per-system CircleColor signature.
+```
+
+Numeric evidence:
+
+| System | Expected | Dominant | Nonzero | Ratio | RGB sums | RGB max |
+|---|---|---|---:|---:|---|---|
+| Ground | R | R | 71 / 1024 | 0.0693359375 | `[11144, 0, 0]` | `[255, 0, 0]` |
+| Grass | G | G | 71 / 1024 | 0.0693359375 | `[0, 11144, 0]` | `[0, 255, 0]` |
+| Water | B | B | 71 / 1024 | 0.0693359375 | `[0, 0, 11144]` | `[0, 0, 255]` |
+
+First hit samples:
+
+```text
+Ground: [68, 0, 0, 15] at [128, 64]
+Grass : [0, 68, 0, 15] at [128, 64]
+Water : [0, 0, 68, 15] at [128, 64]
+```
+
+Conclusion:
+
+T9 cross-talk caveat is closed for the G1 clone path. Three independent systems can write concurrently to three independent RTs with separated User parameter signatures.
+
+Remaining caveat:
+
+```text
+GPU numeric timing is still not captured. S2 proves RT/User-param isolation, not platform budget.
+```
+
+## S3. V1 Array Positive Path
+
+Verdict: `BLOCKED`
+
+Reason:
+
+The tool round improved User Array DI upsert and runtime array push, but the current bridge still does not provide a safe, deterministic authoring route for:
+
+```text
+User Array Count/Get loop -> Count gate -> 3-position RT stamp -> SIE full-scan readback
+```
+
+Required next tool/smoke:
+
+- Create declared User Array DI parameters:
+  - `ArrayPosition` or `ArrayFloat3`
+  - `ArrayFloat`
+  - `Int32 Count`
+- Author a reviewed Niagara scratchpad loop or equivalent deterministic source expansion.
+- Reuse the run-7 SIE split-command harness.
+- Judge by full RT scan, not center sample.
+
+Design impact:
+
+Array registry remains `NO-GO` for first implementation. Fixed explicit slots remain the safer Phase 0-2 path.
+
+## S4. V4 Deterministic Reprojection Stage
+
+Verdict: `BLOCKED`
+
+Reason:
+
+No new deterministic scratchpad stage was authored in this follow-up round. The required expression is still:
+
+```text
+SamplePreviousGrid(Unit - User.DeltaUV)
+out-of-bounds -> 0
+```
+
+Required next tool/smoke:
+
+- Dedicated reprojection Scratch Pad stage.
+- 1-cell shift proof.
+- 10-step accumulated shift proof.
+- Entering-edge zero-fill proof.
+- Full RT scan plus targeted edge samples.
+
+Design impact:
+
+Sliding-window hold+reproject remains unapproved. The Phase 0-2 fallback remains large window + clear/fade on recenter.
+
+## S5. V5 Temporal Probe
+
+Verdict: `BLOCKED`
+
+Reason:
+
+No frame-counter moving stamp stage was authored in this follow-up round.
+
+Required next tool/smoke:
+
+```text
+R = current frame stamp
+G = previous frame sample
+movement = deterministic one-step marker
+judgment = G trails R by exactly one frame
+```
+
+Design impact:
+
+Water previous-grid read remains plausible, but temporal alignment is not solver-proven.
+
+## S6. GPU Numeric Baseline
+
+Verdict: `BLOCKED`
+
+Reason:
+
+The current runner can send `stat gpu`, but it cannot parse a numeric GPU timing result from Python/bridge output. No `ProfileGPU` log-capture or dedicated timing command was added in this round.
+
+Required next tool/smoke:
+
+- Add a reliable GPU timing capture route:
+  - `ProfileGPU` log parser, or
+  - dedicated native timing command, or
+  - deterministic Unreal Insights/profile marker capture path.
+- Record 1-system and 3-system timings separately.
+
+Design impact:
+
+Three-system correctness is proven; GPU budget is still not quantified.
+
+## Validation Plan Updates Needed
+
+| Section | Required update |
+|---|---|
+| `§10.2 / Grid2D RT export` | Add run-7 rule: SIE must be started, spawn/readback must be split across bridge commands, and real rendered frames must elapse. Synchronous `execute_python` alone is not valid GPU sim evidence. |
+| `§10.2 / readback` | Add run-7 rule: judge RT write by full RT scan, not only center 17x17. The template painter's curl-noise advection can move paint away from center. |
+| `§11.2 / sleep policy` | Add T7 result: `Deactivate` preserved exported RT values exactly in UE 5.6.1 G1 probe; wake zero-overwrite was disproven. Also add warning: `reset_system` is not a clear route; it mixed in new paint. |
+| `§9.0 / channel parallel push` | Add S2 result: Ground/Grass/Water concurrent G1 clones wrote independent color signatures to independent RTs. User param/RT cross-talk was not observed. |
+| `§9.1 / Grass` | Keep unconditional Grass channel, but note that opt-in material consumer proof remains separate from RT write proof. |
+| `§17 / Material validation` | Keep T8 as an open gate until worldXY->UV material graph + PIE viewport pixel comparison passes. |
+| `§10.3 / array source registry` | Keep array registry blocked until V1 Count/Get loop + 3-position RT stamp passes. Use fixed explicit slots for first implementation. |
+| `§23.5 / WindowSize policy` | T11 still needs user confirmation. Recommended text: WindowSize and RT resolution are fixed at BeginPlay for Phase 0-2; runtime changes are unsupported. |
+| Risk table | Add: GPU numeric budget is still unmeasured even though 3-system correctness passed. |
+
+## Go / No-Go
+
+| Scope | Status | Reason |
+|---|---|---|
+| Phase 0-1 fixed-slot vertical slice | GO | T7/T9/T10 plus S2 remove major sleep/concurrent cross-talk risks. |
+| T8 material consumer contract | NO-GO | Material V-flip proof remains blocked. |
+| Dynamic array source registry | NO-GO | V1 positive path still lacks Count/Get loop RT proof. |
+| Sliding-window reprojection | NO-GO | V4 deterministic reprojection stage not authored. |
+| Water temporal solver | NO-GO | V5 temporal probe not authored. |
+| GPU budget approval | NO-GO | S6 numeric timing route missing. |

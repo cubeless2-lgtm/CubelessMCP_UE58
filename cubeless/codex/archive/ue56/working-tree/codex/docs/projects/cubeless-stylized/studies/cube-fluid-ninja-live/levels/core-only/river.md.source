@@ -1,0 +1,101 @@
+# 레벨 카드: `River`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/CoreOnly/River` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_River` |
+| 문서 계층 | `core-only` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `40` |
+| Direct external | `11` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+standalone core에서 spline surface, bedrock, landscape height/RVT, MDF와
+point inputs를 함께 결합하는 direct-core river integration fixture다.
+
+- **Observed:** direct core/driver, River/Bedrock spline, Landscape,
+  moving actors와 101-node input graph.
+- **Inferred:** Tutorial06의 분리된 spline 개념을 wrapper 없이 합친 통합 case.
+- **Unknown:** intersection mask, flow direction, shoreline/material animation.
+- **Target fixture:** `TF_Core_RiverIntegration`.
+
+## Actor
+
+native manifest는 40 actor, 108 component를 4 page로 완전 캡처했다.
+
+`StaticMeshActor=12; MovingBall2_C=5; PostProcessVolume=3; TextRenderActor=3; MovingBall1_C=2; NiagaraActor=2; SplineGenerator_C=2; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; River_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1`
+
+- wrapper host 0, `NS_NinjaLiveCore` 1개다.
+- core는 AutoActivate=false, resolution 2048², extents 80,80,1,
+  MDF+height+RVT+spline reader, P/V/D 모두 on이다.
+- spline velocity XY=4, Z=0.5이고 spline-landscape intersection이 true다.
+- Landscape는 12 LandscapeComponent + 12 collision + root다.
+- `SplineGenerator_River1`은 6 spline mesh segment,
+  `SplineGenerator_Bedrock5`는 3 segment다. MovingBall2×5,
+  MovingBall1×2, character와 wreck/primitive meshes도 있다.
+
+## Runtime
+
+- Level BP는 101 nodes/18 variables다. MovingBall1/2, pawn socket,
+  wreck bounds와 mouse sources를 alternating add/remove하며
+  Position/Vector4 arrays로 Niagara에 보낸다.
+- `pending` — source registration, spline/RVT/SDF 합성 순서,
+  flow와 shoreline runtime.
+
+## Niagara
+
+- direct actor Asset은 `NinjaLiveCore`, non-empty
+  `InstanceParameterOverrides`는 1/1이며 세 output RT가 explicit다.
+- wrapper host가 없으므로 wrapper `Preset` field는 N/A다.
+- Spline/RVT/SDF data interface가 instance에 직렬화됐다.
+- standalone input Niagara는
+  `NS_WriteDataCh_GPU_Source_Linear`×1이다.
+
+## Material
+
+- driver는 `SplineGenerator_River1`에
+  `MI_Water_River_Large_Wavy1_v3`을 적용한다.
+- Landscape material/RVT height generator는 `M_RVToutput`,
+  bedrock spline material은 `MI_Bedrock_WorldSpace_dry`다.
+- River placeholder는 `MI_SolidColorBlue`; runtime high-detail mesh는
+  `SM_plane_500x500_DistantLOD`다. binding은 **Observed**, runtime
+  material animation과 surface parity는 **Unknown**이다.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- `reference/levels/CoreOnly__River.json`: capture complete, 4 pages,
+  40 actors, 108 components, truncation 0, source dirty false.
+- revision `f049639e2b4317688c78c87c18667373`, query
+  `2b4c03e69735c35a736b1d14f52bf507`.
+- `reference/level_blueprints/Levels__CoreOnly__River/**`:
+  101 nodes, 18 variables, capture error/truncation 0.
+- `concepts/starter-core-level-observation.md`,
+  `concepts/core-solver-observation.md`,
+  `concepts/blueprint-responsibility-map.md`.
+- `pending`: runtime river replay, target implementation, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

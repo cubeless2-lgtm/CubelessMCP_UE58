@@ -1,0 +1,23 @@
+#include "Registration/CubelessGraphLibrary.h"
+#include "Operations/CubelessGraphOperations.h"
+#include "Operations/CubelessSequenceOperations.h"
+#include "Operations/CubelessConnectionOperations.h"
+FString UCubelessGraphLibrary::ReplaceExecLink(const FString& GraphPath, const FString& SourceNodePath,
+    const FString& SourcePinName, const FString& TargetNodePath, const FString& TargetPinName,
+    const FString& ExpectedOldTargetNodePath, const FString& ExpectedOldTargetPinName,
+    int32 ExpectedSourceLinkCount, const FString& ExpectedSchemaResponse)
+{ return Cubeless::Operations::ReplaceExecLink(GraphPath, SourceNodePath, SourcePinName, TargetNodePath,
+    TargetPinName, ExpectedOldTargetNodePath, ExpectedOldTargetPinName, ExpectedSourceLinkCount, ExpectedSchemaResponse); }
+FString UCubelessGraphLibrary::AddSequenceNode(const FString& GraphPath, int32 X, int32 Y, int32 OutputCount)
+{ return Cubeless::Operations::AddSequenceNode(GraphPath, X, Y, OutputCount); }
+FString UCubelessGraphLibrary::ReadNodeIdentities(const FString& GraphPath)
+{ return Cubeless::Operations::ReadGraphNodeIdentities(GraphPath); }
+FString UCubelessGraphLibrary::ReadMemberVariablePlan(const FString& GraphPath, const FString& VariableName, bool bSetter)
+{ return Cubeless::Operations::ReadGraphMemberVariablePlan(GraphPath, VariableName, bSetter); }
+FString UCubelessGraphLibrary::ReadExternalMemberVariablePlan(const FString& GraphPath, const FString& VariableName, bool bSetter, const FString& TargetClassPath)
+{ return Cubeless::Operations::ReadExternalGraphMemberVariablePlan(GraphPath, VariableName, bSetter, TargetClassPath); }
+FString UCubelessGraphLibrary::SetBlueprintPinDefault(const FString& GraphPath, const FString& NodePath, const FString& PinName, const FString& ValueJson, const FString& Direction)
+{ return Cubeless::Operations::SetBlueprintPinDefault(GraphPath, NodePath, PinName, ValueJson, Direction); }
+FString UCubelessGraphLibrary::ReadConnectionPlan(const FString& GraphPath, const FString& SourceNodePath,
+    const FString& SourcePinName, const FString& TargetNodePath, const FString& TargetPinName)
+{ return Cubeless::Operations::ReadGraphConnectionPlan(GraphPath, SourceNodePath, SourcePinName, TargetNodePath, TargetPinName); }

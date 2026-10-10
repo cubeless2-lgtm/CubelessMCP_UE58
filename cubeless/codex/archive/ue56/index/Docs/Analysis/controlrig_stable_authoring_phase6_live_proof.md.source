@@ -1,0 +1,86 @@
+# ControlRig Stable Authoring Phase 6 Live Proof
+
+Date: 2026-06-30
+
+This note records the first sample/temp-only live proof for Phase 6 stable
+AnimBP binding. The proof used the UE 5.6.1 editor bridge on
+`127.0.0.1:55561` and did not promote stable input defaults during that run.
+
+## Command
+
+The editor bridge was launched temporarily with:
+
+```powershell
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe' $Project -unattended -nop4 -nosplash -nosound -NullRHI -UnrealMCPPort=55561
+```
+
+Then the binding proof ran:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_controlrig_animbp_binding_bridge.py --stable-fixture --json
+```
+
+## Result
+
+The smoke returned `success=true` for:
+
+- `validate_recipe`;
+- `build_controlrig_without_binding`;
+- `ensure_anim_graph_controlrig_node_sample`;
+- `set_anim_graph_controlrig_input_defaults` reported `skipped=true` because no
+  stable fixture input defaults are reviewed yet.
+
+The proof targeted only:
+
+- `/Game/_MCP_Temp/ControlRigStable/CR_Piper_StablePrototype`;
+- `/Game/_MCP_Temp/ControlRigStable/ABP_Piper_StablePrototype_Binding`.
+
+Observed safety evidence:
+
+- `sample_only=true`;
+- `dependency_audit_passed=true`;
+- `partial_target_modified=false`;
+- `save_requested=false`;
+- `input_defaults_applied=false`;
+- `input_pins_exposed=false`;
+- source AnimBP reported `source_modified=false` and
+  `source_asset_modified=false`;
+- AnimBP compile result reported `success=true`;
+- cleanup command reported success.
+
+Follow-up asset existence query through the bridge reported:
+
+```text
+/Game/_MCP_Temp/ControlRigStable/ABP_Piper_StablePrototype_Binding exists=false
+/Game/_MCP_Temp/ControlRigStable/CR_Piper_StablePrototype exists=false
+```
+
+## Boundary
+
+This proof did not approve input-default promotion by itself. A later separate
+golden input proof was captured for `PiperStable_GlobalStableGate_CTRL=1.0` and
+manually reviewed before the binding contract moved to
+`input_default_gate.status=reviewed`.
+
+## Reviewed Input-Default Follow-Up
+
+After the manual promotion patch, the same stable fixture smoke was run again:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_controlrig_animbp_binding_bridge.py --stable-fixture --json
+```
+
+The follow-up returned `success=true` with:
+
+- `set_anim_graph_controlrig_input_defaults` success;
+- `compile_bound_anim_bp` success;
+- `input_defaults_applied=true`;
+- `PiperStable_GlobalStableGate_CTRL` exposed with default `1.0`;
+- `save_requested=false`;
+- `dependency_audit_passed=true`;
+- `partial_target_modified=false`;
+- cleanup success.
+
+A bridge cleanup assertion then confirmed both `_MCP_Temp/ControlRigStable`
+targets no longer existed.

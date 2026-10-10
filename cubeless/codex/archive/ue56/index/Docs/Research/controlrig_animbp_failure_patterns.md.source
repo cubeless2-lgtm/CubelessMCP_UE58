@@ -1,0 +1,79 @@
+# ControlRig And AnimBP MCP Failure Patterns
+
+This note records failure patterns that should be treated as known API
+boundaries for UnrealMCP ControlRig and Animation Blueprint work.
+
+## Purpose
+
+The MCP should not fail repeatedly by trying generic Unreal Python access where
+the UE editor object model requires editor C++ APIs, generated-class helpers, or
+dedicated MCP bridge commands.
+
+Runtime/gameplay code is out of scope for this note.
+
+## Hard No Patterns
+
+| Pattern | Why it fails | Preferred route |
+| --- | --- | --- |
+| `AnimationGraph.get_nodes()` | UE Python does not expose AnimGraph like a normal Blueprint graph object. The repo log already has `AttributeError: 'AnimationGraph' object has no attribute 'get_nodes'`. | `inspect_anim_graph_protected_topology` |
+| `AnimBlueprint.generated_class` as a generic Python property | `unreal.AnimBlueprint` does not reliably expose this as an editor property. The repo log has a missing `generated_class` property failure. | C++ route through `UAnimBlueprint::GetAnimBlueprintGeneratedClass()` or existing MCP commands |
+| `AnimBlueprintGeneratedClass.get_properties()` | The generated class is not a simple Python property bag for compiled AnimGraph node mapping. | C++ reflection and AnimBP generated-class helpers inside UnrealMCP |
+| Direct Python edits to AnimGraph node/link/pin arrays | AnimGraph topology uses protected `UEdGraph`, `UAnimGraphNode_*`, and `UEdGraphPin` state. Reconstruct/compile/link invariants are easy to break. | guarded C++ bridge commands |
+| Direct Python edits to `AnimGraphNode_ControlRig.show_pin_for_properties` as a complete solution | Optional pin state, exposed custom property pins, links, node reconstruction, and compile state must stay in sync. | `set_anim_graph_controlrig_input_defaults` or `ensure_controlrig_forced_driver_animbp` |
+| Raw RigVM graph generation from strings or Python log output | ControlRig graph edits must go through `UControlRigBlueprint` and `URigVMController` with version-specific script structs, pins, compile/reinit, and single-instance event rules. UE 5.6.1 also has no public `FRigUnit_EndExecution` header to add. | Read first with `inspect_controlrig_rigvm_topology`; validate proposed links with `validate_controlrig_rigvm_links` and proposed defaults with `validate_controlrig_rigvm_pin_defaults`. For reviewed sample/temp targets, use `add_controlrig_rigvm_links` or `set_controlrig_rigvm_pin_defaults`; they refuse original/engine assets. For sample creation, `ensure_controlrig_sample_asset.unit_nodes` only accepts reviewed single-instance event units: `FRigUnit_BeginExecution`, `FRigUnit_PreBeginExecution`, `FRigUnit_PostBeginExecution`, `FRigUnit_PrepareForExecution`, `FRigUnit_PostPrepareForExecution`, and `FRigUnit_InverseExecution`; `FRigUnit_InteractionExecution`, deprecated `FRigUnit_SequenceExecution`, arbitrary script structs, variables, functions, comments, reroutes, dispatch nodes, exposed pins, graph replacement, and non-sample mutation still require Ieta review |
+| Treating direct transient ControlRig solve as compiled AnimBP proof | A transient ControlRig instance is not the same as the ControlRig node in a live AnimInstance pose chain. | pair `controlrig_direct_gate_probe` with `sample_anim_node_pre_post_runtime_pose(mode=pose_watch_capture)` when graph proof matters |
+| Broad Montage/notify/curve introspection with ad hoc Python | These surfaces are version-sensitive and have a higher crash/incorrect-read risk. | safe inventory first; add a narrow guarded native inspector only after Ieta review |
+
+## Evidence From This Repo
+
+Known local failure strings in `Python/unreal_mcp.log`:
+
+- `AttributeError: 'AnimationGraph' object has no attribute 'get_nodes'`
+- `AttributeError: 'AnimBlueprintGeneratedClass' object has no attribute 'get_properties'`
+- `Exception: AnimBlueprint: Failed to find property 'generated_class' for attribute 'generated_class' on 'AnimBlueprint'`
+
+These are not one-off syntax mistakes. They show that generic Python reflection
+is pointed at the wrong layer of the engine.
+
+## Why C++ Bridge Routes Are Required
+
+Animation Blueprint editor nodes and runtime nodes are paired but not identical:
+
+- editor visual nodes derive from `UAnimGraphNode_Base`;
+- runtime evaluation structs derive from `FAnimNode_Base`;
+- compiled mapping requires generated-class data and node GUID identity;
+- pose links and component-space pose links are runtime structs, not stable
+  Python graph links;
+- same-instance pre/post evidence requires debug/PoseWatch-style runtime
+  instrumentation, not static graph traversal.
+
+ControlRig has a similar split:
+
+- `UControlRigBlueprint` owns the asset/editor surface;
+- `RigVMController` is the graph mutation authority;
+- `URigHierarchy` and `URigHierarchyController` manage bones, controls, nulls,
+  curves, and transforms;
+- `UAnimGraphNode_ControlRig` is the AnimGraph editor node wrapping
+  `FAnimNode_ControlRig`;
+- transient `UControlRig` execution is useful, but it is not identical to an
+  AnimGraph node evaluating inside a SkeletalMeshComponent.
+
+## Default Recovery
+
+When a request touches these boundaries:
+
+1. Stop generic Python probing.
+2. Run the read-only MCP inspector first.
+3. If a write is needed, check for an existing sample-only command.
+4. If no command exists, write an Ieta review note with the exact missing API.
+5. Let Tivret implement only a narrow editor-only bridge command, with
+   sample-root guards by default.
+
+## Sources
+
+- Epic Control Rig Python Scripting: https://dev.epicgames.com/documentation/unreal-engine/control-rig-python-scripting-in-unreal-engine
+- Epic Animation Blueprints overview: https://dev.epicgames.com/documentation/unreal-engine/animation-blueprints-in-unreal-engine
+- Epic Graphing in Animation Blueprints: https://dev.epicgames.com/documentation/unreal-engine/graphing-in-animation-blueprints-in-unreal-engine
+- Epic `UAnimGraphNode_Base` API: https://dev.epicgames.com/documentation/unreal-engine/API/Editor/AnimGraph/UAnimGraphNode_Base
+- Epic Unreal Python `AnimGraphNode_ControlRig` 5.6: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/AnimGraphNode_ControlRig?application_version=5.6
+- Epic Unreal Python `ControlRigBlueprint` 5.6: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/ControlRigBlueprint?application_version=5.6

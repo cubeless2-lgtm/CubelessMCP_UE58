@@ -1,0 +1,11 @@
+# Single module 07 replacement
+
+Replaced only the compact cloud at polar angle 4 degrees in `T_CloudLook_ClearZenith_B_Distant_v10`, identified from the user's cropped cloud screenshot. The replacement uses a new generated upright module with a broad, soft interior instead of the previous stacked, rim-heavy silhouette.
+
+The new module fits inside the original footprint without changing its aspect ratio. Its crown faces the polar center and its base faces outward. Shade data is packed using the existing density/midtone conventions, with a lifted shade floor within this replacement so the current layer contrast does not reduce it to a bright outline.
+
+- Outside the local replacement sector, every packed RGBA byte is identical to the previous `ToneMatch_v29` texture.
+- The existing Unreal texture asset was reimported; assignment, scale, contrast and texture settings were preserved.
+- Unreal TGA source readback equals the new 4096 × 4096 PNG byte-for-byte, including alpha.
+- Pre-change asset and readback: project `Saved/Cloud2Module07_Before`.
+- `Module_07_New.png` is the generated source; `Day_Review.jpg` is an opaque review composite.

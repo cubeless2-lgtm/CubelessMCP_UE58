@@ -1,0 +1,19 @@
+{
+  "schema": "cubeless_actor_pipeline_source_freeze_v1",
+  "engine_execution_performed": false,
+  "author_stages": 49,
+  "reload_stages": 13,
+  "offline_tests": {
+    "count": 16,
+    "passed": true,
+    "stdout": "{\"status\": \"pass\", \"report\": \"C:\\\\Users\\\\Lenovo\\\\AppData\\\\Local\\\\Temp\\\\cubeless-actor-pipeline-ytm5jdh6\\\\report.json\", \"stages\": 49, \"outcome_unknown\": false}\n{\"status\": \"failed\", \"report\": \"C:\\\\Users\\\\Lenovo\\\\AppData\\\\Local\\\\Temp\\\\cubeless-actor-pipeline-18ufv3z2\\\\report.json\", \"stages\": 32, \"outcome_unknown\": false}\n",
+    "stderr": "test_disk_owner_escape_rejected (__main__.ActorVerifierTests.test_disk_owner_escape_rejected) ... ok\ntest_false_success_wrong_spawn_class_rejected (__main__.ActorVerifierTests.test_false_success_wrong_spawn_class_rejected) ... ok\ntest_missing_actor_or_dropped_stage_rejected (__main__.ActorVerifierTests.test_missing_actor_or_dropped_stage_rejected) ... ok\ntest_name_search_must_not_match_label (__main__.ActorVerifierTests.test_name_search_must_not_match_label) ... ok\ntest_negative_followup_checks_actual_state (__main__.ActorVerifierTests.test_negative_followup_checks_actual_state) ... ok\ntest_noop_must_not_dispatch_mutation (__main__.ActorVerifierTests.test_noop_must_not_dispatch_mutation) ... ok\ntest_partial_transform_must_preserve_rotation_and_scale (__main__.ActorVerifierTests.test_partial_transform_must_preserve_rotation_and_scale) ... ok\ntest_pipeline_handles_official_string_and_void_results (__main__.ActorVerifierTests.test_pipeline_handles_official_string_and_void_results) ... ok\ntest_positive_author_and_new_process_reload (__main__.ActorVerifierTests.test_positive_author_and_new_process_reload) ... ok\ntest_protected_delete_cannot_accept_any_error (__main__.ActorVerifierTests.test_protected_delete_cannot_accept_any_error) ... ok\ntest_raw_result_cannot_be_replaced_by_cached_success (__main__.ActorVerifierTests.test_raw_result_cannot_be_replaced_by_cached_success) ... ok\ntest_replay_requires_historical_replay_flag (__main__.ActorVerifierTests.test_replay_requires_historical_replay_flag) ... ok\ntest_same_process_cannot_claim_cold_reload (__main__.ActorVerifierTests.test_same_process_cannot_claim_cold_reload) ... ok\ntest_seven_named_tools_are_exercised_and_no_executor (__main__.ActorVerifierTests.test_seven_named_tools_are_exercised_and_no_executor) ... ok\ntest_tool_provenance_and_arguments_are_bound (__main__.ActorVerifierTests.test_tool_provenance_and_arguments_are_bound) ... ok\ntest_unexpected_negative_acceptance_gets_readback_then_stops (__main__.ActorVerifierTests.test_unexpected_negative_acceptance_gets_readback_then_stops) ... ok\n\n----------------------------------------------------------------------\nRan 16 tests in 2.161s\n\nOK\n"
+  },
+  "source_hashes": {
+    "cubeless/tools/verification/create_actor_smoke_map.py": "17cdd998818d4ad928dc847ec6f485dd9a94ab604a5593b55f470821fc602446",
+    "cubeless/tools/pipelines/actor_mutation_smoke.py": "a06cdaa04da48f2e8a36aa8aa70478d0a38cf284959a9ab8e21100d7ebc0b2df",
+    "cubeless/tools/verification/actor_pipeline_report.py": "9a0b295f258ccdcb9ed7580c693c0bf2de7dc63b3bcd73af63e6c60c1a8f9ccc",
+    "cubeless/tools/verification/test_actor_pipeline.py": "bce5f8fae03a8fba748d3c25737ba5683ea15bd5ecbc2de1f7ae99ba4fd242aa",
+    "cubeless/records/migration/implementation-2026-10-10/actor-pipeline-M.md": "c9031bed35d37db903f30ca7a0354449d40ed4c10a96d544f5848e5ab06a9ff0"
+  }
+}

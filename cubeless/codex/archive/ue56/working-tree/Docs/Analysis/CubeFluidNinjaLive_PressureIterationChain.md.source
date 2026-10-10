@@ -1,0 +1,90 @@
+# Pressure 반복과 Gradient 연결 체크포인트
+
+2026-09-06. 원본 read-only, 프로젝트 C++/Study 수정 없음. 모든 신규 후보는 temp.
+KI5/offset0만 구현 검증했으며 KI0 범위 밖 접근은 여전히 미해결이다.
+
+## 원본 반복 정책
+
+read-only `inspect_niagara_simulation_stages`로 원본 NinjaLiveCore의 Pressure 단계가
+`PainterAndSim.Pressure.NumberOfPressureIterations`에 바인딩됨을 확인했다.
+고정 default metadata1을 실제 반복 횟수라고 단정하면 안 된다.
+frozen `Core__Modules__Setup__Ninja_InitParams` graph에서:
+
+- MapSet5 NumberOfPressureIterations ← Op0 Add( Convert98( Op15 NOT(oneStep) ), 1 ).
+- 따라서 oneStep=false이면 2, true이면 1.
+- 기존 Pressure graph는 oneStep이면 SimStepOddEven, 아니면 stage IterationIndex를 사용.
+- 이번 native 후보는 oneStep=false의 2회 반복만 검증했다. 프레임 교대 모드는 미검증.
+
+## 별도 X/Y 단계와 오차 전파
+
+`CFNLPressureXYV001/NS_PressureXY` SHA
+`6ce91ca4c98a42fffb3c9692939c052a6173dcd6db773fce51f7e231a39916e1`.
+ImpulseFixture→PressureX→PressureY→ReadCell.
+입력 중심/두 모서리, clamp0/1, 선택 셀 및 기본값 복원 25건 PASS.
+모서리에서 동일 좌표로 수렴하는 사례가 있어 25개의 서로 다른 공간 좌표는 아니다.
+
+최초 runtime_v001 FAIL: 최종 pressure에만 half1ULP를 허용하여
+첫 단계 저장 오차를 누락했다 (예측 .0831832724, 관측 .0830688477).
+v002는 첫 단계 결과의 셀별 half1ULP를 오차장으로 두고, 두 번째 필터의
+양의 가중치/보간으로 전파한다. pressure P-D에는 두 오차를 합하고 각 feedback과
+edge gain을 곱한다. 최종 저장1ULP는 별도 추가한다. 0인 첫 단계 값은 오차0.
+전역 고정 허용치 확대가 아니다. 오차 범위 내 일치이지 비트 단위 동일성은 아니다.
+원본의 비정상 접근과 첫 단계 오차는 다른 문제이며 서로 정당화하지 않는다.
+
+## native 단일 단계 반복
+
+UE5.6 NiagaraEmitterInstanceShader.usf의 `SimulationStage_GetIterationIndex()`를
+사용하여 동일 pressure stage가 index0/1로 축을 선택한다.
+
+- V001 SHA `8dfa35b776671f61c2c4213c0328bb603ed72891c7d6de2c5381e9d07fe0d83d`:
+  stage 생성 시점에 num_iterations2 설정. compile0/0이지만 마지막 ReadCell의
+  compiled input/output DI가 모두 비었다. runtime_v001 FAIL; 실패 자산 보존.
+- V002 SHA `7e76cec8dc1c3b7938bcdc9bbf1daa2e91c5c0bea2b0ab5fa5a83c0b08745d83`:
+  전체 stage를 iteration1로 만든 뒤 pressure stage만2로 설정하고 compile.
+  ReadCell output DI 정상, runtime_v002 25/25 PASS.
+
+생성 순서 변경으로 해결된 관측 결과이며 engine/compiler/tool 내부의 근본 원인은
+아직 확정하지 않았다. 이후 생성기는 deferred_iterations 옵션을 사용한다.
+기존 실패 결과를 지우거나 같은 패키지에 덮어쓰지 않았다.
+
+## 실제 Pressure→Gradient
+
+`CFNLPressureGradientChainV001/NS_PressureGradientChain` SHA
+`5261d8dbe28ef58d5ffed4c4753db9f7121efdcdeb62c92e6a5f967e234317a2`.
+Impulse→native Pressure iteration0/1→4방향 pressure sampler→선택 셀 진단.
+gradient=.5*(east-west,north-south); texel step으로 나누지 않는다.
+native bilinear clamp sampler, query는 셀 중심이다.
+
+이 임시 후보에 한해 기존 diagnostic WeightedP/D 채널명은 GradientX/Y를 뜻한다.
+최종 제품 데이터 계약에 이 임시 이름을 사용하지 않는다.
+두 pressure 단계의 저장 오차를 gradient까지 전파하여 GPU25/25 PASS.
+현재 preview는 이 후보이며 Query32,32 기본값 복원, saved hash 불변.
+전체 장/프레임 수렴, 실제 advection/divergence 공급, 최종 velocity 합성/host는 미완료.
+
+## 독립성·검증·증거
+
+- 모든 통과 후보 compile error/warning0, GPU UpToDate, unknown2/outstanding false.
+- runtime의 source hash, dependency, dirty audit PASS.
+- `CFNL_PressureSpatial_20260906_v001`: Plane/Impulse/Cells/XY cold-load4/4 PASS.
+- `CFNL_PressureChain_20260906_v001`: IterationsV002/GradientChain cold-load2/2 PASS.
+- cold-load는 NullRHI 로드·클래스·금지 참조 검사이며 GPU cook/package 증거가 아니다.
+- Saved SetParams `20260906_pressure_xy_*`, `pressure_iterations_*`,
+  `pressure_gradient_chain_*`에 실패/성공 원시 보고서 보존.
+- main 병합 후 editor PID91396 read-only smoke6/6 PASS.
+- 후속 full offline42/42 PASS, exit0. 영구 ledger22, 최종 레벨0/59 유지.
+
+## 다음 연결의 참고 분석
+
+원본 Ninja_Divergence 연결된 HLSL0은 advection.xy를 4방향 샘플하여
+`(east.x-west.x)+(north.y-south.y)`를 계산하며 .5를 곱하지 않는다.
+step=GridCellSizeInUnitSpace*SimSpeedCoefficient.
+연결되지 않은 integer HLSL2를 실행 경로로 취급하지 않는다.
+출력 G는 `clamp((raw+BrushPuncture*.01*Painter.B)*mult,-2,2)`이며
+crude일 때 mult=min(.5,DivergenceMult), 아니면 DivergenceMult이다.
+이전 pressure.R은 WorldOffsetDelta.xy만큼 옮겨 샘플하여 유지하는 연결이 보인다.
+Convert2/5 native export 완료 (`20260906_divergence_converts_v001*`):
+Convert2의 R은 unlinked scalar, G는 새 divergence. Convert5는 이전 pressure.X를
+출력X로, unlinked null scalar를 출력Y로 연결한다. 원본 uasset SHA
+`f90afa9dfa09f9631e70ce2536be053699f95f88789fcaf85511258a95f43491` 불변.
+unlinked scalar의 빈 serialized default를 GPU 실행에서도 확인한 뒤 완전 동등성을 주장할 것.
+압력/Advection/Painter의 서로 다른 해상도를 동일 grid fixture로 숨기지 말 것.

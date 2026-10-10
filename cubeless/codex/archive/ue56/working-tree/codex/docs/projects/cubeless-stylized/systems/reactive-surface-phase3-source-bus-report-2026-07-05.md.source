@@ -1,0 +1,37 @@
+# Reactive Surface Phase 3 Source Bus Report - 2026-07-05
+
+## Scope
+
+- Production asset: `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`
+- Temp fixture: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_Phase3SourceBus`
+- Runtime path: controller BP Tick -> Box bounds collection -> nearest compaction -> `User.RS_Grass_*` Niagara push -> Grass RT readback
+- No runner-side direct Niagara push is used in the decisive PIE checks.
+
+## Results
+
+| Check | Verdict | Numeric evidence |
+| --- | --- | --- |
+| 50 candidates -> selected 20 | PASS | selected_count=20, selected_set_ok=True, excluded_hit_count=0, rt_nonzero=True |
+| Direction channel +X | PASS | channel_sums=[13791.0, 9798.0, 9255.0, 5350.0] |
+| Direction channel +Y after source move | PASS | channel_sums=[11094.0, 12809.0, 9612.0, 5416.0], direction_y_observed=True |
+| Game-thread BP measured section | PASS | last_update_ms=0.301499 from BP `GetAccurateRealTime` start/end around collect+compact+push |
+| bGrassEnabled=false skip | PASS | selected_count=0, niagara_active=False, nonzero=0 |
+| source 0 -> SleepDelay deactivate | PASS | selected_count=0, niagara_active=False |
+| bounds re-entry no long line | PASS | bbox=[44, 48, 92, 84], width=48, height=36 |
+| compile/save | PASS | compile result in bridge trace |
+| MCP dependency audit | PASS | unreal_hits=[], file_hits=0 |
+| cleanup/dirty | PASS | temp_remaining=False, dirty=0 |
+
+## Evidence
+
+- Runtime JSON: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfacePhase3\phase3_source_bus_results.json`
+- Git-tracked JSON copy: `D:/Git/UnrealMCP5_6_1/codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-phase3-source-bus-results-2026-07-05.json`
+- Runner: `codex/scripts/reactive_surface/reactive_surface_phase3_source_bus_runner.py`
+- Bridge trace: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfacePhase3\phase3_source_bus_commands.jsonl`
+
+## Unsure Decisions
+
+- Grass velocity source is `AActor::GetVelocity()` from each selected source. The smoke uses CharacterMovement velocity on temp Characters to exercise direction channels; real character-mounted ReactivePoint velocity should be rechecked in Phase 7 profiling.
+- Phase 3 uses tagged actor roots for the Grass source bus. ReactivePoint component metadata is still passive and will need richer per-source payload expansion when Ground footprint masks start in Phase 4.
+
+Overall verdict: **PASS**

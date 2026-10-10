@@ -1,0 +1,25 @@
+# Reactive Surface Water Stale RT Fix - 2026-07-07
+
+- Verdict: `PASS`
+- Harness deliberately contaminates `RT_RS_Water` before play and does not neutral-clear after SIE begins.
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterStaleRTFix\water_after_stale_fix_motion.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterStaleRTFix\water_after_stale_fix_contact_sheet.png`
+
+## Checks
+- pre_test_contamination_confirmed: `True`
+- beginplay_clears_red_contamination_without_harness_clear: `True`
+- beginplay_restores_neutral_blue: `True`
+- player_motion_creates_water_signal: `True`
+- player_motion_not_full_field_saturated: `True`
+- water_rt_driver_disabled: `True`
+- water_rt_driver_tick_off: `True`
+- runtime_log_accessed_none_0: `True`
+- compile_audit_dirty_0: `True`
+
+## Runtime Log
+- Log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\Logs\MCPGameProject.log`
+- Accessed None / Blueprint Runtime Error hits after guard: `0`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-stale-rt-fix-results-2026-07-07.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterStaleRTFix\water_stale_rt_fix_bridge_results.json`

@@ -1,0 +1,1688 @@
+{
+  "schema": "cubeless_material_implementation_evidence_v1",
+  "captured_utc": "2026-10-10T09:13:57.133829+00:00",
+  "scope": "Nine Material tools and independent external author/reload pipeline; not all Material pipelines or the 3518-script inventory",
+  "source_engine_version": "5.8.3",
+  "toolset": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools",
+  "legacy_material_public_tool_count": 21,
+  "implemented_registered_count": 9,
+  "pending_count": 12,
+  "full_material_migration_complete": false,
+  "functions": [
+    {
+      "legacy_identity": "tools.material_tools.add_custom_material_node",
+      "name": "add_custom_material_node",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 345,
+        "qualname": "register_material_tools.<locals>.add_custom_material_node"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "output_type": {
+            "default": "CMOT_Float3",
+            "title": "Output Type",
+            "type": "string"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Inputs"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "node_position": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Node Position"
+          },
+          "additional_defines": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Additional Defines"
+          },
+          "include_file_paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Include File Paths"
+          }
+        },
+        "required": [
+          "material_path",
+          "code"
+        ],
+        "title": "add_custom_material_nodeArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.add_material_node",
+      "name": "add_material_node",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 302,
+        "qualname": "register_material_tools.<locals>.add_material_node"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "expression_class": {
+            "title": "Expression Class",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "node_position": {
+            "default": null,
+            "title": "node_position",
+            "type": "string"
+          },
+          "selected_asset": {
+            "default": "",
+            "title": "Selected Asset",
+            "type": "string"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Properties"
+          }
+        },
+        "required": [
+          "material_path",
+          "expression_class"
+        ],
+        "title": "add_material_nodeArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.analyze_material_graph",
+      "name": "analyze_material_graph",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 119,
+        "qualname": "register_material_tools.<locals>.analyze_material_graph"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "include_nodes": {
+            "default": false,
+            "title": "Include Nodes",
+            "type": "boolean"
+          },
+          "include_usage": {
+            "default": true,
+            "title": "Include Usage",
+            "type": "boolean"
+          },
+          "max_referencers": {
+            "default": 25,
+            "title": "Max Referencers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "analyze_material_graphArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          },
+          "include_nodes": {
+            "type": "boolean",
+            "default": false
+          },
+          "include_usage": {
+            "type": "boolean",
+            "default": true
+          },
+          "max_referencers": {
+            "type": "integer",
+            "default": 25
+          }
+        },
+        "required": [
+          "material_path"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.analyze_material_graph",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "analyze",
+            "passed": true,
+            "elapsed_seconds": 0.0110077
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.compile_and_save_material",
+      "name": "compile_and_save_material",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 548,
+        "qualname": "register_material_tools.<locals>.compile_and_save_material"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "compile_and_save_materialArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.connect_material_nodes",
+      "name": "connect_material_nodes",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 432,
+        "qualname": "register_material_tools.<locals>.connect_material_nodes"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "from_node_id": {
+            "title": "From Node Id",
+            "type": "string"
+          },
+          "to_node_id": {
+            "title": "To Node Id",
+            "type": "string"
+          },
+          "to_input": {
+            "title": "To Input",
+            "type": "string"
+          },
+          "from_output": {
+            "default": "",
+            "title": "From Output",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "from_node_id",
+          "to_node_id",
+          "to_input"
+        ],
+        "title": "connect_material_nodesArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "from_node_id": {
+            "type": "string"
+          },
+          "to_node_id": {
+            "type": "string"
+          },
+          "to_input": {
+            "type": "string"
+          },
+          "from_output": {
+            "default": null,
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          },
+          "operation_id": {
+            "default": null,
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "from_node_id",
+          "to_node_id",
+          "to_input"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.connect_material_nodes",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "connect_A",
+            "passed": true,
+            "elapsed_seconds": 0.0690926
+          },
+          {
+            "name": "replay_connect_A",
+            "passed": true,
+            "elapsed_seconds": 0.0120059
+          },
+          {
+            "name": "connect_B",
+            "passed": true,
+            "elapsed_seconds": 0.066201
+          },
+          {
+            "name": "invalid_pin_rejected",
+            "passed": true,
+            "elapsed_seconds": 0.0800598
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.connect_material_property",
+      "name": "connect_material_property",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 468,
+        "qualname": "register_material_tools.<locals>.connect_material_property"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "from_node_id": {
+            "title": "From Node Id",
+            "type": "string"
+          },
+          "property": {
+            "title": "Property",
+            "type": "string"
+          },
+          "from_output": {
+            "default": "",
+            "title": "From Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "from_node_id",
+          "property"
+        ],
+        "title": "connect_material_propertyArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "from_node_id": {
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          },
+          "from_output": {
+            "default": null,
+            "type": "string"
+          },
+          "operation_id": {
+            "default": null,
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "from_node_id",
+          "property"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.connect_material_property",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "connect_property",
+            "passed": true,
+            "elapsed_seconds": 0.0656682
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.delete_material_node",
+      "name": "delete_material_node",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 498,
+        "qualname": "register_material_tools.<locals>.delete_material_node"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "node_id"
+        ],
+        "title": "delete_material_nodeArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "node_id": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          },
+          "operation_id": {
+            "default": null,
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "node_id"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.delete_material_node",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "delete",
+            "passed": true,
+            "elapsed_seconds": 0.0881386
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.expand_material_function_calls",
+      "name": "expand_material_function_calls",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 598,
+        "qualname": "register_material_tools.<locals>.expand_material_function_calls"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "node_id": {
+            "default": "",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "recursive": {
+            "default": true,
+            "title": "Recursive",
+            "type": "boolean"
+          },
+          "exclude_engine_functions": {
+            "default": true,
+            "title": "Exclude Engine Functions",
+            "type": "boolean"
+          },
+          "max_passes": {
+            "default": 8,
+            "title": "Max Passes",
+            "type": "integer"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          },
+          "allow_partial_save": {
+            "default": false,
+            "title": "Allow Partial Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "expand_material_function_callsArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.get_material_parameter_collection_values",
+      "name": "get_material_parameter_collection_values",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 637,
+        "qualname": "register_material_tools.<locals>.get_material_parameter_collection_values"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "collection_path": {
+            "title": "Collection Path",
+            "type": "string"
+          },
+          "parameter_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parameter Names"
+          },
+          "include_asset_defaults": {
+            "default": true,
+            "title": "Include Asset Defaults",
+            "type": "boolean"
+          },
+          "include_runtime": {
+            "default": true,
+            "title": "Include Runtime",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "collection_path"
+        ],
+        "title": "get_material_parameter_collection_valuesArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "collection_path": {
+            "type": "string"
+          },
+          "parameter_names": {
+            "default": null,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "default": null
+            }
+          },
+          "include_asset_defaults": {
+            "type": "boolean",
+            "default": true
+          },
+          "include_runtime": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "collection_path"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.get_material_parameter_collection_values",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "collection_values",
+            "passed": true,
+            "elapsed_seconds": 0.0419905
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.layout_material_nodes",
+      "name": "layout_material_nodes",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 525,
+        "qualname": "register_material_tools.<locals>.layout_material_nodes"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "layout_material_nodesArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          },
+          "operation_id": {
+            "default": null,
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.layout_material_nodes",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "layout",
+            "passed": true,
+            "elapsed_seconds": 0.0879913
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.list_material_collection_parameter_nodes",
+      "name": "list_material_collection_parameter_nodes",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 152,
+        "qualname": "register_material_tools.<locals>.list_material_collection_parameter_nodes"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "list_material_collection_parameter_nodesArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          }
+        },
+        "required": [
+          "material_path"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.list_material_collection_parameter_nodes",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "collection_nodes",
+            "passed": true,
+            "elapsed_seconds": 0.0427008
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.list_material_nodes",
+      "name": "list_material_nodes",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 86,
+        "qualname": "register_material_tools.<locals>.list_material_nodes"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "node_type": {
+            "default": "",
+            "title": "Node Type",
+            "type": "string"
+          },
+          "desc_contains": {
+            "default": "",
+            "title": "Desc Contains",
+            "type": "string"
+          },
+          "include_pins": {
+            "default": true,
+            "title": "Include Pins",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "list_material_nodesArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          },
+          "node_type": {
+            "default": null,
+            "type": "string"
+          },
+          "desc_contains": {
+            "default": null,
+            "type": "string"
+          },
+          "include_pins": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "material_path"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.list_material_nodes",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "initial_nodes",
+            "passed": true,
+            "elapsed_seconds": 0.0300362
+          },
+          {
+            "name": "before_invalid_pin",
+            "passed": true,
+            "elapsed_seconds": 0.0432845
+          },
+          {
+            "name": "invalid_pin_readback",
+            "passed": true,
+            "elapsed_seconds": 0.0421784
+          },
+          {
+            "name": "deleted_readback",
+            "passed": true,
+            "elapsed_seconds": 0.037503
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.mirror_material_parameter_collection",
+      "name": "mirror_material_parameter_collection",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 176,
+        "qualname": "register_material_tools.<locals>.mirror_material_parameter_collection"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "source_collection_path": {
+            "title": "Source Collection Path",
+            "type": "string"
+          },
+          "target_collection_path": {
+            "title": "Target Collection Path",
+            "type": "string"
+          },
+          "parameter_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parameter Names"
+          },
+          "copy_defaults": {
+            "default": true,
+            "title": "Copy Defaults",
+            "type": "boolean"
+          },
+          "preserve_ids": {
+            "default": true,
+            "title": "Preserve Ids",
+            "type": "boolean"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_collection_path",
+          "target_collection_path"
+        ],
+        "title": "mirror_material_parameter_collectionArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.refresh_material_cached_expression_data",
+      "name": "refresh_material_cached_expression_data",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 575,
+        "qualname": "register_material_tools.<locals>.refresh_material_cached_expression_data"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "refresh_material_cached_expression_dataArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.replace_material_collection_parameters",
+      "name": "replace_material_collection_parameters",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 245,
+        "qualname": "register_material_tools.<locals>.replace_material_collection_parameters"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "use_runtime_values": {
+            "default": true,
+            "title": "Use Runtime Values",
+            "type": "boolean"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "replace_material_collection_parametersArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.replace_material_collection_references",
+      "name": "replace_material_collection_references",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 212,
+        "qualname": "register_material_tools.<locals>.replace_material_collection_references"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "target_collection_path": {
+            "title": "Target Collection Path",
+            "type": "string"
+          },
+          "source_collection_path": {
+            "default": "",
+            "title": "Source Collection Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path",
+          "target_collection_path"
+        ],
+        "title": "replace_material_collection_referencesArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.replace_material_texture_references",
+      "name": "replace_material_texture_references",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 272,
+        "qualname": "register_material_tools.<locals>.replace_material_texture_references"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "replacements": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Replacements",
+            "type": "object"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path",
+          "replacements"
+        ],
+        "title": "replace_material_texture_referencesArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.resolve_material_graph",
+      "name": "resolve_material_graph",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 63,
+        "qualname": "register_material_tools.<locals>.resolve_material_graph"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "resolve_material_graphArguments",
+        "type": "object"
+      },
+      "classification": 1,
+      "implementation_status": "implemented_registered_author_and_cold_reload_fixture_verified",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false,
+      "registered_input_schema": {
+        "type": "object",
+        "properties": {
+          "material_path": {
+            "type": "string"
+          },
+          "graph_type": {
+            "type": "string",
+            "default": "auto"
+          }
+        },
+        "required": [
+          "material_path"
+        ]
+      },
+      "required_inputs_match_legacy": true,
+      "registration_fqn": "cubeless_mcp_ue58.registration.material_toolset.CubelessMaterialTools.resolve_material_graph",
+      "runtime_evidence": {
+        "report": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+        "stages": [
+          {
+            "name": "resolve",
+            "passed": true,
+            "elapsed_seconds": 0.0310834
+          }
+        ],
+        "author_phase_status": "pass",
+        "cold_reload_verified": true,
+        "meaning": "Nine named tools verified on bounded Material/MPC author fixture; not all branches or original Material pipeline parity",
+        "cold_reload_report": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json"
+      },
+      "boundaries": [
+        "Only exercised Material+MPC fixture; Material Function/Instance branches not fully verified",
+        "Graph budget 2048",
+        "Mutation restricted to /Game mount",
+        "No explicit compile/save in these nine operations",
+        "Legacy public error transport envelope intentionally replaced with structured native/journal errors"
+      ]
+    },
+    {
+      "legacy_identity": "tools.material_tools.set_material_node_property",
+      "name": "set_material_node_property",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 398,
+        "qualname": "register_material_tools.<locals>.set_material_node_property"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "node_id",
+          "property_name",
+          "value"
+        ],
+        "title": "set_material_node_propertyArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.set_material_parameter_collection_sync",
+      "name": "set_material_parameter_collection_sync",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 703,
+        "qualname": "register_material_tools.<locals>.set_material_parameter_collection_sync"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "action": {
+            "default": "status",
+            "title": "Action",
+            "type": "string"
+          },
+          "source_collection_path": {
+            "default": "",
+            "title": "Source Collection Path",
+            "type": "string"
+          },
+          "target_collection_path": {
+            "default": "",
+            "title": "Target Collection Path",
+            "type": "string"
+          },
+          "parameter_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parameter Names"
+          },
+          "interval_seconds": {
+            "default": 0.1,
+            "title": "Interval Seconds",
+            "type": "number"
+          },
+          "set_asset_defaults_on_enable": {
+            "default": false,
+            "title": "Set Asset Defaults On Enable",
+            "type": "boolean"
+          },
+          "save_on_enable": {
+            "default": false,
+            "title": "Save On Enable",
+            "type": "boolean"
+          }
+        },
+        "title": "set_material_parameter_collection_syncArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    },
+    {
+      "legacy_identity": "tools.material_tools.set_material_parameter_collection_values",
+      "name": "set_material_parameter_collection_values",
+      "source": {
+        "file": "C:/Git/UnrealMCP5_6_1/Python/tools/material_tools.py",
+        "line": 667,
+        "qualname": "register_material_tools.<locals>.set_material_parameter_collection_values"
+      },
+      "legacy_input_schema": {
+        "properties": {
+          "collection_path": {
+            "title": "Collection Path",
+            "type": "string"
+          },
+          "scalars": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scalars"
+          },
+          "vectors": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vectors"
+          },
+          "set_asset_defaults": {
+            "default": true,
+            "title": "Set Asset Defaults",
+            "type": "boolean"
+          },
+          "set_runtime": {
+            "default": true,
+            "title": "Set Runtime",
+            "type": "boolean"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "collection_path"
+        ],
+        "title": "set_material_parameter_collection_valuesArguments",
+        "type": "object"
+      },
+      "classification": 4,
+      "implementation_status": "pending",
+      "full_function_parity_verified": false,
+      "official_equivalent_replacement_claimed": false
+    }
+  ],
+  "source_hashes": [
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/registration/material_toolset.py",
+      "sha256": "25adfa4b59eb371067ea094ecfd4c5a479d549d0605ea4e56f6529e323cb8939",
+      "bytes": 8035
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/registration/__init__.py",
+      "sha256": "ca6f9c01a4c41fae0a8a7c44ce41f8fab1e69df10712b5a7d809f997a7b27880",
+      "bytes": 2410
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/material.py",
+      "sha256": "e5096b761b0ead57aa8320a31b43ec57e087ed48ea90a4edbee9c3e6dc0354e6",
+      "bytes": 7999
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/state.py",
+      "sha256": "b2736f5c0c6daf677a5c6bc8d4ed1a8c0d3e32865cb1ab39ca60bdc478c303ae",
+      "bytes": 8301
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/compatibility/ue58/material.py",
+      "sha256": "0393bda57afd54ac06bb1495717520b7520ec8027f39361df938f926b49f4a7c",
+      "bytes": 2881
+    },
+    {
+      "path": "cubeless/tools/pipelines/material_graph_smoke.py",
+      "sha256": "266c2dac1302738a2027d75dd789a112912ca38577cd196c17a25cc4e59d5d45",
+      "bytes": 23715
+    },
+    {
+      "path": "cubeless/tools/verification/material_pipeline_report.py",
+      "sha256": "8c136cf873445e03b56634ab1baad910d1d5bca348eae3b46d6a53756e594874",
+      "bytes": 14809
+    },
+    {
+      "path": "cubeless/tools/verification/test_material_pipeline.py",
+      "sha256": "a8d52bcc2e4de3578463bf1390c6e94aeb8799ea4efbad85fcc054fc5290f72d",
+      "bytes": 16182
+    },
+    {
+      "path": "cubeless/tools/verification/test_material_python_contracts.py",
+      "sha256": "58b94b08a2d6391618c1b75ac0b98cf140a157b8f28f5c3508bb79345d43e041",
+      "bytes": 13903
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/tests/test_operation_journal.py",
+      "sha256": "f532c382a7273409bed7dffe38f95abc9a3b14f50ee62d5fe46e4a279c1fcdac",
+      "bytes": 7952
+    }
+  ],
+  "evidence_files": [
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-material-checkpoint-tests.json",
+      "sha256": "4e4ebea3a8babe68ec6a0e426c2c88186501cf06489d8834d8c361c2f7758b8e",
+      "bytes": 2281
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-material-python.tests-B.json",
+      "sha256": "5b4c17b8782f78aee2208bdb3460c42c4eb0ea0cf7e95a64a1f8b173fb2c6c54",
+      "bytes": 2454
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-material-pipeline.tests-E.json",
+      "sha256": "25b56371459be06fc405ebeff3e71f34c7914c18a37d1b8b8b8a6195d5e80953",
+      "bytes": 1595
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-discovery-E2.json",
+      "sha256": "7b2ffa20dc85c75edab03790ca27c2752bcdab004b16224b3f7bd555f9c92a0b",
+      "bytes": 27852
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-author-E.json",
+      "sha256": "692ca315a97f659ce6d663a9941dab30c4780db63b4fef78a58e8293ddc18648",
+      "bytes": 132272
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-author-E2.json",
+      "sha256": "07a81610399fa6909e54df7f6beed9f834f53dffee155dfedfab13bd1abe857f",
+      "bytes": 1023170
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-partial-E-reconciliation.json",
+      "sha256": "fec9e52575ccfaf420963c9c81daf29c180f0f66d7723d88e34990d067d9e96f",
+      "bytes": 7084
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-partial-E2-reconciliation-R2.json",
+      "sha256": "e0327f7ce2eecd41fbae60c6241270fabb79c2733f94611ffacbc3e9648b8102",
+      "bytes": 13553
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-material-pipeline.tests-F.json",
+      "sha256": "8ae3e4875aad362021c777788e44136514793076e9df6c4eddd01a520fe84612",
+      "bytes": 1748
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-material-author-E3-independent-R2.json",
+      "sha256": "0c9b7a412f8d3bee774e3fe80df09581b6d70aa22a37c9db44d0f415d120cda0",
+      "bytes": 301
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher-material-author-E3.json",
+      "sha256": "b73e5fa48547ebb93a90ef0527e474aefa3fd12b49563667900a60b9eaabba66",
+      "bytes": 7543
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-author-E3.json",
+      "sha256": "8a2da97aa3078665a3079b7387856800cf8254aa96442715b923d2e72129f901",
+      "bytes": 1099248
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-author-E3-independent-R2.json",
+      "sha256": "0c9b7a412f8d3bee774e3fe80df09581b6d70aa22a37c9db44d0f415d120cda0",
+      "bytes": 301
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3.json",
+      "sha256": "ae95dd2e10799a40cdfa93ba35028830fbff1f9c58742f05f0b341f264daba3b",
+      "bytes": 238091
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-reload-E3-independent.json",
+      "sha256": "2bae8a888ce07395389d9d2a8a5f3f5f02cbcca7261b411e2ae4564c1e882287",
+      "bytes": 301
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/operations-dispatcher.material-E3.json",
+      "sha256": "9d463e619ef7438d51eacb90d7a0be04f672daf238610a43a0c1aff9b09ce4d1",
+      "bytes": 14255
+    }
+  ],
+  "pipeline": {
+    "entrypoint": "cubeless/tools/pipelines/material_graph_smoke.py",
+    "verifier": "cubeless/tools/verification/material_pipeline_report.py",
+    "author_stage_count": 36,
+    "reload_stage_count": 7,
+    "latest_completed_actual_run": "material-author-E3.json",
+    "status": "author_and_cold_reload_fixture_pass",
+    "new_e3_run": "complete_actual36stages",
+    "changes_after_e2": [
+      "Exact full UObject references separated from package paths",
+      "Only exact UE58 None string accepted as null-object output",
+      "Verifier independently rechecks MPC values and official connection readback"
+    ],
+    "no_mutation_automatic_retry": true,
+    "compile_save_full_legacy_parity": false,
+    "independent_author_report": "operations-material-author-E3-independent-R2.json",
+    "dispatcher_profile": "material-author-evidence",
+    "cold_reload_stage_count": 7,
+    "cold_reload_report": "material-reload-E3.json",
+    "dispatcher_reload_report": "operations-dispatcher.material-E3.json"
+  },
+  "offline_validation": {
+    "journal_tests": 10,
+    "material_python_tests": 14,
+    "material_pipeline_tests": 10,
+    "scope": "Synthetic Python tests; no native engine API coverage implied"
+  },
+  "removed_communication_only": [
+    "Legacy external TCP transport dependency for these nine wrappers"
+  ],
+  "official_replacements": [],
+  "guidance": "operations-material-python.md",
+  "performance": {
+    "evidence": "material-author-E3.json",
+    "samples": 1,
+    "phase": "author",
+    "elapsed_seconds": 2.0154173,
+    "http_observations": 45,
+    "explicit_compile_calls": 1,
+    "explicit_compile_elapsed_seconds": 0.0755577,
+    "explicit_save_calls": 1,
+    "explicit_save_elapsed_seconds": 0.0664078,
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "endpoint": "http://127.0.0.1:8001/mcp",
+    "project": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+    "fixture": "one Material, one MPC, four expressions then three after deletion",
+    "includes": "HTTP, report JSON/client overhead; editor already running",
+    "excludes": "editor startup; independent whole shader-work measurement",
+    "legacy_comparison": null,
+    "throughput_claim": false,
+    "cold_reload": {
+      "samples": 1,
+      "elapsed_seconds": 0.5028408,
+      "http_observations": 16,
+      "process_id": 21900,
+      "compile_calls": 0,
+      "save_calls": 0,
+      "editor_startup_included": false
+    }
+  },
+  "compile_semantics_correction": {
+    "raw_reports_modified": false,
+    "shader_completion_verified": false,
+    "meaning_of_e3_compile_passed": "Official RecompileMaterial returned without currently reported errors, not resource existence or IsCompilationFinished",
+    "source": "UE_5.8/Engine/Source/Editor/MaterialEditor/Private/MaterialEditingLibrary.cpp:1035-1059",
+    "resource_absent_returns_empty_errors": true,
+    "cook_and_rendering_are_separate": true
+  }
+}

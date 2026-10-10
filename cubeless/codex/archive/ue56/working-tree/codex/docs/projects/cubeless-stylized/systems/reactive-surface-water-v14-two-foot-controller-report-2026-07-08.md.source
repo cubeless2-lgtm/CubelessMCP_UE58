@@ -1,0 +1,21 @@
+# Reactive Surface Water V14 Two-Foot Controller Report - 2026-07-08
+
+- Verdict: `PASS`
+- Blueprint: `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`
+- Change: replaces the single actor-center V4 Water demo tick branch with a two-socket foot_l/foot_r Water source branch.
+- Contract: Controller remains BP-only; Niagara activation uses reset=false; no MCP references are persisted in content.
+
+## Checks
+- two_user_positions: `True`
+- positions_match_foot_sockets: `True`
+- water_rt_nonzero: `True`
+
+## Runtime
+- Last probe foot_l: `[220.291, -198.078, 29.558]`
+- Last probe foot_r: `[192.148, -170.705, 29.65]`
+- Last controller state: `[{'name': 'BP_ReactiveSurfaceControllerActor_C_0', 'label': 'BP_ReactiveSurfaceControllerActor0', 'tick_enabled': True, 'attach_parent': 'BP_Piper_ReactivePrototype_C_0', 'bp_positions_len': 2, 'bp_positions': [[220.291, -198.078, 29.558], [192.148, -170.705, 29.65]], 'water_active': True, 'user_positions_len': 2, 'user_positions': [[220.291, -198.079, 29.558], [192.148, -170.705, 29.65]], 'user_velocities_len': 2, 'user_velocities': [[286.943, -67.157, 35.817], [286.943, -67.157, 35.817]]}]`
+- RT sample: `{'success': True, 'read_only': True, 'render_target_path': '/Game/ReactiveSurface/Water/RT_RS_Water.RT_RS_Water', 'size': [512, 512], 'requested_region': [0, 511, 0, 511], 'region': [0, 511, 0, 511], 'channel': 'r', 'threshold': 0.501, 'pixel_count': 262144, 'nonzero_count': 2323, 'sum': 1708.08740234375, 'max': 0.998046875, 'first_hits': [{'x': 260, 'y': 212, 'value': 0.501953125, 'rgba': [0.501953125, 0.410888671875, 0.99169921875, 1]}, {'x': 261, 'y': 212, 'value': 0.50341796875, 'rgba': [0.50341796875, 0.41796875, 0.9931640625, 1]}, {'x': 262, 'y': 212, 'value': 0.5048828125, 'rgba': [0.5048828125, 0.427978515625, 0.99462890625, 1]}, {'x': 263, 'y': 212, 'value': 0.5048828125, 'rgba': [0.5048828125, 0.440673828125, 0.99609375, 1]}, {'x': 264, 'y': 212, 'value': 0.5048828125, 'rgba': [0.5048828125, 0.4541015625, 0.99755859375, 1]}, {'x': 265, 'y': 212, 'value': 0.50390625, 'rgba': [0.50390625, 0.467041015625, 0.99853515625, 1]}, {'x': 266, 'y': 212, 'value': 0.5029296875, 'rgba': [0.5029296875, 0.478271484375, 0.99951171875, 1]}, {'x': 267, 'y': 212, 'value': 0.501953125, 'rgba': [0.501953125, 0.4873046875, 0.99951171875, 1]}], 'hit_bbox': [219, 212, 298, 296], 'hit_width': 80, 'hit_height': 85, 'hit_radius_px': 42.5, 'centroid': [267.08395434975444, 253.0492812942107], 'readback': 'FTextureRenderTargetResource::ReadLinearColorPixels', 'safety_note': 'Read-only render-target analysis. Loads the render target and reads GPU contents; does not save, compile, or mutate assets.'}`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v14-two-foot-controller-results-2026-07-08.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV14TwoFootController\water_v14_two_foot_controller_bridge_results.json`

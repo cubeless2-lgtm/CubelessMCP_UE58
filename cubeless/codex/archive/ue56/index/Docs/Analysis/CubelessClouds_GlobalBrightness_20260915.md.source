@@ -1,0 +1,24 @@
+# Cubeless RX global brightness — 2026-09-15
+
+The owned BP now exposes `GlobalSkyCloudIntensity` as **기본 설정 → 스카이돔 글로벌 밝기**.
+Default 1, minimum 0, slider maximum 4; instance editable and exposed to cinematics.
+The existing UpdateSky scalar setter now reads this variable and the existing
+sky-to-cloud MID copy propagates it. No new runtime class or MCP reference is used.
+
+The owned cloud material composes at unit global intensity and scales final RGB
+once. Alpha, solar occlusion, night transition and fog flags are unchanged.
+Sky and celestial rendering use their existing global intensity parameter.
+Scene lights and fog retain separate controls. The current actor was restored
+to brightness 1 after verification; the user's dirty preview map was not saved.
+
+## Validation
+
+- Blueprint compile: zero errors and warnings; both live MIDs match 0, 0.5, 1 and 2.
+- Brightness 0.5 and 2 viewport captures reviewed; Korean display name verified as Unicode.
+- Native cold load and UpdateSky checks passed with UnrealMCP disabled, including brightness values and existing day/night checks.
+- Asset dependency closure contains no MCP, source VDB or baking-system dependency.
+- Windows SM6 map cook with UnrealMCP disabled: zero errors, two existing Lumen priority warnings.
+- Frozen candidate full verification passed, 7,448 input hashes unchanged. Both changed asset hashes match the main checkout. Candidate retains the prior verified rebake implementation and adds the current BP/material; unrelated working-tree edits are excluded.
+
+Local detailed evidence: `MCPGameProject/Saved/RXGlobalBrightness_20260915/`.
+The preceding sun-occlusion change was pushed to main as `2ed679f71`.

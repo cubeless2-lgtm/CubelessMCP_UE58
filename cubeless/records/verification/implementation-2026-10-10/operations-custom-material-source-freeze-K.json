@@ -1,0 +1,34 @@
+{
+  "schema": "cubeless_custom_external_pipeline_freeze_v1",
+  "status": "source_and_offline_tests_only_runtime_pending",
+  "author_stage_count": 55,
+  "reload_stage_count": 8,
+  "files": [
+    {
+      "path": "cubeless/tools/pipelines/custom_material_smoke.py",
+      "sha256": "f5f81ffea0a6adb8269649555b65d5b0efc3a60aee4fd84739b6e0314cbed4e2"
+    },
+    {
+      "path": "cubeless/tools/verification/custom_material_report.py",
+      "sha256": "4cab9e997ccb6aebf78b54d9866d8134f581ee0f4889c7e84ece2d82e7dd4dba"
+    },
+    {
+      "path": "cubeless/tools/verification/test_custom_material_pipeline.py",
+      "sha256": "c049dd8227ef94797f87dc006f0909d3c72a0ec2c8f5cac22e25bbc4a971121a"
+    }
+  ],
+  "tests": "cubeless/records/verification/implementation-2026-10-10/operations-custom-material-pipeline-tests-A.json",
+  "offline_tests_passed": 8,
+  "engine_execution_by_agent": false,
+  "include_support": "nonempty include paths and include directives rejected; legacy scope incomplete",
+  "compile": "one official recompile after two linked Custom nodes feed BaseColor; current-error return only, shader completion false",
+  "save": "one exact fixture package save; actual disk SHA bound to cold parent",
+  "rollback": false,
+  "automatic_retry": false,
+  "source_evidence": [
+    "Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionCustom.h",
+    "Engine/Source/Runtime/JsonUtilities/Private/JsonObjectConverter.cpp:109",
+    "Engine/Plugins/Experimental/Toolsets/EditorToolset/Content/Python/editor_toolset/toolsets/material.py:359",
+    "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCustom.inc"
+  ]
+}

@@ -1,0 +1,11 @@
+# Reference Modules v40
+
+Unapproved polar layout concept. Built-in image edit using v39 as reference. Three separated banks, upper-left bank reoriented tangentially, right bank sliced ends replaced with natural taper. All crowns face center. This is a generated edit, not a pixel-preserving module transform; source proportions and details may vary. No independent alpha or material packing. No level replacement.
+
+## Prompt
+
+Edit this cloud MODULE layout into correctly oriented polar UV modules. Preserve the three distinct source cloud shapes, height variations, flat overlapping grayscale shadow masses and long low connected layers. Do not regenerate a donut and do not replace shapes with same-size puffs.
+Keep RIGHT module in its current position and direction, changing ONLY its two straight sliced ends to short natural cloud tapering ends. Preserve its rising towers and long low thin tail.
+UPPER-LEFT module is currently a straight diagonal strip, WRONG tangent. Reorient and bend its long axis along the upper-left circular arc centered at exact image center: axis from roughly 9:30 to 11:30, a rising slash / rather than falling backslash. Its dark base must face upper-left OUTSIDE; rounded pale crowns face lower-right CENTER. Its entire shadow shapes rotate with the module. Tails follow circular arc, not point through center.
+LOWER-LEFT module: bend its long axis gently along lower-left circular arc around image center, from about 7 to 8:30. Pale rounded tops face upper-right CENTER, dark long base faces lower-left OUTSIDE. Preserve its asymmetric broad rise, shallow connected layer and unequal short tails.
+All modules stay tangentially long and radially shallow, retain original width/height feeling; NO squeezing into thin crescents, no added marks or microtexture. Unequal sizes and broad empty black angular gaps. Keep center and outside margin black. Fit entire module shapes within canvas. No extra clouds, no lines, no arrows, no text. Clean square grayscale atlas.

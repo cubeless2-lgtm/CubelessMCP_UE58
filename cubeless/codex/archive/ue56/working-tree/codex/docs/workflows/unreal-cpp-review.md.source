@@ -1,0 +1,96 @@
+# Unreal C++ Review Workflow
+
+## Trigger
+
+- Use this workflow for `이에타 C++ 리뷰`, `이에타 C++ staged 리뷰`, `이에타 C++ 커밋 전 리뷰`, UnrealMCP C++ review, or equivalent requests.
+- Default scope is C++ and Unreal build-related files: `.cpp`, `.h`, `.hpp`, `.inl`, `.Build.cs`, `.Target.cs`, `.uplugin`, and module/plugin descriptor changes.
+- Exclude assets, generated textures, source-art files, docs, and non-C++ workflow changes unless they directly affect reviewed C++ behavior.
+
+## Severity
+
+- `P0`: likely crash, data loss, editor corruption, asset corruption, or unsafe destructive behavior.
+- `P1`: build break, module load failure, MCP deadlock, game/editor thread violation, asset save failure, or broken public workflow.
+- `P2`: lifecycle leak, race risk, stale UObject pointer, missing shutdown cleanup, missing verification, or behavior that can regress under Hot Reload, Live Coding, PIE, or editor restart.
+- `P3`: local maintainability, readability, naming, include hygiene, or style issue that does not currently threaten behavior.
+
+## Review Output
+
+- Findings first, ordered by severity.
+- Each finding should include file/line reference, why it matters in Unreal, and expected fix direction.
+- Keep summary secondary. If no findings exist, say so clearly and name residual verification risk.
+- Do not bury a crash/build risk in a general summary.
+
+## File-Type Routing
+
+- UObject/Actor/component code: check reflection, GC tracking, ownership, editor re-instancing, Blueprint defaults, `EndPlay`, `BeginDestroy`, and delegate cleanup.
+- Editor module code: check startup/shutdown symmetry, module unload safety, editor-only dependencies, command registration/unregistration, and Live Coding behavior.
+- Slate/editor UI code: check weak references, timer/ticker ownership, window reuse, close paths, focus assumptions, and stale editor object captures.
+- UnrealMCP/socket/async code: check game-thread handoff, worker cancellation, timeouts, blocking calls, command validation, connection state transitions, and structured error reporting.
+- Build files and descriptors: check dependency direction, editor/runtime boundaries, plugin boundaries, circular dependencies, target allow/deny lists, and accidental editor dependency in runtime code.
+- Asset-editing C++: check transactions, `Modify()`, package dirtying, save paths, undo/redo, validation of package paths, and non-destructive defaults.
+
+## UObject And Reflection Hazards
+
+- UObject references stored beyond a local stack frame need a clear lifetime story.
+- Use `UPROPERTY` for references that need GC tracking, serialization, editor editing, Blueprint exposure, or asset persistence.
+- Prefer `TObjectPtr` for tracked UObject members in UE5 code.
+- Prefer `TWeakObjectPtr` for cached editor selections, Slate callbacks, async callbacks, and references that should not extend lifetime.
+- Avoid raw UObject pointers across frames, async work, Slate callbacks, or editor shutdown unless lifetime is externally guaranteed and documented.
+- Check `generated.h` is the final include in reflected headers.
+- Check reflected property metadata matches intended editor/Blueprint behavior.
+
+## Editor And Asset Mutation Hazards
+
+- Asset edits should call `Modify()` where undo/redo or transactions matter.
+- Check package dirtying and save behavior are explicit and scoped.
+- Avoid mutating assets from constructors or repeatedly from Construction Script-like paths.
+- `PostEditChangeProperty` and editor callbacks must avoid recursive mutation loops and expensive full rebuilds on irrelevant property changes.
+- Guard operations that should run only in editor builds with the correct module boundary or `WITH_EDITOR`.
+- Validate package paths and temp roots before creating, deleting, moving, or saving assets.
+
+## Delegates, Timers, And Shutdown
+
+- Delegates should be unbound on the matching lifecycle path: `EndPlay`, `BeginDestroy`, module shutdown, tool deactivation, or editor shutdown.
+- Timer, ticker, latent, and async handles should be cancelled or made harmless during shutdown.
+- Slate callbacks should not strongly capture windows, modules, actors, assets, or editor subsystems without a clear ownership reason.
+- Review Hot Reload and Live Coding for duplicate registration, stale handles, and double shutdown.
+
+## Threading, Async, And Sockets
+
+- Do not touch UObjects from background threads. Marshal UObject and editor work to the game thread.
+- Avoid blocking the game/editor thread on network, process, or large file operations.
+- Socket loops and workers need cancellation, timeouts, bounded waits, and clear shutdown.
+- Async callbacks should re-check object validity after handoff.
+- MCP commands should validate inputs, reject destructive or out-of-scope paths, and report failures with actionable detail.
+
+## Build And Module Boundaries
+
+- Runtime modules must not depend on editor-only modules.
+- Editor functionality belongs in editor modules or editor-only guards.
+- `Build.cs` dependencies should be narrow; do not add broad modules just to hide missing includes.
+- Consuming project modules, Blueprint helper APIs, `.Build.cs`, `.uplugin`, and `.uproject` descriptors must not depend on `UnrealMCP` or MCP-only plugin modules unless the user explicitly requested that dependency. MCP may drive editor work, but project code and assets should remain usable when the MCP plugin is absent.
+- MCP-related C++ extensions should be editor-only tooling by default: keep them in editor modules, avoid runtime module dependencies, and do not expose final gameplay/Blueprint/PCG APIs from the UnrealMCP plugin unless the user explicitly accepts that packaging dependency.
+- For MCP mutation commands, check whether user-supplied class, enum, object, asset, function owner, parent class, component class, graph node class, or pin default strings are blocked from persisting MCP-only references by default.
+- For any change touching project descriptors, plugin descriptors, Blueprint helper APIs, or generated content promotion, check whether the final project can open, cook, and package with the MCP plugin disabled or absent. Flag `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, or `mcp_unreal` references as dependency risks.
+- Plugin descriptors should keep target allow/deny lists intentional.
+- Check that public headers do not leak private dependencies or force unnecessary rebuilds.
+
+## Verification Menu
+
+- Project C++ change: targeted UnrealBuildTool build for the project's editor target.
+- Build/module descriptor change: UBT build that exercises the affected module boundary.
+- Slate/editor startup change: editor restart or targeted editor smoke test.
+- UnrealMCP bridge change: MCP bridge command test, checked host/port, and latest log review.
+- Asset-editing C++: run a safe temp asset or dry-run path, verify dirty/save behavior, and inspect latest editor log.
+- PIE/gameplay behavior: PIE smoke test and targeted log check.
+
+## Heavy Tools
+
+- Do not request or run heavy static analysis such as `clang-tidy`, CodeQL, or MSVC analysis by default.
+- Suggest heavy tools only when the change size, risk, or repeated defect pattern justifies the setup cost.
+
+## Project Binding
+
+- Apply each project's local C++ convention file after this shared workflow.
+- For an explicitly named external CubelessStylized review, the copied project checklist is `codex/docs/projects/cubeless-stylized/reviews/unreal-cpp-conventions.md`; do not apply it to routine `UnrealMCP5_6_1` review work.
+- If shared and local rules differ, follow the stricter rule unless the project binding documents a compatibility exception.

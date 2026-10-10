@@ -1,0 +1,138 @@
+# CubeFluidNinjaLive 첫 안내 레벨 독립 재구현
+
+## 범위와 판정
+
+2026-09-06 작업. 대상은 `/Game/FluidNinjaLive/Levels/_Starter/_StartingGuide`이며,
+새 맵은 `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_StartingGuide`다.
+기존 학습 순서의 첫 안내 gallery를 실제 맵으로 구성했다. **유체 레벨 완성을 뜻하지 않는다.**
+원본 자체에 NinjaLive/Niagara/캐릭터가 없으며 다음 기능 레벨은 Tutorial01이다.
+
+원본과 같은지에 대한 최종 시각 판정은 사용자에게 남긴다. 현재 카메라는 확인용으로
+선정한 구도이며 원본 canonical camera라고 주장하지 않는다. 전체 59개 중 시각 승인
+완료 수는 여전히 0개다. 이 레벨의 기술 검수 결과와 전체 gate는 아래 증거로 구분한다.
+
+## 구현 방식
+
+원본 .umap, Actor, Material, graph를 duplicate/migrate/import하지 않았다.
+저장된 read-only manifest에서 관찰한 숫자·문구·참조 대응을 이용해 빈 맵에 Engine
+TextRenderActor 47개, StaticMeshActor 10개, PostProcessVolume 1개를 새로 생성했다.
+원본 텍스트의 버전 표기·URL·저작권 문구는 표시 데이터로 유지한다. 지시로 실행하지 않는다.
+
+원본 60개와 target 58개 표시 액터의 차이는 다음과 같다.
+
+- 연결되지 않은 BeginPlay/Tick 두 노드뿐인 LevelScriptActor: 실행 기능이 없어 새 graph를 만들지 않았다.
+- `BrushType=Brush_Default` 기본 브러시: CSG Add/Subtract 표시 지오메트리가 아니므로 복제하지 않았다.
+
+따라서 **60개 액터 구조의 byte/identity parity가 아니라 표시·실행 의미 재현**이다.
+원본 WorldSettings의 legacy HLOD 편집 데이터와 source-owned NavigationSystemConfig
+서브오브젝트도 복사하지 않았다. 새 맵은 Engine 기본 설정을 사용하며 source package를 참조하지 않는다.
+
+배치에는 원본 world transform, text 내용/색/크기/정렬/간격, mesh와 material slot,
+component collision/shadow/mobility override, PostProcessSettings를 적용했다.
+`Logo_TEXT1_1 → Logo_LIVE1_3` attachment 하나는 KeepWorld로 재구성했다.
+원본 object identity 대신 actor tag `CFNL_Source_<원본 이름>`으로 대조한다.
+
+## 아트와 재질 대응
+
+기존에 의존성을 분리한 Study 아트 4개를 재사용한다.
+
+- `Art/Core/Assets/SM_NinjaLogo_LIVE2`, `SM_NinjaLogo_N`, `SM_NinjaLogo_TEXT2`
+- `Art/Meshes/Primitives/SM_geosphere01`
+
+Cylinder/Plane, RobotoDistanceField는 Engine 자산을 사용한다.
+기존 clean-room `Materials/Decor/M_CFNL_TextEmissive`, `M_CFNL_SolidColor`를 재사용한다.
+새 재질은 `Materials/StartingGuide`에 Material 2개와 MI 5개, 총 7개다.
+
+| 원본 역할 | 새 자산 |
+| --- | --- |
+| M_SolidColor_Gradient | M_CFNL_LogoGradient |
+| MI_SolidColorRedLogo_Gradient0/1/2 | MI_CFNL_LogoGradient0/1/2 |
+| MI_SolidColorWhiteLogo | MI_CFNL_LogoWhite |
+| MI_SolidColorDarkGrayLogo | MI_CFNL_LogoDarkGray |
+| MI_FluidNinjaLiveBaseGray4의 사용 중 분기 | M_CFNL_GalleryBackground |
+
+### 로고 그라데이션 원리
+
+14개 expression을 직접 작성했다. 원본 노드 dump를 입력받아 graph를 복원하는 복사기는 아니다.
+
+```text
+axis = GradientRotate ? UV.y : UV.x
+weight = saturate((axis + GradientOffset) * GradientScale)
+light = Color.rgb + weight * GradientColor.rgb
+Emissive = EyeAdaptationInverse(light)
+```
+
+Opaque/Unlit/single-sided다. 오프셋과 배율은 각각
+`(-20,-0.0024999999441206455)`, `(-30,-0.000699999975040555)`,
+`(-0.5,0.05999999865889549)`다. 세 번째 MI만 GradientRotate=true다.
+GradientColor.g는 0/1번에서 1.5, 2번에서는 **1.2000000476837158**이다.
+색은 선형 값 그대로 적용하며 sRGB 변환을 추가하지 않는다.
+White=0.6354169845581055, DarkGray=0.019999999552965164를 각 RGB에 적용한다.
+
+### 배경 원리와 제한
+
+원본 Gray4의 일곱 static switch는 모두 false다. 이 레벨에서 사용되는 활성 분기만
+7개 expression으로 작성했다. BaseColor=(0.004000000189989805,...), Emissive=Color×12,
+Roughness=0.800000011920929, Metallic=0, Specular=0.5, Normal=(0,0,1).
+DefaultLit/Opaque/**two-sided**다. 카메라가 구체 내부에 있어 양면 표시가 중요하다.
+전체 M_FluidNinjaLiveBaseMat의 비활성 texture/gradient/normal 선택 기능을 구현했다는
+뜻은 아니다. 해당 기능을 쓰는 후속 레벨에서는 별도 확장이 필요하다.
+재구현 불가를 이유로 원본 효과를 가져온 예외는 이번 레벨에 없다.
+
+## 실패를 통해 확인한 구현 주의점
+
+모든 실패 보고서는 `Saved/MCP/CubeFluidNinjaLiveStudy/first_level` 아래 보존한다.
+
+1. frozen manifest에는 attachment 한 개가 있어, 처음의 attachment 없음 가정은 offline에서 거절됐다.
+2. UE Python enum은 `EVRTA_TEXT_TOP`, 원본 export는 `EVRTA_TextTop`이다.
+   underscore/case 정규화로 resolve하며 모호하면 거절한다. 이 실패는 actor spawn 전 preflight였다.
+3. StaticMesh 지정이 기존 OverrideMaterials 배열을 지울 수 있다. **mesh를 먼저, override를 마지막에**
+   적용해야 한다. 이미 만들어진 정확한 10개 empty override만 SetMaterial로 수정했고 actor 재생성은 하지 않았다.
+4. 배경 two-sided 및 Gradient2 색상 차이는 source property 대조로 수정했다.
+5. native `inspect_material_asset`의 인자는 `asset_path`가 아니라 `material_path`다.
+
+## 이전 미완성 임시 에셋 보존
+
+새 맵 생성 전 dirty는 Controls V001/V002와 SplitPainter V001 세 개였다.
+독립 검토 뒤 원래 실패 작업을 재실행하지 않고 **미완성 복구 체크포인트로 세 자산만 개별 저장**했다.
+기존 SplitPainter 디스크 파일은 해당 checkpoint 폴더에 백업했다. Save All/삭제/원본 저장은 하지 않았다.
+`partial_checkpoint_v001`은 ExecuteFile mode 누락으로 Python parse 단계에서 실패했고 저장하지 않았다.
+명시적 ExecuteFile로 고친 `partial_checkpoint_v002`는 저장 및 dirty 0 preflight를 통과했다.
+세 자산은 완성 맵 참조나 승격 목록에 포함하지 않는다.
+
+## 검증 증거
+
+증거 기준 root: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/first_level/`.
+
+- `create_v001`: dirty 0, overwrite=false, native 새 맵 생성·저장.
+- `populate_v003`: 표시 actor 58개 새 생성.
+- `verify_save_v002`: 위치·회전·스케일·attachment 및 **382개 property mismatch 0**, named map 저장.
+- `save_materials_v001`, `repair_material_values_v001`: Material compile error 0, 저장 성공.
+- `verify_materials_v002`: MI의 활성 scalar/vector/static switch **17개 일치**, graph 14/7개 expression과 양면 설정 확인.
+- `dependency_closure_v001`: map에서 시작한 **14개 Study package**의 hard/soft 전이 의존성 순회,
+  Study 밖의 Game package 및 MCP 참조 0. Engine 자산/NavigationSystem은 허용한다.
+- 두 target-root audit: redirector 0, dirty 0, source/temp/MCP dependency hit 0.
+- `Saved/MCP/AssetReviews/cfnl_starting_guide_cold_v002`: 별도 UE5.6.1 commandlet에서
+  UnrealMCP 비활성/bridge class 없음, map World load 성공. source 콘텐츠 제거 실험이나 cook/package 검증은 아니다.
+- `test_cube_fluid_ninja_starting_guide`: 6개 offline test.
+- `final_checkpoint_v001`: 전체 검증 실행 결과는 후속 결과 절에 기록한다.
+
+C++/프로젝트 descriptor/원본 asset/기존 정상 Study 자산은 수정하지 않았다.
+이번 추가물은 새 map 1개, 새 material/MI 7개, 저작·검증 Python과 문서다. commit/push는 하지 않았다.
+
+## 사용자 시각 검수
+
+현재 열린 맵에서 안내문, 로고 색상·그라데이션·윤곽, 배경, bloom을 원본과 비교한다.
+에디터 viewport를 크게 열고 가까이 이동해 작은 글자를 확인한다. 524×343 preview는
+전체 문구 판독/시각 동일성 근거로 사용하지 않는다. 현재 확인 구도는 대략
+location=(-5300,-10650,-570), rotation=(0,0,0), horizontal FOV=75다.
+첫 안내 레벨의 승인이 나더라도 Tutorial01 및 나머지 유체 레벨은 별도 미완료다.
+
+## 최종 기술 검수 결과
+
+`final_checkpoint_v001`: 입력 **3,283개**의 전후 SHA-256 일치, 변경 0.
+first-level unit **6/6 PASS**, dispatcher `--profile full` **42/42 PASS**, 두 실행 exit 0.
+동결에는 전체 비제외 repository text와 Study 콘텐츠 파일을 포함했다.
+추가 결과 문구만 이후 기록했으며 실행 코드나 asset은 바꾸지 않았다.
+현재 판정은 **첫 안내 레벨 사용자 시각 검수 가능**이다. 전체 프로젝트 submit-ready,
+59개 레벨 완료, 유체 기능 완성, cook/package 검증 완료를 의미하지 않는다.

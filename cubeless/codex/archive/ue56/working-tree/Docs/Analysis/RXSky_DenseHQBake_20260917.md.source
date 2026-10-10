@@ -1,0 +1,16 @@
+# RX density-focused bake — 2026-09-17
+
+기존 `L_RXSkySystem_Cubeless` 프리뷰에 `Cubeless_RXPair4K_DenseHQ_20260917`을 적용했다. 원본 Study03 배치와 개별 액터 설정은 유지하고 베이크 복사본에만 아래 변경을 적용했다.
+
+- ExtinctionPerMeter: 0.0084 → 0.0126.
+- 각 슬롯 DetailMip은 기존 값과 2 중 작은 값 사용. 원본보다 흐려지는 슬롯은 없음.
+- VDB 박스 경계의 정규화 거리 0~0.02에서 smoothstep 감쇠. 박스 밖은 0 유지. 원본 실루엣 자체가 평평한 경우까지 해결하는 처리는 아님.
+- CloudEdgeFeather: 0.04 → 0.025. 중심 밀도를 유지하면서 낮은 밀도 전이를 조절.
+- 2K 면, 8회 실제 누적, 11패스, 총 528회. 4K Positive/Negative 출력. Cubeless 512 primary cap, shadow scale 0.5 유지.
+- 캡처 완료와 상태 복원 성공. NaN/무한대 없음. 패키징 Positive coverage 평균 0.34695, 최대 0.99512.
+
+구름·그림자 MI의 새 텍스처 연결은 함께 교체했다. 프리뷰 RXSkySystem 액터의 CloudSkyBlend 0.68→0.4, DayMidtoneSkyBlend 0.72→0.4, CloudHaze 0.22→0.14로 조절해 중심부의 과도한 하늘색 혼합을 줄였다. 원래 시간 11.328로 복원하고 저장했다. 이전 텍스처와 프리뷰 맵/MI 백업은 보존했다.
+
+낮·황혼·밤 화면을 확인했다. 낮의 밀도감은 증가했으며 황혼에는 기존 안개/시간대 색감에 따른 낮은 대비가 남는다. 모든 각도와 시간대에서 아티팩트가 전혀 없다는 보증은 아니다. 이번 출력 해상도는 이전과 같은 4K이며, 개선은 밀도·소스 Mip·경계와 프리뷰 혼합 조절이다.
+
+검증: 전체 오프라인 42/42 통과. 출력 텍스처 의존성에 VDB/MCP 없음. 실행 게임 패키징과 GPU 성능 측정은 미수행. 증거: `MCPGameProject/Saved/RXDenseHQ_20260917`의 frozen/capture/package/applied/verification JSON, full.log, source/preview/hero/sunset/night PNG. 현재 연결은 `Content/RXSkySystem/Cubeless/active_package.json`에 기록했다.

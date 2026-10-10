@@ -1,0 +1,74 @@
+# ControlRig Stable Authoring Phase 6 Contract
+
+Date: 2026-06-30
+
+`Python/scripts/analysis/controlrig_stable_authoring_phase6_contract.py` is a
+filesystem-only guard for the Phase 6 sample/temp AnimBP binding proof boundary.
+It does not run the live bridge. It verifies that the tracked binding fixture
+still targets only sample/temp assets and that stable fixture input defaults
+remain limited to reviewed manual evidence.
+
+## Command
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase6_contract.py
+```
+
+Optional JSON output:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase6_contract.py --json
+```
+
+## Checks
+
+- `controlrig_piper_stable_animbp_binding_contract.json` keeps
+  `animbp_binding.enabled=true` but writes only to
+  `/Game/_MCP_Temp/ControlRigStable/ABP_Piper_StablePrototype_Binding`.
+- The base stable ControlRig recipe keeps binding disabled, `save=false`, and
+  `dependency_audit=true`.
+- The binding contract keeps `verification.save=false`,
+  `verification.compile=true`, and `verification.dependency_audit=true`.
+- `input_default_gate` is either `status=not_reviewed` with empty
+  `input_defaults`, or `status=reviewed` with the promoted scalar default
+  `PiperStable_GlobalStableGate_CTRL=1.0`.
+- Required input-default evidence names stay present for the reviewed gate.
+- The input-default golden candidate is either still `candidate_only`, or
+  `promoted` with `promoted_to_binding_contract=true` after manual approval.
+- Evidence, decision, and manual patch-plan records still disallow automatic
+  binding-contract updates.
+- The Phase 6 handoff document keeps the Ieta/Tivret review line, reviewed
+  scalar default, no-automatic-patcher rule, and no-solver/no-original-mutation
+  boundary visible.
+- The binding contract does not contain MCP-only reference tokens.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` does not contain a static
+  dependency string for `UnrealMCPControlRigToolsEditor` or
+  `UnrealMCPControlRigToolsEditor`.
+
+## Explicitly Excluded
+
+- Unreal Editor launch.
+- Live MCP bridge calls.
+- UnrealBuildTool C++ build.
+- AnimBP graph mutation.
+- ControlRig or AnimBP asset save.
+- Original asset mutation.
+- Automatic input-default promotion.
+- `asset_mutation` is skipped by this filesystem-only contract.
+
+## Current Verification
+
+2026-06-30:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase6_contract.py --json
+```
+
+Result: passed with `issue_count=0`; `unreal_editor`, `cpp_build`,
+`live_binding`, and `asset_mutation` were skipped.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase6_contract.py
+```
+
+Result: passed, 15 tests.

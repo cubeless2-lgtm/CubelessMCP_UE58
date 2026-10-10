@@ -1,0 +1,74 @@
+# 레벨 카드: `Water_Sparse_River`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Water_Sparse_River` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_River` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `97` |
+| Direct external | `13` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+Sparse 방식의 강 표현을 다루는 레벨이다. 이 설명은 레벨 이름과 원본 계층에서 확실히 읽히는 범위를 넘지 않는다.
+
+### 정적 판정
+
+- **Observed:** 4 solver, 8 대형 spline, 163-component Landscape, waterfall writer와 preset-switch BP가 결합된다.
+- **Inferred:** sparse river의 실제 규모 integration fixture다.
+- **Unknown:** RVT refresh, waterfall/river 결합 timing, runtime/시각 parity.
+- **Target fixture:** `TF_WaterSparse_RiverIntegration` 제안.
+
+## Actor
+
+- manifest 합계 `149 actors / 654 components / 30 pages`.
+- exact class histogram: `StaticMeshActor=88; TextRenderActor=18; SplineGenerator_C=8; NiagaraActor=6; MovingBall1_C=5; MovingBall2_C=4; NinjaLive_C=4; PostProcessVolume=3; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; Vehicle_QuadDrone_C=1; VolumetricCloud=1; Water_Sparse_River_C=1`.
+- Landscape=`163=81+81+root`, material `MI_Sand_Desert3Mountain_WetMapped_Grainy`, RVT `RuntimeVirtualTextureTest1`; driver/drone 각 1; sequence actor 0.
+- spline components: Bedrock1=31, River1=31, River2=22, Bedrock2=21, DashedLine=104, Bedrock3=23, Bedrock4=9, River3=27.
+
+## Runtime
+
+- Level BP `150 nodes / 18 variables`: performance toggles, output materials, clouds/float balls, sim preset switch와 reinitialize.
+- preset 적용 순서, spline/RVT 갱신과 성능은 `pending`.
+
+## Niagara
+
+- host 4; NinjaLiveCore/preset=None/overrides non-empty; resolution `2048²×2,512×256,720×360`; extents `12/8/2,150/150/1,16/8/4,80/80/1`; Simple=1, HVOL=2; PVD=`FTT×2,TFF,TTT`; inputs default/MDF/MDF+height/MDF+height+spline 각 1.
+- standalone: linear writer×5(그중 waterfall density AutoActivate=false) + `SurfaceAlignedMeshes`. 내부 topology/runtime `pending`.
+
+## Material
+
+- selected: River S3 `MI_Water_River_Large_White_TilemapUsedForRiver3`; Sand density black + `MI_Sand_RiverBank1`; waterfall base `MI_Waterfall2`와 splash-bottom output.
+- Landscape material/RVT는 observed이나 runtime sampling과 parity는 `pending`.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- native manifest revision `2316c7e44503d8fd215ae5dbc17c144b`, query `770eda55800d9fa16a94825a624b620e`; complete/non-truncated/clean/non-mutating.
+- fully resolved adaptive captures: spline `31,31,22,21,104,23,9,27`, Landscape 163/11 pages; Landscape revision `32dacbd6ccf182fb0cbecf9064d911e7`. Level BP EventGraph 1, 150/18, error 0. [family observation](../../concepts/root-water-surface-media-observation.md).
+- `pending`: PIE/SIE, target, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

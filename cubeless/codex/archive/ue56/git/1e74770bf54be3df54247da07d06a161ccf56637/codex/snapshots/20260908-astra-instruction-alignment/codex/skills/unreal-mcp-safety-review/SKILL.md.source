@@ -1,0 +1,30 @@
+---
+name: unreal-mcp-safety-review
+description: Audit Unreal MCP or UnrealMCP-assisted changes for unsafe project dependencies and editor crash hazards. Use when modifying MCP C++ or Python tools, authoring Unreal assets through MCP, promoting MCP-authored content, opening or creating maps, reviewing for /Script/UnrealMCP hard references, checking generic Python map switching, dirty package blockers, packaging safety, or editor-only tooling boundaries.
+---
+
+# Unreal MCP Safety Review
+
+Use this skill as the guardrail around MCP-assisted Unreal work. MCP is an authoring aid by default, not a finished-project dependency.
+
+## Start Here
+
+1. Read `references/ops-references.md`.
+2. Load the asset-authoring and map-safety workflows it points to when the task touches assets, maps, previews, or promotion.
+3. For C++ bridge changes, also load the Unreal C++ review workflow and the MCP project binding.
+4. For project-specific work, load that project's binding and local adapter before editing.
+
+## Dependency Gate
+
+- Finished project C++, Blueprint APIs, PCG graphs, materials, config, descriptors, and content must not hard-reference UnrealMCP or MCP-only modules unless the user explicitly approves that exact dependency.
+- Treat `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, and `mcp_unreal` as forbidden final-content tokens by default.
+- MCP C++ extensions should stay editor-only tooling unless the user accepts a project/runtime coupling.
+- Before promoting MCP-authored content out of temp or study paths, audit references through text search, asset registry/reference viewer, or a cook/package smoke when practical.
+
+## Map And Editor Gate
+
+- Do not open, reload, create, or switch maps through generic UnrealMCP `execute_python`.
+- Do not use Python map APIs such as `EditorLoadingAndSavingUtils.load_map`, `new_blank_map`, `load_map_with_dialog`, or `new_map_from_template` through `execute_python`.
+- For existing map opens, use the native `open_editor_level` route with dry-run first and dirty-package blockers enabled.
+- For temporary preview maps, use the native `safe_new_preview_map` route with dry-run first and temp-root restrictions.
+- If editor bridge, dirty package, map status, or sample workspace checks fail, report the blocker and stop before asset mutation.

@@ -1,0 +1,35 @@
+# Wuthering Sky WebGL Prototype
+
+명조 하늘 공개 영상과 개발자 인터뷰를 참고해 만든 독립형 WebGL 스카이돔 연구 데모다. 기존 Unreal 프로젝트 하늘 자산을 복제하지 않은 clean-room 프로토타입이며, UnrealMCP 런타임 의존성은 없다.
+
+## 실행
+
+`index.html`을 WebGL 2 지원 브라우저에서 연다. 구름 텍스처는 HTML에 내장되어 있으므로 별도 서버 없이 실행할 수 있다.
+
+- 드래그: 시점 회전
+- 더블클릭: 시점 초기화
+- 시간: 새벽, 낮, 골든아워, 일몰, 밤 TOD 전환
+- 구름량: 알파 커버리지 조절
+- 흐름: 폴라 UV 왜곡 속도 조절
+- 구름 생성: 자동 전환을 끈 상태에서 수동 생성·소멸
+- 색감: 차가운 LUT와 따뜻한 LUT 사이 보정
+- 생성·소멸 자동: 흐르는 erosion 필드를 이용한 28초 주기 전환
+
+## 렌더링 계약
+
+- 하늘: 뷰 방향과 고도 기반 그라데이션
+- 구름 배치: 상반구 polar UV
+- 구름 RGB: 최종색이 아닌 명도·조명 좌표로 해석
+- 구름 A: coverage와 부드러운 외곽
+- 최종 구름색: TOD LUT와 수동 색감 LUT로 재매핑
+- 생성·소멸: coverage alpha와 다중 주파수 erosion noise 결합
+- 태양·무지개·별: 방향 벡터 기반 절차 합성
+- 지평선: 저고도 cloud alpha fade와 TOD haze
+
+`cloud-polar-rgba.webp`는 HTML에 내장된 폴라 RGBA 소스의 검토용 사본이다.
+
+## 참고
+
+- [Kuro Games: Wuthering Waves developer interview](https://www.unrealengine.com/developer-interviews/exploring-the-post-apocalyptic-charm-of-asg-open-worlds-in-wuthering-waves?lang=en-au)
+- [Guerrilla Games: The Real-Time Volumetric Cloudscapes of Horizon Zero Dawn](https://www.guerrilla-games.com/read/the-real-time-volumetric-cloudscapes-of-horizon-zero-dawn)
+- [Guerrilla Games: Nubis](https://www.guerrilla-games.com/read/nubis-authoring-real-time-volumetric-cloudscapes-with-the-decima-engine)

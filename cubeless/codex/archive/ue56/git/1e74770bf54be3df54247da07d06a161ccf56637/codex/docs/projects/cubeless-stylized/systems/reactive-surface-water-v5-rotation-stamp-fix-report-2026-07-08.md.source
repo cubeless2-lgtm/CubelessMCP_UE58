@@ -1,0 +1,26 @@
+# Reactive Surface Water V5 Rotation/Stamp Fix Report - 2026-07-08
+
+- Verdict: `PASS`
+- System: `/Game/ReactiveSurface/Water/NS_RS_Water.NS_RS_Water`
+- Change: Water source injection now uses one canonical world-space swimmer source and ignores character-local point-cloud extras.
+- Change: source taps inject a signed ring pulse instead of a solid positive cosine disk.
+
+## Checks
+- single_source_wake_has_tail: `True`
+- rotated_point_cloud_stays_world_x: `True`
+- rotated_point_cloud_similarity: `True`
+- rotate_in_place_no_wake: `True`
+- source_stamp_is_ring_not_solid_disc: `True`
+
+## Key Numbers
+- Tail image RMS diff, single vs rotated point cloud: `10.079336329011614`
+- Ring frame center mean dev: `0.0`
+- Ring frame annulus mean dev: `27.180722891566266`
+
+## Visuals
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV5RotationStampFix\water_v5_rotation_stamp_fix_motion.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV5RotationStampFix\water_v5_rotation_stamp_fix_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v5-rotation-stamp-fix-results-2026-07-08.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV5RotationStampFix\water_v5_rotation_stamp_fix_bridge_results.json`

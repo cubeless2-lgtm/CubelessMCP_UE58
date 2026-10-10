@@ -1,0 +1,14 @@
+{
+  "schema": "cubeless_runtime_marker_baseline_v1",
+  "success": true,
+  "captured_ns": 1791624547491899700,
+  "fixture_report": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+  "fixture_sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a",
+  "run_id": "ShippingProofB20261010",
+  "runtime_user_dir": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\MaterialShippingRuntimeUser-B",
+  "marker_path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\MaterialShippingRuntimeUser-B\\Saved\\SaveGames\\Cubeless_ShippingProofB20261010.sav",
+  "marker_existed": false,
+  "executable": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\MaterialRuntimeShipping-20261010-B\\Windows\\CubelessMaterialRuntimeProof\\Binaries\\Win64\\CubelessMaterialRuntimeProof-Win64-Shipping.exe",
+  "executable_sha256": "7c20890d1d917c0a2431896ce87637417c65026385cc344897ddc963bb1e48f9",
+  "verifier_sha256": "cb564df11de832b8fbd701405bed03d9b23bfb8730ccc20b545c9d392746ddd4"
+}

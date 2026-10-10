@@ -1,0 +1,28 @@
+# Documentation Memory
+
+## Durable Memory
+
+- Store reusable operating memory in Git-tracked Markdown.
+- Promote repeated lessons, safety rules, procedures, review gates, failure causes, workarounds, and residual risks into this embedded `codex/` directory when they apply to future `UnrealMCP5_6_1` work.
+- Keep project-specific asset paths, plugin exceptions, branch state, and local tool details in the project adapter or project docs.
+- Use `docs/workflows/promote-shared-work.md` when deciding whether and how to move local knowledge into embedded Ops memory.
+
+## Capture Standard
+
+- Capture decisions and rules when they are likely to matter in a future session.
+- Do not capture short confirmations, temporary unaccepted ideas, secrets, credentials, personal data, or anything the user says not to record.
+- Before thinning an old project instruction file, snapshot it into `snapshots/` and reference the snapshot in the new adapter.
+
+## Stable Rules Versus Historical Evidence
+
+- Keep only stable, reusable, trigger-based operating rules in active bootstrap, policy, workflow, and role documents.
+- Put dated phase status, run logs, performance measurements, machine-specific evidence, temporary branch state, and external implementation comparisons under the appropriate `Docs/Analysis/` area or an immutable `snapshots/` record.
+- Active instructions may link to historical evidence when a matching task needs it, but must not copy dated completion narratives into the mandatory bootstrap.
+- Historical `Phase 0`, `Phase 1`, release, canary, or similar wording records what was true for that run. Reading it does not instruct an agent to rerun the old phase or treat its status as current.
+- Promote a historical lesson into active memory only after rewriting it as a timeless trigger, rule, boundary, or verification criterion with one canonical source.
+
+## Update Shape
+
+- Shared rule for this repository: put it in `docs/policies/`, `docs/workflows/`, or `agents/`.
+- Project-specific binding: put it in `projects/<ProjectName>.md` or the project's local `AGENTS.md`.
+- Historical source: keep the snapshot unchanged.

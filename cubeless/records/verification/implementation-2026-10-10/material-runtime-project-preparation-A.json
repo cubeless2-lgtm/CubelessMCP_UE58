@@ -1,0 +1,71 @@
+{
+  "schema": "cubeless_material_runtime_project_preparation_v1",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58MaterialRuntimeProof\\CubelessMaterialRuntimeProof.uproject",
+  "plugins_copied": false,
+  "descriptor": {
+    "FileVersion": 3,
+    "EngineAssociation": "5.8",
+    "Category": "Verification",
+    "Description": "Material and Blueprint fixture verification without MCP or Cubeless installed.",
+    "DisableEnginePluginsByDefault": true,
+    "Plugins": [
+      {
+        "Name": "PythonScriptPlugin",
+        "Enabled": true,
+        "TargetAllowList": [
+          "Editor"
+        ]
+      },
+      {
+        "Name": "EditorScriptingUtilities",
+        "Enabled": true,
+        "TargetAllowList": [
+          "Editor"
+        ]
+      }
+    ]
+  },
+  "copied_files": [
+    {
+      "role": "base_runtime_fixture",
+      "path": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_MarkerData.uasset",
+      "sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05"
+    },
+    {
+      "role": "base_runtime_fixture",
+      "path": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_RuntimeProof.uasset",
+      "sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da"
+    },
+    {
+      "role": "base_runtime_fixture",
+      "path": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.umap",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+      "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08"
+    },
+    {
+      "role": "base_runtime_fixture",
+      "path": "Content/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\Run_e46446c2ea9449a5b889e7558eae6dde\\BP_MutationContract.uasset",
+      "sha256": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f"
+    },
+    {
+      "role": "material",
+      "path": "Content/CubelessMCPTests/Material_981e0aa0faff42a4a79fcbed0c9920f0/M_Contract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_981e0aa0faff42a4a79fcbed0c9920f0\\M_Contract.uasset",
+      "sha256": "b7f5d473de8b1895d621d2d98b8cba880fb532bd04f366b88b5f3938015dad55"
+    },
+    {
+      "role": "collection",
+      "path": "Content/CubelessMCPTests/Material_981e0aa0faff42a4a79fcbed0c9920f0/MPC_Contract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_981e0aa0faff42a4a79fcbed0c9920f0\\MPC_Contract.uasset",
+      "sha256": "00645023dc2cfb35e8344978ba7ac1cf6daf6414f0839a98033acab5240079ed"
+    }
+  ],
+  "material_author_report": "material-author-E3.json",
+  "material_author_sha256": "8a2da97aa3078665a3079b7387856800cf8254aa96442715b923d2e72129f901",
+  "runtime_fixture_report": "runtime-fixture-B.json",
+  "planned_change": "only copied runtime map gains Engine cube actor using the copied E3 Material; no game C++ authored",
+  "validation": "not_run"
+}

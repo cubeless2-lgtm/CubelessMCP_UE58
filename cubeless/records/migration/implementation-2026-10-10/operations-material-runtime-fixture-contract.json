@@ -1,0 +1,64 @@
+{
+  "schema": "cubeless_material_runtime_fixture_implementation_v1",
+  "captured_utc": "2026-10-10T09:23:10.081480+00:00",
+  "status": "root_author_B_cold_C_shipping_marker_pass_within_scope",
+  "runtime_executed_by_this_agent": false,
+  "original_copies_preserved": 6,
+  "source_files_preserved": 6,
+  "new_assets": 2,
+  "test_report": "cubeless/records/verification/implementation-2026-10-10/operations-material-runtime-offline-tests-D.json",
+  "offline_test_count": 9,
+  "shader_completion_verified": false,
+  "full_material_migration_complete": false,
+  "source_hashes": [
+    {
+      "path": "cubeless/tools/verification/create_material_runtime_fixture.py",
+      "sha256": "74cc1aee3ebc903dab544e0c0f9433b914db994768e337d8c5161242c5afdc46",
+      "bytes": 24827
+    },
+    {
+      "path": "cubeless/tools/verification/validate_material_fixture_without_mcp.py",
+      "sha256": "3b58b25a296f4fc1d4a4139b30b435084b1d26a90a01702117500e58d662995c",
+      "bytes": 14655
+    },
+    {
+      "path": "cubeless/tools/verification/test_material_runtime_fixture.py",
+      "sha256": "51d8e9135084b04d0fb3831a16bbb4738ef2ff4a954db2de7b1cb70f4ee6dec9",
+      "bytes": 7501
+    }
+  ],
+  "contract": "operations-material-runtime-fixture-contract.md",
+  "updated_utc": "2026-10-10T09:47:29.731039+00:00",
+  "runtime_evidence": [
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-runtime-fixture-B.json",
+      "sha256": "023a03aebfec9b318fac66746d31c2bb2e4efdf10aacbff2e9e604c0bae1838f",
+      "bytes": 33872
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-runtime-cold-validation-C.json",
+      "sha256": "44f71826c9fa32da0c8d9c9b2a1a7fe6c20d8f430ec0cf21a5eef6c3e9647077",
+      "bytes": 37807
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/material-runtime-proof-B.json",
+      "sha256": "490a737762d23022e426f2aed4e7ef6cee8f540f6c63ab6c17b6f970efceefc7",
+      "bytes": 3793
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/operations-material-runtime-proof-B-independent.json",
+      "sha256": "74dcb41c80184c3e0a490be8d942500402169c9741dc1812fcb24d17081b98e6",
+      "bytes": 8504
+    }
+  ],
+  "raw_failures_preserved": [
+    "material-runtime-fixture-A.json",
+    "material-runtime-cold-validation-B.json"
+  ],
+  "cook_log_only_status": "incomplete; separate exact Pak asset evidence",
+  "source_contract_corrections": [
+    "--run-suffix fresh path, optional prior report lineage without retry",
+    "reflected static_mesh property, not unavailable get_static_mesh Python method",
+    "exact source/saved world prefix and identical PersistentLevel suffix mapping"
+  ]
+}

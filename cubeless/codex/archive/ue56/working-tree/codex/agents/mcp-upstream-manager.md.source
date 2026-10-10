@@ -1,0 +1,44 @@
+# MCP Upstream Manager
+
+## Role
+
+- The MCP Upstream Manager keeps `UnrealMCP5_6_1` current with `chongdashu/unreal-mcp` while preserving Cubeless extensions and UE 5.6.1 compatibility.
+- This role owns remote hygiene, upstream fetch/merge strategy, conflict triage, and update reporting.
+
+## Work Visibility
+
+- The MCP Upstream Manager must report update work in Korean in the active user-facing section.
+- Before fetching, merging, pulling, or pushing, state the active branch, remote target, expected refs, dirty-worktree risk, and whether the operation is read-only or mutating.
+- During conflict handling, identify the conflicted file groups and the Cubeless extension or UE 5.6.1 compatibility rule being preserved.
+- After update work, report before/after refs, merge or fast-forward result, verification status, and whether anything remains local-only.
+
+## Routing
+
+- Use this role for requests such as `최신 업데이트`, `업데이트 받아줘`, `원본 pull`, `upstream 최신`, or equivalent wording about syncing from the original MCP upstream.
+- Apply `docs/workflows/mcp-upstream-update.md` before executing update commands.
+- Read `projects/UnrealMCP5_6_1.md` for branch and remote expectations.
+
+## Rules
+
+- Treat `main` as the Cubeless integration/default branch.
+- Do not rebase or force-push public `main` by default.
+- Keep `upstream` fetch-only for routine work and do not push to it.
+- If the target GitHub repository is still empty, do not assume `origin/main` exists.
+- Keep legacy branches such as `local/pcg-tools` intact unless the user explicitly asks to update, delete, or repoint them.
+- Stop before merge if the MCP working tree is dirty unless the user explicitly asks to merge into the current dirty task branch.
+
+## Conflict Policy
+
+- Preserve Cubeless extensions first:
+  - generic `execute_python` bridge support
+  - PCG, Blueprint, Niagara, material, texture, and editor tooling
+  - map transition safety
+  - structured error reporting and verification scripts
+  - embedded `codex/` operating docs
+  - UE 5.6.1 compatibility guards and fallbacks
+- When conflicts are too large or risky, report the conflicted files and ask for a narrower merge plan.
+
+## Reporting
+
+- Report upstream before/after refs, merge result, verification result, and push status.
+- Keep Git operations scoped to `UnrealMCP5_6_1` unless the user explicitly names an external repository.

@@ -1,0 +1,273 @@
+# extend_anim_node_runtime_mapping Design
+
+Date: 2026-06-27
+Updated: 2026-06-29
+
+Status: First Tivret diagnostic pass implemented. `sample_anim_node_pre_post_runtime_pose`
+now reports `mapping_support` for dry-run, compiled mapping, and PoseWatch
+responses. Node-specific runtime fallback expansion remains design/review work.
+
+Scope: editor-only/runtime-probe support expansion for
+`sample_anim_node_pre_post_runtime_pose`. Runtime/gameplay code and asset
+mutation are out of scope.
+
+## Purpose
+
+`extend_anim_node_runtime_mapping` is an implementation playbook for cases where
+an AnimGraph node can be found statically but cannot yet produce same-instance
+pre/post pose evidence.
+
+The goal is to reduce failures when a user selects a node class outside the
+current proven set. The extension should improve mapping diagnostics and, only
+when evidence is strong enough, allow `pose_watch_capture` to report
+`runtime_graph_prepost=true` and `same_instance_prepost=true`.
+
+## Ieta Review
+
+Request class: prove one selected AnimGraph node changed pose output, but the
+current resolver, runtime node mapping, runtime pose-link inventory, or
+PoseWatch capture cannot attribute the selected node.
+
+Existing routes checked:
+
+- `sample_anim_node_pre_post_runtime_pose(dry_run=true)` resolves the editor
+  graph, target node, preferred pins, settings, and static links.
+- `mode=compiled_graph_mapping` maps the editor node GUID to generated-class
+  `FAnimNode_*` property data and a live AnimInstance node pointer.
+- `mode=pose_watch_capture` registers transient debug PoseWatch entries for the
+  selected runtime node output and selected input pose link IDs.
+- `mode=active_component_tick_delta` samples only final component pose deltas.
+- `mode=isolated_temp_components` can compare temp source-vs-output assets for
+  supported fixture-style nodes.
+
+Why existing routes may be insufficient: some node classes do not expose a
+simple runtime `FPoseLink`/`FComponentSpacePoseLink` input, hide their useful
+input in nested arrays, evaluate conditionally, or are source/sink nodes where
+pre/post attribution is not meaningful.
+
+Asset mutation boundary: mapping and PoseWatch work must be runtime-only or
+read-only. Isolated temp comparison may create only `_MCP_Temp` assets through
+the existing mode.
+
+Proposed candidate: extend existing `sample_anim_node_pre_post_runtime_pose`
+internals, not a new user-facing command by default.
+
+Approval status: user approved the Ieta/Tivret plan for the first diagnostic
+C++/API pass on 2026-06-29. Further node-specific fallbacks, new commands, or
+asset mutation still require Ieta review.
+
+## Current Implementation Anchors
+
+Use these existing paths first:
+
+| Existing function/path | Current role |
+| --- | --- |
+| `AnimGraphCompiledNodeMappingToJson` | Maps editor `NodeGuid` to generated-class node index, `FStructProperty`, runtime node pointer, and `FindDebugAnimNode`. |
+| `RuntimeAnimNodePoseLinksToJson` | Recursively inventories runtime `FPoseLinkBase` fields on the live `FAnimNode_*` struct. |
+| `CollectRuntimePoseLinksFromStruct` | Walks nested structs and arrays up to `pose_link_max_depth`. |
+| `SelectRuntimePoseLinksForPoseWatch` | Chooses `input_pose_field_path`, `input_pose_index`, `first`, or `all`. |
+| `RegisterTransientAnimPoseWatch` | Adds transient debug-data PoseWatch entries without saving the AnimBP asset. |
+| `CaptureAnimNodePoseWatchPose` | Reads PoseWatch bone transforms after controlled ticks. |
+| `GetAnimNodePrePostMVPKind` | Current coarse support label for a few study node classes. |
+| `Docs/Tools/node_tools.md` | Public schema and evidence wording for `sample_anim_node_pre_post_runtime_pose`. |
+
+## UE 5.6 API Anchors
+
+| Need | UE 5.6 anchor | Safe access rule |
+| --- | --- | --- |
+| Generated class mapping | `Runtime/Engine/Classes/Animation/AnimBlueprintGeneratedClass.h` | Use `GetNodeIndexFromGuid()`, `GetAnimNodeProperties()`, and visual-node mapping helpers. |
+| Runtime node base | `Runtime/Engine/Classes/Animation/AnimNodeBase.h` | Require mapped structs to derive from `FAnimNode_Base`. |
+| Runtime pose links | `Runtime/Engine/Classes/Animation/AnimNodeBase.h` | Discover `FPoseLinkBase`, `FPoseLink`, and `FComponentSpacePoseLink` fields by reflection. |
+| Runtime AnimInstance | `Runtime/Engine/Classes/Animation/AnimInstance.h` | Match a live AnimInstance compatible with the target AnimBP class. |
+| Editor node mapping | `Editor/AnimGraph/Public/AnimGraphNode_Base.h` | Use editor node GUIDs and `FindDebugAnimNode()`. |
+| PoseWatch debug data | `Runtime/Engine/Classes/Animation/AnimBlueprintGeneratedClass.h` and `Engine/PoseWatch.h` | Register transient entries only; restore debug object and remove transient watches. |
+
+## Support Classification
+
+Classify a selected node before claiming proof:
+
+| Class | Criteria | Allowed evidence |
+| --- | --- | --- |
+| `static_only` | Node resolves statically but no compatible live AnimInstance exists. | Topology/settings only. |
+| `compiled_mapping_only` | `GetNodeIndexFromGuid()` and runtime pointer mapping succeed, but no valid runtime pose input link exists. | Same-instance mapping, not pre/post pose. |
+| `output_only_source_node` | Asset players or source nodes have no meaningful upstream pose input. | Output PoseWatch or final-pose evidence, not source-vs-output attribution. |
+| `single_input_pose_node` | One valid runtime pose link maps to an upstream node. | PoseWatch pre/post can be supported. |
+| `multi_input_pose_node` | Multiple valid pose links exist in arrays or nested structs. | PoseWatch with `input_pose_mode=all` or exact `input_pose_field_path`. |
+| `component_space_pose_node` | Runtime input uses component-space pose link fields. | PoseWatch can be supported only if captured transforms are valid. |
+| `conditional_or_latent_node` | Link exists but may not evaluate every tick. | Require warning and controlled tick/settle evidence. |
+| `unsupported_for_prepost` | Sink, transition result, state machine, linked layer boundary, or node lacks stable pose link semantics. | Do not report `same_instance_prepost=true`. |
+
+## Extension Criteria
+
+A node class can be promoted to PoseWatch-supported only when all are true:
+
+- target selection is unambiguous by `node_id` or strict filters;
+- generated-class node index is found from the editor `NodeGuid`;
+- mapped `FStructProperty` derives from `FAnimNode_Base`;
+- live AnimInstance class is compatible with the resolved AnimBP class;
+- runtime node pointer or `FindDebugAnimNode()` mapping succeeds;
+- at least one runtime pose link has a valid `link_id`;
+- selected pre input link and post output link both register transient
+  PoseWatches;
+- after settle/tick, both watches capture transforms from the same expected
+  AnimInstance;
+- debug object is restored and transient PoseWatches are removed;
+- response keeps evidence labels honest.
+
+If any condition fails, return a structured diagnostic and keep
+`runtime_graph_prepost=false`.
+
+## Implemented Diagnostic Pass
+
+The first implementation keeps the existing command surface and adds no asset
+mutation:
+
+- `target_node.mapping_support` is available during dry-run/static resolution;
+- `compiled_graph_mapping` returns top-level `mapping_support` after live
+  generated-class node mapping and runtime pose-link inventory;
+- `pose_watch_capture` returns top-level `mapping_support`, using
+  `evidence_tier=same_instance_pose_watch` only when pre/post PoseWatch capture
+  succeeds;
+- `support_class` can report `static_only`, `compiled_mapping_only`,
+  `output_only_source_node`, `single_input_pose_node`, `multi_input_pose_node`,
+  `component_space_pose_node`, or `unsupported_for_prepost`;
+- source/sink/boundary nodes keep `pose_watch_supported=false` so lower evidence
+  is not overstated as selected-node pre/post proof.
+
+## Preferred Future Design Change
+
+Implement as an extension to `sample_anim_node_pre_post_runtime_pose`:
+
+- add a support matrix in code or docs keyed by editor class name and runtime
+  struct name;
+- record preferred input field paths for known multi-input nodes;
+- keep dry-run output populated with `mapping_support.support_class`,
+  `recommended_input_pose_mode`, `known_good_field_paths`, and
+  `unsupported_reason`;
+- keep `input_pose_field_path` as the override for user-selected links;
+- keep generic recursive `FPoseLinkBase` discovery as the first path before any
+  node-specific fallback;
+- add node-specific fallbacks only when generic reflection cannot expose a
+  stable link path.
+
+Do not add persistent project settings or a data asset for the support matrix in
+the first implementation. Keep it in the editor-only bridge code and docs until
+the pattern stabilizes.
+
+## Response Additions
+
+Current `mapping_support` fields:
+
+```json
+{
+  "mapping_support": {
+    "node_class": "",
+    "runtime_struct": "",
+    "support_class": "single_input_pose_node",
+    "pose_watch_supported": true,
+    "recommended_mode": "pose_watch_capture",
+    "recommended_input_pose_mode": "all",
+    "known_good_field_paths": [],
+    "unsupported_reason": "",
+    "evidence_tier": "same_instance_pose_watch",
+    "valid_runtime_pose_link_count": 1,
+    "runtime_pose_links_checked": true,
+    "runtime_node_instance_mapped": true,
+    "find_debug_anim_node_mapped": true,
+    "same_anim_instance_node_mapping": true
+  }
+}
+```
+
+Evidence tiers:
+
+- `static_topology`
+- `compiled_node_mapping`
+- `runtime_pose_link_inventory`
+- `same_instance_pose_watch`
+- `final_component_tick_delta`
+- `isolated_temp_comparison`
+
+Only `same_instance_pose_watch` may set both `runtime_graph_prepost=true` and
+`same_instance_prepost=true`.
+
+## Forbidden Patterns
+
+Do not use these in implementation:
+
+- hardcoding runtime `LinkID` numbers from one compiled class;
+- assuming editor pin order equals runtime pose-link field order;
+- claiming node attribution from `active_component_tick_delta`;
+- leaving the AnimBP debug object changed;
+- adding persistent PoseWatches to the AnimBP asset;
+- saving assets during mapping or PoseWatch capture;
+- increasing recursive struct traversal without hard limits;
+- treating source nodes as source-vs-output pre/post nodes;
+- swallowing PoseWatch capture failures while still reporting success;
+- using Unreal Python generated-class property guesses instead of C++ mapping.
+
+Reason: these patterns make evidence unstable, mutate editor state, or overstate
+what the probe actually proved.
+
+## Verification Plan
+
+For docs-only changes:
+
+```powershell
+git diff --check
+```
+
+For implementation:
+
+```powershell
+uv --directory .\Python run python -m py_compile unreal_mcp_server.py tools\node_tools.py
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat' MCPGameProjectEditor Win64 Development -Project="$Project" -WaitMutex
+```
+
+For read-only bridge smoke of the implemented diagnostic:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_anim_node_mapping_support_bridge.py --json
+```
+
+This smoke uses the engine Tutorial AnimBP root node as an unsupported pre/post
+fixture and confirms `mapping_support.support_class=unsupported_for_prepost`,
+`pose_watch_supported=false`, and `evidence_tier=static_topology`.
+
+When no Unreal Editor bridge is already running, use the launcher wrapper:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_node_mapping_support_smoke.ps1 -Json
+```
+
+Editor smoke verification after implementation should:
+
+- run `dry_run=true` for one known supported node and one unsupported node;
+- run `mode=compiled_graph_mapping` on a live compatible component;
+- run `mode=pose_watch_capture` with `input_pose_mode=first`;
+- run `mode=pose_watch_capture` with `input_pose_mode=all` on a multi-input
+  node;
+- confirm unsupported/source nodes keep `same_instance_prepost=false`;
+- confirm no AnimBP asset gets new persistent PoseWatch objects;
+- confirm debug object restoration after success and failure;
+- confirm response evidence tier matches the actual mode.
+
+## Tivret instruction
+
+Do not add node-specific fallbacks, a new command, or asset mutation from this
+document unless a concrete selected node class fails the existing
+resolver/mapping/PoseWatch path and the active request explicitly moves to that
+implementation. When approved:
+
+- target files: likely
+  `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands.cpp`,
+  matching public declaration header if needed, `Python/tools/node_tools.py`,
+  and `Docs/Tools/node_tools.md`;
+- extend existing `sample_anim_node_pre_post_runtime_pose` rather than adding a
+  parallel proof command;
+- keep runtime probe code editor-only and non-saving;
+- add diagnostics before adding node-specific fallbacks;
+- update docs with exact evidence labels and limitations;
+- rollback boundary: remove the new mapping support and docs entry only; do not
+  revert unrelated docs or user changes.

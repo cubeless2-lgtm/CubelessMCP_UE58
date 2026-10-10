@@ -1,0 +1,157 @@
+# Reactive Surface S3/S4 Follow-up Smoke Report - 2026-07-04
+
+> 2026-07-04 d229527c 판정 뒤집힘: 이 리포트의 S3 Array DI FAIL은 hidden `User.*` 직결 배선 경로 한정 문제였다. Claude cross-check에서 `User parameter -> Module input -> HLSL input` 3단 체인으로 runtime-pushed Position Array 3개가 GPU Simulation Stage에 보임을 PASS로 반증했다. 최신 판정은 `reactive-surface-array-di-gpu-pass-report-2026-07-04.md`를 기준으로 한다.
+
+역할: Codex 후속 고스트 테스터
+
+범위:
+
+- S3/V1: BP/Python runtime Array DI push가 Niagara GPU Simulation Stage source list로 사용 가능한지 재검증
+- S4/V3: Texture2D footprint/mask sample이 Niagara GPU Simulation Stage에서 RT stamp로 사용 가능한지 재검증
+
+중요 전제:
+
+- Custom HLSL 사용은 허용된다.
+- BP-only 제약은 production C++ runtime 구현 금지이지, Niagara Custom HLSL 금지가 아니다.
+- 모든 임시 자산은 `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost8` 아래에서만 생성했다.
+
+## 결과 요약
+
+| 항목 | 판정 | 근거 |
+|---|---|---|
+| Custom HLSL Function usage | PASS | `Array.Length/Get`, `Texture.SampleTexture2D` 문장형 HLSL 모두 compile error 0 |
+| S4 Texture2D mask sample in sim stage | PASS | RT full scan step 8에서 `nonzero_count=422`, `nonzero_ratio=0.10302734375` |
+| S3 Position Array runtime push | FAIL | CPU getter는 3개 값을 반환하지만 GPU RT readback `nonzero_count=0` |
+| S3 Float3/Vector Array runtime push | FAIL | CPU getter는 3개 값을 반환하지만 GPU RT readback `nonzero_count=0` |
+| S3 inactive spawn -> array set -> activate | FAIL | activate 순서 변경 후에도 GPU RT readback `nonzero_count=0` |
+| S3 set -> reinitialize_system | FAIL | `reinitialize_system` 후에도 GPU RT readback `nonzero_count=0` |
+
+## 핵심 판정
+
+Texture2D mask sample 경로는 1차 구현에 사용할 수 있다. 눈/모래 footprint mask texture stamp는 Custom HLSL + Texture2D DI 조합으로 계속 진행 가능하다.
+
+반대로 BP/Python `Set Niagara Array Position/Vector`를 20명/64 slot source list 입력으로 쓰는 경로는 현재 No-Go다. 실패 원인은 Custom HLSL이 아니라, CPU getter에 보이는 Array DI 값이 GPU Simulation Stage에서 source buffer로 보이지 않는 점이다.
+
+## 증거 파일
+
+Runtime evidence:
+
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/function_usage_compile_probe_C_results.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/runtime_s3_s4_split_results.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/array_activation_order_probe.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/array_float3_runtime_probe.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/array_float3_reinit_probe.json`
+
+Bridge traces:
+
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/runtime_s3_s4_split_bridge_results.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/array_activation_order_probe_bridge.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/array_float3_runtime_probe_bridge.json`
+- `MCPGameProject/Saved/MCP/ReactiveGhost8/array_float3_reinit_probe_bridge.json`
+
+## 실측 세부
+
+### Custom HLSL Function usage
+
+MCP 보강 후 `insert_niagara_scratch_pad_custom_hlsl_for_pin`에 `custom_hlsl_script_usage="Function"`을 전달했다.
+
+Array probe:
+
+- System: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost8/NS_S3_ArrayFunctionProbeC`
+- User input: `User.V1_Positions`
+- HLSL: `Positions.Length(Count)` + `Positions.Get(0, P0)`
+- Compile: `has_errors=false`, `error_count=0`
+
+Texture probe:
+
+- System: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost8/NS_S4_TextureFunctionProbeC`
+- User input: `User.MaskTexture`
+- HLSL: `MaskTexture.SampleTexture2D(Unit, 0.0, Sample)`
+- Compile: `has_errors=false`, `error_count=0`
+
+### S4 Texture2D mask runtime
+
+Evidence: `runtime_s3_s4_split_results.json`
+
+- RT: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost8/RT_S4_Texture_RGBA16F`
+- Readback world: `game_world`
+- Scan step: 8
+- Nonzero count: 422
+- Nonzero ratio: 0.10302734375
+- Channel sums RGBA: `[88733.0, 82411.0, 57444.0, 82583.0]`
+- First hit example: `(128, 120) -> [13.0, 4.0, 4.0, 1.0]`
+
+판정: PASS. Sim stage에서 Texture2D DI sample 결과가 RT export까지 도달했다.
+
+### S3 Position Array runtime
+
+Evidence: `array_activation_order_probe.json`
+
+- System: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost8/NS_S3_ArrayFunctionProbeC`
+- Array setter: `set_niagara_array_position`
+- CPU getter before activate: 3 values
+- CPU getter after activate: 3 values
+- Values: `[128,128,0]`, `[256,256,0]`, `[384,128,0]`
+- RT readback nonzero count: 0
+
+판정: FAIL. Array 값은 컴포넌트 CPU 상태에 존재하지만 GPU sim stage stamp로 나타나지 않았다.
+
+### S3 Float3/Vector Array runtime
+
+Evidence: `array_float3_runtime_probe.json`
+
+- Upserted User param: `User.V1_Float3Positions`
+- Type: `Vector Array`
+- Data Interface: `NiagaraDataInterfaceArrayFloat3`
+- Array setter: `set_niagara_array_vector`
+- CPU getter before activate: 3 values
+- CPU getter after activate: 3 values
+- RT readback nonzero count: 0
+
+Evidence: `array_float3_reinit_probe.json`
+
+- `reinitialize_system` route executed
+- CPU getter after reinit: 3 values
+- RT readback nonzero count: 0
+
+판정: FAIL. Position Array의 LWC 변환 문제가 아니라, 현재 runtime Array DI 값이 GPU sim stage에서 읽히지 않는 문제로 본다.
+
+## MCP/API 보강
+
+이번 라운드에서 필요한 도구 보강:
+
+- `insert_niagara_scratch_pad_custom_hlsl_for_pin`
+  - `custom_hlsl_script_usage` 옵션 추가
+  - 기본값은 기존과 같은 `DynamicInput`
+  - `Function` 사용 시 statement-style Custom HLSL에서 named output pin assign 가능
+- Python wrapper
+  - `upsert_niagara_user_parameters` 노출
+  - Array DI User parameter 생성 검증에 사용
+
+## validation-plan.md 반영
+
+반영 사항:
+
+- §10.3 배열 입력을 "가능성이 있다"에서 "BP runtime Array DI GPU visibility 미검증/현재 No-Go"로 갱신
+- Custom HLSL은 허용된다는 전제 명시
+- 리스크 표에 `BP runtime Array DI GPU visibility` 행 추가
+- §23.6 Go/No-Go에 runtime source 입력 행 추가
+
+## 구현 계획 영향
+
+Ground footprint texture stamp는 계속 Go다.
+
+1차 BP-only 구현은 20명/64 slot Array DI compact 구조를 바로 채택하지 않는다. 실제 플레이어 중심 구현은 아래처럼 고정 User 파라미터 소수 입력으로 먼저 간다.
+
+```text
+User.Ground_LeftFoot_*
+User.Ground_RightFoot_*
+User.Grass_Player_*
+User.Water_Player_*
+```
+
+20명/64 slot 구조는 다음 중 하나가 검증될 때까지 보류한다.
+
+- C++/전용 DI 경로로 GPU-visible source buffer 보장
+- BP-only에서 Array DI GPU visibility가 별도 smoke로 PASS
+- Packed source texture/RT 같은 대체 입력 경로 검증

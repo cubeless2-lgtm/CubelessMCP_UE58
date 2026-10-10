@@ -1,0 +1,34 @@
+# PCG And Blueprint Authoring
+
+## PCG Authoring
+
+- For PCG graphs that spawn Static Meshes, expose spawnable mesh choices through Blueprint variables and PCG Actor Property override paths by default.
+- Hardcoded Static Mesh Spawner entries are allowed as defaults or fallbacks, not as the only artist-facing control.
+- Use fast PCG authoring for new PCG creation and major rebuilds: batch node creation, pin wiring, settings changes, and actor-property binding.
+- Minimize automatic regeneration while assembling a graph.
+- Do not mutate `FPCGAttributePropertySelector`-derived settings through Unreal Python. Avoid `PCGAttributePropertySelectorBlueprintHelpers.set_*`, Python wrapper methods such as `set_attribute_name`, and Python-side assignment of selector structs. Use the native MCP `set_pcg_attribute_selector` command instead; it edits native PCG settings only and must not leave `/Script/UnrealMCP` or other MCP dependencies in finished assets.
+
+## PCG Blueprint Generation Controls
+
+- User-facing PCG Blueprints should expose PCG generation behavior as top-level Blueprint variables when artists need to control it.
+- Prefer binding those variables to the `PCGComponent` through a small runtime `BlueprintFunctionLibrary` helper instead of editing PCG component internals through large Construction Script graphs.
+- Keep the Construction Script binding thin: read the exposed variables, call one apply function, and let the helper set `GenerationTrigger`, editor regeneration, on-demand drop behavior, auto-activation, and component template defaults as appropriate.
+- Shared MCP automation for this binding must take the apply function class as an explicit parameter. Do not hard-code a project runtime module or Blueprint function library into generic MCP code.
+- When replacing an existing generated apply node, match the exact `UFunction` being replaced, create and validate the new node wiring first, then remove or bridge old exec links.
+- Compile before saving. If compile fails, return an error and do not save the Blueprint.
+
+## Checkpoints
+
+- Compile, save, refresh, and generate in grouped checkpoints.
+- Before declaring a PCG change done, check for stale viewport/generated results, `PCGComponent` versus `PCGGraphInstance` mismatch, Blueprint default versus placed actor override mismatch, spline/bounds/Landscape sampler refresh gaps, random-seed noise, and branch layout mistakes.
+
+## Required Delta Tests
+
+- Run at least one parameter delta test after final regeneration.
+- For finished live-refresh PCG Blueprints, also verify:
+  - A parameter delta changes the expected category or mesh count.
+  - A spline-shape delta regenerates expected placement.
+  - A mesh-override delta changes mesh assignment while unrelated categories remain plausible.
+- Live refresh must be debounced or dirty-flagged. Heavy graphs should provide manual refresh or preview density instead of forced full-density regeneration.
+- Finished user-facing PCG Blueprints should switch from fast authoring mode to live refresh mode unless the graph is known to be too expensive.
+- Expose an editor-facing auto-refresh control such as `AutoRegenerateInEditor`, keep it disabled during MCP/scripted batch authoring, and default it back on for final artist-facing assets when validation passes.

@@ -1,0 +1,193 @@
+# Reactive Surface Smoke 1-4 Report
+
+Date: 2026-07-04
+Executor: Codex
+Engine: Unreal Engine 5.6.1
+Temp content root used: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost7`
+Production root touched: none
+
+## Runtime Artifacts
+
+Runner:
+
+```text
+codex/scripts/reactive_surface/reactive_surface_smoke_1_4_runner.py
+```
+
+Evidence:
+
+```text
+MCPGameProject/Saved/MCP/ReactiveGhost7/reactive_surface_smoke_1_4_20260704.json
+MCPGameProject/Saved/MCP/ReactiveGhost7/reactive_surface_smoke_1_4_bridge_results.json
+MCPGameProject/Saved/MCP/ReactiveGhost7/reactive_surface_smoke_1_4_commands.jsonl
+```
+
+Cleanup:
+
+```text
+Filesystem temp roots ReactiveGhost6/ReactiveGhost7: removed
+Dirty packages after manual cleanup: 0
+Editor asset registry: stale ReactiveGhost7 material entry may remain until editor restart
+```
+
+## Result Summary
+
+| Test | Verdict | Main evidence |
+|---|---:|---|
+| 1. T8 Material worldXY -> RT V-flip | PASS | PIE/SIE `game_world` scene capture saw red +X at `[384,256]` and green +Y at `[256,384]`; material world-position graph links all true. |
+| 2. V1 Array runtime push | PARTIAL PASS | Declared `User.V1_Positions` Position Array and `User.V1_Strengths` Float Array; runtime set/get returned 3/3 values. Sim-stage Count/Get RT stamp remains BLOCKED. |
+| 3. V3 Footprint mask Texture2D | BLOCKED | Mask Texture2D asset creation succeeded, but template has no `Mask Texture` Texture2D DI input; binder returned `No matching module input`. |
+| 4. V4 Reprojection authoring | PARTIAL PASS / BLOCKED | `User.V4_DeltaUV` upsert and `AdvectGrid.StackContext.RGBA` wrapper compiled with 0 errors/warnings; deterministic `SamplePreviousGrid(Unit - DeltaUV)` + edge zero-fill stage still not authored. |
+
+## 1. T8 Material V-Flip
+
+Verdict: PASS
+
+What ran:
+
+- Created `RT_1_T8_Source_RGBA16F` with asymmetric markers:
+  - red +X marker at RT centroid `[384,256]`
+  - green +Y marker at RT centroid `[256,384]`
+- Authored `M_1_T8_WorldXY_RT_Emissive`.
+- Material graph contract:
+
+```text
+UV = (WorldPosition.xy + 256) / 512
+```
+
+Material connection evidence:
+
+```json
+{
+  "world_to_mask": true,
+  "mask_to_add": true,
+  "offset_to_add": true,
+  "add_to_div": true,
+  "size_to_div": true,
+  "div_to_tex_coords": true,
+  "tex_to_emissive": true
+}
+```
+
+PIE/SIE capture evidence:
+
+```json
+{
+  "world_kind": "game_world",
+  "R_count": 25,
+  "G_count": 25,
+  "red_centroid": [384.0, 256.0],
+  "green_centroid": [256.0, 384.0],
+  "red_plus_x_not_u_flipped": true,
+  "green_plus_y_not_v_flipped_for_capture_yaw_minus_90": true
+}
+```
+
+Conclusion:
+
+The material consumer path is now proven for the worldXY-to-UV contract under the tested 512 cm window and yaw `-90` top-down capture orientation.
+
+## 2. V1 Array Runtime Push
+
+Verdict: PARTIAL PASS
+
+Niagara user parameter upsert:
+
+```json
+{
+  "added_count": 3,
+  "failed_count": 0,
+  "parameters": [
+    "User.V1_Positions: Position Array",
+    "User.V1_Strengths: Float Array",
+    "User.V1_Count: int32"
+  ]
+}
+```
+
+Runtime array push/readback in `game_world`:
+
+```json
+{
+  "position_setter": "set_niagara_array_position",
+  "position_getter": "get_niagara_array_position",
+  "positions_length": 3,
+  "strengths_length": 3,
+  "positions_readback": [[10,20,30],[40,50,60],[70,80,90]],
+  "strengths_readback": [0.25,0.5,1.0]
+}
+```
+
+Conclusion:
+
+Declared User Array DI + runtime push is no longer the blocker. The remaining blocker is specifically sim-stage consumption:
+
+```text
+Array Count/Get loop -> Count gate -> 3-position RT stamp -> full RT readback
+```
+
+Until that passes, array registry should remain out of Phase 0-2 production scope.
+
+## 3. V3 Footprint Mask Texture2D
+
+Verdict: BLOCKED
+
+What improved:
+
+- Created deterministic mask source RT.
+- Created Texture2D asset:
+
+```text
+/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost7/T_3_V3_Mask_FromRT
+```
+
+What failed:
+
+```text
+set_niagara_texture2d_module_input -> No matching module input was found: Mask Texture
+inspect_niagara_module_inputs -> texture_hits_count 0
+```
+
+Conclusion:
+
+The new Texture2D DI binder is usable only when a target module input already exists. The current G1 template has no footprint-mask Texture2D DI input, so rotated footprint texture stamping still needs a reviewed sim-stage Scratch Pad/module authoring path.
+
+## 4. V4 Reprojection
+
+Verdict: PARTIAL PASS / BLOCKED
+
+What passed:
+
+```json
+{
+  "User.V4_DeltaUV": [0.001953125, 0.0],
+  "wrapper": "AdvectGrid.StackContext.RGBA",
+  "expression": "PreviousStackValue",
+  "write_scope": "scratch_pad_output_stack_context_accumulator",
+  "compile_error_count": 0,
+  "compile_warning_count": 0
+}
+```
+
+What remains blocked:
+
+```text
+SamplePreviousGrid(Unit - User.V4_DeltaUV)
+out-of-bounds -> 0
+1-cell shift readback
+10-step accumulation readback
+entering-edge zero-fill readback
+```
+
+Conclusion:
+
+The wrapper/compile route is healthy, but it is not the deterministic reprojection stage. Sliding-window reprojection should remain an upgrade path, not a Phase 0-2 requirement.
+
+## Validation Plan Updates
+
+| Section | Update |
+|---|---|
+| T8 / material consumer | Mark worldXY -> UV material sampling and U/V orientation as passed for 512 cm window, yaw `-90` top-down capture, PIE/SIE `game_world`. |
+| V1 / array source registry | Change blocker from "declared User Array DI/runtime push unknown" to "sim-stage Array Count/Get loop and RT stamp unproven." |
+| V3 / footprint texture | Texture2D asset creation is no longer the blocker; module/stage authoring for Texture2D DI sampling remains the blocker. |
+| V4 / reprojection | StackContext wrapper compiles, but deterministic offset reprojection remains unproven. Keep clear/fade baseline until dedicated stage passes. |

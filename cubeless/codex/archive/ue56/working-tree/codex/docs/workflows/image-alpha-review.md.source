@@ -1,0 +1,12 @@
+# Image Alpha Review
+
+## Review Display Copies
+
+- When a project asks for visual inspection, screenshot display, or screenshot comparison, run the project's review-display alpha hook before presenting or judging the image.
+- The user-facing review/display copy must be fully opaque. If the file has alpha, every display alpha value must be `255`.
+- If the file has no alpha, the display copy may remain RGB or be converted to RGBA with alpha `255`.
+
+## Deliverable Sources
+
+- Do not apply the opaque-display rule to deliverable source textures, masks, decals, UI cutouts, clouds, or packed data images where non-opaque alpha is intentional.
+- For deliverables that depend on transparency, verify real alpha data separately and preserve it through export/import.

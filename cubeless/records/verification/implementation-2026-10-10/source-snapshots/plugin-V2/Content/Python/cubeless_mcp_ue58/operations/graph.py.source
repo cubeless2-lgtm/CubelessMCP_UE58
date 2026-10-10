@@ -1,0 +1,194 @@
+"""Small Blueprint graph edits with legacy mutation_result_v1 observations.
+
+This is a bounded subset: K2 graph listing and Branch add/link/move/delete.
+GUID input selectors resolve to canonical object paths. Conversion/promotion
+nodes and replacement of existing links remain unsupported.
+"""
+
+import copy
+
+from cubeless_mcp_ue58.compatibility.ue58 import graph as api
+from cubeless_mcp_ue58.compatibility.ue58.blueprint import ensure_editor_idle
+from . import state
+from .state import OperationError, fail, mutate, new_result
+
+
+def _contract(result, before, after, kind, *, affected=1, created=0, updated=0, removed=0, skipped=0, passed=True):
+    result["data"].update({"contract_version": "mutation_result_v1", "verified_success": passed,
+        "postcondition_verified": passed, "success_semantics": "observed_postcondition",
+        "mutation": kind, "before": before, "after": after,
+        "delta": {"affected_count": affected, "created_count": created, "updated_count": updated,
+                  "removed_count": removed, "skipped_count": skipped, "failed_count": 0 if passed else 1},
+        "verification": {"status": "passed" if passed else "failed", "method": "independent_graph_api_readback"}})
+    result["validation"].update({"status": "loaded_graph_readback_passed" if passed else "graph_postcondition_failed"})
+    if not passed:
+        raise OperationError("postcondition_failed", "The requested graph postcondition was not observed; no retry or rollback was performed")
+    result["success"] = True
+    result["stage"] = "complete"
+    result["retry"]["duplicate_risk"] = "graph_change_would_repeat"
+
+
+def inspect_graph(blueprint_name, graph_name="EventGraph"):
+    result = new_result()
+    try:
+        inspect_graph_action(result, blueprint_name, graph_name)
+    except Exception as error:
+        fail(result, error)
+    return result
+
+
+
+def inspect_graph_action(result, blueprint_name, graph_name, checkpoint_callback=None):
+    """Internal loaded-state read; no compile/save or asset mutation."""
+    result["stage"] = "readback"
+    result["data"] = api.graph_info(api.graph_editor(blueprint_name, graph_name))
+    result["validation"]["status"] = "loaded_graph_readback_passed"
+    result["success"] = True
+    result["stage"] = "complete"
+
+
+def add_branch_node(blueprint_name, graph_name, x, y, operation_id):
+    arguments = {"blueprint_name": blueprint_name, "graph_name": graph_name, "x": x, "y": y}
+
+    return mutate('add_branch_node', arguments, operation_id, lambda result: add_branch_node_action(result, blueprint_name, graph_name, x, y))
+
+
+def add_branch_node_action(result, blueprint_name, graph_name, x, y, checkpoint_callback=None):
+    """Internal guarded action; standalone/batch callers own journaling."""
+    ensure_editor_idle()
+    editor = api.graph_editor(blueprint_name, graph_name)
+    before = api.graph_info(editor)
+    result["data"]["before"] = copy.deepcopy(before)
+    if before.get("total_node_count", len(before["nodes"])) >= 2048:
+        raise OperationError("graph_node_limit_reached", "Adding a Branch would exceed the 2048 total-node observation limit, including comments; no mutation performed")
+    result["stage"] = "add_branch"
+    result["changes"].append({"kind": "add_branch", "graph_path": before["graph_path"], "attempted": True})
+    (checkpoint_callback or state.checkpoint)(result)
+    node = api.add_branch(editor, x, y)
+    result["data"].update(api.node_info(node))
+    result["stage"] = "readback"
+    after = api.graph_info(editor)
+    result["data"]["graph_name"] = graph_name
+    new_id = api.node_id(node)
+    observed = next((item for item in after["nodes"] if item["node_id"] == new_id), {})
+    passed = (new_id not in {n["node_id"] for n in before["nodes"]} and
+              observed.get("class") == "K2Node_IfThenElse" and observed.get("x") == x and observed.get("y") == y)
+    _contract(result, before, after, "add_branch", created=1 if passed else 0, passed=passed)
+
+
+def set_node_position(blueprint_name, node_id, x, y, graph_name, expected_x, expected_y, operation_id):
+    arguments = {"blueprint_name": blueprint_name, "node_id": node_id, "x": x, "y": y, "graph_name": graph_name,
+                 "expected_x": expected_x, "expected_y": expected_y}
+
+    return mutate('set_node_position', arguments, operation_id, lambda result: set_node_position_action(result, blueprint_name, node_id, x, y, graph_name, expected_x, expected_y))
+
+
+def set_node_position_action(result, blueprint_name, node_id, x, y, graph_name, expected_x, expected_y, checkpoint_callback=None):
+    """Internal guarded action; standalone/batch callers own journaling."""
+    ensure_editor_idle()
+    editor = api.graph_editor(blueprint_name, graph_name)
+    node = api.find_node(editor, node_id)
+    canonical_id = api.node_id(node)
+    before = api.node_info(node)
+    result["data"]["before"] = copy.deepcopy(before)
+    if expected_x is not None and before["x"] != expected_x or expected_y is not None and before["y"] != expected_y:
+        raise OperationError("precondition_mismatch", "Node position differs from the expected position; no mutation performed")
+    result["stage"] = "move_node"
+    changed = before["x"] != x or before["y"] != y
+    if changed:
+        result["changes"].append({"kind": "move_node", "node_id": canonical_id, "requested_node_id": node_id, "attempted": True})
+        (checkpoint_callback or state.checkpoint)(result)
+        api.move_node(node, x, y)
+    result["stage"] = "readback"
+    after = api.node_info(api.find_node(editor, canonical_id))
+    _contract(result, before, after, "set_node_position", updated=int(changed), skipped=int(not changed),
+              passed=after["x"] == x and after["y"] == y)
+
+
+def delete_node(blueprint_name, node_id, graph_name, allow_exec_linked_delete, operation_id):
+    arguments = {"blueprint_name": blueprint_name, "node_id": node_id, "graph_name": graph_name,
+                 "allow_exec_linked_delete": allow_exec_linked_delete}
+
+    return mutate('delete_node', arguments, operation_id, lambda result: delete_node_action(result, blueprint_name, node_id, graph_name, allow_exec_linked_delete))
+
+
+def delete_node_action(result, blueprint_name, node_id, graph_name, allow_exec_linked_delete, checkpoint_callback=None):
+    """Internal guarded action; standalone/batch callers own journaling."""
+    ensure_editor_idle()
+    editor = api.graph_editor(blueprint_name, graph_name)
+    node = api.find_node(editor, node_id)
+    canonical_id = api.node_id(node)
+    before = api.graph_info(editor)
+    result["data"]["before"] = copy.deepcopy(before)
+    target = api.node_info(node)
+    if not allow_exec_linked_delete and any(pin["category"] == "exec" and pin["links"] for pin in target["pins"]):
+        raise OperationError("linked_exec_delete_rejected", "Node has linked execution pins; explicit allow_exec_linked_delete is required")
+    result["stage"] = "delete_node"
+    result["changes"].append({"kind": "delete_node", "node_id": canonical_id, "requested_node_id": node_id, "attempted": True})
+    (checkpoint_callback or state.checkpoint)(result)
+    api.remove_node(editor, node)
+    result["stage"] = "readback"
+    after = api.graph_info(editor)
+    passed = canonical_id not in {item["node_id"] for item in after["nodes"]}
+    no_dangling = not any(link["node_id"] == canonical_id for item in after["nodes"] for pin in item["pins"] for link in pin["links"])
+    _contract(result, before, after, "delete_node", removed=1 if passed else 0, passed=passed and no_dangling)
+
+
+def connect_graph_pins(blueprint_name, source_node_id, source_pin_name, target_node_id, target_pin_name, graph_name, operation_id):
+    arguments = {"blueprint_name": blueprint_name, "source_node_id": source_node_id, "source_pin_name": source_pin_name,
+                 "target_node_id": target_node_id, "target_pin_name": target_pin_name, "graph_name": graph_name}
+
+    return mutate('connect_graph_pins', arguments, operation_id, lambda result: connect_graph_pins_action(result, blueprint_name, source_node_id, source_pin_name, target_node_id, target_pin_name, graph_name))
+
+
+def connect_graph_pins_action(result, blueprint_name, source_node_id, source_pin_name, target_node_id, target_pin_name, graph_name, checkpoint_callback=None):
+    """Internal guarded action; standalone/batch callers own journaling."""
+    ensure_editor_idle()
+    editor = api.graph_editor(blueprint_name, graph_name)
+    source_node = api.find_node(editor, source_node_id)
+    target_node = api.find_node(editor, target_node_id)
+    source_id, target_id = api.node_id(source_node), api.node_id(target_node)
+    source = api.find_pin(source_node, source_pin_name, "output")
+    target = api.find_pin(target_node, target_pin_name, "input")
+    before = api.graph_info(editor)
+    result["data"]["before"] = copy.deepcopy(before)
+    plan = api.connection_plan(editor, source_id, source_pin_name, target_id, target_pin_name)
+    result["data"]["connection_plan"] = copy.deepcopy(plan)
+    forward = any(api.node_id(pin.get_owning_node()) == target_id and str(pin.get_pin_name()) == target_pin_name for pin in source.list_connected_pins())
+    reverse = any(api.node_id(pin.get_owning_node()) == source_id and str(pin.get_pin_name()) == source_pin_name for pin in target.list_connected_pins())
+    if forward != reverse or plan["already_linked"] != (forward and reverse):
+        raise OperationError("connection_observation_inconsistent", "Existing pin links are not bidirectional or disagree with native observation; no repair was attempted")
+    existing = forward and reverse
+    if not existing:
+        if list(target.list_connected_pins()) or api.pin_category(source) == "exec" and list(source.list_connected_pins()):
+            raise OperationError("connection_would_replace_links", "Input replacement and exec-output fanout are unsupported; existing links were preserved")
+        if not plan["direct_connection_allowed"]:
+            raise OperationError("conversion_contract_not_implemented", "Only the schema MAKE response is supported; conversion/promotion nodes, replacement and rejected links are not dispatched")
+    result["stage"] = "connect_pins"
+    if not existing:
+        result["changes"].append({"kind": "connect_exec_pins" if api.pin_category(source) == "exec" else "connect_data_pins",
+            "source_node_id": source_id, "target_node_id": target_id,
+            "requested_source_node_id": source_node_id, "requested_target_node_id": target_node_id, "attempted": True})
+        (checkpoint_callback or state.checkpoint)(result)
+        if not api.connect(source, target):
+            raise OperationError("connection_rejected", "Blueprint schema rejected this pin connection; inspect graph before retry")
+    result["stage"] = "readback"
+    after = api.graph_info(editor)
+    source_after = api.find_pin(api.find_node(editor, source_id), source_pin_name, "output")
+    target_after = api.find_pin(api.find_node(editor, target_id), target_pin_name, "input")
+    forward = any(api.node_id(pin.get_owning_node()) == target_id and str(pin.get_pin_name()) == target_pin_name for pin in source_after.list_connected_pins())
+    reverse = any(api.node_id(pin.get_owning_node()) == source_id and str(pin.get_pin_name()) == source_pin_name for pin in target_after.list_connected_pins())
+    expected_edges = _edges(before) | {(source_id, "output", source_pin_name, target_id, target_pin_name),
+                                     (target_id, "input", target_pin_name, source_id, source_pin_name)}
+    topology_passed = ({(item["node_id"], item.get("node_guid")) for item in before["nodes"]}
+                      == {(item["node_id"], item.get("node_guid")) for item in after["nodes"]}
+                      and _edges(after) == expected_edges)
+    result["data"]["topology_preserved"] = topology_passed
+    _contract(result, before, after, "connect_graph_pins", affected=2, updated=0 if existing else 2,
+        skipped=2 if existing else 0, passed=forward and reverse and topology_passed)
+
+
+def _edges(snapshot):
+    """Observe both directions, so losing an unrelated reverse edge also fails."""
+    return {(node["node_id"], pin["direction"], pin["name"], link["node_id"], link["pin_name"])
+            for node in snapshot["nodes"] for pin in node["pins"] for link in pin["links"]}

@@ -1,0 +1,21 @@
+# Reference Finished v43
+
+Planar main endpoints completed with built-in image editing; center is visually retained but not pixel-identical to v41. Two supplemental planar modules generated separately. Final atlas uses deterministic bilinear polar reprojection, no generative polar reinterpretation.
+
+Main: 1:30–4:30, 90 degrees, radius 1580 in 4096 output. Lower-left: 6:30–8:15, 52.5 degrees, radius 1720. Upper-left: 10–11, 30 degrees, radius 1790. Center and angular gaps empty. Source crops remove black padding only. Equal radial/tangential scale at each module's reference radius; geometric tangential variation away from it remains. Source main crop 2133x453, lower-left 1196x235, upper-left 953x119. Full frame endpoints no longer sliced.
+
+Concept shading only, opaque black sky; independent alpha/channel packing not authored. Not applied to level. 4096 output is resampled, not native 4K generation. Source masters retained.
+
+Reproduction: tmp/AnimeCloud360_Blender/project_reference_v43.ps1.
+
+## Main prompt
+
+Extend and finish the cropped LEFT and RIGHT ends of this planar cloud source. Preserve the existing central artwork's broad asymmetric towers, low left layers, original proportions and large flat gray shadow planes. Add canvas width if necessary, not squash existing art. This is a wide planar module, NOT polar.
+At RIGHT the giant tall cloud is cut off by frame. Continue its shoulder a short distance, then let the mass slope down through one broad quiet lower shoulder into a natural low tapered base, with a black margin after the end. Do not add many puff balls or tall new towers. At LEFT finish the low cloud shelf in a short natural tapered ending, entirely within black margin. Existing upper-left empty sky stays black. Keep long low layers and overlap of shadow masses. Flat restrained grayscale animation painting, no new microtexture, white outlines, repetitive scallops or serrations. Long curves and shallow irregularity. No giant sharp knife spikes. All cloud shapes end naturally within at least 4 percent black canvas margin. Original center must remain recognizable, same scale, no decorative extra details. Output one wide cloud module on opaque black.
+
+## Supplement prompt
+
+Create TWO separate planar supplementary cloud modules on one square black sheet, top row and bottom row, big black separation. Use previous wide cloud's restrained flat gray plane style. Each module complete endpoints inside margin.
+TOP row: long low bank, several broad unequal shallow rises, one modest broad off-center peak, long flat overlapping dark gray underside and pale light cap planes. Cloud width about 85% sheet width, height about 17% sheet height. Place around y=25%.
+BOTTOM row: smaller distant bank, broad low flattened shoulder and just one unequal quiet hump, little detail, same wide low proportion. Width about 65% sheet, height about 10% sheet. Place around y=75%.
+Both are ordinary planar upright clouds: crowns UP, bases DOWN, long axes horizontal. No polar curvature yet. No labels or dividing lines. No repeated little scallops, sawteeth, noisy brush dabs, rims, many puffs. Long gently irregular curves and sparse large shadow planes. Short gentle tapered ends, no sliced boundaries or huge sharp tongues. Opaque pure black background. Preserve quiet layered clouds, not cute icons.

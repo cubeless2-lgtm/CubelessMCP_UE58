@@ -1,0 +1,53 @@
+# Reactive Surface Water V13 Smooth Thin Ring Report - 2026-07-08
+
+- Verdict: `PASS`
+- System: `/Game/ReactiveSurface/Water/NS_RS_Water.NS_RS_Water`
+- Change: thin shell cutoff was replaced by a soft smoothstep band.
+- Goal: keep the V12 thinner look while reducing dotted/disconnected ring appearance.
+
+## Defaults
+- RS_Water_CellSize: `0.001953125`
+- RS_Water_Damping: `0.984`
+- RS_Water_DefaultRadius: `31.0`
+- RS_Water_DefaultStrength: `0.44`
+- RS_Water_ImpulseClamp: `0.82`
+- RS_Water_ImpulseRadiusPixels: `7.0`
+- RS_Water_NormalStrength: `19.0`
+- RS_Water_SpongeDamping: `0.09`
+- RS_Water_SpongeWidth: `0.05`
+- RS_Water_StrokeInterval: `14.0`
+- RS_Water_SwimSpeedThreshold: `12.0`
+- RS_Water_SwimWakeStrength: `0.66`
+- RS_Water_WaveSpeed: `0.72`
+- RS_Water_WindowSizeWS: `1500.0`
+
+## Checks
+- history_trail_exists: `True`
+- rotated_cloud_similarity: `True`
+- rotated_cloud_stays_world_x: `True`
+- rotate_in_place_no_wake: `True`
+- moving_seed_is_circular_not_tail: `True`
+- soft_energy_control: `True`
+- turn_does_not_spawn_attached_tail: `True`
+- smooth_seed_continuous: `True`
+- smooth_thin_active_pixels: `True`
+- smooth_radius_p95: `True`
+- smooth_radius_max: `True`
+
+## Key Numbers
+- Seed active pixels: `144`
+- Seed aspect: `1.0`
+- Tail image RMS diff, single vs rotated point cloud: `5.433942801962494`
+- Spread active pixels: `907`
+- Spread p95 radius px: `71.34206332872634`
+- Spread max radius px: `87.3732796683288`
+- Blocking dirty packages: `[]`
+- Nonblocking editor dirty packages: `[]`
+
+## Visuals
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV13SmoothThinRing\water_v13_smooth_thin_ring_motion.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV13SmoothThinRing\water_v13_smooth_thin_ring_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v13-smooth-thin-ring-results-2026-07-08.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV13SmoothThinRing\water_v13_smooth_thin_ring_bridge_results.json`

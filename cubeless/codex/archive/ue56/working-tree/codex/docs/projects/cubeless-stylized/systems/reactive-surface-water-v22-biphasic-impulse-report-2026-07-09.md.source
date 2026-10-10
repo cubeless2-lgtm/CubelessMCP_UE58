@@ -1,0 +1,40 @@
+# Reactive Surface Water V22 Biphasic Impulse Report - 2026-07-09
+
+- Verdict: `FAIL`
+- Goal: reduce center fill at the solver source using a positive crest plus weak negative center impulse.
+
+## Defaults
+- RS_Water_CellSize: `0.0009765625`
+- RS_Water_Damping: `0.987`
+- RS_Water_DefaultRadius: `3.0`
+- RS_Water_DefaultStrength: `0.38`
+- RS_Water_ImpulseClamp: `0.72`
+- RS_Water_ImpulseRadiusPixels: `1.0`
+- RS_Water_NormalStrength: `36.0`
+- RS_Water_SpongeDamping: `0.09`
+- RS_Water_SpongeWidth: `0.05`
+- RS_Water_StrokeInterval: `14.0`
+- RS_Water_SwimSpeedThreshold: `12.0`
+- RS_Water_SwimWakeStrength: `0.5`
+- RS_Water_WaveSpeed: `0.78`
+- RS_Water_WindowSizeWS: `1500.0`
+
+## Checks
+- direct normal overlay Positions input: `removed`
+- source impulse: `biphasic crest/center-cancel`
+- two_user_positions: `True`
+- rt_nonzero_cpp_stats: `True`
+- propagation_spread: `PASS`
+- spread growth: `1.4310344827586208`
+- ring_focus: `FAIL`
+- mid_outer_ratio: `0.661464601524122`
+- inner_outer_ratio: `0.5583171440622304`
+- compile error/warning: `0` / `0`
+
+## Visuals
+- RT GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV22BiphasicImpulse\rt\water_v22_biphasic_impulse_full_plus_zoom.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV22BiphasicImpulse\rt\water_v22_biphasic_impulse_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v22-biphasic-impulse-results-2026-07-09.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV22BiphasicImpulse\water_v22_biphasic_impulse_bridge_results.json`

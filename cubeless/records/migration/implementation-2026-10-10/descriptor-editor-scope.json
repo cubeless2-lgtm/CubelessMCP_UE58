@@ -1,0 +1,14 @@
+{
+  "removed_unsupported_descriptor_field": {
+    "EditorOnly": true
+  },
+  "actual_editor_restrictions": [
+    "Modules[].Type=Editor",
+    "Modules[].TargetAllowList=[Editor]",
+    "dependency Plugins[].TargetAllowList=[Editor]",
+    "Build.cs rejects non-Editor target",
+    "host project Cubeless reference must use TargetAllowList=[Editor]"
+  ],
+  "engine_source": "Engine/Source/Runtime/Projects/Private/PluginDescriptor.cpp has no EditorOnly parser field",
+  "runtime_independence": "requires cook/stage/run proof; descriptor alone insufficient"
+}

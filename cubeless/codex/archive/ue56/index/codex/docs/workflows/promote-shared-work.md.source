@@ -1,0 +1,52 @@
+# Promote Shared Work
+
+## Trigger
+
+- Use this workflow when the user says a rule, lesson, workflow, or agent behavior should become durable for this repository.
+- Korean trigger phrases include `공용 작업으로 반영`, `공용으로 올려`, `에이전트에 명시`, `Ops에 넣어`, `다음 세션에서도 기억`, or equivalent wording.
+
+## Promotion Standard
+
+- Promote content when it is likely to help future sessions or repeated `UnrealMCP5_6_1` work.
+- Keep content local when it is only a one-off decision, temporary experiment, asset-specific note, branch-specific detail, secret, credential, or personal data.
+- If a rule has both repository-wide and project-specific parts, split it. Put the shared principle in this embedded `codex/` tree and the concrete project binding in `projects/<ProjectName>.md` or the project adapter.
+
+## Destination Map
+
+- Agent identity, responsibility, boundaries, and handoff rules: `agents/*.md`.
+- Git, approvals, workspace paths, documentation memory, cost control: `docs/policies/*.md`.
+- Repeatable procedures and review gates: `docs/workflows/*.md`.
+- Repeated lessons, failure causes, and hard-earned warnings: `docs/memory/promoted-lessons.md`.
+- Project-specific paths, engine versions, asset roots, bridge ports, and local exceptions: `projects/<ProjectName>.md`.
+- Critical project bootstrap rules that must survive a missing embedded doc checkout: the repository or project's local `AGENTS.md`.
+
+## Procedure
+
+1. Identify the source material and why it should be durable.
+2. Classify each detail as repository-wide, project-specific, historical evidence, or not safe to record.
+3. Choose the destination file from the map above.
+4. Add or update the smallest useful doc section.
+5. If the new doc must be discovered for future tasks, link it from `codex/AGENTS.md`, `projects/UnrealMCP5_6_1.md`, or the relevant project adapter.
+6. Preserve large pre-migration instruction sources in `snapshots/` before thinning or replacing them.
+7. Verify that active docs do not reintroduce external documentation storage, fixed drive assumptions, secrets, or unrelated project state.
+8. Keep Git operations scoped to `UnrealMCP5_6_1` unless the user explicitly names an external repository.
+
+## Verification
+
+- Run `rg` for the new rule's expected keywords across `codex/` and the project adapter.
+- Search active docs for external documentation-storage keywords when the change touches documentation memory. Exclude `snapshots/` because snapshots preserve history.
+- Run `rg "[CDF]:[\\/]+Git|C:/Git|D:/Git|F:/Git"` when the change touches executable paths. Prose examples that explicitly say not to use fixed paths are acceptable.
+- Run `git diff --check` in every touched repository.
+- Confirm `git status --short --branch` separately in every touched repository.
+
+## Commit Shape
+
+- Commit embedded operating documentation changes in the `UnrealMCP5_6_1` repository.
+- Commit external `CubelessOps` changes only when the user explicitly asks for shared Ops synchronization.
+- Do not stage generated Unreal assets, package outputs, `_MCP_Temp`, `_MCP_Sample`, unrelated dirty work, or external repository changes by accident.
+- If the user asked to commit/push or approved a plan that includes it, push each touched repository separately.
+
+## Expected Result
+
+- A future Codex section can recover the promoted rule from Git-tracked docs without relying on chat history.
+- The rule has one clear embedded source, and project-specific exceptions remain attached to the project that owns them.

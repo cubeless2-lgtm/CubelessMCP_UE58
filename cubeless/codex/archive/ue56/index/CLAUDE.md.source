@@ -1,0 +1,64 @@
+# Claude Project Instructions
+
+@AGENTS.md
+
+## Claude Adapter Contract
+
+- Read the imported root `AGENTS.md`, then `codex/AGENTS.md` and `codex/projects/UnrealMCP5_6_1.md`. Those files and their routed policies are the source of truth; this adapter adds Claude-specific discovery only.
+- Start at the discovered `UnrealMCP5_6_1` repository root. Do not require parent instructions, sibling repositories, submodules, or external `CubelessOps` for routine work.
+- Keep all work and Git state inside the user-approved scope. Treat unfamiliar dirty files as concurrent work and leave them untouched.
+- Apply the root UTF-8, project C++ `c++1218`, UnrealMCP plugin exception, and finished-content-independence tripwires without restating or weakening them here.
+- If Unreal MCP, the editor bridge, image-generation routes, or another Codex-only capability is unavailable in Claude Code, report the blocker; never claim an asset or external record was modified.
+- Follow `codex/AGENTS.md` Agent Work Visibility and Text Encoding Safety. Report meaningful work in Korean and use explicit UTF-8 reads.
+- Use `codex/docs/policies/safety-matrix.md` as the risk-to-source router; load the pointed canonical policy or workflow before the governed action.
+- When durable documentation is part of the current approved scope, write it to the routed Git-tracked document and index. Commit or push it only when the current user request authorizes that Git action for this repository and branch.
+- Handle simple answers, status checks, routine inspection, and single-file low-risk edits with one default agent; do not add a subagent or stronger model. Read `codex/docs/policies/cost-control.md` for all exceptions and verification tiers; do not duplicate model-routing details here.
+
+## Concurrent Work
+
+- Before substantial edits, read current status and recent history. Pull with `--ff-only` before an authorized push of an existing tracked branch, and merge concurrently changed documents additively; use the Git policy for a new branch.
+- Respect current user-stated domain locks. They are task-local unless the user explicitly promotes them to durable policy.
+- Resolve the shared editor bridge through the effective configured endpoint in the project binding. Coordinate editor lifecycle, map changes, dirty prompts, and `QUIT_EDITOR` against current process/log state.
+- The complete Git and concurrency rules live in `codex/docs/policies/git-repositories.md` and `codex/AGENTS.md`.
+
+## Reader Substitutions
+
+When a routed `codex/` document addresses Codex, apply these substitutions at read time without rewriting the source:
+
+- `Codex` as the current agent -> the current Claude Code agent.
+- `$skill-name` -> invoke the matching Claude skill, or read its `SKILL.md` when available.
+- `AGENTS.md` and `codex/` rules -> operating rules; follow a stricter Claude rule when one exists and report the material difference.
+
+## Claude Skill Adapter
+
+- Claude adapter sources live under `codex/integrations/claude-code/`; do not place Claude wrappers or templates in the Codex `codex/skills/` tree.
+- Codex skill originals live in `codex/skills/`. Claude uses thin wrappers under `.claude/skills/` that read the originals at runtime.
+- Refresh wrappers from the repository root only when skill frontmatter or the allowlist changes:
+
+```powershell
+pwsh codex/integrations/claude-code/sync-cubelessops-skills.ps1 -ProjectRoot .
+```
+
+- Body, policy, workflow, project, and memory changes require no wrapper sync.
+- The complete adapter contract lives in `codex/integrations/claude-code/claude-code-bridge.md`.
+
+## Trigger Router
+
+| Request or mode | Source to read |
+| --- | --- |
+| Default project persona or 이에타 planning | `codex/agents/ieta.md` |
+| Standalone `이에타` | `codex/agents/ieta.md` and the current project binding |
+| 티브렛 implementation or MCP implementation | `codex/agents/tivret.md` or `codex/agents/tivret-mcp.md`, plus `codex/docs/workflows/component-reading-router.md` |
+| Project C++ mutation or MCP C++ promotion | `codex/docs/policies/project-cpp-approval-gate.md` and the matching role; ordinary approval never substitutes for the required token |
+| `이에타 C++ 리뷰`, staged C++ review, or UnrealMCP C++ review | `codex/agents/unreal-cpp-reviewer.md` and `codex/docs/workflows/unreal-cpp-review.md` |
+| 케일란 or image generation | `codex/agents/keilan.md` and `codex/docs/policies/cost-control.md` |
+| Upstream update | `codex/agents/mcp-upstream-manager.md` and `codex/docs/workflows/mcp-upstream-update.md` |
+| Smoke, RPC/transport, asset, PCG, AI texture, ControlRig, SkyDome, or packaging work | The matching row in `codex/docs/workflows/component-reading-router.md` |
+| Staging, commit, push, or approval follow-through | `codex/docs/policies/git-repositories.md` and `codex/docs/policies/approvals.md` |
+| Agent-instruction, router, safety-matrix, role, or verification-cadence evaluation | `codex/docs/workflows/agent-instruction-evaluation.md` |
+
+## Verification
+
+- Use the canonical dispatcher and profile rules in `codex/projects/UnrealMCP5_6_1.md`.
+- Promotion that includes implementation, executable workflow/configuration, or shared contract changes requires `Python/scripts/analysis/run_verification.py --profile full`; focused profiles do not replace it. Pure instruction or documentation-only changes follow Tier 0 unless they change an executable workflow or verification manifest.
+- Do not infer automatic changed-file or path-based skips. GitHub Actions call the same dispatcher's `full` and `windows-transport` profiles.

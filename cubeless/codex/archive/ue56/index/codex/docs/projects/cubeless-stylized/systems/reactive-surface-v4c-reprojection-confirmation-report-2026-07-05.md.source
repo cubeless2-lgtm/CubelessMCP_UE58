@@ -1,0 +1,136 @@
+# Reactive Surface V4c Reprojection Confirmation Report - 2026-07-05
+
+## Verdict
+
+V4c is **PASS** for the required reprojection decision set.
+
+- C1 direction sweep: PASS
+- C2 multi-cell recenter jumps: PASS
+- C3 divisor calibration and self-check: PASS
+- C4 decay + reprojection: PASS
+- C5 scalar gate retry through the 3-chain route: PASS
+- Cleanup: PASS, temp root deleted, dirty package count 0
+
+This confirms the Phase 2.5 reprojection path for the Array DI / 3-chain Niagara route. It does not replace the Phase 4 visual approval gate for footprint feel or Open Q6 on preservation quality.
+
+## Reproduction
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_v4c_reprojection_runner.py`
+- Evidence JSON: `MCPGameProject/Saved/MCP/ReactiveGhost_V4C/v4c_reprojection_results.json`
+- Bridge transcript: `MCPGameProject/Saved/MCP/ReactiveGhost_V4C/v4c_reprojection_bridge_results.json`
+- Command log: `MCPGameProject/Saved/MCP/ReactiveGhost_V4C/v4c_reprojection_commands.jsonl`
+- Temp root: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_V4C`
+- RT: `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_V4C/RT_V4C_Reprojection`, RGBA16F, 512x512, `supports_uav=true`
+
+Readback used `sample_render_target2d_region_stats`, a read-only UnrealMCP C++ command backed by `FTextureRenderTargetResource::ReadLinearColorPixels`. Grid2D runtime inspection used `inspect_niagara_component_grid2d_runtime`, also read-only.
+
+## C1 Direction Sweep
+
+Contract: positive `DeltaControls.y` increases RT readback pixel Y, negative decreases it. No U/V or sign flip was observed.
+
+| Case | Expected px | Observed px | Error px | Entering zero band | Status |
+|---|---:|---:|---:|---|---|
+| +X, 1 cell x 5 steps | `[5, 0]` | `[5, 0]` | `[0, 0]` | left width 5, count 0 | PASS |
+| -X, 1 cell x 5 steps | `[-5, 0]` | `[-5, 0]` | `[0, 0]` | right width 5, count 0 | PASS |
+| +Y, 1 cell x 5 steps | `[0, 5]` | `[0, 5]` | `[0, 0]` | top width 5, count 0 | PASS |
+| -Y, 1 cell x 5 steps | `[0, -5]` | `[0, -5]` | `[0, 0]` | bottom width 5, count 0 | PASS |
+| +X+Y, 1 cell x 5 steps | `[5, 5]` | `[5, 5]` | `[0, 0]` | left/top width 5, count 0 | PASS |
+
+## C2 Multi-cell Recenter Jumps
+
+Large one-frame jumps correctly moved content and zero-filled the full entering band. No opposite-side wrap leak was detected by the band scans.
+
+| Case | Expected px | Observed px | Error px | Entering zero band | Status |
+|---|---:|---:|---:|---|---|
+| +X 64 cells x 1 step | `[64, 0]` | `[64, 0]` | `[0, 0]` | left width 64, count 0 | PASS |
+| +X 128 cells x 1 step | `[128, 0]` | `[128, 0]` | `[0, 0]` | left width 128, count 0 | PASS |
+| +Y 64 cells x 1 step | `[0, 64]` | `[0, 64]` | `[0, 0]` | top width 64, count 0 | PASS |
+| +Y 128 cells x 1 step | `[0, 128]` | `[0, 128]` | `[0, 0]` | top width 128, count 0 | PASS |
+
+## C3 Divisor Calibration
+
+Result: the V4c DirectSet / 512-thread setup exposes a 512x512 runtime Grid2D domain.
+
+Runtime inspect evidence:
+
+- `world_kind=play_world`
+- `niagara_component_count=1`
+- `grid2d_interface_count=2`
+- `runtime_num_cells=[512,512]`
+- `runtime_cell_size=[0.1953125,0.1953125]`
+- asset defaults remained `asset_num_cells_x=3`, `asset_num_cells_y=3`; these are not the effective runtime domain for this generated test.
+
+The runner derives:
+
+```text
+divisor = runtime_grid2d_num_cells.x when runtime Grid2D inspect is square
+fallback = snap_to_expected_domain(seed_centroid.x / 0.25, seed_centroid.y / 0.5)
+mandatory self-check = 1-cell probe must observe 1px movement
+```
+
+Observed:
+
+- `derived_divisor=512`
+- `divisor_source=runtime_grid2d_num_cells`
+- seed centroid `[127.5,255.5]`
+- raw domain from seed `[510.0,511.0]`, snapped to `[512,512]`
+- 1-cell probe: expected `[1,0]`, observed `[1,0]`, error `[0,0]`, entering left band width 1 count 0
+
+The earlier V4b `/256` result is not a portable Grid2D rule. It was a V4b fixture/path observation with a hardcoded HLSL division. Production code must not assume RT size or the historical `/256`; it must derive the divisor from runtime Grid2D NumCells when available and then block on the one-cell self-check if the observed pixel delta disagrees.
+
+Divisor code path:
+
+- `codex/scripts/reactive_surface/reactive_surface_v4c_reprojection_runner.py::run_v4c_host`
+
+## C4 Decay + Reprojection
+
+The decay and reprojection stack passed together.
+
+- Delta: +X, 1 cell x 5 steps
+- Decay: `0.85`
+- Expected movement: `[5,0]`
+- Observed movement: `[5,0]`
+- Error: `[0,0]`
+- Seed green sum: `268.0`
+- Final green sum: `116.661`
+- Entering left band width 5 count 0
+
+## C5 Scalar Gate Retry
+
+The previous scalar gate ban is narrowed. Hidden direct `User.*` wiring remains banned, but scalar runtime control works when routed through the same 3-chain standard:
+
+```text
+Custom HLSL input -> Module.ScalarSeedEnabled -> User.V4C_ScalarSeedEnabled
+```
+
+Observed:
+
+- Setter: `set_variable_float(User.V4C_ScalarSeedEnabled, 1.0 -> 0.0)`
+- Seed route: scalar on, seed array count 0
+- Move route: scalar off, seed array count 0
+- Expected movement: `[5,0]`
+- Observed movement: `[5,0]`
+- Error: `[0,0]`
+- Entering left band width 5 count 0
+
+Conclusion: scalar gate is allowed only for this 3-chain route. The older V4 hidden/direct scalar path remains a failed fixture and must not be promoted.
+
+## API / C++ Tooling Added
+
+Two read-only UnrealMCP inspection helpers were added for this smoke:
+
+- `sample_render_target2d_region_stats`: whole-RT or rectangular RT readback stats, including nonzero count, sum/max, centroid, and first hits.
+- `inspect_niagara_component_grid2d_runtime`: live Niagara component Grid2D runtime DI inspection, including runtime NumCells and cell size when instance data is available.
+
+These are authoring/test tools only. They do not create production runtime dependencies.
+
+## Cleanup
+
+- `deleted=true`
+- `remaining=false`
+- `dirty_count=0`
+- `dirty_packages=[]`
+
+## Unsure Calls
+
+- None for C1-C5 numeric PASS/FAIL. The remaining uncertainty is production visual quality, not technical reprojection correctness. Phase 4 still needs user-visible footprint preservation approval.

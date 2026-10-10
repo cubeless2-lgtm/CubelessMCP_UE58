@@ -1,0 +1,22 @@
+# Ops References
+
+Resolve paths from the repository root unless a path starts with `codex/`.
+
+## Always Read
+
+- `codex/docs/workflows/map-and-preview-safety.md`
+- `codex/docs/workflows/unreal-asset-authoring.md`
+- `AGENTS.md`
+
+## Tool Documentation
+
+- `Docs/Tools/editor_tools.md`
+- `Docs/Tools/batch_tools.md`
+- `Python/scripts/smoke_live_bridge.py`
+
+## Read When Relevant
+
+- `Docs/Analysis/MCPWeatherNiagara/niagara_editor_shutdown_stability_20260630.json` for prior Niagara/editor shutdown evidence.
+- `Docs/Analysis/MCPTransport/` for bridge and transport smoke evidence.
+- Use `$unreal-mcp-safety-review` when the task includes forbidden MCP dependency scans, packaging safety, or final-content promotion.
+- Use `$niagara-authoring-review` when the preview is part of Niagara release-readiness evidence.

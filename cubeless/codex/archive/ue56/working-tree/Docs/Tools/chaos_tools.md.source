@@ -1,0 +1,631 @@
+# Chaos Solver, Chaos Cloth, and Chaos Destruction Tools
+
+The `chaos` toolset contains 23 tools. Nine native UE 5.6 routes expose guarded
+Chaos Solver and Chaos Cloth state that is incomplete or unsafe through generic
+Python reflection; the existing fourteen tools retain the isolated Chaos
+Destruction learning and cinematic workflows documented below.
+
+## Chaos Solver and Chaos Cloth native surface
+
+Read-only inspectors:
+
+- `inspect_chaos_solver_settings(actor_name="", actor_label="",
+  world_context="auto", include_runtime_state=true, max_results=16)` reports
+  matching `AChaosSolverActor` configuration and, when requested, native
+  runtime solver state. Runtime output includes the six allowlisted global
+  CVar overrides that UE 5.6 applies after actor configuration, including each
+  raw value, active state, inferred effective value, and source. An empty
+  selector may list bounded matches; mutation commands require an exact,
+  unique actor. `max_results` is clamped to `1..256`.
+- `inspect_chaos_cloth_asset(cloth_asset_path, lod_index=-1,
+  property_name_filter="", include_property_values=true,
+  include_property_flags=true, include_dataflow_nodes=true,
+  max_properties=512, max_nodes=256)` reports cloth collection/property
+  metadata and the Dataflow nodes that own durable asset configuration.
+  `max_properties` is clamped to `1..4096` and `max_nodes` to `1..2048`.
+- `inspect_chaos_cloth_simulation_mesh(cloth_asset_path, lod_index=0,
+  weight_map_name="", vertex_start=0, max_vertices=4096, face_start=0,
+  max_faces=4096, include_positions=true, include_normals=false,
+  include_indices=true, include_weight_values=true)` reads the native generated
+  simulation collection that `UChaosClothAsset` does not expose to Unreal
+  Python. It reports bounded pages of positions, normals, triangle indices, and
+  selected weight values together with total counts, available weight-map names,
+  `topology_md5`, the compiled solver map count/MD5/match, and copy-ready
+  Dataflow/node identity for a guarded write. For one selected map, copy
+  `sim_vertex_count` to `expected_vertex_count`, `topology_md5` to
+  `expected_topology_md5`, and `selected_weight_map_md5` to
+  `expected_weight_map_md5`; the equivalent hash in the full map list is
+  `weight_maps[].values_md5`. Copy `dataflow_asset_path` directly, then select
+  the exact `weight_map_dataflow_nodes[]` entry and use its `node_name` as the
+  writer's `node_name`, `node_type` as `expected_node_type`, and
+  `node_state_md5` as `expected_node_state_md5`. The inspector does not certify
+  a future mutation path: run the writer once with `dry_run=true` and the same
+  target/value arguments, then copy that result's `path_md5` to
+  `expected_path_md5` for apply. Page through large meshes by
+  advancing `vertex_start` and `face_start`; each page size is bounded by the
+  native handler.
+- `inspect_chaos_cloth_component(actor_name="", actor_label="",
+  component_name="", model_index=0, lod_index=-1, world_context="auto",
+  include_runtime_properties=true, max_properties=512, max_results=16)` reports component
+  settings, model/LOD property collections, and available native simulation
+  metrics without changing the component. `max_results` bounds components and
+  `max_properties` is one response-wide runtime-property budget shared across
+  all returned components; their clamp ranges are `1..256` and `1..4096`.
+
+Guarded mutators:
+
+- `configure_chaos_solver_settings(settings, actor_name="", actor_label="",
+  world_context="editor", expected_current=null, dry_run=true,
+  save_level=false)` changes only the native solver-setting allowlist. Supply
+  at least one non-empty actor selector: `actor_name` or `actor_label`.
+- `configure_chaos_cloth_component(actor_name="", property_updates=null,
+  component_settings=null, component_name="", actor_label="", model_index=0,
+  lod_index=-1, world_context="auto", expected_current=null,
+  allow_intrinsic_recreate=false, dry_run=true,
+  recreate_simulation="auto", save_level=false)` changes existing runtime
+  cloth properties and reviewed component settings. Supply at least one
+  non-empty actor selector: `actor_name` or `actor_label`. Intrinsic changes that
+  require simulation-model reconstruction are blocked unless
+  `allow_intrinsic_recreate=true`; `recreate_simulation` accepts `auto`,
+  `always`, or `never`. A call accepts at most 256 property updates.
+- `configure_chaos_cloth_dataflow_node(cloth_asset_path, node_name,
+  property_values, expected_node_type="", expected_dataflow_asset_path="",
+  expected_current=null, allow_connected_inputs=false,
+  regenerate_asset=true, save_assets=false, dry_run=true)` edits a uniquely
+  identified, reviewed
+  Cloth Dataflow node. `property_values` maps top-level property names to
+  Unreal export-text strings copied from or formatted like the inspector's
+  `export_text` values, with at most 64 fields per call. Apply mode requires the
+  exact non-empty
+  `expected_node_type` and `expected_dataflow_asset_path` returned by
+  inspection and requires `regenerate_asset=true`. Connected inputs are
+  blocked by default; `allow_connected_inputs=true` is an explicit opt-in for
+  the selected property and its nested Dataflow inputs. An actual Dataflow
+  mutation is blocked when the graph is owned by any other loaded/unsaved Cloth
+  Asset or referenced by another on-disk package; fan-out mutation is not
+  admitted by this route. A canonical same-value request is returned as an
+  explicit no-op without regeneration, dirtying, saving, or a shared-graph
+  mutation error.
+  Regeneration and saving are reported separately. If apply, regeneration,
+  readback, or saving fails, the handler attempts a semantic restore of the
+  selected node properties, regenerates the cloth result, verifies that restore,
+  and re-saves the restored packages when an initial save was attempted.
+- `configure_chaos_cloth_weight_map(cloth_asset_path, node_name,
+  weight_map_name, weights=null, fill_value=null, lod_index=0,
+  expected_node_type="", expected_dataflow_asset_path="",
+  expected_vertex_count=-1, expected_topology_md5="",
+  expected_weight_map_md5="", expected_node_state_md5="",
+  expected_path_md5="", require_runtime_binding=true, save_assets=false,
+  dry_run=true)` updates one
+  supported `FChaosClothAssetWeightMapNode` using either an explicit normalized
+  `[0,1]` value per simulation vertex or one normalized constant fill. Apply mode
+  requires the exact node type, Dataflow asset path, vertex count,
+  `topology_md5`, generated `selected_weight_map_md5` (or the selected
+  `weight_maps[].values_md5`), and `node_state_md5` returned by fresh inspection.
+  Pass those values as the corresponding `expected_*` arguments described
+  above, execute a fresh dry-run with the intended values, review its exact
+  active/unfrozen `before.downstream_path.hops` and top-level `path_md5`, then
+  apply with that hash as
+  `expected_path_md5`. Apply rejects a changed path even when the asset, node,
+  topology, and map hashes are otherwise unchanged. The command regenerates the cloth asset, verifies independent
+  node, generated-collection, and compiled solver-array readback, and requires
+  the runtime map binding by default. Before mutation, the node's Collection
+  output must be one exclusive passthrough chain to the selected asset terminal
+  and requested LOD; internal Dataflow branches and alternate terminal/LOD paths
+  fail closed. If the map is consumed as `MaxDistance` or
+  `FixedEndWeightMap`, the source and every required downstream generator must
+  also be active, unfrozen, and part of a recognized semantic regeneration
+  path. Legacy `MaxDistance` admits Simulation Default Config only for the
+  canonical `MaxDistance` map when the node input has no pre-existing property
+  schema. Modern `MaxDistance` requires Simulation Max Distance Config followed
+  by Long Range Attachment Config v2, with `FixedEndSet` connected directly to
+  that selected node's `KinematicVertices3D` output and custom tether generation
+  disabled;
+  legacy `FixedEndWeightMap` admits only its reviewed Long Range Attachment
+  generator path. Unknown, remesh, disabled/frozen, and custom derivation routes
+  fail closed instead of assuming that Dataflow regenerated the solver inputs.
+  Independent readback canonicalizes final collection and compiled-solver
+  tethers as `(dynamic vertex, kinematic vertex, reference-length bits)` and
+  requires identical vertex count, tether count, and MD5. When the reviewed
+  path produces a kinematic selection, it also canonicalizes the collection's
+  `KinematicVertices3D` selection and the compiled solver `VertexSets` entry as
+  sorted unique vertex indices, requiring matching count and MD5. Apply succeeds
+  only when every required check passes after regeneration;
+  rollback repeats both checks against the restored state. Failures report
+  semantic-path, tether, kinematic-selection, regeneration, readback, save, and
+  rollback evidence separately.
+- `create_legacy_chaos_clothing_from_skeletal_sections(
+  source_skeletal_mesh_path, output_skeletal_mesh_path, section_configs,
+  dry_run=true, save_assets=true, use_source_physics_asset=true,
+  create_vroid_lower_body_cloth_physics_asset=false)` duplicates a Skeletal Mesh to one new
+  temporary-root output, then creates and binds one engine Clothing asset for
+  each requested LOD 0 section. Every `section_configs` item requires
+  `section_index`, `expected_material_slot`, and `max_distance_cm`; it may also
+  provide `material_path`, which is required when the source slot has no
+  assigned material. The selected material must already be compiled for both
+  Skeletal Mesh and Clothing usage and is assigned only to the duplicated
+  output. Blender's
+  `Cloth_PinGuide` vertex-color red channel becomes the legacy Chaos
+  `MaxDistance` paint map (black = 0 cm/pinned, white = configured free
+  distance). If the FBX importer has discarded those vertex colors, the route
+  reports and uses the garment section's top 18% of local Z range as a
+  deterministic pinned fallback. The route creates a light-fabric Chaos config, validates each
+  material slot, pin/free guide state, MaxDistance map, shared config, and
+  final source/render section binding before an optional exact-package save.
+  Set `use_source_physics_asset=false` when a unit-scaled import has an
+  oversized Physics Asset; this omits collision only from the generated
+  Clothing assets while leaving the duplicated Skeletal Mesh Physics Asset and
+  Character Capsule movement collision intact. For a VRoid `J_Bip_*` skeleton,
+  `create_vroid_lower_body_cloth_physics_asset=true` takes precedence and
+  generates a separate hips/upper-leg collision asset proportionally sized
+  from the left/right reference upper-leg lengths, leaving both source assets
+  unchanged. Failed apply attempts remove every newly owned output asset before
+  returning whenever deletion succeeds. It rejects
+  PIE/SIE, existing outputs, invalid sections, material mismatches, and empty
+  guide states. The source mesh is not modified and finished assets contain no
+  UnrealMCP type or reference.
+
+The Dataflow writer is a constrained reflective surface, not a fixed list of
+every Epic cloth-node field. It accepts only nodes classified as Chaos Cloth,
+excludes the generic `FDataflowNode` base fields, and admits top-level editable
+bool, numeric, enum, byte, string, name, or struct properties. Array, map,
+object, transient, deprecated, and instance-disabled properties remain
+blocked. Inspect first and use only properties marked
+`supported_for_mcp_write=true`.
+
+All native mutators default to `dry_run=true`, are classified as high-risk
+writes, require dispatcher confirmation for apply mode, and use strict
+post-mutation readback. `expected_current` provides optimistic concurrency
+checks. Mutation results follow `mutation_result_v1` with `before`, `after`,
+`delta`, and explicit verification state; a missing or failed postcondition
+reports failure. Apply-mode no-ops keep both the top-level and nested mutation
+evidence at `attempted=false`/`performed=false`. Solver/component saving starts only after native readback and
+proxy checks pass and targets the exact actor/component package rather than the
+owning persistent world. No-op patches do not create an undo record, notify the
+solver, reconstruct the proxy, dirty a package, or save a previously dirty
+package; `save_skipped_no_change=true` makes that explicit. An actual requested
+save is rejected before mutation when its exact target package is already dirty,
+so the tool cannot persist unrelated pre-existing edits. Dataflow apply and
+rollback save each exact graph/cloth package and require the package to be clean
+after `SavePackages` before reporting durable success. Save requests reject
+transient objects, PIE/transient/temp/memory/compiled-in packages, and actors or
+components with a transient outer; apply mode cannot claim durability for state
+that UE will not serialize. Component recreation is
+rejected before mutation while `p.ClothPhysics=0`; one-shot teleport actions
+are delayed until readback, recreation, and saving have succeeded. Solver and
+component failures attempt semantic rollback of serialized settings, targeted
+runtime properties (exact raw Low/High vectors, string, and flags), teleport
+state, the original present/absent proxy state, and the original package dirty
+state. Runtime updates write the exact discovered collection key; they do not
+invoke the engine interactor's private alias fan-out. If a failed request already
+recreated an existing proxy, UE 5.6 exposes no way to restore its previous live
+particle/velocity state. The response therefore distinguishes proxy presence
+from full simulation-state restoration and returns `partial_target_modified=true`
+with `do_not_retry=true` for that case. Successful editor-world Solver writes also register an
+Undo/Redo resync so restored `AChaosSolverActor::Properties` are applied back to
+the live solver when one exists; apply and rollback report their enqueue evidence
+separately. The MCP callback enqueues `ApplyConfig` directly and does not emit a
+second synthetic actor property-change event after Undo.
+
+Dataflow failure responses additionally report each rollback phase. A complete
+semantic rollback keeps regenerated packages dirty when they were not re-saved
+and retains the editor transaction because regenerated derived data is not a
+byte-exact package restore. An incomplete rollback likewise retains the undo
+record and tells the caller to undo before continuing.
+The evidence includes `rollback_attempted`, `rollback_regenerated`,
+`rollback_properties_verified`, rollback save statuses,
+`rollback_semantic_restore`, `rollback_save_verified`,
+`rollback_transaction_retained`, both package dirty flags, and the aggregate
+`rollback_succeeded`. Semantic in-memory restoration is reported independently
+from durable rollback saving; a save failure never hides a successful
+in-memory restore, and a semantically incomplete restore is never persisted.
+
+The native boundary validates top-level scalar types and required object/array
+container shapes before resolving or loading an Unreal target, then validates
+every nested value before any mutation. Strings, booleans, numbers, objects,
+and arrays are not cross-coerced;
+integer indices must be finite exact integers inside `int32` and their
+route-specific range. This remains true for raw `execute_batch` subcommands,
+which do not pass through FastMCP's per-tool Pydantic schema.
+
+The Python boundary guards the explicit `cloth_asset_path` and
+`expected_dataflow_asset_path` selectors. Its recursive scope is exactly Cloth
+component `property_updates`/`component_settings` and Dataflow
+`property_values`. Of those nested payloads, component settings and Dataflow
+property values can reach persistent level/graph state; runtime-only property
+updates are conservatively screened but are not claimed as persistent. Actor
+selectors and the Solver's native scalar/enum allowlist are not described as
+asset-reference guards. A rejection returns
+`mcp_dependency_reference_rejected` with only a bounded field path and stable
+reason; it never echoes the rejected value. Finished solver, cloth, level, and
+Dataflow content may depend on engine Chaos modules but must not persist
+`/Script/UnrealMCP`, `/UnrealMCP`, or another MCP-only reference. Durable asset
+or level writes remain opt-in through `save_assets` or `save_level`.
+
+### Solver payload
+
+`settings` and top-level `expected_current` use flat keys. The inspector returns
+the exact flat map as each actor's `expected_current_fields` and the accepted
+write keys as `writable_setting_names`.
+
+- Iteration integers: `position_iterations`, `velocity_iterations`, and
+  `projection_iterations`, each in `0..255`.
+- Non-negative numbers: `collision_cull_distance`,
+  `collision_max_push_out_velocity`, `cluster_connection_factor`, and every
+  `*_filter_min_*` field. Initial-overlap depenetration accepts exactly `-1`
+  (disabled/effectively unlimited) or a non-negative number.
+- Enum string: `cluster_union_connection_type`; round-trip the inspected enum
+  name.
+- Destruction integers: `per_advance_breaks_allowed` and
+  `per_advance_breaks_reschedule_limit` are non-negative;
+  `clustering_particle_release_throttling_min_count` and `_max_count` accept
+  `-1` or a non-negative integer. Min must not exceed max when both values are
+  non-negative.
+- Booleans: `optimize_for_runtime_memory`, `generate_collision_data`,
+  `generate_break_data`, `generate_trailing_data`, and the three
+  `*_filter_enabled` keys.
+
+The writable filter fields are flattened, for example
+`collision_filter_enabled`, `collision_filter_min_mass`,
+`collision_filter_min_speed`, and `collision_filter_min_impulse`; breaking and
+trailing use corresponding `min_mass`, `min_speed`, and `min_volume` keys.
+`collision_margin_fraction`, `collision_margin_max`, and
+`runtime_deterministic` are inspect-only in UE 5.6 and are rejected on write.
+The inspector also reads only the six relevant global override CVars under
+`settings.runtime.global_cvar_overrides`; this is diagnostic state, global to
+the process, and never writable through these routes.
+
+### Cloth component payload
+
+`component_settings` accepts only `enable_simulation`, `suspend_simulation`,
+`collide_with_environment`, `cloth_geometry_scale` (`0..10000`),
+`teleport_distance_threshold` (non-negative),
+`teleport_rotation_threshold` (`0..180` degrees), and `teleport_action`
+(`none`, `reset_mode`, `teleport`, or `teleport_and_reset`). The inspector's
+`expected_current_fields` map uses the exact stable setting names. Effective
+`simulation_enabled`/`simulation_suspended` additionally reflect proxy and
+global engine state and are not the optimistic-concurrency fields.
+
+Each `property_updates` entry requires `name` and `value_type`, with optional
+`lod_index` (`-1` means all LODs), `expected_current`, and `string_value`.
+At most 256 entries are accepted. Accepted value shapes are:
+
+- `float`: `value`;
+- `weighted_float`: `low` and `high`;
+- `int`: integer `value` in `-16777215..16777215`;
+- `bool`: boolean `value`;
+- `vector`: three-number `value` array;
+- `string`: string `value`.
+
+Per-update `expected_current` may copy any subset of the inspected property
+snapshot, including `low_raw_vector`, `high_raw_vector`, `string_value`, or
+nested `flags`; numeric comparisons use tolerance. Runtime property updates
+are component-local transient overrides. `save_level=true` persists only
+serialized component settings, not those overrides or the one-shot
+`teleport`/`teleport_and_reset` actions.
+
+Intrinsic runtime properties require `allow_intrinsic_recreate=true` only when
+their effective value would change. `recreate_simulation="always"` is an explicit
+hard reset and reports `changed=true` even when all supplied values already
+match.
+
+Editor Undo for a successful mixed component write covers serialized component
+settings only. UE's component re-registration resets transient runtime property
+overrides and live simulation state instead of restoring those transient values;
+the response exposes `undo_scope`, `runtime_updates_included_in_undo=false`, and
+`undo_resets_runtime_overrides_and_simulation` explicitly.
+
+When invoked inside `execute_batch`, all three mutators join the batch's active
+outer transaction instead of opening an inner one. Rollback cancels only a
+transaction owned by the individual route, so a failed subcommand cannot erase
+the Undo record for earlier successful batch steps. Responses expose
+`transaction_scope` and `owned_transaction_cancelled`.
+
+## Wall/building cinematic pipeline
+
+The production-oriented surface authors native Unreal assets under
+`/Game/_MCP_Temp/ChaosDestructionLearning/Cinematic`. UnrealMCP is only the editor authoring hand:
+the resulting Static Mesh, Geometry Collection, Field System actor, Chaos Cache
+Collection, Cache Manager, Level Sequence, and Movie Scene tracks must contain
+no UnrealMCP class or object reference. Existing source assets are never
+overwritten. Output creation defaults to `overwrite_existing=false`.
+
+The current project deliberately uses **Root Mesh Proxy, not Nanite**. This
+satisfies the proxy transition path while preserving the user's separate
+instruction to omit Nanite from implementation and acceptance.
+
+### Authoring and runtime tools
+
+- `create_geometry_collection_from_mesh(source_static_mesh_paths,
+  output_geometry_collection_path, source_transforms=[],
+  root_mesh_proxy_static_mesh_path="",
+  material_reindex=true, overwrite_existing=false)` converts one or more source
+  meshes with `FGeometryCollectionEngineConversion::AppendStaticMesh`. Optional
+  location/rotation/scale transforms let one preserved source mesh be assembled
+  into walls with openings and multi-part buildings. It
+  returns source/transform/geometry/root counts and proxy state while leaving
+  every source package unchanged.
+- `configure_building_fracture(source_geometry_collection_path,
+  output_geometry_collection_path, fracture_method="uniform_voronoi",
+  site_count=64, random_seed=1337, cluster_levels=2, cluster_size=8,
+  damage_thresholds=[500000,250000,100000], merge_tiny_geometry=true,
+  tiny_relative_threshold=.01, collision_object_reduction_percentage=20,
+  maximum_collision_particles=60, collision_implicit_type="convex",
+  remove_on_sleep=true, remove_on_break=true, sleep_time_seconds=5,
+  removal_duration_seconds=1, break_timer_seconds=1, ...)`
+  creates a separate fractured
+  collection. The output reports rigid count, hierarchy depth, cluster count,
+  and per-level counts. Source and output paths must differ.
+- `configure_anchor_field(geometry_collection_actor_name, field_actor_name,
+  box_center, box_extent, field_magnitude=1, save_level=true)` authors a native
+  `AFieldSystemActor` with serialized construction commands and assigns it to
+  the Geometry Collection component's `InitializationFields`.
+- `trigger_trace_external_strain(operation="begin", actor_name="", start=[],
+  end=[], expected_hit=true, ...)` is a bounded
+  `begin` / `sample` / `finish` / `abort` observation session. Begin requires
+  a valid hit on the requested component and an exact
+  `FHitResult.Item` before dispatching real external strain. Expected misses
+  dispatch nothing. Hit responses provide the inputs for a later physics-frame
+  velocity/state sample without retrying or directly forcing later transforms.
+- `record_chaos_cache(operation, cache_manager_actor_name,
+  geometry_collection_actor_names, cache_collection_path,
+  cache_names=[],
+  solver_actor_name="", duration_seconds=2, frame_rate=30,
+  timeout_seconds=10, initial_trigger_mode="strain_velocity",
+  per_advance_breaks_allowed=8,
+  particle_release_throttling_min_count=64,
+  particle_release_throttling_max_count=128, ...)` is a bounded
+  `begin` / `sample` / `finish` session. PASS requires at least 60 recorded
+  frames and at least 2 seconds. World loss, timeout, abort, and finish restore
+  the manager/component settings.
+- `validate_chaos_cache(operation, cache_manager_actor_name,
+  cache_collection_path, sequence_path, geometry_collection_actor_names=[],
+  sample_times=[.25,.5,1], scrub_frames=[0,15,30,45,60],
+  repeat_count=2, ...)` performs
+  repeated forward and reverse-order random access. It returns hashes,
+  cross-pass equality, time variation, later-frame physics evidence, and live
+  simulation suppression.
+- `create_chaos_level_sequence(output_sequence_path, camera_actor_name="", display_rate=30,
+  tick_resolution=24000, start_frame=0, end_frame=60, ...)` creates a native
+  Level Sequence without replacing an existing asset.
+- `bind_chaos_cache_to_sequence(sequence_path, cache_manager_actor_name,
+  cache_collection_path,
+  section_start_frame=0, section_end_frame=60, cache_play_rate=1,
+  cache_start_offset_seconds=0)` adds or reuses the manager possessable and a
+  native `UMovieSceneChaosCacheTrack`/section.
+- `configure_chaos_sequence_timing(...)` sets the sequence playback range and
+  cache section range, rate, start offset, and reverse flag. The response
+  explicitly reports the two-second/60-frame gate.
+- `inspect_chaos_cinematic_pipeline(geometry_collection_path, sequence_path,
+  cache_manager_actor_name, mrq_manifest_path="", ...)` reads hierarchy, Root Mesh Proxy, Anchor,
+  Cache, binding, timing, scrub/repeat, MRQ availability/output, and Asset
+  Registry dependency evidence. `nanite_used` must be false.
+
+### Required sample matrix
+
+The live suite retains five native sample groups with unique asset/cache/binding
+names: a single wall, a wall with a door/window opening, a foundation-anchored
+small building, a sequentially collapsing multi-storey building, and multiple
+Sequencer shots that reuse the same deterministic cache at different section
+offsets. A final manifest records all paths and verifies no collisions between
+manager bindings or cache names.
+
+### End-to-end order
+
+1. Convert source meshes to an unfractured Geometry Collection.
+2. Create a separate hierarchical fracture output and set the Root Mesh Proxy.
+3. Place the collection and configure its foundation Anchor Field.
+4. Start cache recording, trigger a real collision or traced external strain,
+   poll until at least 60 frames and 2 seconds, then finish.
+5. Validate repeated and reverse-order hashes at 0.25, 0.5, and 1.0 seconds and
+   verify later-frame live-simulation suppression.
+6. Create a 30 fps Level Sequence, bind the Cache Manager/Chaos Cache track,
+   set the exact start frame, section offset, and play rate, then verify forward
+   and backward scrubbing.
+7. Run an isolated low-resolution Movie Render Queue shot, inspect the output,
+   and finally load the level, cache, and sequence in a host without UnrealMCP.
+
+Each performance case is executed five times under the same fixed-step,
+resolution, and actor-count conditions. The evidence stores median and p95 for
+frame, GameThread, Chaos clustering, and active-body counts; a large-building
+case additionally enforces an explicit frame-drop and peak-active-body budget.
+
+These tools author and inspect an isolated UE 5.6.1 Chaos Destruction fixture under:
+
+```text
+/Game/_MCP_Temp/ChaosDestructionLearning
+```
+
+They never start or stop PIE/SIE, switch the user's current map, or persist an UnrealMCP runtime dependency into authored assets. Fixture authoring is blocked while PIE/SIE is active. Runtime operations use an already-running play world only.
+
+## Result semantics
+
+Every successful command keeps three verdicts separate:
+
+- `operation_status`: whether the requested operation executed.
+- `assertion_status`: whether the assertions available in that operation passed; `BLOCKED` or `NOT_RUN` means required evidence was unavailable.
+- `learning_verdict`: whether the complete learning gate was proven.
+
+An operation or assertion can pass while `learning_verdict=BLOCKED`. No learning area is promoted to PASS until its required five-run A/B test and numeric acceptance condition have been collected.
+
+## `create_chaos_destruction_learning_fixture`
+
+Defaults to `dry_run=true`. With mutation enabled it creates or reuses:
+
+- `SM_ChaosTestBlock`
+- `SM_ChaosRootProxy`
+- `GC_ChaosBase_96`
+- `GC_ChaosTinyOptimized`
+- `GC_ChaosRemoval`
+- `GC_ChaosRootProxy`
+- `CC_ChaosLearning`
+
+The default `configure_current_level=false` is deliberately assets-only. This command never constructs an off-screen `UWorld`. To create the learning level, first use native `safe_new_preview_map` for the exact path `/Game/_MCP_Temp/ChaosDestructionLearning/L_ChaosDestructionLearning`, then call this tool with `configure_current_level=true`. That second call refuses to run unless the current native editor world package matches the exact path, configures the actors in that current world, and saves it through the normal editor map lifecycle.
+
+The base collection has exactly 96 rigid pieces and one root. Twenty-four pieces are deliberately small according to actual world-space convex volume (`RelativeVolume < 0.04`) and are laid out with contact neighbors. Static assertions check hierarchy reciprocity and cycles, Transform-to-Geometry mapping, triangle indices, boundary/non-manifold edges, candidate count, rigid-count reduction after Tiny Geo merging, and convex-volume/world-bounds preservation within one percent.
+
+Only the selected 24 small pieces receive Remove-on-Break metadata. The learning world contains separately configured Sleep-only and Break-only actors, One-Way `-1` and `2` actors with 50 kg witness bodies and a static floor, 32 base instances, 32 Tiny-optimized instances, 32 Root Proxy instances, eight throttling instances, 16 cache instances, a tagged solver, and a tagged cache manager. Root Proxy inspection verifies `UGeometryCollectionRootProxyRenderer`, proxy mesh/transform arrays, Nanite disabled state, and render-state evidence.
+
+Mutation is transactional. Every asset path, `RestCollection`, and runtime actor must remain inside the exact temp root or carry the `MCP_ChaosLearning` tag. The response includes dirty-package snapshots and an Asset Registry dependency audit for forbidden MCP runtime types. The level gate is optional for the assets-only call and mandatory when `configure_current_level=true`.
+
+## `inspect_geometry_collection_performance_guarded`
+
+Read-only inspection reports structural metrics, pre/post-compatible piece metrics, small-piece candidates, Remove-on-Sleep/Break metadata, Root Proxy state, and optional runtime dynamic state. Runtime removal evidence includes active, sleeping, broken, hidden, remaining-visible, and actual disabled PhysicsObject counts.
+
+## `inspect_geometry_collection_runtime_state`
+
+Read one exact Geometry Collection component from an active, begun-play PIE world without mutating or saving anything. `component_name` is required; select the actor with `actor_name` or `actor_label`, and use `include_pieces`/`max_pieces` to bound the response. If more than one begun-play PIE world exists, supply `pie_instance`; otherwise the command blocks instead of sampling an ambiguous world.
+
+The aggregate and per-rigid-piece output separates these signals:
+
+- render-world transform from `GetComponentSpaceTransforms3f()` composed with the component transform;
+- PhysicsObject world mass-frame transform, linear velocity, and angular velocity;
+- dynamic, sleeping, disabled, and released/broken state;
+- Remove-on-Sleep activity and removal `decay`;
+- configured per-piece `max_sleep_time_seconds` and `sleep_removal_duration_seconds`, with aggregate min/max ranges;
+- visually removed rigid pieces (`decay >= 1`) separately from disabled clustered children.
+
+Do not use the Geometry Collection component transform alone to decide whether a fractured piece moved. Do not treat every disabled PhysicsObject as removed. For removal QA, observe the first sleeping sample, then the first active decay and first `decay >= 1` sample for each eligible rigid piece.
+
+```json
+{
+  "command": "inspect_geometry_collection_runtime_state",
+  "params": {
+    "actor_label": "CDV01_ChaosPillar",
+    "component_name": "GC_Trunk",
+    "pie_instance": 0,
+    "include_pieces": true,
+    "max_pieces": 512
+  }
+}
+```
+
+## `run_chaos_destruction_performance_smoke`
+
+Supported operations:
+
+- `sample`: read the tagged component's rest/dynamic collection, timer, frame, removal, hidden, broken, and PhysicsObject state. Negative values other than `-1` are decoded as native internal-cluster items and sampled through their mapped child PhysicsObjects.
+- `one_way_configure`: configure only interaction level `-1` or `2` for the tagged test actor. The two One-Way collections use the world solver shared by the dynamic witness; other fixtures retain the tagged custom solver.
+- `one_way_run`: recursively release one exact rigid leaf, isolate sibling simulation collision, push the leaf's filter/shape state to Chaos, calibrate its PhysicsThread motion, and launch it toward the 50 kg witness. It never applies an impulse or response motion directly to the witness.
+- `one_way_sample`: report witness transform/velocity deltas plus PhysicsThread target/witness state, solver identity, shapes, masses, pose error, pair/current/enabled/one-way constraint counts, manifold points, minimum Phi, and solver impulse. PASS requires native same-solver pair-constraint evidence rather than a center-distance proximity heuristic.
+- `removal_begin`: start a bounded internal per-frame capture for the tagged Sleep-only or Break-only fixture. Initially disabled clustered leaves remain present until they have first been released and subsequently become hidden or disabled.
+- `removal_sample`: read progress without advancing the timeline. `removal_finish` evaluates the completed per-piece first-release, first-sleep, and first-gone timeline against the asset's configured timer ranges within one fixed tick; `removal_abort` removes the ticker without claiming validation.
+- `throttle_begin`: restore any stale session, apply solver throttling, capture a baseline, dispatch eight root-cluster destruction requests, and start a bounded internal per-frame ticker. Settings remain active only on the transient PIE solver and are restored automatically on completion, timeout, or world loss.
+- `throttle_sample`: read ticker progress without using bridge-call spacing as frame evidence. Samples separate per-component root-cluster transitions from released rigid-particle and active/disabled deltas.
+- `throttle_finish`: retrieve a completed timeline, validate the root-cluster per-frame limit and rescheduled releases, and report automatic configuration restoration. `throttle_abort` restores without claiming validation.
+- `measure_throttling`: legacy synchronous diagnostic. It restores settings immediately and therefore cannot provide decisive fixed-frame release evidence; prefer the multi-call throttle session.
+- `trace_external_strain`: assert expected hit or miss, preserve the exact valid `FHitResult.Item`, dispatch strain/breaking velocity, and return follow-up sample inputs.
+- `trace_field_benchmark`: execute the requested traces, require at least 20 valid-item hits, dispatch 100 transient radial external-strain fields, and report both dispatch timings.
+
+Trace follow-up `sample` accepts the item index, expected direction, and dispatch world time. It reads actual dynamic linear velocity after an observed tick and reports the direction dot product.
+
+These calls do not control editor or play lifecycle. Single-call evidence is not a five-run A/B result, so `learning_verdict` remains blocked until the repeated live suite is collected.
+
+## `run_chaos_cache_smoke`
+
+Supported operations:
+
+- `inspect`: read cache count, maximum frames, and maximum duration.
+- `configure_record` / `configure_play`: explicitly end evaluation, configure the tagged manager and observed component, then begin evaluation again.
+- `record_motion_16`: after `configure_record` and `trigger`, dispatch distinct fracture velocities to the 16 observed components so the recording contains changing state.
+- `trigger`: dispatch the existing manager trigger without controlling play lifecycle.
+- `finalize_record`: end evaluation/recording, flush writes, and assert nonzero frame/duration gates.
+- `playback_validate`: run two random-access playback passes, hash quantized transforms at 0.25, 0.5, and 1.0 seconds, compare both passes, rebuild the observed component physics state as Kinematic, then initialize the cache adapter in Play mode.
+- `playback_suppression_sample`: after a later physics frame, verify that every enabled PhysicsObject is kinematic for all 16 instances and report manager mode, BodyInstance simulation flags, and component simulation state.
+- `sample`: inspect the recorded frame/duration acceptance gate.
+
+The authored manager defaults to `None`/Triggered so BeginPlay cannot register playback solver callbacks against an empty source collection. `configure_record` duplicates the source Cache Collection into a manager-owned transient PIE object; trigger, record, finalize, and playback then use that duplicate and report whether the source asset was newly dirtied. Triggering the original source collection is rejected. A force rebuild clears stale temp-root caches before saving. Playback validation requires hashes to match between passes and vary across the three sample times, then leaves the adapter active for a later-frame `playback_suppression_sample`. It deliberately reports `performance_ab_available=false`; transform hashing is correctness evidence, not a substitute for a five-run live simulation-versus-cache performance comparison.
+
+## Seven in-scope learning areas and required live evidence
+
+Nanite remains excluded by the user's 2026-08-05 instruction. The later
+cinematic request accepts "Nanite or Root Mesh Proxy", so Root Mesh Proxy is
+now in scope and Nanite remains `N/A`.
+
+1. Tiny Geo: five A/B runs comparing base and optimized rigid-piece counts and frame cost.
+2. Remove on Sleep/Break: five runtime runs showing separate removal timelines and memory/body-count effects.
+3. One-Way Interaction: five `-1` versus `2` collision/performance runs with witness evidence.
+4. Release throttling: five A/B solver runs with numeric release-per-frame data and verified restoration.
+5. Trace + External Strain: expected hit/miss, valid item, post-tick velocity direction, 20-hit gate, and five Trace-versus-Field runs.
+6. Chaos Cache: nonzero recording, deterministic two-pass playback hashes, suppression evidence, and five 16-instance live-simulation-versus-cache timing runs.
+7. Root Mesh Proxy: native proxy mesh/transform arrays, valid renderer state,
+   `nanite_used=false`, and NoMCP asset/sequence loading.
+
+The cinematic completion gate additionally requires the five sample groups,
+native Anchor Fields, at least 60 frames and 2 seconds per final cache, native
+Chaos Cache tracks, exact section timing, deterministic forward/backward
+scrubbing, a successful low-resolution MRQ render, unique multi-cache naming,
+and controlled large-building frame/active-body metrics.
+
+Until those live measurements exist, the tools report `learning_verdict=BLOCKED` instead of inferring PASS from authored configuration or dispatch success.
+
+## Verification
+
+Offline registration and schema gates:
+
+```powershell
+uv --directory .\Python run python -m py_compile unreal_mcp_server.py tools\chaos_tools.py scripts\smoke_chaos_destruction_learning.py scripts\smoke_chaos_destruction_learning_live.py
+uv --directory .\Python run python scripts\smoke_tool_registration.py
+uv --directory .\Python run python scripts\analysis\test_chaos_tools_response_schema.py
+uv --directory .\Python run python scripts\analysis\test_tool_policy_contract.py
+uv --directory .\Python run python scripts\analysis\test_tool_discovery_contract.py
+uv --directory .\Python run python scripts\analysis\run_response_schema_tests.py
+uv --directory .\Python run python scripts\analysis\python_tool_response_schema_audit.py check
+```
+
+Native compile and editor automation gate (strict raw JSON, exact optimistic
+types, no-op dirty suppression, and Solver Undo/Redo resync registration):
+
+```powershell
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat' MCPGameProjectEditor Win64 Development -Project="$Project" -WaitMutex
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' $Project `
+  -unattended -nop4 -nosplash -NullRHI `
+  '-ExecCmds=Automation RunTests UnrealMCP.Chaos.StrictNativeJson;Quit' `
+  '-TestExit=Automation Test Queue Empty'
+```
+
+Actual MRQ execution is deliberately separate from the read-only inspector.
+It requires a new output root so stale files cannot satisfy the gate, renders
+frames 0-59 at 640x360 plus frame 30 again, decodes every PNG, rejects
+zero-byte/black/wrong-size output, and writes per-frame SHA-256 plus a
+perceptual repeat check:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_chaos_cinematic_mrq.py `
+  --sequence-path /Game/_MCP_Temp/ChaosDestructionLearning/Cinematic/S05/LS_S05_MultiShot `
+  --map-path /Game/_MCP_Temp/ChaosDestructionLearning/Cinematic/S05/L_S05_MultiShot `
+  --output-root .\Python\output\chaos_cinematic\mrq_run_01 `
+  --manifest .\Python\output\chaos_cinematic\mrq_run_01.json `
+  --chaos-state-sha256 <64-hex-observed-state-hash> --port 55562
+```
+
+The five sample shells are authored only in an isolated editor and refuse to
+replace existing assets. Record real caches before running the separate bind
+phase:
+
+```powershell
+$env:UNREAL_MCP_CHAOS_CINEMATIC_MUTATION = "1"
+uv --directory .\Python run python scripts\analysis\author_chaos_cinematic_samples.py `
+  --phase author --evidence .\Python\output\chaos_cinematic\author.json --port 55562
+# Run the live record suite here.
+uv --directory .\Python run python scripts\analysis\author_chaos_cinematic_samples.py `
+  --phase bind --evidence .\Python\output\chaos_cinematic\bind.json --port 55562
+```
+
+Read-only live surface smoke (does not create assets or control editor lifecycle):
+
+```powershell
+uv --directory .\Python run python scripts\smoke_chaos_destruction_learning.py
+```
+
+Exit code `2` means the bridge is unavailable, does not have the current command surface loaded, or has no authored fixture.
+
+Opt-in isolated-editor mutation and map-lifecycle regression:
+
+```powershell
+$env:UNREAL_MCP_CHAOS_LIVE_MUTATION = "1"
+uv --directory .\Python run python scripts\smoke_chaos_destruction_learning_live.py
+```
+
+The live runner uses `safe_new_preview_map`, configures only the exact current learning level, saves it, switches to a second native preview map, then opens the learning map and switches away again. Run it only against an isolated bridge; it intentionally changes the current map and temp assets.

@@ -1,0 +1,84 @@
+# UnrealMCP5_6_1 Project Binding
+
+## Scope And Historical Baseline
+
+- Default repository: `UnrealMCP5_6_1`; embedded operating root: `./codex`.
+- The repository is self-contained for routine UE 5.6 MCP work. Parent instructions, siblings, submodules, and external repositories are out of scope unless the user explicitly names them.
+- `MCPGameProject/Plugins/UnrealMCP` is part of this repository, not an external submodule.
+- The pre-consolidation instruction sources are preserved at `codex/snapshots/UnrealMCP5_6_1-instructions-before-consolidation-20260824.md`. That snapshot is historical and immutable; the active adapters and policies remain authoritative.
+
+## Branch, Remote, Engine, And Bridge
+
+- Cubeless integration/default branch: `main`.
+- Cubeless fork remote: `origin` -> `https://github.com/cubeless2-lgtm/UnrealMCP5_6_1.git`.
+- Original upstream, when configured: `upstream` -> `https://github.com/chongdashu/unreal-mcp.git`. Treat it as fetch-only for routine work.
+- Current target: Unreal Engine 5.6.1. The project default installation is `C:\Program Files\Epic Games\UE_5.6`; discover and use the effective engine root when the environment differs.
+- Treat UE 5.6.1 as the absolute feature ceiling for this repository. Every newly implemented or externally ported capability must compile and operate through APIs and editor behavior present in UE 5.6.1; do not add capabilities whose minimum engine is UE 5.7 or later, and do not add speculative compatibility branches for later engines.
+- When a donor implementation supports multiple engine versions, reimplement only the UE 5.6-compatible behavior in this repository's existing architecture. Confirm the relevant API in the installed UE 5.6 headers or by a UE 5.6 build before promotion; if that cannot be demonstrated, omit the capability rather than carrying a dormant or best-effort version.
+- Resolve the effective configured UnrealMCP editor bridge endpoint at runtime. The project default is `127.0.0.1:55561`; `UNREAL_MCP_5_6_1_PORT` or `-UnrealMCPPort=` may override it. Do not substitute the older UE 5.7 default or generic `UNREAL_MCP_PORT`.
+- `MCPGameProject/MCPGameProject.uproject` uses `EngineAssociation` `5.6`, and its targets must remain compatible with UE 5.6.
+- Preserve UE 5.6 compatibility guards and stable response fields. When UE 5.7-only data is unavailable, return the stable fallback plus an `unavailable_in_ue_5_6` note rather than removing the JSON key.
+- PCG-specific enabled-plugin requirements live in `Docs/LOCAL_PCG_EXTENSION.md`; read them through the component router only when the current request actually inspects, edits, or verifies PCG.
+- Android packaging is handled only when explicitly included in the current task.
+
+## Operating Routes
+
+- Component-specific reading: `codex/docs/workflows/component-reading-router.md`.
+- Planning and impact review: `codex/agents/ieta.md`.
+- MCP implementation: `codex/agents/tivret-mcp.md`.
+- Upstream synchronization: `codex/agents/mcp-upstream-manager.md` and `codex/docs/workflows/mcp-upstream-update.md`.
+- Release verification: `codex/agents/mcp-release-verifier.md`.
+- Unreal C++ review: `codex/agents/unreal-cpp-reviewer.md` and `codex/docs/workflows/unreal-cpp-review.md`.
+- RPC/transport reliability: `codex/docs/workflows/mcp-rpc-verification-first.md`.
+- Smoke testing: `codex/docs/workflows/mcp-smoke-test-protocol.md`.
+- ControlRig/Animation Blueprint, PCG, AI texture, SkyDome, asset authoring, and packaging details are conditional rows in the component router, not bootstrap requirements.
+
+## Project C++ Gate
+
+- The root `AGENTS.md` contains the critical `c++1218` tripwire. The sole standing path exception is C++ inside `MCPGameProject/Plugins/UnrealMCP/**`, subject to the MCP promotion and finished-content-independence gates.
+- Historical non-MCP plugin implementations, including the existing editor-only `SkyDomeTools` VDB preview helper, are design/use records only and do not approve future source edits.
+- The canonical scope, valid token forms, and commands are in `codex/docs/policies/project-cpp-approval-gate.md`.
+- Before staging source-like changes, inspect working-tree and untracked paths:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\codex\scripts\check-project-cpp-approval-gate.ps1 -IncludeWorkingTree
+```
+
+- After staging and before committing, run the default staged-file gate. The versioned pre-commit hook runs automatically only in clones configured with `git config core.hooksPath .githooks`.
+
+## Concurrent Work And Durable Knowledge
+
+- Before substantial edits, inspect status and recent history; leave unfamiliar changes and current user-stated domain locks untouched.
+- Treat the effective configured editor bridge endpoint as shared. Coordinate editor launch, close, map changes, dirty prompts, and `QUIT_EDITOR` against current process/log state.
+- Project-system, study, and review documentation is indexed in `codex/docs/projects/cubeless-stylized/README.md`. Read a system document only when the current request touches it.
+- When durable documentation is part of the current approved scope, update the matching Git-tracked document and index. Do not use agent-private stores as the canonical copy.
+- Commit or push durable documentation only when the user has authorized those Git actions for this repository and branch in the same task, following `codex/docs/policies/approvals.md`.
+
+## Maintenance
+
+- Keep Cubeless extensions isolated and reviewable; do not broadly rewrite upstream files.
+- The approved split of oversized handlers under `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/` permits behavior-preserving separation only: same classes, routing, and behavior.
+- For an upstream update, follow `codex/docs/workflows/mcp-upstream-update.md`; the preferred repository helper is `.\scripts\update_with_pcg_extension.ps1`. Preserve the generic Python bridge, PCG and AI texture layers, and UE 5.6.1 compatibility guards.
+
+## Verification
+
+- Canonical local dispatcher: `Python/scripts/analysis/run_verification.py`.
+- Promotion that includes implementation, executable workflow/configuration, or shared contract changes requires:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_verification.py --profile full
+```
+
+- Focused development may use the applicable explicit profile: `core`, `catalog`, `transport`, `schema`, `niagara`, `write-observer`, `release-offline`, or `windows-transport`.
+- During iterative editing, rerun the affected focused profile rather than `full`; reserve `full` for a frozen checkpoint, final verification, release or `main` promotion, or an explicitly identified high-risk shared-core change.
+- Pure instruction or documentation-only changes use Tier 0 from `codex/docs/policies/cost-control.md` and do not require `full` solely because they will land on `main`; executable workflow or verification-manifest changes are not documentation-only.
+- Focused profiles do not replace `full` when the complete offline profile is required. Automatic changed-file or path-based skipping is not enabled.
+- When bridge or tool integration changes and a compatible Unreal Editor is available, run the read-only live smoke:
+
+```powershell
+uv --directory .\Python run python scripts\smoke_live_bridge.py
+```
+
+- Exit code 2 means no editor was reachable and is a reported skip, not a pass.
+- For UnrealMCP C++ or build-metadata changes, build `MCPGameProjectEditor Win64 Development` with the effective UE 5.6 engine root and `MCPGameProject/MCPGameProject.uproject`. Avoid a full source-engine rebuild unless necessary or explicitly requested.
+- GitHub Actions use the same dispatcher: the Ubuntu workflow calls `full`, and the Windows transport workflow calls `windows-transport`.

@@ -1,0 +1,29 @@
+# Local Engine And Tool Paths
+
+These helpers discover local installations independently of checkout drive, user name, spaces, or non-ASCII directory names. Discovery is read-only; it never starts an editor or changes machine settings.
+
+## Engine Selection
+
+- Python helper: `Python/scripts/analysis/local_install_paths.py`.
+- PowerShell helper: `scripts/resolve_unreal_engine.ps1`, function `Resolve-UnrealEngineRoot`.
+- Migrated runners keep their `--engine-root` or `-EngineRoot` option. Explicit paths take precedence over configuration and discovery.
+- Otherwise use the UE 5.6-specific environment group: `UNREAL_ENGINE_5_6_ROOT`, `UE_5_6_ROOT`, `UE_5_6_ENGINE_ROOT`.
+- If none of those is set, use the generic group: `UE_ENGINE_ROOT`, `UE_SOURCE_ROOT`, `UNREAL_ENGINE_ROOT`, `UE_ROOT`.
+- Values in the selected group must resolve to one installation. Invalid or conflicting configuration is an error, never a silent fallback.
+- Without configuration, inspect the Epic Launcher manifest beneath local `ProgramData` and Unreal registry entries. Select a unique compatible installation; ambiguity requires an explicit path.
+- Validate `Engine/Build/Build.version` as exactly UE 5.6.1. Source-only audits may use an engine without editor binaries. Launch/build/cook callers check required executables; cook preflights them before deleting old output.
+- Discovery is deferred until needed: importing the helper, offline plans, and `--help` do not require UE. Optional source audits report unavailability.
+- The reactive-surface runner retains `UE_5_6_EDITOR` and `UE_EDITOR_EXE` overrides, with version and file checks.
+
+## Other Tools
+
+- FFmpeg: `FFMPEG_EXE`, then `PATH`, then a unique WinGet binary beneath `LOCALAPPDATA`. No drive or version directory is hardcoded.
+- Blender retains explicit/configured/PATH selection. Standard candidates use `ProgramFiles` and `ProgramW6432` when available, with no guessed drive fallback.
+- Windows font candidates use `SystemRoot` or `WINDIR`; otherwise use Pillow's default font.
+- Optional fragmented-cloud shading-reference provenance uses `SKY_CLOUD_SHADING_REFERENCE`, replacing a specific user's temporary clipboard path.
+
+## Verification
+
+`Python/scripts/analysis/test_local_install_paths.py` is included in `core` and `full`. It covers selection precedence, aliases, ambiguity, invalid/missing/wrong engines, optional discovery, Launcher registration, and FFmpeg lookup. Windows checks cover spaced/Korean paths and preservation of old cook output when required tools are missing.
+
+Historical provenance and test fixture paths are not installation defaults. This migration does not change another user's settings, remotes, or assets.

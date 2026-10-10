@@ -1,0 +1,48 @@
+{
+  "success": true,
+  "stage": "complete",
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "project_name": "CubelessMCPVerification",
+  "process_id": 3436,
+  "instance_id": "EF1D8F1C-43CB-3B8A-DF5A-3CAEB45B40B5",
+  "session_id": "5F0DDC0A-4F8E-46D8-8000-00000000C600",
+  "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+  "game_thread": true,
+  "pie_or_sie_active": false,
+  "is_commandlet": false,
+  "dirty_packages": [],
+  "plugins": [
+    {
+      "name": "CubelessMCP_UE58",
+      "found": true,
+      "enabled": true,
+      "version": "0.1.0"
+    },
+    {
+      "name": "ModelContextProtocol",
+      "found": true,
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "name": "ToolsetRegistry",
+      "found": true,
+      "enabled": true,
+      "version": "1.0"
+    },
+    {
+      "name": "PythonScriptPlugin",
+      "found": true,
+      "enabled": true,
+      "version": "1.0"
+    }
+  ],
+  "operation": "get_editor_diagnostics",
+  "schema_version": "1.0",
+  "mutation_performed": false,
+  "saved": false,
+  "atomic_rollback_available": false,
+  "retry_policy": "safe_read_only",
+  "compile_action": "not_requested",
+  "elapsed_ms": 0.3314986824989319
+}

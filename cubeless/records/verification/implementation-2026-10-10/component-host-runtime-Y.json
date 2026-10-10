@@ -1,0 +1,295 @@
+{
+  "schema": "cubeless_component_host_runtime_v1",
+  "success": true,
+  "stage": "complete",
+  "started_ns": 1791645328252240700,
+  "process_id": 24028,
+  "expected_process_id": null,
+  "host_package": "/Game/CubelessMCPTests/ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81/BP_ComponentHost",
+  "component_package": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer",
+  "function": "CFNL_AdvanceComponent",
+  "expected_sha256": {
+    "host": "f4a51f07c6cc737362148bb7baed12612cc497f76c13c390e06978b1414d83ec",
+    "component": "bf97de438589de1155166eba36d99c05a98ea7398d918bd5fb018a71ddb5c3b1"
+  },
+  "steps": [
+    {
+      "index": 1,
+      "delta": 0.25,
+      "expected_timer": 0.25,
+      "before": {
+        "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0.MouseButtons",
+        "class": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.BP_FunctionTimer_C",
+        "owner": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0",
+        "timer": 0.0,
+        "matching_component_count": 1
+      },
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "return_type": "NoneType",
+      "after": {
+        "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0.MouseButtons",
+        "class": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.BP_FunctionTimer_C",
+        "owner": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0",
+        "timer": 0.25,
+        "matching_component_count": 1
+      },
+      "cdo_after": {
+        "host_path": "/Game/CubelessMCPTests/ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81/BP_ComponentHost.Default__BP_ComponentHost_C",
+        "host_component_reference": null,
+        "component_path": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.Default__BP_FunctionTimer_C",
+        "component_timer": 0.0
+      },
+      "dirty_after": {
+        "content": [],
+        "maps": []
+      }
+    },
+    {
+      "index": 2,
+      "delta": 0.5,
+      "expected_timer": 0.75,
+      "before": {
+        "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0.MouseButtons",
+        "class": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.BP_FunctionTimer_C",
+        "owner": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0",
+        "timer": 0.25,
+        "matching_component_count": 1
+      },
+      "attempted": true,
+      "returned": true,
+      "verified": true,
+      "return_type": "NoneType",
+      "after": {
+        "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0.MouseButtons",
+        "class": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.BP_FunctionTimer_C",
+        "owner": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0",
+        "timer": 0.75,
+        "matching_component_count": 1
+      },
+      "cdo_after": {
+        "host_path": "/Game/CubelessMCPTests/ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81/BP_ComponentHost.Default__BP_ComponentHost_C",
+        "host_component_reference": null,
+        "component_path": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.Default__BP_FunctionTimer_C",
+        "component_timer": 0.0
+      },
+      "dirty_after": {
+        "content": [],
+        "maps": []
+      }
+    }
+  ],
+  "spawn": {
+    "attempted": true,
+    "returned": true,
+    "transient_requested": true,
+    "actor_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0"
+  },
+  "cleanup": {
+    "attempted": true,
+    "returned": true,
+    "success": true,
+    "actor_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0",
+    "return_value": true
+  },
+  "calls_attempted": 2,
+  "calls_returned": 2,
+  "calls_verified": 2,
+  "automatic_retries": 0,
+  "atomic_rollback": false,
+  "outcome_unknown": false,
+  "compile": {
+    "explicit_calls": 0,
+    "implicit_load_compilation": "not_measured"
+  },
+  "save": {
+    "explicit_calls": 0
+  },
+  "settings_writes": 0,
+  "dirty_flag_clears": 0,
+  "scope": "Fresh saved Actor host load, SCS component identity and two direct host function calls, then owned Actor removal",
+  "side_effect_scope": "Spawn runs editor placement/construction/registration; destroy runs lifecycle/editor callbacks. Current disposable map may remain dirty; it is never saved or force-cleared.",
+  "unverified": [
+    "BeginPlay",
+    "Tick",
+    "hardware input",
+    "gates",
+    "press/release reset",
+    "Shipping/packaging",
+    "arbitrary callback side effects",
+    "global editor click/undo state restoration"
+  ],
+  "source_hashes": {
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\verify_component_host_runtime.py": "cc074b83e46a4bc1c401a419acc38b2629ea6257da096191f6aa5085f579d1d1",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\verify_function_timer_runtime.py": "3953abac7afe099696ef19f55e5df7c6e03958e59c85510e6e866b11d7e5014b",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\verify_gated_timer_runtime.py": "fe306de80f0602fe32174f0c7e8be368821b4106cda5c80794ed118be6c9d2a1",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\create_component_read_fixture.py": "707eed131bc0c60cf7eb3e0ccd2b73f07fe2cb3fb79ad47e39518ed73562f6bb",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_fixture_without_mcp.py": "75c56b251657ca45d4a052461328263923732e7662d8b800f86c045bdabf946b"
+  },
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\CubelessRuntimeProof.uproject",
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "world": {
+    "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof",
+    "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof"
+  },
+  "files_before": {
+    "host": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81\\BP_ComponentHost.uasset",
+      "sha256": "f4a51f07c6cc737362148bb7baed12612cc497f76c13c390e06978b1414d83ec",
+      "bytes": 34220,
+      "mtime_ns": 1791645285442310100
+    },
+    "component": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\FunctionTimer_ac30351e04c74596887ffe9b9146f4dd\\BP_FunctionTimer.uasset",
+      "sha256": "bf97de438589de1155166eba36d99c05a98ea7398d918bd5fb018a71ddb5c3b1",
+      "bytes": 31395,
+      "mtime_ns": 1791641819208626300
+    },
+    "loaded_map": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+      "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+      "bytes": 12983,
+      "mtime_ns": 1791620950585542200
+    }
+  },
+  "actors_before": {
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.AbstractNavData-Default": "/Script/NavigationSystem.AbstractNavData",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_MutationContract_C_0": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_RuntimeProof_C_0": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.Brush_0": "/Script/Engine.Brush",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.ChaosDebugDrawActor": "/Script/Engine.Actor",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.DefaultPhysicsVolume_0": "/Script/Engine.DefaultPhysicsVolume",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.GameplayDebuggerPlayerManager_0": "/Script/GameplayDebugger.GameplayDebuggerPlayerManager",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.WorldSettings": "/Script/Engine.WorldSettings"
+  },
+  "dirty_before": {
+    "content": [],
+    "maps": []
+  },
+  "project_config_before": {
+    "CubelessRuntimeProof.uproject": "410c8597f4826d26c1036a2b7ac8ef722aea5d59961665bd74ca5afa08bb381b",
+    "Config\\DefaultEngine.ini": "29d599b499badda52258ada450106a8ad9b55a5e4ae25e71938e4824071dc715",
+    "Config\\DefaultGame.ini": "066ac6d262fa72a278640bbc2e54d26f84992b36254e775fda75ea272796d067"
+  },
+  "selected_before": [],
+  "saved_editor_config_before": {
+    "Saved\\Config\\WindowsEditor\\Editor.ini": "0f6e5f6ee35d1d08016aa73927d665b380165b85189cb086957465d6a40923c6",
+    "Saved\\Config\\WindowsEditor\\EditorPerProjectUserSettings.ini": "f6bb08cf9a6315c5bb5386f7c68b69fcd16735cedc919eec60e67cbdc508cb2b",
+    "Saved\\Config\\WindowsEditor\\GameUserSettings.ini": "5dc2a48b33129cb3b047f56b04c3d43ace470abb6fe661916d7be48bf40db2b8"
+  },
+  "plugins_before": {
+    "names": [
+      "ContentBrowserFileDataSource",
+      "EditorScriptingUtilities",
+      "PythonScriptPlugin"
+    ],
+    "forbidden_enabled": [],
+    "passed": true
+  },
+  "cdos_before": {
+    "host_path": "/Game/CubelessMCPTests/ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81/BP_ComponentHost.Default__BP_ComponentHost_C",
+    "host_component_reference": null,
+    "component_path": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.Default__BP_FunctionTimer_C",
+    "component_timer": 0.0
+  },
+  "blueprint_status_before": {
+    "component": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+    "host": "<BlueprintStatus.BS_UP_TO_DATE: 3>"
+  },
+  "host_class": "/Game/CubelessMCPTests/ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81/BP_ComponentHost.BP_ComponentHost_C",
+  "component_class": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.BP_FunctionTimer_C",
+  "component_initial": {
+    "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0.MouseButtons",
+    "class": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.BP_FunctionTimer_C",
+    "owner": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0",
+    "timer": 0.0,
+    "matching_component_count": 1
+  },
+  "dirty_after_spawn": {
+    "content": [],
+    "maps": []
+  },
+  "actor_paths_after_spawn": [
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_ComponentHost_C_0"
+  ],
+  "accumulated_seconds": 0.75,
+  "final_observations": {
+    "files": {
+      "host": {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81\\BP_ComponentHost.uasset",
+        "sha256": "f4a51f07c6cc737362148bb7baed12612cc497f76c13c390e06978b1414d83ec",
+        "bytes": 34220,
+        "mtime_ns": 1791645285442310100
+      },
+      "component": {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\FunctionTimer_ac30351e04c74596887ffe9b9146f4dd\\BP_FunctionTimer.uasset",
+        "sha256": "bf97de438589de1155166eba36d99c05a98ea7398d918bd5fb018a71ddb5c3b1",
+        "bytes": 31395,
+        "mtime_ns": 1791641819208626300
+      },
+      "loaded_map": {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+        "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+        "bytes": 12983,
+        "mtime_ns": 1791620950585542200
+      }
+    },
+    "dirty": {
+      "content": [],
+      "maps": []
+    },
+    "actors": {
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.AbstractNavData-Default": "/Script/NavigationSystem.AbstractNavData",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_MutationContract_C_0": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_RuntimeProof_C_0": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.Brush_0": "/Script/Engine.Brush",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.ChaosDebugDrawActor": "/Script/Engine.Actor",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.DefaultPhysicsVolume_0": "/Script/Engine.DefaultPhysicsVolume",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.GameplayDebuggerPlayerManager_0": "/Script/GameplayDebugger.GameplayDebuggerPlayerManager",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.WorldSettings": "/Script/Engine.WorldSettings"
+    },
+    "host_instances": [],
+    "cdos": {
+      "host_path": "/Game/CubelessMCPTests/ComponentHost_a3b6919bb2e3427f9cd0f4c5a1e36b81/BP_ComponentHost.Default__BP_ComponentHost_C",
+      "host_component_reference": null,
+      "component_path": "/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer.Default__BP_FunctionTimer_C",
+      "component_timer": 0.0
+    },
+    "plugins": {
+      "names": [
+        "ContentBrowserFileDataSource",
+        "EditorScriptingUtilities",
+        "PythonScriptPlugin"
+      ],
+      "forbidden_enabled": [],
+      "passed": true
+    },
+    "blueprint_status": {
+      "component": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+      "host": "<BlueprintStatus.BS_UP_TO_DATE: 3>"
+    },
+    "project_config": {
+      "CubelessRuntimeProof.uproject": "410c8597f4826d26c1036a2b7ac8ef722aea5d59961665bd74ca5afa08bb381b",
+      "Config\\DefaultEngine.ini": "29d599b499badda52258ada450106a8ad9b55a5e4ae25e71938e4824071dc715",
+      "Config\\DefaultGame.ini": "066ac6d262fa72a278640bbc2e54d26f84992b36254e775fda75ea272796d067"
+    },
+    "saved_editor_config": {
+      "Saved\\Config\\WindowsEditor\\Editor.ini": "0f6e5f6ee35d1d08016aa73927d665b380165b85189cb086957465d6a40923c6",
+      "Saved\\Config\\WindowsEditor\\EditorPerProjectUserSettings.ini": "f6bb08cf9a6315c5bb5386f7c68b69fcd16735cedc919eec60e67cbdc508cb2b",
+      "Saved\\Config\\WindowsEditor\\GameUserSettings.ini": "5dc2a48b33129cb3b047f56b04c3d43ace470abb6fe661916d7be48bf40db2b8"
+    },
+    "selected": []
+  },
+  "preservation": {
+    "assets_and_cdos": true,
+    "world_actor_identities_restored": true,
+    "dirty_within_disposable_world_only": true,
+    "project_config": true,
+    "selection_unchanged": true,
+    "dirty_unchanged": true,
+    "scope": "Two BP files/CDOs/status and optional loaded map file; world actor path/class set; no claim of global undo/click state restoration"
+  },
+  "saved_editor_config_changed": false,
+  "finished_ns": 1791645328414968500
+}

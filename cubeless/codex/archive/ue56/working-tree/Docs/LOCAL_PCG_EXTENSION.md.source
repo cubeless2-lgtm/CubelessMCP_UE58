@@ -1,0 +1,279 @@
+# Local PCG Extension Notes
+
+This document records the local changes made for the user's Unreal TA workflow.
+
+## Goal
+
+Keep `chongdashu/unreal-mcp` updateable from upstream while adding project-useful PCG and Unreal Python automation.
+
+The extension avoids adding a separate C++ command for every TA operation. Instead:
+
+- C++ adds one generic `execute_python` command.
+- Python MCP tools call that command.
+- PCG-specific behavior lives in Python and can evolve quickly.
+- Crash-prone editor APIs get focused native commands. In particular, PCG attribute/property selector structs must use `set_pcg_attribute_selector` instead of Unreal Python selector mutation.
+
+## Current Branch Model
+
+- Cubeless integration/default branch: `main`
+- Legacy extension branch: `local/pcg-tools`
+- Base upstream at time of extension: `4e5f00d`
+- Initial extension commit: `ecab023`
+
+## Current Bridge Port
+
+- This UE 5.6.1 fork uses UnrealMCP editor bridge port `127.0.0.1:55561` by default.
+- Keep `55561` separate from the older UE 5.7 bridge port `55557` so both editor lines can be used on the same workstation.
+- Override only when needed with `UNREAL_MCP_5_6_1_PORT` or the editor command-line option `-UnrealMCPPort=`. The generic `UNREAL_MCP_PORT` is intentionally ignored by this fork so existing UE 5.7 sessions can keep using it.
+
+## Files Added
+
+- `AGENTS.md`
+  - Instructions for Codex/AI agents. Read first.
+- `Python/tools/python_tools.py`
+  - Registers `execute_unreal_python`.
+- `Python/tools/pcg_tools.py`
+  - Registers PCG-focused automation tools. Fast PCG refresh and spline point sync use native UnrealMCP bridge commands first, with Unreal Python fallback for older running editor sessions. PCG selector struct mutation is native-only and has no Python fallback.
+- `Python/tools/controlrig_authoring_tools.py`
+  - Registers recipe-driven ControlRig authoring adapter tools that call the
+    editor-only `UUnrealMCPControlRigAuthoringSubsystem` from the
+    `UnrealMCPControlRigToolsEditor` module through Unreal Python reflection
+    instead of adding a static UnrealMCP C++ dependency.
+- `Python/tools/editor_tools.py`
+  - Adds native viewport bookmark listing, bookmark/active viewport screenshot wrappers for visual QA, and protected editor level transition preflight/opening.
+- `Python/tools/ai_tools.py`
+  - Adds AI authoring support inspection, stable BT/BB helper wrappers, saved BT/BB inspection, a saved Behavior Tree execution smoke, and a temporary SIE patrol/detection/chase smoke for the default Cubeless character path.
+  - Uses `create_ai_patrol_chase_behavior_assets` for standard Unreal Behavior Tree/Blackboard authoring through the editor-only C++ bridge.
+- `Python/tools/texture_generation.py`
+  - Registers Codex built-in handoff texture tools, heuristic companion-map generation, texture-set import, PBR material creation, and optional material application helpers.
+- `Python/services/openai_image_service.py`
+  - Keeps a disabled compatibility shim for legacy API-key image generation imports; this project does not use API-key image generation.
+- `Python/services/unreal_texture_importer.py`
+  - Wraps Unreal Python UV export, texture import, PBR material/material-instance creation, and material application helpers.
+- `Docs/Tools/pcg_tools.md`
+  - User-facing tool summary.
+- `Docs/Tools/ai_texture_tools.md`
+  - User-facing AI texture tool summary.
+- `scripts/update_with_pcg_extension.ps1`
+  - Helper script for updating from upstream and keeping the local branch.
+
+## Files Modified
+
+- `Python/unreal_mcp_server.py`
+  - Imports and registers `python_tools`, `pcg_tools`, and
+    `controlrig_authoring_tools`.
+- `MCPGameProject/Plugins/UnrealMCP/UnrealMCP.uplugin`
+  - Enables `PythonScriptPlugin`.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/UnrealMCP.Build.cs`
+  - Adds `PythonScriptPlugin` dependency.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPProjectCommands.h`
+  - Declares `HandleExecutePython`.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPProjectCommands.cpp`
+  - Implements `execute_python` using `IPythonScriptPlugin::ExecPythonCommandEx`.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp`
+  - Routes `execute_python` to project commands.
+  - Stops accepting commands as soon as engine exit or subsystem deinitialization begins, and rechecks queued game-thread/ticker work before dispatch.
+  - Tracks subsystem lifetime separately from TCP listener readiness, so an occupied bridge port does not disable the in-process command registry or hide the startup failure status.
+- `MCPGameProject/Source/MCPGameProject.Target.cs`
+  - Set to UE 5.6 compatible build settings/include order.
+- `MCPGameProject/Source/MCPGameProjectEditor.Target.cs`
+  - Set to UE 5.6 compatible build settings/include order.
+- `mcp.json`
+  - Historical sample MCP launcher config. Active Cubeless projects using this repo should use a relative sibling path such as `../UnrealMCP5_6_1/Python`.
+
+## Added MCP Tools
+
+- `execute_unreal_python(code, mode="ExecuteFile", defer_to_ticker=false, allow_unsafe_editor_scripting_during_pie=false, interchange_policy="auto")`
+  - Unsafe editor actor cleanup calls such as `EditorLevelLibrary.destroy_actor` are blocked during PIE/SIE by default.
+  - Python map transitions and Python PCG attribute selector struct mutation are blocked by default because both have caused editor crash paths.
+  - Source-code strings are not used to classify imports. `interchange_policy="auto"` conservatively behaves as `legacy`, moves the script to the next editor tick, and temporarily routes synchronous `AssetImportTask`/`import_asset_tasks` or `AutomatedAssetImportData`/`import_assets_automated` calls through legacy factories. Use `none` only for a script that cannot import; this is a trusted declaration, not a sandbox. Use `preserve` (or `interchange`) for synchronous direct `UInterchangeManager.import_asset`, `reimport_asset`, or `import_scene` calls and formats that require Interchange. A scripted async Interchange call must wait for completion and read back its result before Python returns; an import still active at return is reported as an unknown in-flight mutation. Import-capable policies are rejected inside synchronous `batch` execution. Python asset Force Delete and Python-driven editor shutdown remain focused accident guards rather than a security sandbox.
+  - Legacy live smoke scripts that embed Python Force Delete cleanup are intentionally rejected until their cleanup is migrated offline or to a reviewed native route; they are not stability checks for this guard.
+- `set_blueprint_node_positions(blueprint_name, graph_name, updates, dry_run=true, compile=false, save=false)`
+  - Guarded layout-only batch edit for existing Blueprint nodes. Validates every GUID, class, exact title, and expected position before changing only `NodePosX`/`NodePosY`; rejects duplicate GUIDs and PIE/SIE, with a 2048-update maximum.
+  - Requested real compile/save failures return `success=false`; a compile failure skips saving and reports that positions may already have changed.
+- `collapse_blueprint_nodes_to_function(blueprint_name, graph_name, function_name, node_ids, dry_run=true, compile=true, save_asset=false)`
+  - Guarded editor-only extraction through Unreal Engine's native Blueprint `Collapse to Function` implementation. It blocks PIE/SIE, duplicate or stale GUIDs, existing function names, and non-temp assets unless `allow_non_temp=true` is explicit.
+  - The authored Blueprint function and call node are ordinary engine content; the command does not serialize UnrealMCP classes or runtime dependencies into the asset.
+- `list_pcg_assets(root_path="/Game")`
+- `list_pcg_components()`
+- `refresh_pcg_components(actor_name="", selected_only=false, cleanup=true, generate=true, wait_until_complete=false, timeout_seconds=10.0, poll_interval_seconds=0.05, max_components=1000)`
+- `inspect_pcg_component_outputs(actor_label="", actor_name="", actor_path="", actor_tag="", actor_label_prefix="", component_name="", component_tag="", selected_only=false, max_components=16, max_tagged_data=64, max_points=8, include_point_samples=true)`
+  - Native read-only `FPCGDataCollection` readback for generated component output, including sampled `UPCGBasePointData` transforms, density, bounds, color, seed, and metadata entry values.
+- `set_spline_component_points(points, actor_label="", actor_tag="", actor_label_prefix="", component_name="Road_SourceSpline", closed_loop=false)`
+- `set_pcg_attribute_selector(graph_path, node_id, selector_property_name, selector_type="attribute", attribute_name="", selected_property_name="", domain_name="", point_property="", extra_property="", extra_names=None, reset_extra_names=true, save=true, dry_run=false)`
+- `inspect_pcg_custom_hlsl_nodes(graph_path, node_id="", title_contains="", include_pins=true, include_declarations=true, max_source_chars=4000)`
+  - Native read-only PCG Custom HLSL source/declaration inspector using reflected `PCGCustomHLSLSettings` properties instead of private PCG headers.
+- `list_viewport_bookmarks()`
+- `capture_viewport_bookmark_screenshot(filepath, bookmark_index=-1, redraw_count=2)`
+- `inspect_niagara_component_parameter_store(actor_name="", actor_label="", component_name="", system_path="", parameter_name_contains="", max_components=8, max_parameters=64)`
+  - Native-backed read-only runtime propagation probe comparing live component `OverrideParameters` and system-instance `InstanceParameters`.
+- `inspect_niagara_component_grid2d_runtime(actor_name="", actor_label="", component_name="", system_path="", max_components=16, max_grid_interfaces=16, include_internal=true)`
+  - Native-backed read-only Grid2D runtime probe for live Niagara components, including runtime `NumCells` when instance data is available.
+- `sample_render_target2d_region_stats(render_target_path, x0=0, x1=-1, y0=0, y1=-1, channel="max", threshold=0.01, max_first_hits=8)`
+  - Native-backed read-only `TextureRenderTarget2D` region stats/readback helper for smoke tests.
+- `open_editor_level(level_path, dry_run=true, allow_dirty_packages=false, load_as_template=false, show_progress=true)`
+- `safe_new_preview_map(map_path, dry_run=true, allow_dirty_packages=false, overwrite_existing=false, allow_non_temp_path=false, required_root="/Game/_MCP_Temp", is_partitioned_world=false)`
+- `set_pcg_debug_enabled(enabled=false, actor_name="", selected_only=false)`
+- `resave_pcg_assets(root_path="/Game")`
+- `get_static_mesh_uv_layout(mesh_path, uv_channel=0, output_path="")`
+- `make_controlrig_preset_recipe(preset)`
+- `validate_controlrig_recipe(recipe)`
+- `dry_run_controlrig_recipe(recipe)`
+- `build_controlrig_recipe(recipe, options=None)`
+- `generate_texture_from_prompt(prompt, output_name, output_dir, size="1024x1024")`
+- `generate_texture_for_mesh_uv(mesh_path, prompt, uv_channel=0, output_name="T_AI_Texture", output_dir="", size="1024x1024")`
+- `import_texture_to_unreal(image_path, unreal_folder, asset_name)`
+- `create_material_instance_with_texture(texture_asset_path, material_name, unreal_folder, base_material_path="")`
+- `apply_material_to_mesh(target, material_asset_path, material_slot=0)`
+- `generate_and_apply_ai_texture(target, prompt, output_name, unreal_folder="/Game/AI_Generated", uv_channel=0, size="1024x1024")`
+- `inspect_ai_authoring_support()`
+- `run_ai_dummy_patrol_chase_smoke(pawn_asset_path="/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype", skeletal_mesh_path="/Game/Cubeless/Character/Piper/SK_Piper", anim_blueprint_path="/Game/Cubeless/Character/Animation/ABP_RPGChracter", label_prefix="MCP_AIDummySmoke", report_dir="Docs/Analysis/AIDummySmoke", cleanup_existing=true, cleanup_after=true, setup_wait_seconds=1.5, patrol_wait_seconds=2.0, chase_wait_seconds=2.0, sight_radius=900.0, acceptance_radius=55.0)`
+  - Creates temporary current-level actors, starts SIE, validates AIController patrol movement, line-of-sight detection, and chase movement, then cleans up. The fixture uses engine/project assets only and audits configured paths for MCP-only references.
+- `create_ai_patrol_chase_behavior_assets(asset_root="/Game/Cubeless/AI/Smoke", behavior_tree_name="BT_AIDummyPatrolChase", blackboard_name="BB_AIDummyPatrolChase", target_actor_key="TargetActor", patrol_location_key="PatrolLocation", tree_shape="sequence_patrol_chase", acceptable_radius=55.0, alert_wait_seconds=0.5, face_precision_degrees=12.0, replace_existing=false, save_assets=false)`
+  - Creates standard `UBehaviorTree` and `UBlackboardData` assets through the C++ bridge helper. `selector_chase_patrol` uses stock `UBTTask_MoveDirectlyToward` children plus a stock `UBTDecorator_Blackboard` on the chase branch with reactive `Both` aborts. `selector_alert_chase_patrol` inserts stock `UBTTask_RotateToFaceBBEntry` and `UBTTask_Wait` before chase, then falls back to patrol movement. The command creates only standard `AIModule` objects and audits generated packages for MCP-only references before success.
+- `configure_ai_controller_perception(controller_blueprint="/Game/Cubeless/AI/BP_AIBot_Controller.BP_AIBot_Controller", component_name="AIPerception", sight_radius=900.0, lose_sight_radius=1150.0, peripheral_vision_angle_degrees=90.0, max_age=3.0, save_blueprint=true)`
+  - Adds or reuses a standard `UAIPerceptionComponent` on an AIController Blueprint and persists standard `UAISenseConfig_Sight` settings without serializing UnrealMCP references.
+- `inspect_ai_behavior_assets(behavior_tree_path="/Game/Cubeless/AI/Smoke/BT_AIDummyPatrolChase.BT_AIDummyPatrolChase", blackboard_path="/Game/Cubeless/AI/Smoke/BB_AIDummyPatrolChase.BB_AIDummyPatrolChase")`
+  - Reloads saved BT/BB assets through the C++ bridge helper and reports root shape, child tasks, Blackboard keys, chase decorator/abort state, editor graph presence, and MCP dependency audit status.
+- `run_ai_behavior_tree_execution_smoke(pawn_asset_path="/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype", skeletal_mesh_path="/Game/Cubeless/Character/Piper/SK_Piper", anim_blueprint_path="/Game/Cubeless/Character/Animation/ABP_RPGChracter", label_prefix="MCP_AIBTExecutionSmoke", report_dir="Docs/Analysis/AIDummySmoke", behavior_tree_path="/Game/Cubeless/AI/Smoke/BT_AIDummyPatrolChase.BT_AIDummyPatrolChase", blackboard_path="/Game/Cubeless/AI/Smoke/BB_AIDummyPatrolChase.BB_AIDummyPatrolChase")`
+  - Starts SIE, loads the saved BT/BB assets, calls `AIController.use_blackboard` and `AIController.run_behavior_tree`, writes the patrol/target Blackboard values, verifies movement evidence, and cleans up temporary actors.
+- `remove_niagara_modules(system_path, module_names=None, module_name_prefixes=None, module_name_contains=None, module_name="", emitter_index=None, emitter_name="", allow_source_edit=false, save=true, request_compile=true, wait_for_completion=false, timeout_seconds=10.0, poll_interval_seconds=0.1)`
+  - Native editor-only Niagara stack cleanup command. Reconnects the parameter-map chain and removes matched module input nodes when cleaning stale modules from authored systems.
+- `cleanup_niagara_renderers(system_path, remove_renderer_indices=None, clear_meshes_binding_renderer_indices=None, expected_renderers=None, expected_renderer_count=None, emitter_index=None, emitter_name="", dry_run=true, ...)`
+  - Native dry-run-first renderer cleanup. Exact expected renderer class/enabled contracts guard disabled-renderer deletion; binding resets additionally require the current `meshes_binding_parameter`, and requested compile waits must complete before saving.
+- `set_niagara_module_static_switch(system_path, input_name="", value=None, ..., expected_current_value="", wait_for_completion=true, require_compile_gate_for_save=true)`
+  - Native static-switch discovery and guarded mutation. Enum display/internal/numeric inputs are canonicalized through the pin's actual `UEnum`; hidden/MAX values and stale current-value contracts are rejected, and the safe Python default requires an actual compile, stable post-request IDs, final pin readback, and affected-script cached/computed ID synchronization before saving.
+
+## Design Notes
+
+`pcg_tools.py` writes Unreal Python results to a JSON file in the temp directory because Unreal's Python command result capture is limited for multi-line scripts. The MCP tool reads that JSON file and returns structured data.
+
+UE 5.6.1/5.7 multi-line scripts that include `import` statements should run through `ExecuteFile`. `ExecuteStatement` works for simple one-line commands but fails for the PCG helper's generated scripts.
+
+The PCG component operations are native-first where a focused C++ bridge exists. `refresh_pcg_components` sends cleanup/refresh/generate requests through the C++ bridge and returns component state/readback without sleeping on the editor game thread. When `wait_until_complete=true`, the MCP Python tool polls the native command externally with `generate=false` until PCG busy state clears or the timeout expires. The Unreal Python fallback remains best-effort and does not block for completion because blocking Python can stall editor ticking. `set_spline_component_points` uses the native helper to avoid transient `TRASH_` spline components when available.
+
+PCG attribute/property selector structs are native-only. Use `set_pcg_attribute_selector` for settings properties such as `WeightAttribute`, `MatchAttribute`, `InputAttribute`, `InputWeightAttribute`, and `SetTarget`. Do not mutate these selectors through `execute_python`, `PCGAttributePropertySelectorBlueprintHelpers.set_*`, or Python wrapper methods like `set_attribute_name`; that path has triggered `PyWrapperStruct.cpp` ensures and editor shutdown access violations. The native command only edits ordinary PCG settings properties on the target graph and does not create UnrealMCP nodes or saved `/Script/UnrealMCP` dependencies.
+
+Persisted-reference mutation APIs must reject MCP-only class, object, enum, function-owner, component, actor, material expression, and PCG settings references. The guard blocks `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, and `mcp_unreal` strings before authored assets can store those paths. This keeps UnrealMCP as an editor bridge rather than a required runtime/content dependency unless a user explicitly accepts that coupling.
+
+Editor level transitions should use `open_editor_level` instead of Python
+`load_level`/`load_map` calls. The command defaults to `dry_run=true` and
+returns target existence, current world, dirty package blockers, and whether a
+real load would be scheduled. Real loads are deferred to a later editor tick and
+must be confirmed by polling `get_editor_level_open_status` with the returned
+`request_id`. Real loads are blocked by default when dirty packages exist,
+avoiding the previous Python-frame world-reference crash path and avoiding
+silent loss of unsaved editor state.
+
+New temporary preview maps should use `safe_new_preview_map` instead of Python
+`new_blank_map` or `new_map_from_template` calls. The command defaults to
+`dry_run=true`, requires targets under `/Game/_MCP_Temp` unless explicitly
+overridden, blocks dirty-package creation by default, and creates/saves the map
+through the native C++ bridge.
+
+The AI texture tools now use a Codex built-in image-generation handoff rather
+than API-key image calls. Once a BaseColor PNG exists,
+`generate_pbr_companion_textures` can create first-pass heuristic Normal,
+Roughness, AO, and Metallic PNGs; `import_texture_set_to_unreal` imports those
+files as Texture2D assets; `create_material_with_texture_set` or
+`import_create_and_apply_texture_set` creates a PBR material/material instance
+and can apply it to a selected/named mesh target.
+
+Scripted source imports use one bridge-owned structured policy for both ticker dispatch and Interchange scope. The default `interchange_policy="auto"` intentionally does not inspect Python source and resolves conservatively to `legacy`, so helper aliases, `getattr`, and persistent globals cannot make an import silently lose its bypass. `legacy` supports synchronous `AssetImportTask`/`import_asset_tasks` and `AutomatedAssetImportData`/`import_assets_automated`: immediately before Python execution C++ captures value and priority for `Interchange.FeatureFlags.Import.Enable`, `Interchange.FeatureFlags.Import.FBX`, `Interchange.FeatureFlags.Import.FBX.ToLevel`, and `Interchange.FeatureFlags.Import.OBJ`; it disables and verifies them, then restores them in reverse order and verifies the original state. Known texture-format Interchange CVars are tracked so older nested console guards cannot leave stale priority history. `interchange_policy="preserve"` and `interchange_policy="interchange"` keep Interchange enabled for synchronous direct `UInterchangeManager.import_asset`, `reimport_asset`, or `import_scene` calls, including Interchange-dependent formats such as OpenVDB/Sparse Volume Texture and USD. Start-only `scripted_*_async` calls must wait for all tasks and perform readback before Python returns; otherwise the bridge reports `interchange_async_outcome_unknown` with `do_not_retry=true`. `interchange_policy="none"` is a trusted assertion that the script cannot import and skips the import ticker/CVar scope. Every import-capable policy requires a standalone next-tick dispatch and is rejected inside synchronous `batch` or re-entrant execution. A legacy callback scheduled after `ExecPythonCommandEx` returns is outside the bypass scope and is unsupported.
+
+The AI smoke tools use `AIController` movement and line-of-sight checks in SIE
+with temporary actors in the current level. They do not save level content or
+create runtime project code. UE 5.6 exposes Behavior Tree and Blackboard
+factories to Unreal Python, but not every stock Behavior Tree node class, so
+BT/BB asset authoring now uses the narrow editor-only C++ helper instead of
+mutating Behavior Tree graph internals from Python. Generated assets stay on
+standard `AIModule` classes and are audited for MCP-only references before
+success. The saved BT execution smoke uses stock `BTTask_MoveDirectlyToward`
+for no-NavMesh temporary levels; a production NavMesh-backed patrol tree can
+switch to `BTTask_MoveTo` later without changing the dependency model.
+
+SkyDomeTools also includes a polar UV cloud layout pass. The flow starts from a supplied polar SkyDome UV texture, extracts modular cloud card textures, places editor-only card actors for layout validation, captures a viewport screenshot, and blocks Hunyuan mesh generation until that card layout is accepted. The polar Hunyuan batch bridge then submits validated modules to Hunyuan with texture generation forced off and records generated mesh paths back into the polar manifest. Hunyuan should be used for detailed geometry only, not texture generation, in this pipeline.
+
+## Update Guidance
+
+When the user asks for "최신 업데이트", "업데이트 풀", "원본 pull", "upstream 최신", or similar wording, the expected behavior is:
+
+- Keep the PCG/Python extension.
+- Pull/fetch from `origin`.
+- Fetch from `upstream`.
+- Fast-forward local `main` from `origin/main`.
+- Start a no-commit merge from `upstream/main`.
+- Resolve conflicts in favor of preserving:
+  - generic `execute_python` C++ bridge
+  - `Python/tools/python_tools.py`
+  - `Python/tools/pcg_tools.py`
+  - AI texture services/tools/docs
+  - tool registration in `Python/unreal_mcp_server.py`
+  - docs and update script
+- Run Python verification before committing the merge.
+- Commit the pending merge only after verification passes.
+- Push `main` to `origin` only when push was requested.
+
+Use this shape when updating:
+
+```powershell
+.\scripts\update_with_pcg_extension.ps1
+```
+
+If the remote names are not set yet, the recommended layout is:
+
+- `upstream`: `https://github.com/chongdashu/unreal-mcp`
+- `origin`: `https://github.com/cubeless2-lgtm/UnrealMCP5_6_1.git`
+
+## UE 5.6.1 Compatibility
+
+- Current local target engine: `C:\Program Files\Epic Games\UE_5.6` (UE 5.6.1).
+- `MCPGameProject/MCPGameProject.uproject` uses `EngineAssociation` `5.6`.
+- `MCPGameProject` enables every PCG plugin shipped with UE_5.6: `PCG`, `PCGBiomeCore`, `PCGBiomeSample`, `PCGExternalDataInterop`, `PCGGeometryScriptInterop`, `PCGInstancedActorsInterop`, `PCGNiagaraInterop`, and `PCGWaterInterop`.
+- Preserve version guards for UE 5.7-only or changed APIs. Current guarded areas include material resource lookup, PCG pin type reporting, Niagara renderer/default binding helpers, static mesh render LOD export, Nanite settings accessors, ControlRig blueprint headers, animation transition settings, and BlendSpace sample single-frame fields.
+- UE 5.7-only values that cannot be read under UE 5.6.1 should return a stable fallback plus an `unavailable_in_ue_5_6` note.
+
+## UE 5.6.1 Verification
+
+- `MCPGameProjectEditor Win64 Development` builds successfully against `C:\Program Files\Epic Games\UE_5.6`.
+- Python syntax/import checks pass for the server, PCG tools, Python bridge tools, AI texture tools, and texture import services.
+
+## Older UE 5.7 Verification History
+
+- Confirmed `D:\Git\UnrealEngine` is UE 5.7.4.
+- Confirmed UE 5.7 has `IPythonScriptPlugin`, `FPythonCommandEx`, and `ExecPythonCommandEx`.
+- Ran Python dependency sync:
+
+```powershell
+uv --directory D:\Git\unreal-mcp\Python sync
+```
+
+- Ran Python syntax/import checks:
+
+```powershell
+uv --directory D:\Git\unreal-mcp\Python run python -m py_compile unreal_mcp_server.py tools\python_tools.py tools\pcg_tools.py
+uv --directory D:\Git\unreal-mcp\Python run python -c "import unreal_mcp_server; print('server import ok')"
+```
+
+- Ran AI texture Python syntax/import checks:
+
+```powershell
+uv --directory D:\Git\unreal-mcp\Python run python -m py_compile unreal_mcp_server.py tools\texture_generation.py services\openai_image_service.py services\unreal_texture_importer.py
+```
+
+- Verified AI texture fallback behavior:
+  - API-key image generation returns a built-in-image-generation handoff without making an external call.
+  - Local UV PNG renderer writes a valid PNG without Pillow.
+  - `get_static_mesh_uv_layout` exported `/Game/LevelPrototyping/Meshes/SM_Cube` UV0 to PNG through UE 5.7.
+  - Invalid mesh path returns a clear error.
+  - Texture2D import and BaseColor Material creation succeeded after routing `execute_python` through the next game-thread tick for Interchange-safe execution. Current tools also cover heuristic companion-map generation, texture-set import, PBR material creation, and optional apply steps.
+
+- Verified against `D:\Git\CubelessStylized` running on `D:\Git\UnrealEngine` UE 5.7.4:
+  - UnrealMCP socket responds on `127.0.0.1:55557`.
+  - PCG Python API exposes `PCGComponent` and `PCGGraph`.
+  - `list_pcg_assets` found 3 PCG-related `/Game` assets.
+  - Current editor level had 0 PCG components, so component refresh/debug tools had no live targets.
+
+## Build Caveat
+
+A full C++ build against `D:\Git\UnrealEngine` started rebuilding thousands of source-engine actions and was stopped because it was too expensive for a quick verification pass. Avoid triggering a full source-engine rebuild unless the user explicitly wants that.

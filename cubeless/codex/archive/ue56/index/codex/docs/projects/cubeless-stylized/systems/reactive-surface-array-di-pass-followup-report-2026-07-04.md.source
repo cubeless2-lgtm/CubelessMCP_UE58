@@ -1,0 +1,53 @@
+# Reactive Surface Array DI PASS Follow-up Report - 2026-07-04
+
+Role: Codex builder / follow-up ghost tester  
+Base commit: `d229527c`  
+Primary PASS source: `reactive-surface-array-di-gpu-pass-report-2026-07-04.md`  
+Evidence roots: `MCPGameProject/Saved/MCP/ReactiveGhost_ArrayX`, `ReactiveGhost5`, `ReactiveGhost7`
+
+## What Changed
+
+| Area | Result |
+|---|---|
+| `validation-plan.md` §10.3 | Withdrawn BP runtime Array DI No-Go. The valid recipe is now `User parameter -> Module input -> HLSL input`. Phase 0-2 still starts with fixed User params; 20명/64 slot arrays are Phase 3-valid. |
+| `validation-plan.md` §14 / §23.6 | Runtime source risk updated from engine-level failure to wiring-path risk. Hidden `User.*` direct wiring is forbidden for runtime DI. |
+| `reactive-surface-s3-s4-followup-report-2026-07-04.md` | Added top-level overturn note; original failed run preserved as historical evidence. |
+| `reactive-surface-claude-review-protocol.md` §5 | Added trap: do not use `user_parameter_inputs` alone for runtime DI inputs. |
+| `Python/tools/niagara_tools.py` | Added `rewire_niagara_custom_hlsl_input_to_module_parameter` MCP wrapper for the C++ bridge command. |
+
+## Verification
+
+| Check | Result | Evidence |
+|---|---|---|
+| `py_compile` | PASS | `unreal_mcp_server.py`, `tools/python_tools.py`, `tools/pcg_tools.py`, `tools/niagara_tools.py` |
+| server import | PASS | `server import ok` |
+| `ruff --select F821` | PASS | `All checks passed!` |
+| tool registration smoke | PASS | `registered tools: 333`, `niagara: 74` |
+| live bridge smoke | PASS | ping, actor list, structured error, batch, nested batch rejection |
+| ArrayX cleanup | PASS | `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_ArrayX` deleted/absent, dirty package count 0 |
+| Ghost temp root audit | PASS | ReactiveGhost5/6/7/8/ArrayX all absent, dirty package count 0 |
+
+## Smoke Status
+
+| Item | Verdict | Numeric evidence / source |
+|---|---|---|
+| S1 / T8 material V-flip | PASS | `ReactiveGhost7/reactive_surface_smoke_1_4_20260704.json`: `world_kind=game_world`, `R_count=25`, `G_count=25`, red centroid `[384,256]`, green centroid `[256,384]`. |
+| S2 / T9 signature isolation | PASS | `ReactiveGhost5/reactive_surface_remaining_smokes_20260704.json`: Ground R, Grass G, Water B each `nonzero_count=71`; channel sums Ground `[11144,0,0,9085]`, Grass `[0,11144,0,9085]`, Water `[0,0,11144,9085]`; fail items `[]`. |
+| S3 / Array DI positive path | PASS | `ReactiveGhost_ArrayX/array_di_crosscheck_results.json`: CPU getter count `3`, RT scan `nonzero=71`, channel sums `R=2836 / G=2491 / B=2735`, verdict `all_three_array_positions_stamped`. |
+| S4 / V4 deterministic reprojection | BLOCKED | Prior wrapper/compile smoke passed, but no dedicated `SamplePreviousGrid(Unit - DeltaUV)` stage with edge zero-fill readback has been authored yet. |
+| S5 / V5 temporal probe | BLOCKED | Frame-counter moving stamp and one-step previous-grid readback not authored yet. |
+| S6 / GPU numeric baseline | BLOCKED | No `ProfileGPU`/timing command or parseable GPU timing capture path exists yet. |
+
+## Validation Plan Impact
+
+| Section | Required state |
+|---|---|
+| §10.3 | Use 3-step chain for runtime DI. Phase 3 array source list is valid; hidden `User.*` direct route is invalid. |
+| §14 | Keep risk as medium wiring/tooling risk, not engine No-Go. |
+| §17 Material | T8 ghost material worldXY/UV orientation proof is PASS; production `MF_ReactiveUV` remains unchecked until real asset implementation. |
+| §23.6 | Runtime source input is GO with recipe; reprojection, temporal water probe, and GPU budget remain open gates. |
+
+## Unsure Judgments
+
+None for S1/S2/S3: all are backed by existing JSON numeric evidence.  
+S4/S5/S6 are explicitly BLOCKED, not FAIL, because the positive-path tests were not executed in this follow-up.

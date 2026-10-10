@@ -1,0 +1,17 @@
+{
+  "schema": "cubeless.offline_tests.v1",
+  "suite": "Actor runtime ownership/evidence/identity/dependency contracts",
+  "created_at": "2026-10-10T11:07:14.170400+00:00",
+  "passed": true,
+  "tests": 20,
+  "elapsed_seconds": 0.2029999999795109,
+  "engine_executed": false,
+  "project_prepared": false,
+  "output": "test_actor_class_tamper (test_actor_runtime_fixture.ActorRuntimeContractTests.test_actor_class_tamper) ... ok\ntest_actual_parent_evidence_rederives (test_actor_runtime_fixture.ActorRuntimeContractTests.test_actual_parent_evidence_rederives) ... ok\ntest_boolean_transform (test_actor_runtime_fixture.ActorRuntimeContractTests.test_boolean_transform) ... ok\ntest_default_map_tamper_rejected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_default_map_tamper_rejected) ... ok\ntest_deleted_camera_returns (test_actor_runtime_fixture.ActorRuntimeContractTests.test_deleted_camera_returns) ... ok\ntest_destination_path_tamper_rejected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_destination_path_tamper_rejected) ... ok\ntest_duplicate_actor (test_actor_runtime_fixture.ActorRuntimeContractTests.test_duplicate_actor) ... ok\ntest_expected_dependency_chain (test_actor_runtime_fixture.ActorRuntimeContractTests.test_expected_dependency_chain) ... ok\ntest_five_owned_and_protected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_five_owned_and_protected) ... ok\ntest_marker_and_exact_remap (test_actor_runtime_fixture.ActorRuntimeContractTests.test_marker_and_exact_remap) ... ok\ntest_marker_impostor (test_actor_runtime_fixture.ActorRuntimeContractTests.test_marker_impostor) ... ok\ntest_marker_spawn_transform (test_actor_runtime_fixture.ActorRuntimeContractTests.test_marker_spawn_transform) ... ok\ntest_mcp_reference (test_actor_runtime_fixture.ActorRuntimeContractTests.test_mcp_reference) ... ok\ntest_missing_actor (test_actor_runtime_fixture.ActorRuntimeContractTests.test_missing_actor) ... ok\ntest_missing_marker_hard_edge (test_actor_runtime_fixture.ActorRuntimeContractTests.test_missing_marker_hard_edge) ... ok\ntest_nonfinite_transform (test_actor_runtime_fixture.ActorRuntimeContractTests.test_nonfinite_transform) ... ok\ntest_old_map_dependency (test_actor_runtime_fixture.ActorRuntimeContractTests.test_old_map_dependency) ... ok\ntest_transform_tamper (test_actor_runtime_fixture.ActorRuntimeContractTests.test_transform_tamper) ... ok\ntest_unrelated_system_actor_permitted_raw (test_actor_runtime_fixture.ActorRuntimeContractTests.test_unrelated_system_actor_permitted_raw) ... ok\ntest_wrong_world_remap_rejected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_wrong_world_remap_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 20 tests in 0.213s\n\nOK\n",
+  "source_files": {
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\actor_runtime_manifest.py": "904e3220c068c2acf392c57b0333a37953f7c032090d5f23553fe1447dc94f2c",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\create_actor_runtime_fixture.py": "b1d2b9c7a3889e580439fbb17337647a2c347cbf3e666c026d60a666b68a743b",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_actor_runtime_fixture.py": "b5c3b1d31c2942fd4bc80c239e300852af285f44c54a75077b7910ee6940b68e",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\test_actor_runtime_fixture.py": "b46371a81c1683c1e68404bb06fd58820d0354230771c5c762e9bfb8d5025f56"
+  }
+}

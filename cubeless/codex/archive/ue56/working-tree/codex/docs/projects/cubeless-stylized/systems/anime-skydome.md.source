@@ -1,0 +1,398 @@
+# Anime SkyDome — 서브컬처풍 스카이돔 시스템 (/Game/Sky)
+
+2026-07-03, Claude Code(이에타/티브렛)가 three.js 레퍼런스(`Anime SkyDome` HTML, 커스텀 GLSL 스카이돔)를 UE 5.6.1 네이티브 콘텐츠로 컨버팅. 전 과정 UnrealMCP 브릿지(55561) 스크립트 authoring, 최종 콘텐츠는 MCP 무의존(감사 0건).
+
+## Assets
+
+| Asset | 내용 |
+|---|---|
+| `/Game/Sky/Materials/M_AnimeSky` | 마스터 머티리얼. Unlit / Opaque / TwoSided / **Is Sky**. 310 expressions, 커스텀 노드 6개(StarField, CloudField, SkyRamp5×3, FBM4×2 + moon용), 나머지 네이티브. 픽셀 ~1400 인스트럭션. 리니어 HDR emissive 출력(원본의 ACES/감마/디더는 엔진 톤매퍼가 담당하므로 제거). |
+| `/Game/Sky/Blueprints/BP_AnimeSkyDome` | 배치용 액터. SkySphere(엔진 `SM_SkySphere`, scale 400, CastShadow off) + SunLight(DirectionalLight) + SkyAmbient(SkyLight). 인스턴스 편집 가능 변수 ~90개(카테고리 01 Time of Day ~ 09 Render). ConstructionScript/BeginPlay → `UpdateSky`. |
+| `/Game/Sky/MaterialFunctions/MF_*` | SkyRamp5 / CelestialDisc / FBM / HorizonHaze. **마스터는 이들을 호출하지 않음**(아래 함정 참조) — 수동 편집용 레퍼런스로 유지. 각자 단독 컴파일 클린. |
+| `/Game/_MCP_Temp/L_SkyPreview` | QA 프리뷰 맵(스카이돔 + 바닥/구/큐브 + SceneCapture). 임시 경로, 커밋 금지. |
+
+## Runtime model
+
+- BP `UpdateSky`가 단일 소스: hour→TOD 가중치(sin 고도 + smoothstep 0.10/0.42), 해/달 방향(시간 링크 or Az/El), 구름/헤이즈 3색 블렌드, ~75개 MID 파라미터 push, 라이트 매칭(밤↔낮 주광 전환, 색/강도, `RecaptureSky`)까지 전부 수행. 머티리얼은 파라미터 소비만.
+- 애니메이션(별 반짝임, 구름 드리프트)은 셰이더 Time 노드 — 틱 불필요. Hour 변경 시에만 `UpdateSky` 재호출(에디터에선 디테일 수정 시 자동).
+- 컬러 변수는 **리니어 공간 Vector**(브릿지가 LinearColor 변수 타입 미지원). push 시 `Conv_VectorToLinearColor`.
+- 텍스처 슬롯(SunTexture/MoonTexture)을 채우면 자동으로 해당 천체가 텍스처 모드로 전환(UseTex = IsValid).
+- `Exposure` 기본 6.0: 8 lux 태양 기준 지면 휘도(~2 nit)와 밸런스. 프로젝트 노출 셋업에 따라 조정. 야간 자동노출 폭주는 PPV Min EV로 제한 권장.
+
+## 검증 (2026-07-03)
+
+- 머티리얼 compile_error_count 0 (MaterialStatistics 반환 = 셰이더맵 생성 확인), BP `compile_and_validate_blueprint` errors 0.
+- SceneCapture 비주얼 QA: 13h(낮 애니 블루 램프+위스프 구름), 18.1h(석양 그라데이션+태양 원반+글로우+라이트 적색 매칭), 0.5h(별밭+은하수+초승달 위상/크레이터/글로우, 별의 구름 차단). P2 경계 픽셀 스캔 연속성 확인.
+- MCP 의존성 감사: `/Game/Sky` 전 에셋 asset registry 의존성에서 UnrealMCP 토큰 0건. 외부 의존은 엔진 에셋 2종뿐.
+
+## 함정 (스크립트 authoring 시 — 재발 방지)
+
+1. **MaterialFunctionCall / FunctionInput 핀 바인딩이 스크립트 리빌드마다 불안정.** `connect_material_expressions`가 True를 반환해도 콜 노드 입력이 잘못/무 바인딩되는 사례가 빌드마다 다르게 재현됨(램프 하위 스탑 소실, 달 원반 소실 등). 파이썬으로 여러 입력을 가진 MF를 만들고 즉시 다른 머티리얼에서 콜하는 패턴은 피할 것. **해결: 마스터에 직접 인라인**(커스텀 노드 직결 파라미터 바인딩은 안정적).
+2. **커스텀 노드 HLSL에서 입력 파라미터로 배열 초기화(`float3 c[5]={C0,...}`) 금지** — 번역 결과가 세그먼트 경계 불연속을 만들었음. 스칼라 전개 코드로.
+3. `MaterialEditingLibrary.delete_all_material_expressions`는 **한 번에 전부 지우지 않음** — 0 될 때까지 루프.
+4. `unreal.Rotator(a,b,c)` 위치 인자는 **(roll, pitch, yaw)** 순서. 키워드 인자 필수.
+5. FunctionInput `preview_value`는 `Vector4f`(f!) 타입.
+6. If 노드 입력 핀명은 `'A > B'`, `'A == B'`, `'A < B'` (공백 포함).
+7. `add_blueprint_variable is_exposed`만으로는 인스턴스 편집 불가 — `set_blueprint_variable_metadata instance_editable=true` 후처리 필요.
+8. `set_blueprint_pin_default`의 값 파라미터는 `value`, `add_blueprint_event_node`는 `event_name`(예: ReceiveBeginPlay).
+9. SceneCapture LDR 캡처는 PP 노출 오버라이드를 무시하고 자체 적응 상태를 가짐 — 캡처간 픽셀 절대값 비교 금지, 이미지로 판단.
+
+## V2 (2026-07-04) — 커브 아틀라스 + LinearColor + 프리셋
+
+V1은 그대로 두고 별도 자산으로 추가. **V1과 룩 픽셀 단위 동일 검증** (3 TOD A/B 캡처 25포인트 diff 0; 낮의 초기 diff 41은 캡처 간 구름 드리프트였고 애니 정지 시 0).
+
+| Asset | 내용 |
+|---|---|
+| `/Game/Sky/Materials/M_AnimeSky_V2` | 램프를 `CA_SkyRamps` 커브 아틀라스 샘플(`CurveAtlasRowParameter` ×3 + pow 2.2 디코드)로 교체. 스탑 파라미터 30개 제거 (271 exprs). 감마 공간 저장이라 8비트 아틀라스에서도 야간 밴딩 없음 — 원본 HTML의 srgb2lin(LUT) 구조와 동일. |
+| `/Game/Sky/Curves/` | `Curve_SkyRamp_Day/Sunset/Night` (V1 램프 함수를 64키 덴스 베이크, 검증 오차 1e-06) + `CA_SkyRamps` (256px, sRGB off). 램프 색 편집은 이제 커브 에디터에서. |
+| `/Game/Sky/Blueprints/BP_AnimeSkyDome_V2` | 컬러 변수 15개가 **LinearColor 타입**(컬러 피커). 램프 스탑 변수 없음. `Preset` 슬롯 + **ApplyPreset / SavePreset** Call-in-Editor 이벤트(디테일 패널 버튼, 필드 60개 복사, Apply 후 UpdateSky 자동 호출). |
+| `/Game/Sky/Presets/BP_SkyPreset` | DataAsset 파생 프리셋 클래스(필드 60개 = V2 노출 변수 전체). `DA_SkyPreset_Default` 기본 인스턴스 포함. 프리셋 추가 = 콘텐츠 브라우저에서 DataAsset → BP_SkyPreset 생성. |
+
+검증: BP/머티리얼 컴파일 0에러, Apply(DA→BP→MID 즉시 반영)/Save(BP→DA) 라운드트립 통과, MCP 의존성 감사 0건. SavePreset 후 DA 저장은 수동(Ctrl+Shift+S) — 에디터 전용 저장 API를 런타임 BP에 넣지 않기 위한 의도적 선택.
+
+**V2 추가 함정:**
+- `create_blueprint parent_class="DataAsset"`는 조용히 **Actor로 폴백** — 생성 후 CDO 타입 확인 필수, 교정은 `BlueprintEditorLibrary.reparent_blueprint`.
+- LinearColor BP 변수는 브릿지 미지원 → python `BlueprintEditorLibrary.add_member_variable` + `EdGraphPinType.import_text('(PinCategory="struct",PinSubCategoryObject="/Script/CoreUObject.LinearColor")')` (set_editor_property는 EdGraphPinType에 노출 안 됨).
+- `DataAssetFactory.data_asset_class`는 python에서 BP 클래스를 거부(nativize 엄격) → 브릿지 `create_data_asset` 명령 사용.
+- 스크립트로 `AssetTools.create_asset`이 기존 이름과 충돌하면 **"Overwrite Existing Object" 모달로 에디터 전체(브릿지 포함)가 정지** — 다이얼로그에 WM_CLOSE 전송으로 복구(=취소, 비파괴). 복제 스크립트의 에셋 이름 하드코딩을 반드시 확인할 것.
+- 커브 키는 python 직접 편집 불가 → CSV 베이크 + `CSVImportFactory(ECSV_CURVE_LINEAR_COLOR)` + AssetImportTask(defer_to_ticker).
+
+## 원본 대비 의도적 차이
+
+- 램프 LUT 텍스처(256×3) → 5스탑 파라미터 램프(스탑 색/위치 전부 BP 노출). 4스탑 램프(낮/밤)는 최대 갭 중간에 보간 스탑 삽입해 5스탑화.
+- sRGB 공간 LUT 보간 → 리니어 공간 스탑 보간(더 정확, 미세한 색 차이는 스탑 색으로 보정 가능).
+- ACES+감마+디더 제거(엔진 톤매퍼), exposure만 유지.
+- 은하수/별 좌표는 y-up→z-up 스왑 반영.
+
+## V3 포터빌리티 복구 (2026-07-12)
+
+- `/Game/Sky/Blueprints/BP_AnimeSkyDome_V3`의 `ParentClass`와 `NativeParentClass`를 `/Script/Engine.Actor`로 복구했다. 완성 에셋은 프로젝트 런타임 모듈이나 UnrealMCP 없이 로드되어야 한다.
+- `UpdateSky`에 남아 있던 네이티브 `ApplySunXYOffset` 호출 2개는 엔진 기본 `KismetMathLibrary` 노드(`MakeRotFromX`, Forward/Right/Up 벡터, Vector multiply/add, Normalize)로 치환했다. 1,005개 방향/오프셋 샘플에서 이전 C++ 알고리즘 대비 최대 벡터 오차는 약 `2.01e-8`이었다.
+- C++ `PostEditChangeProperty`가 담당하던 LUT 라디오 동작은 `ApplyLUTTimeRadioButtons`를 BP-only 경로로 보강하고 `UpdateSky` 시작점에서 호출하도록 변경했다. 선택 상태가 안정적이면 수동 `Hour`를 보존하고, 새 체크 선택이나 전체 체크 해제 때만 프리셋을 동기화한다. 시간 폴백 비교 허용 오차는 기존 C++과 같은 `0.05`다.
+- 검증: BP compile error/warning `0/0`, `/Game/Sky` 금지 의존성 및 redirector `0`, 저장 바이너리의 `MCPGameProject`/`AnimeSkyDomeActor`/`ApplySunXYOffset` 토큰 `0`, C++ `Modules` 항목이 없는 임시 UE 5.6 콘텐츠 전용 프로젝트에서 V3 로드·컴파일·LUT 런타임 체크 통과.
+- `Source/MCPGameProject/{Public,Private}/AnimeSkyDomeActor.*` 레거시 클래스와 `MCPGameProject.cpp`의 V3 전용 툴팁 훅을 삭제했고, 전용 훅 때문에 추가됐던 `UnrealEd` 모듈 의존성도 제거했다. 향후 V3를 프로젝트 C++ 클래스로 재부모화하거나 프로젝트 C++ 함수 노드를 다시 직렬화하지 않는다. 사용자 요청에 따라 삭제 직후 재빌드·실행 검증은 보류했다.
+
+## Cloud Bake Sky 변형 (2026-07-31)
+
+베이킹용 스카이 자산은 V3 원본을 수정하지 않고 아래 프로젝트 소유 경로에 복제한다.
+
+| Asset | 내용 |
+|---|---|
+| `/Game/Study/SKY_Cloud/StaticCloudCard/SkyBake/BP_CloudBakeSkyDome` | 레벨에서 처음 발견한 `DirectionalLight`와 `SkyLight`를 자동 캐시한다. 시간/Hour 입력은 없고 태양 방향의 Z 고도만으로 Day/Twilight/Night 가중치를 만든다. 머티리얼은 `Atmosphere Sun Light` index 0을 직접 읽어 방향·지상 조도·태양 고도 팔레트를 실시간 갱신하며, `Refresh From Scene Lights`는 캐시와 비-Atmosphere/SkyLight 폴백 갱신용이다. |
+| `/Game/Study/SKY_Cloud/StaticCloudCard/SkyBake/Materials/M_CloudBakeSky` | Curve Atlas 의존성을 제거한 4키 램프 3종. 각 `LinearColor` 키는 `RGB=색`, `A=정규화 LUT 위치` 계약이다. 태양은 경계가 없는 inner/outer 이중 감쇠 screen-style 글로우를 쓰고, 달은 기존 각거리 기반 soft screen blend를 유지한다. |
+
+- 태양 고도 하나만으로는 동일 고도의 새벽과 황혼을 구별할 수 없으므로 둘은 `Twilight` 키맵을 공유한다.
+- 내부 `Cloud*` 변수명과 머티리얼 파라미터 키는 호환성을 위해 유지하고, 아티스트 UI 표시명과 카테고리만 `Cloud Wisp`로 바꾼다.
+- SCS에는 `SkySphere`만 유지한다. 원본의 로컬 `SunLight`/`SkyAmbient` 컴포넌트와 `OnlySkyDome` 호환 경로는 제거하며, 태양 방향은 레벨에서 처음 찾은 typed `SceneDirectionalLight`를 읽기 전용으로 사용한다. 외부 라이트 회전은 BP가 덮어쓰지 않는다.
+- 프리셋의 나머지 필드는 유지하지만 `Hour` 복사는 우회한다. 새 BP에서 시간/LUT 라디오 변수와 관련 함수, Curve Atlas 변수는 제거한다.
+- authoring runner: `scripts/build_cloud_bake_skydome_ue.py`
+- 정식 테스트 레벨은 `/Game/Study/SKY_Cloud/Sky_Cloud_Map`이다. `level` 단계를 실행하면 원점에 `CloudBakeSkyDome_Test`를 정확히 하나만 배치하고, 레벨의 첫 `DirectionalLight`/`SkyLight` 캐시를 검증한 뒤 맵을 저장한다.
+- 테스트 레벨의 기존 `SM_SkySphere` 액터는 삭제하지 않는다. 새 돔과 겹치지 않도록 해당 StaticMeshComponent의 에디터 가시성과 `Hidden In Game`만 비활성화/활성화하여 되돌릴 수 있게 보존한다.
+- 검증: BP compile error/warning `0/0`, material compile error `0`, 재시작 후 로드 성공, 첫 DirectionalLight/SkyLight 캐시 일치, 태양 고도 오차 약 `1.44e-6°`, 시간대 가중치 오차 `0`, UnrealMCP 의존성 `0`.
+
+### BP 파라미터 정리 (2026-08-02)
+
+- `SunAzimuth`, `SunElevation`, 쓰기 전용 `SolarElevationDeg`, 구형 내부
+  라이트 경로의 `MatchLight`, `SunLightIntensity`, `MoonLightIntensity`,
+  `WarmLightColor`, `NightLightColor`를 제거했다. 태양 고도와 TOD는
+  `RawSunDirection`에서 직접 계산하며 레벨 라이트를 덮어쓰지 않는다.
+- 구형 프리셋의 두 실행 체인에 섞여 있던 라이트 변수 setter 묶음은
+  앞뒤 실행 핀을 먼저 직접 연결한 뒤 삭제했다. 따라서 뒤쪽의 유효한
+  프리셋 필드는 계속 적용된다. 연결되지 않은 구형 `Hour` getter도
+  제거했다.
+- 실제 사용되는 내부 캐시·가중치·외부 라이트 참조는 런타임 구현
+  세부사항이므로 숨김 상태를 유지한다. 반대로 실제 아티스트 제어값은
+  모두 인스턴스 편집 가능 상태임을 검증했다. 카테고리 순서는 Scene
+  Lights, Preset, Card Cloud Remap, Sky LUT/Ramp, Sun/Moon/Light, Stars,
+  Cloud Wisp/Clouds, Haze, Render, Internal 순으로 정리한다.
+- `BP_StaticCloudCard`의 29개 변수는 모두 Construction Script에서 MID로
+  전달되며 이미 노출되어 있다. 두 승인 카드 자식은 로컬 변수를
+  선언하지 않으므로 카드 BP 쪽에서 삭제하거나 새로 노출한 변수는
+  없다.
+- 최종 검증은 SkyDome과 카드 부모/두 자식 모두 compile warning/error
+  `0/0`, 잔여 제거 대상 변수 `0`, UnrealMCP 런타임 의존성 `0`이다.
+  증거는 `output/cloud_card_cleanup_20260802/cleanup_manifest.json`에 둔다.
+
+### Sky/Card 안정화 계약 (2026-07-31)
+
+`BP_CloudBakeSkyDome`은
+`/Game/Study/SKY_Cloud/StaticCloudCard/SkyBake/Data/MPC_CloudBakeSky`의
+유일한 writer다. `PublishCloudEnvironment`는 Wisp 호환색, 카드 전용
+Day/Twilight/Night 원본 12색, 공통 remap shape, 전환 고도, 호환용 현재
+4색 캐시, 그리고 레벨에서 처음 발견한 외부
+`DirectionalLight`/`SkyLight` 상태를 publish한다. 정상적인
+`Atmosphere Sun Light` index 0 경로에서는 스카이와 카드 머티리얼이
+`SkyAtmosphereLightDirection`과
+`SkyAtmosphereLightIlluminanceOnGround`를 직접 읽는다. 카드
+머티리얼은 그 live 방향의 태양 고도로 12색을 즉시 TOD blend한다.
+개별 카드는 MPC를 덮어쓰지 않는다.
+
+| Type | MPC parameter | 계약 |
+|---|---|---|
+| Vector | `CB_CardRampDayColor0..3` | Day 카드 remap 원본 4색 |
+| Vector | `CB_CardRampTwilightColor0..3` | 새벽·황혼 공용 Twilight 카드 remap 원본 4색 |
+| Vector | `CB_CardRampNightColor0..3` | Night 카드 remap 원본 4색 |
+| Vector | `CB_CardRampColor0..3` | 마지막 SkyDome-resolved 현재 4색 캐시; live Atmosphere Sun Light가 무효일 때의 fallback 및 호환성 전용 |
+| Scalar | `CB_CardRampPosition1` | 내부 stop 1 위치, 기본 `0.32` |
+| Scalar | `CB_CardRampPosition2` | 내부 stop 2 위치, 기본 `0.72` |
+| Scalar | `CB_CardRampSoftness` | stop 전환 부드러움, 기본 `0.25`; segment 중앙의 과도한 대비를 줄이고 endpoint의 부드러운 전환은 유지 |
+| Scalar | `CB_CardRampTwilightFullElevationDeg` | 완전한 Twilight가 끝나고 Day/Night 전이가 시작되는 고도 크기, 기본 `2.0°` |
+| Scalar | `CB_CardRampDayFullElevationDeg` | 완전한 Day/Night에 도달하는 고도 크기, 기본 `30.0°` |
+| Scalar | `CB_CardBacklightStrength` | 카드 역광 전체 강도, 기본 `0.58`; `0`이면 R11 이전 radiance 경로로 정확히 복귀 |
+| Scalar | `CB_CardBacklightStartDot` | 시선-태양 forward lobe 시작 dot, 기본 `0.50` |
+| Scalar | `CB_CardBacklightPhasePower` | 태양 주위 역광 각도 집중도, 기본 `1.40` |
+| Scalar | `CB_CardBacklightDensityScale` | `LightData.B` Beer-Lambert 소광 계수, 기본 `3.20` |
+| Scalar | `CB_CardBacklightNormalFloor` | 저밀도 경사에만 적용하는 packed-normal 하한, 기본 `0.06` |
+| Scalar | `CB_CardSilverLiningStrength` | 넓은 투과광을 태양 방향 packed slope로 모으는 집중도(`0`=넓음, `1`=방향 집중), 기본 `0.20` |
+| Vector | `CB_CloudLitColor`, `CB_CloudShadowColor` | 기존 Sky Wisp 호환용 현재 명부/음영색; R10 카드 remap 입력이 아님 |
+| Vector | `CB_CloudLitDay/Twilight/Night` | 기존 Sky Wisp 호환용 시간대 명부색; R10에서 미변경 |
+| Vector | `CB_CloudShadowDay/Twilight/Night` | 기존 Sky Wisp 호환용 시간대 음영색; R10에서 미변경 |
+| Vector | `CB_TODWeights` | Day/Twilight/Night 블렌드 가중치 |
+| Vector | `CB_SunDirectionWS` | 외부 DirectionalLight에서 얻은 정규화된 world-space 태양 방향 |
+| Vector | `CB_SunFilterColor` | 외부 DirectionalLight의 필터색 |
+| Vector | `CB_SkyLightColor` | 외부 SkyLight 색 |
+| Scalar | `CB_SkyEmissionScale` | 스카이와 카드가 공유하는 emissive 배율 |
+| Scalar | `CB_SunIntensity` | 외부 DirectionalLight 강도 |
+| Scalar | `CB_SunTemperatureK` | 외부 DirectionalLight 색온도 |
+| Scalar | `CB_SunUseTemperature` | 색온도 사용 여부 |
+| Scalar | `CB_SkyLightIntensity` | 외부 SkyLight 강도 |
+| Scalar | `CB_StateValid` | 외부 주광을 정상 해석했는지 나타내는 fallback 게이트 |
+| Scalar | `CB_AtmosphereSunLightValid` | 캐시한 외부 DirectionalLight가 material-native index 0 경로에 유효한지 나타내는 게이트 |
+
+#### 카드 구름 live 4-stop 컬러 리맵 (`incubation-r10`, 2026-08-01)
+
+- SkyDome은 `CardRampDayColor0..3`, `CardRampTwilightColor0..3`,
+  `CardRampNightColor0..3`을 보유하고 원본 12색 모두를 MPC에 publish한다.
+  공통 위치/softness와 `CardRampTwilightFullElevationDeg=2.0`,
+  `CardRampDayFullElevationDeg=30.0`도 함께 보낸다. Twilight는
+  새벽·황혼 공용이다.
+- 카드 머티리얼은 `SkyAtmosphereLightDirection` index 0의 live 고도로
+  각 stop의 Day/Twilight/Night 원본색을 즉시 blend한다. 따라서 외부
+  라이트를 움직여도 BP Tick이나 `Refresh From Scene Lights` 없이 카드
+  색이 같은 프레임의 머티리얼 평가에서 따라간다.
+- `CB_CardRampColor0..3`은 R9 호환과 invalid-live fallback을 위한 마지막
+  resolved 현재색 캐시로만 유지한다. 정상 live 경로에서는 원본 12색의
+  머티리얼 blend가 이 캐시보다 우선한다.
+
+#### 저고도 Twilight 경사 안정화 (`incubation-r15`, 2026-08-02)
+
+- 공통 `CardRampSoftness` 기본값을 `0.55`에서 `0.25`로 낮춘다. 이 값은
+  리맵을 날카롭게 자르는 threshold가 아니라 linear segment와 smoothstep
+  segment의 혼합량이므로, 낮출수록 각 segment 중앙의 기울기 증폭이 줄어든다.
+- Twilight 내부 stop은 endpoint 선형 보간점 쪽으로 35% 이동한
+  `Color1=(0.446883, 0.171332, 0.293696)`와
+  `Color2=(0.805010, 0.421387, 0.352860)`를 기본값으로 사용한다.
+  `Color0`, `Color3`, 위치 `0.32/0.72`는 유지한다.
+- 이 조정은 카드의 Beauty/alpha/packed relight 데이터를 바꾸지 않는다.
+  저고도에서 Beauty의 작은 밝기 shoulder가 반복적인 보라-복숭아색 띠로
+  확대되는 현상만 완화한다.
+- 모든 카드 BP는 `UseCustomCloudRamp=0`이 기본이며 SkyDome 팔레트를
+  따른다. `1`로 바꾸면 live/fallback 선택이 끝난 뒤 해당 액터의 최종
+  `CustomCloudRampColor0..3`만 대체한다. 커스텀 시간대별 12색 세트를
+  만들지는 않는다. 위치, softness, 방향, 조도 및 나머지 relight는
+  계속 공통 계약을 따른다.
+- 컬러 좌표는 기존 Beauty 명도와 `StaticBasisRGBA`/`LightDataRGBA`의
+  relight 결과에서 계산한다. 따라서 이 변경만으로 Beauty, basis,
+  light-data를 다시 베이크하지 않는다.
+- 컬러 remap은 RGB에만 적용한다. 기존 coverage/density alpha, 조밀한
+  내부의 불투명도, 저밀도 하단 haze, 그리고 정면에서 보이는 넓은
+  최하단 외곽만 부드럽게 하는 규칙을 유지한다. 상단과 옆 실루엣은
+  선명하게 보존하고 premultiplied edge의 컬러 블리딩 방지도 유지한다.
+- Sky Wisp는 R10의 명시적 제외 대상이다. 기존 `Cloud*` 변수,
+  머티리얼 파라미터 및 Wisp 그래프를 변경하거나 카드 팔레트로
+  재사용하지 않는다.
+
+#### 카드 구름 방향성 역광 (`incubation-r11`, 2026-08-01)
+
+- SkyDome은 `02 Card Cloud Remap|Backlight`에 여섯 변수를 노출하고
+  동일한 `CB_*` scalar를 `MPC_CloudBakeSky`에 publish한다. 모든 카드 BP는
+  이 값을 소비하며 별도의 역광 writer를 만들지 않는다.
+- `M_StaticCloudCard`는 live Atmosphere Sun Light 0과 `ViewDirectionWS`의
+  dot으로 forward-scattering 위상을 만든다. `LightData.B`는 밀도 소광,
+  `LightData.RG`는 태양 방향의 내부 경사·실버라이닝, `Beauty.A`는 기존
+  실루엣 안쪽 gate로만 사용한다.
+- 조밀한 중심은 어둡게 유지하고 낮은 밀도 mantle과 태양 쪽 경사에만
+  밝은 산란을 모은다. 유한한 exponential response와 4-stop ramp 기반
+  peak를 사용하므로 전체 내부를 뜨게 하거나 무한 가산 네온 외곽선을
+  만들지 않는다.
+- `CardBacklightStrength=0`이면 packed-normal floor와 radiance response가
+  모두 0이 되어 R11 이전 결과로 정확히 복귀한다. Opacity 및 최종
+  premultiply 경로는 변경하지 않으므로 하단 투명도, 상·측면 실루엣,
+  알파 컬러 블리딩 방지 규칙은 그대로다.
+- 기존 Beauty/StaticBasis/LightData 패킹만 사용하므로 재베이크가
+  필요하지 않다. Sky Wisp도 R11 제외 대상으로 그대로 유지한다.
+- 동일 고도에서 view/sun 각 `15°`, `90°`, `165°`를 캡처해 `15°`에서만
+  얇은 외곽과 내부 경사 산란이 살아나는 것을 확인했다. 캡처 전후
+  라이트 transform·dirty package 집합·맵 디스크 hash는 동일했다.
+
+#### 자연스러운 역광·태양 글로우 (`incubation-r12`, 2026-08-01)
+
+- 역광은 조밀한 중심의 작은 shade-floor/비례 lift와 semi-alpha·저밀도
+  mantle의 별도 비례 lift로 분리했다. 두 경로 모두 4-stop 팔레트와
+  내부 명암 계층을 보존하며 opacity에는 관여하지 않는다.
+- `CardSilverLiningStrength` 기본값은 `0.20`이다. 이 값은 밝기가 아니라
+  packed slope 쪽으로 산란을 모으는 집중도이므로, 낮은 기본값이 평평한
+  packed normal을 가진 Rabbit과 원경 카드에도 넓고 부드러운 투과를
+  남긴다. 승인된 `15°` 역광의 정면광 대비 median은 `86.15%`였다.
+- 태양 글로우는 반경 끝에서 0이 되는 `smoothstep` 대신 inner
+  Gaussian-like lobe와 outer exponential tail을 합성한다. Radius는 감쇠
+  스케일일 뿐 원형 cutoff가 아니며, 외곽 lobe는 약하게 탈색되어 하늘에
+  녹는다. screen-style headroom lift이므로 HDR 하늘을 어둡게 만들지 않는다.
+- 달 글로우, Sky Wisp, 카드 알파·premultiply 및 기존 패킹 텍스처는
+  변경하지 않는다.
+
+#### 역광 본체 대기 그림자 floor (`incubation-r13`, 2026-08-01)
+
+- 실제 역광 구름처럼 본체 암부는 비교적 일정한 대기 그림자 톤을
+  유지하고, 태양 쪽 얇은 영역에만 별도의 투과·림 응답이 더해져야 한다.
+  packed basis/normal이 후면광에서 낮아져도 본체가 일반 그림자보다 더
+  검게 무너지지 않도록 4-stop remap 직전에 shade-coordinate floor를 둔다.
+- floor는 `CardRampPosition1 * 0.46`이며 Beauty coverage `0.18..0.55`,
+  packed density `0.22..0.62`, backlight phase와 Strength로 게이트한다.
+  저밀도 외곽은 제외하고 이미 더 밝은 shade 값은 `max`로 보존한다.
+- 별도 회색이나 새 변수를 쓰지 않으므로 Day/Twilight/Night 및 카드별
+  커스텀 4색 팔레트를 그대로 따른다. floor 이후 기존 forward scatter,
+  dense-core recovery, semi-alpha rim이 단조 증가 레이어로만 더해진다.
+- 고정 Wide 카드에서 `15°-90°` p10은 `-0.77Y`, p25는 `-1.44Y`, core는
+  `-0.18Y`로 일반 그림자와 같은 최저 톤 대역에 들어왔다. 내부 span은
+  `13.98Y`를 유지해 형태를 평평하게 만들지 않았다.
+- `CardBacklightStrength=0` 정확 롤백, opacity·실루엣·premultiply,
+  패킹 텍스처와 Sky Wisp 불변 계약은 유지한다.
+
+#### Hybrid Beauty/Density 카드 후보 (`incubation-r14`, 2026-08-02)
+
+- 기존 승인 자산을 바꾸지 않고
+  `/Game/Study/SKY_Cloud/StaticCloudCard/HybridBeautyDensityR14`에 별도
+  마스터, Wide/Rabbit MI와 자식 BP를 둔다. 기존 세 장의 패킹 텍스처를
+  그대로 사용하며 CloudRef식 넓은 형태·깊은 포켓 계층만 Beauty 명도에서
+  보강한다.
+- 검수 기본값은 `HybridPackedInfluence=0.74`,
+  `HybridBroadFormStrength=0.05`, `HybridDeepFormStrength=0.04`다. packed
+  relight 이동은 `+/-0.12`로 제한하며 최종 컬러는 기존 SkyDome의 실시간
+  Day/Twilight/Night 4-stop remap이 계속 결정한다.
+- 밀도 opacity는 정규화 Beer-Lambert와 `DenseCoreMaxOpacity=0.94`를
+  사용한다. `OpacityScale=1`, `DensityOpacityBlend=1`,
+  `DensityOpticalDepthScale=6`을 MI뿐 아니라 자식 BP CDO에도 고정해
+  Construction Script 이후의 실제 MID도 같은 계약을 사용한다. 외곽과
+  저밀도 하단은 투명도를 유지하고 조밀한 내부도 1.0 불투명 plateau를
+  만들지 않는다.
+- `UseHybridBeautyDensity`는 Static Switch가 아닌 scalar 0/1 selector다.
+  `0`은 R14 이전 카드 색/opacity 경로, `1`은 후보 경로다. Wisp와 태양
+  glow, 스카이 팔레트 publish 계약은 변경하지 않는다.
+- 후보 material/BP compile error는 `0`, 원본 세 텍스처 identity 일치,
+  UnrealMCP 런타임 의존성은 `0`이다. 4개 태양 상태의 A/B 및 4K
+  alpha/density/mip QA는 통과했지만, 승인 자산 교체와 패킹 규격 승격은
+  사용자 시각 검수 뒤에만 한다.
+
+#### Cloud Wisp Legacy/HQ 정적 품질 선택 (`incubation-wisp-hq`, 2026-08-01, beauty pass 2026-08-02)
+
+- `M_CloudBakeSky`의 기존 Wisp 출력 직후에
+  `UseHighQualityCloudWisp` Static Switch를 둔다. `False`는 기존
+  `MaterialExpressionCustom_0`, `True`는 HQ fake-volume Custom을
+  선택한다. 마스터 기본값은 안전한 `False(Legacy)`이며 동적 분기가
+  아니다. 위 R10~R13의 “Sky Wisp 불변”은 각 카드/태양 패스의 범위를
+  뜻하며, 이 독립 Wisp 업그레이드는 그 이후 별도 변경이다.
+- 컴파일된 두 퍼뮤테이션은
+  `/Game/Study/SKY_Cloud/StaticCloudCard/SkyBake/Materials/MI_CloudBakeSky_WispLegacy`와
+  `/Game/Study/SKY_Cloud/StaticCloudCard/SkyBake/Materials/MI_CloudBakeSky_WispHQ`에
+  저장한다. `BP_CloudBakeSkyDome.UseHighQualityCloudWisp`의 기본값은
+  `True`다. BP는 선택한 MIC를 MID Source로 사용하며,
+  `AppliedWispMaterialTemplate`이 달라질 때만 MID를 다시 만든다. Static
+  Switch는 MID scalar로 바꾸지 않는다.
+- HQ 출력의 R은 Legacy alpha와 정확히 동일하다. 3개 value-noise를 단순
+  octave 합산하지 않고 바람 공간의 broad/mid/detail density sheet로
+  분리하고, 태양 쪽 sheet부터 카메라 쪽 sheet까지 누적 Beer-Lambert
+  투과를 계산해 G 내부 광량에만 적용한다. analytic density gradient 가짜
+  노멀, bounded forward scattering, view/depth parallax와 wind shear도 G
+  내부에서만 동작한다. 따라서 큰 저주파 얼룩이나 erosion이 외곽을
+  밀어내지 않으며 Legacy와 동일한 실루엣에서 내부 밀도 계층만 보강한다.
+- `SunDirWS`, `ViewDirWS`, `DriftDir`은 길이 검사형 safe-normalize를 쓰고,
+  live/cached 태양 선택은 NaN 전파가 가능한 `lerp` 대신 유효 경로를 먼저
+  고른다. HQ 최종 출력이 비정상이면 Legacy alpha/light로 폴백하여
+  스카이돔 전체가 Default Material로 대체되는 실패를 막는다.
+- BP는 `07 Cloud Wisp|High Quality`에 다음 기본값을 노출한다:
+  `Depth=0.42`, `Density=1.10`, `Extinction=1.55`,
+  `ShadowDistance=0.24`, `Erosion=0.52`, `WindShear=0.36`,
+  `NormalStrength=1.18`, `ForwardG=0.52`,
+  `ForwardStrength=0.78`, `AmbientFloor=0.34`.
+- 기존 Legacy Custom은 GUID
+  `ACD741FC44A944BCDDABF3AEBB6E3A2B`, HLSL SHA-256
+  `bf6382747214addf1f149c2279e865bb0195a825808347f671cb9cb90cf9457a`로
+  보존한다. 현재 검증 플랫폼의 Legacy/HQ 통계는 각각 VS `156/156`,
+  PS `1472/1731`, sampler `2/2`, pixel texture sample `5/5`다. HQ 증분은
+  PS `+259`(약 `+17.6%`),
+  추가 value-noise 3회이며 정적 선택 비용만 지불한다.
+- 중요한 검증 규칙: Legacy-default 마스터의 compile error `0`만으로 HQ
+  퍼뮤테이션을 통과 처리하지 않는다. 마스터를 컴파일하면 자식 shader
+  map이 무효화될 수 있으므로 두 MIC에
+  `set_material_instance_static_switch_parameter_value(...,
+  update_material_instance=True)`와 `update_material_instance`를 실행하고,
+  각각의 vertex/pixel instruction이 `0`보다 큰지 확인한다. 초기 HQ 검은
+  하늘은 이 갱신 누락으로 재현됐으며 HLSL NaN이 원인이 아니었다.
+- authoring/검증 runner는
+  `scripts/upgrade_cloud_bake_wisp_hq_ue.py`다. `verify`는 Legacy 해시,
+  Static Switch 연결·값, HQ 소스 해시, 두 shader map, BP compile
+  error/warning `0/0`, HQ MID setter, UnrealMCP 의존성 `0`을 함께 검사한다.
+  테스트 레벨 `/Game/Study/SKY_Cloud/Sky_Cloud_Map`은 HQ를 선택한 상태로
+  저장되며 실제 MID 부모도 `MI_CloudBakeSky_WispHQ`여야 한다.
+- 고정 시간 A/B 검수는 `CloudSpeed=0`과 동일 bookmark/exposure에서 한다.
+  최종 기본 레벨 캡처는
+  `output/cloud_wisp_hq_static_switch_20260801/final_hq_beauty_bookmark1.png`,
+  사용자 표시용 alpha-255 사본은
+  `final_hq_beauty_bookmark1_review_opaque.png`다. 검수 후 레벨은 기존
+  `CloudSpeed=0.4264`, `Coverage=0.4664`, `Opacity=0.7692`,
+  `CloudContrast=0.3328`, HQ 선택 상태로 복구해 저장한다.
+
+- 레벨 `PostProcessVolume`과 촬영 `CameraActor` 양쪽 모두
+  `Auto Exposure Method=Manual`, physical camera exposure off,
+  exposure bias `-0.5`를 사용한다. 이는 밝은 스카이의 계조를 반 스톱
+  보호하도록 실제 비교 렌더에서 정한 프로젝트 기준값이다.
+  카메라의 로컬 post-process override가
+  PPV를 다시 덮을 수 있으므로 둘 중 하나만 설정해서는 안 된다.
+- BP의 기존 `Exposure` 변수는 카메라 노출이 아니라
+  `Sky Emission Scale`로 표시하며 기본값은 `1.0`이다.
+- `Atmosphere Sun Light` index 0의 방향과 조도는 머티리얼 표현식이
+  직접 읽으므로 카드 relight와 TOD 색은 별도 BP Tick 없이 반응한다.
+  외부 태양의 회전 변경만으로는 `RefreshFromSceneLights`
+  (`Refresh From Scene Lights`)를 호출하지 않는다. Refresh는 첫 scene
+  light 재탐색, 캐시 갱신, 비-Atmosphere/invalid-live fallback 갱신용이다.
+  Construction Script와 BeginPlay가 초기 캐시를 만든다.
+- 카드 태양 고도 블렌드는 `sin(elevation)`을 사용한다. 기본값에서
+  `+2°..+30°`는 Twilight→Day, `-2°..-30°`는 Twilight→Night의 대칭
+  smoothstep 구간이다. `+30°`에서 완전한 Day, `-30°`에서 완전한 Night가
+  되며 지평선 부근 `-2°..+2°`는 완전한 Twilight다.
+- `SkySphere`는 scale `400,400,400`, `Cast Shadow=false`를 유지한다.
+- `/Game/Study/SKY_Cloud/StaticCloudCard/M_StaticCloudCard`는
+  Unlit/AlphaComposite를 유지한다. 실시간 태양 방향을 World→Tangent로
+  변환한 뒤 LightData의 이미지 행 방향과 맞추기 위해 tangent Y를
+  반전한다. `StaticBasisRGBA`의 R/G/B는 각각 upper-right,
+  upper-left, overhead 로브로 동적 가중하며, packed normal은
+  수평 XY만이 아니라 Z 고도까지 포함한 full-3D 조명 응답에 사용한다.
+- 활성 relight 기본값은 `AmbientStrength=0.85`,
+  `StaticBasisStrength=0.45`, `LightDataStrength=0.25`,
+  `NormalLightStrength=0.75`다. 공통 sky-link 기본값은
+  `SceneLightingBlend=1.0`, `SkyPaletteInfluence=0.65`,
+  `SceneIntensityScale=1.0`, `SunIntensityReference=10.0`,
+  `SkyLightInfluence=0.35`, `SceneBasisInfluence=0.90`,
+  `SceneDirectionInfluence=0.70`이다.
+- 머티리얼 연결은 `M_StaticCloudCard`에서 모든 자식 MI로 상속되고,
+  액터 기본값은 `BP_StaticCloudCard`에서 모든 자식 BP로 상속된다.
+  다만 이미 저장된 자식 BP는 부모 변경만으로 이전 CDO override가
+  사라지지 않으므로 모든 자식 BP CDO를 `AmbientStrength=0.85`,
+  `StaticBasisStrength=0.45`, `LightDataStrength=0.25`,
+  `NormalLightStrength=0.75`로 명시적으로 정규화한다. 기존 자식의
+  아트용 tint/alpha/texture/layout override는 보존한다.
+- 이 연결에서 UnrealMCP는 authoring transport일 뿐이다. 저장된 BP,
+  material, MPC, map에는 UnrealMCP 런타임 의존성을 남기지 않는다.
+
+재구축·정규화·검증·캡처를 한 번에 다시 실행:
+
+```powershell
+python .\scripts\stabilize_cloud_bake_sky_ue.py all --port 55561
+```
+
+전체 재구축 없이 현재 자산을 컴파일·재검증:
+
+```powershell
+python .\scripts\stabilize_cloud_bake_sky_ue.py verify --port 55561
+```

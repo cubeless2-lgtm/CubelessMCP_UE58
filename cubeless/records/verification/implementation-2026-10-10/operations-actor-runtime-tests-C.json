@@ -1,0 +1,19 @@
+{
+  "schema": "cubeless.offline_tests.v1",
+  "passed": true,
+  "tests": 21,
+  "elapsed_seconds": 0.21899999998277053,
+  "engine_executed": false,
+  "output": "test_actor_class_tamper (test_actor_runtime_fixture.ActorRuntimeContractTests.test_actor_class_tamper) ... ok\ntest_actual_parent_evidence_rederives (test_actor_runtime_fixture.ActorRuntimeContractTests.test_actual_parent_evidence_rederives) ... ok\ntest_boolean_transform (test_actor_runtime_fixture.ActorRuntimeContractTests.test_boolean_transform) ... ok\ntest_default_map_tamper_rejected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_default_map_tamper_rejected) ... ok\ntest_deleted_camera_returns (test_actor_runtime_fixture.ActorRuntimeContractTests.test_deleted_camera_returns) ... ok\ntest_destination_path_tamper_rejected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_destination_path_tamper_rejected) ... ok\ntest_duplicate_actor (test_actor_runtime_fixture.ActorRuntimeContractTests.test_duplicate_actor) ... ok\ntest_engine_script_terminal_not_guaranteed (test_actor_runtime_fixture.ActorRuntimeContractTests.test_engine_script_terminal_not_guaranteed) ... ok\ntest_expected_dependency_chain (test_actor_runtime_fixture.ActorRuntimeContractTests.test_expected_dependency_chain) ... ok\ntest_five_owned_and_protected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_five_owned_and_protected) ... ok\ntest_marker_and_exact_remap (test_actor_runtime_fixture.ActorRuntimeContractTests.test_marker_and_exact_remap) ... ok\ntest_marker_impostor (test_actor_runtime_fixture.ActorRuntimeContractTests.test_marker_impostor) ... ok\ntest_marker_spawn_transform (test_actor_runtime_fixture.ActorRuntimeContractTests.test_marker_spawn_transform) ... ok\ntest_mcp_reference (test_actor_runtime_fixture.ActorRuntimeContractTests.test_mcp_reference) ... ok\ntest_missing_actor (test_actor_runtime_fixture.ActorRuntimeContractTests.test_missing_actor) ... ok\ntest_missing_marker_hard_edge (test_actor_runtime_fixture.ActorRuntimeContractTests.test_missing_marker_hard_edge) ... ok\ntest_nonfinite_transform (test_actor_runtime_fixture.ActorRuntimeContractTests.test_nonfinite_transform) ... ok\ntest_old_map_dependency (test_actor_runtime_fixture.ActorRuntimeContractTests.test_old_map_dependency) ... ok\ntest_transform_tamper (test_actor_runtime_fixture.ActorRuntimeContractTests.test_transform_tamper) ... ok\ntest_unrelated_system_actor_permitted_raw (test_actor_runtime_fixture.ActorRuntimeContractTests.test_unrelated_system_actor_permitted_raw) ... ok\ntest_wrong_world_remap_rejected (test_actor_runtime_fixture.ActorRuntimeContractTests.test_wrong_world_remap_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 21 tests in 0.213s\n\nOK\n",
+  "correction": "AssetRegistry script terminals do not exhaustively enumerate native classes; Actor/marker Blueprint identity remains independently required.",
+  "files": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_actor_runtime_fixture.py",
+      "sha256": "2875065d789ba5c53022cc54671bd78537633822213bcc8a885ac2dd6a275178"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\test_actor_runtime_fixture.py",
+      "sha256": "fca906403a19cccfa0dc26f00058ae582ac5f49991a00ce05b3c1e9cff48499b"
+    }
+  ]
+}

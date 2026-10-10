@@ -1,0 +1,226 @@
+{
+  "schema": "cubeless_partial_material_reconciliation_v1",
+  "parent": "material-author-E.json",
+  "failed_stage": "set_collection_defaults",
+  "replayed_original_mutation": false,
+  "success": true,
+  "stage": "complete",
+  "compile": {
+    "requested": false
+  },
+  "save": {
+    "requested": true,
+    "attempted": true,
+    "saved": true
+  },
+  "observations": [
+    {
+      "toolset": "CubelessMCPUE58Editor.CubelessNativeToolset",
+      "tool": "GetEditorDiagnostics",
+      "arguments": null,
+      "mutation": false,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 64188,
+        "instance_id": "26FA6635-4D37-893F-ECD0-6FB3042D5145",
+        "session_id": "B416DC0A-C626-4BCF-8000-00000000DB00",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [
+          "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/M_Contract",
+          "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/MPC_Contract"
+        ],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.2561993896961212
+      }
+    },
+    {
+      "toolset": "editor_toolset.toolsets.object.ObjectTools",
+      "tool": "get_properties",
+      "arguments": {
+        "instance": {
+          "refPath": "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/MPC_Contract.MPC_Contract"
+        },
+        "properties": [
+          "ScalarParameters",
+          "VectorParameters"
+        ]
+      },
+      "mutation": false,
+      "result": {
+        "ScalarParameters": [],
+        "VectorParameters": []
+      }
+    },
+    {
+      "toolset": "editor_toolset.toolsets.asset.AssetTools",
+      "tool": "save_assets",
+      "arguments": {
+        "asset_paths": [
+          "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/M_Contract",
+          "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/MPC_Contract"
+        ]
+      },
+      "mutation": true,
+      "result": true
+    },
+    {
+      "toolset": "CubelessMCPUE58Editor.CubelessNativeToolset",
+      "tool": "GetEditorDiagnostics",
+      "arguments": null,
+      "mutation": false,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 64188,
+        "instance_id": "26FA6635-4D37-893F-ECD0-6FB3042D5145",
+        "session_id": "B416DC0A-C626-4BCF-8000-00000000DB00",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.22910162806510925
+      }
+    }
+  ],
+  "collection_properties_before_preservation": {
+    "ScalarParameters": [],
+    "VectorParameters": []
+  },
+  "files": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_5c19c3e9c2454d8b876693125f2c7525\\M_Contract.uasset",
+      "sha256": "bbbf7de670d7370f6b66d504d35d4ce21004b75aee926967221f199a83b4087c",
+      "size": 2176
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_5c19c3e9c2454d8b876693125f2c7525\\MPC_Contract.uasset",
+      "sha256": "c2bb446da37d747ec55271249eb4156be8309b8a255e19bdb595c42774cfe2b3",
+      "size": 1234
+    }
+  ],
+  "meaning": "created fixture assets preserved only; original pipeline E remains failed and no setting operation was retried",
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016462
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 0.033314
+    },
+    {
+      "method": "tools/call",
+      "request_id": 2,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.034165
+    },
+    {
+      "method": "tools/call",
+      "request_id": 3,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.015066
+    },
+    {
+      "method": "tools/call",
+      "request_id": 4,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.046937
+    },
+    {
+      "method": "tools/call",
+      "request_id": 5,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.003184
+    }
+  ]
+}

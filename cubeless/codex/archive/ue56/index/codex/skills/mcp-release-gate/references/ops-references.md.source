@@ -1,0 +1,22 @@
+# Ops References
+
+All repository paths below start at the repository root. Complete the repository bootstrap once per session; reuse already-read, unchanged guidance.
+
+## Canonical Sources
+
+- `codex/docs/policies/cost-control.md` for verification tiers, promotion, independent review, and evidence reuse.
+- `codex/projects/UnrealMCP5_6_1.md` for the verification entry point and affected build/live requirements.
+- `codex/docs/policies/git-repositories.md` before Git operations for ownership, authorization, synchronization, and commit labels.
+- `codex/docs/policies/approvals.md` when interpreting same-task approval scope.
+
+## Read When Relevant
+
+- `codex/docs/policies/safety-matrix.md` when a risk signal matches.
+- `codex/agents/mcp-release-verifier.md` for implementation promotion.
+- `codex/docs/workflows/component-reading-router.md` for the affected component's required checks.
+- `codex/docs/policies/workspace-portability.md` when resolving engine, executable, workspace, or bridge paths.
+- `.github/workflows/verify.yml` when inspecting or changing CI parity.
+- `codex/docs/workflows/unreal-cpp-review.md` for MCP C++ review.
+- `codex/docs/workflows/unreal-asset-authoring.md` for asset mutations or promotion.
+- `codex/docs/workflows/map-and-preview-safety.md` for maps, previews, or dirty-package transitions.
+- `Docs/Tools/batch_tools.md` when bridge work uses `execute_batch`.

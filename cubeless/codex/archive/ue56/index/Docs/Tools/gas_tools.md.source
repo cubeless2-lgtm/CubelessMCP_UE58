@@ -1,0 +1,109 @@
+# UE 5.6.1 GAS Tools
+
+This is a deliberately small Gameplay Ability System authoring surface for
+Unreal Engine 5.6.1. It creates and edits standard GameplayAbilities content;
+UnrealMCP remains an editor authoring bridge and is not serialized into the
+finished assets.
+
+## Requirement
+
+- The base `UnrealMCP` plugin does not enable `GameplayAbilities` for the host
+  project. Enable Unreal Engine 5.6's `GameplayAbilities` plugin explicitly in
+  the target project and restart the editor before using these tools. GAS does
+  not require a separate UnrealMCP companion plugin.
+- The Python tools remain registered while `GameplayAbilities` is off, but each
+  native route returns `dependency_plugin_disabled` with `required_plugins`
+  and `disabled_plugins`. This is a pre-dispatch failure with
+  `mutation_attempted=false`, `mutation_performed=false`, and `changed=false`;
+  enable the plugin and restart instead of retrying the mutation.
+- The current implementation uses only APIs and reflected types present in the
+  installed UE 5.6 engine. It has no UE 5.7+ fallback or version branch.
+- Generated assets reference standard `/Script/GameplayAbilities` classes and
+  continue to load without the UnrealMCP plugin. In-memory and persisted audits
+  reject `/Script/UnrealMCP`, `/UnrealMCP`, or another MCP-only reference before
+  a result is promoted as successful.
+
+## Tools
+
+### `inspect_gas_blueprint`
+
+Read a Blueprint's GAS parent type, AbilitySystem components, and
+`FGameplayAttributeData` properties.
+
+Parameters:
+
+- `blueprint_path`: Blueprint package or object path under `/Game`.
+
+### `create_gameplay_ability_blueprint`
+
+Create a UE 5.6 Gameplay Ability Blueprint using the engine's specialized
+GameplayAbilities Blueprint factory.
+
+### `create_gameplay_effect_blueprint`
+
+Create a Blueprint derived from `UGameplayEffect`.
+
+### `create_attribute_set_blueprint`
+
+Create a Blueprint derived from `UAttributeSet`.
+
+The three creation tools accept:
+
+- `asset_name`: Unreal identifier used for the new asset.
+- `package_path`: `/Game` directory. Defaults respectively to
+  `/Game/GAS/Abilities`, `/Game/GAS/Effects`, and `/Game/GAS/Attributes`.
+- A compatible existing Blueprint is returned unchanged. A conflicting asset
+  is rejected; this minimal surface never deletes or replaces an asset.
+- `save`: Save after verification. Defaults to `true`.
+
+### `add_ability_system_component_to_blueprint`
+
+Add the standard
+`/Script/GameplayAbilities.AbilitySystemComponent` class to an Actor-based
+Blueprint's Simple Construction Script.
+
+Parameters:
+
+- `blueprint_path`: Actor Blueprint under `/Game`.
+- `component_name`: Defaults to `AbilitySystem`.
+- Any existing ASC, including one inherited from a parent Blueprint or native
+  class, makes the operation an unchanged idempotent success. A different
+  component or property using the requested name is rejected.
+- `save`: Defaults to `true`.
+
+### `add_gameplay_attribute_to_attribute_set`
+
+Add an `FGameplayAttributeData` member to an AttributeSet Blueprint, compile
+it, and verify the generated property type.
+
+Parameters:
+
+- `attribute_set_path`: AttributeSet Blueprint under `/Game`.
+- `attribute_name`: Unreal identifier for the member.
+- `category`: Defaults to `GAS|Attributes`.
+- An existing attribute with the expected type is returned unchanged. A
+  different local variable or inherited property using the name is rejected;
+  this tool never removes or replaces a variable.
+- `save`: Defaults to `true`.
+
+## Native Bridge Commands
+
+The public MCP names above map to these native routes:
+
+- `gas_inspect_blueprint`
+- `gas_create_gameplay_ability_blueprint`
+- `gas_create_gameplay_effect_blueprint`
+- `gas_create_attribute_set_blueprint`
+- `gas_add_ability_system_component_to_blueprint`
+- `gas_add_gameplay_attribute_to_attribute_set`
+
+`gas_inspect_blueprint` is explicitly transaction-free. The five authoring
+routes reject PIE/SIE, validate names and `/Game` paths before mutation, and
+perform post-compile readback. They never persist `/Script/UnrealMCP` or other
+MCP-only references.
+
+## Intentional First-Pass Limits
+
+This surface does not configure ability tags, effect modifiers, attribute
+replication, gameplay cues, runtime ability grants, or live PIE GAS state. Add
+those only after a concrete UE 5.6 workflow needs them.

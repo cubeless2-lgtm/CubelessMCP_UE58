@@ -1,0 +1,14 @@
+# Reactive Surface Water RT Normal Output Report (2026-07-06)
+
+- Contract change: external Water RT is now a packed normal map. Niagara Grid2D keeps the height/current-history needed by the wave solver internally.
+- Normal format: RGB = `normal * 0.5 + 0.5`, flat water = `(0.5, 0.5, 1.0)`, alpha = `1.0`.
+- Demo material `/Game/ReactiveSurface/Demo/M_RS_Demo_Debug_Water` samples `/Game/ReactiveSurface/Water/RT_RS_Water.RT_RS_Water` directly.
+
+| Test | Status | Evidence |
+|---|---:|---|
+| WATER_DEBUG_MATERIAL_DIRECT_NORMAL_RT | PASS | see JSON |
+| WATER_RENDERGRID_NORMAL_OUTPUT | PASS | see JSON |
+| WATER_RT_NORMAL_AUDIT | PASS | see JSON |
+| WATER_RT_NORMAL_RUNTIME_SMOKE | PASS | see JSON |
+
+- Evidence JSON: `D:/Git/UnrealMCP5_6_1/codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-rt-normal-results-2026-07-06.json`

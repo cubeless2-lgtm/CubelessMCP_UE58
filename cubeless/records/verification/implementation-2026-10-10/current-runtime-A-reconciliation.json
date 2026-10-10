@@ -1,0 +1,10 @@
+{
+  "status": "pass",
+  "prior_report": "current-runtime-fixture-A.json",
+  "prior_sha256": "312e1d69cec1152742fa167867a2c4f4b800c1a982c9016a827361e7bbccf1ec",
+  "prior_failed_before_mutation": true,
+  "original_and_copy_hashes_unchanged": true,
+  "new_asset_root_absent": true,
+  "corrected_author_sha256": "93d236df2dcee66bc618f436bce4c50c3b144329812d5e89bdc1368bf8daa9dc",
+  "decision": "New explicit B execution after known pre-mutation API lookup failure; no uncertain write retry."
+}

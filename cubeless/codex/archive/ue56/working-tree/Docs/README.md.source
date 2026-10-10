@@ -1,0 +1,60 @@
+# UnrealMCP Documentation
+
+Documentation for the Cubeless Unreal Engine 5.6.1 MCP integration.
+
+## Start here
+
+- [Project overview and quick start](../README.md)
+- [Plugin-only installation and bridge reference](../MCPGameProject/Plugins/UnrealMCP/README.md)
+- [Python server setup](../Python/README.md)
+- [Troubleshooting](TROUBLESHOOTING.md)
+- [Toolset index](Tools/README.md)
+
+## Tool documentation
+
+- [Actor tools](Tools/actor_tools.md)
+- [Editor tools](Tools/editor_tools.md)
+- [Blueprint tools](Tools/blueprint_tools.md)
+- [Blueprint node, AnimBP, and graph tools](Tools/node_tools.md)
+- [Control Rig and animation tools](Tools/anim_controlrig_tools.md)
+- [AI tools](Tools/ai_tools.md)
+- [Audio and MetaSound tools](Tools/audio_tools.md)
+- [Batch tools](Tools/batch_tools.md)
+- [Chaos tools](Tools/chaos_tools.md)
+- [Data tools](Tools/data_tools.md)
+- [Gameplay Ability System tools](Tools/gas_tools.md)
+- [Landscape tools](Tools/landscape_tools.md)
+- [Material tools](Tools/material_tools.md)
+- [Networking tools](Tools/networking_tools.md)
+- [Niagara tools](Tools/niagara_tools.md)
+- [Niagara planning](Tools/niagara_effect_planning.md)
+- [PCG tools](Tools/pcg_tools.md)
+- [Project tools](Tools/project_tools.md)
+- [Sequencer tools](Tools/sequencer_tools.md)
+- [Skeletal tools](Tools/skeletal_tools.md)
+- [StateTree tools](Tools/state_tree_tools.md)
+- [AI texture tools](Tools/ai_texture_tools.md)
+- [UMG tools](Tools/umg_tools.md)
+
+The MCP schema returned by `describe_toolset` is the current authority for tool
+parameters and runtime policy. Long-form pages explain workflows and boundaries
+but may intentionally omit internal or experimental contracts.
+
+## Architecture and operations
+
+- [Server architecture](Analysis/mcp_server_architecture.md)
+- [Runtime hardening](Analysis/mcp_runtime_hardening.md)
+- [Tool management and compact discovery](Analysis/mcp_tool_management.md)
+- [Python/C++ route parity](Analysis/mcp_tool_parity_audit.md)
+- [Mutation verification observers](Tools/write_verification_observers.md)
+- [Local UE 5.6.1 extensions](LOCAL_PCG_EXTENSION.md)
+- [UE 5.6 Python/C++ registry notes](Tools/ue56_python_cpp_registry.md)
+
+## Engineering evidence
+
+- [Analysis index](Analysis/README.md) contains generated audits, readiness
+  reports, and validation evidence. These are engineering records rather than a
+  stable public API reference.
+- [Research index](Research/README.md) contains design notes, API maps, and
+  known-boundary investigations. Research documents do not imply that a tool is
+  release-ready.

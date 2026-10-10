@@ -1,0 +1,171 @@
+# CubeFluidNinjaLive A13 Component Chaos art 지역화
+
+## 결론
+
+`NinjaLiveComponent`의 직접 선행 자산 두 개를 Study 소유 패키지로 지역화했다.
+
+| 역할 | 원본 | Study target | 결과 |
+|---|---|---|---|
+| GeometryCollection의 source/proxy mesh | `/Game/FluidNinjaLive/Core/Assets/ChaosSimpleCube` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/ChaosSimpleCube` | exact StaticMesh 지역화 완료 |
+| 1-chunk fracture payload | `/Game/FluidNinjaLive/Core/Assets/ChaosDummyGeoCollection_1chunk` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/ChaosDummyGeoCollection_1chunk` | dependency-safe exact payload 지역화 완료 |
+
+두 target은 `/Game/FluidNinjaLive`, 임시 경로, UnrealMCP 직렬화 참조가 0이고,
+UnrealMCP를 비활성화한 UE 5.6.1 프로세스에서 각각 네이티브 `StaticMesh`와
+`GeometryCollection`으로 로드된다. Art 루트 최종 감사 결과는 321 assets,
+forbidden dependency/redirector/dirty/missing required asset 모두 0이다.
+
+원본 논리나 Dataflow를 복제한 것이 아니다. StaticMesh는 허용된 아트 payload로
+지역화했고, GeometryCollection은 동결 캡처만으로 다시 만들 수 없는 managed-array
+fracture payload에 사용자가 명시적으로 허용한 마지막 수단 art 예외를 적용했다.
+`GeometrySource`, import recipe, Dataflow 연결 같은 editor provenance는 제거하고
+runtime에 필요한 collection/settings/reference만 보존했다.
+
+## 재구성이 불가능했던 이유
+
+읽기 전용 캡처가 제공하는 수치는 transform 1, geometry 1, vertex 55, face 48,
+material section 1이다. 이 값만으로는 다음 payload를 독립적으로 복원할 수 없다.
+
+- vertex position, index, face/material 배열의 정확한 값과 순서
+- transform hierarchy와 bone/geometry association
+- convex/proximity 및 59개 persistent managed attribute 전체
+- one-chunk collection의 직렬화 정체성
+
+따라서 숫자만 맞춘 새 collection은 원본과 같다고 검수할 수 없다. 반면 원본의
+Dataflow graph는 비어 있고 런타임 collection payload가 이미 저장되어 있다. 이에
+managed-array payload를 exact 지역화하되 authoring provenance를 제거하는 방법을
+선택했다. 이는 Blueprint, Niagara module/Scratch Pad, Material 논리를 복제하지
+않는다는 클린룸 원칙과 구분되는 허용 아트 예외다.
+
+## 동결 파일 정체성
+
+| 파일 | bytes | SHA-256 |
+|---|---:|---|
+| source `ChaosSimpleCube.uasset` | 17,118 | `a2b88711135a0354f1cf42a32ed72dea252bbb2ca41ac118350ae8ce95341340` |
+| target `ChaosSimpleCube.uasset` | 13,072 | `6d4b9781e7f384c5a35e0683f8fabfdbed62517b16fe7b44bebc86881a5866eb` |
+| source `ChaosDummyGeoCollection_1chunk.uasset` | 21,932 | `fbb59480cec7d00a834f8166ff49102cea0b7e00cb1b6f3aee00b957a5918309` |
+| target `ChaosDummyGeoCollection_1chunk.uasset` | 17,013 | `3884e6c80b5d240c9600e7c37855fc90acfb31d92152248db2f4678c3178cea2` |
+
+원본 두 파일은 작업 전후 같은 크기와 SHA를 유지했다. target 파일은 package name,
+editor provenance 제거, source→target reference remap 때문에 원본과 raw-file SHA가
+같아야 하는 대상이 아니다. 동등성은 아래 managed-array, runtime property,
+reference snapshot으로 판정한다.
+
+## 실행 순서와 실패에서 확인한 공백
+
+### A13a: prerequisite StaticMesh
+
+`a13-component-chaos-source-mesh`는 source 1개만 선택하는 exact manifest다.
+manifest SHA-256은
+`f76e59368436ba3fe92fa33d7b6c40d88ff99a202ae7750491291ee3afdff681`이다.
+드라이런 token `cfnl-art-1da39ee900d912718d35`로 실행했으며 created/saved 1,
+failure 0, residual source/MCP 0으로 완료했다. target의 직접 의존성은 엔진
+`WorldGridMaterial`과 `/Script/NavigationSystem`뿐이다.
+
+### A13b 첫 드라이런
+
+첫 드라이런은 mutation 0 상태에서 source file evidence에 replacement source가
+빠졌고 GeometrySource 관찰 집합에 `WorldGridMaterial`이 누락됐음을 정확히
+검출했다. 두 항목을 frozen contract에 추가한 뒤 v002가 통과했다. 실패한
+드라이런은 자산을 만들거나 저장하지 않았다.
+
+### A13b execute v001
+
+첫 실행은 duplicate 직후 managed-array가 exact였고 provenance 제거도 진행했지만
+`post_sanitize_remap_exact`에서 `RootProxyData`가 일반 runtime property 비교에
+남아 실패했다. 이 실행의 target은 저장되지 않았고 프로세스 종료 후 target
+파일이 없음을 확인했다. 자동 재시도하지 않았다.
+
+UE 5.6.1 header 확인 결과 `FGeometryCollectionProxyMeshData`의 `ProxyMeshes`와
+`MeshTransforms`는 unbroken proxy rendering과 navigation에 쓰이는 persistent
+runtime data다. 따라서 이를 제거하거나 비교에서 무시할 수 없다. editor-only
+localizer에 다음 exact snapshot을 추가했다.
+
+- proxy mesh package path 배열
+- 각 `FTransform3f`의 quaternion 4, translation 3, scale 3 float bit 배열
+- source mesh path를 선언된 Study target으로만 치환한 기대 snapshot
+- duplicate, sanitize/remap, save, reload의 모든 checkpoint 비교
+
+일반 `FProperty::Identical_InContainer`에서는 의도적으로 object identity가 바뀌는
+`RootProxyData`만 제외하고, 위의 더 엄격한 remap-aware 비교가 대신 소유한다.
+
+### A13b execute v002와 프로세스 경계 검수
+
+새 native SHA까지 계약에 묶은 v003 드라이런 contract SHA는
+`401cacac60f7bcb3ec9764f7c4342e2748519e14d4399b08b1012f437a682714`,
+실행 token은 `cfnl-art-5f7e5b44d98669e894c7`이다. execute는 정확히 한 번
+전송했다.
+
+v002는 target을 저장했고 duplicate→sanitize/remap→save 세 checkpoint에서 다음을
+모두 통과했다.
+
+- persistent bytes 12,937 및 BLAKE3
+  `7d3188e5480883713b3b17a8994cedf0547d27d356243e02cf12ba23bafc497e`
+- group 8, attribute 59, persistent attribute 59
+- Transform 1, Geometry 1, Vertices 55, Faces 48, Material 1
+- Materials, RootProxyData, AutoInstanceMeshes의 exact target remap
+- runtime property mismatch 없음
+- GeometrySource/Dataflow/import provenance 제거
+- source/MCP/temporary residual dependency 0
+
+다만 같은 editor 프로세스 안의 마지막 강제 package unload가 `package remained
+loaded`로 실패해 native 응답은 `partial`, `do_not_retry=true`였다. target은 이미
+clean 상태로 저장됐고, 지침에 따라 실행을 다시 보내지 않았다. 프로세스를 종료해
+실제 unload 경계를 만든 뒤 새 에디터의 읽기 전용 pair inspector로 검사했다.
+
+기존 pair inspector도 `RootProxyData`를 remap-aware하게 비교하지 않던 공백이 있어,
+같은 proxy path/transform-bit 비교를 editor-only readback 도구에 추가하고 UE 5.6.1
+UBT를 다시 통과했다. fresh editor 결과는 다음과 같다.
+
+- persistent serialized bytes exact: true
+- `FManagedArrayCollection::operator==`: true
+- non-excluded runtime properties identical: true
+- Materials/RootProxyData/AutoInstance reference remap exact: true
+- dependency-bearing editor provenance absent: true
+- source/target dirty transition: false/false
+- `exact_data_and_reference_pass=true`
+- `dependency_safe_comparison_pass=true`
+
+strict `comparison_pass`만 false인 이유는 UE 5.6 reload가 inert deprecated terminal
+기본 문자열 `GeometryCollectionTerminal`을 복원하기 때문이다. Dataflow asset,
+instance, variables, overrides는 비어 있어 dependency-safe 판정에는 영향이 없다.
+
+## editor-only C++와 런타임 독립성
+
+변경한 코드는 UnrealMCP authoring/inspection plugin 두 파일뿐이다.
+
+| 파일 | bytes | SHA-256 | 역할 |
+|---|---:|---|---|
+| `UnrealMCPProjectCommands_ArtLocalization.cpp` | 287,413 | `03226ad358388cc27c0165b5a51924271b8da7fcd7f1964c6f284679394a3c56` | RootProxyData를 포함한 exact sanitize/remap checkpoint |
+| `UnrealMCPProjectCommands_ReferenceInspection.cpp` | 102,853 | `80add7ac34baa573f14c0ca33439e2f1dbaf1d82d4494942d4630039a3e49b64` | fresh pair read-only remap/float-bit 비교 |
+
+`MCPGameProject/Source/**`와 다른 runtime plugin C++은 수정하지 않았다. 완성 asset은
+UnrealMCP class/function/object를 참조하지 않는다. UnrealMCP 비활성 commandlet에서
+bridge class unavailable, UnrealMCP Python symbol 0인 상태로 두 target이 모두 정확한
+네이티브 클래스로 로드됐다.
+
+## 증거 파일
+
+| 단계 | report bytes | report SHA-256 |
+|---|---:|---|
+| A13a dry v001 | 706,667 | `b9f8e519efdb0980629fd3763122905df67e2848a478b6a3057dad67a438098f` |
+| A13a execute v001 | 1,273,846 | `5b5ac56969b012f1efbcb30178c5994bff5e68ad015e82e6ce807c4d3586cbf7` |
+| A13b dry v001, fail-closed | 37,104 | `f51afc45b1097b4b05b037d9cce5f4fe5b87576408834e9cb10f24e9d13fe2be` |
+| A13b execute v001, unsaved RootProxy gap | 29,786 | `d3bc2c06952d981acfda2677d36a5189bfc9d0bb8d6a27b0c872d3f0d51d412f` |
+| A13b dry v003, final bound contract | 37,408 | `f3fe95fef8caaf111f6b255e70c233cd09b02fb343ec61011894596a048ce48c` |
+| A13b execute v002, saved/internal-unload partial | 31,121 | `cb0c69ddcda763be20d3f51e2b0f3925b1854165601bf36f04244c99066ff061` |
+| fresh pair + whole Art audit v002 | 359,558 | `8587b2f369d36fcaafc90db94d9225f010fb7a97b1e0fae9437e29a3bea3a175` |
+| UnrealMCP-disabled load v001 | 12,305 | `16a4004f433ede8e42413386523b806a8a413942da727bd23a50c07116338e89` |
+
+fresh pair/audit 정본은
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/art/20260905_a13_fresh_pair_and_audit_v002.json`,
+plugin-disabled 정본은 같은 `target/art` 아래
+`20260905_a13_plugin_disabled_v001.json`이다.
+
+## 최종 판정
+
+A13 두 자산의 asset-contract 및 runtime-dependency 독립성은 완료다. 동일 프로세스
+내부 unload 단계의 실패를 성공으로 바꾸어 기록하지 않는다. 대신 저장된 결과를
+실제 프로세스 종료로 unload한 뒤 fresh-editor exact pair, whole-root audit,
+UnrealMCP-disabled load라는 독립된 세 증거로 수용했다. 향후 남은 검수는 이
+GeometryCollection을 실제 `NinjaLiveComponent`와 Chaos fixture가 소비할 때의
+파괴/충돌/화면 parity다.

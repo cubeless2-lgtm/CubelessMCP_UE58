@@ -1,0 +1,57 @@
+# Agent Instruction Deduplication Review — 2026-09-06
+
+## Scope And Baseline
+
+- Task: consolidate mandatory bootstrap instructions (item 5), preserving the accepted item 1–4 changes and supporting different users' checkout/engine locations.
+- Baseline and candidate HEAD: `238ae6138b5c9436023e392e27105e4ead2f9135`. Both comparisons use working-tree documents; the baseline already includes the uncommitted item 1–4 edits. This is not a comparison against clean HEAD.
+- Environment: Windows PowerShell session, current repository checkout. Review method: static source/diff and routing review in one agent; no second-agent run, fresh-session benchmark, editor action, build, commit, or push.
+- Exact pre-deduplication bootstrap files are preserved under `codex/snapshots/20260906-before-bootstrap-dedup/`: `root-AGENTS.md`, `codex-AGENTS.md`, and `project-binding.md`. Historical sources remain immutable and are not active instructions.
+
+## Mandatory Read Size
+
+Characters include existing CRLF line endings; these are character counts, not token or latency measurements.
+
+| Mandatory file | Before | After |
+| --- | ---: | ---: |
+| `AGENTS.md` | 7,860 | 4,203 |
+| `codex/AGENTS.md` | 9,076 | 6,003 |
+| `codex/projects/UnrealMCP5_6_1.md` | 7,855 | 4,272 |
+| Total | 24,791 | 14,478 |
+
+Mandatory file count remains three; loaded bootstrap characters decrease by 41.6%. Task-specific policies still add necessary reads. Tool-call, token, and elapsed-time savings were not benchmarked.
+
+## Rule Placement
+
+| Rule | Active owner after consolidation |
+| --- | --- |
+| Repository boundary, unfamiliar work, UTF-8 first read, UE ceiling, C++ token/exception, finished-content independence | Root adapter retains critical tripwires |
+| Priority, approval follow-through routing, Korean visibility, encoding details, conditional reads, shared editor coordination | `codex/AGENTS.md` |
+| Branch/remotes, project/target, engine compatibility, bridge overrides, maintenance constraints, verification commands | Project binding |
+| Pull-before-push and commit subject authorship | Git policy, now explicitly routed before Git operations |
+| Approval details, C++ gate commands, dependency audit, verification cadence, model and review rules | Existing canonical policies; duplicate bootstrap bodies removed |
+| Multi-user checkout/engine discovery and per-helper override limitations | Workspace portability policy |
+| Fixed C-drive release build example | Removed; release role resolves the engine via portability policy and uses the project binding's target |
+
+## Representative Prompt Review
+
+These are static routing scenarios, not dispatched work requests or empirical model trials.
+
+| Scenario | Expected route and reviewed result |
+| --- | --- |
+| “현재 지침 구조만 설명해줘” | Three bootstrap files; only relevant policy reads, no mandatory domain preload or subagent. Preserved. |
+| “Python MCP 도구 하나 수정해줘” | Matching component row, builder guidance, narrow implementation reads, applicable focused verification and required final gate. Preserved. |
+| “PCG 결과에 머티리얼 연결해줘” | Only affected PCG/material rows plus dependency/asset safety sources; unrelated domains remain conditional. Preserved. |
+| “타임아웃 난 쓰기 명령 다시 실행해줘” | Safety matrix routes to RPC reconciliation before any retry; consolidation grants no retry permission. Preserved. |
+| “C++ 수정해줘” without a valid token | Root token tripwire and canonical C++ policy block project source mutation; UnrealMCP tooling exception remains narrowly scoped. Preserved. |
+| “main 푸시해줘” followed by a status question | Git and approval policies retain same-task scoped authorization, foreign dirty-work protection, and ff-only synchronization. Preserved. |
+| “릴리스 검증해줘” | Release role plus binding and cost policy; required full/build/live checks unchanged, unreachable-editor exit 2 remains a skip. Preserved. |
+| Checkout on C:, engine on D:; another user with a spaced/non-ASCII checkout path | Resolve repository and engine independently, quote paths, inspect helper-supported override, verify version/project identity. No machine path becomes a shared default. |
+| Missing or conflicting engine configuration | Report invalid/ambiguous configuration and request needed path; no guessed drive or silent engine-version fallback. |
+
+## Validation And Limits
+
+- Strict UTF-8 decoding, replacement-character check, CRLF preservation, Markdown fence balance, and concrete backticked Markdown file-reference existence checks passed for the six changed active documents. Generic `SKILL.md` names and wildcard patterns are not concrete file links.
+- `git diff --check` passed for the instruction changes. Reviewed the moved rules against the baseline; no safety, required source routing, or verification-gate omission was identified in the static review.
+- Item 6 is deferred: promotion definitions and evidence-reuse semantics were not redesigned. No executable helper, verification manifest, or runtime configuration was changed.
+- Existing helpers can still contain machine-specific defaults and use different environment variable names. This task documents explicit resolution/override requirements; it does not claim all repository scripts are portable.
+- Different-drive and multi-user scenarios were reviewed statically, not executed on a second machine. No engine build, live smoke, full Python suite, or fresh-agent behavior benchmark was run for this prose-only change.

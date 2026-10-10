@@ -1,0 +1,75 @@
+# unreal-mcp-cubeless Project Binding
+
+> Legacy binding: use this file only when the task explicitly targets the external `unreal-mcp-cubeless` repository. For this repository, use `projects/UnrealMCP5_6_1.md`.
+
+## Workspace Scope
+
+- Default repository: `unreal-mcp-cubeless`.
+- Primary consuming project for current work: `../CubelessStylized`.
+- Resolve these paths relative to the discovered repository parent first.
+- Keep Git status, staging, commits, pushes, and summaries separate from consuming projects and Unreal plugin submodules.
+
+## Branch And Remote Model
+
+- Cubeless integration/default branch: `main`.
+- Cubeless fork remote: `origin` -> `https://github.com/cubeless2-lgtm/unreal-mcp-cubeless.git`.
+- Original upstream remote: `upstream` -> `https://github.com/chongdashu/unreal-mcp.git`.
+- `upstream` is fetch-only for routine work; do not push to upstream.
+- Legacy/local extension branch: `local/pcg-tools`. Keep it unless the user explicitly asks to delete, repoint, or resync it.
+
+## Current Engine Target
+
+- Current target engine: Unreal Engine 5.6.1 installed at `C:\Program Files\Epic Games\UE_5.6`.
+- `MCPGameProject/MCPGameProject.uproject` should use `EngineAssociation` `5.6`; its Target.cs files should use UE 5.6 compatible build settings/include order.
+- Keep every PCG plugin shipped with UE_5.6 enabled in `MCPGameProject`: `PCG`, `PCGBiomeCore`, `PCGBiomeSample`, `PCGExternalDataInterop`, `PCGGeometryScriptInterop`, `PCGInstancedActorsInterop`, `PCGNiagaraInterop`, and `PCGWaterInterop`.
+- Preserve UE 5.6 compatibility guards for APIs introduced or changed in UE 5.7: material resource shader lookup, PCG pin current-type reporting, Niagara default-binding and enabled-renderer helpers, static mesh render LOD export, Nanite settings accessors, ControlRig blueprint headers, animation transition settings, and BlendSpace sample single-frame fields.
+- When UE 5.7-only data cannot be read under UE 5.6.1, return a stable fallback value plus an `unavailable_in_ue_5_6` note instead of removing the JSON key.
+
+## Maintenance Rule
+
+- Do not rewrite upstream files broadly. Keep Cubeless extensions isolated and easy to review.
+- For upstream update requests such as `최신 업데이트`, `업데이트 풀`, `원본 pull`, `upstream 최신`, or equivalent wording, apply `docs/workflows/mcp-upstream-update.md`.
+- Preferred helper from the MCP repository root:
+
+```powershell
+.\scripts\update_with_pcg_extension.ps1
+```
+
+## MCP Agent Roles
+
+- Planning and impact review: `agents/ieta.md`.
+- MCP implementation: `agents/tivret-mcp.md`.
+- Upstream synchronization: `agents/mcp-upstream-manager.md`.
+- Release verification: `agents/mcp-release-verifier.md`.
+- Unreal C++ review, when bridge/plugin C++ changes are involved: `agents/unreal-cpp-reviewer.md`.
+
+## Important Local Extension Files
+
+- `Docs/LOCAL_PCG_EXTENSION.md`
+- `Docs/Tools/pcg_tools.md`
+- `Docs/Tools/ai_texture_tools.md`
+- `Python/tools/python_tools.py`
+- `Python/tools/pcg_tools.py`
+- `Python/tools/texture_generation.py`
+- `Python/services/openai_image_service.py`
+- `Python/services/unreal_texture_importer.py`
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPProjectCommands.cpp`
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp`
+
+## Verification
+
+- For Python changes, run:
+
+```powershell
+uv --directory .\Python run python -m py_compile unreal_mcp_server.py tools\python_tools.py tools\pcg_tools.py
+uv --directory .\Python run python -c "import unreal_mcp_server; print('server import ok')"
+```
+
+- For AI texture tool changes, include:
+
+```powershell
+uv --directory .\Python run python -m py_compile unreal_mcp_server.py tools\texture_generation.py services\openai_image_service.py services\unreal_texture_importer.py
+```
+
+- C++ plugin verification should use the current target engine at `C:\Program Files\Epic Games\UE_5.6` unless the user explicitly changes the target.
+- Avoid kicking off a full source-engine rebuild unless necessary or explicitly requested.

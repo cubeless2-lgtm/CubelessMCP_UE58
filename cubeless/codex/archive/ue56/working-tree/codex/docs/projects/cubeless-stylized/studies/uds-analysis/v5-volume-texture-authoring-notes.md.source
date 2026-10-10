@@ -1,0 +1,387 @@
+# V5 Volume Texture Authoring Notes
+
+Date: 2026-06-21
+
+## Scope
+
+- Worked under `/Game/Cubeless/SKY/V5/Clouds`.
+- Kept the base V5 material and material instance restored to their original V5 texture references after the test pass.
+- Created separate stylized candidate assets so the V5 baseline can remain stable while experiments continue.
+
+## Volume Texture Construction
+
+- The V5 volume source sheet uses a 2D tiled Texture2D source.
+- Current V5 reference layout:
+  - Source Texture2D: `/Game/Cubeless/SKY/V5/Clouds/T_Volume_PerlinWorley_Balanced_V5`
+  - Source size: `2048x1024`
+  - Tile size: `128x128`
+  - Tile grid: `16x8`
+  - Volume size: `128x128x128`
+- The safe editor-only build path is:
+  - Import or create a `Texture2D` tile sheet.
+  - Set `VolumeTexture.Source2DTexture`.
+  - Set `Source2DTileSizeX=128` and `Source2DTileSizeY=128`.
+  - Let Unreal rebuild the volume source from the sheet.
+- This leaves only ordinary Unreal `Texture2D` and `VolumeTexture` assets in the project. MCP/UnrealMCP is an authoring helper only and is not a runtime dependency.
+
+## Created Test Assets
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_Volume_Cubeless_StylizedPuffy_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/VT_Cubeless_StylizedPuffy_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_StylizedPuffy_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_StylizedPuffySparse_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_StylizedPuffy`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_StylizedPuffy`
+
+The stylized candidate material references `VT_Cubeless_StylizedPuffy_V5`.
+The stylized candidate material instance references `T_WeatherMap_Cubeless_StylizedPuffySparse_V5`.
+
+## Verification
+
+- `StylizedCubelessEditor Win64 Development` build with UE 5.7 succeeded after adding the UnrealMCP authoring helper.
+- Base V5 material compile after restoration: `compile_error_count=0`.
+- Stylized candidate material compile: `compile_error_count=0`.
+- Dirty editor package count after saves: `0`.
+- Base V5 material dependencies were restored to `VT_PerlinWorley_Balanced_V5`.
+- Base V5 material instance `WeatherMap` was restored to `T_CloudMask1_V5`.
+
+## Finding
+
+The V5 volumetric cloud stack did not produce the target high, round stylized cumulus look from texture changes alone.
+
+- Replacing only the VolumeTexture changed noise/erosion but produced flatter, broader horizon bands.
+- Replacing the `WeatherMap` changed horizontal coverage, but still did not create tall puffy cumulus silhouettes.
+- In this V5 setup, the visible macro shape is controlled by the combination of WeatherMap coverage, material scalar/profile logic, and Volumetric Cloud layer/view settings. Texture-only authoring is useful for candidates, but the target reference look needs material/profile and likely layer-height work too.
+
+Next V5 stylization pass should treat textures as inputs, then adjust the material/profile controls that determine vertical body, base softness, and coverage breakup.
+
+## SubcultureCloud Reference-Style Pass
+
+Reference goal: use the supplied illustration as a direction guide, not as a one-to-one copy. The target language is elongated wind-flow streaks, broken wisps, and intermittent rounded cumulus clusters.
+
+Created/updated candidate assets:
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_Volume_Cubeless_SubcultureCloud_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/VT_Cubeless_SubcultureCloud_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_SubcultureCloud`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_SubcultureCloud`
+
+Authoring outputs:
+
+- Raw source sheet: `Saved/MCP/V5VolumeTextures/T_Volume_Cubeless_SubcultureCloud_V5.rgba16le`
+- Sheet size: `2048x1024`
+- Tile size: `128x128`
+- Slice count: `128`
+- Format: raw little-endian RGBA16, 16x8 tile sheet
+- Review captures:
+  - `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureCloud_final_bookmark5_review.png`
+  - `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureCloud_refstyle_v3_sparseweather_density24000_skyup_review.png`
+
+Implementation notes:
+
+- Avoided Unreal Interchange for this pass. Importing a generated TIFF sheet through `AssetTools.ImportAssetTasks` inside `execute_python` crashed UE 5.7 with a TaskGraph `RecursionGuard` assertion.
+- Added UnrealMCP command `create_volume_texture_from_raw_rgba16_sheet_mcp` to write a Texture2D source sheet directly and then rebuild the VolumeTexture from `Source2DTexture`.
+- Added UnrealMCP command `set_material_texture_sample_sampler_type_mcp` because the rebuilt linear VolumeTexture requires `SAMPLERTYPE_LinearColor` on the candidate material's three VT sample nodes.
+- Verified candidate material compile after sampler repair: `compile_error_count=0`.
+- `Test_UnusedUDS_V5` now uses `MI_VolumetricCloud_01_V5_SubcultureCloud` on `Cubeless_V5_VolumetricCloud`.
+
+Current candidate settings:
+
+- `WeatherMap`: `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_StylizedPuffySparse_V5`
+- `Cloud Density`: `24000`
+- `NoiseContrast`: `0.02`
+- `EdgeContrast`: `0.98`
+- `Noise 1  Bias`: `0.24`
+- `Noise 2  Bias`: `0.20`
+- `Mask Bias`: `0.18`
+- `Mask Scale`: `165`
+- `scale`: `5.5`
+- `Detail`: `0.22`
+- `scale2`: `16`
+- `Detail2`: `0.025`
+- `scale3`: `18`
+- `Detail3`: `0.012`
+- `Volume Mip`: `0.1`
+
+Current `Cubeless_V5_VolumetricCloud` layer settings:
+
+- `Layer Bottom Altitude`: `0.20`
+- `Layer Height`: `3.20`
+- `Tracing Start Max Distance`: `100`
+- `Tracing Max Distance`: `80`
+
+Result:
+
+- The candidate now produces visible rounded cloud fragments and broken horizon clusters, but it is not yet the desired subculture sky look.
+- Main remaining problem: the output still reads too much as low horizon-layer fragments instead of high, flowing, sky-filling cloud bands.
+- Texture quality matters, but this pass confirms the final look must be authored as a set: VolumeTexture, WeatherMap, material scalar thresholds, volumetric layer settings, and scattering/color response.
+- Next pass should generate a dedicated `SubcultureFlow` WeatherMap instead of reusing `StylizedPuffySparse`, and should bias the volume source toward fewer isolated blobs and more coherent elongated bands with embedded puffy cores.
+
+## SubcultureFlow V2 Static-Silhouette Pass
+
+Reference goal: use `/Game/Cubeless/SKY/Test_UnusedUDS_V2` as the silhouette target. This level is not real volumetric cloud; it uses the baked UDS static-cloud sky dome. The target shape language is a soft, filled cumulus body with a long flat tail and small repeated distant fragments.
+
+Created candidate assets:
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_SubcultureFlow_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_Volume_Cubeless_SubcultureFlow_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/VT_Cubeless_SubcultureFlow_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_CloudProfileCurve_SubcultureFlow_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_SubcultureFlow`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_SubcultureFlow`
+
+Reference and review captures:
+
+- `Saved/MCP/V5VolumeTextures/Reference_V2_StaticCloud_bookmark5_review.png`
+- `Saved/MCP/V5VolumeTextures/Preview_WeatherMap_Cubeless_SubcultureFlow_V5_review.png`
+- `Saved/MCP/V5VolumeTextures/Preview_Volume_Cubeless_SubcultureFlow_V5_review.png`
+- `Saved/MCP/V5VolumeTextures/Preview_CloudProfileCurve_SubcultureFlow_V5_review.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_L_reduced_columns_review.png`
+
+Final saved candidate settings:
+
+- `MI_VolumetricCloud_01_V5_SubcultureFlow` parent: `M_VolumetricCloudProfiles_01_V5_SubcultureFlow`
+- `WeatherMap`: `T_WeatherMap_Cubeless_SubcultureFlow_V5`
+- Parent material texture dependencies:
+  - `VT_Cubeless_SubcultureFlow_V5`
+  - `T_CloudProfileCurve_SubcultureFlow_V5`
+  - `T_CloudMask_V5`
+- `Cloud Density`: `22000`
+- `Cloud UV X Scale`: `1.0`
+- `EdgeContrast`: `0.44`
+- `Mask Bias`: `0.13`
+- `Mask Scale`: `135`
+- `Volume Mip`: `0.18`
+- `MPC_Clouds_V5.SkyTextureScaleKm`: `20`
+- `MPC_Clouds_V5.FreezeTime`: `1`
+- `MPC_Clouds_V5.NoiseMultiplier`: `0.82`
+- `Cubeless_V5_VolumetricCloud` layer bottom: `0.55`
+- `Cubeless_V5_VolumetricCloud` layer height: `1.35`
+- `Tracing Start Max Distance`: `80`
+- `Tracing Max Distance`: `120`
+
+Verification:
+
+- `M_VolumetricCloudProfiles_01_V5_SubcultureFlow` compile: `compile_error_count=0`.
+- The SubcultureFlow material uses only V5 cloud assets for the new VT/profile/weather inputs. A temporary test using the V2 UDS static-cloud texture as `WeatherMap` was rejected and not kept in the final MI.
+- `Test_UnusedUDS_V5` uses `MI_VolumetricCloud_01_V5_SubcultureFlow` on `Cubeless_V5_VolumetricCloud`.
+- Dirty editor package count after save: `0`.
+
+Current result:
+
+- The saved candidate is closer to the V2 static-cloud silhouette than the previous flat horizon-band pass: rounded cloud bodies are visible and the harsh hollow/ring look is reduced.
+- It is still not a final match. Remaining issues are blocky vertical artifacts near dense bodies and a tendency for the real volumetric layer to read lower than the baked sky-dome reference.
+- Next pass should focus on the material/profile math that maps WeatherMap coverage into vertical density, not only on texture generation. The profile texture proved that vertical shape can be moved, but too broad a profile creates wall-like artifacts.
+
+## SubcultureFlow Work Preservation And High-Layer Pass
+
+Preserved candidate assets:
+
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_SubcultureFlow_Locked_L`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_SubcultureFlow_Locked_L`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_SubcultureFlow_Locked_T_HighLayerPuffs`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_SubcultureFlow_Locked_T_HighLayerPuffs`
+
+Current active work assets:
+
+- `Test_UnusedUDS_V5` uses `MI_VolumetricCloud_01_V5_SubcultureFlow_Work`.
+- `MI_VolumetricCloud_01_V5_SubcultureFlow_Work` uses `M_VolumetricCloudProfiles_01_V5_SubcultureFlow_Work`.
+- The Work parent includes a small final Extinction custom node named `Cubeless Tail Height Gate`.
+- Current Work gate defaults are effectively disabled by `Tail LowFloor = 1.0`; the gate remains available for later tuning.
+
+High-layer Work/T settings:
+
+- `WeatherMap`: `T_WeatherMap_Cubeless_SubcultureFlow_V5`
+- `Cloud Density`: `24000`
+- `Mask Bias`: `0.13`
+- `Mask Scale`: `135`
+- `EdgeContrast`: `0.44`
+- `Volume Mip`: `0.18`
+- `scale`: `4.4`
+- `Detail`: `0.09`
+- `scale2`: `11`
+- `Detail2`: `0.008`
+- `scale3`: `14`
+- `Detail3`: `0.004`
+- `Layer Bottom Altitude`: `2.20`
+- `Layer Height`: `0.85`
+- `Tracing Start Max Distance`: `180`
+- `Tracing Max Distance`: `220`
+
+Review captures:
+
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_Work_baseline_from_L_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_Work_active_saved_T_HighLayerPuffs_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/ContactSheet_V5_SubcultureFlow_layer_ST_vs_V2.png`
+- `Saved/MCP/V5VolumeTextures/ContactSheet_V5_SubcultureFlow_WX_volumeScale_vs_V2.png`
+
+Findings:
+
+- `Locked_L` remains the best low-layer body candidate: it keeps the larger rounded cloud body but still reads too low and produces blocky vertical slabs.
+- The `WorkThinTail` profile texture removed the rounded body and left slab shapes, so profile narrowing alone is not the solution.
+- Higher `Mask Bias` and reduced layer height removed some slab density but also killed the puffy body.
+- The high-layer T pass moves clouds into the sky and reveals better rounded volumetric puffs, but it repeats too many small cloud islands and is still not a V2 silhouette match.
+- `SkyTextureScaleKm` did not materially reduce visible repetition at bookmark 5.
+- Changing the WorkErodedTail WeatherMap texture address mode from Wrap to Clamp made a larger continuous slab and was reverted to Wrap.
+
+Next direction:
+
+- Keep `Locked_L` and `Locked_T_HighLayerPuffs` as separate reference branches.
+- Continue from the active Work high-layer setup.
+- The next useful experiment is not global MPC scale. It should either author a non-repeating weather-coordinate path in the material or create a weather/volume pairing where one large body dominates without tiling across the horizon.
+
+## Macro Gate And WeatherMap Follow-Up
+
+Preserved candidate:
+
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Locked_StylizedPuffySparseLargeBodies`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Locked_StylizedPuffySparseLargeBodies`
+
+Current active Work state:
+
+- `Test_UnusedUDS_V5` still uses `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_SubcultureFlow_Work`.
+- Work `WeatherMap` is restored to `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_StylizedPuffySparse_V5`.
+- Work cloud controls are restored to the high-layer values: `Cloud Density = 24000`, `Mask Bias = 0.13`, `EdgeContrast = 0.44`, `Volume Mip = 0.18`.
+- The Work parent contains the experimental `Cubeless Macro Composition Gate` node after the existing `Cubeless Tail Height Gate`.
+- The macro gate is currently disabled by `Macro Gate Strength = 0.0` and `Macro Gate Floor = 0.0`, so the saved Work result is effectively the `StylizedPuffySparse` high-layer pass without macro cropping.
+
+Macro gate findings:
+
+- The gate can isolate a specific weather-space region and reduce repetition, but it cannot fix the slab/column silhouette when the selected source region already contains a bad formation shape.
+- Tight settings proved the gate works, but removed too much cloud mass.
+- Wider settings reintroduced the slab row. This means the issue is not only composition; it is the paired interaction of `WeatherMap`, formation/profile sampling, and edge hardness.
+- The gate should remain as a local composition tool for later, but it should not be treated as the primary shape solution.
+
+WeatherMap tests:
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_StylizedPuffySparse_V5` is the best current shape source. It gives large rounded bodies and reduced slab reading compared with the baseline.
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_BigPuffs_V5` was rejected because its gray halo became broad sheet density in volume rendering.
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_PuffyIslands_V5` was rejected because hard island edges created vertical/column artifacts.
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_PuffyIslandsLow64_V5` softened the hard edge but still produced vertical columns and lower-row repetition.
+
+Review captures:
+
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_Work_weather_StylizedPuffySparse_macroOff_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_Work_weather_BigPuffs512_macroOff_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_Work_weather_PuffyIslandsLow64_macroOff_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_SubcultureFlow_Work_final_restored_StylizedPuffySparse_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/ContactSheet_V5_WeatherMap_MacroGate_20260621.png`
+
+Next direction:
+
+- Start the next iteration from a duplicated MI, not by overwriting the current Work candidate.
+- Preserve `StylizedPuffySparseLargeBodies` as the best checkpoint before any heavier texture/profile changes.
+- Build the next candidate as a paired WeatherMap plus volume/profile adjustment. WeatherMap alone can place the large puffs, but the remaining bad silhouettes come from how that mask is extruded and eroded through the volumetric profile.
+- Avoid broad gray halos in weather textures. The volume material interprets mid values as real density and turns them into sheets.
+- Avoid hard binary weather islands unless the formation/profile path is also softened, because hard edges become visible vertical columns in the realtime volume.
+
+## Pair01-Pair04 Profile/Weather/Trace Experiments
+
+Current level state after this pass:
+
+- `Test_UnusedUDS_V5` is restored to `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Locked_StylizedPuffySparseLargeBodies`.
+- `Cubeless_V5_VolumetricCloud` component values are restored to `Layer Bottom Altitude = 2.20`, `Layer Height = 0.85`, `Tracing Start Max Distance = 180`, `Tracing Max Distance = 220`.
+- Dirty package count after the restore capture was `0`.
+
+New texture sources:
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_Pair01_FewSoftPuffs_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_CloudProfileCurve_Cubeless_Pair01_UpperPuff_V5`
+
+New material/instance tests:
+
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Pair01_ProfileWeather`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair01_ProfileWeather`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Pair02_BestWeatherProfileTail`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair02_BestWeatherProfileTail`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair03_BestWeatherTraceTrim`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair04_HighThinLayer`
+
+Review captures:
+
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair01_ProfileWeather_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair02_BestWeatherProfileTail_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair03_BestWeatherTraceTrim_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair04_HighThinLayer_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Restored_Locked_StylizedPuffySparseLargeBodies_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/ContactSheet_V5_Pair01_to_Pair04_ProfileWeather_Trace_20260621.png`
+
+Findings:
+
+- Pair01 was rejected. A WeatherMap with a few large soft islands reduced small repetition, but those islands were extruded as huge flat slabs in the volume.
+- Pair02 was rejected. Reusing the best WeatherMap with the new profile texture made the density read as rectangular blocks, so the custom profile source does not match the material's current profile sampling semantics.
+- Pair03 was rejected as final but kept as a reference. Original profile plus shorter trace distance reduced some far repetition, but the scene remained too dense and foreground-heavy.
+- Pair04 was rejected. Raising the cloud layer and thinning it made the volume feel closer to the camera and did not solve the lower repeated cloud band.
+- The current best remains `Locked_StylizedPuffySparseLargeBodies`, even though it is still not the target silhouette.
+
+Next direction:
+
+- Stop treating 2D WeatherMap shape as the main solution. Large 2D islands become large volume slabs unless the formation volume or erosion path breaks them up.
+- Do not use the `Pair01_UpperPuff` profile as-is. Its output confirms that profile replacement must be validated against the material's actual profile-coordinate direction and channel usage before visual tuning.
+- The next useful pass should create or modify a `VolumeTexture` formation source, then pair it with a conservative WeatherMap. The target is to make the formation texture itself contain rounded cumulus breakup so the WeatherMap can act as placement, not as the whole silhouette.
+- Keep the V5 level on the restored locked candidate until a new candidate clearly beats it in viewport capture.
+
+## Pair05-Pair10 Formation Volume And SDF Experiments
+
+Reference checked:
+
+- Jordan Walker, "Creating cumulus clouds in UE5": `https://jordanwalker.artstation.com/blog/oMQ6/creating-cumulus-clouds-in-ue5`
+
+Current level state after this pass:
+
+- `Test_UnusedUDS_V5` is restored to `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_SubcultureFlow_Locked_T_HighLayerPuffs`.
+- `Cubeless_V5_VolumetricCloud` component values are restored to `Layer Bottom Altitude = 2.20`, `Layer Height = 0.85`, `Tracing Start Max Distance = 180`, `Tracing Max Distance = 220`.
+- Dirty package count after restore capture was `0`.
+
+New formation volume assets:
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_Volume_Cubeless_Pair05_CumulusBreakup_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/VT_Cubeless_Pair05_CumulusBreakup_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_Volume_Cubeless_Pair09_SDFCumulus_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/VT_Cubeless_Pair09_SDFCumulus_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_Volume_Cubeless_Pair10_SDFMaskedCumulus_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/VT_Cubeless_Pair10_SDFMaskedCumulus_V5`
+
+New WeatherMap and material tests:
+
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_Pair06_ConservativePlacement_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/T_WeatherMap_Cubeless_Pair07_FlowingPuffs_V5`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Pair05_CumulusBreakupVolume`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair05_CumulusBreakupVolume`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair06_ConservativePlacementVolume`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair07_FlowingPuffsVolume`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Pair08_LumpyHighLayerPuffs`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair08_LumpyHighLayerPuffs`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Pair09_SDFCumulus`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair09_SDFCumulus`
+- `/Game/Cubeless/SKY/V5/Clouds/M_VolumetricCloudProfiles_01_V5_Pair10_SDFMaskedCumulus`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair10_SDFMaskedCumulus`
+- `/Game/Cubeless/SKY/V5/Clouds/MI_VolumetricCloud_01_V5_Pair10B_SDFMaskedSparseWeather`
+
+Review captures:
+
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair05_CumulusBreakupVolume_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair06_ConservativePlacementVolume_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair07_FlowingPuffsVolume_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair08_LumpyHighLayerPuffs_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair09_SDFCumulus_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair10_SDFMaskedCumulus_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/Viewport_V5_Pair10B_SDFMaskedSparseWeather_bookmark5_review_opaque.png`
+- `Saved/MCP/V5VolumeTextures/ContactSheet_V5_SDF_Pair09_Pair10_vs_Safe_review_opaque.png`
+
+Findings:
+
+- Pair05 improved over the earlier pure WeatherMap tests because the formation volume itself supplied larger rounded breakup, but it still produced large slab-like macro shapes.
+- Pair06's conservative WeatherMap reduced coverage too aggressively and created a few balloon-like islands plus lower repeated blocks.
+- Pair07's flowing WeatherMap source was visually reasonable as a 2D mask, but the current material interpreted the thin bands as vertical columns and block rows.
+- Pair08 proved that simply swapping Pair05's formation volume into the `HighLayerPuffs` material path is not enough. The source channel semantics did not match the material's expectations.
+- Pair09 tested a true SDF-style volume source with `R = rounded SDF-like density`, `G = erosion noise`, `B = breakup noise`, and `A = soft shape`. It reduced disappearance, but unmasked G/B data outside the SDF body still appeared as broad translucent blocks.
+- Pair10 masked all channels by the SDF shape. This removed much of the outside slab noise, but the result became too faint with the original `SubcultureFlow` WeatherMap.
+- Pair10B reused the Pair10 masked SDF volume with `StylizedPuffySparse` WeatherMap. It restored visible mass, but the existing material still produced oversized bodies and surface streak artifacts.
+
+Conclusion:
+
+- The Jordan Walker-style direction is valid, but only changing the formation `VolumeTexture` is not enough in the current V5 material.
+- The next pass should add an explicit SDF threshold/erosion block inside the material path instead of relying on the existing UDS-derived volume interpretation.
+- The material should treat the formation volume as `SDF/shape -> threshold/range -> masked erosion noise`, then apply WeatherMap placement and altitude/profile shaping.
+- The current safe level candidate remains `MI_VolumetricCloud_01_V5_SubcultureFlow_Locked_T_HighLayerPuffs` until a threshold-based material candidate beats it in a viewport capture.

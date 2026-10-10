@@ -1,0 +1,472 @@
+# RXSkyBaking — Unreal 1K cloud texture bake
+
+## Consolidated paths (2026-09-15)
+
+The active asset roots are `/Game/RXSkySystem/CloudAuthoring`,
+`/Game/RXSkySystem/VDB`, and `/Game/RXSkySystem/Baking`. Editor implementations
+live in `MCPGameProject/Content/RXSkySystem/Python`, registered by the existing
+project Python startup hook. See [current workflow](../../../../../MCPGameProject/Content/RXSkySystem/WORKFLOW.md).
+Earlier dated checkpoints below describe their recorded appearance and settings.
+
+## Edge quality update (2026-09-14)
+
+The active preview now uses `Cubeless_Study03_Static2K_Edge2_20260914`: a 2K BC7 result filtered offline in premultiplied RGB and coverage, preserving dense interiors. The source HDR GPU resolution is verified before filtering. See [comparison and workflow](../../../../../Docs/Analysis/CubelessClouds_RXQuality_20260914/README.md). Earlier 1K checkpoints below remain historical.
+
+## Current application (2026-09-14)
+
+The active baking source is the frozen Cubeless Study03 layout; the preview uses `Cubeless_Study03_Static1K_20260914`. The original editable cloud layout is preserved. See the [application record](../../../../../Docs/Analysis/CubelessClouds_RXBake_20260914/README.md) for source isolation, quality settings, evidence and rebake steps. The NativeBaseline checkpoint below is historical.
+
+## Current checkpoint (2026-09-12)
+
+The baking level now uses `MI_RXSkyBaking_NativeBaseline`, a legacy Volume
+material using owned functions and preserved voxel textures under RXSkyBaking.
+The current setup and controls are documented in
+[`Content/RXSkySystem/Baking/README.md`](../../../../../MCPGameProject/Content/RXSkySystem/Baking/README.md).
+Coarse formation support suppresses isolated fragments while preserving nearby
+cloud edges. Realtime viewport review uses TAA, SampleMinCount 24 and
+DistanceToSampleMaxCount 5 km. The stale Remote Desktop realtime override was
+removed; matched-camera 1937x1074 captures confirm reduced stipple.
+
+The native baker now duplicates separate transport and coverage parents without
+changing the reviewed parent. It captures 2K faces with eight explicit linear
+samples per face and produces 1K RX textures. The actual CVar readbacks and
+restoration results are recorded in each `Saved/RXSkyBaking/<name>/bake.json`.
+Historical study sections below describe earlier candidates, not the active cloud.
+The current default is `rxsky_static_capture`: three directional lighting masks
+and coverage packed into one linear 1K BC7 texture. The preview uses the RX
+copy's cloud dome and TOD with native SkyAtmosphere; the original RX palette
+dome is hidden. Completed static and native HDR bake reports are archived under
+`Content/RXSkySystem/Baking/Bakes` for application on fresh checkouts. The previous
+HDR pair and the new raw HDR master remain available outside the active preview
+texture dependencies. See the content README for controls and current limits.
+The complete offline profile passed 42/42 with matching 3073-file input hashes
+in `Saved/RXSkyBaking/grain_candidate_before.json` and `grain_candidate_after.json`.
+The material closure was also loaded without original UDS content or UnrealMCP
+in the standalone validation project; this is not a cook/package certification.
+
+## Scope
+
+The user requested two separate levels under `/Game/RXSkySystem/Baking`: one for editing
+and baking the Electric Dreams `cloudsky` volume, one for reviewing its baked
+textures in RXSkySystem. Source assets are read-only. Test resolution is 1024×1024.
+
+- `/Game/RXSkySystem/Baking/Maps/L_RXSkyBaking`: copied cloud volume and capture setup.
+- `/Game/RXSkySystem/Baking/Maps/L_RXSkyBaking_Preview`: dedicated RXSkySystem preview.
+- `/Game/RXSkySystem/Baking/Materials/MI_RXSkyBaking_Cloud`: editable source instance.
+- `/Game/RXSkySystem/Baking/Materials/MI_RXSkyBaking_PreviewClouds`: result assignments.
+- `/Game/RXSkySystem/Baking/Materials/MI_RXSkyBaking_PreviewShadow`: matching shadow mask.
+- `MCPGameProject/Content/RXSkySystem/Python/rxsky_baking.py`: editor-side menu and GPU baker.
+
+The copied RX preview Blueprint remaps its original cloud/shadow instance
+references to the dedicated instances. Original RX assets remain untouched.
+Original texture data may remain read-only dependencies; the copied cloud's
+shared collection scalar `SkyTextureScaleKm` is now an independent parameter.
+
+## Artist workflow
+
+1. Open the baking level in the Content Browser.
+2. Use the **RXSkyBaking → 구름 파라미터 조절** menu. In the instance enable the
+   desired override and adjust `Cloud Density`, `Mask Bias`, `Mask Scale`,
+   `scale`/`scale2`/`scale3`, `Detail`/`Detail2`/`Detail3`, `Offset`, or `BakeTime`.
+3. Adjust the cloud component's layer bottom/height if needed. The capture actor
+   position is selected by **베이킹 위치 선택**. Capture orientation is world-aligned.
+4. Use **1K 텍스처 베이킹**. Each execution uses a new timestamped output folder.
+   Wait for completion before switching levels, saving the level, or changing
+   cloud settings. **베이킹 상태** and **베이킹 취소** are available.
+5. Use **최근 결과를 RX 프리뷰에 적용**, then open the preview level. Adjust RX's
+   existing time controls to inspect day, sunset and night. This updates only the
+   dedicated preview instances.
+
+The bake runs inside the editor with six SceneCapture2D views and material render-target
+draws. It does not invoke Blender, an image generation API, an external renderer,
+or MCP at runtime. PythonScriptPlugin is needed for editor menu/baking commands;
+finished textures, materials and the RX preview do not serialize Python/MCP calls.
+
+## Data contract
+
+Output consists of two 1024×1024 linear, HDR, clamped Texture2D assets:
+
+| Channel | Contents |
+| --- | --- |
+| Positive R/G | source azimuth 0°/90°, elevation 20° |
+| Positive B | source elevation +90° |
+| Positive A | view coverage |
+| Negative R/G | source azimuth 180°/270°, elevation 20° |
+| Negative B | source elevation −90° |
+| Negative A | mean of four horizon captures at azimuth 0°/90°/180°/270° |
+
+Projection matches RX: `uv = .5 + acos(z)/pi * (y,-x)/length(xy)`. The upper
+hemisphere occupies the inscribed disk. Six 92-degree perspective captures per pass, 11 passes total. The 2-degree overscan keeps face boundaries away from texture edges.
+
+Directional transport uses white 1-lux lighting, phase g=0, single scattering and
+no skylight/ground contribution. RGB transport and the horizon basis use gain 4.
+This is an initial RX calibration, not a physically exact reconstruction of the
+Electric Dreams renderer. RX preview `BakeAnisotropy` must be 0 for these textures.
+
+Coverage is a separate emissive-extinction capture with albedo zero. The copied
+volume uses grayscale transport and zero multiple-scattering octaves so emitted
+extinction integrates to `1-T`, rather than being added once per scattering octave.
+The capture source's alpha was not accepted as volume coverage.
+
+Canvas AlphaComposite writes destination alpha times `(1-opacity)`. Packing
+therefore clears to alpha=1 and connects `1-desired_alpha` to material Opacity.
+Live constant RGBA readback confirmed this behavior. Alpha is data and must not
+be flattened by the review-image alpha hook.
+
+All source Time expressions are replaced with a common `BakeTime` scalar.
+The baker uses transient MIDs, restores the source material and light, unregisters
+its callback, and drops UObject references after finishing/cancelling. Callback
+re-entry during package saves is guarded. Map transitions remain manual/native;
+the Python baker does not load or create maps.
+
+## Evidence and current verification status
+
+`Saved/RXSkyBaking/<bake name>/bake.json` records parameter values, layer settings,
+capture origin, per-pass sample statistics and exact output paths. New outputs
+also carry the settings in texture metadata. `Saved/RXSkyBaking/latest.json`
+identifies the latest successfully packed run.
+
+- `Cloudsky_1K_Test01` is an early diagnostic; do not use as the final reference.
+- `Cloudsky_1K_Test02` produced the corrected direction basis and coverage.
+- The original 500-density frozen-time preset is almost overcast at this capture
+  position; a lower density variation is a useful parameter-response test.
+- Use `Cloudsky_1K_Final`: two 1024x1024 linear HDR textures, assigned to the
+  dedicated RX preview. Earlier Cube-based runs are diagnostic only.
+- The registered menu's bake/apply functions were exercised through editor Python;
+  a physical menu click was not part of verification.
+- Final Python compilation and the repository full profile passed (42/42).
+  See `Saved/RXSkyBaking/verification_full.txt`.
+
+### Editor recovery and exposure audit (2026-09-12)
+
+The unsupported VolumetricCloud Blueprint-parent modal was dismissed and its
+request reconciled. The finished rig uses Actor + VolumetricCloudComponent.
+Both dedicated maps now exist and are saved. Preview references were remapped
+only inside the copied Blueprint. Dependency traversal examined 126 game
+packages and found no MCP-only package references.
+
+Project default auto exposure is enabled (`r.DefaultFeature.AutoExposure=1`),
+but the preview's enabled, unbound SkyPostProcess (weight 1) overrides it with
+Manual exposure, bias 0 and physical-camera exposure disabled. The bake capture
+uses SceneColor HDR with EyeAdaptation disabled. Cube-face discontinuities
+persisted at reflection sample scale 4, tracing distance 100 km and with
+`r.VolumetricRenderTarget=0`; the console value was restored to 1 afterward.
+Thus auto exposure is not the leading explanation for those seams.
+
+A six-direction SceneCapture2D projection removed the large face discontinuities.
+The final 92-degree captures use two degrees of overscan to avoid border lines.
+Actual RX renders at 12:00, 18:00 and 22:00 were inspected; review images are in
+`Saved/RXSkyBaking/final_{day,sunset,night}_review_opaque.png`. The viewport's
+background buffer was stale, so SceneCapture2D rendered the actual preview world.
+The temporary review actor was removed and the preview saved at 12:00.
+Density 500, 100 and 10 runs demonstrate parameter response;
+density 10 has mean sampled coverage about 0.64, compared with about 0.99 at 500.
+
+UE 5.6 cloud rendering requires both Atmosphere and Cloud show flags. Background
+is excluded by removing atmosphere, fog and sky sphere from the copied bake
+scene. Use named Rotator(pitch=..., yaw=..., roll=...); positional Python fields
+are roll/pitch/yaw.
+
+## Far-cloud refinement (UDS reference study)
+
+User direction: preserve the pre-Macro01 overhead cloud shapes; improve only
+the distant, low-elevation repetition. Macro01 is rejected and baseline scale,
+detail, density and layer settings are restored from Cloudsky_1K_Final.
+
+Read-only references inside this project:
+
+- `/Game/UltraDynamicSky/Materials/Global_Volumetric_Fog`: camera-to-sample
+  distance divided by `Reduce Sample Distance Scale` controls noise sample count.
+- `/Game/UltraDynamicSky/Materials/Material_Functions/Volumetric_Clouds_Extinction`:
+  separate high-frequency permission and octave reduction in the volume noise.
+- `/Game/UltraDynamicSky/Materials/Cloud_Fog_PostProcess`: a separate fog-distance
+  and fog-amount treatment rather than changing every cloud's base scale.
+
+No UDS expressions or asset references are copied into the output. Our independent
+implementation adds distance/elevation filtering to the copied cloud material.
+The source volume noise has no mipmaps; `VT_RXSkyBaking_FilteredNoise` is a separate
+copy with average mipmaps. All three noise samples use the filtered copy.
+
+The `06 Far clouds / Detail filtering` group exposes:
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| FarDetailStartKm | 8 | Begin distance transition |
+| FarDetailEndKm | 28 | Complete distance transition |
+| FarDetailMip | 4 | Maximum noise filtering |
+| PreserveAboveDegrees | 20 | No filtering/taper above this elevation |
+| FarExtinctionFade | 0.98 | Reduce distant low-angle extinction; 0 disables taper |
+
+Both controls use smooth distance and elevation gates. Overhead noise remains at
+mip zero, matching the original no-mipmap texture. Extinction and coverage-pass
+emission share the same taper. This is an art-directed far-cloud treatment, not
+a full atmospheric scattering simulation. The old `Volume Mip` control is
+superseded by these distance-aware controls.
+
+`Cloudsky_1K_FarAtmosphere02` was the far-filter checkpoint. A matched
+1024x1024 scene capture at pitch 25 degrees compared against Cloudsky_1K_Final
+showed mean RGB change 0.337/255 in rows 0-399 and 24.326/255 in horizon rows
+650-779. This supports overhead preservation and a localized horizon change;
+it is not a claim of bit-identical shading. Review: `Saved/RXSkyBaking/far02_after_review_opaque.png`.
+The previous mip-only FarDetail01 test reduced fine noise but retained radial
+patterns, so the extinction taper was added. Final material compilation has
+zero errors; the complete offline profile passed with unchanged input hashes
+(`far_final_verification.txt`, `far_final_inputs.json`). Dependency traversal
+of 113 packages found no UDS or MCP dependency. Temporary review actors were
+removed and the dedicated preview saved.
+
+## Generated cloud regions
+
+`Content/RXSkySystem/Python/rxsky_regions.py` authors native material nodes in the owned
+cloud material. `Tools/RXSkyBaking/generate_region_masks.py --seed 138 --size 1024`
+generates the current nine-region layout, anchors, JSON settings, and numbered
+guide under `Content/RXSkySystem/Baking/Source`. It uses NumPy and Pillow in the host
+Python environment. Generated texture data must retain its alpha channel.
+
+Layout RGBA stores coverage, normalized base altitude, normalized thickness,
+and normalized noise scale. Anchors RG stores each region's center UV and B
+stores its ID. Import both as linear, uncompressed RGBA data with no mipmaps
+and clamp addressing. Region boundaries include a zero-coverage gap to avoid
+blending different height and scale values into visible seams.
+
+The cloud instance exposes `07 Generated regions / Global` and nine
+`08 Region NN` groups. `RegionEnabled=0` restores the original coordinates and
+height profile. Domain, center and rotation position the non-repeating layout.
+Global base/thickness/scale ranges decode its channels; `RegionNNScale`,
+`RegionNNHeightOffsetKm`, and `RegionNNThickness` adjust individual regions.
+Scale changes cloud noise around the region center without resizing the mask
+footprint. Heights are kilometers above the cloud planet, not world Z.
+Keep every region within the VolumetricCloud component's bottom/height envelope.
+
+The depth preset uses seed 138, a 40 km domain, 2.4–6.5 km base range and
+1.2–3.8 km thickness range. Its top-down mask coverage is about 15.2%; this
+is not a projected sky coverage percentage. Existing far-cloud taper is retained.
+`RegionFarPreserveStartKm=10` and `RegionFarPreserveEndKm=20` restore the
+unmasked source distribution with a smooth horizontal-distance transition.
+Beyond the end distance, original noise coordinates and layer height profile
+are restored completely. The current instance uses `RegionDensityMultiplier=20`
+(the material default is 8), scale range 0.4–1.2 and edge softness 0.32 for the near and
+middle cloud bodies only; global `Cloud Density` remains 12 for the distance.
+Height and coverage affect extinction and the coverage bake consistently.
+After parameter changes, rebake from the baking level and apply the output to
+the dedicated RX preview. Bake reports now include texture parameter paths as
+well as scalar/vector settings.
+
+Validation: native material compile completed with zero errors; the full
+offline profile passed with unchanged source hashes (`regions_final_inputs.json`,
+`regions_final_verification.txt`). The three authoring Python files also passed
+syntax compilation. Saved dependency traversal found no MCP or UDS references.
+
+Current preview assignment: `Cloudsky_1K_Regions138_Shape04`, 1024² positive and
+negative textures. Actual RX scene capture at pitch 25°, yaw 0° shows the restored
+distant cloud band, a clear central sky opening and stronger nearby contours
+than DepthFar03. Review: `Saved/RXSkyBaking/regions_shape04_review_opaque.png`.
+Temporary review actors were removed and the dedicated preview level saved.
+
+## Animated-feature art reference study
+
+User requested Disney/Pixar sky reference analysis and an authored variation.
+Primary visual reference: [Disney D23 Moana 2 visual development by Kevin Nelson](https://d23.com/behind-the-animation-of-moana-2-characters-challenges-and-creativity/),
+specifically its atoll painting. Our visual interpretation is a few unequal
+rounded cloud groups, quieter interiors, broad open blue space, and small
+distant accents. This is an art direction interpretation, not a description of
+Disney's production algorithm. [Pixar's Luca art](https://www.pixar.com/luca)
+provides secondary palette and composition reference; the island painting has
+an almost cloudless sky, so it is not used as a cloud geometry reference.
+[Pixar's stylization article](https://renderman.pixar.com/stories/stylization-at-pixar)
+also discusses art-directed silhouettes and shadow color, supporting a shape-first
+approach rather than adding more noise. Reference images are not imported assets.
+
+The generator's new `--style sculpted` option builds each region from three
+unequal overlapping lobes. Its B thickness channel tapers toward lobe edges,
+giving the volume a domed top while retaining the regional base altitude.
+Generate with `--seed 140 --style sculpted --size 1024`. Existing `separated`
+style and the 138 assets remain available. The 10–20 km far restore stays intact.
+The sculpted layout offsets region 1 toward the middle distance so its silhouette
+can be seen against sky. Seed 139's first test covered too much of the zenith and
+was rejected. The second test restores thickness range 1.2–3.8 km, density gain
+20 and noise scale range 0.8–1.4, with per-region scale multipliers 1.2, 0.85 and
+1.1 on regions 1–3. Remaining multipliers are 1.
+The height remap is weighted by coverage and domain containment as well as the
+distance blend. Uncovered texels therefore retain the original altitude profile;
+their arbitrary encoded region heights cannot reshape the restored distant cloud.
+
+Study result: `Cloudsky_1K_Sculpted140_03` and
+`MI_RXSkyBaking_Sculpted140_Study` preserve the experimental look. The larger
+middle-distance silhouette reads, but sharp edge artifacts remain in its body.
+This study is NOT the accepted preview: `Cloudsky_1K_Regions138_Shape04` was
+reassigned, and the working cloud instance restored to the 138 parameters.
+Review evidence: `Saved/RXSkyBaking/sculpted140_03_review_opaque.png`.
+Final source verification passed full with unchanged hashes in
+`sculpted_final_inputs.json` / `sculpted_final_verification.txt`; native compile
+has zero errors. These checks do not imply visual acceptance of the study.
+
+## Analytic volume sculpt prototype
+
+`Content/RXSkySystem/Python/rxsky_volumes.py` authors `M_RXSkyBaking_VolumeSculpt` and
+`MI_RXSkyBaking_VolumeSculpt` as separate native legacy Volume assets. Five
+unequal ellipsoid fields with smooth unions define one hero cloud; two value
+noise octaves perturb only its boundary. Extinction is expressed per meter,
+matching UE 5.6 VolumetricCloud.usf's centimeter-to-meter optical depth conversion.
+The same final extinction drives both volume shading and bake coverage emission.
+The original cloud distribution fades in between horizontal distances 8–16 km.
+`RegionEnabled=0` on this instance keeps that distant source independent of
+the previous 2D height remap. The existing region-mask assets remain available;
+this first single-cloud prototype is controlled directly, not yet instanced
+automatically across all nine mask regions.
+
+`09 Volume sculpt` exposes SculptHeroCenterCm, SculptHeroBaseKm,
+SculptHeroWidthKm, SculptHeroHeightKm, SculptHeroYawDegrees, SculptDensityPerM, SculptErosion and
+SculptEdgeSoftness. SculptRegionScale, SculptRegionHeightOffsetKm and
+SculptRegionThickness control this individual cluster. All shape sizes are km;
+the XY center is world cm. SculptEnabled=0 restores the original source input.
+`rxsky_volumes.activate()` assigns it only in L_RXSkyBaking. Baker captures
+the component's actual material and all its settings. For this prototype,
+open the VolumeSculpt instance directly; the existing generic settings menu
+still points to MI_RXSkyBaking_Cloud.
+
+Current applied test: `Cloudsky_1K_VolumeSculpt02` (1024² positive/negative).
+It rotates the cluster 90 degrees and uses width control 4 km, exposing the
+unequal top lobes instead of overlapping them along the viewing direction.
+Actual RX capture: `Saved/RXSkyBaking/volume_sculpt02_review_opaque.png`.
+Silhouette and lower plane are readable, but interior shading remains too simple
+for final art acceptance. This is a shape prototype, not a finished Disney-like sky.
+The preview was saved after temporary capture cleanup. Native compilation has
+zero errors. The full profile passed with unchanged source hashes in
+`volume_sculpt_final_inputs.json` / `volume_sculpt_final_verification.txt`.
+Dependency traversal of 11 packages found no MCP or UDS references.
+
+### Five hero clouds around the baking origin (2026-09-12)
+
+The baking level now uses five analytic volumetric hero clusters at azimuths
+0, 72, 144, 216 and 288 degrees. Distances are respectively 7, 8, 9.5, 7 and
+11 km. Each cluster exposes its own center, base altitude, width, thickness,
+rotation and density controls in MI_RXSkyBaking_VolumeSculpt. Original distant
+cloud density fades back in between 8 and 16 km from the capture origin.
+Secondary puffs, internal density variation and one multiple-scattering octave
+add surface structure. View/shadow sample scales are 4. Review session uses
+VolumetricRenderTarget Mode 3 and higher ray sample limits; these are authoring
+quality settings, not a measured shipping performance profile.
+
+rxsky_baking_review adds an owned review sky dome and manual exposure volume
+(bias -12, physical camera exposure disabled). Review-only geometry is tagged
+RXSkyBakingReviewOnly and excluded from future face captures. The temporary
+review capture was destroyed before saving the level. The settings action now
+opens the active baking cloud material; bake reports describe scattering as
+material-defined instead of hardcoding zero octaves.
+
+This is a baking-level review checkpoint only. No new texture bake or preview
+level validation was performed. The previous VolumeSculpt02 output remains the
+last baked preview. Five direction captures are under Saved/RXSkyBaking as
+five_heroes_quality_000/072/144/216/288_review_opaque.png. Explicit capture_scene
+refresh was required when changing direction. Spacing and sky gaps are visible;
+surface softness, strong shadow pockets and consistency between lit/backlit
+views remain art review items, so this is not a final art-quality approval.
+
+Validation: native material compilation reported zero errors; Python syntax
+checks and the full 42-check verification profile passed. Frozen input hashes
+were unchanged across verification. Saved baking-level dependency traversal
+visited 15 game packages with no UDS/MCP path matches. Editor remains in the
+baking level at the capture origin, facing the 144-degree hero.
+
+### Natural density study (2026-09-12)
+
+User rejected the sculpted/cartoon silhouette. The active VolumeSculpt custom
+expression now replaces all ellipsoid unions and prescribed puff positions with
+a domain-warped, multiscale density field inside broad weather regions. Five
+72-degree locations and the original far-cloud branch remain unchanged. Current
+instance density is .0015 per meter and erosion .26. Existing per-region size,
+altitude and density parameters still apply. This is a visual iteration, not an
+art approval: edges are irregular but some views remain wispy and backlit cores
+too dark. Review captures cover 0, 144 and 288 degrees under Saved/RXSkyBaking/
+natural_density_final*_review_opaque.png. Editor is left at 288 degrees in the
+baking map; temporary capture was removed before saving. No texture baking or
+preview validation was performed.
+
+Native compilation: zero errors, saved and code/instance readback matched.
+Full offline profile passed with unchanged before/after source hashes recorded
+in natural_inputs.json; log is natural_verification.txt in the same Saved folder.
+Python syntax check passed. Dependency traversal from the two affected material
+assets visited 14 packages without MCP/UDS references.
+
+### Volume-texture formation study (2026-09-12)
+
+Read-only UDS inspection covered Volumetric_Clouds, its Extinction function and
+Conservative_Density function (115/107/165 nodes). These separate volume texture
+formation, altitude profile, erosion and fine detail. Our active study now uses
+the owned VT_RXSkyBaking_FilteredNoise through SculptFormationNoise, with a broad
+region mask, vertical density profile and separate two-scale edge erosion.
+The analytical value-noise/warp loops were removed. Empty coarse samples return
+before detail reads. This is an independent implementation, with no UDS assets
+linked. UDS distance-adaptive octaves and interior lighting were not ported.
+
+Five positions and far-cloud branch remain. Live captures at 144/288 degrees
+show more compact cloud mass and irregular small lobes; remaining art concerns
+are soft edges and dark interiors. Capture files are texture_density_144 and
+texture_density_288_review_opaque.png under Saved/RXSkyBaking. No output texture
+bake or preview validation occurred. Temporary capture was destroyed and the
+baking map saved, facing 144 degrees. Interactive Mode 0 / view cap 192 remains;
+no measured FPS improvement is claimed.
+
+Native material compilation and save passed with zero errors. Dependency audit
+visited 14 packages with no MCP/UDS matches. Full offline verification passed
+with unchanged input hashes (texture_density_inputs.json and
+texture_density_verification.txt); Python syntax check passed.
+
+### Unequal hero sizes and mid-distance gaps (2026-09-12)
+
+Hero width controls are now 1.7, 4.6, 5.2, 2.4 and 3.4 km; height controls
+are 1.5, 2.8, 4.1, 1.8 and 2.7 km, preserving the five azimuths and distances.
+Two broad volume-texture samples modulate original mid-distance extinction.
+The modulation blends in at 6-11 km and out at 23-34 km, preserving distant
+cloud density. It reduces density between patches rather than adding more
+small noise. This adds two texture reads per evaluated material sample; no
+performance improvement is claimed for this distribution change.
+
+Live captures distribution_144/000_review_opaque.png show the large/small hero
+contrast and reduced mid-cloud coverage. Large hero underside shadows remain
+an art concern. No new graph asset dependencies were introduced: the existing
+owned CloudNoise input is reused. Shader compile/save: zero errors. Full profile
+and syntax check passed, with unchanged distribution_inputs.json source hashes
+across distribution_verification.txt. Baking map saved after temporary capture
+cleanup; no new bake or preview validation.
+
+### UDS live demo as the primary visual reference (2026-09-12)
+
+User selected the currently opened UDS DemoMap as the full reference. Snapshot
+uds_live_reference_review_opaque.png and scalar readback uds_live_settings.json
+are under Saved/RXSkyBaking. Live UDS uses bottom .6 km, thickness .7 km,
+FormationVolume plus 3D_Cells_64, and separate blue top/bottom emission. Our
+owned instance now uses hero thicknesses .9/1.25/1.7/1/1.2 km and phase values
+.85/.4/blend .65, scattering contribution .85, occlusion .5, eccentricity .4.
+Original UDS assets remain untouched. Safe native map transition completed.
+
+An independent shallow middle layer at 2.6-3.45 km replaces the original middle
+branch, with a 7-36 km distance envelope. The original source returns over
+24-36 km for the horizon. This is an unfinished art study: the wide review at
+144 degrees is still too sparse and exhibits low-resolution tracing artifacts;
+it does not yet match the UDS cloud grouping or ambient lighting. No full UDS
+copy or saved UDS dependency was added. No new bake or preview validation.
+Temporary captures were destroyed before saving the baking map. Full offline
+profile passed with unchanged uds_layer_inputs.json hashes; shader compile/save
+reported zero errors and syntax passed. Visual art approval remains outstanding.
+
+### Independent UDS baseline draft, NOT approved (2026-09-12)
+
+User explicitly requires no UDS or UnrealMCP dependencies. A 15-asset comparison
+copy exists under ReferenceUDS, authored by rxsky_uds_reference.py. Material,
+function, collection, texture and volume source-sheet pointers were remapped to
+owned copies. Recursive material dependency audit visited 17 packages with no
+/Game/UltraDynamicSky or UnrealMCP references; engine RemapValueRange and engine
+Interchange import metadata remain. This is not a plugin-disabled cook test.
+
+The copied material compiled but produced no visible clouds in live captures.
+Replacing collection reads with local scalar/vector parameters did not resolve
+it. The helper's first local_parameters call partially completed the main graph
+before the enum mapping was fixed; skip_main=True then completed both functions.
+Do not rerun the helper blindly: it is a one-time authoring draft, not idempotent.
+The comparison is not baking compatible and must NOT be assigned to the baker.
+The original working VolumeSculpt, 2.25/10 km layer, review exposure -12, light
+50000 and sky radiance 2600 were restored to the baking map. Temporary capture
+was destroyed. New comparison assets remain isolated for further diagnosis.
+No equal-quality claim, full promotion verification, bake or preview validation.

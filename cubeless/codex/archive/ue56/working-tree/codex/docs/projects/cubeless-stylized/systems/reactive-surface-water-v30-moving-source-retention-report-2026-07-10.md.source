@@ -1,0 +1,28 @@
+# Reactive Surface Water V30 Moving Source Retention Report - 2026-07-10
+
+- Verdict: `PASS`
+- Scope: `/Game/_MCP_Temp` only; production ReactiveSurface assets are untouched.
+- Goal: verify moving player/source leaves previous world-space wave rings while normal residue stays gated.
+
+## Checks
+- compile error/warning: `0` / `0`
+- moving_path_has_multiple_pulses: `True`
+- old_positions_retain_waves: `True`
+- final_position_has_wave: `True`
+- not_current_position_only: `True`
+- normal_residue_bounded: `True`
+- extent_bounded: `True`
+
+## Final Regions
+- source 0: center=[80, 128] active=1163 energy=19986.25067553581 peak=72.40165743959182
+- source 1: center=[104, 128] active=1342 energy=25223.838268943993 peak=72.40165743959182
+- source 2: center=[128, 128] active=1230 energy=24874.67132611771 peak=73.34166619323561
+- source 3: center=[151, 128] active=1005 energy=22718.353894894488 peak=82.82662615367114
+- source 4: center=[175, 128] active=605 energy=15722.030472943548 peak=82.82662615367114
+
+## Visuals
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV30MovingSource\water_v30_moving_source_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v30-moving-source-retention-results-2026-07-10.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV30MovingSource\water_v30_moving_source_bridge_results.json`

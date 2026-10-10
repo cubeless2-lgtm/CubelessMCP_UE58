@@ -1,0 +1,955 @@
+{
+  "editor_toolset.toolsets.object.ObjectTools": {
+    "name": "editor_toolset.toolsets.object.ObjectTools",
+    "version": "1.0",
+    "description": "Provides tools for inspecting and modifying the properties of\n    Unreal Objects and Unreal Classes, including those in Blueprints.\n    Also use this toolset to discover available classes and subclasses.",
+    "tools": [
+      {
+        "description": "Resets one or more properties on an object to their default values,\n        removing any per-instance overrides.\n\n        Args:\n            instance: The object with the properties to reset.\n            properties: The names of the properties to reset to their defaults.\n\n        Returns:\n            True if all properties were reset. False otherwise.",
+        "name": "editor_toolset.toolsets.object.ObjectTools.reset_properties",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "instance": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Object",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            },
+            "properties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "instance",
+            "properties"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Sets the values of properties on an object.\n\n        Args:\n            instance: The object with the property.\n            values: A JSON formatted string of the properties to set and their values.\n                For instanced sub-object properties, pass a class path as the instance member.\n\n        Returns:\n            True if the property was set. False otherwise.",
+        "name": "editor_toolset.toolsets.object.ObjectTools.set_properties",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "instance": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Object",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            },
+            "values": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "instance",
+            "values"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Returns the values of one or more properties on an object.\n\n        Args:\n            instance: The the object to query.\n            properties: The names of the properties to query.\n\n        Returns:\n            A JSON formatted string of the properties and their values.",
+        "name": "editor_toolset.toolsets.object.ObjectTools.get_properties",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "instance": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Object",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            },
+            "properties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "instance",
+            "properties"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Returns a list of properties that are on the specified object.\n\n        Args:\n            instance: The object to query.\n\n        Returns:\n            A list of properties on the object.",
+        "name": "editor_toolset.toolsets.object.ObjectTools.list_properties",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "instance": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Object",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            }
+          },
+          "required": [
+            "instance"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Returns the class of an Unreal object.\n\n        Args:\n            instance: The object instance to query.\n\n        Returns:\n            The class of the object.",
+        "name": "editor_toolset.toolsets.object.ObjectTools.get_class",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "instance": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Object",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            }
+          },
+          "required": [
+            "instance"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Class",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Finds all subclasses of a given class.\n\n        Args:\n            base_class: The class to search subclasses of.\n            class_name: Optional case-insensitive substring filter on the class path.\n\n        Returns:\n            A list of subclasses matching the filter.",
+        "name": "editor_toolset.toolsets.object.ObjectTools.search_subclasses",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "base_class": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Class",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            },
+            "class_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "base_class",
+            "class_name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "title": "Class@/Script/CoreUObject.Object",
+                "properties": {
+                  "refPath": {
+                    "type": "string",
+                    "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                  }
+                },
+                "required": [
+                  "refPath"
+                ]
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      }
+    ]
+  },
+  "editor_toolset.toolsets.asset.AssetTools": {
+    "name": "editor_toolset.toolsets.asset.AssetTools",
+    "version": "1.0",
+    "description": "Provides tools for interacting with assets in the Unreal project and files on disk.",
+    "tools": [
+      {
+        "description": "Writes text content to a file on disk.\n\n        Only files under /Game/, an enabled plugin's Content/ directory, or\n        the project Saved/ directory may be written. Only plain text formats\n        are supported. Overwrites the file if it already exists.\n\n        Args:\n            file_path: The path to the file to write.\n            content: The text content to write.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.write_file",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file_path": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_path",
+            "content"
+          ]
+        }
+      },
+      {
+        "description": "Reads a text file from disk and returns its contents.\n\n        Only files under /Game/, an enabled plugin's Content/ directory, or\n        the project Saved/ directory may be read. Only plain text formats are\n        supported.\n\n        Args:\n            file_path: The path to the file to read.\n\n        Returns:\n            The text content of the file.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.read_file",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Returns the root content paths for plugins that have content.\n\n        Args:\n            include_engine: When True, also includes content plugins under the Engine directory.\n\n        Returns:\n            A list of virtual content root paths (e.g. ['/PluginName/']) for each\n            in-scope plugin that has a content directory.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.get_plugin_content_paths",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "include_engine": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Lists assets that the specified asset depends on.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            A list of content paths for assets that the given asset depends on.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.get_dependencies",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Lists assets that reference the specified asset.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            A list of content paths for assets that reference the given asset.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.get_referencers",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Checks whether an asset is checked out by the current user.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            True if the asset is currently checked out by the current user.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.is_checked_out",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Checks whether an asset can be edited.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            True if the asset can be edited, False if it is checked out\n            or locked by another user in source control. Always True\n            when source control is not enabled.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.can_edit_asset",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Checks whether an asset has unsaved changes.\n\n        Args:\n            asset_path: The path to the asset to check.\n\n        Returns:\n            True if the asset has unsaved changes, False if it is saved.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.is_dirty",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Saves assets to disk.\n\n        Args:\n            asset_paths: The paths to the assets to save. Pass an empty list to save\n                         all dirty assets.\n\n        Returns:\n            True if all assets were saved successfully.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.save_assets",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_paths": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "asset_paths"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Loads an asset from the project.\n\n        Args:\n            asset_path: The path to the asset to load.\n\n        Returns:\n            The loaded asset.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.load_asset",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "object",
+              "title": "/Script/CoreUObject.Object",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Sets or removes metadata tags on an asset.\n\n        Args:\n            asset_path: Content path to the asset.\n            set_tags: Tag names mapped to the values to set.\n            remove_tags: Tag names to remove. Removing a tag that does not\n                         exist is a no-op.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.update_metadata_tags",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            },
+            "set_tags": {
+              "default": null,
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "default": null
+              }
+            },
+            "remove_tags": {
+              "default": null,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "default": null
+              }
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        }
+      },
+      {
+        "description": "Gets the metadata tags for an asset.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            A dict mapping tag names to their string values.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.get_metadata_tags",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Gets the class of an asset.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            The class name of the asset (e.g. 'StaticMesh', 'Material', 'HeroCharacter_C').",
+        "name": "editor_toolset.toolsets.asset.AssetTools.get_asset_class",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Gets the asset registry tags for an asset.\n\n        Args:\n            asset_path: Content path to the asset.\n\n        Returns:\n            A dict mapping tag names to their string values.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.get_asset_tags",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "asset_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "asset_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Searches the project for assets that match specific criteria.\n\n        Args:\n            folder_path: The folder to search within. Pass an empty string to search\n                         the entire project (/Game/ and all plugin content folders including\n                         project plugins and engine plugins).\n            name: If set, will only return assets whose name contains this string\n                  (case-insensitive).\n            asset_type: If set, will only return assets that are of this type.\n            recursive: Whether to search subfolders or not.\n            tags: If set, will only return assets whose asset registry tags contain\n                  all specified key-value pairs with exact value matches.\n\n        Returns:\n            A list of asset paths that match the criteria.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.find_assets",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "folder_path": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "asset_type": {
+              "default": null,
+              "type": "object",
+              "title": "/Script/CoreUObject.Class",
+              "description": "UObject \ub610\ub294 UClass\uc5d0 \ub300\ud55c \ub808\ud37c\ub7f0\uc2a4\ub97c \ub098\ud0c0\ub0c5\ub2c8\ub2e4.",
+              "properties": {
+                "refPath": {
+                  "type": "string",
+                  "description": "\uc18c\ud504\ud2b8 \uacbd\ub85c \uc2a4\ud2b8\ub9c1\uc73c\ub85c \uc800\uc7a5\ub41c \ub808\ud37c\ub7f0\uc2a4\uc785\ub2c8\ub2e4."
+                }
+              },
+              "required": [
+                "refPath"
+              ]
+            },
+            "recursive": {
+              "type": "boolean",
+              "default": true
+            },
+            "tags": {
+              "default": null,
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "default": null
+              }
+            }
+          },
+          "required": [
+            "folder_path",
+            "name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Deletes an asset or folder.\n\n        Args:\n            path: The current location of the folder or asset.\n\n        Returns:\n            True if the delete happened successfully. False otherwise.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.delete",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Moves or renames an asset or folder.\n\n        Args:\n            path: The current location of the folder or asset.\n            new_path: The new location and/or name.\n\n        Returns:\n            True if the rename happened successfully. False otherwise.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.move",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "new_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "new_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Makes a copy of a folder or asset.\n\n        Args:\n            path: The current location of folder or asset.\n            new_path: The location of the copy.\n\n        Returns:\n            True if the copy happened successfully. False otherwise.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.duplicate",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "new_path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "new_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Determines if a folder or asset exists.\n\n        Args:\n            path: The path at which an asset or folder might exist.\n\n        Returns:\n            True if an asset or folder exists at the path. False otherwise.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.exists",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Lists the folders contained within a folder.\n\n        Args:\n            root: The project relative path to the folder to search from.\n            recursive: Subfolders will be searched when this is set to true.\n\n        Returns:\n            A list of paths to folders",
+        "name": "editor_toolset.toolsets.asset.AssetTools.list_folders",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "root_path": {
+              "type": "string"
+            },
+            "recursive": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "required": [
+            "root_path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Creates a folder at the specified path.\n\n        Args:\n            path: The project relative path at which to create the folder.\n\n        Returns:\n            True if the folder could be created or already exists.",
+        "name": "editor_toolset.toolsets.asset.AssetTools.create_folder",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "path"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      }
+    ]
+  },
+  "diagnostics": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 64188,
+    "instance_id": "26FA6635-4D37-893F-ECD0-6FB3042D5145",
+    "session_id": "B416DC0A-C626-4BCF-8000-00000000DB00",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [
+      "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/M_Contract",
+      "/Game/CubelessMCPTests/Material_5c19c3e9c2454d8b876693125f2c7525/MPC_Contract"
+    ],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.2800971269607544
+  }
+}

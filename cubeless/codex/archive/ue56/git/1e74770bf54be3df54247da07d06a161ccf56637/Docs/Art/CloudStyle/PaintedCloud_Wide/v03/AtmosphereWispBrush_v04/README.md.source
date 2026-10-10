@@ -1,0 +1,21 @@
+# Rear wisp brush blend v04
+
+Built-in ImageGen source revision blends the original long flowing veil with
+broader soft cloudy brush strokes. The initial dense smoky cloud version was
+rejected and was not imported. Prompt direction: roughly 70% original flowing
+wisps / 30% broad patches; quiet brush-like interiors, soft ends, open black
+gaps, no dense mounds, hairline tangles, granular noise, sky color or text.
+
+Selected source: `Source_WispCloud.png`. The 4096x2048 delivery is resampled from
+the generated source; RGB neutral illumination, A smooth coverage. Existing
+high-altitude attenuation is retained. U wraps, V clamps; first and last columns
+match exactly. Zenith/horizon fades prevent a pole seam or hard edge.
+
+Assigned only as the current level actor's Skybox Base Texture:
+`/Game/RXSkySystem/Cubeless/PaintedCloud/v03/Evolution/SkyboxBlend/AtmosphereWispBrush_v04/T_AtmosphereWispBrush_v04`.
+Front clouds, existing flowmap, time, material/BP code and scalar settings are
+unchanged. Old source textures remain available. Exported/imported RGBA pixels
+match the delivery image. Current viewport result was inspected.
+
+Evidence and pre-change map backup:
+`MCPGameProject/Saved/PaintedEvolutionV03/RearWispCloud/`.

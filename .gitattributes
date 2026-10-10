@@ -1,0 +1,3 @@
+# Preserve exact source and evidence bytes, including archived hash inputs.
+# Do not normalize line endings on staging or checkout.
+* -text

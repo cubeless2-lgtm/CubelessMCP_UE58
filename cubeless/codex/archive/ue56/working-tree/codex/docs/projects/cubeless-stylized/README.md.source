@@ -1,0 +1,57 @@
+# CubelessStylized Knowledge Index
+
+This folder is the embedded `UnrealMCP5_6_1` home for CubelessStylized learning material, project-facing checklists, hook documentation, authored-system notes, and migrated reference notes.
+
+Keep durable learning and operator-facing knowledge here when the material is useful beyond one local branch or one generated asset. For this repository, this tree is canonical; external sibling repositories such as `CubelessOps` are not the day-to-day source of truth unless a task explicitly asks to compare or sync them.
+
+## Moved Here
+
+- `systems/rx-sky-system.md`: **RXSkySystem 정식 스카이 시스템** — `/Game/RXSkySystem`, 독립형 BP, 6방향 구름 조명·산란·자동 이동, 시간대 팔레트, 내부 높이 안개·렌즈 효과와 한글 변수 안내.
+
+- `hooks/git-hooks.md`: human-facing documentation for the project Git hook setup. The executable hooks remain in `CubelessStylized/.githooks` and `CubelessStylized/Tools/GitHooks`.
+- `reviews/unreal-cpp-conventions.md`: project-facing Unreal C++ review checklist.
+- `legacy/agent-workflow.md`: pre-Ops two-agent workflow note, retained as historical source.
+- `logs/work-log.md`: historical project work ledger.
+- `systems/interaction-field-system.md`: InteractionField system plan used by project preflight tooling.
+- `systems/reactive-surface-index.md`: Reactive Surface document packet index. Start here for the final lock, implementation plan, validation-plan delta, ghost/smoke reports, Claude handoff prompts, and reproduction runners. Primary implementation plan: `systems/reactive-surface-implementation-plan-2026-07-05.md`; validation delta: `systems/reactive-surface-plan-delta-2026-07-05.md`; primary lock: `systems/reactive-surface-final-implementation-lock-2026-07-05.md`.
+- `systems/mcpweather.md`: MCPWeather camera-following weather manager (BP + MPC + MF + Niagara) — wiring, verification, FX integration contract, editor-viewport preview shell (`Content/Python`, commit `b8976df`), and the camera-follow lag diagnosis + optimization direction.
+- `tooling/niagara-mcp-authoring-extension.md`: feasibility + tiered plan (T1 emitter setters / T2 module-input writing / T3 graph authoring) for extending the UnrealMCP plugin C++ so Niagara emitter/particle-script editing is possible from MCP. Motivated by MCPWeather §6-c.
+- `tooling/unreal-mcp-stability-hardening-2026-07.md`: 2026-07-03 stability pass - P0 dead-tool fixes (4ce59e78 guard regression), new F821 + registration-smoke verification gates, Python transport hardening, C++ UTF-8-safe socket framing, env-configurable command timeout, and FScopedTransaction wrappers for command handlers. Same-day follow-ups: bridge `batch` command (`execute_batch`, one socket round trip, one editor transaction), read-only live bridge smoke gate, GitHub Actions offline Python gates, concurrent-agent editor-lifecycle caveat, and non-blocking socket response path via `ExecuteCommandAsync` + runnable response queue.
+- `tooling/unreal-mcp-data-sequencer-domains-2026-07.md`: 2026-07-03 new MCP domains - DataTable/DataAsset authoring (`data`, 9 tools), Sequencer authoring (`sequencer`, 10 tools after the 2nd pass: create/info/bind/transform-keys/camera-cut/playback-range/binding-removal/float-property-keys/subsequence/open-in-editor), skeletal mutation (`skeletal`, 6 tools: bone tree, socket CRUD, translation retargeting), and Landscape/Foliage (`landscape`, 7 tools: guarded flat Landscape creation, list/info/material, foliage list/place/remove). Plus the same-day null-guard sweep and full PCG tool-doc resync. 328 total registered tools; includes verification state (data/sequencer and Landscape mutation live smokes passed) and batch/shot-blocking usage pointers.
+- `systems/anime-skydome.md`: Anime SkyDome 서브컬처풍 하늘 시스템 (`/Game/Sky`: M_AnimeSky 마스터 + BP_AnimeSkyDome) — three.js GLSL 레퍼런스의 UE 5.6.1 컨버팅, TOD 램프/해·달/별밭/위스프 구름/헤이즈, 라이트 매칭, MCP 무의존 감사, 스크립트 authoring 함정 목록.
+- `systems/pcg-hlsl-cpp-needs-2026-07-06.md`: UE 5.6.1 PCG Custom HLSL smoke follow-up list for optional UnrealMCP plugin C++ helpers: structured PCG point readback, HLSL source/declaration readback, compile diagnostics, debug-buffer readback research, preconfigured Custom HLSL setup, and temp graph cleanup.
+- `systems/fx-color-correction-mpc.md`: FX ColorCorrection MPC BP-only 구현/검증 기록 (Codex 자율 실행판) — PP Volume에 붙는 `BPC_FXColorCorrection`, 5개 MPC 파라미터(`FXIntensity`, `FXContrast`, `FXSaturate`, `FXHue`, `FXTint`), preset fallback, MCPWeather식 EditorTickDriver, 하네스/SIE 수치 검증, MCP 무의존 감사, C++ 게이트 기록.
+- `systems/water-blob-v6-recovery-report-2026-07-11.md`: **WaterBlob V1 기준선 정본** — V6/V8 재조립, 스플라인 스폰, 캐릭터 상호작용, 매니저별 고정 96개/정확 보충, 마스크드 스폰 페이드, 높이 스프링, NDC 사망 Burst, 그래프·렌더러 정리, Burst 원본 속도 상속, GPU Distance Field 월드 충돌·벽 반발, 다중 매니저 이벤트 격리, `/Game/WaterBlob` 정식 승격과 검증 기록.
+- `systems/pcg-dungeon/`: PCG Dungeon delivery, operator, review, MVP, and roadmap documents.
+- `studies/stackobot-animation/`: StackOBot animation study, request workflow, route matrix, templates, and sample manifest.
+- `../../workflows/controlrig-animbp-mcp-learning.md`: repository-wide ControlRig/AnimBP MCP learning workflow; pairs with `Docs/Research/controlrig_animbp_api_map.md`, `Docs/Research/controlrig_animbp_failure_patterns.md`, and `Docs/Tools/anim_controlrig_tools.md`.
+- `studies/uds-analysis/`: Ultra Dynamic Sky analysis, delivery, and closeout documents.
+- `learning/sky-vfx/`: sky, volumetric, cloud-card, and Ultra Volumetrics learning notes.
+- `learning/sky-vfx/cloud-card-baking-pipelines.md`: canonical incubation specification and future-skill candidate for the Single Cloud Baking Pipeline and two-variant `A -> B` Distant Horizon Cloud Baking Pipeline, including change control, Hunyuan/SDF routing, packed deliverables, regression QA, and formal-skill promotion gates.
+- `learning/materials/`: material research notes such as silhouette POM.
+- `learning/pcg/`: reusable PCG study notes that are not tied to a live project validator.
+- `learning/houdini/fluid-vat-pretest-plan.md`: Houdini Dynamic Remeshing Fluid VAT를 UE 5.6.1에서 검증하기 위한 사전 테스트 계획. 최종 자산 계약, SideFX 의존성 제거, 정·역재생, Niagara 메시 변형 3종, 임포트·패키징 검증 및 다음 세션 재개 지점을 기록한다.
+- `reference-index/`: reviewed external-project indexing guidance and candidates.
+- `research/`: saved research pages and local HTML notes.
+
+## Skills And Agents
+
+- Shared agent roles and skill-like operating modes for this repository live in `codex/agents/`.
+- Repository-wide workflows live in `codex/docs/workflows/`.
+- Project-specific durable knowledge for CubelessStylized-facing MCP work lives in this project knowledge folder. Do not promote day-to-day canonical notes into external `CubelessOps` unless the user explicitly asks for an external sync.
+
+## Still Project-Local
+
+- `AGENTS.md`, `CLAUDE.md`, `.codex/config.toml`, `.mcp.json`.
+- `.githooks/*`, `Tools/GitHooks/*`, and executable project scripts.
+- Legacy local pointers may still mention `docs/README.md` or `Tools/Unreal/cubeless_ops_paths.py`; for this repository, resolve those references to this embedded `codex/docs` tree unless a task explicitly asks for an external migration.
+
+## Migration Rule
+
+Move a document into this embedded `codex/docs/projects/cubeless-stylized/` folder when it is durable knowledge for this repository. Leave generated Unreal assets, local scripts, staging checks, or project bootstrap behavior in their execution-specific paths.
+
+When moving another tool-bound document, update the tool path first, then move the document in the same change.
+
+## Legacy Path Aliases
+
+Many migrated historical documents still mention `docs/...` paths. Treat those as legacy CubelessStylized path tokens, not proof that the file lives outside this repository. Humans should start from this index when following moved documentation.

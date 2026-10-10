@@ -1,0 +1,31 @@
+{
+  "schema": "cubeless_source_freeze_v1",
+  "stage": "component_fixture_N1",
+  "date": "2026-10-10",
+  "state": "source_only_ready_for_root_execution",
+  "files": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\create_component_read_fixture.py",
+      "sha256": "6d3ff51612f0966a473d375e9f74054fd069eef1b1765077ed2976ae519936a5"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\test_component_read_fixture.py",
+      "sha256": "fd92c0deafc17616a95b0a1cc61f2ba43aa4287353dd4afa4ecbcf5ce40846f4"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\component-read-fixture-N.md",
+      "sha256": "743eb95d234569da4a78d8a7e0e271605ded29e0dceb81a999adfc264f0c38ab"
+    }
+  ],
+  "offline_tests": {
+    "command": "UE5.8 Python -B -m unittest discover -s cubeless/tools/verification -p test_component_read_fixture.py -v",
+    "tests": 7,
+    "passed": 7,
+    "elapsed_seconds": 0.028,
+    "tool_exit_code": 0,
+    "scope": "guard counterexamples; no Unreal import or engine execution"
+  },
+  "actual_engine_execution": "not_performed_by_native_agent",
+  "root_launcher_contract": "author(report_path, fresh_uuid_hex, os.getpid()); compare reported process_id to externally observed launch PID",
+  "cpp_changes": false
+}

@@ -1,0 +1,289 @@
+# TemporalPainter, 이동 계산, 런타임 제어 기반 — 2026-09-06
+
+## 요청 범위와 현재 판정
+
+사용자는 TemporalPainter → 코어 통합 → 실행 제어 연결(1~3번)을 요청했다.
+이번 체크포인트는 1번의 통제 조건 검증과 2~3번의 일부 기반 구현이다.
+**세 단계 전체 완료가 아니다.** 전체 NinjaLiveCore/Component 동등성, 다중
+해상도, 레벨 연결, cook/package/runtime 독립성은 아직 완료하지 않았다.
+
+## 1. TemporalPainter V002
+
+자산: `/Game/_MCP_Temp/NiagaraGenerated/CFNLTemporalPainterV002/NS_TemporalPainter`.
+SHA256: `c420a880ae539c6f58f5fab090d1d8ea8387b7dd9374d3ca2a0efe7c9515d0fd`.
+
+V001은 이전 충돌의 부분 자산으로 보존하고 새 경로에서 저작했다.
+6단계는 InitializeOrCarry → PainterTexture → Advection → Divergence →
+PressureK0(X/Y 2회) → Composite. 중간 stage에서 Composite/Pressure/Age와
+PainterTexture를 명시적으로 carry한다. Grid ping-pong에서 쓰지 않은 채널을
+자동 보존한다고 가정하지 않는다. ResetState는 초기 상태와 Age0을 다시 쓰고,
+마지막 Composite에서 Age를 1 증가시킨다.
+
+실제 4×4 RGBA16F 텍스처를 64×64 Grid에서 wrap-bilinear 샘플한다.
+DensityOnly=1, multiplier=.01, velocity0 조건에서는 한 프레임의 밀도 입력이
+`.001*sampledR`이다. Painter 저장 및 다음 stage 읽기에는 R16F 오차가 생기므로
+CPU 반복식과 각 저장 단계의 오차 상한을 비교한다.
+
+- compile errors0/warnings0, GPU UpToDate, outstanding=false.
+- 입력이 켜진 리셋에서 Age1 확인.
+- 연속4회 관측 Age19→88, 공간별 밀도 누적 PASS.
+- 입력을 검정 기본값으로 바꾼 뒤 시간은 진행하고 밀도는 유지 PASS.
+- 입력 없는 리셋에서 density floor 약1e-6, Advection density0, Age1 PASS.
+- ResetState0 복원 뒤 시간 진행 PASS. 저장 자산 SHA 불변, source pin audit PASS.
+
+이 결과는 원본의 모든 시간 제어 또는 일반 유동 동등성 증거가 아니다.
+
+## 2. 시간 이동 계산의 연결 검증
+
+같은 후보의 초기 velocity=(1,.5), SimSpeed=1에서 고정4프레임을 두 번 실행했다.
+각 프레임은 이전 밀도를 역방향 UV에서 샘플한 뒤 새 Painter 밀도를 더한다.
+CPU oracle는 전체4096셀의 bilinear sample, half 저장, 입력 누적을 독립 반복한다.
+15채널의 통계와 R16F 오차 상한을 검사했고 두 실행의 전체 Grid hash도 일치했다.
+총8개 GPU frame readback PASS. 기본 텍스처/변수와 preview 실행 상태 복원.
+
+이 fixture의 velocity는 균일하므로 Divergence/Pressure는0이다. 따라서
+**공간적으로 변하는 속도/압력의 시간 반복, 다중 해상도 보간, buffer export,
+원본4emitter/17stage 전체 통합은 남아 있다.**
+
+## 3. Blueprint 런타임 제어 어댑터
+
+자산: `/Game/_MCP_Temp/CFNLRuntimeControlsV003/BFL_CFNL_RuntimeControls`.
+SHA256: `c78e740874e3d3176ca2105cf72429b1c4b26c5002866bc46502c2ebbd23998c`.
+빈 BlueprintFunctionLibrary에서 함수별 entry→native call→return을 새로 연결했다.
+Component 입력은 engine NiagaraComponent, Texture 입력은 engine Texture 타입이다.
+특정 Niagara 후보나 원본, MCP 클래스에 대한 hard binding은 없다.
+
+| 함수 | native 동작 | 이번 검증 |
+| --- | --- | --- |
+| CFNL_Start | Activate(bReset) | Active 확인 |
+| CFNL_Stop | Deactivate | pause 해제 확인, 종료 완료는 미검증 |
+| CFNL_Reset | ReinitializeSystem | active/paused 상태 확인 |
+| CFNL_Pause | SetPaused | pause/resume 확인 |
+| CFNL_SetScalar | SetVariableFloat | Blueprint 경유 호출 성공, 값 readback 미완료 |
+| CFNL_SetTexture | SetVariableTexture | Blueprint 경유 호출 성공, 값 readback 미완료 |
+
+유효한 component/world는 호출자 소유라는 전제의 temp 기반이다. invalid input
+처리, public facade, preset 일괄 적용, 입력 tick/timer, 출력 RT/MID, EndPlay 정리,
+재활성화/LOD/recenter 정책을 포함한 전체 호스트로 취급하지 않는다.
+
+UE5.6 NiagaraComponent.cpp DeactivateInternal은 force-solo에서 완료될 때까지
+Active flag를 유지할 수 있다. Stop 직후 inactive를 요구했던 runtime_v001은
+검증 가정 오류로 실패했고, 엔진 코드를 확인해 graceful 종료 요청과 즉시 정지를
+구분한 runtime_v002로 수정했다. Stop 완료를 통과 처리하지 않았다.
+
+저작 이력: V001은 factory entry→return exec 링크 교체를 허용하지 않아 중단.
+V002는 Blueprint에 노출되지 않은 DeactivateImmediate 호출을 시도해 거절됐다.
+V003은 노출된 Deactivate로 새로 저작해 compile/save errors0/warnings0.
+V003 보고서의 마지막 실패는 source 경로 문자열을 금지하는 저작 wrapper가
+read-only audit의 금지 prefix까지 거절했기 때문이다. compile/save 성공을
+확인하고 read-only audit로 재조정했다. 재저작/실패 setter 반복은 하지 않았다.
+V001/V002 부분 자산과 dirty package는 보존하며 전체 저장/삭제하지 않았다.
+
+## 증거 및 보존
+
+SetParams 보고서 루트 아래:
+
+- `20260906_temporal_painter_authoring_v002.json`
+- `20260906_temporal_painter_runtime_v002.json`
+- `20260906_temporal_transport_runtime_v001.json`
+- `20260906_runtime_controls_authoring_v001/v002/v003.json` (실패 이력 보존)
+- `20260906_runtime_controls_runtime_v001.json` (실패) 및 `runtime_v002.json` (범위 내 PASS)
+
+`CFNL_TemporalControls_20260906_v001` plugin-independence gate: 두 자산 static 및
+MCP 없는 별도 NullRHI editor load2/2PASS. GPU runtime/cook/package 증거와 구별한다.
+
+`temporal_controls_checkpoint_v001`: 입력2867개 before/after 불변.
+unit4+6+5+3+3 및 full42/42PASS. 보고서에는 전체 입력별 hash와 실행 환경이 있다.
+이 문서는 검사 후 추가한 설명이며 실행 소스 변경은 아니다.
+
+프로젝트 C++ 변경0, 원본 content 변경0, 원본 graph/module 복사0.
+영구 ledger22, 최종 레벨0/59 그대로다. 커밋/푸시/영구 승격 없음.
+
+## 이어서 구현할 순서
+
+1. Blueprint scalar/texture 설정이 실제 GPU 입력을 바꾸는 값 readback과 graceful
+   stop 완료/재시작/invalid input을 검증한다.
+2. 비균일 속도장의 다중 프레임 CPU replay를 만들고 pressure projection까지
+   검증한다. 이어서 source 해상도별 grid/RT 입출력 분리와 보간 경계를 구현한다.
+3. 검증한 어댑터를 독립 호스트의 초기화→프리셋→입력 갱신→시작/정지→EndPlay
+   흐름에 연결한다. 전체 component 계약과 원본 순서의 차이를 별도로 추적한다.
+4. 완성 범위를 확장한 후 full/의존성/cold 및 해당 runtime gate를 다시 동결한다.
+
+## 후속: Blueprint GPU 값 전달 및 비균일 압력장 (2026-09-06)
+
+### Blueprint 설정값의 GPU readback
+
+`verify_cube_fluid_ninja_control_bindings.py` runtime_v002 PASS.
+Blueprint CFNL_SetTexture를 통해 실제4×4 흰색/검정 RT를 연결하고,
+CFNL_SetScalar로 DensityMultiplier .01/.02 및 ResetState1/0을 전달했다.
+PainterTexture.z, Composite.z, Age 등15채널4096셀 통계를 검사했다.
+흰색 입력의 배율2배, 검정 입력의 밀도 floor, 리셋 유지 Age1, 해제 후 Age3이
+일치한다. 이제 setter가 단순 호출에 그치지 않고 GPU 값까지 전달됨을 확인했다.
+기본 검정 texture/.01/ResetState0과 preview 실행 상태를 복원했다.
+
+runtime_v001은1×1 흰색 texture를 유효 입력으로 기대해 실패했다. 원본에서
+재구현한 Painter는1×1을 입력 없음 sentinel로 취급하므로 GPU0이 올바르다.
+검증 입력을 실제4×4RT로 바꿨으며 shader/자산/tolerance는 바꾸지 않았다.
+
+### 공간적으로 변하는 속도 → 다음 프레임 압력
+
+`cube_fluid_ninja_temporal_field_oracle.py`는 초기 density.5, DensityOnly0,
+VelocityStrength1, SimSpeed1, 나머지 기본값 조건을 독립적으로 계산한다.
+첫 프레임에 공간 texture가 velocity를 만들고, 다음 프레임에 그 속도로
+advection→divergence→KI0 X/Y pressure→gradient projection을 진행한다.
+각 stage의 R16F 저장 오차, bilinear convex 보간, 인접 셀 기울기에 의한
+backtrace 좌표 오차, 커널 coefficient 절댓값 합을 통한 오차를 전파한다.
+임의의 고정 tolerance를 늘려 통과시키지 않았다.
+
+`20260906_temporal_field_runtime_v001.json`: 2frame×2run, CPU 통계 및 전체Grid
+hash 재현 PASS. 2번째 frame의 pressure 신호폭이 오차 상한2배보다 큰지도 검사.
+CPU Pressure.x 최대 절댓값 약.14233, 보수적 전역 오차 상한 약.02179.
+세 번째 frame의 전역 오차는 약.36849까지 커지므로 장시간 검증으로 확장하지
+않았다. 셀별 오차 전파 등 더 촘촘한 oracle가 필요하다. 다중 해상도 증거 아님.
+
+### Graceful stop은 아직 PASS가 아니다
+
+`20260906_stop_completion_runtime_v001.json` FAIL/미완료 관측.
+Blueprint Stop(Deactivate) 후 native AdvanceSimulation360tick(요청6초)을
+호출했지만 component active=true/complete=false였다. 기본 상태로 복원했다.
+이 경로는 fixed-step bridge의 명시적 GPU flush 완료 증거를 기록하지 않으므로,
+6초의 GPU 실행·수명 처리가 끝났다는 증거나 원본 종료 정책 오류로 해석하지
+않는다. 후속은 GPU fence를 포함한 종료 재검증과 emitter 수명 정책 점검이다.
+무한 반복·강제 삭제·소스 변경으로 종료를 강요하지 않았다.
+
+### 후속 동결
+
+`temporal_field_checkpoint_v001`: 입력2873개 변화0, unit23 및 full42PASS.
+원본 frozen pin audit PASS. 기존 두 자산 SHA 불변, asset/C++ 수정 없음.
+이 후속 절은 게이트 후 작성한 설명이다. 기존 plugin-disabled load 증거는
+동일 자산 hash 기준으로 유지하며 새로 실행한 것으로 표시하지 않는다.
+전체1~3단계 완료는 여전히 아님: stop 완료, invalid 입력, 장시간 pressure,
+다중 해상도 및 전체 preset/timer/EndPlay host가 남아 있다.
+
+## 후속: GPU 완료 반영을 포함한 graceful stop PASS
+
+`20260906_stop_completion_runtime_v004.json`에서 종료와 재시작을 확인했다.
+새 인스턴스에서1초 warmup(64tick×1/64초) 뒤 Blueprint Deactivate를 호출하고,
+6초(384tick×1/64초)를 고정 진행해 GPU flush/wait 완료를 확인한다.
+그 후 게임 스레드가 GPU 완료 정보를 반영할 틱을 별도로 최대2회 허용했다.
+실제로는 추가1tick에서 active=false/complete=true, system_age=7.015625가 됐다.
+hard_reset/resume 뒤 새 instance16에서 active=true/complete=false를 확인했다.
+이제 **해당 후보의 graceful stop 완료 및 명시적 재시작은 PASS**다.
+
+이전 v003은 GPU flush/wait는 끝났으나 후속 완료 반영 틱이 없었다. GPU 계산
+완료와 게임 스레드에서 관측하는 lifecycle 완료는 같은 순간이라고 가정하면
+안 된다. 수명 모듈이나 원본을 변경해 종료를 강요하지 않고 검증 순서를 고쳤다.
+
+v002에서는 오래 실행된 instance12의 age206.166에서360×1/60초를 더해
+기대 delta6과 실제5.99853516이 달라 strict age gate가 거절했다. 응답은
+fixed_step_mutation_committed=true/mutation_state_unknown=false/do_not_retry=true.
+같은 요청을 반복하지 않고 read-only state로 instance12/age212.16458/paused를
+확인했다. 이후 새 인스턴스의 별도 fixture에서 binary-exact1/64초를 사용했다.
+브리지 tolerance나 C++을 변경하지 않았으며 일반1/60 장시간 age 검증 문제는
+별도 도구 개선 사항이다. v001~v003 실패 보고서를 보존했다.
+
+`stop_completion_checkpoint_v001`: 입력2873개 변화0, unit23/full42PASS.
+에디터 로그에서 새 fatal/assert/ensure 없음. 원본 pin audit PASS.
+자산/프로젝트 C++ 변경 없음, 기존 기본값과 preview 실행 상태 복원.
+이 문서는 게이트 후 추가한 설명이다.
+
+남은 범위: invalid 입력 처리, 장시간 비균일 pressure oracle, 다중 해상도,
+전체 프리셋/입력 timer/RT 출력/EndPlay 호스트. 전체 단계 완료나 최종 시각검수
+준비로 확대 해석하지 않는다.
+
+## 후속: null-safe Blueprint 제어 어댑터
+
+신규 `/Game/_MCP_Temp/CFNLGuardedControlsV001/BFL_CFNL_GuardedControls`를
+빈 BlueprintFunctionLibrary에서 작성했다. 기존 RuntimeControlsV003은 보존했다.
+SHA256 `19c1d853fc3286fd47782451e636efb336994d3987680ca78ded2ff5e275f2c8`.
+함수별5노드: entry, engine KismetSystemLibrary.IsValid, Branch, native call,
+return. IsValid=false는 native call을 건너뛰고 return으로 간다. 출력 Accepted는
+컴포넌트가 유효해 native 호출 경로에 들어갔다는 뜻이며 작업/이펙트 완료가 아니다.
+native 호출이 컴포넌트를 파괴하지 않는 현재6개 함수에 한정한 어댑터다.
+
+`build_cube_fluid_ninja_guarded_controls.py`는6개 함수 각각의 전체 노드 수와
+정확한 exec/data 링크 집합을 검증한다. factory entry→return 링크만 사전 확인 후
+교체하며 다른 기존 그래프를 덮어쓰지 않는다. compile errors0/warnings0,
+source/MCP dependency audit PASS. 컴포넌트와 텍스처 타입은 엔진 타입이다.
+
+`20260906_guarded_controls_runtime_v001.json` PASS:
+
+- Component=None인6개 호출 모두 Accepted=false.
+- 거절 전후 preview system instance/age/paused 상태 불변.
+- 유효한 컴포넌트의6개 호출 모두 Accepted=true.
+- 기본 검정 texture/ResetState0 및 preview hard_reset/resume 복원, 저장 SHA 불변.
+
+Null 검증을 통과했지만 pending-kill UObject의 live 실행, 빈 변수명/NaN/잘못된
+파라미터 타입에 대한 payload 검증을 모두 했다는 뜻은 아니다. Texture=None은
+현재 엔진 setter의 입력 해제 의미를 유지하며 일괄 invalid로 거절하지 않는다.
+새 어댑터의 GPU 값 전달 회귀와 전체 호스트 통합도 별도 단계다.
+
+`CFNL_GuardedControls_20260906_v001`: static dependency 및 MCP 없는 별도 editor
+load1/1PASS. cook/package 검증은 아니다.
+`guarded_controls_checkpoint_v001`: 입력2876개 변화0, unit23/full42PASS.
+원본 pin audit PASS, 원본/C++ 변경0. 이 절은 게이트 후 추가한 설명이다.
+임시 기반 자산이므로 영구 ledger22/완료레벨0/59는 증가시키지 않았다.
+
+## 후속: payload guard, GPU 회귀,512프레임, 다중Grid
+
+### 제어 입력 검증과 GPU 회귀
+
+GuardedControlsV002를 새로 작성했다. V001은 보존했다.
+SHA `0be4cb5282164fd1a4a829d5aac63e38c7e2f4f9920c5ffd99f026a2322a6365`.
+Start/Stop/Reset/Pause는5노드, SetTexture는7노드, SetScalar는9노드다.
+Component 유효성에 더해 setter의 FName!=None을 검사한다. Scalar는 엔진
+InRange_FloatFloat로 유한 float32 범위[-FLT_MAX,+FLT_MAX]를 검사해 NaN과
+양/음 무한대를 거절한다. Blueprint bool AND의 결과를 분기 및 Accepted에
+동일하게 연결했다. 필터는 editor Python이 아니라 저장된 native Blueprint다.
+
+guarded_controls_runtime_v002: null6거절, 빈 이름2/NaN/±inf 총5 payload거절,
+정상6허용 PASS. guarded_control_bindings_runtime_v001에서 이 새 라이브러리의
+Accepted=true를 요구하며 texture/multiplier/ResetState의 GPU 회귀4관측 PASS.
+이름이 실제 Niagara에 선언되어 있는지까지 검사하는 파라미터 스키마 검증기는
+아니다. Texture=None은 의도된 입력 해제 가능성을 보존한다.
+
+### 긴 실행의 안정성/재현성
+
+temporal_stability_runtime_v001: 공간 속도/압력 조건512frame×2run PASS.
+64frame마다8개 지점, 총16 readback에서15채널4096셀 finite/NaN0/Inf0,
+velocity±5/density[0,1], Age64~512 및 두 run의 전체Grid hash 일치를 검사했다.
+각 run은1/64초×512=8 simulated seconds다. 시간 측정의 binary 오차를 피했다.
+이는 **안정성·재현성** 증거이며,512프레임 CPU 또는 원본 수치 동등성 증거가
+아니다. 기존2frame pressure oracle의 장시간 오차 상한 문제는 남아 있다.
+
+### 실제 다중 해상도 DI 전송
+
+새 `/Game/_MCP_Temp/NiagaraGenerated/CFNLMultiGridV001/NS_MultiGrid`.
+SHA `245fca920bc728b6571fcf14b4ecebba7519f8eb0e8a3b2e142c7bf4e8caab5f`.
+Emitter.CFNL_HighGrid64²와 Emitter.CFNL_LowGrid32²를 각각 target-owned DI로
+정의하고, Input64→Downsample32→Upsample64의3stage를 새로 작성했다.
+stage의 실행 대상 DI와 샘플 원본 SourceGrid를 별도 연결한다. high→low와
+low→high 모두 normalized UV에서 SamplePreviousGridVector3Value로 읽는다.
+upstage에서 기존 high Input을 명시적으로 carry해 초기값이 사라지지 않게 했다.
+
+multigrid_runtime_v001 PASS: 서로 다른2개 DI 실제 크기와9개 합계 채널,
+각 채널 전체셀 통계를 검증했다. XY ramp는 저해상도 중심에서 보간되고,
+교대0/1 stripe는 downsample 뒤.5가 된다. upsample 경계는 coarse texel 중심
+1/64와63/64에서 clamp된다. 두 프레임×두 실행의 전체Grid hash도 일치했다.
+이 fixture는 precision이 정확히 표현되는 수들로 구성되어 통계오차1e-7 이하를
+요구했다. 전체 fluid solver의 pressure/density grid 분리나 원본 해상도 정책을
+이미 재현했다고 주장하지 않는다. 전송 기반 검증이다.
+
+### 보존 및 gate
+
+두 새 자산 compile error0/warning0, source/MCP dependency0.
+CFNL_MultiGridControls_20260906_v001에서 MCP 없는 별도 editor load2/2PASS.
+기존 TemporalPainter preview/default 복원. source pin audit PASS, C++ 변경0.
+multigrid_controls_checkpoint_v001은 신규 unit의 경계 기대식 오류로 실패했다.
+첫 high texel만 clamp되고 두 번째는 원래 위치라는 기대식으로 고쳐 unit2PASS.
+shader/asset/GPU 기대식은 바꾸지 않았다. 실패 기록은 보존했다.
+multigrid_controls_checkpoint_v002: 입력2882개 불변, unit25/full42PASS.
+이 절은 게이트 후 작성한 설명이다.
+
+### 완료와 미완료 구분
+
+제어 함수의 null/빈 이름/nonfinite/GPU 회귀 세부 검수는 위 범위에서 끝났다.
+전체1~3번은 아직 완료하지 않았다. 남은 주요 구현은 원본 정책에 맞춘 다중
+해상도 solver 연결/출력, 장시간 수치 oracle, 전체 초기화/preset/input timer/
+RT·MID/EndPlay/LOD/recenter 호스트다. 원본538변수/6004노드 component를 작은
+제어 어댑터와 같다고 취급하지 않는다. 영구22/최종레벨0/59 유지.

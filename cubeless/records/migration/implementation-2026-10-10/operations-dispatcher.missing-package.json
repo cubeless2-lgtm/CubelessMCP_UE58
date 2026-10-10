@@ -1,0 +1,99 @@
+{
+  "schema": "cubeless_verification_dispatch_report_v1",
+  "run_id": "59ab14b7173345d695083b2d47cc0004",
+  "started_ns": 1791621106511695500,
+  "status": "incomplete",
+  "exit_code": 2,
+  "plan": {
+    "schema": "cubeless_verification_dispatch_plan_v1",
+    "profile": "package-static-evidence",
+    "profile_kind": "current_limited_scope",
+    "project_root": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3",
+    "legacy_manifest_source": {
+      "script_id": "script:Python/scripts/analysis/run_verification.py",
+      "path": "Python/scripts/analysis/run_verification.py",
+      "sha256": "2568476fee409ea43f774035bf673f2a513d6de39cca3f7fc4d254783c3549c9",
+      "static_evidence_ref": "rows[id=script:Python/scripts/analysis/run_verification.py]"
+    },
+    "legacy_gate_count": 42,
+    "legacy_profile_count": 9,
+    "fail_fast": true,
+    "automatic_retries": 0,
+    "engine_launch": false,
+    "asset_mutation": false,
+    "full_migration_complete": false,
+    "gate_count": 1,
+    "gates": [
+      {
+        "key": "package_static_audit",
+        "kind": "subprocess",
+        "mapping_status": "current_scope_only",
+        "argv": [
+          "C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "-B",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\check_package_independence.py",
+          "--stage",
+          "<missing-stage>",
+          "--unrealpak",
+          "<missing-unrealpak>",
+          "--output",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\operations-dispatcher.missing-package-children\\package_static_audit.json"
+        ],
+        "required_inputs": [
+          {
+            "option": "verifier",
+            "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\check_package_independence.py",
+            "type": "file"
+          },
+          {
+            "option": "--stage",
+            "path": null,
+            "type": "directory"
+          },
+          {
+            "option": "--unrealpak",
+            "path": null,
+            "type": "file"
+          }
+        ],
+        "missing_inputs": [
+          "--receipt (at least one actual UBT receipt is required by this profile)",
+          "--stage is missing or has the wrong file type",
+          "--unrealpak is missing or has the wrong file type"
+        ],
+        "cwd": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3",
+        "result_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\operations-dispatcher.missing-package-children\\package_static_audit.json",
+        "scope": "Fresh staged filenames, UBT receipts and all Pak listings; no full serialized-reference or runtime proof",
+        "expected_schema": "cubeless_package_independence_v2"
+      }
+    ],
+    "report_path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\operations-dispatcher.missing-package.json",
+    "child_directory": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\operations-dispatcher.missing-package-children"
+  },
+  "full_migration_complete": false,
+  "legacy_gates_closed": [],
+  "packaging_independence_proven": false,
+  "engine_launched": false,
+  "mutations_performed": false,
+  "automatic_retries": 0,
+  "dispatcher_sha256": "85f01dde810f83140666251ec0fbe33c0bfbab0acdc80374c416c2b9745d9ba1",
+  "python_executable": "C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "gates": [
+    {
+      "key": "package_static_audit",
+      "status": "pending",
+      "reasons": [
+        "--receipt (at least one actual UBT receipt is required by this profile)",
+        "--stage is missing or has the wrong file type",
+        "--unrealpak is missing or has the wrong file type"
+      ]
+    }
+  ],
+  "first_failed_gate": null,
+  "incomplete_gates": [
+    "package_static_audit"
+  ],
+  "ended_ns": 1791621106535265900,
+  "elapsed_seconds": 0.0235704
+}

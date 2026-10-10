@@ -1,0 +1,10 @@
+# v42 layout proposal
+
+Layout review before supplementary cloud painting. Main source: ../ReferencePlanar_v41/Planar_Master.png (2172x724). Concept_Original.png is deterministic polar reprojection, not generative repainting. Main occupies 1:30–4:30, long low layers at lower end and tall cloud wall at upper end. Crown inward / base outward. 90 degrees, equal radial/tangential scale at source midheight; radial curvature still changes local tangential scale (approximately ±26.2%). No independent stretch to fill circle.
+
+Proposed supplementary modules, not yet painted:
+- B: 6:30–8:15, low long bank, height about 50–60% of main, broad flat overlapping shadows.
+- C: 10:00–11:00, shallow distant bank, height about 25–35% of main, restrained asymmetry.
+- Leave 11:00–1:30, 4:30–6:30, 8:15–10:00 empty; central opening remains empty.
+
+Diagram arcs indicate placement only, not final cloud silhouette. Additional modules will be authored planar first and transformed separately. Preserve main source. Natural source endpoint completion remains needed. No level replacement or import in this layout-only step.

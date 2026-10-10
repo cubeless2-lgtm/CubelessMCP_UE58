@@ -1,0 +1,58 @@
+# 레벨 카드: `PerformanceTest_SimplePainterContainers`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_SimplePainterContainers` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_SimplePainterContainers` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `20` |
+| Direct external | `7` |
+
+## 정적 의미
+
+- **Observed:** 동일한 256² SimplePainter hosts 64개와 moving-ball actors 64개가 1:1로 놓인다.
+- **Inferred:** simple painter container와 moving primitive input의 scaling benchmark다.
+- **Unknown:** ball-host pairing, simultaneous activity, GPU/frame/memory curve.
+- **Target fixture:** `TF_Perf_64SimplePainters` 제안.
+
+## Actor / Component
+
+- manifest=`139 actors / 397 components / 14 pages`.
+- actor histogram: `MovingBall1_C=64; NinjaLive_C=64; StaticMeshActor=5; Brush=1; DirectionalLight=1; PawnAndCameraUtility_C=1; PerformanceTest_SimplePainterContainers_C=1; PostProcessVolume=1; TextRenderActor=1`.
+- component histogram: `BoxComponent=128; StaticMeshComponent=69; MaterialBillboardComponent=65; SceneComponent=65; NinjaLiveComponent_C=64; BrushComponent=2; ArrowComponent=1; BillboardComponent=1; DirectionalLightComponent=1; TextRenderComponent=1`.
+- standalone Niagara/sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`2 nodes / 0 links / 0 variables / 0 errors`; unconnected BeginPlay/Tick뿐이다.
+- 64 moving balls가 spatial input으로 보이지만 pairing과 motion timing은 `pending`.
+
+## Niagara
+
+- 64 wrapper hosts 모두 `256²`, extent=`5/5/0.4`, reader=`FFFTT`, PVD=`FTT`, SimplePainter=true, volume off, selected=`MI_ColorBrush_StrokeSolid_v1`, core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`; standalone Niagara 0.
+
+## Material / Art
+
+- material refs=`6`, art refs=`4`; ball/primitive mesh는 art 후보이다.
+- painter/host/material logic은 독립 재구현한다.
+
+## Clean-room 구현 순서
+
+1. deterministic 64-cell layout과 ball-host 1:1 mapping을 만든다.
+2. simple painter와 moving point input을 독립 작성한다.
+3. 1/4/16/64 단계에서 동일 warm-up/visibility 조건으로 계측한다.
+4. full-solver 49-host fixture와 normalized 성능을 비교하고 parity를 검수한다.
+
+## Evidence / Parity / Exception
+
+- revision=`2be55290b00b4e963629a72979dc0b2f`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- 구현·성능·parity는 `pending`; art만 조건부 localization 후보다.

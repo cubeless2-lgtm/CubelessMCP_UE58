@@ -1,0 +1,82 @@
+# CubeFluidNinjaLive 독립 Painter Grid 실행 후보
+
+2026-09-06. 실제 GPU 검증까지 진행한 임시 후보이며 전체 Core/host/레벨 완료는 아니다.
+
+## 구현
+
+새 자산: `/Game/_MCP_Temp/NiagaraGenerated/CFNLSplitPainterV002/NS_SplitPainter`.
+SHA-256: `cf9e6b5f2d8bb957e2d4c1d27e4352b6bbbcfa696b82b0d9922ccc7102e26957`.
+
+원본이나 기존 자산을 복제하지 않고 basic Niagara 생성과 blank scratch 저작으로
+구성했다. 이전에 독립 작성한 수식/helper 코드를 재사용한다. 참조 원본의 노드,
+스크래치, 모듈 및 HLSL을 복사하지 않았다. C++ 변경 없다.
+
+| 순서 | 단계 | 쓰는 Grid | 역할 |
+| --- | --- | --- | --- |
+| 1 | InitializeOrCarry | State64 | 초기화/ResetState 또는 이전 Composite·Pressure·Age 유지 |
+| 2 | PainterTexture | Painter32 | 실제 Texture DI의 UV 샘플을 PainterTexture에 저장 |
+| 3 | GatherPainter | State64 | Painter32 이전 버퍼를 정규화 UV로 읽고 high-res PainterTexture에 저장 |
+| 4 | Advection | State64 | 이전 Composite 운반 |
+| 5 | Divergence | State64 | 운반 결과 및 저장 Painter 입력으로 발산 계산 |
+| 6 | PressureK0 | State64 | 기존 승인된 KI0 경계 처리, native 두 번 반복 |
+| 7 | Composite | State64 | pressure projection과 Painter merge, Age 증가 |
+
+GatherPainter에서는 Composite·Pressure·Age를 명시적으로 이어 쓴다. Painter32
+단계에는 high-res carry 코드를 넣지 않는다. 서로 다른 Grid의 셀 인덱스를 혼용하지
+않고 UV로 읽는다. 압력 계산 크기는 64를 유지한다.
+
+현재 State64는 Advection/Composite/Pressure를 한 DI의 별도 attribute로 보관한다.
+즉 원본의 다섯 DI 전체 재현이 아니며 FieldCapture DI·출력 RT·캐시는 아직 연결하지
+않았다. GridLayout 중 Painter32 크기만 이 후보에 사용한다. 해상도는 고정 fixture이고
+런타임 resize나 원본 초기화 auto-binding이 검증된 것은 아니다.
+
+## 실제 GPU 검사
+
+`verify_cube_fluid_ninja_split_painter.py`는 기존 TemporalPainter preview 소유권을
+확인한 후 새 후보로 바꾸고 각 run을 hard_reset한다. 실제 엔진 4×4 palette RT를
+Texture DI에 바인딩하고 1/64초 고정 틱으로 4프레임을 진행, 이를 2회 반복했다.
+
+CPU oracle는 다음 과정을 별도로 계산한다.
+
+1. Texture의 wrap bilinear를 32×32 셀 중심에서 평가하고 half 저장값 계산.
+2. 32×32 Painter를 64×64 셀 중심에서 clamp bilinear로 읽고 half 저장값 계산.
+3. 0속도에서 매 프레임 Painter 밀도 ×0.2 누적, 이전 밀도는 Advection에 유지.
+
+실제 DI 크기32/64, low3채널/high15채널 모두 확인. 각 채널 전체 셀의 finite 수와
+min/max/mean/abs_mean/rms를 CPU oracle와 비교했다. half 저장 오차에 대해 Painter는
+low4e-6/high8e-6, 밀도는 frame×3e-6의 제한된 오차를 허용한다. zero/age/edge 채널은
+1e-7이다. 두 run의 각 프레임·각 Grid 전체 값 hash가 동일했다.
+
+결과: 4프레임×2run PASS, dependency audit PASS, 파일 SHA 불변, source frozen
+audit PASS. 사용한 palette를 기본 black으로 되돌리고 기존 TemporalPainterV002
+preview를 다시 열었다. 이 검사는 이동 유체·장시간 안정성·원본 시각 동등성을 증명하지 않는다.
+
+## 저장 중 중단 처리
+
+V001은 모듈 입력 저작 중 자동 저장 보호 장치가 `editor_object_access_busy`,
+`command_executed=false`, `saving_package=true`로 명령을 거절했다. 실행 결과 불명이나
+충돌이 아니었다. 로그에서 autosave 완료를 확인하고 V001 부분 자산/실패 보고서를
+보존한 채 V002를 새로 작성했다. 실패 명령이나 기존 자산에 자동 재시도하지 않았다.
+V001의 상태를 완료로 세지 않으며 save-all/삭제/원본 수정도 하지 않았다.
+
+## 증거와 남은 범위
+
+보고서 기본 경로:
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/NinjaLiveComponent/SetParams/`.
+
+- `20260906_split_painter_authoring_v001.json`: 알려진 미실행 저장 가드 거절, 보존.
+- `20260906_split_painter_authoring_v002.json`: compile errors0/warnings0/GPU UpToDate.
+- `20260906_split_painter_runtime_v001.json`: GPU·독립 oracle·hash·dependency PASS.
+
+다음 구현: FieldCapture 연결, 출력 RT/캐시, 이동 유체 조건, 전체 runtime host 및
+레벨 연결. 현재 영구 ledger22, 최종 동등성 승인 레벨0/59 유지. 임시 후보를 최종
+납품이나 사용자 시각 검수 준비 완료로 세지 않는다.
+
+## 동결 검사 결과
+
+- `CFNL_SplitPainter_20260906_v001`: 정적 MCP 의존성 스캔 PASS, UnrealMCP 없는
+  별도 에디터 로드 PASS, 기대 클래스 NiagaraSystem 일치. cook/package 증거는 아니다.
+- `split_painter_checkpoint_v001`: 입력 2892개 전후 변경0, 직접 unit37 PASS,
+  full profile42/42 PASS. 결과 경로는
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/split_painter_checkpoint_v001/report.json`.
+- 이후 변경은 이 결과 기록과 handoff뿐. 커밋·푸시·영구 자산 승격 없음.

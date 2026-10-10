@@ -1,0 +1,424 @@
+{
+  "schema": "cubeless_current_runtime_manifest_v1",
+  "run_id": "91e6bcc6986944a99783cbbcba54d2ff",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\CubelessCurrentRuntimeProof.uproject",
+  "source_project": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+  "parents": {
+    "marker": {
+      "role": "marker",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+      "sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a"
+    },
+    "edges": {
+      "role": "edges",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\material-add-set-edges-author-I2.json",
+      "sha256": "014148fd8bc2a99791b4a7068e4d1680237c25079fdcabafb2c9c32a0265b6f4"
+    },
+    "mpc": {
+      "role": "mpc",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\mpc-inheritance-author-I.json",
+      "sha256": "9b6d34011cd629049249abe75300e2de66b26ffb12bd00824c851f96ab16dd52"
+    },
+    "batch": {
+      "role": "batch",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\batch-author-I.json",
+      "sha256": "e0f0555cad012799a8fbf6c319ea751061b1372d72e45931fbe821ce016b3a0e"
+    },
+    "compile": {
+      "role": "compile",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\compile-wrapper-dedup-contracts-I2.json",
+      "sha256": "73adea59c12e81efd48697ecb99f81e09551b3ab0a59e430d7a26438a481a694"
+    },
+    "custom": {
+      "role": "custom",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\custom-material-author-K.json",
+      "sha256": "82aa36f06e61517c8978d6c2b15cae83eab4eeedcf3e665be3299e514c9a9312"
+    },
+    "material_0": {
+      "role": "material_0",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\material-author-I.json",
+      "sha256": "3127f87c61a68df88b68dabda39bc26cb491fefdfe784a339856fdaabb05df29"
+    },
+    "material_1": {
+      "role": "material_1",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\material-author-J.json",
+      "sha256": "615e5e2e27c3e0d7e9cf072a09fb82d15cee69808291790c9d6b12dc7147757f"
+    }
+  },
+  "files": [
+    {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+      "relative_path": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_MarkerData.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_MarkerData.uasset",
+      "sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+      "roles": [
+        "marker:save_game"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+      "relative_path": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_RuntimeProof.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_RuntimeProof.uasset",
+      "sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+      "roles": [
+        "marker:actor"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+      "relative_path": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.umap",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+      "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+      "roles": [
+        "marker:map"
+      ],
+      "asset_type": "map"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+      "relative_path": "Content/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Run_e46446c2ea9449a5b889e7558eae6dde\\BP_MutationContract.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Run_e46446c2ea9449a5b889e7558eae6dde\\BP_MutationContract.uasset",
+      "sha256": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "roles": [
+        "marker:pipeline"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges",
+      "relative_path": "Content/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\MaterialEdges_2d10e468172b48b08c902535f658e431\\M_Edges.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\MaterialEdges_2d10e468172b48b08c902535f658e431\\M_Edges.uasset",
+      "sha256": "bcef7cdb2bfa15adaf07450e7819161879c5490d07eafc1294252fb342589c63",
+      "roles": [
+        "edges:material"
+      ],
+      "asset_type": "material"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base",
+      "relative_path": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\MPC_Base.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\MPC_Base.uasset",
+      "sha256": "106e1518012c4994a80686fb0d5f31cee398d219d522b1586b38685937838f3e",
+      "roles": [
+        "mpc:base"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid",
+      "relative_path": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\MPC_Mid.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\MPC_Mid.uasset",
+      "sha256": "af2dc8fed5b692eae0fee751b26f538d2bb975af2ab0f0976f7adbe88b8a7f46",
+      "roles": [
+        "mpc:mid"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf",
+      "relative_path": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\MPC_Leaf.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\MPC_Leaf.uasset",
+      "sha256": "5073a7541d1553fcd03259436baf1281db9621b84f0142476b6ec7b74ae96409",
+      "roles": [
+        "mpc:leaf"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+      "relative_path": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\M_Inheritance.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\MPCInheritance_ae91a412f3a14540aa5932f295a57a2f\\M_Inheritance.uasset",
+      "sha256": "8fdceac033aa7b2037b9eeabcfe0accf15fa402586729fdefbaead218208e7e9",
+      "roles": [
+        "mpc:material"
+      ],
+      "asset_type": "material"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch",
+      "relative_path": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_Batch.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_Batch.uasset",
+      "sha256": "5b34389add77b9f453d1e08f48536ce64f422b7470338e36dc88a04eded6aeb3",
+      "roles": [
+        "batch:batch"
+      ],
+      "asset_type": "blueprint_actor"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone",
+      "relative_path": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_Standalone.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_Standalone.uasset",
+      "sha256": "0711a0e7c94e78763499f75b0749a19db4b834724092095de25499a4a04a58fe",
+      "roles": [
+        "batch:standalone"
+      ],
+      "asset_type": "blueprint_actor"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue",
+      "relative_path": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_StopTrue.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_StopTrue.uasset",
+      "sha256": "8522baf23a1263848a31e7c371ea82c1f4ceb566738f96c84dcca9bf96c132f8",
+      "roles": [
+        "batch:stop_true"
+      ],
+      "asset_type": "blueprint_actor"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse",
+      "relative_path": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_StopFalse.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Batch_68b5dfebb46748b28935db9134a78e8e\\BP_StopFalse.uasset",
+      "sha256": "a7d223f4075620b56597dd75cb21997c242f2b4aead0b91494ba1c22be216ed0",
+      "roles": [
+        "batch:stop_false"
+      ],
+      "asset_type": "blueprint_actor"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+      "relative_path": "Content/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\CompileContracts_76b11f8573574906b0075bf380a38aaf\\BP_CompileContracts.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\CompileContracts_76b11f8573574906b0075bf380a38aaf\\BP_CompileContracts.uasset",
+      "sha256": "5818c8e42aefcd865109639dc9c19b8d83e547c5fe4f75ad8d84ce70065bbd6f",
+      "roles": [
+        "compile:compile"
+      ],
+      "asset_type": "blueprint_actor"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom",
+      "relative_path": "Content/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Custom_3e50cc90bb8143708cbf802a02504625\\M_Custom.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Custom_3e50cc90bb8143708cbf802a02504625\\M_Custom.uasset",
+      "sha256": "78b0486febe97141a429401997bc0e20d2b4bff5ac12bb07a21e51c3d7f714dc",
+      "roles": [
+        "custom:material"
+      ],
+      "asset_type": "material"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+      "relative_path": "Content/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_b7d2f1d1914448848b75743d9952337d\\M_Contract.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Material_b7d2f1d1914448848b75743d9952337d\\M_Contract.uasset",
+      "sha256": "96bf1fe94fc256078b5206f43cbb42e56c6781ff177ea0118016f9490085755d",
+      "roles": [
+        "material_0:material"
+      ],
+      "asset_type": "material"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract",
+      "relative_path": "Content/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_b7d2f1d1914448848b75743d9952337d\\MPC_Contract.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Material_b7d2f1d1914448848b75743d9952337d\\MPC_Contract.uasset",
+      "sha256": "0127e633430f0a3834ebb8d4ea3692e41c48d6036cbd4a8fadcaa2cbeea51e14",
+      "roles": [
+        "material_0:collection"
+      ],
+      "asset_type": "asset"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+      "relative_path": "Content/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_c8270096042348fc909b73c9de7d8711\\M_Contract.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Material_c8270096042348fc909b73c9de7d8711\\M_Contract.uasset",
+      "sha256": "5b8d8adcc6156ac75f2e17e8b2451972a5ee9b796930ece78a19da4607c25537",
+      "roles": [
+        "material_1:material"
+      ],
+      "asset_type": "material"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract",
+      "relative_path": "Content/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract.uasset",
+      "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Material_c8270096042348fc909b73c9de7d8711\\MPC_Contract.uasset",
+      "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Content\\CubelessMCPTests\\Material_c8270096042348fc909b73c9de7d8711\\MPC_Contract.uasset",
+      "sha256": "4a616583fcc75c6243aee8106c509fe5cdf9e096a145073005b275eba1c44dd5",
+      "roles": [
+        "material_1:collection"
+      ],
+      "asset_type": "asset"
+    }
+  ],
+  "source_map": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+  "default_map": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof",
+  "new_asset_root": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff",
+  "clone_specs": [
+    {
+      "role": "mpc",
+      "source": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+      "target": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC",
+      "collection": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf",
+      "connection": "root_vector_to_base_color",
+      "source_node_name": "MaterialExpressionCollectionParameter_1"
+    },
+    {
+      "role": "material_0",
+      "source": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+      "target": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC",
+      "collection": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract",
+      "connection": "collection_to_add_B",
+      "source_node_name": "MaterialExpressionCollectionParameter_0",
+      "target_node_name": "MaterialExpressionAdd_0"
+    },
+    {
+      "role": "material_1",
+      "source": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+      "target": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC",
+      "collection": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract",
+      "connection": "collection_to_add_B",
+      "source_node_name": "MaterialExpressionCollectionParameter_0",
+      "target_node_name": "MaterialExpressionAdd_0"
+    }
+  ],
+  "material_actors": [
+    {
+      "label": "CubelessCurrent_edges",
+      "package": "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges",
+      "source_role": "edges",
+      "kind": "original"
+    },
+    {
+      "label": "CubelessCurrent_mpc",
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+      "source_role": "mpc",
+      "kind": "original"
+    },
+    {
+      "label": "CubelessCurrent_custom",
+      "package": "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom",
+      "source_role": "custom",
+      "kind": "original"
+    },
+    {
+      "label": "CubelessCurrent_material_0",
+      "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+      "source_role": "material_0",
+      "kind": "original"
+    },
+    {
+      "label": "CubelessCurrent_material_1",
+      "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+      "source_role": "material_1",
+      "kind": "original"
+    },
+    {
+      "label": "CubelessCurrent_mpc_connected_MPC",
+      "package": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC",
+      "source_role": "mpc",
+      "kind": "official_runtime_clone"
+    },
+    {
+      "label": "CubelessCurrent_material_0_connected_MPC",
+      "package": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC",
+      "source_role": "material_0",
+      "kind": "official_runtime_clone"
+    },
+    {
+      "label": "CubelessCurrent_material_1_connected_MPC",
+      "package": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC",
+      "source_role": "material_1",
+      "kind": "official_runtime_clone"
+    }
+  ],
+  "blueprint_actors": [
+    {
+      "label": "CubelessCurrent_batch_batch",
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch",
+      "class_path": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch.BP_Batch_C"
+    },
+    {
+      "label": "CubelessCurrent_batch_standalone",
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone",
+      "class_path": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone.BP_Standalone_C"
+    },
+    {
+      "label": "CubelessCurrent_batch_stop_true",
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue",
+      "class_path": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue.BP_StopTrue_C"
+    },
+    {
+      "label": "CubelessCurrent_batch_stop_false",
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse",
+      "class_path": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse.BP_StopFalse_C"
+    },
+    {
+      "label": "CubelessCurrent_compile_compile",
+      "package": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+      "class_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C"
+    }
+  ],
+  "preserved_marker_actors": [
+    {
+      "label": "CubelessAuthoredPipelineActor",
+      "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_MutationContract_C_0",
+      "class_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C"
+    },
+    {
+      "label": "CubelessShippingRuntimeProof",
+      "path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.Map_RuntimeProof:PersistentLevel.BP_RuntimeProof_C_0",
+      "class_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.BP_RuntimeProof_C"
+    }
+  ],
+  "marker_contract": {
+    "run_id": "ShippingProofB20261010",
+    "slot_name": "Cubeless_ShippingProofB20261010",
+    "marker_class_path": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.BP_MarkerData_C",
+    "runtime_function_paths": [
+      "/Script/Engine.GameplayStatics.CreateSaveGameObject",
+      "/Script/Engine.GameplayStatics.SaveGameToSlot",
+      "/Script/Engine.KismetSystemLibrary.QuitGame"
+    ]
+  },
+  "marker_fixture_report": {
+    "role": "marker",
+    "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+    "sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a"
+  },
+  "required_cooked_packages": [
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch",
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone",
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse",
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue",
+    "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof",
+    "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+    "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges",
+    "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract",
+    "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+    "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract",
+    "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+    "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof"
+  ],
+  "excluded_old_map": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+  "copied_plugins": false,
+  "gameplay_cpp_added": false,
+  "asset_copy_performed": false,
+  "engine_execution_performed": false,
+  "scope": "Saved fixtures only; no claims about all legacy features or shader/render completion"
+}

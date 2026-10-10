@@ -1,0 +1,46 @@
+{
+  "scope": "read_only_partial_user_editor_preflight_not_full_dirty_package_enumeration",
+  "pid": 36664,
+  "is_pie_running": {
+    "status": "fulfilled",
+    "value": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"returnValue\":false}"
+        }
+      ]
+    }
+  },
+  "open_assets": {
+    "status": "fulfilled",
+    "value": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"returnValue\":[]}"
+        }
+      ]
+    }
+  },
+  "current_level": {
+    "status": "fulfilled",
+    "value": {
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"returnValue\":\"/Game/RetargetedAnimations/StylizedFantasyGirls/Maps/L_AllAnimationsPreview\"}"
+        }
+      ]
+    }
+  },
+  "current_level_dirty": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"returnValue\":false}"
+      }
+    ]
+  },
+  "decision": "Preserve existing editor; test in isolated project."
+}

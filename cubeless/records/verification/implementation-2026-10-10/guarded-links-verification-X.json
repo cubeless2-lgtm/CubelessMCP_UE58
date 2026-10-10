@@ -1,0 +1,68 @@
+{
+  "schema": "cubeless_guarded_link_verification_v1",
+  "status": "pass",
+  "checks": [
+    [
+      "actual_codex_named_call_noop",
+      true
+    ],
+    [
+      "actual_codex_saved_graph",
+      true
+    ],
+    [
+      "saved_dependency_audit",
+      true
+    ],
+    [
+      "editor_same_clean_instance",
+      true
+    ],
+    [
+      "runtime_six_cases",
+      true
+    ],
+    [
+      "separate_no_mcp_process",
+      true
+    ],
+    [
+      "same_saved_package",
+      true
+    ],
+    [
+      "saved_bytes_source",
+      true
+    ],
+    [
+      "saved_bytes_destination",
+      true
+    ],
+    [
+      "runtime_verifier_unchanged",
+      true
+    ],
+    [
+      "deployed_X_source_snapshot",
+      true
+    ]
+  ],
+  "performance": {
+    "named_calls": 25,
+    "http_observations": 34,
+    "sum_named_call_seconds": 1.4361454,
+    "pipeline_wall_seconds": 2.3835839,
+    "runtime_body_seconds": 0.1356369,
+    "explicit_compile": 1,
+    "explicit_save": 1,
+    "nodes": 11,
+    "physical_edges": 12,
+    "conditions": "one loopback NullRHI trial; excludes editor startup; no speedup comparison"
+  },
+  "deployed_file_count": 121,
+  "source_snapshot": "source-snapshot-X.json",
+  "author": "blueprint-guarded-links-X.json",
+  "actual_codex": "actual-codex-guarded-links-X.json",
+  "runtime": "gated-timer-runtime-X.json",
+  "scope": "guarded exec edge replacement/reconnect, same-id replay and stale guard rejection; fresh no-MCP reload and gated runtime; no Shipping/full legacy host parity"
+}

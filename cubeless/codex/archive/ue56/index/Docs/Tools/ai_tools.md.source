@@ -1,0 +1,174 @@
+# AI Tools
+
+These tools provide narrow Unreal AI authoring probes and smoke tests for the
+UE 5.6.1 MCP bridge. They are authoring/verification helpers only: generated
+or tested content must remain standard engine/project content and must not
+serialize references to UnrealMCP.
+
+## Tools
+
+- `inspect_ai_authoring_support()`
+  - Checks which AI classes are exposed to Unreal Python in the running editor.
+  - Reports support for `AIController`, `AIPerceptionComponent`,
+    `BehaviorTree`, `BlackboardData`, and related factories.
+- `run_ai_dummy_patrol_chase_smoke(...)`
+  - Builds a temporary current-level fixture using the Cubeless Piper character
+    by default.
+  - Starts SIE, commands an `AIController` to patrol, moves a player dummy into
+    sight range, checks `AIController.line_of_sight_to`, then commands the AI to
+    follow the player.
+  - Writes numeric evidence under `Docs/Analysis/AIDummySmoke/` by default.
+- `create_ai_patrol_chase_behavior_assets(...)`
+  - Uses the editor-only C++ helper
+    `create_ai_patrol_chase_behavior_assets` to create standard Unreal
+    `UBehaviorTree` and `UBlackboardData` assets.
+  - Creates a standard Blackboard with `TargetActor` as an Object key,
+    `PatrolLocation` and `LastKnownTargetLocation` as Vector keys, and
+    `AIState` as a Name key. Engine readback can also include the standard
+    `SelfActor` key.
+  - `tree_shape="sequence_patrol_chase"` creates the original simple root
+    sequence: patrol location, then target actor.
+  - `tree_shape="selector_chase_patrol"` creates a root selector that tries
+    `TargetActor` first, then falls back to `PatrolLocation` when the target
+    key is unset.
+  - `tree_shape="selector_alert_chase_patrol"` creates a root selector with a
+    `FaceThenChaseTarget` sequence (`UBTTask_RotateToFaceBBEntry`,
+    `UBTTask_Wait`, `UBTTask_MoveDirectlyToward`) before falling back to
+    patrol movement.
+  - Selector shapes add a standard `UBTDecorator_Blackboard` to the chase
+    branch. It checks `TargetActor` is set and uses `Both` flow aborts so the
+    tree reacts when a target appears or changes while patrol is running.
+  - Movement shapes use standard `UBTTask_MoveDirectlyToward` children. The
+    direct task keeps smoke tests reliable in temporary no-NavMesh levels while
+    staying on stock `AIModule` classes.
+  - Defaults to `save_assets=false` so smoke checks do not write `.uasset`
+    files unless explicitly requested.
+  - `replace_existing=true` deletes and recreates the existing Behavior Tree
+    and Blackboard pair. Search dispatch therefore requires explicit
+    confirmation for that mode; keep a source-control restore point or backup.
+- `configure_ai_controller_perception(...)`
+  - Uses the editor-only C++ helper `configure_ai_controller_perception` to add
+    or find a standard `UAIPerceptionComponent` on an AIController Blueprint.
+  - Configures `UAISenseConfig_Sight`, dominant `UAISense_Sight`, sight radius,
+    lose-sight radius, peripheral vision angle, stimulus max age, and
+    affiliation detection.
+  - Exists because Unreal Python exposes the classes but not the stable
+    `ConfigureSense` / `SetDominantSense` calls needed to persist a reliable
+    perception setup.
+- `inspect_ai_behavior_assets(...)`
+  - Reloads saved BT/BB assets through the C++ helper and reports root node,
+    child tasks, Blackboard keys, editor graph presence, and MCP dependency
+    audit status.
+- `run_ai_behavior_tree_execution_smoke(...)`
+  - Starts SIE, loads the saved BT/BB assets, calls
+    `AIController.use_blackboard` and `AIController.run_behavior_tree`, writes
+    `TargetActor` and `PatrolLocation`, then verifies movement evidence.
+
+### UE 5.6 AI asset authoring
+
+This surface is intentionally specialized for Unreal Engine 5.6.1. It uses
+only APIs verified in the local UE 5.6 engine source and does not carry UE 5.7
+or UE 5.8 compatibility branches.
+
+- `list_ai_assets(asset_root="/Game", asset_type="all", ...)`
+  - Uses Unreal Python and the Asset Registry to list standard `BehaviorTree`,
+    `BlackboardData`, and `EnvQuery` assets.
+  - `asset_type` accepts `all`, `behavior_tree`, `blackboard`, or `eqs`.
+- `inspect_ai_asset_structure(asset_path, ...)`
+  - Reads a single Behavior Tree, Blackboard, or EQS asset through the native
+    UE 5.6 helper.
+  - Behavior Trees report runtime hierarchy, decorators, services, linked
+    Blackboard, and editor graph state. Blackboards separate own and inherited
+    typed keys. EQS assets report option and editor-graph counts.
+- `create_ai_blackboard_asset(asset_name, asset_root="/Game/AI", ...)`
+  - Creates and saves an empty standard `UBlackboardData` asset.
+  - Existing assets are never replaced.
+- `add_ai_blackboard_key(blackboard_path, key_name, key_type, ...)`
+  - Adds one UE 5.6 Blackboard key of type `bool`, `class`, `enum`, `float`,
+    `int`, `name`, `object`, `rotator`, `string`, or `vector`.
+  - Object/Class keys accept an exact `base_class` object path. Enum keys
+    require `enum_path` and reject values outside the Blackboard byte range.
+  - Inherited and engine-provided keys cannot be shadowed.
+- `remove_ai_blackboard_key(blackboard_path, key_name, ...)`
+  - Removes one locally owned key. Inherited and engine-provided keys are
+    rejected.
+  - The operation does not rewrite Behavior Tree nodes that referenced the
+    removed key; inspect dependent trees before removal.
+- `create_ai_behavior_tree_asset(asset_name, asset_root="/Game/AI", ...)`
+  - Creates a standard `UBehaviorTree` and its UE 5.6 editor graph, optionally
+    linked to an existing Blackboard.
+  - Runs `UBehaviorTreeGraph::UpdateAsset`, saves, and reads the graph and
+    Blackboard pointers back before success.
+- `set_ai_behavior_tree_blackboard(behavior_tree_path, blackboard_path, ...)`
+  - Synchronizes the runtime Behavior Tree pointer and the editor graph root,
+    runs `UpdateBlackboardChange` plus `UpdateAsset`, saves, and verifies both
+    readbacks.
+- `search_ai_behavior_tree_node_classes(category="all", query="", ...)`
+  - Searches loaded UE 5.6 composite, task, decorator, and service classes.
+  - Native classes are complete for loaded AIModule types; Blueprint-generated
+    classes appear when their class is loaded in the editor.
+- `create_ai_eqs_query(asset_name, asset_root="/Game/AI/EQS", ...)`
+  - Creates the same blank standard `UEnvQuery` object produced by the UE 5.6
+    factory and saves it after readback.
+  - EQS option/generator/test graph authoring is deliberately excluded from
+    this minimal port.
+
+All mutation tools are editor transactions, reject MCP-only references, refuse
+to run during PIE/SIE, save by default, and return an explicit native readback.
+Authored assets contain only engine/project types and remain usable with the
+UnrealMCP plugin disabled. Existing Behavior Trees, Blackboards, linked key
+types, and AIController Blueprints are checked for transitive package
+dependencies before mutation and checked again before save. Read-only and
+no-op responses use the same deep audit without dirtying the asset.
+
+## Default Fixture
+
+- Pawn asset: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`
+- Skeletal mesh fallback: `/Game/Cubeless/Character/Piper/SK_Piper`
+- Anim Blueprint fallback: `/Game/Cubeless/Character/Animation/ABP_RPGChracter`
+- Actor label prefix: `MCP_AIDummySmoke`
+- Behavior asset root: `/Game/Cubeless/AI/Smoke`
+- Behavior Tree name: `BT_AIDummyPatrolChase`
+- Blackboard name: `BB_AIDummyPatrolChase`
+
+The smoke intentionally uses temporary actors in the current level and cleans
+them up after SIE ends. It does not save a level or create project runtime code.
+
+## Pass Criteria
+
+- Patrol: the dummy reaches the patrol target within the configured pass
+  distance.
+- Detection: the player dummy is within `sight_radius` and
+  `AIController.line_of_sight_to(player)` returns true.
+- Chase: distance to the player decreases by the required delta after the chase
+  command.
+- Dependency audit: configured asset paths do not include MCP-only reference
+  tokens such as `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`,
+  `MCPUnreal`, or `mcp_unreal`.
+- BT/BB authoring: generated assets use standard `AIModule` classes and the
+  C++ helper audits generated package objects for MCP-only tokens before
+  returning success.
+- Selector BT authoring: the chase branch has a standard Blackboard decorator
+  for `TargetActor` with reactive aborts, so perception updates can interrupt
+  patrol or retarget chase. The alert selector shape also verifies the
+  face-target task and short wait before chase.
+- AI Perception authoring: configured AIController Blueprints use standard
+  `UAIPerceptionComponent` and `UAISenseConfig_Sight` objects only.
+- BT execution: the saved Behavior Tree starts through
+  `AIController.run_behavior_tree`, keeps Blackboard values set, and moves the
+  dummy by the required delta in SIE.
+
+## Notes
+
+UE 5.6 exposes Behavior Tree and Blackboard asset factories to Unreal Python,
+but not every stock Behavior Tree node class is directly exposed. The stable
+path is therefore split:
+
+- The C++ helper creates standard BT/BB assets and audits their package objects.
+- The SIE smoke validates engine AI movement and line-of-sight behavior without
+  saving level content.
+- The BT execution smoke validates the saved Behavior Tree runtime path without
+  introducing project runtime code.
+
+This helper does not introduce runtime gameplay classes, components, or
+UnrealMCP references into generated content.

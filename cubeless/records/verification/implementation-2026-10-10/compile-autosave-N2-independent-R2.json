@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "errors": [],
+  "schema": "cubeless_compile_autosave_verification_v1",
+  "report_sha256": "a5b8072822b5fad90a1032bb384b55becf1e886ecac5c2c2e0ab760605aa74fd",
+  "cold_reload": "not_run",
+  "tamper_checks": [
+    {
+      "kind": "write_time",
+      "rejected": true
+    },
+    {
+      "kind": "save_flag",
+      "rejected": true
+    },
+    {
+      "kind": "config",
+      "rejected": true
+    },
+    {
+      "kind": "mode",
+      "rejected": true
+    },
+    {
+      "kind": "raw",
+      "rejected": true
+    },
+    {
+      "kind": "replay",
+      "rejected": true
+    }
+  ]
+}

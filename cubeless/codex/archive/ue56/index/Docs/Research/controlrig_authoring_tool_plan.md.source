@@ -1,0 +1,661 @@
+# ControlRig Authoring Tool Plan
+
+This plan defines the UnrealMCP plugin's editor-only ControlRig authoring
+module. It can design, build, validate, and verify ControlRig assets from a
+structured recipe, while authored ControlRig, Animation Blueprint, and project
+content must not serialize any UnrealMCP dependency.
+
+Target engine: Unreal Engine 5.6.1.
+
+## Goal
+
+Create a project/editor authoring layer that can take a Cubeless rig design
+recipe and produce a real ControlRig Blueprint plus optional sample AnimBP
+binding:
+
+```text
+recipe -> dry-run -> validate -> write -> compile -> readback -> solve proof
+```
+
+The tool should let us design and create ControlRigs, not merely poke existing
+RigVM pins through MCP. UnrealMCP remains an optional automation caller, not the
+owner of the authored asset model.
+
+## Non-Negotiable Boundaries
+
+- No runtime/gameplay module in the first pass.
+- No dependency from authored assets to `/Script/UnrealMCP`, `/UnrealMCP`,
+  `UnrealMCP`, `MCPUnreal`, or `mcp_unreal`.
+- No project runtime dependency on the authoring module or UnrealMCP plugin.
+- No original asset mutation without an explicit Ieta-reviewed mutation plan.
+- First implementation writes only `/Game/_MCP_Temp/` or `/Game/_MCP_Sample/`
+  targets.
+- Do not broaden existing UnrealMCP sample/temp RigVM writers into original
+  asset writers.
+
+## Relationship To Existing MCP Tools
+
+Existing ControlRig and AnimBP MCP commands stay authoritative for their current
+surface:
+
+| Existing surface | Keep using existing command | New authoring tool role |
+| --- | --- | --- |
+| Static readback | `inspect_controlrig_rigvm_topology`, `inspect_anim_graph_protected_topology`, `inspect_anim_graph_node_settings` | Reuse as independent verification/adapters, not as the builder core |
+| Link/default feasibility | `validate_controlrig_rigvm_links`, `validate_controlrig_rigvm_pin_defaults` | Mirror the validation rules in recipe dry-run and report both route outcomes when invoked through MCP |
+| Sample/temp low-level writes | `add_controlrig_rigvm_links`, `set_controlrig_rigvm_pin_defaults` | Do not duplicate as standalone MCP commands; batch them inside a recipe transaction only |
+| Sample ControlRig seed | `ensure_controlrig_sample_asset` | Keep as smoke/sample helper; new tool owns full recipe-driven asset construction |
+| Sample AnimBP ControlRig node | `ensure_anim_graph_controlrig_node_sample` | Keep for narrow sample chain; new tool may later bind authored rigs into sample AnimBPs by recipe |
+| Runtime/direct proof | `controlrig_direct_gate_probe`, `sample_controlrig_pre_post_runtime_pose`, `sample_anim_node_pre_post_runtime_pose` | Reuse after build for evidence |
+
+The new authority is the recipe transaction. It should not expose a pile of
+small MCP mutation commands that overlap the existing authority matrix.
+
+## Current Implementation Status
+
+Implemented in `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor`:
+
+- editor-only `UnrealMCPControlRigToolsEditor` module;
+- `UUnrealMCPControlRigAuthoringSubsystem`;
+- UStruct recipe, options, report, and validation issue types;
+- `ValidateRecipe`, `DryRunRecipe`, `BuildRecipe`;
+- `ValidateRecipeJson`, `DryRunRecipeJson`, `BuildRecipeJson`,
+  `BuildRecipeJsonWithOptions`;
+- sample/temp path validation;
+- V1 ControlRig unit allowlist validation;
+- forbidden UnrealMCP reference checks;
+- sample/temp ControlRig asset create/reuse in `BuildRecipe`;
+- preview skeletal mesh assignment;
+- bounded preview skeletal mesh bone import through `URigHierarchyController`;
+- string-list hierarchy authoring for curves, nulls, and default float controls;
+- structured hierarchy object specs for curves, nulls, float controls, bool
+  controls, euler-transform controls, transforms, shape metadata, default
+  values, and earlier-authored null/control parents;
+- allowlisted event unit node creation;
+- allowlisted `FRigUnit_SetControlFloat` node creation for reviewed
+  sample/temp float-control driver recipes;
+- RigVM pin default writes with array resizing and linked-pin propagation off by
+  default;
+- RigVM link writes with cast-node creation off by default;
+- compile request handling;
+- explicit temp/sample save support when options include `allow_save=true`;
+- package/object/dependency scan for MCP-only references.
+- Python/reflection MCP adapter tools:
+  `make_controlrig_preset_recipe`, `validate_controlrig_recipe`,
+  `dry_run_controlrig_recipe`, `build_controlrig_recipe`, and
+  `build_controlrig_recipe_with_animbp_binding`;
+- editor Python smoke that builds an unsaved temp rig from mixed legacy and
+  structured hierarchy JSON, imports three preview bones, applies two pin
+  defaults and one RigVM link, compiles it, verifies the JSON report, verifies
+  a preset-generated recipe, then repeats with an explicitly saved temp asset,
+  verifies save/dependency-audit success, deletes the temp asset, and leaves no
+  `.uasset` behind.
+- optional live bridge smoke
+  `Python/scripts/analysis/smoke_controlrig_animbp_binding_bridge.py` that
+  exercises `build_controlrig_recipe_with_animbp_binding` against a running UE
+  5.6.1 UnrealMCP bridge and deletes its sample/temp ControlRig and AnimBP
+  targets afterward.
+- Phase 1 stable-authoring skeleton profile support:
+  `profile_controlrig_skeleton` calls the authoring module by
+  Python/reflection, reads a skeletal mesh or skeleton without mutation,
+  returns bounded bones and parent chains, and attaches pure-Python humanoid
+  alias plus controls-only preset planning evidence.
+- Phase 2 stable-authoring deterministic compiler support:
+  `compile_controlrig_profile_recipe` maps profile evidence plus a preset
+  request to a stable controls-only preset request, rejects unresolved
+  ambiguous aliases unless explicit overrides are supplied, and optionally
+  calls `make_preset` for dry-run recipe JSON generation.
+- Phase 3 transaction report hardening:
+  `FUnrealMCPControlRigBuildReport` now exposes planned/performed/skipped write
+  evidence, reused items, cleanup suggestions, and explicit next actions so
+  validation failures, no-mutation stops, and partial build failures are
+  distinguishable by MCP callers.
+- Phase 4 first stable fixture:
+  `Docs/Research/fixtures/controlrig_piper_stable_prototype_recipe.json` and
+  `smoke_controlrig_stable_fixture.py` build a controls-only Piper prototype
+  under `/Game/_MCP_Temp`, compile it, verify dependency audit, and assert the
+  Phase 3 transaction report fields without saving by default.
+- Phase 5 docs-only solver unit research:
+  `Docs/Research/controlrig_solver_unit_allowlist_research.md` identifies
+  `FRigUnit_SetTransform` as the first recommended pose-changing candidate and
+  keeps actual allowlist/schema/build expansion behind a separate review gate.
+- Phase 6 optional AnimBP binding proof:
+  `smoke_controlrig_animbp_binding_bridge.py --stable-fixture` binds the Phase
+  4 stable Piper fixture ControlRig into a sample/temp AnimBP using
+  `Docs/Research/fixtures/controlrig_piper_stable_animbp_binding_contract.json`;
+  that contract now keeps `input_default_gate.status=reviewed` for the reviewed
+  scalar gate default `PiperStable_GlobalStableGate_CTRL=1.0`. A separate
+  candidate file,
+  `Docs/Research/fixtures/controlrig_piper_stable_input_default_golden_candidate.json`,
+  records the promoted scalar input proof target.
+  `smoke_controlrig_stable_input_golden_candidate_bridge.py` can verify that
+  candidate against a running bridge and skips by default when no bridge is
+  listening. `controlrig_stable_input_golden_promotion_check.py` then checks a
+  captured live proof JSON without editing the binding contract.
+  The default smoke still proves bounded float input exposure/default
+  application and cleanup.
+- Phase 7A sampleless solver intent validation:
+  `compile_controlrig_profile_recipe` can emit validation-only solver intent
+  metadata when `include_solver_intents=true`, and
+  `validate_controlrig_solver_intents` checks that metadata under
+  `validation_only_no_sample` through an UnrealMCP-owned native bridge route,
+  not through `UnrealMCPControlRigToolsEditor`. The current candidate intent names
+  `FRigUnit_TwoBoneIKSimplePerItem`, but reports `adds_solver_units=false` and
+  rejects materialized solver units until a separate sample/temp live proof and
+  implementation review exists.
+- Phase 7 filesystem release gate integration:
+  `controlrig_animbp_mcp_release_gate.py` now compiles the skeleton/stable
+  editor smoke scripts and the semantic audit fails on weakened transaction
+  report markers, static `UnrealMCP` -> `UnrealMCPControlRigToolsEditor`
+  dependency strings, non-temp stable fixture targets, disabled dependency
+  audit, save-enabled fixtures, or non-Phase-1 solver units.
+- Phase 4 preset recipe generation for:
+  - `simple_fk_control_chain`;
+  - `curve_gate_controls`;
+  - `hand_foot_target_controls`;
+  - `look_at_aim_target_controls`;
+  - `two_bone_ik_limb_controls`;
+  - `spine_spline_control_chain`;
+  - `interaction_target_controls`.
+- Phase 5 first safety pass for AnimBP binding:
+  - parses and validates `animbp_binding` sample targets;
+  - validates the supported `input_pose_to_controlrig_to_root` insert mode;
+  - validates bounded input pin/default requests for later orchestration;
+  - keeps actual AnimBP mutation out of plugin `BuildRecipe`;
+  - executes the sample/temp binding through the Python/reflection composite
+    `build_controlrig_recipe_with_animbp_binding`, which validates the full
+    recipe, builds the ControlRig with binding disabled, calls
+    `ensure_anim_graph_controlrig_node_sample`, applies validated input-pin
+    exposure/defaults with `set_anim_graph_controlrig_input_defaults`, and
+    recompiles the sample AnimBP after pins/defaults are applied.
+
+Still pending:
+
+- no known Phase 1 through Phase 4 implementation items remain;
+- no known Phase 7 filesystem gate integration items remain;
+- Phase 5 implementation is still gated; research is documented, but
+  `FRigUnit_SetTransform` has not been added to the allowlist.
+  FRigUnit_SetTransform has not been added to the allowlist.
+- Additional Phase 6 stable fixture input defaults are still gated on reviewed
+  pin-default feasibility proof; the current stable binding contract has only
+  the manually promoted scalar gate default and keeps `expose_input_pins`
+  empty.
+- original AnimBP mutation and broader graph insertion remain
+  Ieta-review only.
+
+## Authoring Module
+
+Module source path:
+
+```text
+MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor
+```
+
+Module:
+
+```text
+UnrealMCPControlRigToolsEditor
+```
+
+Module type:
+
+- `Editor`
+- registered in `MCPGameProject/Plugins/UnrealMCP/UnrealMCP.uplugin`
+- no runtime module in V1
+
+Build dependencies, expected V1:
+
+- public: `Core`, `CoreUObject`, `Engine`
+- private editor: `UnrealEd`, `AssetTools`, `KismetCompiler`,
+  `BlueprintGraph`, `AnimGraph`, `AnimGraphRuntime`, `ControlRig`,
+  `ControlRigDeveloper`, `ControlRigEditor`, `RigVM`, `RigVMDeveloper`
+
+For Phase 1 dry-run, keep `Build.cs` narrower than this full candidate set and
+add AnimBP-related modules only when the AnimBP binding phase actually needs
+them.
+
+Explicitly forbidden dependency:
+
+- main `UnrealMCP` module static dependency on `UnrealMCPControlRigToolsEditor`
+
+## MCP Adapter Dependency Rule
+
+The authoring module owns the implementation. The main UnrealMCP bridge module
+may trigger it only through an optional adapter boundary.
+
+Default adapter path:
+
+- expose JSON-oriented editor functions on the authoring subsystem, for example
+  `ValidateRecipeJson`, `DryRunRecipeJson`, and `BuildRecipeJson`;
+- call those functions from MCP through Unreal Python or reflection after
+  confirming the module/subsystem is loaded;
+- return a structured "plugin unavailable" error when the module is absent.
+
+Forbidden adapter path:
+
+- no `UnrealMCP.Build.cs` dependency on `UnrealMCPControlRigToolsEditor`;
+- no `#include` of `UnrealMCPControlRigToolsEditor` headers from UnrealMCP C++;
+- no static C++ calls from the main UnrealMCP bridge module into the authoring
+  module;
+- no authored asset references to UnrealMCP or MCP-only classes.
+
+If a C++ MCP route is later required, it must be a reflection-only bridge:
+load the editor module by name, locate `UClass`/`UFunction` by path/name, pass
+JSON strings, and fail cleanly when the module/subsystem is unavailable. The route must not
+link against the authoring module.
+
+## Public API Shape
+
+Use a subsystem plus a small static library so UI, Python, commandlets, and MCP
+adapters can call the same implementation.
+
+```text
+UUnrealMCPControlRigAuthoringSubsystem
+UUnrealMCPControlRigRecipeLibrary
+FUnrealMCPControlRigRecipe
+FUnrealMCPControlRigBuildOptions
+FUnrealMCPControlRigBuildReport
+FUnrealMCPControlRigValidationIssue
+```
+
+Core calls:
+
+```text
+ValidateRecipe(Recipe, Options) -> Report
+DryRunRecipe(Recipe, Options) -> Report
+BuildRecipe(Recipe, Options) -> Report
+CompileAndReadback(Targets, Options) -> Report
+AuditAuthoredAssetDependencies(Targets) -> Report
+```
+
+Reports must be structured and deterministic enough for MCP wrappers to return
+them directly.
+
+## Recipe Schema Draft
+
+The recipe should be serializable as UStruct and JSON.
+
+```json
+{
+  "schema_version": 1,
+  "target_control_rig_path": "/Game/_MCP_Temp/ControlRigAuthoring/CR_Test",
+  "source_skeletal_mesh": "/Game/Characters/Bot/Mesh/SKM_Bot.SKM_Bot",
+  "preview_skeletal_mesh": "/Game/Characters/Bot/Mesh/SKM_Bot.SKM_Bot",
+  "hierarchy": {
+    "import_preview_bones": true,
+    "max_import_bones": 256,
+    "nulls": [],
+    "controls": [],
+    "curves": []
+  },
+  "rigvm": {
+    "units": [],
+    "variables": [],
+    "template_nodes": [],
+    "function_references": [],
+    "pin_defaults": [],
+    "links": [],
+    "exposed_pins": []
+  },
+  "animbp_binding": {
+    "enabled": false,
+    "target_anim_bp_path": "",
+    "source_anim_bp_path": "",
+    "control_rig_node": {}
+  },
+  "verification": {
+    "compile": true,
+    "save": false,
+    "inspect_topology": true,
+    "direct_solve": true,
+    "dependency_audit": true
+  }
+}
+```
+
+### Hierarchy Specs
+
+Hierarchy authoring should map cleanly to `URigHierarchyController` and
+`URigHierarchy` public APIs:
+
+- bones: `URigHierarchyController::AddBone`
+- nulls: `URigHierarchyController::AddNull`
+- controls: `URigHierarchyController::AddControl`, `FRigControlSettings`
+- curves: `URigHierarchyController::AddCurve`
+- parent changes: `URigHierarchyController::SetParent`
+- control offset/shape/settings:
+  `URigHierarchy::SetControlOffsetTransform`,
+  `URigHierarchy::SetControlShapeTransform`,
+  `URigHierarchy::SetControlSettings`
+
+V1 should support:
+
+- imported preview skeleton roots with bounded bone count;
+- direct nulls;
+- direct float, bool, transform, and euler controls;
+- control shape name, color, initial/global/local transform;
+- direct hierarchy curves;
+- named parent references that resolve only to already-imported or earlier
+  recipe elements.
+
+Defer:
+
+- connectors;
+- mirror operations;
+- animation channels;
+- multi-parent weights;
+- arbitrary skeleton retargeting.
+
+### RigVM Specs
+
+RigVM graph authoring should use `URigVMController` through
+`UControlRigBlueprint::GetController()` or `URigVMBlueprint::GetController()`.
+
+Known UE 5.6.1 public API candidates:
+
+- `AddUnitNode`
+- `AddUnitNodeFromStructPath`
+- `AddUnitNodeWithDefaults`
+- `AddTemplateNode`
+- `AddVariableNode`
+- `AddVariableNodeFromObjectPath`
+- `AddFunctionReferenceNode`
+- `AddFunctionToLibrary`
+- `AddExposedPin`
+- `SetNodePosition`
+- `SetPinDefaultValue`
+- `AddLink`
+- `BreakLink`
+- `RemoveNode`
+
+V1 should support:
+
+- allowlisted unit node script structs only:
+  - `FRigUnit_BeginExecution`
+  - `FRigUnit_PreBeginExecution`
+  - `FRigUnit_PostBeginExecution`
+  - `FRigUnit_PrepareForExecution`
+  - `FRigUnit_PostPrepareForExecution`
+  - `FRigUnit_InverseExecution`
+  - `FRigUnit_SetControlFloat` for sample/temp float-control driver recipes
+- node names and graph positions;
+- pin defaults with the same conservative default policy as
+  `set_controlrig_rigvm_pin_defaults`:
+  no array resizing unless explicitly enabled, no linked-pin propagation unless
+  explicitly enabled;
+- links with cast-node creation disabled by default;
+- transaction-level partial-failure reporting.
+
+Defer:
+
+- arbitrary script structs;
+- `FRigUnit_InteractionExecution` until an explicit use case is reviewed;
+- deprecated `FRigUnit_SequenceExecution`;
+- cast-node creation;
+- graph replacement;
+- comments/reroutes/dispatch nodes;
+- function library authoring;
+- exposed pins on original assets;
+- deleting existing user graph content.
+
+### AnimBP Binding Specs
+
+AnimBP binding should use ControlRig/AnimGraph editor APIs without serializing
+UnrealMCP references:
+
+- `UAnimGraphNode_ControlRig`
+- `FAnimNode_ControlRig::SetControlRigClass`
+- `UAnimGraphNode_CustomProperty::CustomPinProperties`
+- `UAnimGraphNode_CustomProperty::SetCustomPinVisibility`
+- `FControlRigIOMapping`
+- `UAnimGraphNode_Base::ReconstructNode`
+
+V1 should not replace `ensure_anim_graph_controlrig_node_sample`. Instead, V1
+may call the existing sample helper through MCP for smoke testing, while the
+plugin implements only recipe validation for AnimBP binding.
+
+Current V1 validation supports:
+
+- `animbp_binding.enabled=true`;
+- required read-only `source_anim_bp_path`;
+- required sample/temp `target_anim_bp_path`;
+- `insert_mode=input_pose_to_controlrig_to_root`;
+- bounded `expose_input_pins`;
+- bounded scalar/simple-array `input_defaults`;
+- orchestration flags matching the existing sample command:
+  `disconnect_existing_input_links`, `allow_existing_target_reuse`,
+  `overwrite_existing`, and `replace_existing_links`.
+
+`BuildRecipe` deliberately stops before any mutation when binding is enabled.
+The safe execution sequence is wrapped by
+`build_controlrig_recipe_with_animbp_binding`:
+
+1. validate or dry-run the full recipe;
+2. build the ControlRig with `animbp_binding.enabled=false`;
+3. call `ensure_anim_graph_controlrig_node_sample` for the validated sample
+   AnimBP target;
+4. call `set_anim_graph_controlrig_input_defaults` when validated
+   `expose_input_pins` or defaults are present;
+5. compile the bound AnimBP again after pins/defaults are applied.
+
+V2 should support:
+
+- sample AnimBP ControlRig node insertion;
+- explicit input pin exposure;
+- input/output mapping;
+- default values;
+- topology readback and compile proof.
+
+Original AnimBP mutation remains Ieta-review only.
+
+## Build Pipeline
+
+### Phase 0: Analysis And Documentation
+
+Deliverables:
+
+- this plan;
+- engine API notes from UE 5.6.1 public headers;
+- overlap table against existing MCP commands;
+- V1 acceptance criteria.
+
+No C++ or assets in this phase.
+
+### Phase 1: Plugin Skeleton And Dry-Run
+
+Create `UnrealMCPControlRigToolsEditor` as an editor-only module in the existing
+`UnrealMCP` plugin with:
+
+- module startup/shutdown only;
+- UStruct recipe/report types;
+- `ValidateRecipe`;
+- `DryRunRecipe`;
+- dependency audit helper stub;
+- no asset mutation.
+
+Verification:
+
+- UE 5.6.1 editor build;
+- no `UnrealMCP` dependency in `.uplugin`, `.Build.cs`, or includes.
+
+### Phase 2: Sample ControlRig Builder V1
+
+Status: partially implemented. Current code creates/reuses sample/temp
+ControlRig assets, assigns a preview mesh, adds legacy string-list
+curves/nulls/default float controls, adds structured curve/null/control specs
+with transforms and parent references, adds allowlisted event unit nodes, adds
+the reviewed `FRigUnit_SetControlFloat` sample/temp driver unit, writes pin
+defaults and links, compiles on request, and audits for MCP-only references.
+It can save temp/sample assets only when `allow_save=true` is supplied through
+the options JSON API.
+
+Remaining sample/temp-only write support:
+
+- none for the approved Phase 2 scope.
+
+Verification:
+
+- build a disposable `/Game/_MCP_Temp/ControlRigAuthoring/CR_V1`;
+- inspect topology;
+- direct transient solve proof when units/controls are solvable;
+- dependency audit reports no UnrealMCP references.
+
+### Phase 3: MCP Adapter
+
+Add thin MCP access only after the editor tool exists. The first adapter should
+be Python/reflection-based so UnrealMCP does not link against the authoring
+plugin:
+
+- `validate_controlrig_recipe`
+- `dry_run_controlrig_recipe`
+- `build_controlrig_recipe`
+- `build_controlrig_recipe_with_animbp_binding`
+- `validate_controlrig_solver_intents`
+
+The recipe validation/build commands must call the plugin JSON/reflection API
+and must not become a second authoring implementation.
+`validate_controlrig_solver_intents` is the
+exception: it is an UnrealMCP-native validation-only route because it validates
+JSON intent metadata only. It must not call the ControlRig authoring module,
+load/save assets, or become a RigVM writer.
+
+If a native C++ route is added later for a plugin-backed authoring command, it
+must:
+
+- avoid `UnrealMCPControlRigToolsEditor` in `UnrealMCP.Build.cs`;
+- avoid authoring module headers;
+- locate the plugin and functions dynamically;
+- return `plugin_unavailable=true` when the authoring module is absent;
+- preserve the same JSON report contract.
+
+Parity gate must ensure every new C++ route has a Python wrapper and docs.
+
+### Phase 4: Presets
+
+Add recipe generators rather than hardcoded builders:
+
+- simple FK control chain; implemented as `simple_fk_control_chain`;
+- curve-driven gate controls; implemented as `curve_gate_controls`;
+- hand/foot target control; implemented as `hand_foot_target_controls`;
+- look-at/aim target; implemented as `look_at_aim_target_controls`;
+- two-bone IK limb; implemented as `two_bone_ik_limb_controls`;
+- spine/spline control chain; implemented as `spine_spline_control_chain`
+  with independent point spaces by default and optional parent chaining;
+- interaction target controls; implemented as `interaction_target_controls`;
+
+Each preset produces a normal recipe and goes through the same validation/write
+pipeline.
+
+### Phase 5: AnimBP Binding
+
+Add recipe-driven sample AnimBP binding after ControlRig asset authoring is
+stable:
+
+- create/reuse sample AnimBP target through existing sample command;
+- insert ControlRig node through `ensure_anim_graph_controlrig_node_sample`;
+- expose validated input pins with or without defaults through
+  `set_anim_graph_controlrig_input_defaults`;
+- apply scalar/simple-array defaults through the same command when requested;
+- compile/readback through the sample command and post-change compile;
+- optional PoseWatch proof.
+
+## Report Contract
+
+Every operation should report:
+
+- `success`
+- `plugin_unavailable`
+- `dry_run`
+- `sample_only`
+- `target_control_rig_path`
+- `created`
+- `reused`
+- `target_modified`
+- `partial_target_modified`
+- `compile_requested`
+- `compile_succeeded`
+- `save_requested`
+- `save_succeeded`
+- `dependency_audit_passed`
+- `issues`
+- `warnings`
+- `planned_writes`
+- `performed_writes`
+- `skipped_writes`
+- `reused_items`
+- `cleanup_suggestions`
+- `created_hierarchy_elements`
+- `created_rigvm_nodes`
+- `applied_pin_defaults`
+- `applied_links`
+- `readback_summary`
+- `next_action`
+
+On partial failure, `success=false` and `partial_target_modified=true` must stop
+any caller from chaining another writer without readback. Validation failures
+and JSON/options parse failures must report `target_modified=false`,
+`partial_target_modified=false`, `asset_mutation_not_started`, and a
+no-mutation `next_action`.
+
+## Verification Gates
+
+Docs-only phase:
+
+```powershell
+git diff --check
+```
+
+Plugin skeleton or C++ phase:
+
+```powershell
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat' MCPGameProjectEditor Win64 Development -Project="$Project" -WaitMutex
+```
+
+MCP adapter phase:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_animbp_mcp_release_gate.py
+```
+
+Asset smoke phase:
+
+- create only under `/Game/_MCP_Temp/ControlRigAuthoring`;
+- inspect RigVM topology after write;
+- compile and optionally save only temp/sample assets;
+- when a UE 5.6.1 UnrealMCP bridge is already running, run
+  `uv --directory .\Python run python scripts\analysis\smoke_controlrig_animbp_binding_bridge.py`
+  to verify the sample/temp AnimBP binding composite;
+- direct solve proof when requested;
+- delete temp assets after the smoke unless the user asks to keep them.
+
+Dependency gate:
+
+- run an AssetRegistry dependency query for every authored package and fail if
+  any hard or soft package dependency resolves to UnrealMCP or MCP-only paths;
+- load authored packages in the editor and inspect object references, generated
+  classes, component classes, graph node member references, and soft object
+  paths;
+- scan exported text or dependency summaries for `/Script/UnrealMCP`,
+  `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, and `mcp_unreal` as a final
+  backstop, not as the only check;
+- fail promotion when any hard, soft, generated-class, component, graph-node, or
+  package dependency points at MCP-only code.
+
+## Open Questions Before C++ Implementation
+
+1. Should the first plugin live in this MCP test project only, or be mirrored
+   later into a `CubelessStylized` checkout as a project editor plugin?
+2. Should V1 write only temp assets, or also allow `_MCP_Sample` assets?
+3. Which first preset matters most: FK controls, hand/foot IK target, look-at,
+   or ControlRig gate controls?
+4. Should the first MCP adapter accept raw JSON only, or also named preset
+   requests?
+
+## Tivret Instruction
+
+Next implementation pass:
+
+1. Verify with the UE 5.6.1 editor build and source scans proving no
+   `UnrealMCP` module dependency and no UnrealMCP -> UnrealMCPControlRigToolsEditor
+   dependency.
+2. Start a reviewed Phase 4 preset recipe or Phase 5 AnimBP binding pass.

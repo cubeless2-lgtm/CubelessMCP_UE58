@@ -1,0 +1,227 @@
+# SkyDome Panorama Converter
+
+This is the implementation plan for a Python-based tool that converts panorama
+sky images into square SkyDome UV textures for Unreal.
+
+## Current Scope
+
+- Build a no-C++ Unreal project plugin first.
+- Keep the converter executable as an external Python CLI called by the plugin.
+- Do not add C++.
+- Do not create or connect Unreal materials in the first pass.
+- Do not import textures into Unreal in the first pass.
+- Generate image files first; Unreal texture import and material hookup stay
+  deferred.
+
+The first output target is a square PNG texture:
+
+- Default size: `4096 x 4096`.
+- Center: zenith.
+- Outer circle: horizon.
+- Angle around the circle: azimuth.
+- Outside the circle: configurable padding or transparency.
+
+## Python Runtime
+
+The project plugin lives under:
+
+```text
+MCPGameProject/
+  Plugins/
+    SkyDomeTools/
+```
+
+The plugin uses Unreal's PythonScriptPlugin only for editor menu glue. The menu
+launches an external Tkinter UI through the `uv` environment under `Python/`,
+pinned by `Python/.python-version` to the Python 3.11 line.
+The external UI provides file pickers, conversion options, and buttons to open
+the generated output image or its containing folder after conversion.
+The plugin is not listed in `MCPGameProject.uproject`; it relies on its
+descriptor's `EnabledByDefault` setting so the editor can load it without a
+project-file plugin entry. The descriptor is `EditorOnly`, and its
+PythonScriptPlugin dependency is limited to the editor target so the tool is
+not part of packaged runtime builds.
+
+Unreal Editor's embedded Python is a separate runtime. UE 5.6 may report
+Python 3.11.8, which is fine for Unreal Python editor scripting. The first
+converter pass should not install Pillow or NumPy into the engine Python.
+The plugin UI calls the external CLI instead.
+
+## Dependencies
+
+Required now:
+
+- `pillow>=12.2.0`
+- `numpy>=2.2.6`
+
+No extra packages are required for the first implementation. In particular:
+
+- Do not add OpenCV for Phase 1 or Phase 2.
+- Do not add EXR/HDR libraries until EXR/HDR input or output is implemented.
+- Do not add Unreal import/material dependencies until the Unreal integration phase.
+
+## File Layout
+
+```text
+MCPGameProject/
+  Plugins/
+    SkyDomeTools/
+      SkyDomeTools.uplugin
+      Content/
+        Python/
+          init_unreal.py
+          SkyDomeTools/
+            RegisterMenu.py
+            ui.py
+      Scripts/
+        skydome_panorama_converter.py
+        skydome_panorama_converter_gui.py
+        test_skydome_panorama_converter.py
+Python/
+  pyproject.toml
+  uv.lock
+```
+
+The converter stays as a standalone CLI inside the plugin before it becomes an
+MCP tool. The Unreal plugin wrapper should not import Pillow, NumPy, PySide, or
+other image/UI dependency packages inside the engine Python runtime.
+
+Historical external CLI layout:
+
+```text
+Python/
+  scripts/
+    skydome_panorama_converter.py
+    test_skydome_panorama_converter.py
+```
+
+## CLI Shape
+
+Horizontal panorama input:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_panorama_converter.py `
+  --input .\inputs\sample_sky.png `
+  --output .\outputs\T_SkyDomeUV_4K.png `
+  --size 4096 `
+  --mode HorizontalPanorama `
+  --rotation 0 `
+  --top-crop-pixels 256 `
+  --chroma-key `
+  --chroma-key-color "#00FF00" `
+  --chroma-key-tolerance 0.12 `
+  --chroma-key-softness 0.06 `
+  --outside transparent
+```
+
+`--top-crop-pixels` removes exactly that many input rows starting at source
+Y=0 before polar mapping. For example, `256` discards rows `0..255`; source
+row `256` becomes the polar center. A value of `0` performs no top crop. The
+outer circle continues to sample the bottom row for `HorizontalPanorama` and
+the horizon row for `Equirectangular360`.
+
+Chroma keying is opt-in through `--chroma-key`. Its default key color is green
+(`#00FF00`), and both hex (`#RRGGBB`) and comma-separated (`R,G,B`) colors are
+accepted. The key multiplies the existing source alpha rather than replacing
+it. Sampling is performed in premultiplied-alpha space while the key is active
+so transparent green pixels do not create a green bilinear fringe around cloud
+edges.
+
+Equirectangular input:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_panorama_converter.py `
+  --input .\inputs\sample_360.png `
+  --output .\outputs\T_SkyDomeUV_360_4K.png `
+  --size 4096 `
+  --mode Equirectangular360 `
+  --rotation 0 `
+  --outside clamp
+```
+
+Future mesh UV bake:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_panorama_converter.py `
+  --input .\inputs\sample_sky.png `
+  --mesh .\meshes\SkyDome.obj `
+  --output .\outputs\T_SkyDomeUV_Mesh_4K.png `
+  --size 4096 `
+  --mode MeshUVBake `
+  --forward +X `
+  --up +Z
+```
+
+## Modes
+
+### HorizontalPanorama
+
+Use this for ordinary wide sky images that are not true 360 x 180
+equirectangular panoramas.
+
+- Map circle angle to input image `x`.
+- Map radius from zenith to horizon to input image `y`.
+- Optionally discard a specified number of rows starting at source `y=0`.
+- Support horizontal wrap.
+- Accept that zenith information is inferred, not physically reconstructed.
+
+### Equirectangular360
+
+Use this for true 360-degree equirectangular panoramas.
+
+- Center radius samples pitch `+90` degrees.
+- Horizon radius samples pitch `0` degrees.
+- Circle angle maps to azimuth.
+- Horizontal sampling wraps across the panorama seam.
+- An explicit top crop moves the polar-center source row downward while the
+  outer circle remains fixed at the panorama horizon.
+
+### MeshUVBake
+
+This is a later phase.
+
+- Parse OBJ vertex positions, UV channel 0, and faces.
+- Rasterize UV triangles.
+- Use barycentric interpolation to recover mesh direction per texel.
+- Sample the input panorama by direction.
+- Add UV dilation/padding after triangle fill.
+
+## 이에타 Plan
+
+1. Phase 0: collect one ordinary horizontal sky image, one optional true
+   equirectangular sky, and one optional target SkyDome OBJ.
+2. Phase 1: implement `HorizontalPanorama`, bilinear sampling, circle mask,
+   `rotation`, `horizon_radius`, `outside`, `exposure`, and `saturation`.
+3. Phase 2: add `Equirectangular360`, azimuth/pitch mapping, seam wrapping,
+   top-row cropping, chroma-key transparency, and validation images.
+4. Phase 3: add OBJ-based `MeshUVBake` only after a real target SkyDome mesh
+   is available.
+5. Phase 4: add Unreal Python or Editor Utility UI that calls the external CLI.
+6. Phase 5: add import/material/SkyDome actor hookup only after image output
+   quality is accepted.
+
+## 티브렛에게 전달할 지시
+
+Implement the first pass as a no-C++ project plugin in
+`MCPGameProject/Plugins/SkyDomeTools`. Use Unreal Python only for menu glue.
+Launch the external Tkinter UI and image conversion through the external
+`uv --directory .\Python ...` environment, and keep Pillow/NumPy/PySide out of
+Unreal Engine's embedded Python runtime. Do not add engine/build-version checks. Start with
+`HorizontalPanorama`, then add `Equirectangular360`. Keep tests small and
+file-based, using generated synthetic input images so the test suite does not
+need copyrighted sample art.
+
+## Verification
+
+Minimum checks after implementation:
+
+```powershell
+uv --directory .\Python run python -m py_compile ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_panorama_converter.py
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\test_skydome_panorama_converter.py
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_panorama_converter_gui.py --smoke-test
+uv --directory .\Python run python -c "import PIL, numpy; print('image deps ok')"
+```
+
+For any output image with alpha, preserve real alpha in the deliverable. If a
+display copy is needed for review, make an opaque review copy rather than
+flattening the source texture.

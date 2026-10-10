@@ -1,0 +1,62 @@
+# Material Tools
+
+The `material` toolset contains 21 UE 5.6.1 tools for Material, Material
+Function, Material Instance, and Material Parameter Collection inspection and
+authoring.
+
+Use `describe_toolset(toolset="material")` for current parameter schemas. The
+live contract is authoritative.
+
+## Inspection
+
+- `resolve_material_graph` resolves a Material or Material Function path.
+- `list_material_nodes` returns expressions, pins, links, and root-property
+  connections.
+- `analyze_material_graph` provides a read-only semantic and cost-oriented
+  summary for Materials, Functions, and Instances.
+- `list_material_collection_parameter_nodes` lists MPC parameter expressions,
+  parameter names, and types.
+- `get_material_parameter_collection_values` reads asset defaults and current
+  editor-world runtime values.
+
+## Graph authoring
+
+- `add_material_node`
+- `add_custom_material_node`
+- `set_material_node_property`
+- `connect_material_nodes`
+- `connect_material_property`
+- `layout_material_nodes`
+- `compile_and_save_material`
+- `refresh_material_cached_expression_data`
+- `expand_material_function_calls`
+
+Graph mutation should be followed by compile and readback. A successful dispatch
+alone is not proof that the shader compiled or that the intended connection was
+saved.
+
+## Parameter collections and references
+
+- `mirror_material_parameter_collection`
+- `set_material_parameter_collection_values`
+- `set_material_parameter_collection_sync`
+- `replace_material_collection_references`
+- `replace_material_collection_parameters`
+- `replace_material_texture_references`
+
+Runtime MPC synchronization changes editor-session behavior; persisted MPC
+defaults and material graph rewrites are separate operations.
+
+## Destructive tools
+
+The following contracts are classified high-risk and require dispatcher-level
+confirmation:
+
+- `delete_material_node`
+- `replace_material_collection_references`
+- `replace_material_collection_parameters`
+- `replace_material_texture_references`
+
+Review the exact target path and replacement map before setting `confirm=true`.
+Use source control and inspect the resulting graph and dependencies after the
+operation.

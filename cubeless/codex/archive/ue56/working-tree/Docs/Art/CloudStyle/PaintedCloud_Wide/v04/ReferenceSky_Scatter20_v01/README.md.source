@@ -1,0 +1,37 @@
+# Reference sky: twenty soft cloud modules
+
+Latest update: the three remaining interior placements (09, 10, 13) use opacity 0.85 with no altitude or cluster coverage gradient. Source silhouette alpha and all outer placements remain unchanged. See `upper_coverage` in `layout.json`.
+
+Current saved revision: removed the eight additionally marked placements (07, 08, 11, 12, 14, 16, 19, 20), leaving 13 placements. Unmarked placements and their module shading are unchanged. The removed module sources remain available. `layout.json` is authoritative; the following paragraphs record earlier revisions.
+
+Hero shading standard: active module exports are calibrated before polar projection to the opaque-core R distribution of `T_PaintedCloud_Hero_v04`. A monotonic mapping matches percentiles 0/2/10/25/50/75/90/98/100; the standard values are 27/35/50/71/114/168/209/238/255. This deepens formerly bright shadows while retaining the bright-end range. `_Source.png` originals are unchanged; module PNG exports contain calibrated grayscale and original alpha. `hero_shade_calibration.json` records measured before/after values. Polar placement, removed RipplePatch, altitude/cluster fading and packed alpha are preserved. Evidence: `MCPGameProject/Saved/PaintedAltitudeV04/Scatter20_HeroShade/`.
+
+Removed from active placement at user request: `15_RipplePatch`, the three-row upper cloud group. Its original module source is retained, but it is no longer composited into the texture. Remaining placements and cluster/altitude fading are preserved. Current texture uses 19 source modules in 21 placements. Evidence: `MCPGameProject/Saved/PaintedAltitudeV04/Scatter20_RemoveRipple/`.
+
+Cluster-depth update: upper placements form loose neighboring groups across altitude. Their compositing coverage feathers from the core toward each group boundary (edge multiplier 0.38, core 1, feather fraction 0.28). An additional smoothstep multiplier decreases continuously from 1 at elevation 28 degrees to 0.4 at 80 degrees using actual pixel elevation. Original cloud artwork is not blurred. Lower placements and zero-roll radial-up alignment remain unchanged. Parameters and updated placements are in `layout.json`; pre-edit backups and engine review are in `MCPGameProject/Saved/PaintedAltitudeV04/Scatter20_ClusterDepth/`.
+
+Latest production update: all 12 upper placements use zero roll in their spherical tangent frame. Local up points toward zenith, local width is tangential; arbitrary prior rolls are removed. Existing source artwork, positions, sizes, opacity, and low placements are preserved. The same 4096 RGBA Unreal texture was reimported and its live binding verified. Evidence: `MCPGameProject/Saved/PaintedAltitudeV04/Scatter20_RadialApproved/`. This applies the approved direction rule to the existing modules; it does not substitute the generated v06 concept artwork or its exact layout.
+
+2026-09-24. Twenty individually generated modules based on the user's new dispersed-cloud sky reference, using the previously approved soft painterly cloud shading.
+
+Each `_Source.png` preserves the generated file. Corresponding module PNGs preserve alpha and native detail, adding transparent padding where necessary to reach at least 1024 pixels in both dimensions; no upscaling was used. `layout.json` records native/export dimensions and source hashes.
+
+- `Modules_20_Review.jpg`: opaque overview for review, not an Unreal atlas.
+- `T_PaintedCloud_ReferenceScatter20_v01.png`: 4096 x 4096 packed polar texture, R shade / G approved density transfer / B midtone / A coverage.
+- `Polar_Review.png`: grayscale review of shade multiplied by coverage.
+- Twenty unique modules are used in 22 placements; only two distant horizon banks are reused on the rear hemisphere.
+- Upper groups (placement elevation >= 30 degrees) use independent tangent-plane orientations, with angular width and height reduced to 80% and coverage to 65% of the initial layout. The forced annular/centerline warp has been removed. Low placements are unchanged.
+- Applied asset: `/Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/T_PaintedCloud_ReferenceScatter20_v01`.
+- Applied actor: existing sky in `L_RXSkySystem_PaintedAltitude_v04`. The latest texture reimport preserves the user's selections and separate high-layer opacity of 1. Prior textures remain available.
+
+Upper-cloud relayout evidence and pre-change texture/layout: `MCPGameProject/Saved/PaintedAltitudeV04/Scatter20_Relayout/`. Original module artwork remains unchanged; only projection, placement, angular size, and compositing coverage were adjusted.
+
+Follow-up spacing correction: `10_FeatherMass` is moved to azimuth 142/elevation 35, roll 10, width 28; `16_WindTufts` is moved to azimuth 61/elevation 40, roll -8, width 24. This separates their diagonal chain from `11_Altocumulus`. Other placements and upper coverage remain unchanged. Evidence: `MCPGameProject/Saved/PaintedAltitudeV04/Scatter20_Spacing/`.
+
+## Painted Cloud Texture binding repair
+
+The Details panel field is the Blueprint variable `CloudBasisTexture`. Construction Script created a new visible dynamic material instance without updating the cached `TODSkyMID` and `TODCloudMID`. `UpdateSky` consequently sent the selected texture to an older invisible instance.
+
+Two native Blueprint variable setter nodes now store the newly created visible instance before the existing construction updates continue. No material shading, user-facing parameters, or Blueprint default values were changed by this repair. The original hero texture, six-module combined texture and twenty-module texture were each tested through Construction Script and UpdateSky: component material, both cached MIDs and selected CloudBasis texture all matched. Blueprint compile: zero errors and warnings.
+
+Evidence and pre-change backup: `MCPGameProject/Saved/PaintedAltitudeV04/CloudBindingFix/`. Current viewport captures: `MCPGameProject/Saved/PaintedAltitudeV04/ReferenceScatter20/`.

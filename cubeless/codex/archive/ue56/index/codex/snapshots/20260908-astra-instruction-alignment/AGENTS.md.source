@@ -1,0 +1,39 @@
+# UnrealMCP5_6_1 Codex Adapter
+
+## Required Bootstrap
+
+- Every new session reads this file, then `codex/AGENTS.md`, then `codex/projects/UnrealMCP5_6_1.md`. Afterward, read only documents routed by the current task.
+- This checkout is self-contained. Parent workspace instructions, sibling repositories, submodules, and external Ops are not required or active authority unless the user explicitly names that scope. `MCPGameProject/Plugins/UnrealMCP` is an ordinary tracked path.
+- Discover the repository root; never assume a drive letter or another user's installation path. Relative repository paths below start at that root. Resolution rules: `codex/docs/policies/workspace-portability.md`.
+- Pre-deduplication source: `codex/snapshots/20260906-before-bootstrap-dedup/root-AGENTS.md` (historical, immutable, not active instructions).
+
+## Repository And Text Safety
+
+- Keep inspection, edits, staging, commits, pushes, and summaries in this repository unless the user explicitly names another repository.
+- Before substantial edits, inspect status and recent history. Treat unfamiliar dirty or untracked files as another agent's or the user's work: do not edit, revert, stage, or commit them without explicit scope. Respect user-stated domain locks.
+- Before Git operations, read `codex/docs/policies/git-repositories.md` for ownership, synchronization, commit authorship, and push authorization.
+- Read repository text as UTF-8 from the first read. In Windows PowerShell 5.1 use `Get-Content -Encoding UTF8`; never rewrite from garbled output. Preserve BOM and line endings. Complete encoding rules are in `codex/AGENTS.md`.
+
+## Engine Boundary
+
+- UE 5.6.1 is the absolute capability ceiling: new or ported features must use its APIs and editor behavior. Do not add UE 5.7/5.8-only functionality or speculative future-engine branches.
+- Resolve engine and editor bridge settings using the project binding; preserve its compatibility guards and stable fallback fields.
+
+## Absolute Authoring Dependency Tripwire
+
+- MCP and UnrealMCP are authoring tools only. Generated or modified Blueprints, assets, levels, materials, Niagara systems, PCG graphs, components, helper APIs, and other finished project content must load, compile, cook, package, and run without UnrealMCP unless the user explicitly approves that exact dependency for the current task.
+- Never persist `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal`, or another MCP-only class, function, component, module, graph, or object reference into finished content by default.
+- Before mutation and before promotion/finalization, apply `codex/docs/policies/authoring-dependency-boundary.md`.
+
+## Project C++ Absolute Approval Tripwire
+
+- Do not create, modify, or promote project C++ by default; prefer Blueprint, Widget Blueprint, Unreal Python, editor scripting, or MCP tool composition.
+- Only the current-task token as a standalone message `c++1218` or the explicit phrase `프로젝트 C++ 승인 c++1218` approves project C++. Ordinary `승인`, `진행`, `해도 돼`, `수정해`, `좋아`, or `오케이` does not.
+- The gate covers `MCPGameProject/Source/**`, project runtime/editor modules, and non-MCP project-plugin C++ under `MCPGameProject/Plugins/*/Source/**`.
+- C++ inside `MCPGameProject/Plugins/UnrealMCP/**` is the sole standing path exception, only for conservative MCP tooling changes satisfying the MCP promotion gate and finished-content independence.
+- Historical non-MCP implementations, including SkyDomeTools, never approve future source edits. Before source-like mutation, staging, or commit, read `codex/docs/policies/project-cpp-approval-gate.md` for exact scope, approval persistence, and gate commands.
+
+## Task Routing
+
+- `codex/AGENTS.md` owns common operating rules and the conditional reading index. Use `codex/docs/workflows/component-reading-router.md` only for components actually in scope; do not preload unrelated domain documents.
+- `codex/projects/UnrealMCP5_6_1.md` owns project facts, maintenance constraints, and verification commands. Required promotion verification is not optional; cadence and documentation-only exceptions remain in `codex/docs/policies/cost-control.md`.

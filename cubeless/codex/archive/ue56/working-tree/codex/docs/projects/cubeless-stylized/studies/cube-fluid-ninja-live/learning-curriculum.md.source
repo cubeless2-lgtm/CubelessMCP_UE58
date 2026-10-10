@@ -1,0 +1,403 @@
+# CubeFluidNinjaLive Learning Curriculum
+
+## 목표
+
+59개 레벨을 단순 순회하거나 원본 package 수를 재현하는 것이 아니라,
+입력이 domain state로 들어가고 그 state가 surface, volume, particle output으로
+변환되는 전체 계약을 학습한다. 학습 결과는 `/Game/Study/CubeFluidNinjaLive`
+아래의 작은 project-owned architecture와 레벨별 parity fixture로 이어져야 한다.
+
+현재 구조 캡처는 Blueprint 53개/262 topology 파일, Niagara System 68개,
+Material graph 153개와 Material Instance 798개까지 진행됐다. 이것은 구현 완료나
+runtime 학습 완료가 아니다.
+
+## 학습 기록 방식
+
+각 기능은 다음 여섯 층으로 분리해 기록한다.
+
+1. asset default와 class/component/graph 구성.
+2. level actor override와 preset 값.
+3. lifecycle, Blueprint, Sequencer, input에 의해 파생된 runtime 값.
+4. Niagara/Data Channel/MPC/MID/RT/RVT에 실제 전달된 값.
+5. transient simulation state와 export buffer 수치.
+6. viewport/game world의 최종 화면과 CPU/GPU 비용.
+
+각 결론에는 `observed`, `inferred`, `target decision`, `acceptance` 중 하나를
+붙인다. 하나의 층만 보고 원리를 확정하지 않는다.
+
+## 안전한 레벨 학습 절차
+
+레벨마다 다음 순서를 사용한다.
+
+1. current map, editor/PIE state, dirty package 기준선을 기록한다.
+2. native `open_editor_level`과 native status poll로 source level을 연다.
+3. native read-only level manifest inspector로 actor, component, class,
+   selected default/override를 캡처한다.
+4. 필요한 경우 고정 camera/input/warm-up fixture로 runtime을 관찰한다.
+5. report를 `Saved/MCP/CubeFluidNinjaLiveStudy/reference/levels`에 기록한다.
+6. source package dirty 증가와 저장이 0건인지 확인한다.
+7. 레벨 카드에 사실, 추론, 구현 대상, unknown, parity fixture를 기록한다.
+
+map open 요청 1628과 status 요청 1629~1630은 성공했지만 첫 post-transition
+`execute_python` actor snapshot 요청 1631이 `python311.dll`과
+`UnrealEditor-PythonScriptPlugin.dll` callstack으로 crash했다. 따라서 bulk
+학습에서 map transition 직후 Python UObject walk를 사용하지 않는다. native
+inspector가 준비되기 전에는 다음 레벨로 자동 순회하지 않는다.
+
+## Module 0 - 범위, 안전, 증거 문해력
+
+상태: `complete` for inventory and document baseline.
+
+읽기 순서:
+
+1. `README.md`
+2. `scope-and-safety.md`
+3. `reference-asset-map.md`
+4. `reference-level-manifest.md`
+5. `behavior-principles.md`
+6. `system-architecture.md`
+
+학습 결과:
+
+- Asset Registry 자산 1,796개와 `/Levels` 아래 World 59개의 차이.
+- level direct dependency 합집합 871개와 전체 package inventory의 차이.
+- 논리 새 저작, art localization, 마지막 수단 logic exception의 차이.
+- final source/temp/MCP dependency 0 계약과 현재 C++ 승인 상태.
+
+통과 기준: 위 항목을 설명하고 원본 package를 저장하지 않는 capture 절차를
+재현할 수 있다.
+
+## Module 0A - 구조 증거 합성
+
+상태: `in_progress`.
+
+### Blueprint lab
+
+- 53개 catalog와 262개 topology 파일을 책임별로 분류한다.
+- `NinjaLive`의 overlap/interaction/lifecycle 책임과
+  `NinjaLiveComponent`의 preset/parameter/output/cache/LOD 책임을 분리한다.
+- `SetParams`에서 config group과 runtime binding type을 추출한다.
+- 원본의 7,017-node central pair를 target의 host, config, input, buffer,
+  output 책임으로 다시 설계한다.
+
+현재 graph node/link 캡처는 truncation/error 0이지만 Blueprint variable
+enumeration은 완전하지 않다. default와 instance override는 native level/class
+manifest로 보충한다.
+
+### Material lab
+
+- 153개 base graph를 sampling, surface, water, volume, particle, debug,
+  environment art로 cluster한다.
+- 798개 MI의 parent와 scalar/vector/texture parameter vocabulary를 추출한다.
+- level direct MI 595개를 우선 recipe로 분류한다.
+- Custom HLSL node 21개는 개별 계약과 UE 5.6 재저작 계획을 기록한다.
+
+### Niagara lab
+
+- compact summary에서 68개 System을 core 1, input 18, sim-driven 37,
+  passive 9, surface-aligned 3으로 분류한다.
+- core의 emitter, renderer, user parameter, RT/Grid 표지를 정리한다.
+- 에디터 재시작 후 큰 양의 cap으로 full node/link topology를 다시 캡처한다.
+- full recapture 전에는 stage 수식, module order, iteration을 확정하지 않는다.
+
+통과 기준: `behavior-principles.md`와 `system-architecture.md`의 각 관찰이 raw
+evidence path로 역추적되고, unknown이 별도 표로 유지된다.
+
+## Module 1 - native 레벨 manifest와 시작 가이드
+
+대상:
+
+1. `_StartingGuide`
+2. `Tutorial01_Basics`
+
+학습 질문:
+
+- 최소 actor/component 집합과 ownership은 무엇인가.
+- host activation, buffer allocation, preset 적용, warm-up, tick, reset 순서는
+  무엇인가.
+- domain transform, resolution, extents, timestep, substep은 어디서 결정되는가.
+- painter, velocity-density, pressure-divergence buffer는 언제 생성·clear·export되는가.
+- visualization renderer는 solver state를 읽기만 하는가.
+
+실습 산출물:
+
+- 두 level의 native actor/component/default/instance manifest.
+- canonical camera와 no-input baseline.
+- reset 전후 RT 통계와 fixed frame snapshot.
+- 최소 target host/config/core/output interface 설계.
+
+통과 기준: 원본 class 이름이나 package를 사용하지 않고 최소 vertical slice의
+input→state→export→output contract를 그릴 수 있다.
+
+상태: `pending`.
+
+## Module 2 - 입력과 상호작용
+
+대상:
+
+1. `Tutorial02_Inputs_Interaction`
+2. `CoreOnly/Desert_SimplePainter_Mesh`
+3. `CoreOnly/Desert_SimplePainter_Landscape`
+
+학습 질문:
+
+- point-like와 field-like input이 어떤 canonical sample로 변환되는가.
+- mesh, landscape, painter, Niagara source가 local/world/domain 좌표를 어떻게 쓴다.
+- additive/erase, persistent/one-shot, brush velocity와 density의 합성 순서는 무엇인가.
+- Data Channel, RT, RVT 중 어느 경로가 어느 frame에 쓰이고 읽히는가.
+
+실습은 같은 위치·방향·세기·frame sequence를 replay하고 painter/velocity-density
+buffer의 bbox, nonzero count, min/max/mean을 비교한다.
+
+통과 기준: source type별 좌표, channel, lifetime 계약과 겹치는 source의 ordering을
+수치로 재현한다.
+
+상태: `pending`.
+
+## Module 3 - 물의 core와 domain alignment
+
+대상:
+
+1. `Tutorial03_KeyConceptsForWater`
+2. `CoreOnly/LandscapeAlignedWater_ProtoVersion`
+3. `CoreOnly/River`
+
+학습 질문:
+
+- dense와 sparse가 state 저장, solve, export, material sampling에서 어떻게 다른가.
+- surface mask, velocity, normal/gradient, foam, refraction channel은 무엇인가.
+- landscape height와 spline tangent/width가 boundary와 forcing에 어떻게 들어가는가.
+- domain 이동과 world alignment에서 state를 clear, preserve, resample 중 무엇을 하는가.
+
+통과 기준: 같은 input fixture에서 dense/sparse RT 수치와 output 차이를 설명하고,
+river/lake/sea 공통 core와 alignment adapter를 분리한다.
+
+상태: `pending`.
+
+## Module 4 - 프리셋, spawn, cache, LOD, spline
+
+대상:
+
+1. `Tutorial04_Presets_Spawning_Caching`
+2. `Tutorial05_Tricks`
+3. `Tutorial06_SplineBasedRivers`
+
+학습 질문:
+
+- 12개 `NinjaPreset_C`가 제공하는 authoring 값과 runtime derived 값은 무엇인가.
+- default, preset, level override, runtime input의 충돌 우선순위는 무엇인가.
+- cache save/restore가 painter, velocity-density, pressure-divergence 중 무엇을 보존하는가.
+- resolution/bounds/LOD 변경 때 buffer 재할당과 state 보존 정책은 무엇인가.
+- spline segment, flow direction, width, water recipe가 어떻게 연결되는가.
+
+통과 기준: project-owned typed preset schema와 lifecycle state machine을 잠그고,
+save/reload 및 cache restore 뒤 같은 fixture 결과가 재현된다.
+
+상태: `pending`.
+
+## Module 5 - Sparse Water family
+
+대상 12개:
+
+- `Water_Sparse_Lake`
+- `Water_Sparse_River`
+- `Water_Sparse_Rivers_Minimal`
+- `Water_Sparse_Sea_Minimal`
+- `Water_Sparse_Sea_Quiet`
+- `Water_Sparse_Sea_Stormy`
+- `Water_Sparse_Sea_Windy`
+- `Water_Sparse_Swamp`
+- `Water_Sparse_Various`
+- `Misc/Water_Sparse_DoubleSim_TilingWaves`
+- `Misc/Water_Sparse_DoubleSim_Vortex`
+- `Misc/Water_Sparse_Sea_Ship`
+
+학습 순서:
+
+1. river/lake minimal로 최소 state와 surface recipe 확정.
+2. sea minimal/quiet로 baseline과 lighting/refraction 확정.
+3. windy/stormy/swamp/various로 forcing과 material recipe 확장.
+4. double-sim으로 state ownership, sync, composition 분석.
+5. ship interaction으로 moving obstacle/wake 검증.
+
+통과 기준: 공통 solver, forcing, output recipe의 차이를 표로 분리하고 같은
+camera/input/time에서 수치·화면 fixture를 통과한다.
+
+상태: `pending`.
+
+## Module 6 - Dense Water family
+
+대상 6개:
+
+- `Water_Dense_Creek1`
+- `Water_Dense_Creek2`
+- `Water_Dense_Lake`
+- `Water_Dense_Sea`
+- `Misc/Water_Dense_Rain`
+- `Misc/Water_Dense_vs_Sparse`
+
+학습 순서:
+
+1. creek에서 경계와 흐름.
+2. lake에서 stationary domain과 interaction.
+3. sea에서 large surface와 output recipe.
+4. rain에서 particle/Data Channel input.
+5. dense-vs-sparse에서 같은 화면 조건의 품질·비용 비교.
+
+통과 기준: dense state, RT format/channel, foam/normal/refraction 계약과
+rain source ordering을 기록하고, dense/sparse 성능 차이를 화면 동등성 상태에서
+측정한다.
+
+상태: `pending`.
+
+## Module 7 - Surface media family
+
+대상 7개:
+
+- `Sand`
+- `Sand_Destructibles`
+- `Snow`
+- `Snow_Minimal`
+- `Grass`
+- `Viscous_Blood_Mud`
+- `Misc/Lava_Sparse`
+
+학습 질문:
+
+- 같은 exported state가 displacement, normal, color, wetness, foam, track,
+  recovery로 어떻게 다르게 해석되는가.
+- material recipe 차이와 solver parameter 차이를 어떻게 분리하는가.
+- destructible/character/mesh interaction이 어떤 source adapter를 추가하는가.
+- minimal과 full variant가 제거하는 기능은 무엇인가.
+
+통과 기준: medium별 output contract와 공통 core를 분리하고 fixed interaction
+replay에서 흔적, 복원, 흐름 방향, 화면을 비교한다.
+
+상태: `pending`.
+
+## Module 8 - Fire, smoke, cloud, fog와 volume family
+
+대상 12개:
+
+- `Fire_Smoke_Explosive`
+- `Clouds`
+- `Clouds_PASSIVE`
+- `Fog_Mist`
+- `Fog_Mist_PASSIVE`
+- `Misc/VolumeDemo_FAKE`
+- `Misc/VolumeDemo_FVOL_Small`
+- `Misc/VolumeDemo_HVOL_Medium`
+- `Misc/VolumeDemo_HVOL_Small`
+- `Misc/VolumeDemo_HVOL_Small_PASSIVE`
+- `Misc/VolumeDemo_SVOL_Medium`
+- `Misc/VolumeDemo_SVOL_Small`
+
+학습 질문:
+
+- `FAKE`, `FVOL`, `HVOL`, `SVOL`, `CVOL`이 실제로 어떤 geometry,
+  renderer, material domain, sampling dimension을 쓰는가.
+- box output과 Niagara volume output의 bounds·lighting·비용 차이는 무엇인가.
+- simulated와 passive가 state ownership과 lifecycle에서 어떻게 다른가.
+- fire/smoke/explosion/cloud/fog가 density, velocity, optional temperature/color를
+  어떻게 해석하는가.
+
+통과 기준: 약어를 추측하지 않고 각 family의 최소 input, renderer, material,
+cost를 증거로 잠그며 small/medium과 passive/simulated 쌍을 같은 조건으로 비교한다.
+
+상태: `pending`.
+
+## Module 9 - Destructible, external particle, skeletal/array
+
+대상 6개:
+
+- `CoreOnly/Destructibles_as_SDF`
+- `Misc/Destructibles_as_Points_CameraFacing`
+- `Misc/Destructibles_as_Points_WorldAligned`
+- `Misc/Destructibles_as_SDF_WorldAligned`
+- `Misc/DrivingParticlesWithFluidsim`
+- `CoreOnly/CamfaceTest`
+
+학습 질문:
+
+- Geometry Collection/Dataflow/Chaos Niagara가 point 또는 SDF sample을 어떻게 제공하는가.
+- points와 SDF의 정확도, cost, sign, alignment 차이는 무엇인가.
+- camera-facing과 world-aligned transform은 input과 output 중 어디에서 적용되는가.
+- fluid→external particle의 state ownership과 update latency는 무엇인가.
+
+통과 기준: optional adapter를 끄면 core가 독립 동작하고, 켜면 같은 fixture에서
+원본의 coupling 결과를 재현한다. 필요한 Engine/plugin allowlist를 exact module로
+기록한다.
+
+상태: `pending`.
+
+## Module 10 - 성능과 scaling
+
+대상 5개:
+
+- `Misc/PerformanceTest_Particles`
+- `Misc/PerformanceTest_Primitives`
+- `Misc/PerformanceTest_SimContainers`
+- `Misc/PerformanceTest_SimplePainterContainers`
+- `Misc/PerformanceTest_SkeletalMeshes`
+
+추가 비교:
+
+- `Misc/Water_Dense_vs_Sparse`.
+- volume small/medium pair.
+
+통과 기준:
+
+- 같은 hardware, RHI, scalability, resolution, warm-up, capture window.
+- CPU/GPU frame median/p95, dispatch, RT/grid memory, actor/component/particle 수.
+- first-run shader cost와 steady-state cost 분리.
+- visual parity를 유지한 상태에서 차이 설명.
+
+상태: `pending`.
+
+## Module 11 - Clean-room vertical slice와 family 확장
+
+학습과 구현을 섞어 완료로 오인하지 않도록 다음 순서를 반복한다.
+
+1. source behavior contract와 fixture 잠금.
+2. `/Game/_MCP_Temp/CubeFluidNinjaLiveGhost`에 최소 새 graph 저작.
+3. source logic dependency 0 확인.
+4. compile/save/close/reload/runtime.
+5. 수치와 화면 차이 분석.
+6. 실패하면 원리 문서와 fixture부터 수정.
+7. 통과한 책임만 final root에 project-owned 자산으로 재저작 또는 승격.
+
+첫 vertical slice는 하나의 point/brush input, 최소 core solve, 세 export buffer 중
+필요한 subset, surface output 하나, particle 또는 volume output 하나를 포함한다.
+원본 asset count를 맞추기 위한 확장은 금지하고 레벨 contract가 요구할 때만
+adapter와 recipe를 추가한다.
+
+상태: `pending`.
+
+## Module 12 - 59개 통합 시험
+
+통과 기준:
+
+1. 59개 카드에 source native manifest와 runtime fixture가 있다.
+2. 공통 host/core/input/output과 level configuration의 대응을 설명할 수 있다.
+3. 모든 target graph가 compile/save/reload/runtime을 통과한다.
+4. source/temp/MCP recursive dependency가 0건이다.
+5. UnrealMCP 비활성 또는 부재 소비 환경에서 load/cook/runtime이 통과한다.
+6. 59개 구조·동작·시각·수치 parity가 통과한다.
+7. 관련 level의 성능 gate가 통과한다.
+
+현재 상태: `pending`.
+
+## 학습 완료 대시보드
+
+| 항목 | 현재 상태 |
+| --- | --- |
+| Asset Registry/59 level path baseline | `complete` |
+| Blueprint full structural topology | `complete` |
+| Material full structural topology | `complete` |
+| Niagara compact summaries | `complete` |
+| Niagara full node/link topology | `pending recapture` |
+| native read-only level manifest inspector | `pending` |
+| 59개 actor/runtime 학습 | `0/59` |
+| clean-room vertical slice | `pending` |
+| target implementation | `pending` |
+| runtime parity | `pending` |

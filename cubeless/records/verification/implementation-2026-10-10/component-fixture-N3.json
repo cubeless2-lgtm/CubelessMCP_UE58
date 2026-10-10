@@ -1,0 +1,947 @@
+{
+  "schema": "cubeless_component_read_fixture_v1",
+  "success": true,
+  "status": "pass",
+  "stage": "complete",
+  "run_id": "da3d1cd6681a4b72bf5a0e9603398fde",
+  "root": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde",
+  "started_ns": 1791631433197951600,
+  "automatic_retries": 0,
+  "atomic_rollback": false,
+  "outcome_unknown": false,
+  "actions": [
+    {
+      "name": "create_BP_Local",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local"
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 2,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 2,
+        "duplicate_handle_count": 0
+      }
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 2,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 2,
+        "duplicate_handle_count": 0
+      }
+    },
+    {
+      "name": "add_MeshChild",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_valid": true,
+        "failure_reason": ""
+      }
+    },
+    {
+      "name": "rename_MeshChild",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": true
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 4,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 3,
+        "duplicate_handle_count": 1
+      }
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 4,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 3,
+        "duplicate_handle_count": 1
+      }
+    },
+    {
+      "name": "add_LightChild",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_valid": true,
+        "failure_reason": ""
+      }
+    },
+    {
+      "name": "rename_LightChild",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": true
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 6,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 4,
+        "duplicate_handle_count": 2
+      }
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 6,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 4,
+        "duplicate_handle_count": 2
+      }
+    },
+    {
+      "name": "mesh_asset",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": true
+    },
+    {
+      "name": "set_mesh_relative_location",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_mesh_relative_rotation",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_mesh_relative_scale3d",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_mesh_visible",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_mesh_component_tags",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_mesh_mobility",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_light_intensity_units",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "set_light_intensity",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true
+    },
+    {
+      "name": "compile_BP_Local",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "blueprint_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local",
+        "name": "BP_Local",
+        "asset_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local",
+        "package_dirty_before": true,
+        "was_dirty_before_compile": true,
+        "refresh_nodes_requested": false,
+        "refreshed_nodes": false,
+        "save_requested": false,
+        "requested_save": false,
+        "mutation_performed": true,
+        "retry_policy": "inspect_result_before_explicit_reexecution",
+        "compile_action": "performed",
+        "validation_scope": "compiler_messages_and_generated_class_only",
+        "reload_verified": false,
+        "runtime_verified": false,
+        "compiled": true,
+        "validation_pass": true,
+        "has_warnings": false,
+        "compile_status": "passed",
+        "status": "up_to_date",
+        "blueprint_status_code": 3,
+        "error_count": 0,
+        "warning_count": 0,
+        "compile_error_count": 0,
+        "compile_warning_count": 0,
+        "compile_errors": [],
+        "compile_warnings": [],
+        "diagnostics": [],
+        "diagnostic_count": 0,
+        "messages": [],
+        "saved": false,
+        "package_dirty_after": true,
+        "dirty_after_compile": true,
+        "success": true,
+        "stage": "complete",
+        "operation": "compile_blueprint_validation",
+        "schema_version": "1.0",
+        "atomic_rollback_available": false,
+        "elapsed_ms": 77.64780148863792
+      }
+    },
+    {
+      "name": "create_BP_Empty",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty.BP_Empty"
+    },
+    {
+      "name": "compile_BP_Empty",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "blueprint_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty.BP_Empty",
+        "name": "BP_Empty",
+        "asset_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty.BP_Empty",
+        "package_dirty_before": true,
+        "was_dirty_before_compile": true,
+        "refresh_nodes_requested": false,
+        "refreshed_nodes": false,
+        "save_requested": false,
+        "requested_save": false,
+        "mutation_performed": true,
+        "retry_policy": "inspect_result_before_explicit_reexecution",
+        "compile_action": "performed",
+        "validation_scope": "compiler_messages_and_generated_class_only",
+        "reload_verified": false,
+        "runtime_verified": false,
+        "compiled": true,
+        "validation_pass": true,
+        "has_warnings": false,
+        "compile_status": "passed",
+        "status": "up_to_date",
+        "blueprint_status_code": 3,
+        "error_count": 0,
+        "warning_count": 0,
+        "compile_error_count": 0,
+        "compile_warning_count": 0,
+        "compile_errors": [],
+        "compile_warnings": [],
+        "diagnostics": [],
+        "diagnostic_count": 0,
+        "messages": [],
+        "saved": false,
+        "package_dirty_after": true,
+        "dirty_after_compile": true,
+        "success": true,
+        "stage": "complete",
+        "operation": "compile_blueprint_validation",
+        "schema_version": "1.0",
+        "atomic_rollback_available": false,
+        "elapsed_ms": 31.922299414873123
+      }
+    },
+    {
+      "name": "create_BP_Inherited",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited.BP_Inherited"
+    },
+    {
+      "name": "compile_BP_Inherited",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "blueprint_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited.BP_Inherited",
+        "name": "BP_Inherited",
+        "asset_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited.BP_Inherited",
+        "package_dirty_before": true,
+        "was_dirty_before_compile": true,
+        "refresh_nodes_requested": false,
+        "refreshed_nodes": false,
+        "save_requested": false,
+        "requested_save": false,
+        "mutation_performed": true,
+        "retry_policy": "inspect_result_before_explicit_reexecution",
+        "compile_action": "performed",
+        "validation_scope": "compiler_messages_and_generated_class_only",
+        "reload_verified": false,
+        "runtime_verified": false,
+        "compiled": true,
+        "validation_pass": true,
+        "has_warnings": false,
+        "compile_status": "passed",
+        "status": "up_to_date",
+        "blueprint_status_code": 3,
+        "error_count": 0,
+        "warning_count": 0,
+        "compile_error_count": 0,
+        "compile_warning_count": 0,
+        "compile_errors": [],
+        "compile_warnings": [],
+        "diagnostics": [],
+        "diagnostic_count": 0,
+        "messages": [
+          {
+            "severity": "info",
+            "message": "부모: BeginPlay (K2Node_CallParentFunction_0)에 유효하지 않은 함수 시그니처가 있었던 것을 고쳤습니다.",
+            "severity_code": 4
+          },
+          {
+            "severity": "info",
+            "message": "부모: ActorBeginOverlap (K2Node_CallParentFunction_1)에 유효하지 않은 함수 시그니처가 있었던 것을 고쳤습니다.",
+            "severity_code": 4
+          },
+          {
+            "severity": "info",
+            "message": "부모: Tick (K2Node_CallParentFunction_2)에 유효하지 않은 함수 시그니처가 있었던 것을 고쳤습니다.",
+            "severity_code": 4
+          }
+        ],
+        "saved": false,
+        "package_dirty_after": true,
+        "dirty_after_compile": true,
+        "success": true,
+        "stage": "complete",
+        "operation": "compile_blueprint_validation",
+        "schema_version": "1.0",
+        "atomic_rollback_available": false,
+        "elapsed_ms": 31.1334989964962
+      }
+    },
+    {
+      "name": "gather_local_for_fixture_authoring",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": {
+        "handle_count": 6,
+        "may_create_editor_templates": true,
+        "unique_handle_count": 4,
+        "duplicate_handle_count": 2
+      }
+    },
+    {
+      "name": "save_three_new_blueprints_once",
+      "mutation_intent": true,
+      "attempted": true,
+      "returned": true,
+      "result": true
+    }
+  ],
+  "blueprints": {
+    "local": {
+      "package": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local",
+      "object_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local",
+      "has_scs": true,
+      "expected_components": [
+        {
+          "component_name": "DefaultSceneRoot",
+          "variable_name": "DefaultSceneRoot",
+          "component_class": "SceneComponent",
+          "component_class_path": "/Script/Engine.SceneComponent",
+          "template_name": "DefaultSceneRoot_GEN_VARIABLE",
+          "template_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local_C:DefaultSceneRoot_GEN_VARIABLE",
+          "parent_component_name": "",
+          "relative_transform": {
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "component_name": "LightChild",
+          "variable_name": "LightChild",
+          "component_class": "PointLightComponent",
+          "component_class_path": "/Script/Engine.PointLightComponent",
+          "template_name": "LightChild_GEN_VARIABLE",
+          "template_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local_C:LightChild_GEN_VARIABLE",
+          "parent_component_name": "MeshChild",
+          "relative_transform": {
+            "location": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "scale": [
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "component_name": "MeshChild",
+          "variable_name": "MeshChild",
+          "component_class": "StaticMeshComponent",
+          "component_class_path": "/Script/Engine.StaticMeshComponent",
+          "template_name": "MeshChild_GEN_VARIABLE",
+          "template_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local_C:MeshChild_GEN_VARIABLE",
+          "parent_component_name": "DefaultSceneRoot",
+          "relative_transform": {
+            "location": [
+              12.0,
+              34.0,
+              56.0
+            ],
+            "rotation": [
+              10.0,
+              20.0,
+              30.0
+            ],
+            "scale": [
+              1.25,
+              0.75,
+              2.0
+            ]
+          },
+          "static_mesh": "/Engine/BasicShapes/Cube.Cube"
+        }
+      ],
+      "properties": [
+        {
+          "id": "MeshChild.RelativeLocation",
+          "component_name": "MeshChild",
+          "property_name": "RelativeLocation",
+          "property_type": "FVector",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": [
+            12.0,
+            34.0,
+            56.0
+          ],
+          "independent_readback_value": [
+            12.0,
+            34.0,
+            56.0
+          ],
+          "official_property_baseline": {
+            "RelativeLocation": {
+              "x": 12,
+              "y": 34,
+              "z": 56
+            }
+          },
+          "official_property_baseline_json": "{\"RelativeLocation\":{\"x\":12,\"y\":34,\"z\":56}}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "MeshChild.RelativeRotation",
+          "component_name": "MeshChild",
+          "property_name": "RelativeRotation",
+          "property_type": "FRotator",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": [
+            10.0,
+            20.0,
+            30.0
+          ],
+          "independent_readback_value": [
+            10.0,
+            20.0,
+            30.0
+          ],
+          "official_property_baseline": {
+            "RelativeRotation": {
+              "pitch": 10,
+              "yaw": 20,
+              "roll": 30
+            }
+          },
+          "official_property_baseline_json": "{\"RelativeRotation\":{\"pitch\":10,\"yaw\":20,\"roll\":30}}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "MeshChild.RelativeScale3D",
+          "component_name": "MeshChild",
+          "property_name": "RelativeScale3D",
+          "property_type": "FVector",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": [
+            1.25,
+            0.75,
+            2.0
+          ],
+          "independent_readback_value": [
+            1.25,
+            0.75,
+            2.0
+          ],
+          "official_property_baseline": {
+            "RelativeScale3D": {
+              "x": 1.25,
+              "y": 0.75,
+              "z": 2
+            }
+          },
+          "official_property_baseline_json": "{\"RelativeScale3D\":{\"x\":1.25,\"y\":0.75,\"z\":2}}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "MeshChild.StaticMesh",
+          "component_name": "MeshChild",
+          "property_name": "StaticMesh",
+          "property_type": null,
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": "/Engine/BasicShapes/Cube.Cube",
+          "independent_readback_value": "/Engine/BasicShapes/Cube.Cube",
+          "official_property_baseline": {
+            "StaticMesh": {
+              "refPath": "/Engine/BasicShapes/Cube.Cube"
+            }
+          },
+          "official_property_baseline_json": "{\"StaticMesh\":{\"refPath\":\"/Engine/BasicShapes/Cube.Cube\"}}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "MeshChild.bVisible",
+          "component_name": "MeshChild",
+          "property_name": "bVisible",
+          "property_type": "bool",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": false,
+          "independent_readback_value": false,
+          "official_property_baseline": {
+            "bVisible": false
+          },
+          "official_property_baseline_json": "{\"bVisible\":false}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "MeshChild.ComponentTags",
+          "component_name": "MeshChild",
+          "property_name": "ComponentTags",
+          "property_type": null,
+          "property_encoding": "legacy_ue_export_text_bounded_scalar_array",
+          "declared_expected_value": [
+            "CubelessComponentFixture",
+            "ReadOnlyProof"
+          ],
+          "independent_readback_value": [
+            "CubelessComponentFixture",
+            "ReadOnlyProof"
+          ],
+          "official_property_baseline": {
+            "ComponentTags": [
+              "CubelessComponentFixture",
+              "ReadOnlyProof"
+            ]
+          },
+          "official_property_baseline_json": "{\"ComponentTags\":[\"CubelessComponentFixture\",\"ReadOnlyProof\"]}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "MeshChild.Mobility",
+          "component_name": "MeshChild",
+          "property_name": "Mobility",
+          "property_type": "TEnumAsByte<EComponentMobility::Type>",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": 2,
+          "independent_readback_value": 2,
+          "official_property_baseline": {
+            "Mobility": "Movable"
+          },
+          "official_property_baseline_json": "{\"Mobility\":\"Movable\"}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "LightChild.Intensity",
+          "component_name": "LightChild",
+          "property_name": "Intensity",
+          "property_type": "float",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": 1234.5,
+          "independent_readback_value": 1234.5,
+          "official_property_baseline": {
+            "Intensity": 1234.5
+          },
+          "official_property_baseline_json": "{\"Intensity\":1234.5}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "LightChild.IntensityUnits",
+          "component_name": "LightChild",
+          "property_name": "IntensityUnits",
+          "property_type": "ELightUnits",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": "Lumens",
+          "independent_readback_value": "Lumens",
+          "official_property_baseline": {
+            "IntensityUnits": "Lumens"
+          },
+          "official_property_baseline_json": "{\"IntensityUnits\":\"Lumens\"}",
+          "official_property_status": "observed",
+          "independent_getter": "UObject.get_editor_property"
+        },
+        {
+          "id": "LightChild.AttachSocketName",
+          "component_name": "LightChild",
+          "property_name": "AttachSocketName",
+          "property_type": "FName",
+          "property_encoding": "legacy_typed_json",
+          "declared_expected_value": "None",
+          "independent_readback_value": "None",
+          "official_property_baseline": null,
+          "official_property_status": "not_accessible_by_generic_tool",
+          "independent_getter": "USceneComponent.GetAttachSocketName"
+        }
+      ],
+      "node_guid_independently_verified": false
+    },
+    "empty": {
+      "package": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty",
+      "object_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty.BP_Empty",
+      "has_scs": false,
+      "expected_components": [],
+      "properties": [],
+      "expected_parent_class": "/Script/Engine.SaveGame"
+    },
+    "inherited": {
+      "package": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited",
+      "object_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited.BP_Inherited",
+      "has_scs": true,
+      "expected_components": [],
+      "properties": [],
+      "parent_blueprint": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local",
+      "inherited_components_excluded": true,
+      "gather_called": false
+    }
+  },
+  "asset_files": [
+    {
+      "package": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Components_da3d1cd6681a4b72bf5a0e9603398fde\\BP_Local.uasset",
+      "sha256": "bb183325dabd5d937d31b9a5e65bfa237f44b59101774add087bb4c90b76cee2"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Components_da3d1cd6681a4b72bf5a0e9603398fde\\BP_Empty.uasset",
+      "sha256": "4049e7ac361be176c538021bb72e2291a8919a7b2328a56ffd4f95301f55cf05"
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited",
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Components_da3d1cd6681a4b72bf5a0e9603398fde\\BP_Inherited.uasset",
+      "sha256": "d9f615fcc60b7adf33b5cb04a3913643df9b270a31f6bdcf6982c9ea05992930"
+    }
+  ],
+  "compile": {
+    "success": true,
+    "explicit_calls": 3,
+    "results": [
+      {
+        "blueprint_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local",
+        "name": "BP_Local",
+        "asset_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local.BP_Local",
+        "package_dirty_before": true,
+        "was_dirty_before_compile": true,
+        "refresh_nodes_requested": false,
+        "refreshed_nodes": false,
+        "save_requested": false,
+        "requested_save": false,
+        "mutation_performed": true,
+        "retry_policy": "inspect_result_before_explicit_reexecution",
+        "compile_action": "performed",
+        "validation_scope": "compiler_messages_and_generated_class_only",
+        "reload_verified": false,
+        "runtime_verified": false,
+        "compiled": true,
+        "validation_pass": true,
+        "has_warnings": false,
+        "compile_status": "passed",
+        "status": "up_to_date",
+        "blueprint_status_code": 3,
+        "error_count": 0,
+        "warning_count": 0,
+        "compile_error_count": 0,
+        "compile_warning_count": 0,
+        "compile_errors": [],
+        "compile_warnings": [],
+        "diagnostics": [],
+        "diagnostic_count": 0,
+        "messages": [],
+        "saved": false,
+        "package_dirty_after": true,
+        "dirty_after_compile": true,
+        "success": true,
+        "stage": "complete",
+        "operation": "compile_blueprint_validation",
+        "schema_version": "1.0",
+        "atomic_rollback_available": false,
+        "elapsed_ms": 77.64780148863792
+      },
+      {
+        "blueprint_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty.BP_Empty",
+        "name": "BP_Empty",
+        "asset_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty.BP_Empty",
+        "package_dirty_before": true,
+        "was_dirty_before_compile": true,
+        "refresh_nodes_requested": false,
+        "refreshed_nodes": false,
+        "save_requested": false,
+        "requested_save": false,
+        "mutation_performed": true,
+        "retry_policy": "inspect_result_before_explicit_reexecution",
+        "compile_action": "performed",
+        "validation_scope": "compiler_messages_and_generated_class_only",
+        "reload_verified": false,
+        "runtime_verified": false,
+        "compiled": true,
+        "validation_pass": true,
+        "has_warnings": false,
+        "compile_status": "passed",
+        "status": "up_to_date",
+        "blueprint_status_code": 3,
+        "error_count": 0,
+        "warning_count": 0,
+        "compile_error_count": 0,
+        "compile_warning_count": 0,
+        "compile_errors": [],
+        "compile_warnings": [],
+        "diagnostics": [],
+        "diagnostic_count": 0,
+        "messages": [],
+        "saved": false,
+        "package_dirty_after": true,
+        "dirty_after_compile": true,
+        "success": true,
+        "stage": "complete",
+        "operation": "compile_blueprint_validation",
+        "schema_version": "1.0",
+        "atomic_rollback_available": false,
+        "elapsed_ms": 31.922299414873123
+      },
+      {
+        "blueprint_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited.BP_Inherited",
+        "name": "BP_Inherited",
+        "asset_path": "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited.BP_Inherited",
+        "package_dirty_before": true,
+        "was_dirty_before_compile": true,
+        "refresh_nodes_requested": false,
+        "refreshed_nodes": false,
+        "save_requested": false,
+        "requested_save": false,
+        "mutation_performed": true,
+        "retry_policy": "inspect_result_before_explicit_reexecution",
+        "compile_action": "performed",
+        "validation_scope": "compiler_messages_and_generated_class_only",
+        "reload_verified": false,
+        "runtime_verified": false,
+        "compiled": true,
+        "validation_pass": true,
+        "has_warnings": false,
+        "compile_status": "passed",
+        "status": "up_to_date",
+        "blueprint_status_code": 3,
+        "error_count": 0,
+        "warning_count": 0,
+        "compile_error_count": 0,
+        "compile_warning_count": 0,
+        "compile_errors": [],
+        "compile_warnings": [],
+        "diagnostics": [],
+        "diagnostic_count": 0,
+        "messages": [
+          {
+            "severity": "info",
+            "message": "부모: BeginPlay (K2Node_CallParentFunction_0)에 유효하지 않은 함수 시그니처가 있었던 것을 고쳤습니다.",
+            "severity_code": 4
+          },
+          {
+            "severity": "info",
+            "message": "부모: ActorBeginOverlap (K2Node_CallParentFunction_1)에 유효하지 않은 함수 시그니처가 있었던 것을 고쳤습니다.",
+            "severity_code": 4
+          },
+          {
+            "severity": "info",
+            "message": "부모: Tick (K2Node_CallParentFunction_2)에 유효하지 않은 함수 시그니처가 있었던 것을 고쳤습니다.",
+            "severity_code": 4
+          }
+        ],
+        "saved": false,
+        "package_dirty_after": true,
+        "dirty_after_compile": true,
+        "success": true,
+        "stage": "complete",
+        "operation": "compile_blueprint_validation",
+        "schema_version": "1.0",
+        "atomic_rollback_available": false,
+        "elapsed_ms": 31.1334989964962
+      }
+    ],
+    "implicit_engine_compilation_possible": true
+  },
+  "save": {
+    "saved": true,
+    "explicit_calls": 1,
+    "packages": [
+      "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty",
+      "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited",
+      "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local"
+    ]
+  },
+  "source_hashes": {
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\create_component_read_fixture.py": "5728d9f5e74c955c5268d3f93e5e58e89ae4aa695524186ed3be246b4f5d0780",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\SubobjectDataInterface\\Public\\SubobjectDataSubsystem.h": "cf4d8927594f745559fbbb2716c92dd5b97a7e7473f234c562b8e369b1656ef7",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\SubobjectDataInterface\\Public\\SubobjectDataBlueprintFunctionLibrary.h": "3271912f9129bb82c78aae17b6873ee85465e121af5b845d4f4b326cf141731d",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\SubobjectDataInterface\\Private\\SubobjectDataSubsystem.cpp": "5e95b9f1509b38cb8a149d7c3291c97ee630bc50b3ac79b4acd04f33c30ece48",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\UnrealEd\\Private\\Kismet2\\Kismet2.cpp": "1024da2cd1652bcdf558c9431cc2f2e2d08707012e8645d574309f25bd2f64ca",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Runtime\\Engine\\Classes\\Components\\SceneComponent.h": "a9e1cecc43547fe2dc10bae4cfdcb49d3951e89717c16c8c3e1bd0831030b1d5",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Plugins\\Experimental\\ToolsetRegistry\\Source\\ToolsetRegistry\\Private\\ToolsetRegistry\\ToolsetLibrary.cpp": "420316acb85d983d30d9704d69cf10bad3125028e41f604664ca152d2d5fa94f"
+  },
+  "coverage_limits": [
+    "Local reachable SCS only",
+    "node_guid has no independent public Python accessor in this fixture; native repeat/reload comparison only",
+    "No FString/FText component field fixture or malformed enum descriptor execution",
+    "Subobject gathering is fixture authoring, not a read-only verification API"
+  ],
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "editor": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 9832,
+    "instance_id": "C772E077-4BA3-ED0A-A056-9D8FE8107BD0",
+    "session_id": "D138DC0A-8700-4EA5-8000-000000007E00",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.26540085673332214
+  },
+  "save_on_compile": {
+    "name": "SoC_Never",
+    "value": 0,
+    "changed_by_fixture": false
+  },
+  "dirty_before": [],
+  "preexisting_asset_file_count": 42,
+  "independent_before_save": {
+    "local_component_count": 3,
+    "blueprint_status": {
+      "BP_Local": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+      "BP_Empty": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+      "BP_Inherited": "<BlueprintStatus.BS_UP_TO_DATE: 3>"
+    }
+  },
+  "dirty_before_save": [
+    "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Empty",
+    "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Inherited",
+    "/Game/CubelessMCPTests/Components_da3d1cd6681a4b72bf5a0e9603398fde/BP_Local"
+  ],
+  "dirty_after": [],
+  "independent_after_save": {
+    "blueprint_status": {
+      "BP_Local": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+      "BP_Empty": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+      "BP_Inherited": "<BlueprintStatus.BS_UP_TO_DATE: 3>"
+    }
+  },
+  "preservation": {
+    "preexisting_files": 42,
+    "changed_or_missing": [],
+    "passed": true
+  },
+  "dirty_final": [],
+  "finished_ns": 1791631433855112200
+}

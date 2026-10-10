@@ -1,0 +1,8 @@
+{
+  "schema": "cubeless_material_add_set_edges_verification_v1",
+  "passed": true,
+  "errors": [],
+  "phase": "author",
+  "full_material_parity": false,
+  "scope": "Input conversion, strict rejection, independent value/position readback, save and optional new-process reload; no shader/render proof"
+}

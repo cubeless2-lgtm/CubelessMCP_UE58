@@ -1,0 +1,8 @@
+{
+  "schema": "cubeless_current_runtime_offline_contract_tests_v1",
+  "passed": true,
+  "tests_run": 12,
+  "manifest_sha256": "5050a15d3e6a27708130b5435d3d4cb9891109c2a1f1dbb404fba80a582f28f1",
+  "scope": "Read-only actual parent/source validation, manifest tampering and pure map identity/dependency counterexamples; no Unreal or copied-project execution",
+  "details": "test_actual_parents_source_files_rederived (__main__.Contracts.test_actual_parents_source_files_rederived) ... ok\ntest_arbitrary_world_actor_not_relaxed (__main__.Contracts.test_arbitrary_world_actor_not_relaxed) ... ok\ntest_clone_recipe_tampering_rejected (__main__.Contracts.test_clone_recipe_tampering_rejected) ... ok\ntest_copy_plan_has_no_external_destination (__main__.Contracts.test_copy_plan_has_no_external_destination) ... ok\ntest_empty_actor_suffix_rejected (__main__.Contracts.test_empty_actor_suffix_rejected) ... ok\ntest_incomplete_dependency_scan_cannot_pass (__main__.Contracts.test_incomplete_dependency_scan_cannot_pass) ... ok\ntest_manifest_omission_rejected (__main__.Contracts.test_manifest_omission_rejected) ... ok\ntest_missing_material_hardedge_rejected (__main__.Contracts.test_missing_material_hardedge_rejected) ... ok\ntest_new_sources_parse (__main__.Contracts.test_new_sources_parse) ... ok\ntest_old_map_remapping_is_exact (__main__.Contracts.test_old_map_remapping_is_exact) ... ok\ntest_traversal_and_othermount_rejected (__main__.Contracts.test_traversal_and_othermount_rejected) ... ok\ntest_wrong_project_rejected (__main__.Contracts.test_wrong_project_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 12 tests in 0.545s\n\nOK\n"
+}

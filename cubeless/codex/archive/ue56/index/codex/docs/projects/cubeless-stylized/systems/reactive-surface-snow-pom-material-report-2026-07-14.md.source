@@ -1,0 +1,26 @@
+# Reactive Surface Snow POM Material Report
+
+- Date: `2026-07-14`
+- Verdict: `PASS`
+- Scope: `MF_RS_SnowSurface` and `M_RS_Demo_Snow` only.
+- The Ground RT, Niagara writer, Controller, Piper, window MPC, recenter logic, masks, and level were not modified.
+- UDS was used only as a design reference for ray marching and quality fallback; no UDS dependency was added.
+- Added: 8/16-step POM, 8-15 m distance fade, grazing-angle fallback, RT-edge fade, static POM off path.
+- Included user adjustment: `M_RS_Demo_Snow` WPO uses `VertexNormalWS * float3(0, 0, 10)`.
+- Excluded: time refill, RT changes, self-shadow POM, silhouette/collision changes.
+
+| Check | Result |
+| --- | --- |
+| Temp material-only hash lock | True |
+| POM OFF material compile 0 | True |
+| POM ON material compile 0 | True |
+| User WPO graph installed and compiled | True |
+| PIE visual | PASS |
+| Current-session PIE visual | BLOCKED_NO_LEVEL_VIEWPORT |
+| Forbidden dependency 0 | True |
+| Protected assets unchanged | True |
+| UDS assets unchanged | True |
+
+POM itself is a pixel shading effect. The separate user-authored WPO raises the demo snow surface by 10 uu on an upward-facing plane.
+Neither change modifies collision, RT data, or world window mapping.
+When the editor exposes no level viewport, the report keeps that PIE rerun as BLOCKED and identifies any prior same-HLSL capture used for visual evidence.

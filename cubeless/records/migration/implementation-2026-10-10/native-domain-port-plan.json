@@ -1,0 +1,4058 @@
+{
+  "schema_version": 1,
+  "scope": "read_only_native_domain_port_planning",
+  "recommended_domain": "material",
+  "transport_bridge_reuse": false,
+  "source_edited": false,
+  "domains": {
+    "material": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+        "sha256": "8c41e028d0f6b27e0d5c2d85cad37216bab8d2234e61189c812e6a463b0d5a91",
+        "line_count": 6588,
+        "bytes": 265241,
+        "includes": [
+          "Commands/UnrealMCPMaterialCommands.h",
+          "Commands/UnrealMCPCommonUtils.h",
+          "ScopedTransaction.h",
+          "AssetRegistry/AssetRegistryModule.h",
+          "Containers/Ticker.h",
+          "Dom/JsonValue.h",
+          "Engine/Texture.h",
+          "Engine/World.h",
+          "Editor.h",
+          "EditorAssetLibrary.h",
+          "MaterialEditingLibrary.h",
+          "MaterialCachedData.h",
+          "MaterialDomain.h",
+          "Materials/Material.h",
+          "Materials/MaterialExpression.h",
+          "Materials/MaterialExpressionConstant.h",
+          "Materials/MaterialExpressionConstant2Vector.h",
+          "Materials/MaterialExpressionConstant3Vector.h",
+          "Materials/MaterialExpressionConstant4Vector.h",
+          "Materials/MaterialExpressionComposite.h",
+          "Materials/MaterialExpressionCollectionParameter.h",
+          "Materials/MaterialExpressionCustom.h",
+          "Materials/MaterialExpressionExternalCodeBase.h",
+          "Materials/MaterialExpressionFunctionInput.h",
+          "Materials/MaterialExpressionFunctionOutput.h",
+          "Materials/MaterialExpressionMakeMaterialAttributes.h",
+          "Materials/MaterialExpressionMaterialFunctionCall.h",
+          "Materials/MaterialExpressionNamedReroute.h",
+          "Materials/MaterialExpressionParameter.h",
+          "Materials/MaterialExpressionRerouteBase.h",
+          "Materials/MaterialExpressionScalarParameter.h",
+          "Materials/MaterialExpressionStaticBoolParameter.h",
+          "Materials/MaterialExpressionTextureBase.h",
+          "Materials/MaterialExpressionTextureSample.h",
+          "Materials/MaterialExpressionVectorParameter.h",
+          "Materials/MaterialFunction.h",
+          "Materials/MaterialFunctionInterface.h",
+          "Materials/MaterialInstanceConstant.h",
+          "Materials/MaterialInstance.h",
+          "Materials/MaterialInterface.h",
+          "Materials/MaterialParameterCollection.h",
+          "Materials/MaterialParameterCollectionInstance.h",
+          "Misc/EngineVersionComparison.h",
+          "Misc/Guid.h",
+          "Misc/PackageName.h",
+          "Modules/ModuleManager.h",
+          "RHIFeatureLevel.h",
+          "RHIShaderPlatform.h",
+          "SceneTypes.h",
+          "Serialization/JsonSerializer.h",
+          "Serialization/JsonWriter.h",
+          "UObject/FieldIterator.h",
+          "UObject/UnrealType.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "IsMCPDependencyReference",
+          "IsReadOnlyCommandName"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPCommonUtils",
+          "FUnrealMCPMaterialCommands"
+        ],
+        "risk_markers": [
+          {
+            "line": 85,
+            "text": "#if UE_VERSION_OLDER_THAN(5, 7, 0)"
+          },
+          {
+            "line": 98,
+            "text": "#if UE_VERSION_OLDER_THAN(5, 7, 0)"
+          },
+          {
+            "line": 4537,
+            "text": "MaterialResource->FinishCompilation();"
+          },
+          {
+            "line": 4803,
+            "text": "MaterialResource->FinishCompilation();"
+          },
+          {
+            "line": 5040,
+            "text": "MaterialResource->FinishCompilation();"
+          },
+          {
+            "line": 5661,
+            "text": "MaterialResource->FinishCompilation();"
+          },
+          {
+            "line": 5744,
+            "text": "FMaterialCachedExpressionData& MutableCachedData = const_cast<FMaterialCachedExpressionData&>(Target.Material->GetCachedExpressionData());"
+          },
+          {
+            "line": 5768,
+            "text": "MaterialResource->FinishCompilation();"
+          },
+          {
+            "line": 5803,
+            "text": "if (DependencyString.StartsWith(TEXT(\"/Game/UltraDynamicSky\")) || DependencyString.StartsWith(TEXT(\"/Game/_MCP_Temp\")))"
+          }
+        ]
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPMaterialCommands.h",
+        "sha256": "a2fd741fb5d0b906e05a7d574af482a12fca6ed5d2e264eec756caff0ddc93a5",
+        "line_count": 42,
+        "bytes": 2774,
+        "includes": [
+          "CoreMinimal.h",
+          "Json.h"
+        ],
+        "common_utils_calls": [],
+        "legacy_class_references": [
+          "FUnrealMCPMaterialCommands"
+        ],
+        "risk_markers": []
+      }
+    ],
+    "editor": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPEditorCommands.cpp",
+        "sha256": "8928ef3d62bf369d47863360f1636a2434c7e6b6dcf061e7e518f4df42f34152",
+        "line_count": 7699,
+        "bytes": 372521,
+        "includes": [
+          "Commands/UnrealMCPEditorCommands.h",
+          "Commands/UnrealMCPCommonUtils.h",
+          "UnrealMCPModule.h",
+          "Bookmarks/IBookmarkTypeTools.h",
+          "CoreGlobals.h",
+          "Editor.h",
+          "EditorViewportClient.h",
+          "FileHelpers.h",
+          "IAssetViewport.h",
+          "LevelEditor.h",
+          "LevelEditorViewport.h",
+          "ImageUtils.h",
+          "HighResScreenshot.h",
+          "SLevelViewport.h",
+          "Engine/Engine.h",
+          "Engine/GameInstance.h",
+          "Engine/GameViewportClient.h",
+          "Engine/LocalPlayer.h",
+          "Misc/FileHelper.h",
+          "Misc/PackageName.h",
+          "Misc/Paths.h",
+          "Modules/ModuleManager.h",
+          "ScopedTransaction.h",
+          "Templates/UnrealTemplate.h",
+          "HAL/FileManager.h",
+          "Containers/Ticker.h",
+          "Misc/Guid.h",
+          "GameFramework/Actor.h",
+          "GameFramework/InputDeviceLibrary.h",
+          "GameFramework/Pawn.h",
+          "GameFramework/PlayerController.h",
+          "Engine/Selection.h",
+          "Engine/World.h",
+          "EngineUtils.h",
+          "Kismet/GameplayStatics.h",
+          "Engine/StaticMeshActor.h",
+          "Engine/EngineTypes.h",
+          "Engine/DirectionalLight.h",
+          "Engine/PointLight.h",
+          "Engine/SpotLight.h",
+          "Engine/TextureRenderTarget2D.h",
+          "Camera/CameraActor.h",
+          "Components/PrimitiveComponent.h",
+          "Components/StaticMeshComponent.h",
+          "PhysicsEngine/BodyInstance.h",
+          "PhysicalMaterials/PhysicalMaterial.h",
+          "EditorSubsystem.h",
+          "Subsystems/EditorActorSubsystem.h",
+          "Engine/Blueprint.h",
+          "Engine/BlueprintGeneratedClass.h",
+          "Engine/SCS_Node.h",
+          "Engine/SimpleConstructionScript.h",
+          "EditorAssetLibrary.h",
+          "Kismet2/BlueprintEditorUtils.h",
+          "Kismet2/KismetEditorUtilities.h",
+          "NiagaraActor.h",
+          "NiagaraComponent.h",
+          "NiagaraDataInterfaceGrid2DCollection.h",
+          "NiagaraDataInterfaceUtilities.h",
+          "NiagaraDataInterface.h",
+          "NiagaraEmitterInstance.h",
+          "NiagaraParameterStore.h",
+          "NiagaraSystem.h",
+          "NiagaraSystemInstance.h",
+          "NiagaraSystemInstanceController.h",
+          "NiagaraTypes.h",
+          "HAL/PlatformTime.h",
+          "InputCoreTypes.h",
+          "InputKeyEventArgs.h",
+          "UI/NiagaraPreviewPlayerWindow.h",
+          "UnrealEngine.h",
+          "UObject/UnrealType.h"
+        ],
+        "common_utils_calls": [
+          "ActorToJson",
+          "ActorToJsonObject",
+          "AddMutationResultContract",
+          "CreateErrorResponse",
+          "GetMCPDependencyReferenceError",
+          "GetRotatorFromJson",
+          "GetVectorFromJson",
+          "IsMCPDependencyReference",
+          "IsReadOnlyCommandName",
+          "SetObjectProperty"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPCommonUtils",
+          "FUnrealMCPEditorCommands",
+          "FUnrealMCPModule"
+        ],
+        "risk_markers": [
+          {
+            "line": 70,
+            "text": "#include \"UI/NiagaraPreviewPlayerWindow.h\""
+          },
+          {
+            "line": 1774,
+            "text": "Property->ExportTextItem_Direct(ExportedValue, ValuePtr, nullptr, const_cast<UObject*>(Owner), PPF_None);"
+          },
+          {
+            "line": 1845,
+            "text": "const_cast<UObject*>(Object),"
+          },
+          {
+            "line": 2501,
+            "text": "FNiagaraPreviewPlayerWindow::Show();"
+          },
+          {
+            "line": 2502,
+            "text": "TSharedPtr<FJsonObject> State = FNiagaraPreviewPlayerWindow::GetStateJson();"
+          },
+          {
+            "line": 2509,
+            "text": "const bool bPreviewLoaded = FNiagaraPreviewPlayerWindow::PreviewSystemByPath(SystemPath, PreviewError);"
+          },
+          {
+            "line": 2510,
+            "text": "State = FNiagaraPreviewPlayerWindow::GetStateJson();"
+          },
+          {
+            "line": 2525,
+            "text": "return FNiagaraPreviewPlayerWindow::GetStateJson();"
+          },
+          {
+            "line": 5527,
+            "text": "FUnrealMCPModule::CleanupMCPWeatherEditorPreviewDriver(TEXT(\"native open_editor_level\"));"
+          }
+        ]
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPEditorCommands.h",
+        "sha256": "298b774b79ee2fea0be9ac6bf0bc4f0ff881e51bde85afb9871d212c6d796da7",
+        "line_count": 66,
+        "bytes": 4387,
+        "includes": [
+          "CoreMinimal.h",
+          "Json.h"
+        ],
+        "common_utils_calls": [],
+        "legacy_class_references": [
+          "FUnrealMCPEditorCommands"
+        ],
+        "risk_markers": []
+      }
+    ],
+    "blueprint_core": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintCommands.cpp",
+        "sha256": "fa72cb0d37cfbc2377f6cbf5926f82352b5e07ea570aced4125eec732b32446f",
+        "line_count": 3250,
+        "bytes": 139841,
+        "includes": [
+          "Commands/UnrealMCPBlueprintCommands.h",
+          "Commands/UnrealMCPCommonUtils.h",
+          "ScopedTransaction.h",
+          "Engine/Blueprint.h",
+          "Engine/BlueprintGeneratedClass.h",
+          "Factories/BlueprintFactory.h",
+          "EdGraph/EdGraph.h",
+          "EdGraph/EdGraphNode.h",
+          "EdGraph/EdGraphPin.h",
+          "EdGraphToken.h",
+          "EdGraphSchema_K2.h",
+          "Editor.h",
+          "K2Node_Event.h",
+          "K2Node_VariableGet.h",
+          "K2Node_VariableSet.h",
+          "Components/StaticMeshComponent.h",
+          "Components/SkeletalMeshComponent.h",
+          "Components/BoxComponent.h",
+          "Components/PrimitiveComponent.h",
+          "Components/SceneComponent.h",
+          "Components/ShapeComponent.h",
+          "Components/SphereComponent.h",
+          "Animation/AnimInstance.h",
+          "Animation/AnimationAsset.h",
+          "Kismet2/BlueprintEditorUtils.h",
+          "Kismet2/CompilerResultsLog.h",
+          "Kismet2/KismetEditorUtilities.h",
+          "Engine/SimpleConstructionScript.h",
+          "Engine/SCS_Node.h",
+          "UObject/Field.h",
+          "UObject/FieldPath.h",
+          "UObject/UnrealType.h",
+          "EditorAssetLibrary.h",
+          "AssetRegistry/AssetRegistryModule.h",
+          "GameFramework/Actor.h",
+          "GameFramework/Pawn.h",
+          "Logging/TokenizedMessage.h",
+          "Misc/PackageName.h",
+          "Misc/UObjectToken.h",
+          "PhysicsEngine/PhysicsAsset.h"
+        ],
+        "common_utils_calls": [
+          "ActorToJsonObject",
+          "CreateErrorResponse",
+          "FindBlueprint",
+          "GetMCPDependencyReferenceError",
+          "GetRotatorFromJson",
+          "GetVectorFromJson",
+          "IsMCPDependencyReference",
+          "IsReadOnlyCommandName",
+          "SetObjectProperty"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintCommands_Physics.cpp",
+        "sha256": "e79ef64388581a0bdadb0b76a4382823f79ae1d08e189e0a0653967c7a954aac",
+        "line_count": 930,
+        "bytes": 43471,
+        "includes": [
+          "Commands/UnrealMCPBlueprintCommands.h",
+          "Commands/UnrealMCPCommonUtils.h",
+          "Components/SceneComponent.h",
+          "Components/StaticMeshComponent.h",
+          "Editor.h",
+          "EditorAssetLibrary.h",
+          "Engine/Blueprint.h",
+          "Engine/SCS_Node.h",
+          "Engine/SimpleConstructionScript.h",
+          "Engine/StaticMesh.h",
+          "GameFramework/Actor.h",
+          "Kismet2/BlueprintEditorUtils.h",
+          "Kismet2/CompilerResultsLog.h",
+          "Kismet2/KismetEditorUtilities.h",
+          "Misc/PackageName.h",
+          "PhysicsEngine/BodySetup.h",
+          "PhysicsEngine/PhysicsConstraintComponent.h"
+        ],
+        "common_utils_calls": [
+          "AddMutationResultContract",
+          "CreateErrorResponse",
+          "FindBlueprint",
+          "GetMCPDependencyReferenceError",
+          "IsMCPDependencyReference"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPBlueprintCommands.h",
+        "sha256": "a5585f410db8569c7fd462fd0109ce72dec474b9a9f9d29b278b533bf3d5f34e",
+        "line_count": 47,
+        "bytes": 3005,
+        "includes": [
+          "CoreMinimal.h",
+          "Json.h"
+        ],
+        "common_utils_calls": [],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintCommands"
+        ],
+        "risk_markers": []
+      }
+    ],
+    "blueprint_nodes": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part1.cpp",
+        "sha256": "5eab87d22258206e7ece29ea9dc2efd94c44054458ae5a3e57318908aa2bf113",
+        "line_count": 3879,
+        "bytes": 170909,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "AddMutationResultContract",
+          "CreateErrorResponse",
+          "CreateEventNode",
+          "CreateFunctionCallNode",
+          "FindBlueprint",
+          "FindPin",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "IsMCPDependencyReference",
+          "IsReadOnlyCommandName"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part2.cpp",
+        "sha256": "2963edde6b487265ad10edc113cded82644664e979c0dcf6c95a3d065211dd8b",
+        "line_count": 3551,
+        "bytes": 165451,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "CreateInputActionNode",
+          "CreateSelfReferenceNode",
+          "FindBlueprint",
+          "FindBlueprintAssetPaths",
+          "FindPin",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "IsMCPDependencyReference"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part3.cpp",
+        "sha256": "440c4183449167fa7fc79b930488e30c8942834c1c9fee1e44e77b125c650b6f",
+        "line_count": 3937,
+        "bytes": 197578,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "FindBlueprint"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part4.cpp",
+        "sha256": "1241254cc51cf1a3731d2056ebb6f167f7cd1ed0f2762b173caf490bc3c8bb8f",
+        "line_count": 3690,
+        "bytes": 167812,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "CreateFunctionCallNode",
+          "FindBlueprint",
+          "FindPin",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "IsMCPDependencyReference"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part5.cpp",
+        "sha256": "6940f27a4ae2544bf42bbbb64ae801ff0b9959a5789ec8a3f0473a4a5328b28f",
+        "line_count": 3581,
+        "bytes": 184231,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "CreateEventNode",
+          "CreateFunctionCallNode",
+          "FindBlueprint",
+          "FindOrCreateEventGraph",
+          "FindPin",
+          "GetVector2DFromJson",
+          "GetVectorFromJson"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part6.cpp",
+        "sha256": "cf4369958a58ed6e8ca451e6abf57ee42349f0148ea00dd0e3cd8579935be45d",
+        "line_count": 1447,
+        "bytes": 59722,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "CreateFunctionCallNode",
+          "CreateVariableGetNode",
+          "CreateVariableSetNode",
+          "FindBlueprint",
+          "FindPin",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "GetVectorFromJson",
+          "IsMCPDependencyReference"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part7.cpp",
+        "sha256": "17400a0222422d0ea13605ac3b1e0159ca4fb5318c6712988f47ab3bbce74041",
+        "line_count": 412,
+        "bytes": 14905,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "FindBlueprint",
+          "FindPin",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "IsMCPDependencyReference"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part8.cpp",
+        "sha256": "fcc40e26626cf2cb06575d2ce88d45530a85790d6dd624cdff4038ffcd43dc37",
+        "line_count": 838,
+        "bytes": 37710,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h",
+          "BlueprintEditor.h"
+        ],
+        "common_utils_calls": [
+          "AddMutationResultContract",
+          "CreateErrorResponse",
+          "FindBlueprint"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintFunctionExtractor",
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part9.cpp",
+        "sha256": "c5ab632db9e1bc7ac375b2bd5163c03aeacf41acb37d3ae91574bb3663bfa0cf",
+        "line_count": 1229,
+        "bytes": 60884,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommandsShared.h",
+          "AnimGraphNode_AnimDynamics.h",
+          "AnimGraphNode_LocalRefPose.h",
+          "Modules/ModuleManager.h"
+        ],
+        "common_utils_calls": [
+          "AddMutationResultContract",
+          "CreateErrorResponse",
+          "FindBlueprint",
+          "FindPin"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": [
+          {
+            "line": 160,
+            "text": "&& OutputPin->LinkedTo.Contains(const_cast<UEdGraphPin*>(InputPin))"
+          },
+          {
+            "line": 161,
+            "text": "&& InputPin->LinkedTo.Contains(const_cast<UEdGraphPin*>(OutputPin));"
+          }
+        ]
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommandsShared.h",
+        "sha256": "8c2be1947fa76417bf4cc5ce0a3a6db2bb5e3fdc4c446c21c37162d6c47a452e",
+        "line_count": 14127,
+        "bytes": 563240,
+        "includes": [
+          "Commands/UnrealMCPBlueprintNodeCommands.h",
+          "Commands/UnrealMCPCommonUtils.h",
+          "ScopedTransaction.h",
+          "Engine/Blueprint.h",
+          "Engine/BlueprintGeneratedClass.h",
+          "Engine/SCS_Node.h",
+          "Engine/SimpleConstructionScript.h",
+          "Animation/AnimBlueprintGeneratedClass.h",
+          "Animation/AnimBlueprint.h",
+          "Animation/AnimClassInterface.h",
+          "Animation/AnimCompositeBase.h",
+          "Animation/AnimCurveTypes.h",
+          "Animation/AnimData/IAnimationDataModel.h",
+          "Animation/AnimInstance.h",
+          "Animation/AnimationAsset.h",
+          "Animation/AnimMetaData.h",
+          "Animation/AnimMontage.h",
+          "Animation/AnimNotifies/AnimNotify.h",
+          "Animation/AnimNotifies/AnimNotifyState.h",
+          "Animation/AnimNodeBase.h",
+          "Animation/AnimSequence.h",
+          "Animation/AnimSequenceBase.h",
+          "Animation/AnimSingleNodeInstance.h",
+          "Animation/AnimNode_StateMachine.h",
+          "Animation/AnimStateMachineTypes.h",
+          "Animation/BlendSpace.h",
+          "Animation/Skeleton.h",
+          "Animation/SkeletalMeshActor.h",
+          "AssetToolsModule.h",
+          "AnimationGraphSchema.h",
+          "AnimationStateGraph.h",
+          "AnimationStateMachineGraph.h",
+          "AnimationStateMachineSchema.h",
+          "AnimationTransitionGraph.h",
+          "AnimGraphNode_AssetPlayerBase.h",
+          "AnimGraphNode_StateMachineBase.h",
+          "AnimGraphNode_StateMachine.h",
+          "AnimGraphNode_Base.h",
+          "AnimGraphNode_ComponentToLocalSpace.h",
+          "AnimGraphNode_ControlRig.h",
+          "AnimGraphNode_LinkedAnimGraph.h",
+          "AnimGraphNode_LinkedInputPose.h",
+          "AnimGraphNode_LocalToComponentSpace.h",
+          "AnimGraphNode_ModifyBone.h",
+          "AnimGraphNode_ModifyCurve.h",
+          "AnimGraphNode_RigidBody.h",
+          "AnimGraphNode_Root.h",
+          "AnimGraphNode_Trail.h",
+          "AnimGraphNode_TransitionResult.h",
+          "AnimStateEntryNode.h",
+          "AnimStateNode.h",
+          "AnimStateNodeBase.h",
+          "AnimStateTransitionNode.h",
+          "ControlRig.h",
+          "Misc/EngineVersionComparison.h",
+          "ControlRigBlueprint.h",
+          "ControlRigBlueprintLegacy.h",
+          "ControlRigBlueprintEditorLibrary.h",
+          "ControlRigBlueprintFactory.h",
+          "Components/SkeletalMeshComponent.h",
+          "EdGraph/EdGraph.h",
+          "EdGraph/EdGraphNode.h",
+          "EdGraph/EdGraphPin.h",
+          "EdGraphUtilities.h",
+          "EdGraphNode_Comment.h",
+          "Editor.h",
+          "EditorAssetLibrary.h",
+          "Engine/Engine.h",
+          "Engine/PoseWatch.h",
+          "Engine/PoseWatchRenderData.h",
+          "Engine/AssetUserData.h",
+          "Engine/SkeletalMesh.h",
+          "Engine/World.h",
+          "EngineUtils.h",
+          "Factories/AnimBlueprintFactory.h",
+          "GameFramework/Actor.h",
+          "IAssetTools.h",
+          "K2Node_Event.h",
+          "K2Node_CallFunction.h",
+          "K2Node_VariableGet.h",
+          "K2Node_VariableSet.h",
+          "K2Node_InputAction.h",
+          "K2Node_InputKey.h",
+          "K2Node_InputAxisEvent.h",
+          "K2Node_EnhancedInputAction.h",
+          "K2Node_ActorBoundEvent.h",
+          "K2Node_ComponentBoundEvent.h",
+          "K2Node_Self.h",
+          "K2Node_IfThenElse.h",
+          "K2Node_ExecutionSequence.h",
+          "K2Node_FunctionResult.h",
+          "K2Node_DynamicCast.h",
+          "K2Node_AddDelegate.h",
+          "K2Node_AssignDelegate.h",
+          "K2Node_CallDelegate.h",
+          "K2Node_ClearDelegate.h",
+          "K2Node_CreateDelegate.h",
+          "K2Node_CustomEvent.h",
+          "K2Node_Message.h",
+          "K2Node_RemoveDelegate.h",
+          "K2Node_EnumLiteral.h",
+          "K2Node_EnumEquality.h",
+          "K2Node_EnumInequality.h",
+          "K2Node_SwitchEnum.h",
+          "K2Node_SwitchInteger.h",
+          "K2Node_EditablePinBase.h",
+          "K2Node_FunctionEntry.h",
+          "K2Node_MacroInstance.h",
+          "K2Node_CallArrayFunction.h",
+          "K2Node_GenericCreateObject.h",
+          "K2Node_GetSubsystem.h",
+          "K2Node_MakeArray.h",
+          "K2Node_Variable.h",
+          "Kismet2/BlueprintEditorUtils.h",
+          "Kismet2/KismetEditorUtilities.h",
+          "GameFramework/InputSettings.h",
+          "GameFramework/CharacterMovementComponent.h",
+          "GameFramework/NavMovementComponent.h",
+          "GameFramework/Pawn.h",
+          "Subsystems/LocalPlayerSubsystem.h",
+          "Camera/CameraActor.h",
+          "KismetAnimationLibrary.h",
+          "Kismet/GameplayStatics.h",
+          "Kismet/KismetMathLibrary.h",
+          "Kismet/KismetSystemLibrary.h",
+          "Kismet/KismetArrayLibrary.h",
+          "PhysicsEngine/AggregateGeom.h",
+          "PhysicsEngine/BodySetup.h",
+          "PhysicsEngine/ConstraintInstance.h",
+          "PhysicsEngine/PhysicsAsset.h",
+          "PhysicsEngine/PhysicsConstraintTemplate.h",
+          "PhysicsEngine/PhysicalAnimationComponent.h",
+          "PhysicsEngine/SkeletalBodySetup.h",
+          "EdGraphSchema_K2.h",
+          "InputAction.h",
+          "InputCoreTypes.h",
+          "Internationalization/Text.h",
+          "Misc/FileHelper.h",
+          "Misc/PackageName.h",
+          "ReferenceSkeleton.h",
+          "Serialization/JsonSerializer.h",
+          "Serialization/JsonWriter.h",
+          "UObject/Class.h",
+          "PCGComponent.h",
+          "UObject/UnrealType.h",
+          "Rigs/RigHierarchy.h",
+          "Rigs/RigHierarchyDefines.h",
+          "Rigs/RigHierarchyElements.h",
+          "Rigs/RigHierarchyController.h",
+          "RigVMBlueprint.h",
+          "RigVMModel/RigVMController.h",
+          "RigVMModel/RigVMGraph.h",
+          "RigVMModel/RigVMLink.h",
+          "RigVMModel/RigVMPin.h",
+          "RigVMModel/Nodes/RigVMUnitNode.h",
+          "Units/Execution/RigUnit_BeginExecution.h",
+          "Units/Execution/RigUnit_InverseExecution.h",
+          "Units/Execution/RigUnit_PrepareForExecution.h",
+          "initializer_list"
+        ],
+        "common_utils_calls": [
+          "CreateErrorResponse",
+          "CreateFunctionCallNode",
+          "FindBlueprint",
+          "FindOrCreateEventGraph",
+          "FindPin",
+          "GetMCPDependencyReferenceError",
+          "GetVector2DFromJson",
+          "IsMCPDependencyReference"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": [
+          {
+            "line": 83,
+            "text": "#if UE_VERSION_OLDER_THAN(5, 7, 0)"
+          },
+          {
+            "line": 1898,
+            "text": "#if UE_VERSION_OLDER_THAN(5, 7, 0)"
+          },
+          {
+            "line": 1915,
+            "text": "#if UE_VERSION_OLDER_THAN(5, 7, 0)"
+          },
+          {
+            "line": 6091,
+            "text": "#if UE_VERSION_OLDER_THAN(5, 7, 0)"
+          },
+          {
+            "line": 10398,
+            "text": "FPoseLinkBase* MutablePoseLink = const_cast<FPoseLinkBase*>(PoseLink);"
+          },
+          {
+            "line": 10419,
+            "text": "LinkObject->SetObjectField(TEXT(\"linked_visual_node\"), NodeToJson(const_cast<UEdGraphNode*>(LinkedVisualNode), false));"
+          },
+          {
+            "line": 10420,
+            "text": "LinkObject->SetObjectField(TEXT(\"source_visual_node\"), NodeToJson(const_cast<UEdGraphNode*>(SourceVisualNode), false));"
+          }
+        ]
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPBlueprintNodeCommands.h",
+        "sha256": "348e2c371aa9085ec9fb9923fe55e2cf14ff113a972582313d07b72d24da76f4",
+        "line_count": 128,
+        "bytes": 11694,
+        "includes": [
+          "CoreMinimal.h",
+          "Json.h"
+        ],
+        "common_utils_calls": [],
+        "legacy_class_references": [
+          "FUnrealMCPBlueprintNodeCommands"
+        ],
+        "risk_markers": []
+      }
+    ],
+    "common_utils": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPCommonUtils.cpp",
+        "sha256": "f64c79ce1b4a326746b1882e6f9f7c04ac24fbf825f5ddf4c547f8905d6fc365",
+        "line_count": 2085,
+        "bytes": 77472,
+        "includes": [
+          "Commands/UnrealMCPCommonUtils.h",
+          "GameFramework/Actor.h",
+          "Engine/Blueprint.h",
+          "Engine/Level.h",
+          "Engine/LevelScriptBlueprint.h",
+          "Engine/World.h",
+          "EdGraph/EdGraph.h",
+          "EdGraph/EdGraphNode.h",
+          "EdGraph/EdGraphPin.h",
+          "K2Node_Event.h",
+          "K2Node_CallFunction.h",
+          "K2Node_VariableGet.h",
+          "K2Node_VariableSet.h",
+          "K2Node_InputAction.h",
+          "K2Node_Self.h",
+          "EdGraphSchema_K2.h",
+          "Kismet2/BlueprintEditorUtils.h",
+          "Components/StaticMeshComponent.h",
+          "Components/LightComponent.h",
+          "Components/PrimitiveComponent.h",
+          "Components/SceneComponent.h",
+          "UObject/UObjectIterator.h",
+          "Engine/Selection.h",
+          "Editor.h",
+          "EditorAssetLibrary.h",
+          "AssetRegistry/AssetRegistryModule.h",
+          "Engine/BlueprintGeneratedClass.h",
+          "BlueprintNodeSpawner.h",
+          "BlueprintActionDatabase.h",
+          "Dom/JsonObject.h",
+          "Dom/JsonValue.h",
+          "HAL/FileManager.h",
+          "Misc/PackageName.h",
+          "Misc/Paths.h",
+          "Modules/ModuleManager.h",
+          "ObjectTools.h",
+          "UObject/Package.h",
+          "UObject/SoftObjectPath.h",
+          "UObject/TopLevelAssetPath.h",
+          "UObject/UnrealType.h",
+          "UObject/UObjectGlobals.h",
+          "UObject/UObjectHash.h"
+        ],
+        "common_utils_calls": [
+          "ActorToJson",
+          "ActorToJsonObject",
+          "AddMutationResultContract",
+          "CollectMCPDependencyAuditIssues",
+          "ConnectGraphNodes",
+          "CreateErrorResponse",
+          "CreateEventNode",
+          "CreateFunctionCallNode",
+          "CreateInputActionNode",
+          "CreateSelfReferenceNode",
+          "CreateSuccessResponse",
+          "CreateVariableGetNode",
+          "CreateVariableSetNode",
+          "FindBlueprint",
+          "FindBlueprintAssetPaths",
+          "FindBlueprintByName",
+          "FindExistingEventNode",
+          "FindOrCreateEventGraph",
+          "FindPin",
+          "GetFloatArrayFromJson",
+          "GetIntArrayFromJson",
+          "GetMCPDependencyReferenceError",
+          "GetRotatorFromJson",
+          "GetVector2DFromJson",
+          "GetVectorFromJson",
+          "IsMCPDependencyReference",
+          "IsReadOnlyCommandName",
+          "SetObjectProperty",
+          "TryCleanupNewAssetAfterFailedDependencyAudit",
+          "ValidateMCPDependencyIndependence"
+        ],
+        "legacy_class_references": [
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": [
+          {
+            "line": 866,
+            "text": "TArray<UObject*> ReferencedObjects{const_cast<UObject*>(ReferencedObject)};"
+          }
+        ]
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPCommonUtils.h",
+        "sha256": "416dddd72467c717d10243d2a401de30ce5def8d2b7e0600979945eec79863d1",
+        "line_count": 106,
+        "bytes": 5277,
+        "includes": [
+          "CoreMinimal.h",
+          "Json.h"
+        ],
+        "common_utils_calls": [],
+        "legacy_class_references": [
+          "FUnrealMCPCommonUtils"
+        ],
+        "risk_markers": []
+      }
+    ],
+    "batch_bridge_container": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp",
+        "sha256": "55582e46ecf971e6e753e1077ce69c3914daa1213889df97842816a0a1b1b4b6",
+        "line_count": 1628,
+        "bytes": 79623,
+        "includes": [
+          "UnrealMCPBridge.h",
+          "MCPServerRunnable.h",
+          "MCPTransportTelemetry.h",
+          "UI/IetaMCPStatusWindow.h",
+          "Sockets.h",
+          "SocketSubsystem.h",
+          "HAL/RunnableThread.h",
+          "Interfaces/IPv4/IPv4Address.h",
+          "Interfaces/IPv4/IPv4Endpoint.h",
+          "Dom/JsonObject.h",
+          "Dom/JsonValue.h",
+          "Serialization/JsonSerializer.h",
+          "Serialization/JsonReader.h",
+          "Serialization/JsonWriter.h",
+          "Engine/StaticMeshActor.h",
+          "Engine/DirectionalLight.h",
+          "Engine/PointLight.h",
+          "Engine/SpotLight.h",
+          "Camera/CameraActor.h",
+          "EditorAssetLibrary.h",
+          "AssetRegistry/AssetRegistryModule.h",
+          "JsonObjectConverter.h",
+          "GameFramework/Actor.h",
+          "Engine/Selection.h",
+          "Kismet/GameplayStatics.h",
+          "Async/Async.h",
+          "Containers/Ticker.h",
+          "HAL/PlatformMisc.h",
+          "Misc/CommandLine.h",
+          "CoreGlobals.h",
+          "ScopedTransaction.h",
+          "Engine/Blueprint.h",
+          "Engine/BlueprintGeneratedClass.h",
+          "Factories/BlueprintFactory.h",
+          "EdGraphSchema_K2.h",
+          "K2Node_Event.h",
+          "K2Node_VariableGet.h",
+          "K2Node_VariableSet.h",
+          "Components/StaticMeshComponent.h",
+          "Components/BoxComponent.h",
+          "Components/SphereComponent.h",
+          "Kismet2/BlueprintEditorUtils.h",
+          "Kismet2/KismetEditorUtilities.h",
+          "Engine/SimpleConstructionScript.h",
+          "Engine/SCS_Node.h",
+          "UObject/Field.h",
+          "UObject/FieldPath.h",
+          "EdGraph/EdGraph.h",
+          "EdGraph/EdGraphNode.h",
+          "EdGraph/EdGraphPin.h",
+          "K2Node_CallFunction.h",
+          "K2Node_InputAction.h",
+          "K2Node_Self.h",
+          "GameFramework/InputSettings.h",
+          "EditorSubsystem.h",
+          "Subsystems/EditorActorSubsystem.h",
+          "Commands/UnrealMCPEditorCommands.h",
+          "Commands/UnrealMCPBlueprintCommands.h",
+          "Commands/UnrealMCPBlueprintNodeCommands.h",
+          "Commands/UnrealMCPMaterialCommands.h",
+          "Commands/UnrealMCPNiagaraCommands.h",
+          "Commands/UnrealMCPPCGCommands.h",
+          "Commands/UnrealMCPAICommands.h",
+          "Commands/UnrealMCPNetworkingCommands.h",
+          "Commands/UnrealMCPGASCommands.h",
+          "Commands/UnrealMCPAudioCommands.h",
+          "UnrealMCPCommandRegistry.h",
+          "Commands/UnrealMCPChaosCommands.h",
+          "Commands/UnrealMCPChaosCinematicCommands.h",
+          "Commands/UnrealMCPChaosTuningCommands.h",
+          "Commands/UnrealMCPProjectCommands.h",
+          "Commands/UnrealMCPCommonUtils.h",
+          "Commands/UnrealMCPUMGCommands.h"
+        ],
+        "common_utils_calls": [],
+        "legacy_class_references": [
+          "FUnrealMCPAICommands",
+          "FUnrealMCPAudioCommands",
+          "FUnrealMCPBlueprintCommands",
+          "FUnrealMCPBlueprintNodeCommands",
+          "FUnrealMCPChaosCinematicCommands",
+          "FUnrealMCPChaosCommands",
+          "FUnrealMCPChaosTuningCommands",
+          "FUnrealMCPCommandRegistry",
+          "FUnrealMCPDataCommands",
+          "FUnrealMCPEditorCommands",
+          "FUnrealMCPGASCommands",
+          "FUnrealMCPLandscapeCommands",
+          "FUnrealMCPMaterialCommands",
+          "FUnrealMCPNetworkingCommands",
+          "FUnrealMCPNiagaraCommands",
+          "FUnrealMCPPCGCommands",
+          "FUnrealMCPProjectCommands",
+          "FUnrealMCPPythonImportPolicyDecision",
+          "FUnrealMCPSequencerCommands",
+          "FUnrealMCPSkeletalCommands",
+          "FUnrealMCPUMGCommands",
+          "UUnrealMCPBridge"
+        ],
+        "risk_markers": [
+          {
+            "line": 1,
+            "text": "#include \"UnrealMCPBridge.h\""
+          },
+          {
+            "line": 190,
+            "text": "TEXT(\"UnrealMCPBridge: invalid UNREAL_MCP_TRANSPORT_EVENT_WAKE=%s; expected 0/1, false/true, off/on, or no/yes; falling back to legacy_poll\"),"
+          },
+          {
+            "line": 195,
+            "text": "uint16 ResolveUnrealMCPBridgePort()"
+          },
+          {
+            "line": 209,
+            "text": "UE_LOG(LogTemp, Warning, TEXT(\"UnrealMCPBridge: Invalid port override '%d'; falling back to %d\"), ParsedPort, MCP_SERVER_PORT);"
+          },
+          {
+            "line": 258,
+            "text": "UUnrealMCPBridge::UUnrealMCPBridge()"
+          },
+          {
+            "line": 281,
+            "text": "UUnrealMCPBridge::~UUnrealMCPBridge()"
+          },
+          {
+            "line": 307,
+            "text": "void UUnrealMCPBridge::Initialize(FSubsystemCollectionBase& Collection)"
+          },
+          {
+            "line": 309,
+            "text": "UE_LOG(LogTemp, Display, TEXT(\"UnrealMCPBridge: Initializing\"));"
+          },
+          {
+            "line": 325,
+            "text": "Port = ResolveUnrealMCPBridgePort();"
+          },
+          {
+            "line": 338,
+            "text": "void UUnrealMCPBridge::Deinitialize()"
+          },
+          {
+            "line": 342,
+            "text": "UE_LOG(LogTemp, Display, TEXT(\"UnrealMCPBridge: Shutting down\"));"
+          },
+          {
+            "line": 346,
+            "text": "bool UUnrealMCPBridge::CanAcceptCommands() const"
+          },
+          {
+            "line": 351,
+            "text": "bool UUnrealMCPBridge::IsCommandGenerationCurrent(uint64 ExpectedGeneration) const"
+          },
+          {
+            "line": 356,
+            "text": "bool UUnrealMCPBridge::CanAcceptSocketCommand(uint64 ExpectedGeneration) const"
+          },
+          {
+            "line": 362,
+            "text": "void UUnrealMCPBridge::StartServer()"
+          },
+          {
+            "line": 366,
+            "text": "UE_LOG(LogTemp, Warning, TEXT(\"UnrealMCPBridge: Refusing to start while the subsystem is inactive or engine exit is requested\"));"
+          },
+          {
+            "line": 372,
+            "text": "UE_LOG(LogTemp, Warning, TEXT(\"UnrealMCPBridge: Server is already running\"));"
+          },
+          {
+            "line": 380,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Failed to get socket subsystem\"));"
+          },
+          {
+            "line": 388,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Failed to create listener socket\"));"
+          },
+          {
+            "line": 396,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Failed to make listener socket nonblocking\"));"
+          },
+          {
+            "line": 410,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Failed to bind listener socket to %s:%d\"), *ServerAddress.ToString(), Port);"
+          },
+          {
+            "line": 417,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Failed to start listening\"));"
+          },
+          {
+            "line": 424,
+            "text": "UE_LOG(LogTemp, Display, TEXT(\"UnrealMCPBridge: Server started on %s:%d\"), *ServerAddress.ToString(), Port);"
+          },
+          {
+            "line": 441,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Failed to create server thread\"));"
+          },
+          {
+            "line": 450,
+            "text": "void UUnrealMCPBridge::StopServer()"
+          },
+          {
+            "line": 492,
+            "text": "UE_LOG(LogTemp, Display, TEXT(\"UnrealMCPBridge: Server stopped\"));"
+          },
+          {
+            "line": 495,
+            "text": "void UUnrealMCPBridge::ScheduleStartupIetaStatusSequence()"
+          },
+          {
+            "line": 497,
+            "text": "TWeakObjectPtr<UUnrealMCPBridge> WeakThis(this);"
+          },
+          {
+            "line": 553,
+            "text": "void UUnrealMCPBridge::ExecuteCommandAsync("
+          },
+          {
+            "line": 581,
+            "text": "TWeakObjectPtr<UUnrealMCPBridge> WeakThis(this);"
+          },
+          {
+            "line": 640,
+            "text": "FString UUnrealMCPBridge::ExecuteCommand(const FString& CommandType, const TSharedPtr<FJsonObject>& Params)"
+          },
+          {
+            "line": 645,
+            "text": "FString UUnrealMCPBridge::ExecuteCommandInternal("
+          },
+          {
+            "line": 654,
+            "text": "TEXT(\"Command '%s' was rejected because UnrealMCPBridge is shutting down\"),"
+          },
+          {
+            "line": 658,
+            "text": "UE_LOG(LogTemp, Display, TEXT(\"UnrealMCPBridge: Executing command: %s\"), *CommandType);"
+          },
+          {
+            "line": 1282,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Command %s threw std::exception: %s\"), *CommandType, *SafeExceptionMessage);"
+          },
+          {
+            "line": 1289,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: %s\"), *ErrorMessage);"
+          },
+          {
+            "line": 1324,
+            "text": "TWeakObjectPtr<UUnrealMCPBridge> WeakThis(this);"
+          },
+          {
+            "line": 1330,
+            "text": "TEXT(\"Command '%s' was cancelled because UnrealMCPBridge is shutting down\"),"
+          },
+          {
+            "line": 1351,
+            "text": "TEXT(\"Command '%s' was cancelled because UnrealMCPBridge is shutting down\"),"
+          },
+          {
+            "line": 1382,
+            "text": "UE_LOG(LogTemp, Warning, TEXT(\"UnrealMCPBridge: Ignoring UNREAL_MCP_COMMAND_TIMEOUT_SECONDS=%s (must be 10..3600), using %.0f\"), *EnvValue, Parsed);"
+          },
+          {
+            "line": 1385,
+            "text": "UE_LOG(LogTemp, Display, TEXT(\"UnrealMCPBridge: Command timeout set to %.0f seconds\"), Parsed);"
+          },
+          {
+            "line": 1390,
+            "text": "UE_LOG(LogTemp, Error, TEXT(\"UnrealMCPBridge: Command %s timed out after %.0f seconds\"), *CommandType, CommandTimeoutSeconds);"
+          },
+          {
+            "line": 1397,
+            "text": "FString UUnrealMCPBridge::ExecuteCommandJson(const FString& CommandType, const FString& ParamsJson)"
+          },
+          {
+            "line": 1437,
+            "text": "FString UUnrealMCPBridge::GetPythonApiInfoJson() const"
+          },
+          {
+            "line": 1441,
+            "text": "Info->SetStringField(TEXT(\"api\"), TEXT(\"UnrealMCPBridge UE 5.6 Python C++ registry\"));"
+          },
+          {
+            "line": 1493,
+            "text": "TSharedPtr<FJsonObject> UUnrealMCPBridge::HandleBatchCommand(const TSharedPtr<FJsonObject>& Params)"
+          }
+        ]
+      },
+      {
+        "path": "Python/tools/batch_tools.py",
+        "sha256": "0f26c494455d82177342be6b540aea3a5126da40b53996213f2d265acdea35db",
+        "line_count": 122,
+        "bytes": 5089,
+        "includes": [],
+        "common_utils_calls": [],
+        "legacy_class_references": [],
+        "risk_markers": []
+      }
+    ]
+  },
+  "domain_totals": {
+    "material": {
+      "files": 2,
+      "lines": 6630,
+      "bytes": 268015
+    },
+    "editor": {
+      "files": 2,
+      "lines": 7765,
+      "bytes": 376908
+    },
+    "blueprint_core": {
+      "files": 3,
+      "lines": 4227,
+      "bytes": 186317
+    },
+    "blueprint_nodes": {
+      "files": 11,
+      "lines": 36819,
+      "bytes": 1634136
+    },
+    "common_utils": {
+      "files": 2,
+      "lines": 2191,
+      "bytes": 82749
+    },
+    "batch_bridge_container": {
+      "files": 2,
+      "lines": 1750,
+      "bytes": 84712
+    }
+  },
+  "material_include_resolution": [
+    {
+      "include": "Commands/UnrealMCPMaterialCommands.h",
+      "legacy_local": [
+        "C:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Plugins\\UnrealMCP\\Source\\UnrealMCP\\Public\\Commands\\UnrealMCPMaterialCommands.h"
+      ],
+      "ue58_engine_matches": [],
+      "has_public_or_classes_match": false,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Commands/UnrealMCPCommonUtils.h",
+      "legacy_local": [
+        "C:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Plugins\\UnrealMCP\\Source\\UnrealMCP\\Public\\Commands\\UnrealMCPCommonUtils.h"
+      ],
+      "ue58_engine_matches": [],
+      "has_public_or_classes_match": false,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "ScopedTransaction.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Editor/UnrealEd/Public/ScopedTransaction.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "AssetRegistry/AssetRegistryModule.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/AssetRegistry/Public/AssetRegistry/AssetRegistryModule.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Containers/Ticker.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Core/Public/Containers/Ticker.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Dom/JsonValue.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Json/Public/Dom/JsonValue.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Engine/Texture.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Classes/Engine/Texture.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Engine/World.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Classes/Engine/World.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Editor.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Editor/UnrealEd/Public/Editor.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "EditorAssetLibrary.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Plugins/Editor/EditorScriptingUtilities/Source/EditorScriptingUtilities/Public/EditorAssetLibrary.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "MaterialEditingLibrary.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Editor/MaterialEditor/Public/MaterialEditingLibrary.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "MaterialCachedData.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/MaterialCachedData.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "MaterialDomain.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/MaterialDomain.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/Material.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/Material.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpression.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpression.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionConstant.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionConstant.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionConstant2Vector.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionConstant2Vector.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionConstant3Vector.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionConstant3Vector.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionConstant4Vector.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionConstant4Vector.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionComposite.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionComposite.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionCollectionParameter.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionCollectionParameter.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionCustom.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionCustom.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionExternalCodeBase.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionExternalCodeBase.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionFunctionInput.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionFunctionInput.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionFunctionOutput.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionFunctionOutput.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionMakeMaterialAttributes.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionMakeMaterialAttributes.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionMaterialFunctionCall.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionMaterialFunctionCall.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionNamedReroute.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionNamedReroute.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionParameter.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionParameter.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionRerouteBase.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionRerouteBase.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionScalarParameter.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionScalarParameter.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionStaticBoolParameter.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionStaticBoolParameter.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionTextureBase.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionTextureBase.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionTextureSample.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionTextureSample.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialExpressionVectorParameter.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialExpressionVectorParameter.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialFunction.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialFunction.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialFunctionInterface.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialFunctionInterface.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialInstanceConstant.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialInstanceConstant.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialInstance.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialInstance.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialInterface.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialInterface.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialParameterCollection.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialParameterCollection.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Materials/MaterialParameterCollectionInstance.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/Materials/MaterialParameterCollectionInstance.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Misc/EngineVersionComparison.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Core/Public/Misc/EngineVersionComparison.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Misc/Guid.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Core/Public/Misc/Guid.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Misc/PackageName.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/CoreUObject/Public/Misc/PackageName.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Modules/ModuleManager.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Core/Public/Modules/ModuleManager.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "RHIFeatureLevel.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/RHI/Public/RHIFeatureLevel.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "RHIShaderPlatform.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/RHI/Public/RHIShaderPlatform.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "SceneTypes.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Engine/Public/SceneTypes.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Serialization/JsonSerializer.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Json/Public/Serialization/JsonSerializer.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "Serialization/JsonWriter.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/Json/Public/Serialization/JsonWriter.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "UObject/FieldIterator.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/CoreUObject/Public/UObject/FieldIterator.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    },
+    {
+      "include": "UObject/UnrealType.h",
+      "legacy_local": [],
+      "ue58_engine_matches": [
+        "C:/Program Files/Epic Games/UE_5.8/Engine/Source/Runtime/CoreUObject/Public/UObject/UnrealType.h"
+      ],
+      "has_public_or_classes_match": true,
+      "private_or_internal_only": false
+    }
+  ],
+  "material_tools": [
+    {
+      "name": "resolve_material_graph",
+      "initial_candidate_rank": 1,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 64,
+        "end_line": 84,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, graph_type: str='auto'",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "resolve_material_graphArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Resolve a Material or Material Function by short name, package path, or object path.\n\n        Args:\n            material_path: Material or Material Function name/path\n            graph_type: auto, material, or function\n        ",
+      "literal_commands": [],
+      "cpp_command": "resolve_material_graph",
+      "cpp_handler": "HandleResolveMaterialGraph",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 3801,
+        "span_lines": 39,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleResolveMaterialGraph"
+        ],
+        "member_calls_direct": [
+          "GetName",
+          "SetArrayField",
+          "SetBoolField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "FString",
+          "GetGraphType",
+          "GetPathName",
+          "ResolveMaterialGraph",
+          "TEXT"
+        ],
+        "result_keys": [
+          "asset_path",
+          "candidates",
+          "error",
+          "graph_type",
+          "name",
+          "resolved"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "list_material_nodes",
+      "initial_candidate_rank": 2,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 87,
+        "end_line": 117,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, graph_type: str='auto', node_type: str='', desc_contains: str='', include_pins: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "node_type": {
+            "default": "",
+            "title": "Node Type",
+            "type": "string"
+          },
+          "desc_contains": {
+            "default": "",
+            "title": "Desc Contains",
+            "type": "string"
+          },
+          "include_pins": {
+            "default": true,
+            "title": "Include Pins",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "list_material_nodesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        List nodes, inputs, outputs, links, and material property connections in a material graph.\n\n        Args:\n            material_path: Material or Material Function name/path\n            graph_type: auto, material, or function\n            node_type: Optional expression class/name substring filter\n            desc_contains: Optional node description substring filter\n            include_pins: Include input/output metadata and links\n        ",
+      "literal_commands": [],
+      "cpp_command": "list_material_nodes",
+      "cpp_handler": "HandleListMaterialNodes",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 3840,
+        "span_lines": 81,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleListMaterialNodes"
+        ],
+        "member_calls_direct": [
+          "GetBoolField",
+          "GetClass",
+          "GetExpressionInputForProperty",
+          "GetName",
+          "HasField",
+          "SetArrayField",
+          "SetNumberField",
+          "SetObjectField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "Contains",
+          "CostHintsToJson",
+          "ExpressionToJson",
+          "Get",
+          "GetExpressions",
+          "GetGraphType",
+          "GetPathName",
+          "IsEmpty",
+          "MaterialPropertyConnectionToJson",
+          "MaterialSettingsToJson",
+          "Num",
+          "ResolveMaterialGraph",
+          "SemanticPropertiesToJson",
+          "TEXT"
+        ],
+        "result_keys": [
+          "cost_hints",
+          "graph_type",
+          "material",
+          "material_properties",
+          "material_settings",
+          "node_count",
+          "nodes",
+          "semantic_properties"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "analyze_material_graph",
+      "initial_candidate_rank": 3,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 120,
+        "end_line": 150,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, graph_type: str='auto', include_nodes: bool=False, include_usage: bool=True, max_referencers: int=25",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "include_nodes": {
+            "default": false,
+            "title": "Include Nodes",
+            "type": "boolean"
+          },
+          "include_usage": {
+            "default": true,
+            "title": "Include Usage",
+            "type": "boolean"
+          },
+          "max_referencers": {
+            "default": 25,
+            "title": "Max Referencers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "analyze_material_graphArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Analyze a Material, Material Function, or Material Instance without editing assets.\n\n        Args:\n            material_path: Material, Material Function, or Material Instance name/path\n            graph_type: auto, material, or function. Material Instances are accepted in auto/material mode.\n            include_nodes: Include full node/pin data in addition to summaries\n            include_usage: Include Asset Registry package referencer hints\n            max_referencers: Maximum referencer packages to include when include_usage is true\n        ",
+      "literal_commands": [],
+      "cpp_command": "analyze_material_graph",
+      "cpp_handler": "HandleAnalyzeMaterialGraph",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 3921,
+        "span_lines": 115,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleAnalyzeMaterialGraph",
+          "UMaterialInstance::StaticClass"
+        ],
+        "member_calls_direct": [
+          "GetBoolField",
+          "GetClass",
+          "GetMaterial",
+          "GetName",
+          "GetNumberField",
+          "GetPathName",
+          "HasField",
+          "SetArrayField",
+          "SetObjectField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "AppendAssetCandidatesForClass",
+          "FString",
+          "FindMaterialGraphAssetPaths",
+          "GetPathName",
+          "GraphSummaryToJson",
+          "IsFunctionGraph",
+          "MaterialInstanceToJson",
+          "MaterialSettingsToJson",
+          "NormalizeMaterialGraphType",
+          "NormalizeObjectPathForLoad",
+          "Num",
+          "ResolveMaterialGraph",
+          "SemanticPropertiesToJson",
+          "TEXT",
+          "UsageHintsToJson"
+        ],
+        "result_keys": [
+          "analysis_version",
+          "asset_class",
+          "asset_kind",
+          "asset_path",
+          "base_graph",
+          "base_material",
+          "candidates",
+          "function_name",
+          "function_path",
+          "graph",
+          "material_instance",
+          "material_settings",
+          "semantic_note",
+          "semantic_properties",
+          "usage_hints"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "list_material_collection_parameter_nodes",
+      "initial_candidate_rank": 4,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 153,
+        "end_line": 174,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, graph_type: str='auto'",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "list_material_collection_parameter_nodesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        List MaterialExpressionCollectionParameter nodes with their MPC parameter names and types.\n\n        Args:\n            material_path: Material or Material Function name/path\n            graph_type: auto, material, or function\n        ",
+      "literal_commands": [],
+      "cpp_command": "list_material_collection_parameter_nodes",
+      "cpp_handler": "HandleListMaterialCollectionParameterNodes",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 4036,
+        "span_lines": 103,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleListMaterialCollectionParameterNodes"
+        ],
+        "member_calls_direct": [
+          "GetName",
+          "GetPathName",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "FString",
+          "Get",
+          "GetExpressionId",
+          "GetExpressions",
+          "GetGraphType",
+          "GetPathName",
+          "Num",
+          "ResolveMaterialGraph",
+          "TEXT",
+          "ToString"
+        ],
+        "result_keys": [
+          "collection",
+          "collection_parameter_found",
+          "collection_parameter_id",
+          "collection_parameter_node_count",
+          "collection_parameter_type",
+          "graph_type",
+          "material",
+          "mismatched_id_count",
+          "missing_collection_parameter_count",
+          "node_id",
+          "node_name",
+          "nodes",
+          "object_path",
+          "parameter_id",
+          "parameter_id_matches_collection",
+          "parameter_name",
+          "x",
+          "y"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "mirror_material_parameter_collection",
+      "initial_candidate_rank": 6,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 177,
+        "end_line": 210,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, source_collection_path: str, target_collection_path: str, parameter_names: List[str] | None=None, copy_defaults: bool=True, preserve_ids: bool=True, save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "source_collection_path": {
+            "title": "Source Collection Path",
+            "type": "string"
+          },
+          "target_collection_path": {
+            "title": "Target Collection Path",
+            "type": "string"
+          },
+          "parameter_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parameter Names"
+          },
+          "copy_defaults": {
+            "default": true,
+            "title": "Copy Defaults",
+            "type": "boolean"
+          },
+          "preserve_ids": {
+            "default": true,
+            "title": "Preserve Ids",
+            "type": "boolean"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_collection_path",
+          "target_collection_path"
+        ],
+        "title": "mirror_material_parameter_collectionArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Ensure a target MPC has same-name parameters from a source MPC.\n\n        Args:\n            source_collection_path: Source Material Parameter Collection path\n            target_collection_path: Target Material Parameter Collection path\n            parameter_names: Optional scalar/vector parameter names to mirror\n            copy_defaults: Copy source asset default values into target\n            preserve_ids: Preserve source parameter IDs for CollectionParameter node compatibility\n            save: Save the target collection after mirroring\n        ",
+      "literal_commands": [],
+      "cpp_command": "mirror_material_parameter_collection",
+      "cpp_handler": "HandleMirrorMaterialParameterCollection",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 4139,
+        "span_lines": 237,
+        "engine_static_calls_direct": [
+          "FGuid::NewGuid",
+          "FMath::IsNearlyEqual",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleMirrorMaterialParameterCollection",
+          "UEditorAssetLibrary::SaveLoadedAsset"
+        ],
+        "member_calls_direct": [
+          "GetBoolField",
+          "GetOutermost",
+          "GetPathName",
+          "HasField",
+          "IsDirty",
+          "MarkPackageDirty",
+          "Modify",
+          "PostEditChange",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetObjectField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "ContainsByPredicate",
+          "Equals",
+          "FString",
+          "FindByPredicate",
+          "GetOptionalParameterNameFilter",
+          "Last",
+          "LinearColorToJson",
+          "LoadObjectValue",
+          "ModifyTargetCollection",
+          "ShouldIncludeNamedParameter",
+          "TEXT",
+          "ToString"
+        ],
+        "result_keys": [
+          "added",
+          "added_scalar_count",
+          "added_vector_count",
+          "changed",
+          "copy_defaults",
+          "default_value",
+          "dirty_after_mirror",
+          "mirrored_scalars",
+          "mirrored_vectors",
+          "name",
+          "preserve_ids",
+          "saved",
+          "source_collection",
+          "source_id",
+          "target_collection",
+          "target_id",
+          "updated_scalar_default_count",
+          "updated_scalar_id_count",
+          "updated_vector_default_count",
+          "updated_vector_id_count",
+          "warnings",
+          "was_dirty_before_mirror"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "replace_material_collection_references",
+      "initial_candidate_rank": 7,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 213,
+        "end_line": 243,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, target_collection_path: str, source_collection_path: str='', graph_type: str='auto', save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "target_collection_path": {
+            "title": "Target Collection Path",
+            "type": "string"
+          },
+          "source_collection_path": {
+            "default": "",
+            "title": "Source Collection Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path",
+          "target_collection_path"
+        ],
+        "title": "replace_material_collection_referencesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Retarget MaterialExpressionCollectionParameter nodes to another MPC.\n\n        Args:\n            material_path: Material or Material Function name/path\n            target_collection_path: Target Material Parameter Collection path\n            source_collection_path: Optional source MPC filter; blank retargets all collection nodes\n            graph_type: auto, material, or function\n            save: Whether to save the material after retargeting\n        ",
+      "literal_commands": [],
+      "cpp_command": "replace_material_collection_references",
+      "cpp_handler": "HandleReplaceMaterialCollectionReferences",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 4376,
+        "span_lines": 210,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleReplaceMaterialCollectionReferences",
+          "UEditorAssetLibrary::SaveLoadedAsset",
+          "UMaterialEditingLibrary::RecompileMaterial",
+          "UMaterialEditingLibrary::UpdateMaterialFunction"
+        ],
+        "member_calls_direct": [
+          "FinishCompilation",
+          "GetBoolField",
+          "GetCompileErrors",
+          "GetOutermost",
+          "GetPathName",
+          "HasField",
+          "IsCompilationFinished",
+          "IsDirty",
+          "Modify",
+          "SetArrayField",
+          "SetBoolField",
+          "SetDirtyFlag",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "AddExpressionReferenceFields",
+          "FString",
+          "FindTargetCollectionParameter",
+          "Get",
+          "GetExpressions",
+          "GetGraphType",
+          "GetMCPMaterialResource",
+          "GetPathName",
+          "IsEmpty",
+          "IsMCPMaterialCompilingOrHadError",
+          "LoadObjectValue",
+          "MarkChanged",
+          "ModifyTargetAsset",
+          "Num",
+          "RefreshExpressionNodeSafe",
+          "ResolveMaterialGraph",
+          "StringArrayToJson",
+          "TEXT",
+          "ToString",
+          "TrimStartAndEnd"
+        ],
+        "result_keys": [
+          "collection",
+          "collection_node_count",
+          "compilation_finished",
+          "compile_error_count",
+          "compile_errors",
+          "compiled",
+          "dirty_after_replace",
+          "graph_type",
+          "material",
+          "new_collection",
+          "new_parameter_id",
+          "old_collection",
+          "old_parameter_id",
+          "parameter_name",
+          "parameter_type",
+          "reason",
+          "replaced_node_count",
+          "replaced_nodes",
+          "save_skipped_due_to_compile_errors",
+          "saved",
+          "skipped_node_count",
+          "skipped_nodes",
+          "source_collection",
+          "target_collection",
+          "was_dirty_before_replace"
+        ],
+        "blocking_finish_compilation_calls": 1
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "replace_material_collection_parameters",
+      "initial_candidate_rank": 8,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 246,
+        "end_line": 270,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, use_runtime_values: bool=True, save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "use_runtime_values": {
+            "default": true,
+            "title": "Use Runtime Values",
+            "type": "boolean"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "replace_material_collection_parametersArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Replace MaterialExpressionCollectionParameter nodes with ordinary scalar/vector parameter nodes.\n\n        Args:\n            material_path: Material path\n            use_runtime_values: Use current editor-world MPC runtime values before falling back to asset defaults\n            save: Whether to save the material after replacing and compiling\n        ",
+      "literal_commands": [],
+      "cpp_command": "replace_material_collection_parameters",
+      "cpp_handler": "HandleReplaceMaterialCollectionParameters",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 4586,
+        "span_lines": 262,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleReplaceMaterialCollectionParameters",
+          "UEditorAssetLibrary::SaveLoadedAsset",
+          "UMaterialEditingLibrary::CreateMaterialExpression",
+          "UMaterialEditingLibrary::DeleteMaterialExpression",
+          "UMaterialEditingLibrary::RecompileMaterial",
+          "UMaterialExpressionScalarParameter::StaticClass",
+          "UMaterialExpressionVectorParameter::StaticClass"
+        ],
+        "member_calls_direct": [
+          "FinishCompilation",
+          "GetBoolField",
+          "GetCompileErrors",
+          "GetExpressionInputForProperty",
+          "GetExpressions",
+          "GetName",
+          "GetOuter",
+          "GetOutermost",
+          "GetParameterCollectionInstance",
+          "GetPathName",
+          "GetScalarParameterValue",
+          "GetVectorParameterValue",
+          "HasField",
+          "IsCompilationFinished",
+          "IsDirty",
+          "Modify",
+          "SetArrayField",
+          "SetBoolField",
+          "SetDirtyFlag",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "Find",
+          "FindScalarParameterForCollectionNode",
+          "FindVectorParameterForCollectionNode",
+          "Get",
+          "GetEditorOrPIEWorld",
+          "GetMCPMaterialResource",
+          "GetPathName",
+          "IsMCPMaterialCompilingOrHadError",
+          "It",
+          "MarkChanged",
+          "ModifyTargetMaterial",
+          "Num",
+          "ResolveMaterialGraph",
+          "StringArrayToJson",
+          "TEXT",
+          "ToString"
+        ],
+        "result_keys": [
+          "compilation_finished",
+          "compile_error_count",
+          "compile_errors",
+          "compiled",
+          "deleted_collection_parameter_count",
+          "dirty_after_replace",
+          "initial_collection_parameter_count",
+          "material",
+          "missing_parameter_count",
+          "missing_parameters",
+          "parameter_name",
+          "parameter_type",
+          "replaced_nodes",
+          "replacement_count",
+          "replacement_node",
+          "rewired_expression_input_count",
+          "rewired_material_property_count",
+          "save_skipped_due_to_compile_errors",
+          "saved",
+          "source_node",
+          "used_runtime_value",
+          "was_dirty_before_replace"
+        ],
+        "blocking_finish_compilation_calls": 1
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "replace_material_texture_references",
+      "initial_candidate_rank": 9,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 273,
+        "end_line": 300,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, replacements: Dict[str, str], graph_type: str='auto', save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "replacements": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Replacements",
+            "type": "object"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path",
+          "replacements"
+        ],
+        "title": "replace_material_texture_referencesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Replace texture references on MaterialExpressionTextureBase nodes in a Material or Material Function graph.\n\n        Args:\n            material_path: Material or Material Function name/path\n            replacements: Mapping of source texture path/package path to replacement texture path\n            graph_type: auto, material, or function\n            save: Whether to save the material after replacing and compiling\n        ",
+      "literal_commands": [],
+      "cpp_command": "replace_material_texture_references",
+      "cpp_handler": "HandleReplaceMaterialTextureReferences",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 4848,
+        "span_lines": 244,
+        "engine_static_calls_direct": [
+          "FPackageName::ExportTextPathToObjectPath",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleReplaceMaterialTextureReferences",
+          "UEditorAssetLibrary::SaveLoadedAsset",
+          "UMaterialEditingLibrary::RecompileMaterial",
+          "UMaterialEditingLibrary::UpdateMaterialFunction"
+        ],
+        "member_calls_direct": [
+          "AsString",
+          "AutoSetSampleType",
+          "FinishCompilation",
+          "GetBoolField",
+          "GetCompileErrors",
+          "GetName",
+          "GetOutermost",
+          "GetPathName",
+          "HasField",
+          "IsCompilationFinished",
+          "IsDirty",
+          "IsValid",
+          "Modify",
+          "SetArrayField",
+          "SetBoolField",
+          "SetDirtyFlag",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetObjectField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "AddExpressionReferenceFields",
+          "AddTextureLookupKeys",
+          "Contains",
+          "Find",
+          "FindReplacementForTexture",
+          "Get",
+          "GetExpressions",
+          "GetGraphType",
+          "GetMCPMaterialResource",
+          "GetPathName",
+          "IsEmpty",
+          "IsMCPMaterialCompilingOrHadError",
+          "IsValid",
+          "LoadObjectValue",
+          "MarkChanged",
+          "ModifyTargetAsset",
+          "NormalizeObjectPathForLoad",
+          "Num",
+          "RefreshExpressionNodeSafe",
+          "ResolveMaterialGraph",
+          "Split",
+          "StringArrayToJson",
+          "TEXT",
+          "TrimQuotesInline",
+          "TrimStartAndEnd"
+        ],
+        "result_keys": [
+          "compilation_finished",
+          "compile_error_count",
+          "compile_errors",
+          "compiled",
+          "dirty_after_replace",
+          "graph_type",
+          "invalid_replacement_count",
+          "invalid_replacements",
+          "material",
+          "new_texture",
+          "old_texture",
+          "reason",
+          "replaced_nodes",
+          "replaced_texture_reference_count",
+          "replacement",
+          "replacement_pair_count",
+          "replacement_pairs",
+          "save_skipped_due_to_compile_errors",
+          "saved",
+          "source",
+          "texture_expression_count",
+          "unmatched_texture_count",
+          "unmatched_textures",
+          "was_dirty_before_replace"
+        ],
+        "blocking_finish_compilation_calls": 1
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "add_material_node",
+      "initial_candidate_rank": 10,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 303,
+        "end_line": 343,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, expression_class: str, graph_type: str='auto', node_position=None, selected_asset: str='', properties: Dict[str, Any] | None=None",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "expression_class": {
+            "title": "Expression Class",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "node_position": {
+            "default": null,
+            "title": "node_position",
+            "type": "string"
+          },
+          "selected_asset": {
+            "default": "",
+            "title": "Selected Asset",
+            "type": "string"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Properties"
+          }
+        },
+        "required": [
+          "material_path",
+          "expression_class"
+        ],
+        "title": "add_material_nodeArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Add a MaterialExpression node to a Material or Material Function graph.\n\n        Args:\n            material_path: Material or Material Function name/path\n            expression_class: Material expression class, e.g. TextureSample, Multiply, Constant3Vector\n            graph_type: auto, material, or function\n            node_position: Optional [X, Y] editor position\n            selected_asset: Optional asset path used by expression creation helpers\n            properties: Optional property map to set after creation, e.g. {\"Texture\": \"/Game/T.T\"}\n        ",
+      "literal_commands": [],
+      "cpp_command": "add_material_node",
+      "cpp_handler": "HandleAddMaterialNode",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5092,
+        "span_lines": 104,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPCommonUtils::GetMCPDependencyReferenceError",
+          "FUnrealMCPCommonUtils::GetVector2DFromJson",
+          "FUnrealMCPCommonUtils::IsMCPDependencyReference",
+          "FUnrealMCPMaterialCommands::HandleAddMaterialNode",
+          "UMaterialEditingLibrary::CreateMaterialExpressionEx",
+          "UMaterialEditingLibrary::DeleteMaterialExpression",
+          "UMaterialEditingLibrary::DeleteMaterialExpressionInFunction"
+        ],
+        "member_calls_direct": [
+          "HasField",
+          "SetStringField",
+          "TryGetObjectField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "ExpressionToJson",
+          "FindMaterialExpressionClass",
+          "GetExpressions",
+          "GetGraphType",
+          "GetPathName",
+          "HasUnconnectedCustomInputs",
+          "IsEmpty",
+          "LoadObjectValue",
+          "MarkChanged",
+          "NodePosition",
+          "RefreshExpressionNodeSafe",
+          "ResolveMaterialGraph",
+          "SetObjectPropertyValue",
+          "ShouldDeferImmediateMaterialExpressionUpdate",
+          "TEXT"
+        ],
+        "result_keys": [
+          "graph_type",
+          "material"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "add_custom_material_node",
+      "initial_candidate_rank": 17,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 346,
+        "end_line": 396,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, code: str, output_type: str='CMOT_Float3', inputs: List[str] | None=None, description: str='', graph_type: str='auto', node_position: List[int] | None=None, additional_defines: List[Dict[str, Any]] | None=None, include_file_paths: List[str] | None=None",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "output_type": {
+            "default": "CMOT_Float3",
+            "title": "Output Type",
+            "type": "string"
+          },
+          "inputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Inputs"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "node_position": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Node Position"
+          },
+          "additional_defines": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Additional Defines"
+          },
+          "include_file_paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Include File Paths"
+          }
+        },
+        "required": [
+          "material_path",
+          "code"
+        ],
+        "title": "add_custom_material_nodeArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Add a MaterialExpressionCustom node with validated HLSL inputs and output type.\n\n        Args:\n            material_path: Material or Material Function name/path\n            code: HLSL code for the Custom node\n            output_type: CMOT_Float1, CMOT_Float2, CMOT_Float3, CMOT_Float4, CMOT_MaterialAttributes, or supported aliases\n            inputs: Custom input pin names; each name must be a valid HLSL identifier\n            description: Custom node description/caption\n            graph_type: auto, material, or function\n            node_position: Optional [X, Y] editor position\n            additional_defines: Optional [{\"name\": \"DEFINE_NAME\", \"value\": \"1\"}] entries\n            include_file_paths: Optional Custom node include file paths\n        ",
+      "literal_commands": [],
+      "cpp_command": "add_custom_material_node",
+      "cpp_handler": "HandleAddCustomMaterialNode",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5196,
+        "span_lines": 102,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPCommonUtils::GetVector2DFromJson",
+          "FUnrealMCPMaterialCommands::HandleAddCustomMaterialNode",
+          "UMaterialEditingLibrary::CreateMaterialExpressionEx",
+          "UMaterialExpressionCustom::StaticClass"
+        ],
+        "member_calls_direct": [
+          "HasField",
+          "Modify",
+          "SetBoolField",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "ExpressionToJson",
+          "GetExpressions",
+          "GetGraphType",
+          "GetPathName",
+          "IsEmpty",
+          "NodePosition",
+          "Num",
+          "ParseCustomDefines",
+          "ParseCustomInputNames",
+          "ParseCustomOutputType",
+          "ParseIncludeFilePaths",
+          "Reset",
+          "ResolveMaterialGraph",
+          "TEXT",
+          "TrimStartAndEnd"
+        ],
+        "result_keys": [
+          "created_custom_node",
+          "graph_type",
+          "input_count",
+          "material",
+          "requested_output_type"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "set_material_node_property",
+      "initial_candidate_rank": 11,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 399,
+        "end_line": 430,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, node_id: str, property_name: str, value: Any, graph_type: str='auto'",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "node_id",
+          "property_name",
+          "value"
+        ],
+        "title": "set_material_node_propertyArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Set an editor property on a material graph node.\n\n        Args:\n            material_path: Material or Material Function name/path\n            node_id: node_key from list/analyze output. guid:, name:, path:, legacy GUID, object name, and object path are also accepted.\n            property_name: Property name on the expression object\n            value: New property value. Object properties should use asset path strings.\n            graph_type: auto, material, or function\n        ",
+      "literal_commands": [],
+      "cpp_command": "set_material_node_property",
+      "cpp_handler": "HandleSetMaterialNodeProperty",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5298,
+        "span_lines": 87,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPCommonUtils::GetMCPDependencyReferenceError",
+          "FUnrealMCPCommonUtils::IsMCPDependencyReference",
+          "FUnrealMCPMaterialCommands::HandleSetMaterialNodeProperty"
+        ],
+        "member_calls_direct": [
+          "AsString",
+          "Modify",
+          "SetMaterialFunction",
+          "SetStringField",
+          "TryGetField",
+          "TryGetStringField",
+          "UpdateFromFunctionResource"
+        ],
+        "helper_calls_candidates": [
+          "Equals",
+          "ExpressionToJson",
+          "FindExpressionById",
+          "GetExpressions",
+          "HasUnconnectedCustomInputs",
+          "IsEmpty",
+          "IsValid",
+          "LoadObjectValue",
+          "MarkChanged",
+          "RefreshExpressionNodeSafe",
+          "ResolveMaterialGraph",
+          "SetObjectPropertyValue",
+          "TEXT"
+        ],
+        "result_keys": [
+          "updated_property"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "connect_material_nodes",
+      "initial_candidate_rank": 12,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 433,
+        "end_line": 466,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, from_node_id: str, to_node_id: str, to_input: str, from_output: str='', graph_type: str='auto'",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "from_node_id": {
+            "title": "From Node Id",
+            "type": "string"
+          },
+          "to_node_id": {
+            "title": "To Node Id",
+            "type": "string"
+          },
+          "to_input": {
+            "title": "To Input",
+            "type": "string"
+          },
+          "from_output": {
+            "default": "",
+            "title": "From Output",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "from_node_id",
+          "to_node_id",
+          "to_input"
+        ],
+        "title": "connect_material_nodesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Connect one material expression output to another expression input.\n\n        Args:\n            material_path: Material or Material Function name/path\n            from_node_id: Source node_key from list/analyze output\n            to_node_id: Target node_key from list/analyze output\n            to_input: Target input pin name\n            from_output: Source output pin name. Empty string means first output.\n            graph_type: auto, material, or function\n        ",
+      "literal_commands": [],
+      "cpp_command": "connect_material_nodes",
+      "cpp_handler": "HandleConnectMaterialNodes",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5385,
+        "span_lines": 83,
+        "engine_static_calls_direct": [
+          "FString::Join",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleConnectMaterialNodes",
+          "UMaterialEditingLibrary::ConnectMaterialExpressions"
+        ],
+        "member_calls_direct": [
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "FindExpressionById",
+          "FindOutputIndexByName",
+          "GetExpressionId",
+          "GetGraphType",
+          "GetMaterialExpressionInputNamesSafe",
+          "GetMaterialExpressionOutputNames",
+          "GetPathName",
+          "HasInputName",
+          "MarkChanged",
+          "ResolveInputConnectName",
+          "ResolveMaterialGraph",
+          "ResolveOutputConnectName",
+          "TEXT"
+        ],
+        "result_keys": [
+          "from_node_id",
+          "from_output",
+          "graph_type",
+          "material",
+          "to_input",
+          "to_node_id"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "connect_material_property",
+      "initial_candidate_rank": 13,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 469,
+        "end_line": 496,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, from_node_id: str, property: str, from_output: str=''",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "from_node_id": {
+            "title": "From Node Id",
+            "type": "string"
+          },
+          "property": {
+            "title": "Property",
+            "type": "string"
+          },
+          "from_output": {
+            "default": "",
+            "title": "From Output",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "from_node_id",
+          "property"
+        ],
+        "title": "connect_material_propertyArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Connect a material expression output to a root Material property.\n\n        Args:\n            material_path: Material name/path. Material Functions are not supported here.\n            from_node_id: Source node_key from list/analyze output\n            property: Material property, e.g. BaseColor, Roughness, Normal, or MP_BaseColor\n            from_output: Source output pin name. Empty string means first output.\n        ",
+      "literal_commands": [],
+      "cpp_command": "connect_material_property",
+      "cpp_handler": "HandleConnectMaterialProperty",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5468,
+        "span_lines": 73,
+        "engine_static_calls_direct": [
+          "FString::Join",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleConnectMaterialProperty",
+          "UMaterialEditingLibrary::ConnectMaterialProperty"
+        ],
+        "member_calls_direct": [
+          "GetExpressionInputForProperty",
+          "SetObjectField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "FindExpressionById",
+          "FindOutputIndexByName",
+          "GetExpressionId",
+          "GetMaterialExpressionOutputNames",
+          "GetPathName",
+          "MarkChanged",
+          "MaterialPropertyConnectionToJson",
+          "MaterialPropertyFromString",
+          "ResolveMaterialGraph",
+          "ResolveOutputConnectName",
+          "TEXT"
+        ],
+        "result_keys": [
+          "from_node_id",
+          "from_output",
+          "material",
+          "property_connection"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "delete_material_node",
+      "initial_candidate_rank": 14,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 499,
+        "end_line": 523,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, node_id: str, graph_type: str='auto'",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path",
+          "node_id"
+        ],
+        "title": "delete_material_nodeArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Delete a material expression node and disconnect its links.\n\n        Args:\n            material_path: Material or Material Function name/path\n            node_id: node_key from list/analyze output. guid:, name:, path:, legacy GUID, object name, and object path are also accepted.\n            graph_type: auto, material, or function\n        ",
+      "literal_commands": [],
+      "cpp_command": "delete_material_node",
+      "cpp_handler": "HandleDeleteMaterialNode",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5541,
+        "span_lines": 48,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleDeleteMaterialNode",
+          "UMaterialEditingLibrary::DeleteMaterialExpression",
+          "UMaterialEditingLibrary::DeleteMaterialExpressionInFunction"
+        ],
+        "member_calls_direct": [
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "FindExpressionById",
+          "GetExpressionId",
+          "GetGraphType",
+          "GetPathName",
+          "MarkChanged",
+          "ResolveMaterialGraph",
+          "TEXT"
+        ],
+        "result_keys": [
+          "deleted_node_id",
+          "graph_type",
+          "material"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "layout_material_nodes",
+      "initial_candidate_rank": 15,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 526,
+        "end_line": 546,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, graph_type: str='auto'",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "layout_material_nodesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Layout material expression nodes in the editor graph.\n\n        Args:\n            material_path: Material or Material Function name/path\n            graph_type: auto, material, or function\n        ",
+      "literal_commands": [],
+      "cpp_command": "layout_material_nodes",
+      "cpp_handler": "HandleLayoutMaterialNodes",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5589,
+        "span_lines": 36,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleLayoutMaterialNodes",
+          "UMaterialEditingLibrary::LayoutMaterialExpressions",
+          "UMaterialEditingLibrary::LayoutMaterialFunctionExpressions"
+        ],
+        "member_calls_direct": [
+          "SetBoolField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "GetGraphType",
+          "GetPathName",
+          "MarkChanged",
+          "ResolveMaterialGraph",
+          "TEXT"
+        ],
+        "result_keys": [
+          "graph_type",
+          "laid_out",
+          "material"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "compile_and_save_material",
+      "initial_candidate_rank": 19,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 549,
+        "end_line": 573,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, graph_type: str='auto', save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "graph_type": {
+            "default": "auto",
+            "title": "Graph Type",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "compile_and_save_materialArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Recompile/update a Material or Material Function and optionally save it.\n\n        Args:\n            material_path: Material or Material Function name/path\n            graph_type: auto, material, or function\n            save: Whether to save the loaded asset after compiling\n        ",
+      "literal_commands": [],
+      "cpp_command": "compile_and_save_material",
+      "cpp_handler": "HandleCompileAndSaveMaterial",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5625,
+        "span_lines": 74,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleCompileAndSaveMaterial",
+          "UEditorAssetLibrary::SaveLoadedAsset",
+          "UMaterialEditingLibrary::RecompileMaterial",
+          "UMaterialEditingLibrary::UpdateMaterialFunction"
+        ],
+        "member_calls_direct": [
+          "FinishCompilation",
+          "GetBoolField",
+          "GetCompileErrors",
+          "GetOutermost",
+          "HasField",
+          "IsCompilationFinished",
+          "IsDirty",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "GetGraphType",
+          "GetMCPMaterialResource",
+          "GetPathName",
+          "IsMCPMaterialCompilingOrHadError",
+          "MarkChanged",
+          "Num",
+          "ResolveMaterialGraph",
+          "StringArrayToJson",
+          "TEXT"
+        ],
+        "result_keys": [
+          "compilation_finished",
+          "compile_error_count",
+          "compile_errors",
+          "compiled",
+          "dirty_after_compile",
+          "graph_type",
+          "material",
+          "save_skipped_due_to_compile_errors",
+          "saved",
+          "was_dirty_before_compile"
+        ],
+        "blocking_finish_compilation_calls": 1
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "refresh_material_cached_expression_data",
+      "initial_candidate_rank": null,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 576,
+        "end_line": 596,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "refresh_material_cached_expression_dataArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Rebuild a Material asset's cached expression data, then compile/save and report dependencies.\n\n        Use this after expanding Material Function calls or replacing texture/function references\n        when Asset Registry dependencies still show stale Material Function packages.\n        ",
+      "literal_commands": [],
+      "cpp_command": "refresh_material_cached_expression_data",
+      "cpp_handler": "HandleRefreshMaterialCachedExpressionData",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5699,
+        "span_lines": 132,
+        "engine_static_calls_direct": [
+          "FPackageName::GetAssetPackageExtension",
+          "FPackageName::LongPackageNameToFilename",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleRefreshMaterialCachedExpressionData",
+          "UEditorAssetLibrary::SaveLoadedAsset",
+          "UMaterialEditingLibrary::RecompileMaterial"
+        ],
+        "member_calls_direct": [
+          "FinishCompilation",
+          "GetBoolField",
+          "GetCachedExpressionData",
+          "GetCompileErrors",
+          "GetName",
+          "GetOutermost",
+          "HasField",
+          "IsCompilationFinished",
+          "IsDirty",
+          "Modify",
+          "PostEditChange",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField",
+          "UpdateCachedExpressionData"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "ClearStaleFunctionInfos",
+          "Empty",
+          "FName",
+          "Get",
+          "GetDependencies",
+          "GetExpressions",
+          "GetGraphType",
+          "GetMCPMaterialResource",
+          "GetPathName",
+          "IsMCPMaterialCompilingOrHadError",
+          "MarkChanged",
+          "Num",
+          "ResolveMaterialGraph",
+          "ScanModifiedAssetFiles",
+          "StartsWith",
+          "StringArrayToJson",
+          "TEXT",
+          "ToString"
+        ],
+        "result_keys": [
+          "cached_expression_data_refreshed",
+          "cleared_stale_function_infos",
+          "compilation_finished",
+          "compile_error_count",
+          "compile_errors",
+          "compiled",
+          "dependencies",
+          "dirty_after_refresh",
+          "function_info_count_after_clear",
+          "function_info_count_before_clear",
+          "graph_type",
+          "material",
+          "material_function_call_count",
+          "save_skipped_due_to_compile_errors",
+          "saved",
+          "source_or_temp_dependencies",
+          "source_or_temp_dependency_count",
+          "was_dirty_before_refresh"
+        ],
+        "blocking_finish_compilation_calls": 1
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "expand_material_function_calls",
+      "initial_candidate_rank": 18,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 599,
+        "end_line": 635,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, material_path: str, node_id: str='', recursive: bool=True, exclude_engine_functions: bool=True, max_passes: int=8, save: bool=True, allow_partial_save: bool=False",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "material_path": {
+            "title": "Material Path",
+            "type": "string"
+          },
+          "node_id": {
+            "default": "",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "recursive": {
+            "default": true,
+            "title": "Recursive",
+            "type": "boolean"
+          },
+          "exclude_engine_functions": {
+            "default": true,
+            "title": "Exclude Engine Functions",
+            "type": "boolean"
+          },
+          "max_passes": {
+            "default": 8,
+            "title": "Max Passes",
+            "type": "integer"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          },
+          "allow_partial_save": {
+            "default": false,
+            "title": "Allow Partial Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "material_path"
+        ],
+        "title": "expand_material_function_callsArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Expand Material Function Call nodes inside a Material graph.\n\n        Args:\n            material_path: Material name/path\n            node_id: Optional node_key/node_id for a single function call\n            recursive: Keep expanding newly-created function calls until none remain or max_passes is reached\n            exclude_engine_functions: Skip /Engine and /Script functions\n            max_passes: Recursive expansion pass limit\n            save: Whether to save the material after expanding\n            allow_partial_save: Save successful partial expansions even if some requested expansions reported errors\n        ",
+      "literal_commands": [],
+      "cpp_command": "expand_material_function_calls",
+      "cpp_handler": "HandleExpandMaterialFunctionCalls",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 5831,
+        "span_lines": 261,
+        "engine_static_calls_direct": [
+          "FMath::Clamp",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleExpandMaterialFunctionCalls",
+          "UEditorAssetLibrary::SaveLoadedAsset"
+        ],
+        "member_calls_direct": [
+          "GetBoolField",
+          "GetExpressions",
+          "GetOutermost",
+          "GetPathName",
+          "HasField",
+          "IsDirty",
+          "SetArrayField",
+          "SetBoolField",
+          "SetDirtyFlag",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetNumberField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "AddExpressionReferenceFields",
+          "Append",
+          "CommitMaterialFunctionExpansionBatch",
+          "Contains",
+          "CountMaterialFunctionCalls",
+          "ExpandFunctionCallIntoMaterial",
+          "FString",
+          "FindExpressionById",
+          "GetExpandableFunctionCallNodeIds",
+          "GetPathName",
+          "IsEmpty",
+          "IsEngineOrScriptAssetPath",
+          "MarkChanged",
+          "MoveTemp",
+          "Num",
+          "RemoveAll",
+          "ResolveMaterialGraph",
+          "RollBackMaterialFunctionExpansionBatch",
+          "StringArrayToJson",
+          "TEXT",
+          "TrimStartAndEndInline"
+        ],
+        "result_keys": [
+          "allow_partial_save",
+          "created_function_call_node_ids",
+          "dirty_after_expand",
+          "duplicated_node_count",
+          "errors",
+          "exclude_engine_functions",
+          "expanded",
+          "expanded_count",
+          "expanded_nodes",
+          "final_function_call_count",
+          "final_node_count",
+          "function",
+          "hit_max_passes",
+          "initial_function_call_count",
+          "initial_node_count",
+          "material",
+          "node_count_after",
+          "node_count_before",
+          "partial_expansion_with_errors",
+          "pass",
+          "passes_run",
+          "preview_default_node_count",
+          "reason",
+          "requested_node_id",
+          "rewired_consumer_count",
+          "rewired_function_input_count",
+          "rolled_back",
+          "saved",
+          "skipped_nodes",
+          "was_dirty_before_expand"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "get_material_parameter_collection_values",
+      "initial_candidate_rank": 5,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 638,
+        "end_line": 665,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, collection_path: str, parameter_names: List[str] | None=None, include_asset_defaults: bool=True, include_runtime: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "collection_path": {
+            "title": "Collection Path",
+            "type": "string"
+          },
+          "parameter_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parameter Names"
+          },
+          "include_asset_defaults": {
+            "default": true,
+            "title": "Include Asset Defaults",
+            "type": "boolean"
+          },
+          "include_runtime": {
+            "default": true,
+            "title": "Include Runtime",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "collection_path"
+        ],
+        "title": "get_material_parameter_collection_valuesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Read Material Parameter Collection defaults and current editor-world runtime values.\n\n        Args:\n            collection_path: Material Parameter Collection name/path\n            parameter_names: Optional list of scalar/vector parameter names to return\n            include_asset_defaults: Include values stored on the MPC asset\n            include_runtime: Include the current editor/PIE world MPC instance values\n        ",
+      "literal_commands": [],
+      "cpp_command": "get_material_parameter_collection_values",
+      "cpp_handler": "HandleGetMaterialParameterCollectionValues",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 6092,
+        "span_lines": 108,
+        "engine_static_calls_direct": [
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleGetMaterialParameterCollectionValues"
+        ],
+        "member_calls_direct": [
+          "GetBoolField",
+          "GetParameterCollectionInstance",
+          "GetPathName",
+          "GetScalarParameterValue",
+          "GetVectorParameterValue",
+          "HasField",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetObjectField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "GetEditorOrPIEWorld",
+          "GetOptionalParameterNameFilter",
+          "GetWorldTypeName",
+          "LinearColorToJson",
+          "LoadObjectValue",
+          "Num",
+          "ShouldIncludeNamedParameter",
+          "TEXT",
+          "ToString"
+        ],
+        "result_keys": [
+          "asset_default",
+          "collection",
+          "has_runtime_instance",
+          "has_world",
+          "id",
+          "include_asset_defaults",
+          "include_runtime",
+          "name",
+          "runtime_resolved",
+          "runtime_value",
+          "scalar_count",
+          "scalars",
+          "vector_count",
+          "vectors",
+          "world_type"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "set_material_parameter_collection_values",
+      "initial_candidate_rank": 16,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 668,
+        "end_line": 701,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, collection_path: str, scalars: Dict[str, float] | None=None, vectors: Dict[str, Dict[str, float]] | None=None, set_asset_defaults: bool=True, set_runtime: bool=True, save: bool=True",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "collection_path": {
+            "title": "Collection Path",
+            "type": "string"
+          },
+          "scalars": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scalars"
+          },
+          "vectors": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Vectors"
+          },
+          "set_asset_defaults": {
+            "default": true,
+            "title": "Set Asset Defaults",
+            "type": "boolean"
+          },
+          "set_runtime": {
+            "default": true,
+            "title": "Set Runtime",
+            "type": "boolean"
+          },
+          "save": {
+            "default": true,
+            "title": "Save",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "collection_path"
+        ],
+        "title": "set_material_parameter_collection_valuesArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Set Material Parameter Collection scalar/vector values by parameter name.\n\n        Args:\n            collection_path: Material Parameter Collection name/path\n            scalars: Mapping of scalar parameter names to float values\n            vectors: Mapping of vector parameter names to {r,g,b,a} or {x,y,z,w}\n            set_asset_defaults: Update values stored on the MPC asset\n            set_runtime: Update current editor/PIE runtime collection instance\n            save: Save the collection asset after updating defaults\n        ",
+      "literal_commands": [],
+      "cpp_command": "set_material_parameter_collection_values",
+      "cpp_handler": "HandleSetMaterialParameterCollectionValues",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 6200,
+        "span_lines": 251,
+        "engine_static_calls_direct": [
+          "FMath::IsNearlyEqual",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleSetMaterialParameterCollectionValues",
+          "UEditorAssetLibrary::SaveLoadedAsset"
+        ],
+        "member_calls_direct": [
+          "AsNumber",
+          "AsObject",
+          "GetBoolField",
+          "GetOutermost",
+          "GetParameterCollectionInstance",
+          "GetPathName",
+          "HasField",
+          "IsDirty",
+          "MarkPackageDirty",
+          "Modify",
+          "PostEditChange",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetObjectField",
+          "SetScalarParameterValue",
+          "SetStringField",
+          "SetVectorParameterValue",
+          "TryGetNumberField",
+          "TryGetObjectField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "Equals",
+          "GetEditorOrPIEWorld",
+          "GetWorldTypeName",
+          "IsValid",
+          "LinearColorToJson",
+          "LoadObjectValue",
+          "ModifyCollection",
+          "ParameterName",
+          "TEXT",
+          "TryReadVectorComponent"
+        ],
+        "result_keys": [
+          "asset_defaults_changed",
+          "asset_scalar_update_count",
+          "asset_vector_update_count",
+          "collection",
+          "dirty_after_set",
+          "errors",
+          "has_runtime_instance",
+          "has_world",
+          "missing_scalars",
+          "missing_vectors",
+          "name",
+          "old_asset_default",
+          "runtime_scalar_update_count",
+          "runtime_updated",
+          "runtime_vector_update_count",
+          "saved",
+          "set_asset_defaults",
+          "set_runtime",
+          "updated_scalars",
+          "updated_vectors",
+          "value",
+          "was_dirty_before_set",
+          "world_type"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    },
+    {
+      "name": "set_material_parameter_collection_sync",
+      "initial_candidate_rank": null,
+      "python_source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 704,
+        "end_line": 742,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "python_signature": "ctx: Context, action: str='status', source_collection_path: str='', target_collection_path: str='', parameter_names: List[str] | None=None, interval_seconds: float=0.1, set_asset_defaults_on_enable: bool=False, save_on_enable: bool=False",
+      "legacy_runtime_input_schema": {
+        "properties": {
+          "action": {
+            "default": "status",
+            "title": "Action",
+            "type": "string"
+          },
+          "source_collection_path": {
+            "default": "",
+            "title": "Source Collection Path",
+            "type": "string"
+          },
+          "target_collection_path": {
+            "default": "",
+            "title": "Target Collection Path",
+            "type": "string"
+          },
+          "parameter_names": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parameter Names"
+          },
+          "interval_seconds": {
+            "default": 0.1,
+            "title": "Interval Seconds",
+            "type": "number"
+          },
+          "set_asset_defaults_on_enable": {
+            "default": false,
+            "title": "Set Asset Defaults On Enable",
+            "type": "boolean"
+          },
+          "save_on_enable": {
+            "default": false,
+            "title": "Save On Enable",
+            "type": "boolean"
+          }
+        },
+        "title": "set_material_parameter_collection_syncArguments",
+        "type": "object"
+      },
+      "legacy_runtime_description": "\n        Start, stop, or inspect same-name runtime MPC value sync between two collections.\n\n        Args:\n            action: status, enable/start, or disable/stop\n            source_collection_path: Source MPC path for enable/start\n            target_collection_path: Target MPC path for enable/start\n            parameter_names: Optional same-name parameter filter\n            interval_seconds: Sync interval while enabled\n            set_asset_defaults_on_enable: Also copy runtime values into target asset defaults once\n            save_on_enable: Save target asset if defaults are copied on enable\n        ",
+      "literal_commands": [],
+      "cpp_command": "set_material_parameter_collection_sync",
+      "cpp_handler": "HandleSetMaterialParameterCollectionSync",
+      "cpp_source": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+      "cpp_handler_scan": {
+        "line": 6451,
+        "span_lines": 138,
+        "engine_static_calls_direct": [
+          "FMath::Max",
+          "FTSTicker::GetCoreTicker",
+          "FTickerDelegate::CreateStatic",
+          "FUnrealMCPCommonUtils::CreateErrorResponse",
+          "FUnrealMCPMaterialCommands::HandleSetMaterialParameterCollectionSync",
+          "UEditorAssetLibrary::SaveLoadedAsset"
+        ],
+        "member_calls_direct": [
+          "GetBoolField",
+          "GetNumberField",
+          "HasField",
+          "SetArrayField",
+          "SetBoolField",
+          "SetNumberField",
+          "SetStringField",
+          "TryGetStringField"
+        ],
+        "helper_calls_candidates": [
+          "Add",
+          "AddTicker",
+          "BuildMaterialParameterCollectionSyncCache",
+          "CopyMaterialParameterCollectionValues",
+          "GetOptionalParameterNameFilter",
+          "LoadObjectValue",
+          "MakeStatusResponse",
+          "Num",
+          "Reset",
+          "StopMaterialParameterCollectionSyncInternal",
+          "TEXT",
+          "ToLower",
+          "ToString"
+        ],
+        "result_keys": [
+          "cached_scalar_count",
+          "cached_vector_count",
+          "enabled",
+          "initial_scalar_count",
+          "initial_sync",
+          "initial_vector_count",
+          "interval_seconds",
+          "last_error",
+          "last_scalar_count",
+          "last_vector_count",
+          "parameter_names",
+          "saved_on_enable",
+          "set_asset_defaults_on_enable",
+          "source_collection_path",
+          "target_collection_path",
+          "tick_count"
+        ],
+        "blocking_finish_compilation_calls": 0
+      },
+      "port_status": "planned_not_copied_not_compiled_not_registered",
+      "engine_api_analysis": "direct calls and candidate helper calls only; see narrative for manually checked transitive engine paths"
+    }
+  ],
+  "candidate_count": 19,
+  "deferred_material_tools": [
+    "refresh_material_cached_expression_data",
+    "set_material_parameter_collection_sync"
+  ],
+  "notes": [
+    "This scanner is not a C++ preprocessor, compiler, whole-program call graph, or functionality test.",
+    "Original schema is preserved as evidence; target wrappers need typed named methods and explicit validation.",
+    "Editor-only module reuse can avoid transport dependencies; arbitrary created object classes still require runtime dependency validation."
+  ]
+}

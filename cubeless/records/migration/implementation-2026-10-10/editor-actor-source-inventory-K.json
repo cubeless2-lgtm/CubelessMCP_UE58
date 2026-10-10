@@ -1,0 +1,3663 @@
+{
+  "schema": "cubeless_editor_actor_source_inventory_v1",
+  "scope": "All decorated functions in editor_tools.py matched to captured SDK registration and native route/handler. Call references are lexical aids, not C++ semantic or UE58 parity proof.",
+  "source_read_only": true,
+  "source_hashes": {
+    "C:\\Git\\UnrealMCP5_6_1\\Python\\tools\\editor_tools.py": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8",
+    "C:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Plugins\\UnrealMCP\\Source\\UnrealMCP\\Private\\Commands\\UnrealMCPEditorCommands.cpp": "8928ef3d62bf369d47863360f1636a2434c7e6b6dcf061e7e518f4df42f34152",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\legacy-runtime-registration.eager.json": "d026cf753aa8a26901fd787e1d1ad643d46cc98664f0dfec9ef7b047c51f939b"
+  },
+  "public_count": 35,
+  "runtime_matched_count": 35,
+  "missing_routes": [],
+  "native_only_routes": [
+    {
+      "command": "create_actor",
+      "handler": "HandleSpawnActor",
+      "line": 6015,
+      "body_sha256": "ee95479c8afc6de770eda965f769b59b5e872abace3347c0226742f75ce1f1cb",
+      "static_call_references": [
+        "ACameraActor::StaticClass",
+        "ADirectionalLight::StaticClass",
+        "APointLight::StaticClass",
+        "ASpotLight::StaticClass",
+        "AStaticMeshActor::StaticClass",
+        "FString::Printf",
+        "FUnrealMCPCommonUtils::ActorToJsonObject",
+        "FUnrealMCPCommonUtils::AddMutationResultContract",
+        "FUnrealMCPCommonUtils::CreateErrorResponse",
+        "FUnrealMCPCommonUtils::GetRotatorFromJson",
+        "FUnrealMCPCommonUtils::GetVectorFromJson",
+        "FUnrealMCPEditorCommands::HandleSpawnActor"
+      ],
+      "member_call_names": [
+        "GetClass",
+        "GetTransform",
+        "HasField",
+        "SetActorTransform",
+        "SetBoolField",
+        "SetNumberField",
+        "SpawnActor",
+        "TryGetStringField"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_actors_in_level",
+      "python_line": 48,
+      "python_signature": "ctx: Context",
+      "input_names": [],
+      "commands": [
+        "get_actors_in_level"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {},
+        "title": "get_actors_in_levelArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "get_actors_in_level",
+          "handler": "HandleGetActorsInLevel",
+          "line": 5969,
+          "body_sha256": "1784864bcc213ba6a359236e076ba6063e9be0e595e5f49f15e3a08a65c11e17",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FUnrealMCPCommonUtils::ActorToJson",
+            "FUnrealMCPEditorCommands::HandleGetActorsInLevel",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "SetArrayField"
+          ]
+        }
+      ],
+      "status": "planned_first_slice_not_implemented",
+      "ue58_public_api_parity": "source_verified_core_candidates_runtime_pending"
+    },
+    {
+      "name": "find_actors_by_name",
+      "python_line": 91,
+      "python_signature": "ctx: Context, pattern: str",
+      "input_names": [
+        "pattern"
+      ],
+      "commands": [
+        "find_actors_by_name"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "pattern": {
+            "title": "Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pattern"
+        ],
+        "title": "find_actors_by_nameArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "find_actors_by_name",
+          "handler": "HandleFindActorsByName",
+          "line": 5989,
+          "body_sha256": "bce34f04fbc577e52b47c236006278aee568c07ccac89111b79efd2896a09267",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FUnrealMCPCommonUtils::ActorToJson",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleFindActorsByName",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "GetName",
+            "SetArrayField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_first_slice_not_implemented",
+      "ue58_public_api_parity": "source_verified_core_candidates_runtime_pending"
+    },
+    {
+      "name": "spawn_actor",
+      "python_line": 143,
+      "python_signature": "ctx: Context, name: str, type: str, location: List[float]=[0.0, 0.0, 0.0], rotation: List[float]=[0.0, 0.0, 0.0]",
+      "input_names": [
+        "name",
+        "type",
+        "location",
+        "rotation"
+      ],
+      "commands": [
+        "spawn_actor"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "location": {
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "rotation": {
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "Rotation",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "title": "spawn_actorArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "spawn_actor",
+          "handler": "HandleSpawnActor",
+          "line": 6015,
+          "body_sha256": "ee95479c8afc6de770eda965f769b59b5e872abace3347c0226742f75ce1f1cb",
+          "static_call_references": [
+            "ACameraActor::StaticClass",
+            "ADirectionalLight::StaticClass",
+            "APointLight::StaticClass",
+            "ASpotLight::StaticClass",
+            "AStaticMeshActor::StaticClass",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::ActorToJsonObject",
+            "FUnrealMCPCommonUtils::AddMutationResultContract",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetRotatorFromJson",
+            "FUnrealMCPCommonUtils::GetVectorFromJson",
+            "FUnrealMCPEditorCommands::HandleSpawnActor"
+          ],
+          "member_call_names": [
+            "GetClass",
+            "GetTransform",
+            "HasField",
+            "SetActorTransform",
+            "SetBoolField",
+            "SetNumberField",
+            "SpawnActor",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_first_slice_not_implemented",
+      "ue58_public_api_parity": "source_verified_core_candidates_runtime_pending"
+    },
+    {
+      "name": "delete_actor",
+      "python_line": 215,
+      "python_signature": "ctx: Context, name: str",
+      "input_names": [
+        "name"
+      ],
+      "commands": [
+        "delete_actor"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "delete_actorArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "delete_actor",
+          "handler": "HandleDeleteActor",
+          "line": 6142,
+          "body_sha256": "f14c65d34c5eec7bd6c1aac07fbbfbaba602b501fecf67d91f20f25f83f27526",
+          "static_call_references": [
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::ActorToJsonObject",
+            "FUnrealMCPCommonUtils::AddMutationResultContract",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleDeleteActor"
+          ],
+          "member_call_names": [
+            "Destroy",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_first_slice_not_implemented",
+      "ue58_public_api_parity": "source_verified_core_candidates_runtime_pending"
+    },
+    {
+      "name": "set_actor_transform",
+      "python_line": 235,
+      "python_signature": "ctx: Context, name: str, location: List[float]=None, rotation: List[float]=None, scale: List[float]=None",
+      "input_names": [
+        "name",
+        "location",
+        "rotation",
+        "scale"
+      ],
+      "commands": [
+        "set_actor_transform"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "location": {
+            "default": null,
+            "items": {
+              "type": "number"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "rotation": {
+            "default": null,
+            "items": {
+              "type": "number"
+            },
+            "title": "Rotation",
+            "type": "array"
+          },
+          "scale": {
+            "default": null,
+            "items": {
+              "type": "number"
+            },
+            "title": "Scale",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "set_actor_transformArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "set_actor_transform",
+          "handler": "HandleSetActorTransform",
+          "line": 6194,
+          "body_sha256": "e140cd1312ca3e7548473c1e4bb7ce0be7f1483c0ee9c9f416ab28d9419645db",
+          "static_call_references": [
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::ActorToJsonObject",
+            "FUnrealMCPCommonUtils::AddMutationResultContract",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetRotatorFromJson",
+            "FUnrealMCPCommonUtils::GetVectorFromJson",
+            "FUnrealMCPEditorCommands::HandleSetActorTransform"
+          ],
+          "member_call_names": [
+            "GetTransform",
+            "HasField",
+            "SetActorTransform",
+            "SetBoolField",
+            "SetNumberField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_first_slice_not_implemented",
+      "ue58_public_api_parity": "source_verified_core_candidates_runtime_pending"
+    },
+    {
+      "name": "get_actor_properties",
+      "python_line": 267,
+      "python_signature": "ctx: Context, name: str",
+      "input_names": [
+        "name"
+      ],
+      "commands": [
+        "get_actor_properties"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "get_actor_propertiesArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "get_actor_properties",
+          "handler": "HandleGetActorProperties",
+          "line": 6263,
+          "body_sha256": "ad3c4da38353b371d845aa8152711a591ae5953f9b1d6e815e1b276538e655a1",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::ActorToJsonObject",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleGetActorProperties",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "GetName",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_first_slice_not_implemented",
+      "ue58_public_api_parity": "source_verified_core_candidates_runtime_pending"
+    },
+    {
+      "name": "line_trace_physical_material",
+      "python_line": 287,
+      "python_signature": "ctx: Context, start: List[float], end: List[float], trace_channel: str='visibility', trace_complex: bool=False, return_physical_material: bool=True",
+      "input_names": [
+        "start",
+        "end",
+        "trace_channel",
+        "trace_complex",
+        "return_physical_material"
+      ],
+      "commands": [
+        "line_trace_physical_material"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "start": {
+            "items": {
+              "type": "number"
+            },
+            "title": "Start",
+            "type": "array"
+          },
+          "end": {
+            "items": {
+              "type": "number"
+            },
+            "title": "End",
+            "type": "array"
+          },
+          "trace_channel": {
+            "default": "visibility",
+            "title": "Trace Channel",
+            "type": "string"
+          },
+          "trace_complex": {
+            "default": false,
+            "title": "Trace Complex",
+            "type": "boolean"
+          },
+          "return_physical_material": {
+            "default": true,
+            "title": "Return Physical Material",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "line_trace_physical_materialArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "line_trace_physical_material",
+          "handler": "HandleLineTracePhysicalMaterial",
+          "line": 6295,
+          "body_sha256": "e7d3360c222680505a1af5165c343b56d7c2a6f060b41447183001de3a1c5a68",
+          "static_call_references": [
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleLineTracePhysicalMaterial"
+          ],
+          "member_call_names": [
+            "GetActorLabel",
+            "GetBodyInstance",
+            "GetEditorWorldContext",
+            "GetName",
+            "GetNameStringByValue",
+            "GetPathName",
+            "GetSimplePhysicalMaterial",
+            "LineTraceSingleByChannel",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "inject_pie_input_key",
+      "python_line": 335,
+      "python_signature": "ctx: Context, key: str, event: str, pie_instance: int=-1",
+      "input_names": [
+        "key",
+        "event",
+        "pie_instance"
+      ],
+      "commands": [
+        "inject_pie_input_key"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "pie_instance": {
+            "default": -1,
+            "title": "Pie Instance",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "event"
+        ],
+        "title": "inject_pie_input_keyArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "inject_pie_input_key",
+          "handler": "HandleInjectPIEInputKey",
+          "line": 6412,
+          "body_sha256": "d9452304870243219cda35dcb0b903ec68e60aee71c327c2d49f83fb19a9466a",
+          "static_call_references": [
+            "FInputKeyEventArgs::CreateSimulated",
+            "FMath::IsFinite",
+            "FMath::TruncToDouble",
+            "FString::Join",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleInjectPIEInputKey",
+            "UInputDeviceLibrary::GetDefaultInputDevice",
+            "UInputDeviceLibrary::GetPrimaryInputDeviceForUser",
+            "UInputDeviceLibrary::GetUserForInputDevice",
+            "UInputDeviceLibrary::IsValidInputDevice"
+          ],
+          "member_call_names": [
+            "GetClass",
+            "GetGameInstance",
+            "GetInputKeyTimeDown",
+            "GetLocalPlayers",
+            "GetName",
+            "GetOutermost",
+            "GetPathName",
+            "GetPawn",
+            "GetPlatformUserId",
+            "GetPlayerController",
+            "GetWorld",
+            "GetWorldContexts",
+            "HasBegunPlay",
+            "HasField",
+            "InputEnabled",
+            "InputKey",
+            "IsInputKeyDown",
+            "IsLocalController",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetNumberField",
+            "TryGetStringField",
+            "WasInputKeyJustPressed",
+            "WasInputKeyJustReleased"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "set_actor_property",
+      "python_line": 380,
+      "python_signature": "ctx: Context, name: str, property_name: str, property_value",
+      "input_names": [
+        "name",
+        "property_name",
+        "property_value"
+      ],
+      "commands": [
+        "set_actor_property"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "property_name": {
+            "title": "Property Name",
+            "type": "string"
+          },
+          "property_value": {
+            "title": "property_value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "property_name",
+          "property_value"
+        ],
+        "title": "set_actor_propertyArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "set_actor_property",
+          "handler": "HandleSetActorProperty",
+          "line": 6707,
+          "body_sha256": "d29a7ce9b88d706d5025d8e4c758123d93816ad1b98d02f765d32d91b2ff98a5",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::ActorToJsonObject",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::SetObjectProperty",
+            "FUnrealMCPEditorCommands::HandleSetActorProperty",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "GetName",
+            "HasField",
+            "SetBoolField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_second_actor_slice_not_implemented",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "focus_viewport",
+      "python_line": 424,
+      "python_signature": "ctx: Context, target: Optional[str]=None, location: Optional[List[float]]=None, distance: float=1000.0, orientation: Optional[List[float]]=None",
+      "input_names": [
+        "target",
+        "location",
+        "distance",
+        "orientation"
+      ],
+      "commands": [
+        "focus_viewport"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Location"
+          },
+          "distance": {
+            "default": 1000.0,
+            "title": "Distance",
+            "type": "number"
+          },
+          "orientation": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Orientation"
+          }
+        },
+        "title": "focus_viewportArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "focus_viewport",
+          "handler": "HandleFocusViewport",
+          "line": 6849,
+          "body_sha256": "5df6957490450a8bed9b19d49b4e372d812122bf8595b2bd31e82bb39ca198f6",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetRotatorFromJson",
+            "FUnrealMCPCommonUtils::GetVectorFromJson",
+            "FUnrealMCPEditorCommands::HandleFocusViewport",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "GetActorLocation",
+            "GetName",
+            "GetNumberField",
+            "HasField",
+            "Invalidate",
+            "SetBoolField",
+            "SetViewLocation",
+            "SetViewRotation",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "take_screenshot",
+      "python_line": 471,
+      "python_signature": "ctx: Context, filepath: str",
+      "input_names": [
+        "filepath"
+      ],
+      "commands": [
+        "take_screenshot"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "filepath": {
+            "title": "Filepath",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filepath"
+        ],
+        "title": "take_screenshotArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "take_screenshot",
+          "handler": "HandleTakeScreenshot",
+          "line": 6936,
+          "body_sha256": "1f040f6fac54208ba2baa71a3e331e1f0cc7c984730fabaed5ac501274066bf5",
+          "static_call_references": [
+            "FFileHelper::SaveArrayToFile",
+            "FImageUtils::PNGCompressImageArray",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleTakeScreenshot"
+          ],
+          "member_call_names": [
+            "GetActiveViewport",
+            "GetSizeXY",
+            "ReadPixels",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "list_viewport_bookmarks",
+      "python_line": 497,
+      "python_signature": "ctx: Context",
+      "input_names": [],
+      "commands": [
+        "list_viewport_bookmarks"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {},
+        "title": "list_viewport_bookmarksArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "list_viewport_bookmarks",
+          "handler": "HandleListViewportBookmarks",
+          "line": 5163,
+          "body_sha256": "995270f6759a2e4b2f2f2d96ed363df18ef2fbe071040eda5ec629456a2b6d17",
+          "static_call_references": [
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleListViewportBookmarks",
+            "IBookmarkTypeTools::Get"
+          ],
+          "member_call_names": [
+            "GetActiveViewport",
+            "GetClient",
+            "GetViewLocation",
+            "GetViewRotation",
+            "IsPerspective",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "set_active_viewport_realtime",
+      "python_line": 521,
+      "python_signature": "ctx: Context, realtime: bool=True, realtime_frame_count: int=300",
+      "input_names": [
+        "realtime",
+        "realtime_frame_count"
+      ],
+      "commands": [
+        "set_active_viewport_realtime"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "realtime": {
+            "default": true,
+            "title": "Realtime",
+            "type": "boolean"
+          },
+          "realtime_frame_count": {
+            "default": 300,
+            "title": "Realtime Frame Count",
+            "type": "integer"
+          }
+        },
+        "title": "set_active_viewport_realtimeArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "set_active_viewport_realtime",
+          "handler": "HandleSetActiveViewportRealtime",
+          "line": 5206,
+          "body_sha256": "8048f9e67ae9848b661d62bae67c14b24d23159d1017ce37ec47cd7c26875947",
+          "static_call_references": [
+            "FMath::Max",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleSetActiveViewportRealtime"
+          ],
+          "member_call_names": [
+            "AddRealtimeOverride",
+            "GetActiveViewport",
+            "GetClient",
+            "GetRealtimeOverrideMessage",
+            "GetViewLocation",
+            "GetViewRotation",
+            "HasRealtimeOverride",
+            "Invalidate",
+            "InvalidateDisplay",
+            "IsPerspective",
+            "IsRealtime",
+            "IsRealtimeOverrideSet",
+            "RemoveRealtimeOverride",
+            "RequestRealTimeFrames",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField",
+            "TryGetBoolField",
+            "TryGetNumberField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "capture_viewport_bookmark_screenshot",
+      "python_line": 555,
+      "python_signature": "ctx: Context, filepath: str, bookmark_index: int=-1, redraw_count: int=2, clean_game_view: bool=False, view_location: Optional[List[float]]=None, view_rotation: Optional[List[float]]=None, view_fov: Optional[float]=None, restore_view_after_capture: bool=True",
+      "input_names": [
+        "filepath",
+        "bookmark_index",
+        "redraw_count",
+        "clean_game_view",
+        "view_location",
+        "view_rotation",
+        "view_fov",
+        "restore_view_after_capture"
+      ],
+      "commands": [
+        "capture_viewport_bookmark_screenshot"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "filepath": {
+            "title": "Filepath",
+            "type": "string"
+          },
+          "bookmark_index": {
+            "default": -1,
+            "title": "Bookmark Index",
+            "type": "integer"
+          },
+          "redraw_count": {
+            "default": 2,
+            "title": "Redraw Count",
+            "type": "integer"
+          },
+          "clean_game_view": {
+            "default": false,
+            "title": "Clean Game View",
+            "type": "boolean"
+          },
+          "view_location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "View Location"
+          },
+          "view_rotation": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "View Rotation"
+          },
+          "view_fov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "View Fov"
+          },
+          "restore_view_after_capture": {
+            "default": true,
+            "title": "Restore View After Capture",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "filepath"
+        ],
+        "title": "capture_viewport_bookmark_screenshotArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "capture_viewport_bookmark_screenshot",
+          "handler": "HandleCaptureViewportBookmarkScreenshot",
+          "line": 5261,
+          "body_sha256": "1e4131c32d7aab325a0ac871668ca978595ed1a2abb1957976525f0ad3915eaa",
+          "static_call_references": [
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetRotatorFromJson",
+            "FUnrealMCPCommonUtils::GetVectorFromJson",
+            "FUnrealMCPEditorCommands::HandleCaptureViewportBookmarkScreenshot",
+            "IBookmarkTypeTools::Get"
+          ],
+          "member_call_names": [
+            "GetActiveViewport",
+            "GetBoolField",
+            "GetClient",
+            "GetIntegerField",
+            "HasField",
+            "Invalidate",
+            "Num",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField",
+            "TryGetArrayField",
+            "TryGetBoolField",
+            "TryGetNumberField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "open_editor_level",
+      "python_line": 620,
+      "python_signature": "ctx: Context, level_path: str, dry_run: bool=True, allow_dirty_packages: bool=False, load_as_template: bool=False, show_progress: bool=True, deferred_load_delay_seconds: float=1.0",
+      "input_names": [
+        "level_path",
+        "dry_run",
+        "allow_dirty_packages",
+        "load_as_template",
+        "show_progress",
+        "deferred_load_delay_seconds"
+      ],
+      "commands": [
+        "open_editor_level"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "level_path": {
+            "title": "Level Path",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "allow_dirty_packages": {
+            "default": false,
+            "title": "Allow Dirty Packages",
+            "type": "boolean"
+          },
+          "load_as_template": {
+            "default": false,
+            "title": "Load As Template",
+            "type": "boolean"
+          },
+          "show_progress": {
+            "default": true,
+            "title": "Show Progress",
+            "type": "boolean"
+          },
+          "deferred_load_delay_seconds": {
+            "default": 1.0,
+            "title": "Deferred Load Delay Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "level_path"
+        ],
+        "title": "open_editor_levelArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "open_editor_level",
+          "handler": "HandleOpenEditorLevel",
+          "line": 5403,
+          "body_sha256": "aa753bf6e32ed3c30bbacf98479a3f02bff26af27c4b19e6d7775dd15159f026",
+          "static_call_references": [
+            "FEditorFileUtils::LoadMap",
+            "FGuid::NewGuid",
+            "FMath::Clamp",
+            "FPackageName::GetMapPackageExtension",
+            "FPackageName::IsValidLongPackageName",
+            "FPackageName::LongPackageNameToFilename",
+            "FPaths::FileExists",
+            "FString::Printf",
+            "FTSTicker::GetCoreTicker",
+            "FTickerDelegate::CreateLambda",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleOpenEditorLevel",
+            "FUnrealMCPModule::CleanupMCPWeatherEditorPreviewDriver"
+          ],
+          "member_call_names": [
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField",
+            "TryGetBoolField",
+            "TryGetNumberField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "get_editor_level_open_status",
+      "python_line": 670,
+      "python_signature": "ctx: Context, request_id: str=''",
+      "input_names": [
+        "request_id"
+      ],
+      "commands": [
+        "get_editor_level_open_status"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "request_id": {
+            "default": "",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "title": "get_editor_level_open_statusArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "get_editor_level_open_status",
+          "handler": "HandleGetEditorLevelOpenStatus",
+          "line": 5556,
+          "body_sha256": "b1c998ad3c009abe12c0e11c9c3d4ef3b38ab809f1aeac06c8a2d191d9d960b0",
+          "static_call_references": [
+            "FUnrealMCPEditorCommands::HandleGetEditorLevelOpenStatus"
+          ],
+          "member_call_names": [
+            "SetBoolField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "clear_dirty_package_flags",
+      "python_line": 702,
+      "python_signature": "ctx: Context, package_paths: Optional[List[str]]=None, package_path: str='', clear_all_dirty: bool=False, dry_run: bool=True, allow_non_temp_path: bool=False, required_root: str='/Game/_MCP_Temp'",
+      "input_names": [
+        "package_paths",
+        "package_path",
+        "clear_all_dirty",
+        "dry_run",
+        "allow_non_temp_path",
+        "required_root"
+      ],
+      "commands": [
+        "clear_dirty_package_flags"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "package_paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Package Paths"
+          },
+          "package_path": {
+            "default": "",
+            "title": "Package Path",
+            "type": "string"
+          },
+          "clear_all_dirty": {
+            "default": false,
+            "title": "Clear All Dirty",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "allow_non_temp_path": {
+            "default": false,
+            "title": "Allow Non Temp Path",
+            "type": "boolean"
+          },
+          "required_root": {
+            "default": "/Game/_MCP_Temp",
+            "title": "Required Root",
+            "type": "string"
+          }
+        },
+        "title": "clear_dirty_package_flagsArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "clear_dirty_package_flags",
+          "handler": "HandleClearDirtyPackageFlags",
+          "line": 5590,
+          "body_sha256": "7369c0079a8e7251523f317a0cee3021a3a683394c54a56f0158252c82154d12",
+          "static_call_references": [
+            "FPackageName::IsValidLongPackageName",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleClearDirtyPackageFlags"
+          ],
+          "member_call_names": [
+            "SetArrayField",
+            "SetBoolField",
+            "SetDirtyFlag",
+            "SetNumberField",
+            "SetStringField",
+            "TryGetArrayField",
+            "TryGetBoolField",
+            "TryGetString",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "safe_new_preview_map",
+      "python_line": 753,
+      "python_signature": "ctx: Context, target_path: str='', map_path: str='', dry_run: bool=True, allow_dirty_packages: bool=False, overwrite_existing: bool=False, allow_non_temp_path: bool=False, required_root: str='/Game/_MCP_Temp', is_partitioned_world: bool=False",
+      "input_names": [
+        "target_path",
+        "map_path",
+        "dry_run",
+        "allow_dirty_packages",
+        "overwrite_existing",
+        "allow_non_temp_path",
+        "required_root",
+        "is_partitioned_world"
+      ],
+      "commands": [
+        "safe_new_preview_map"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "target_path": {
+            "default": "",
+            "title": "Target Path",
+            "type": "string"
+          },
+          "map_path": {
+            "default": "",
+            "title": "Map Path",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "allow_dirty_packages": {
+            "default": false,
+            "title": "Allow Dirty Packages",
+            "type": "boolean"
+          },
+          "overwrite_existing": {
+            "default": false,
+            "title": "Overwrite Existing",
+            "type": "boolean"
+          },
+          "allow_non_temp_path": {
+            "default": false,
+            "title": "Allow Non Temp Path",
+            "type": "boolean"
+          },
+          "required_root": {
+            "default": "/Game/_MCP_Temp",
+            "title": "Required Root",
+            "type": "string"
+          },
+          "is_partitioned_world": {
+            "default": false,
+            "title": "Is Partitioned World",
+            "type": "boolean"
+          }
+        },
+        "title": "safe_new_preview_mapArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "safe_new_preview_map",
+          "handler": "HandleSafeNewPreviewMap",
+          "line": 5823,
+          "body_sha256": "0c22cb036fd9e5c2462377eee8386b265c5beac60e0402d111a40ccd0fdbfe52",
+          "static_call_references": [
+            "FPackageName::DoesPackageExist",
+            "FPackageName::GetMapPackageExtension",
+            "FPackageName::IsValidLongPackageName",
+            "FPackageName::LongPackageNameToFilename",
+            "FPaths::FileExists",
+            "FPaths::GetPath",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleSafeNewPreviewMap",
+            "IFileManager::Get",
+            "UEditorLoadingAndSavingUtils::SaveMap"
+          ],
+          "member_call_names": [
+            "NewMap",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField",
+            "TryGetBoolField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "spawn_blueprint_actor",
+      "python_line": 809,
+      "python_signature": "ctx: Context, blueprint_name: str, actor_name: str, location: List[float]=[0.0, 0.0, 0.0], rotation: List[float]=[0.0, 0.0, 0.0], scale: Optional[List[float]]=None",
+      "input_names": [
+        "blueprint_name",
+        "actor_name",
+        "location",
+        "rotation",
+        "scale"
+      ],
+      "commands": [
+        "spawn_blueprint_actor"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "blueprint_name": {
+            "title": "Blueprint Name",
+            "type": "string"
+          },
+          "actor_name": {
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "location": {
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "rotation": {
+            "default": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "items": {
+              "type": "number"
+            },
+            "title": "Rotation",
+            "type": "array"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          }
+        },
+        "required": [
+          "blueprint_name",
+          "actor_name"
+        ],
+        "title": "spawn_blueprint_actorArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "spawn_blueprint_actor",
+          "handler": "HandleSpawnBlueprintActor",
+          "line": 6770,
+          "body_sha256": "94c3609fdd08d63ae42c7862d5dd764f3113132ce9f5ac5fa9ae127fc84f7c0d",
+          "static_call_references": [
+            "FUnrealMCPCommonUtils::ActorToJsonObject",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetRotatorFromJson",
+            "FUnrealMCPCommonUtils::GetVectorFromJson",
+            "FUnrealMCPEditorCommands::HandleSpawnBlueprintActor"
+          ],
+          "member_call_names": [
+            "GetEditorWorldContext",
+            "GetPathName",
+            "HasField",
+            "SetStringField",
+            "SpawnActor",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "planned_second_actor_slice_not_implemented",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "open_niagara_preview_player",
+      "python_line": 875,
+      "python_signature": "ctx: Context, system_path: str=''",
+      "input_names": [
+        "system_path"
+      ],
+      "commands": [
+        "open_niagara_preview_player"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "system_path": {
+            "default": "",
+            "title": "System Path",
+            "type": "string"
+          }
+        },
+        "title": "open_niagara_preview_playerArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "open_niagara_preview_player",
+          "handler": "HandleOpenNiagaraPreviewPlayer",
+          "line": 2499,
+          "body_sha256": "98b4c44ae18f0634f98b9049221e8c8ffe33f97adc8d4309dc1f9533994fb7b3",
+          "static_call_references": [
+            "FNiagaraPreviewPlayerWindow::GetStateJson",
+            "FNiagaraPreviewPlayerWindow::PreviewSystemByPath",
+            "FNiagaraPreviewPlayerWindow::Show",
+            "FUnrealMCPEditorCommands::HandleOpenNiagaraPreviewPlayer"
+          ],
+          "member_call_names": [
+            "SetBoolField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "get_niagara_preview_player_state",
+      "python_line": 904,
+      "python_signature": "ctx: Context",
+      "input_names": [],
+      "commands": [
+        "get_niagara_preview_player_state"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {},
+        "title": "get_niagara_preview_player_stateArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "get_niagara_preview_player_state",
+          "handler": "HandleGetNiagaraPreviewPlayerState",
+          "line": 2522,
+          "body_sha256": "5b59b7a10e47e9818c443827b27b8ad8edd305c9cc814051dc726ce84692cae4",
+          "static_call_references": [
+            "FNiagaraPreviewPlayerWindow::GetStateJson",
+            "FUnrealMCPEditorCommands::HandleGetNiagaraPreviewPlayerState"
+          ],
+          "member_call_names": []
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "get_niagara_preview_lab_state",
+      "python_line": 922,
+      "python_signature": "ctx: Context",
+      "input_names": [],
+      "commands": [
+        "get_niagara_preview_lab_state"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {},
+        "title": "get_niagara_preview_lab_stateArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "get_niagara_preview_lab_state",
+          "handler": "HandleGetNiagaraPreviewLabState",
+          "line": 6985,
+          "body_sha256": "4a4a554ac82429874316856667ad02a18e08f99cafad6e2fe5d18573ebb34dd0",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleGetNiagaraPreviewLabState",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "GetName",
+            "GetOutermost",
+            "IsDirty",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "cleanup_niagara_preview_lab",
+      "python_line": 940,
+      "python_signature": "ctx: Context",
+      "input_names": [],
+      "commands": [
+        "cleanup_niagara_preview_lab"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {},
+        "title": "cleanup_niagara_preview_labArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "cleanup_niagara_preview_lab",
+          "handler": "HandleCleanupNiagaraPreviewLab",
+          "line": 7040,
+          "body_sha256": "baee4285c17b54b8404255b127c759645cf68caa403a0c5c4accf3940cd1ed82",
+          "static_call_references": [
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleCleanupNiagaraPreviewLab"
+          ],
+          "member_call_names": [
+            "GetName",
+            "GetOutermost",
+            "IsDirty",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "capture_niagara_preview_lab_view",
+      "python_line": 958,
+      "python_signature": "ctx: Context, filepath: str, view: int=1, auto_frame: bool=True, camera_location: Optional[List[float]]=None, camera_rotation: Optional[List[float]]=None, camera_fov: Optional[float]=None, allow_current_map_preview: bool=False",
+      "input_names": [
+        "filepath",
+        "view",
+        "auto_frame",
+        "camera_location",
+        "camera_rotation",
+        "camera_fov",
+        "allow_current_map_preview"
+      ],
+      "commands": [
+        "capture_niagara_preview_lab_view"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "filepath": {
+            "title": "Filepath",
+            "type": "string"
+          },
+          "view": {
+            "default": 1,
+            "title": "View",
+            "type": "integer"
+          },
+          "auto_frame": {
+            "default": true,
+            "title": "Auto Frame",
+            "type": "boolean"
+          },
+          "camera_location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Location"
+          },
+          "camera_rotation": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Rotation"
+          },
+          "camera_fov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Fov"
+          },
+          "allow_current_map_preview": {
+            "default": false,
+            "title": "Allow Current Map Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "filepath"
+        ],
+        "title": "capture_niagara_preview_lab_viewArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "capture_niagara_preview_lab_view",
+          "handler": "HandleCaptureNiagaraPreviewLabView",
+          "line": 7066,
+          "body_sha256": "e859a49450e2589ccc65db2e69dc327a23094958cea1772281540eecda5f3d2f",
+          "static_call_references": [
+            "FFileHelper::SaveArrayToFile",
+            "FImageUtils::PNGCompressImageArray",
+            "FMath::Clamp",
+            "FPaths::GetPath",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleCaptureNiagaraPreviewLabView",
+            "IFileManager::Get"
+          ],
+          "member_call_names": [
+            "Draw",
+            "GetActiveViewport",
+            "GetIntegerField",
+            "GetName",
+            "GetOutermost",
+            "GetSizeXY",
+            "HasField",
+            "Invalidate",
+            "IsInGameView",
+            "ReadPixels",
+            "SetArrayField",
+            "SetBoolField",
+            "SetGameView",
+            "SetNumberField",
+            "SetStringField",
+            "SetViewLocation",
+            "SetViewRotation",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "preview_niagara_system_in_preview_lab",
+      "python_line": 1012,
+      "python_signature": "ctx: Context, system_path: str, filepath: str, view: int=1, label: str='', warmup_time: float=0.35, warmup_tick_delta: float=1.0 / 30.0, cleanup_before: bool=True, cleanup_after: bool=True, location: Optional[List[float]]=None, scale: Optional[List[float]]=None, auto_frame: bool=True, camera_location: Optional[List[float]]=None, camera_rotation: Optional[List[float]]=None, camera_fov: Optional[float]=None, user_parameter_overrides: Optional[Dict[str, Any]]=None, preserve_override_parameters: bool=True, allow_current_map_preview: bool=False",
+      "input_names": [
+        "system_path",
+        "filepath",
+        "view",
+        "label",
+        "warmup_time",
+        "warmup_tick_delta",
+        "cleanup_before",
+        "cleanup_after",
+        "location",
+        "scale",
+        "auto_frame",
+        "camera_location",
+        "camera_rotation",
+        "camera_fov",
+        "user_parameter_overrides",
+        "preserve_override_parameters",
+        "allow_current_map_preview"
+      ],
+      "commands": [
+        "preview_niagara_system_in_preview_lab"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "system_path": {
+            "title": "System Path",
+            "type": "string"
+          },
+          "filepath": {
+            "title": "Filepath",
+            "type": "string"
+          },
+          "view": {
+            "default": 1,
+            "title": "View",
+            "type": "integer"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "warmup_time": {
+            "default": 0.35,
+            "title": "Warmup Time",
+            "type": "number"
+          },
+          "warmup_tick_delta": {
+            "default": 0.03333333333333333,
+            "title": "Warmup Tick Delta",
+            "type": "number"
+          },
+          "cleanup_before": {
+            "default": true,
+            "title": "Cleanup Before",
+            "type": "boolean"
+          },
+          "cleanup_after": {
+            "default": true,
+            "title": "Cleanup After",
+            "type": "boolean"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Location"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "auto_frame": {
+            "default": true,
+            "title": "Auto Frame",
+            "type": "boolean"
+          },
+          "camera_location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Location"
+          },
+          "camera_rotation": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Rotation"
+          },
+          "camera_fov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Fov"
+          },
+          "user_parameter_overrides": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Parameter Overrides"
+          },
+          "preserve_override_parameters": {
+            "default": true,
+            "title": "Preserve Override Parameters",
+            "type": "boolean"
+          },
+          "allow_current_map_preview": {
+            "default": false,
+            "title": "Allow Current Map Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "system_path",
+          "filepath"
+        ],
+        "title": "preview_niagara_system_in_preview_labArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "preview_niagara_system_in_preview_lab",
+          "handler": "HandlePreviewNiagaraSystemInPreviewLab",
+          "line": 7279,
+          "body_sha256": "a6d1a9b1830aaa3b1099f4fb85206be0fb5db45873eda821fa71df152b36425a",
+          "static_call_references": [
+            "ANiagaraActor::StaticClass",
+            "FMath::Clamp",
+            "FPaths::GetBaseFilename",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandlePreviewNiagaraSystemInPreviewLab"
+          ],
+          "member_call_names": [
+            "Activate",
+            "AdvanceSimulationByTime",
+            "GetBoolField",
+            "GetName",
+            "GetNiagaraComponent",
+            "GetOutermost",
+            "GetStringField",
+            "IsDirty",
+            "SetActorLabel",
+            "SetActorScale3D",
+            "SetArrayField",
+            "SetAsset",
+            "SetBoolField",
+            "SetFolderPath",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "SpawnActor",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "sample_niagara_system_in_preview_lab",
+      "python_line": 1102,
+      "python_signature": "ctx: Context, system_path: str, output_dir: str='', label: str='', warmup_times: Optional[List[float]]=None, views: Optional[List[int]]=None, warmup_tick_delta: float=1.0 / 30.0, cleanup_before: bool=True, cleanup_after_each: bool=True, cleanup_after_all: bool=True, location: Optional[List[float]]=None, scale: Optional[List[float]]=None, auto_frame: bool=True, camera_location: Optional[List[float]]=None, camera_rotation: Optional[List[float]]=None, camera_fov: Optional[float]=None, user_parameter_overrides: Optional[Dict[str, Any]]=None, preserve_override_parameters: bool=True, allow_current_map_preview: bool=False",
+      "input_names": [
+        "system_path",
+        "output_dir",
+        "label",
+        "warmup_times",
+        "views",
+        "warmup_tick_delta",
+        "cleanup_before",
+        "cleanup_after_each",
+        "cleanup_after_all",
+        "location",
+        "scale",
+        "auto_frame",
+        "camera_location",
+        "camera_rotation",
+        "camera_fov",
+        "user_parameter_overrides",
+        "preserve_override_parameters",
+        "allow_current_map_preview"
+      ],
+      "commands": [
+        "sample_niagara_system_in_preview_lab"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "system_path": {
+            "title": "System Path",
+            "type": "string"
+          },
+          "output_dir": {
+            "default": "",
+            "title": "Output Dir",
+            "type": "string"
+          },
+          "label": {
+            "default": "",
+            "title": "Label",
+            "type": "string"
+          },
+          "warmup_times": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Warmup Times"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Views"
+          },
+          "warmup_tick_delta": {
+            "default": 0.03333333333333333,
+            "title": "Warmup Tick Delta",
+            "type": "number"
+          },
+          "cleanup_before": {
+            "default": true,
+            "title": "Cleanup Before",
+            "type": "boolean"
+          },
+          "cleanup_after_each": {
+            "default": true,
+            "title": "Cleanup After Each",
+            "type": "boolean"
+          },
+          "cleanup_after_all": {
+            "default": true,
+            "title": "Cleanup After All",
+            "type": "boolean"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Location"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scale"
+          },
+          "auto_frame": {
+            "default": true,
+            "title": "Auto Frame",
+            "type": "boolean"
+          },
+          "camera_location": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Location"
+          },
+          "camera_rotation": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Rotation"
+          },
+          "camera_fov": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Camera Fov"
+          },
+          "user_parameter_overrides": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "User Parameter Overrides"
+          },
+          "preserve_override_parameters": {
+            "default": true,
+            "title": "Preserve Override Parameters",
+            "type": "boolean"
+          },
+          "allow_current_map_preview": {
+            "default": false,
+            "title": "Allow Current Map Preview",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "system_path"
+        ],
+        "title": "sample_niagara_system_in_preview_labArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "sample_niagara_system_in_preview_lab",
+          "handler": "HandleSampleNiagaraSystemInPreviewLab",
+          "line": 7484,
+          "body_sha256": "bcb7743250f4d39474a9f49af4de2006cf15c5905c369d1986c6588aea43a0e1",
+          "static_call_references": [
+            "FMath::Clamp",
+            "FMath::RoundToInt",
+            "FPaths::GetBaseFilename",
+            "FPaths::MakeValidFileName",
+            "FPlatformTime::Seconds",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleSampleNiagaraSystemInPreviewLab"
+          ],
+          "member_call_names": [
+            "GetBoolField",
+            "GetName",
+            "GetOutermost",
+            "GetStringField",
+            "IsDirty",
+            "SetArrayField",
+            "SetBoolField",
+            "SetField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "inspect_niagara_component_runtime_state",
+      "python_line": 1196,
+      "python_signature": "ctx: Context, actor_name: str='', actor_label: str='', component_name: str='', system_path: str='', parameter_name_contains: str='', max_components: int=32, max_parameters: int=256, include_parameter_values: bool=True, include_raw_bytes: bool=False, max_raw_bytes: int=64, include_asset_exposed_parameters: bool=False, include_instance_parameters: bool=False, include_parameter_object_properties: bool=False, include_emitter_runtime: bool=True, max_emitter_instances: int=128, max_object_properties: int=80, max_array_elements: int=16, max_property_value_chars: int=512",
+      "input_names": [
+        "actor_name",
+        "actor_label",
+        "component_name",
+        "system_path",
+        "parameter_name_contains",
+        "max_components",
+        "max_parameters",
+        "include_parameter_values",
+        "include_raw_bytes",
+        "max_raw_bytes",
+        "include_asset_exposed_parameters",
+        "include_instance_parameters",
+        "include_parameter_object_properties",
+        "include_emitter_runtime",
+        "max_emitter_instances",
+        "max_object_properties",
+        "max_array_elements",
+        "max_property_value_chars"
+      ],
+      "commands": [
+        "inspect_niagara_component_runtime_state"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "actor_name": {
+            "default": "",
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "actor_label": {
+            "default": "",
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "component_name": {
+            "default": "",
+            "title": "Component Name",
+            "type": "string"
+          },
+          "system_path": {
+            "default": "",
+            "title": "System Path",
+            "type": "string"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "max_components": {
+            "default": 32,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_parameters": {
+            "default": 256,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "include_parameter_values": {
+            "default": true,
+            "title": "Include Parameter Values",
+            "type": "boolean"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          },
+          "include_asset_exposed_parameters": {
+            "default": false,
+            "title": "Include Asset Exposed Parameters",
+            "type": "boolean"
+          },
+          "include_instance_parameters": {
+            "default": false,
+            "title": "Include Instance Parameters",
+            "type": "boolean"
+          },
+          "include_parameter_object_properties": {
+            "default": false,
+            "title": "Include Parameter Object Properties",
+            "type": "boolean"
+          },
+          "include_emitter_runtime": {
+            "default": true,
+            "title": "Include Emitter Runtime",
+            "type": "boolean"
+          },
+          "max_emitter_instances": {
+            "default": 128,
+            "title": "Max Emitter Instances",
+            "type": "integer"
+          },
+          "max_object_properties": {
+            "default": 80,
+            "title": "Max Object Properties",
+            "type": "integer"
+          },
+          "max_array_elements": {
+            "default": 16,
+            "title": "Max Array Elements",
+            "type": "integer"
+          },
+          "max_property_value_chars": {
+            "default": 512,
+            "title": "Max Property Value Chars",
+            "type": "integer"
+          }
+        },
+        "title": "inspect_niagara_component_runtime_stateArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "inspect_niagara_component_runtime_state",
+          "handler": "HandleInspectNiagaraComponentRuntimeState",
+          "line": 2528,
+          "body_sha256": "441821abbabfde24800ba3bb1e38b796d8a2170cd61b39c2f523a31b159a2c56",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FMath::Clamp",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleInspectNiagaraComponentRuntimeState",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "GetActorLabel",
+            "GetAsset",
+            "GetAttachParent",
+            "GetComponentLocation",
+            "GetComponentRotation",
+            "GetComponentScale",
+            "GetComponents",
+            "GetExecutionState",
+            "GetExposedParameters",
+            "GetFixedBounds",
+            "GetInstanceParameters",
+            "GetName",
+            "GetOutermost",
+            "GetOverrideParameters",
+            "GetPathName",
+            "GetRelativeLocation",
+            "GetRelativeRotation",
+            "GetRelativeScale3D",
+            "GetRequestedExecutionState",
+            "GetSystemFixedBounds",
+            "GetSystemInstanceController",
+            "GetSystemInstance_Unsafe",
+            "IsActive",
+            "IsComponentTickEnabled",
+            "IsDirty",
+            "IsRegistered",
+            "IsValid",
+            "IsVisible",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "inspect_niagara_component_parameter_store",
+      "python_line": 1287,
+      "python_signature": "ctx: Context, actor_name: str='', actor_label: str='', component_name: str='', system_path: str='', parameter_name_contains: str='', max_components: int=8, max_parameters: int=64, include_raw_bytes: bool=False, max_raw_bytes: int=64",
+      "input_names": [
+        "actor_name",
+        "actor_label",
+        "component_name",
+        "system_path",
+        "parameter_name_contains",
+        "max_components",
+        "max_parameters",
+        "include_raw_bytes",
+        "max_raw_bytes"
+      ],
+      "commands": [
+        "inspect_niagara_component_parameter_store"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "actor_name": {
+            "default": "",
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "actor_label": {
+            "default": "",
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "component_name": {
+            "default": "",
+            "title": "Component Name",
+            "type": "string"
+          },
+          "system_path": {
+            "default": "",
+            "title": "System Path",
+            "type": "string"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "max_components": {
+            "default": 8,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_parameters": {
+            "default": 64,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "inspect_niagara_component_parameter_storeArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "inspect_niagara_component_parameter_store",
+          "handler": "HandleInspectNiagaraComponentParameterStore",
+          "line": 2775,
+          "body_sha256": "622667d843d932c1a323f872c5e04670058320e0251891729fb7a2892234281b",
+          "static_call_references": [
+            "FUnrealMCPEditorCommands::HandleInspectNiagaraComponentParameterStore"
+          ],
+          "member_call_names": [
+            "HasField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "sample_render_target2d_region_stats",
+      "python_line": 1350,
+      "python_signature": "ctx: Context, render_target_path: str, x0: int=0, x1: int=-1, y0: int=0, y1: int=-1, channel: str='max', threshold: float=0.01, max_first_hits: int=8, probe_x: int=-1, probe_y: int=-1, probe_radius: int=8",
+      "input_names": [
+        "render_target_path",
+        "x0",
+        "x1",
+        "y0",
+        "y1",
+        "channel",
+        "threshold",
+        "max_first_hits",
+        "probe_x",
+        "probe_y",
+        "probe_radius"
+      ],
+      "commands": [
+        "sample_render_target2d_region_stats"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "render_target_path": {
+            "title": "Render Target Path",
+            "type": "string"
+          },
+          "x0": {
+            "default": 0,
+            "title": "X0",
+            "type": "integer"
+          },
+          "x1": {
+            "default": -1,
+            "title": "X1",
+            "type": "integer"
+          },
+          "y0": {
+            "default": 0,
+            "title": "Y0",
+            "type": "integer"
+          },
+          "y1": {
+            "default": -1,
+            "title": "Y1",
+            "type": "integer"
+          },
+          "channel": {
+            "default": "max",
+            "title": "Channel",
+            "type": "string"
+          },
+          "threshold": {
+            "default": 0.01,
+            "title": "Threshold",
+            "type": "number"
+          },
+          "max_first_hits": {
+            "default": 8,
+            "title": "Max First Hits",
+            "type": "integer"
+          },
+          "probe_x": {
+            "default": -1,
+            "title": "Probe X",
+            "type": "integer"
+          },
+          "probe_y": {
+            "default": -1,
+            "title": "Probe Y",
+            "type": "integer"
+          },
+          "probe_radius": {
+            "default": 8,
+            "title": "Probe Radius",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "render_target_path"
+        ],
+        "title": "sample_render_target2d_region_statsArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "sample_render_target2d_region_stats",
+          "handler": "HandleSampleRenderTarget2DRegionStats",
+          "line": 2995,
+          "body_sha256": "6b88ac9b16367843aaed7770234f8895e32c210bab1ccca87853fbfa7e726064",
+          "static_call_references": [
+            "FMath::Clamp",
+            "FMath::FloorToInt",
+            "FMath::Max",
+            "FMath::Min",
+            "FPackageName::GetShortName",
+            "FPackageName::IsValidLongPackageName",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleSampleRenderTarget2DRegionStats"
+          ],
+          "member_call_names": [
+            "GameThread_GetRenderTargetResource",
+            "HasField",
+            "ReadLinearColorPixels",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "inspect_niagara_component_grid2d_runtime",
+      "python_line": 1412,
+      "python_signature": "ctx: Context, actor_name: str='', actor_label: str='', component_name: str='', system_path: str='', max_components: int=16, max_grid_interfaces: int=16, include_internal: bool=True",
+      "input_names": [
+        "actor_name",
+        "actor_label",
+        "component_name",
+        "system_path",
+        "max_components",
+        "max_grid_interfaces",
+        "include_internal"
+      ],
+      "commands": [
+        "inspect_niagara_component_grid2d_runtime"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "actor_name": {
+            "default": "",
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "actor_label": {
+            "default": "",
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "component_name": {
+            "default": "",
+            "title": "Component Name",
+            "type": "string"
+          },
+          "system_path": {
+            "default": "",
+            "title": "System Path",
+            "type": "string"
+          },
+          "max_components": {
+            "default": 16,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_grid_interfaces": {
+            "default": 16,
+            "title": "Max Grid Interfaces",
+            "type": "integer"
+          },
+          "include_internal": {
+            "default": true,
+            "title": "Include Internal",
+            "type": "boolean"
+          }
+        },
+        "title": "inspect_niagara_component_grid2d_runtimeArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "inspect_niagara_component_grid2d_runtime",
+          "handler": "HandleInspectNiagaraComponentGrid2DRuntime",
+          "line": 2805,
+          "body_sha256": "205a07600ff8e515d423c6cc8cae8a3711b0a52323063140ce9b95d15cff95e6",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FMath::Clamp",
+            "FNiagaraDataInterfaceUtilities::ForEachDataInterface",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleInspectNiagaraComponentGrid2DRuntime",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "FindTypedDataInterfaceInstanceData",
+            "GetActorLabel",
+            "GetAsset",
+            "GetComponents",
+            "GetName",
+            "GetPathName",
+            "GetSystemInstanceController",
+            "GetSystemInstance_Unsafe",
+            "IsA",
+            "IsActive",
+            "IsRegistered",
+            "IsValid",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "preview_niagara_component_asset_swap",
+      "python_line": 1458,
+      "python_signature": "ctx: Context, replacement_system_path: str, actor_name: str='', actor_label: str='', component_name: str='', system_path: str='', parameter_name_contains: str='', restore_original_asset: bool=True, preserve_override_parameters: bool=True, activate_after_swap: bool=True, advance_time: float=0.35, advance_tick_delta: float=1.0 / 30.0, max_parameters: int=256, max_emitter_instances: int=128, include_parameter_values: bool=True, include_raw_bytes: bool=False, max_raw_bytes: int=64, include_parameter_object_properties: bool=False, include_emitter_runtime: bool=True, max_object_properties: int=80, max_array_elements: int=16, max_property_value_chars: int=512",
+      "input_names": [
+        "replacement_system_path",
+        "actor_name",
+        "actor_label",
+        "component_name",
+        "system_path",
+        "parameter_name_contains",
+        "restore_original_asset",
+        "preserve_override_parameters",
+        "activate_after_swap",
+        "advance_time",
+        "advance_tick_delta",
+        "max_parameters",
+        "max_emitter_instances",
+        "include_parameter_values",
+        "include_raw_bytes",
+        "max_raw_bytes",
+        "include_parameter_object_properties",
+        "include_emitter_runtime",
+        "max_object_properties",
+        "max_array_elements",
+        "max_property_value_chars"
+      ],
+      "commands": [
+        "preview_niagara_component_asset_swap"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "replacement_system_path": {
+            "title": "Replacement System Path",
+            "type": "string"
+          },
+          "actor_name": {
+            "default": "",
+            "title": "Actor Name",
+            "type": "string"
+          },
+          "actor_label": {
+            "default": "",
+            "title": "Actor Label",
+            "type": "string"
+          },
+          "component_name": {
+            "default": "",
+            "title": "Component Name",
+            "type": "string"
+          },
+          "system_path": {
+            "default": "",
+            "title": "System Path",
+            "type": "string"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "restore_original_asset": {
+            "default": true,
+            "title": "Restore Original Asset",
+            "type": "boolean"
+          },
+          "preserve_override_parameters": {
+            "default": true,
+            "title": "Preserve Override Parameters",
+            "type": "boolean"
+          },
+          "activate_after_swap": {
+            "default": true,
+            "title": "Activate After Swap",
+            "type": "boolean"
+          },
+          "advance_time": {
+            "default": 0.35,
+            "title": "Advance Time",
+            "type": "number"
+          },
+          "advance_tick_delta": {
+            "default": 0.03333333333333333,
+            "title": "Advance Tick Delta",
+            "type": "number"
+          },
+          "max_parameters": {
+            "default": 256,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "max_emitter_instances": {
+            "default": 128,
+            "title": "Max Emitter Instances",
+            "type": "integer"
+          },
+          "include_parameter_values": {
+            "default": true,
+            "title": "Include Parameter Values",
+            "type": "boolean"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          },
+          "include_parameter_object_properties": {
+            "default": false,
+            "title": "Include Parameter Object Properties",
+            "type": "boolean"
+          },
+          "include_emitter_runtime": {
+            "default": true,
+            "title": "Include Emitter Runtime",
+            "type": "boolean"
+          },
+          "max_object_properties": {
+            "default": 80,
+            "title": "Max Object Properties",
+            "type": "integer"
+          },
+          "max_array_elements": {
+            "default": 16,
+            "title": "Max Array Elements",
+            "type": "integer"
+          },
+          "max_property_value_chars": {
+            "default": 512,
+            "title": "Max Property Value Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "replacement_system_path"
+        ],
+        "title": "preview_niagara_component_asset_swapArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "preview_niagara_component_asset_swap",
+          "handler": "HandlePreviewNiagaraComponentAssetSwap",
+          "line": 4883,
+          "body_sha256": "f8923b7d75b40380ffcd58c7f104d024511bd8d6fc2c4e10e8e776f1f9925ccd",
+          "static_call_references": [
+            "AActor::StaticClass",
+            "FMath::Clamp",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandlePreviewNiagaraComponentAssetSwap",
+            "UGameplayStatics::GetAllActorsOfClass"
+          ],
+          "member_call_names": [
+            "Activate",
+            "AdvanceSimulationByTime",
+            "DeactivateImmediate",
+            "GetActorLabel",
+            "GetAsset",
+            "GetComponentLocation",
+            "GetComponentRotation",
+            "GetComponentScale",
+            "GetComponents",
+            "GetExecutionState",
+            "GetName",
+            "GetOutermost",
+            "GetOverrideParameters",
+            "GetPathName",
+            "GetRequestedExecutionState",
+            "IsActive",
+            "IsComponentTickEnabled",
+            "IsDirty",
+            "IsRegistered",
+            "IsVisible",
+            "ReinitializeSystem",
+            "ResetSystem",
+            "SetAsset",
+            "SetBoolField",
+            "SetDirtyFlag",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "inspect_blueprint_niagara_component_template",
+      "python_line": 1558,
+      "python_signature": "ctx: Context, blueprint_path: str, component_name: str='', expected_system_path: str='', parameter_name_contains: str='', include_inherited_scs_templates: bool=True, require_exactly_one: bool=False, require_expected_system_match: bool=False, max_components: int=64, max_parameters: int=256, include_parameter_values: bool=True, include_raw_bytes: bool=False, max_raw_bytes: int=64, include_parameter_object_properties: bool=False, include_component_object_properties: bool=False, max_object_properties: int=80, max_array_elements: int=16, max_property_value_chars: int=512",
+      "input_names": [
+        "blueprint_path",
+        "component_name",
+        "expected_system_path",
+        "parameter_name_contains",
+        "include_inherited_scs_templates",
+        "require_exactly_one",
+        "require_expected_system_match",
+        "max_components",
+        "max_parameters",
+        "include_parameter_values",
+        "include_raw_bytes",
+        "max_raw_bytes",
+        "include_parameter_object_properties",
+        "include_component_object_properties",
+        "max_object_properties",
+        "max_array_elements",
+        "max_property_value_chars"
+      ],
+      "commands": [
+        "inspect_blueprint_niagara_component_template"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "blueprint_path": {
+            "title": "Blueprint Path",
+            "type": "string"
+          },
+          "component_name": {
+            "default": "",
+            "title": "Component Name",
+            "type": "string"
+          },
+          "expected_system_path": {
+            "default": "",
+            "title": "Expected System Path",
+            "type": "string"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "include_inherited_scs_templates": {
+            "default": true,
+            "title": "Include Inherited Scs Templates",
+            "type": "boolean"
+          },
+          "require_exactly_one": {
+            "default": false,
+            "title": "Require Exactly One",
+            "type": "boolean"
+          },
+          "require_expected_system_match": {
+            "default": false,
+            "title": "Require Expected System Match",
+            "type": "boolean"
+          },
+          "max_components": {
+            "default": 64,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_parameters": {
+            "default": 256,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "include_parameter_values": {
+            "default": true,
+            "title": "Include Parameter Values",
+            "type": "boolean"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          },
+          "include_parameter_object_properties": {
+            "default": false,
+            "title": "Include Parameter Object Properties",
+            "type": "boolean"
+          },
+          "include_component_object_properties": {
+            "default": false,
+            "title": "Include Component Object Properties",
+            "type": "boolean"
+          },
+          "max_object_properties": {
+            "default": 80,
+            "title": "Max Object Properties",
+            "type": "integer"
+          },
+          "max_array_elements": {
+            "default": 16,
+            "title": "Max Array Elements",
+            "type": "integer"
+          },
+          "max_property_value_chars": {
+            "default": 512,
+            "title": "Max Property Value Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blueprint_path"
+        ],
+        "title": "inspect_blueprint_niagara_component_templateArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "inspect_blueprint_niagara_component_template",
+          "handler": "HandleInspectBlueprintNiagaraComponentTemplate",
+          "line": 3231,
+          "body_sha256": "7c3b6cff5ab25e03ee60c2e184098809865c1a34c6c26c1f7cb1d24ab8bd9040",
+          "static_call_references": [
+            "FMath::Clamp",
+            "FPackageName::IsValidLongPackageName",
+            "FPackageName::ObjectPathToPackageName",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPEditorCommands::HandleInspectBlueprintNiagaraComponentTemplate"
+          ],
+          "member_call_names": [
+            "GetActualComponentTemplate",
+            "GetAllNodes",
+            "GetAsset",
+            "GetAttachParent",
+            "GetFixedBounds",
+            "GetName",
+            "GetOutermost",
+            "GetOverrideParameters",
+            "GetPathName",
+            "GetRelativeLocation",
+            "GetRelativeRotation",
+            "GetRelativeScale3D",
+            "GetSuperClass",
+            "GetSystemFixedBounds",
+            "GetVariableName",
+            "IsComponentTickEnabled",
+            "IsDirty",
+            "IsVisible",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "dry_run_blueprint_niagara_component_template_asset_swap",
+      "python_line": 1644,
+      "python_signature": "ctx: Context, blueprint_path: str, component_name: str, source_system_path: str, replacement_system_path: str, confirmation_token: str, operation: str='durable_bp_component_template_asset_swap', dry_run: bool=True, preserve_override_parameters: bool=True, allow_unrealmcp_dependency: bool=False, parameter_name_contains: str='', include_inherited_scs_templates: bool=True, require_exactly_one: bool=True, require_source_system_match: bool=True, max_components: int=8, max_parameters: int=256, include_parameter_values: bool=True, include_raw_bytes: bool=False, max_raw_bytes: int=64, include_parameter_object_properties: bool=False, include_component_object_properties: bool=False, max_object_properties: int=80, max_array_elements: int=16, max_property_value_chars: int=512",
+      "input_names": [
+        "blueprint_path",
+        "component_name",
+        "source_system_path",
+        "replacement_system_path",
+        "confirmation_token",
+        "operation",
+        "dry_run",
+        "preserve_override_parameters",
+        "allow_unrealmcp_dependency",
+        "parameter_name_contains",
+        "include_inherited_scs_templates",
+        "require_exactly_one",
+        "require_source_system_match",
+        "max_components",
+        "max_parameters",
+        "include_parameter_values",
+        "include_raw_bytes",
+        "max_raw_bytes",
+        "include_parameter_object_properties",
+        "include_component_object_properties",
+        "max_object_properties",
+        "max_array_elements",
+        "max_property_value_chars"
+      ],
+      "commands": [
+        "dry_run_blueprint_niagara_component_template_asset_swap"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "blueprint_path": {
+            "title": "Blueprint Path",
+            "type": "string"
+          },
+          "component_name": {
+            "title": "Component Name",
+            "type": "string"
+          },
+          "source_system_path": {
+            "title": "Source System Path",
+            "type": "string"
+          },
+          "replacement_system_path": {
+            "title": "Replacement System Path",
+            "type": "string"
+          },
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "operation": {
+            "default": "durable_bp_component_template_asset_swap",
+            "title": "Operation",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "preserve_override_parameters": {
+            "default": true,
+            "title": "Preserve Override Parameters",
+            "type": "boolean"
+          },
+          "allow_unrealmcp_dependency": {
+            "default": false,
+            "title": "Allow Unrealmcp Dependency",
+            "type": "boolean"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "include_inherited_scs_templates": {
+            "default": true,
+            "title": "Include Inherited Scs Templates",
+            "type": "boolean"
+          },
+          "require_exactly_one": {
+            "default": true,
+            "title": "Require Exactly One",
+            "type": "boolean"
+          },
+          "require_source_system_match": {
+            "default": true,
+            "title": "Require Source System Match",
+            "type": "boolean"
+          },
+          "max_components": {
+            "default": 8,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_parameters": {
+            "default": 256,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "include_parameter_values": {
+            "default": true,
+            "title": "Include Parameter Values",
+            "type": "boolean"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          },
+          "include_parameter_object_properties": {
+            "default": false,
+            "title": "Include Parameter Object Properties",
+            "type": "boolean"
+          },
+          "include_component_object_properties": {
+            "default": false,
+            "title": "Include Component Object Properties",
+            "type": "boolean"
+          },
+          "max_object_properties": {
+            "default": 80,
+            "title": "Max Object Properties",
+            "type": "integer"
+          },
+          "max_array_elements": {
+            "default": 16,
+            "title": "Max Array Elements",
+            "type": "integer"
+          },
+          "max_property_value_chars": {
+            "default": 512,
+            "title": "Max Property Value Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blueprint_path",
+          "component_name",
+          "source_system_path",
+          "replacement_system_path",
+          "confirmation_token"
+        ],
+        "title": "dry_run_blueprint_niagara_component_template_asset_swapArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "dry_run_blueprint_niagara_component_template_asset_swap",
+          "handler": "HandleDryRunBlueprintNiagaraComponentTemplateAssetSwap",
+          "line": 3506,
+          "body_sha256": "619b9252f334f3f654db028b83f5f6f1485a68a3129075671021fb71797f0873",
+          "static_call_references": [
+            "FMath::Clamp",
+            "FPackageName::IsValidLongPackageName",
+            "FPackageName::ObjectPathToPackageName",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetMCPDependencyReferenceError",
+            "FUnrealMCPCommonUtils::IsMCPDependencyReference",
+            "FUnrealMCPEditorCommands::HandleDryRunBlueprintNiagaraComponentTemplateAssetSwap"
+          ],
+          "member_call_names": [
+            "GetActualComponentTemplate",
+            "GetAllNodes",
+            "GetAsset",
+            "GetName",
+            "GetOutermost",
+            "GetOverrideParameters",
+            "GetPathName",
+            "GetRelativeLocation",
+            "GetRelativeRotation",
+            "GetRelativeScale3D",
+            "GetSuperClass",
+            "GetVariableName",
+            "IsComponentTickEnabled",
+            "IsDirty",
+            "IsVisible",
+            "SetArrayField",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "execute_blueprint_niagara_component_template_asset_swap_canary",
+      "python_line": 1746,
+      "python_signature": "ctx: Context, source_blueprint_path: str, target_blueprint_path: str, component_name: str, source_system_path: str, replacement_system_path: str, confirmation_token: str, operation: str='temp_bp_component_template_asset_swap_canary', dry_run: bool=True, preserve_override_parameters: bool=True, allow_unrealmcp_dependency: bool=False, replace_existing_target: bool=False, allow_dirty_source_blueprint: bool=False, compile_blueprint: bool=False, save_blueprint: bool=False, parameter_name_contains: str='', include_inherited_scs_templates: bool=False, require_exactly_one: bool=True, require_source_system_match: bool=True, max_components: int=8, max_parameters: int=256, include_parameter_values: bool=True, include_raw_bytes: bool=False, max_raw_bytes: int=64, include_parameter_object_properties: bool=False, include_component_object_properties: bool=False, max_object_properties: int=80, max_array_elements: int=16, max_property_value_chars: int=512",
+      "input_names": [
+        "source_blueprint_path",
+        "target_blueprint_path",
+        "component_name",
+        "source_system_path",
+        "replacement_system_path",
+        "confirmation_token",
+        "operation",
+        "dry_run",
+        "preserve_override_parameters",
+        "allow_unrealmcp_dependency",
+        "replace_existing_target",
+        "allow_dirty_source_blueprint",
+        "compile_blueprint",
+        "save_blueprint",
+        "parameter_name_contains",
+        "include_inherited_scs_templates",
+        "require_exactly_one",
+        "require_source_system_match",
+        "max_components",
+        "max_parameters",
+        "include_parameter_values",
+        "include_raw_bytes",
+        "max_raw_bytes",
+        "include_parameter_object_properties",
+        "include_component_object_properties",
+        "max_object_properties",
+        "max_array_elements",
+        "max_property_value_chars"
+      ],
+      "commands": [
+        "execute_blueprint_niagara_component_template_asset_swap_canary"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "source_blueprint_path": {
+            "title": "Source Blueprint Path",
+            "type": "string"
+          },
+          "target_blueprint_path": {
+            "title": "Target Blueprint Path",
+            "type": "string"
+          },
+          "component_name": {
+            "title": "Component Name",
+            "type": "string"
+          },
+          "source_system_path": {
+            "title": "Source System Path",
+            "type": "string"
+          },
+          "replacement_system_path": {
+            "title": "Replacement System Path",
+            "type": "string"
+          },
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "operation": {
+            "default": "temp_bp_component_template_asset_swap_canary",
+            "title": "Operation",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "preserve_override_parameters": {
+            "default": true,
+            "title": "Preserve Override Parameters",
+            "type": "boolean"
+          },
+          "allow_unrealmcp_dependency": {
+            "default": false,
+            "title": "Allow Unrealmcp Dependency",
+            "type": "boolean"
+          },
+          "replace_existing_target": {
+            "default": false,
+            "title": "Replace Existing Target",
+            "type": "boolean"
+          },
+          "allow_dirty_source_blueprint": {
+            "default": false,
+            "title": "Allow Dirty Source Blueprint",
+            "type": "boolean"
+          },
+          "compile_blueprint": {
+            "default": false,
+            "title": "Compile Blueprint",
+            "type": "boolean"
+          },
+          "save_blueprint": {
+            "default": false,
+            "title": "Save Blueprint",
+            "type": "boolean"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "include_inherited_scs_templates": {
+            "default": false,
+            "title": "Include Inherited Scs Templates",
+            "type": "boolean"
+          },
+          "require_exactly_one": {
+            "default": true,
+            "title": "Require Exactly One",
+            "type": "boolean"
+          },
+          "require_source_system_match": {
+            "default": true,
+            "title": "Require Source System Match",
+            "type": "boolean"
+          },
+          "max_components": {
+            "default": 8,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_parameters": {
+            "default": 256,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "include_parameter_values": {
+            "default": true,
+            "title": "Include Parameter Values",
+            "type": "boolean"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          },
+          "include_parameter_object_properties": {
+            "default": false,
+            "title": "Include Parameter Object Properties",
+            "type": "boolean"
+          },
+          "include_component_object_properties": {
+            "default": false,
+            "title": "Include Component Object Properties",
+            "type": "boolean"
+          },
+          "max_object_properties": {
+            "default": 80,
+            "title": "Max Object Properties",
+            "type": "integer"
+          },
+          "max_array_elements": {
+            "default": 16,
+            "title": "Max Array Elements",
+            "type": "integer"
+          },
+          "max_property_value_chars": {
+            "default": 512,
+            "title": "Max Property Value Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source_blueprint_path",
+          "target_blueprint_path",
+          "component_name",
+          "source_system_path",
+          "replacement_system_path",
+          "confirmation_token"
+        ],
+        "title": "execute_blueprint_niagara_component_template_asset_swap_canaryArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "execute_blueprint_niagara_component_template_asset_swap_canary",
+          "handler": "HandleExecuteBlueprintNiagaraComponentTemplateAssetSwapCanary",
+          "line": 3879,
+          "body_sha256": "7157592f2e832baa39b4a60e6e0a5e0c1a5cd313401262a76001252a5eecd724",
+          "static_call_references": [
+            "FBlueprintEditorUtils::MarkBlueprintAsModified",
+            "FKismetEditorUtilities::CompileBlueprint",
+            "FMath::Clamp",
+            "FPackageName::GetLongPackagePath",
+            "FPackageName::IsValidLongPackageName",
+            "FPackageName::ObjectPathToPackageName",
+            "FString::FromInt",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetMCPDependencyReferenceError",
+            "FUnrealMCPCommonUtils::IsMCPDependencyReference",
+            "FUnrealMCPEditorCommands::HandleExecuteBlueprintNiagaraComponentTemplateAssetSwapCanary",
+            "UEditorAssetLibrary::DeleteAsset",
+            "UEditorAssetLibrary::DoesAssetExist",
+            "UEditorAssetLibrary::DuplicateAsset",
+            "UEditorAssetLibrary::MakeDirectory",
+            "UEditorAssetLibrary::SaveLoadedAsset"
+          ],
+          "member_call_names": [
+            "AsObject",
+            "GetActualComponentTemplate",
+            "GetAllNodes",
+            "GetAsset",
+            "GetName",
+            "GetNameStringByValue",
+            "GetOutermost",
+            "GetOverrideParameters",
+            "GetPathName",
+            "GetRelativeLocation",
+            "GetRelativeRotation",
+            "GetRelativeScale3D",
+            "GetVariableName",
+            "IsComponentTickEnabled",
+            "IsDirty",
+            "IsVisible",
+            "Modify",
+            "SetArrayField",
+            "SetAsset",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    },
+    {
+      "name": "execute_blueprint_niagara_component_template_asset_swap_durable",
+      "python_line": 1866,
+      "python_signature": "ctx: Context, blueprint_path: str, component_name: str, source_system_path: str, replacement_system_path: str, confirmation_token: str, operation: str='durable_bp_component_template_asset_swap', dry_run: bool=True, preserve_override_parameters: bool=True, allow_unrealmcp_dependency: bool=False, allow_dirty_blueprint: bool=False, compile_blueprint: bool=False, save_blueprint: bool=False, parameter_name_contains: str='', include_inherited_scs_templates: bool=False, require_exactly_one: bool=True, require_source_system_match: bool=True, max_components: int=8, max_parameters: int=256, include_parameter_values: bool=True, include_raw_bytes: bool=False, max_raw_bytes: int=64, include_parameter_object_properties: bool=False, include_component_object_properties: bool=False, max_object_properties: int=80, max_array_elements: int=16, max_property_value_chars: int=512",
+      "input_names": [
+        "blueprint_path",
+        "component_name",
+        "source_system_path",
+        "replacement_system_path",
+        "confirmation_token",
+        "operation",
+        "dry_run",
+        "preserve_override_parameters",
+        "allow_unrealmcp_dependency",
+        "allow_dirty_blueprint",
+        "compile_blueprint",
+        "save_blueprint",
+        "parameter_name_contains",
+        "include_inherited_scs_templates",
+        "require_exactly_one",
+        "require_source_system_match",
+        "max_components",
+        "max_parameters",
+        "include_parameter_values",
+        "include_raw_bytes",
+        "max_raw_bytes",
+        "include_parameter_object_properties",
+        "include_component_object_properties",
+        "max_object_properties",
+        "max_array_elements",
+        "max_property_value_chars"
+      ],
+      "commands": [
+        "execute_blueprint_niagara_component_template_asset_swap_durable"
+      ],
+      "runtime_registered": true,
+      "runtime_schema": {
+        "properties": {
+          "blueprint_path": {
+            "title": "Blueprint Path",
+            "type": "string"
+          },
+          "component_name": {
+            "title": "Component Name",
+            "type": "string"
+          },
+          "source_system_path": {
+            "title": "Source System Path",
+            "type": "string"
+          },
+          "replacement_system_path": {
+            "title": "Replacement System Path",
+            "type": "string"
+          },
+          "confirmation_token": {
+            "title": "Confirmation Token",
+            "type": "string"
+          },
+          "operation": {
+            "default": "durable_bp_component_template_asset_swap",
+            "title": "Operation",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": true,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "preserve_override_parameters": {
+            "default": true,
+            "title": "Preserve Override Parameters",
+            "type": "boolean"
+          },
+          "allow_unrealmcp_dependency": {
+            "default": false,
+            "title": "Allow Unrealmcp Dependency",
+            "type": "boolean"
+          },
+          "allow_dirty_blueprint": {
+            "default": false,
+            "title": "Allow Dirty Blueprint",
+            "type": "boolean"
+          },
+          "compile_blueprint": {
+            "default": false,
+            "title": "Compile Blueprint",
+            "type": "boolean"
+          },
+          "save_blueprint": {
+            "default": false,
+            "title": "Save Blueprint",
+            "type": "boolean"
+          },
+          "parameter_name_contains": {
+            "default": "",
+            "title": "Parameter Name Contains",
+            "type": "string"
+          },
+          "include_inherited_scs_templates": {
+            "default": false,
+            "title": "Include Inherited Scs Templates",
+            "type": "boolean"
+          },
+          "require_exactly_one": {
+            "default": true,
+            "title": "Require Exactly One",
+            "type": "boolean"
+          },
+          "require_source_system_match": {
+            "default": true,
+            "title": "Require Source System Match",
+            "type": "boolean"
+          },
+          "max_components": {
+            "default": 8,
+            "title": "Max Components",
+            "type": "integer"
+          },
+          "max_parameters": {
+            "default": 256,
+            "title": "Max Parameters",
+            "type": "integer"
+          },
+          "include_parameter_values": {
+            "default": true,
+            "title": "Include Parameter Values",
+            "type": "boolean"
+          },
+          "include_raw_bytes": {
+            "default": false,
+            "title": "Include Raw Bytes",
+            "type": "boolean"
+          },
+          "max_raw_bytes": {
+            "default": 64,
+            "title": "Max Raw Bytes",
+            "type": "integer"
+          },
+          "include_parameter_object_properties": {
+            "default": false,
+            "title": "Include Parameter Object Properties",
+            "type": "boolean"
+          },
+          "include_component_object_properties": {
+            "default": false,
+            "title": "Include Component Object Properties",
+            "type": "boolean"
+          },
+          "max_object_properties": {
+            "default": 80,
+            "title": "Max Object Properties",
+            "type": "integer"
+          },
+          "max_array_elements": {
+            "default": 16,
+            "title": "Max Array Elements",
+            "type": "integer"
+          },
+          "max_property_value_chars": {
+            "default": 512,
+            "title": "Max Property Value Chars",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "blueprint_path",
+          "component_name",
+          "source_system_path",
+          "replacement_system_path",
+          "confirmation_token"
+        ],
+        "title": "execute_blueprint_niagara_component_template_asset_swap_durableArguments",
+        "type": "object"
+      },
+      "native_routes": [
+        {
+          "command": "execute_blueprint_niagara_component_template_asset_swap_durable",
+          "handler": "HandleExecuteBlueprintNiagaraComponentTemplateAssetSwapDurable",
+          "line": 4420,
+          "body_sha256": "98e0a7d98cabeee0d058a61443e77f848879942f8c8c1aecb7bbb11b985b9554",
+          "static_call_references": [
+            "FBlueprintEditorUtils::MarkBlueprintAsModified",
+            "FKismetEditorUtilities::CompileBlueprint",
+            "FMath::Clamp",
+            "FPackageName::IsValidLongPackageName",
+            "FPackageName::ObjectPathToPackageName",
+            "FString::FromInt",
+            "FString::Printf",
+            "FUnrealMCPCommonUtils::CreateErrorResponse",
+            "FUnrealMCPCommonUtils::GetMCPDependencyReferenceError",
+            "FUnrealMCPCommonUtils::IsMCPDependencyReference",
+            "FUnrealMCPEditorCommands::HandleExecuteBlueprintNiagaraComponentTemplateAssetSwapDurable",
+            "UEditorAssetLibrary::SaveLoadedAsset"
+          ],
+          "member_call_names": [
+            "AsObject",
+            "GetActualComponentTemplate",
+            "GetAllNodes",
+            "GetAsset",
+            "GetBoolField",
+            "GetName",
+            "GetNameStringByValue",
+            "GetOutermost",
+            "GetOverrideParameters",
+            "GetPathName",
+            "GetRelativeLocation",
+            "GetRelativeRotation",
+            "GetRelativeScale3D",
+            "GetVariableName",
+            "IsComponentTickEnabled",
+            "IsDirty",
+            "IsVisible",
+            "Modify",
+            "SetArrayField",
+            "SetAsset",
+            "SetBoolField",
+            "SetNumberField",
+            "SetObjectField",
+            "SetStringField",
+            "TryGetStringField"
+          ]
+        }
+      ],
+      "status": "incomplete_later_domain_review",
+      "ue58_public_api_parity": "not_established_by_this_inventory"
+    }
+  ]
+}

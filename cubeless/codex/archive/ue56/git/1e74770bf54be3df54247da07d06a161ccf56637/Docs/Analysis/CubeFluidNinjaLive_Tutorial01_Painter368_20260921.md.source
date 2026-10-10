@@ -1,0 +1,267 @@
+# Tutorial01 NinjaLive1: 368 격자와 Painter 출력 사전 분석
+
+상태: 원본 요구사항 분석. 에셋 저작/배치/런타임 검증 미완료.
+전체 목표(남은 Fluid와 Tutorial01 통합 확인)의 다섯 번째 사례다.
+
+## 단순 해상도 변경으로는 부족한 이유
+
+원본 설정 스냅샷에서 Fluid 368×368, extents (5,5,1), 부모 없음,
+rotation0/scale1이다. 주 출력은 MI_PaintDensityBuffer이다.
+현재 세 사례의 붉은 Fluid density 출력과 달리 Painter 버퍼를 표시한다.
+EnableOutputPainterElevation=True지만 추가 height reader는 없다.
+출력 활성화와 실제 높이 생성은 별도 조건이며, 기존 no-height alpha 계약을
+따로 적용해야 한다. 해당 material의 원본 분석 캡처는
+`reference/materials/OutputMaterials__Surface_Various__BufferVisualize__MI_PaintDensityBuffer/analysis.json`이다.
+Study Surface 폴더에는 현재 DensityBuffer/Red/Translucent만 있어 출력 구현이 필요하다.
+
+## 입력과 생명주기 차이
+
+첫 Fluid 사례 대비 입력 잔류는 0.2→0.5, 브러시 크기1→1.2,
+hardness0.5→0, density noise0.5→0.2다. bitmap 입력 texture는 None이다.
+기존 로고 texture를 그대로 남기면 잘못된 입력이 된다. None일 때 원본의
+실제 texture/RT fallback과 gating을 확인한 뒤 자체 구현해야 한다.
+
+DensityAccumulation=0.8, SimSpeed=1, DirectVelocityY=0,
+PressureEdgeMasking=False, InvertFieldAndPointDensity=0이다.
+원본 host activation extent는 (60,80,100), interaction extent는 (5,5,1).
+PauseSimWhenNotVisible=False이며 LOD near/far는 5000/10000이다.
+기존 host의 visibility pause 정책을 그대로 재사용해서는 안 된다.
+
+## 구현 분리
+
+1. Fluid/Painter/pressure grid와 RT의 실제 해상도 연결을 재구성한다.
+2. 로고 입력 제거는 원본의 null 입력 경로를 확인한 후 반영한다.
+3. Painter 출력 RT와 독립 출력 material을 작성하고 올바른 채널을 연결한다.
+4. 원본 스칼라 설정 전체와 host bounds/visibility/LOD를 적용한다.
+5. 저장본 입력·출력·재진입·의존성을 검증한다. 시각 검수는 사용자에게 남긴다.
+
+기존 `cube_fluid_ninja_t01_first_fluid_recipe`, `cube_fluid_ninja_fluid_surface_recipe`,
+`cube_fluid_ninja_fluid_motion_recipe`는 첫 256-square 사례에 명시적으로 제한되어 있다.
+이 guard를 무조건 제거하거나 해상도 숫자만 교체하면 검증 범위를 벗어난다.
+기존 공통 수학/스칼라 번역은 활용하되 신규 분기의 원본 계약을 먼저 확정한다.
+
+## 원본 출력 분기 확정
+
+저장된 base nodes와 instance의 resolved static switches를 함께 추적했다.
+Emissive 경로는 divergenceUBERALL=False → paintNOTpressureORvelo=True →
+ShowPaintVelocity=False → TextureSample_2의 B(output index3)다.
+이 활성 경로에는 대비·반전 연산이 없다. UV는 FluidSimInWorldSpace=False
+분기를 통해 TextureCoordinate_3으로 연결된다. 재질은 Opaque/Unlit/TwoSided다.
+기존 붉은 Fluid 출력이나 Painter alpha를 대신 연결하면 원본과 다르다.
+원본에는 중복 GUID가 있으므로 추적은 node name/path 기준으로 수행했다.
+`test_cube_fluid_ninja_t01_painter368_output`에 emissive 분기와 재질 설정을
+검사하는 회귀 테스트를 추가했다. 실제 출력 재질 작성/렌더 검증은 아직 남아 있다.
+
+## 임시 재질 작성
+
+`build_cube_fluid_ninja_t01_painter_material.py`로 엔진 MaterialFactoryNew를 사용해
+새 임시 재질을 작성했다. 기존 재질/원본 그래프를 복제하지 않았다.
+UV0(tiling1) → TextureSampleParameter2D(PaintBuffer)의 B → Emissive 구조이며
+Opaque/Unlit/TwoSided 설정이다. DefaultTexture만 정적 참조하고 실제 PainterRT는
+후속 host에서 MID에 연결한다. `t01_painter368_material_v001/report.json` 작성·저장
+PASS 및 기존 Study 해시 불변. `readback.json`에 저장 후 노드 연결을 캡처했다.
+임시 경로 `/Game/_MCP_Temp/CFNLT01Painter368V001/M_CFNL_PaintDensityBuffer`.
+실제 368 solver/RT/host 연결 및 렌더 검증은 아직 하지 않았다.
+
+## 해상도와 null bitmap recipe
+
+기존 Fluid grid 작성기의 256 상수를 명시적인 FLUID_DIMENSIONS로 분리했다.
+기본값은 (256,256)으로 유지하고 양의 정수 X/Y 및 max axis를 검증한다.
+368×366 등 비정방형도 각 축을 보존한다. 이 변경은 host RT 자동 재설정이 아니다.
+원본 texture routing의 validity/setter 경로를 1,024개 조합으로 다시 확인했다.
+Density texture와 RT가 모두 없으면 BlackFallback을 선택한다.
+NinjaLive1에 한정해 이 null-bitmap 분기를 자체 Painter recipe에 추가했다.
+생성 결과는 Painter184×184, owner rotation이고 자체 T_1x1_black_RGBA를 참조한다.
+Fluid368×368과 Painter184×184는 구분해야 한다. 기존 첫 사례 logo 경로는 유지한다.
+
+## 독립 solver 후보 작성 결과
+
+`build_cube_fluid_ninja_t01_painter368_solver.py`가 빈 Niagara 템플릿에서
+NinjaLive1용 자체 recipe를 작성하고 저장했다. 첫 사례와 NinjaLive1만 허용하도록
+recipe guard를 확장했으며, 원본 모듈이나 scratch pad를 복제하지 않았다.
+Fluid368×368, Painter184×184, pressure184×184를 구분한다.
+첫 사례 recipe·surface·motion·shared-position·grid-dimensions 회귀 검사 11개가 통과했다.
+
+증거: `tutorial01/t01_painter368_solver_NinjaLive1_author_v001/report.json`.
+임시 에셋은 `/Game/_MCP_Temp/NiagaraGenerated/CFNLT01Painter368V001/NS_CFNL_NinjaLive1`.
+SHA256: `6b82f6fac83c5cf1c95ce62909aed1426ac49753efc446573b70f845b4c8c219`.
+컴파일 결과 error_count=0, warning_count=0, GPU=NCS_UpToDate,
+outstanding=False다. unknown_count=2도 보고되므로 모든 상태가 명시적으로
+판정됐다고 해석하지 않는다. 이 결과는 작성·컴파일 증거이며 runtime 증거가 아니다.
+
+후속 작업은 NDC 입력 생산자, owner rotation 바인딩 확인, native mesh renderer,
+host의 RT/MID·bounds·visibility·LOD 연결, 저장본 런타임 및 의존성 검증이다.
+기존 output sizing은 PainterGrid.GetNumCells에서 크기를 읽으므로 128 상수를
+치환하는 방식이 아니다. 실제 RT 크기는 host 연결 후 별도로 확인해야 한다.
+현재 runtime_verified=False, data_channel_implemented=False, level_complete=False다.
+
+## 데이터 채널 생산자와 렌더러 연결
+
+후속 NDC 후보는 `t01_painter368_ndc_NinjaLive1_author_v001/report.json`에서
+작성·저장·컴파일 PASS다. 앞 절의 data_channel_implemented=False는 생산자 연결 전
+solver 단독 증거다. 새 후보에는 자체 ChannelPrepare/ChannelRead/ChannelToArrays가
+추가되었고, Study의 독립 NDC_CFNL_Global을 사용한다. 런타임은 아직 미검증이다.
+
+NinjaLive1의 ParticleBrushSize는 10으로 첫 사례의 1과 다르다.
+원본 NinjaLiveCore 캡처에서 Emitter.Painter.ParticleBrushSize가
+WorldToUnitDataCh.DataChScaleMult로 직접 연결됨을 확인했다.
+따라서 User.CFNL_DataChannelScale=10으로 연결한다. Throughput4000,
+UseTrackedSize=True는 유지하며, owner rotation과 공유 System 위치를 사용한다.
+소스 경로·크기 배율·출력 재질에 대한 회귀 테스트 2개 및 공유 위치/해상도 7개가 통과했다.
+
+NDC 후보 SHA256:
+`47f7a45217f0afe88c951e2180c4973a7336d55fc53fb6ca6a90396b64b15f31`.
+이어 자체 후보에 native mesh renderer를 새로 추가했다. 표면 크기는 (5,5,1),
+위치는 System.CFNL_SurfacePosition, 재질은 User.CFNL_SurfaceMaterial로 바인딩한다.
+증거는 `t01_painter368_renderer_author_v001/report.json`이며 오류·경고0,
+GPU NCS_UpToDate, outstanding=False, unknown_count=2다.
+렌더러 후보 경로는
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLT01Painter368RendererV001/NS_CFNL_NinjaLive1`,
+SHA256은 `d7d9197b0490d748c6ab0e055ad2843a0b486d996f30bada1d4a467f85b00aba`다.
+이 단계에서 보호한 source candidate와 원본/Study 레벨의 해시는 불변이다.
+
+다음은 host 연결이다. RT별 368/184 크기와 PaintBuffer MID, activation extent,
+PauseSimWhenNotVisible=False, LOD5000/10000을 함께 적용해야 한다.
+앞선 호스트를 단순 재사용하면 하드코딩된 RT 크기와 visibility 정책이 남을 수 있다.
+저장본 GPU 입력·출력 수치 검증, 의존성 및 전체 promotion gate는 아직 남아 있다.
+
+## 임시 호스트와 첫 실행·재실행 검증
+
+자체 작성한 owner-rotation 호스트 NinjaLive15_1을 기반으로 별도 임시 호스트를
+구성했다. 원본 Blueprint/그래프는 복제하지 않았다. RT 생성·크기 변경의
+128/256 고정 핀 52개를 184/368로 바꾸고 표면 scale 핀1개를 (5,5,1)로 바꿨다.
+기존 그래프 형상, 고정값, 연결 없음 조건을 검사하며 예상 밖 형상은 거부한다.
+53개 핀 모두 저장 후 readback 값과 연결 상태를 확인했다.
+
+소스 설정 번역에는 활성화 half extent (3000,4000,5000), 상호작용 half extent
+(250,250,50), PauseSimWhenNotVisible=False, Painter resolution184,
+Fluid resolution368, 입력 잔류0.5, 브러시 크기1.2 및 독립 PaintDensity 재질이 포함된다.
+`t01_painter368_host_author_v001/report.json`은 작성·컴파일·해시보호 PASS다.
+호스트 경로는 `/Game/_MCP_Temp/CFNLT01Painter368HostV001/BP_CFNL_T01Fluid_NinjaLive1`,
+SHA256은 `4f48c1ebe32307bc145c213c51521421f964521768ba725eb1cc7803772034e9`.
+구성 및 fail-closed 그래프변환 회귀 테스트 2개가 통과했다.
+
+`verify_cube_fluid_ninja_t01_painter368_host.py`로 PIE 내 transient actor에 대해
+start/spawn/read/replay/read_replay/stop/audit 7단계를 수행했고 모두 PASS다.
+보고서는 `t01_painter368_host_runtime_<phase>_v001/report.json`에 있다.
+검증은 실제 RT의 368/184 크기, 중앙 픽셀 유한성, MID PaintBuffer=PainterRT,
+표면크기·상호작용크기, legacy surface 숨김, visibility pause 비활성,
+ReplayCount1→2 및 종료 후 PIE 부재를 확인한다. 모든 단계에서 보호 에셋 해시는 불변이다.
+
+이 검사는 입력이 있는 경우의 수치 정답이나 렌더 결과를 증명하지 않는다.
+특히 proximity interval을 transient actor에서 길게 설정해 직접 Replay를 호출했으므로
+근접 활성화 검증과 구분한다. LOD5000/10000 및 입력 반응 수치·재진입·의존성,
+정식 배치와 전체 promotion gate는 계속 남아 있다. 사용자의 시각 검수도 별도다.
+
+## LOD 비활성 계약과 NDC 입력 상태 검증
+
+원본 `032__LOD__3E22F95749EEF52791640D964E841D48.json`은 106노드/110링크이며
+truncation이 없다. Inputs → reroute → LOD-ReduceSamplingFPS 분기로 진입하고,
+False 실행 핀에는 연결이 없다. NinjaLive1의 해당 값은 False이므로 거리 계산,
+SamplingFPS/TickRateCustom 변경 및 SetComponentTickInterval에 진입하지 않는다.
+이 사례에서 Near5000/Far10000 기반 tick 감소를 추가하면 오히려 원본과 다르다.
+소스 그래프의 진입 경로/분기/False 출구 부재를 회귀 테스트로 확인했다.
+이는 활성 LOD 기능 전체의 구현 완료를 뜻하지 않으며, 활성 사례는 별도 범위다.
+
+NDC 입력 검사 v003은 5상태(일반 입력 → 밀도만 제거 → 복구 → reader 비활성 →
+입력 없음)의 10샘플이 PASS했다. 일반 입력은 count1, density1 및 양의 속도,
+밀도 제거는 count1과 속도를 유지하면서 density 약0.00099945,
+비활성/입력 없음은 count0 및 속도·밀도 허용오차 이내를 확인했다.
+최종 증거는 `t01_painter368_host_runtime_read_input_v003_observation2/report.json`.
+stop/audit v003으로 callback 상태 제거 및 PIE 종료와 보호 해시 불변을 확인했다.
+
+검사 동안 transient actor tick과 일부 noise/feedback/reset/brush 파라미터를
+제어했으므로, 이 결과는 NDC 입력 상태 분리의 증거다. 모든 원본 설정을 유지한
+최종 영상 동등성이나 전체 Fluid 수치 정답으로 확대하지 않는다.
+v002는 32tick에 조기 관측 후 종료하여 미완료이고, v003 첫 관측은 106tick으로
+아직 실행 중이었다. v003은 재시작하지 않고 같은 callback의 완료를 기다린 뒤
+observation2로 판정했다. 중간 read의 assertion은 완료 전 관측이며 시뮬레이션 오류가 아니다.
+근접 활성화·정식 배치·의존성 및 최종 promotion 검증은 남아 있다.
+
+## 근접 활성화와 재진입
+
+runtime v004는 직접 CFNL_Replay를 호출하지 않았다. transient DefaultPawn을
+Activator로 지정하고 원본 ProximityInterval=0.1을 유지했다. 원점의 호스트에 대해
+Pawn Z10000 → Z0 → Z10000 → Z0 → Z10000으로 이동했다.
+첫 진입은 PawnInside=True/active=True/ReplayCount1/StopCount0,
+재진입은 True/True/2/1, 최종 이탈 후 False/False/2/2를 확인했다.
+첫 진입 read와 재진입 read_replay에서 기존 RT 크기·PaintBuffer·표면/영역 검사가 통과했다.
+
+첫 이탈의 observation2에서는 PawnInside=False/StopCount1이지만
+Niagara active=True여서 즉시 판정은 실패했다. 이를 완료로 취급하지 않았다.
+재진입 후 두 번째 이탈에서는 대기 후 observation4로 active=False까지 확인했다.
+비활성 요청과 실제 Niagara 비활성 상태 전이는 구분해야 한다.
+v004의 stop/audit는 callback/PIE 종료와 원본·Study 및 후보 해시 불변을 확인했다.
+증거는 `t01_painter368_host_runtime_<phase>_v004[_observationN]/report.json`이다.
+
+이 검사는 명시적 Activator 경로다. Activator=None의 player-pawn fallback,
+정확한 활성화 경계, 정식 배치 후 검사와 의존성/전체 gate는 아직 별도다.
+
+## Player fallback과 solver 이전 사전검사
+
+runtime v005는 일반 PIE에서 테스트 Pawn을 local player controller가 possess하게 하고,
+호스트 Activator는 None으로 유지했다. 직접 Replay 호출 없이 진입 후
+PawnInside/active=True, ReplayCount1, StopCount0 및 RT/MID 검사가 PASS했다.
+이탈 뒤 대기하여 False/False/1/1을 확인했고 stop/audit도 PASS했다.
+명시적 Activator 검증인 v004와 구분하며, v005 보고서에는 player_fallback=True를 기록한다.
+후보·원본·Study 레벨 해시는 불변이다.
+
+`t01_painter368_integration_plan_v001/report.json`은 solver의 read-only 이전
+사전검사 PASS(all_can_promote=True)다. 금지 원본 root `/Game/FluidNinjaLive`,
+MCP script/plugin prefix, 임시 의존성 금지 조건을 적용했다.
+목표는 `/Game/Study/CubeFluidNinjaLive/Niagara/Tutorial01/NS_CFNL_NinjaLive1`.
+manifest는 `Saved/MCP/NiagaraPromotionManifests/CFNL_Painter368_20260921_v001.json`.
+이는 solver 단독 사전검사이며 아직 실제 이전·레벨 배치를 실행한 결과가 아니다.
+호스트의 임시 solver/material 참조는 Study 이전 시 각각 교체해야 하며,
+그 뒤 전체 dependency closure 및 plugin-disabled 검사가 필요하다.
+
+## Study 저장과 배치
+
+`integrate_cube_fluid_ninja_t01_painter368.py`의 solver/material/host/place 4단계를
+수행했다. 기존 에셋을 덮어쓰지 않고 자체 임시 후보에서 Study 에셋을 저장했다.
+호스트의 SystemAsset/SurfaceMaterial을 Study 대상으로 교체하여 컴파일했다.
+원본 좌표 (-7687.309337122035,-13610.02580720218,-512.0278320312245),
+회전0, scale1, parent 없음, label NinjaLive1, CFNL_Source_NinjaLive1 태그로 배치했다.
+기존 모든 액터의 class/label/transform/parent는 불변임을 저장 전에 확인했다.
+각 단계 보고서는 `t01_painter368_integration_<phase>_v001/report.json`이다.
+
+저장본 SHA256:
+
+- Solver `26bc4e116c92ad7810ebf8c509d81dea9996b3213dc7792dd3d3845faeb2ae56`
+- Material `e4a9082904565a85f6b21b9f084bded56172ed5e4786f46d9a1c0a2cf2679ae6`
+- Host `13eb331f0d7cbad6be03520d37b0af5893e5f7b5f695da1be6b5d96444734307`
+- Study map `6d2cd22705ae6d9be734c118672ed9070ce12d409ff985c3a31123abf477f54a`
+
+원본 맵과 기존 Study 에셋 해시는 불변이다. Study 맵만 새 액터 추가로 변경됐다.
+`t01_painter368_dependencies_v001/report.json`의 재귀 AssetRegistry 검사에서
+호스트/solver/맵의 project package97개가 모두 Study 내부였고 외부46개는
+Engine/Script/Niagara 경로였다. 원본·임시·MCP 의존성은 발견되지 않았다.
+plugin-disabled 로드와 저장본 런타임/경계 검증 및 전체 promotion gate는 아직 남아 있다.
+따라서 이번 저장은 study_iteration=True, submit_ready=False다.
+
+## 저장본 로드·실행 검증
+
+`Saved/MCP/AssetReviews/CFNL_Painter368_NoMCP_20260921_v001/asset_plugin_independence_report.json`
+에서 host/solver/material/map 4개 static scan 및 별도 MCP-disabled 프로세스 로드가 PASS했다.
+각 클래스 Blueprint/NiagaraSystem/Material/World가 일치했다. 이는 cook/package나
+GPU 실행의 증거가 아니며, 기존 에디터를 종료하거나 변경하지 않았다.
+
+runtime v006은 placed=True/player_fallback=True로 배치된 NinjaLive1을 사용했다.
+Activator=None, parent 없음, source tag를 확인했고 원본 위치의 액터에 플레이어가
+접근하여 자동 활성화됐다. RT 크기·PaintBuffer·표면/영역 검사가 PASS했다.
+이탈 후 active=False, ReplayCount1/StopCount1 확인 및 stop/audit PASS.
+원본/Study 맵과 저장 host/solver 해시는 모든 단계에서 불변이었다.
+정확한 활성화 경계 및 전체 후보의 promotion gate는 아직 남아 있다.
+
+## 다음 사례 NinjaLive2의 추가 학습 범위
+
+원본 profile 비교상 NinjaLive2도 Fluid368/Painter184, extents(5,5,1), parent 없음이다.
+하지만 단순한 출력색 변경이 아니다. Primary는 MI_DensityBuffer_Red이고,
+Secondary는 MI_SVOL_PointLit_Blue1_Demo(VolumeTest566 태그), Tertiary는
+MI_Water_OPAQUE_Minimal_Demo(MeshTest703 태그), Niagara 외부 구동 대상은
+ParticleTest25 태그다. AutoHideVMeshIfExternalVMeshUsed=False,
+EnableOutputPainterElevation=False이며 LOD-ReduceSamplingFPS=True다.
+따라서 NinjaLive1의 비활성 LOD 결론은 재사용할 수 없다.
+ActivationVolumeSize는 (50,70,100), TraceMeshInactiveBehaviour는 NewEnumerator2로 다르다.
+다음 구현은 활성 LOD와 태그별 외부 출력/구동 연결까지 포함해야 하며,
+중앙 Fluid solver만 구현하고 이 사례를 완료로 처리해서는 안 된다.

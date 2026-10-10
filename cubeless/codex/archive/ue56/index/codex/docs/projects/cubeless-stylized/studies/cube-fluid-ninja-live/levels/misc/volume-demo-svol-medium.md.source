@@ -1,0 +1,59 @@
+# 레벨 카드: `VolumeDemo_SVOL_Medium`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_SVOL_Medium` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_SVOL_Medium` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `39` |
+| Direct external | `8` |
+
+## 정적 의미
+
+- **Observed:** 3 wrapper hosts와 torch-character embedded host 1개가 외부 `SmokeVolume_C` actors 3개를 지원한다. host internal volume renderer는 모두 off다.
+- **Inferred:** 1024² solver output을 별도 smoke-volume actor에 전달해 unlit/point-lit noisy SVOL을 비교하는 medium fixture다.
+- **Unknown:** host-to-SmokeVolume data binding, slice orientation, torch/light blend와 runtime cost.
+- **Target fixture:** `TF_SVOL_Medium` 제안.
+
+## Actor / Component
+
+- manifest=`54 actors / 124 components / 6 pages`.
+- actor histogram: `TextRenderActor=23; StaticMeshActor=12; MovingBall1_C=4; NinjaLive_C=3; SmokeVolume_C=3; AtmosphericFog=1; Brush=1; DirectionalLight=1; PawnAndCameraUtility_C=1; PostProcessVolume=1; SkyLight=1; ThirdPersonCharacter_C=1; ThirdPersonCharacter_NinjaAsComponent_Torch_C=1; VolumeDemo_SVOL_Medium_C=1`.
+- component histogram: `BillboardComponent=25; TextRenderComponent=23; StaticMeshComponent=21; BoxComponent=9; SceneComponent=8; MaterialBillboardComponent=7; ArrowComponent=4; NinjaLiveComponent_C=4; SmokeVolumeComponent_C=3; BrushComponent=2; CameraComponent=2; CameraProxyMeshComponent=2; CapsuleComponent=2; CharacterMovementComponent=2; DrawFrustumComponent=2; SkeletalMeshComponent=2; SpringArmComponent=2; AtmosphericFogComponent=1; DirectionalLightComponent=1; PointLightComponent=1; SkyLightComponent=1`.
+- standalone Niagara/sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`10 nodes / 7 links / 0 variables / 0 errors`; active pawn이 torch-bearing class일 때 main light intensity를 낮춘다.
+- hosts=`1024²×3 + 368²×1`; reader=`FFFTT×4`; PVD=`FTT×4`; internal FVOL/HVOL/SVOL/SimplePainter off. core는 전부 `/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`.
+- 3 external `SmokeVolume_C`와 embedded torch host의 update/lighting 순서는 runtime `pending`.
+
+## Niagara
+
+- 비-core standalone system은 없다. output 책임은 four hosts와 three `SmokeVolumeComponent_C`의 property/material contract에 있다.
+
+## Material / Art
+
+- material refs=`19`, art refs=`6`; selected families=`extended SVOL unlit noisy exp1/exp2`, `point-lit noisy exp1`, embedded torch surface `MI_Torch4`.
+- torch/skeletal/static mesh와 texture만 조건부 localization 후보이며 SVOL/material/Blueprint logic은 독립 작성한다.
+
+## Clean-room 구현 순서
+
+1. 1024² host 하나와 clean-room SmokeVolume component/actor shell을 만든다.
+2. unlit exp1/exp2와 point-lit material을 deterministic density input으로 검증한다.
+3. 3 wrappers + embedded torch host를 구성하고 torch-dependent light BP를 새로 작성한다.
+4. host-output binding, slice orientation, no-source/no-MCP, runtime/visual/performance parity를 측정한다.
+
+## Evidence / Parity / Exception
+
+- revision=`88e7a2efef6be45c4566dd7911f02415`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; art만 조건부 localization 후보다.

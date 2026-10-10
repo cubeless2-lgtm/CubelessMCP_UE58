@@ -1,0 +1,201 @@
+# SetParams texture routing — 2026-09-05
+
+## 구현 결과와 범위
+
+`/Game/Study/CubeFluidNinjaLive/Blueprints/Core/Policies/BFL_CFNL_TextureRouting`을
+native BlueprintFunctionLibrary에서 새로 저작했다. `ResolveTextureInputs` 함수는
+네 입력군의 texture 선택과 외부 height의 write 여부를 계산한다.
+21-node/42-link, compile error/warning 0/0, 저장 후 exact graph/type 검사,
+compiled UFunction 1,024-case 및 target dependency audit를 통과했다.
+
+이 자산은 **선택 결과를 반환하는 내부 resolver**다. 아직 canonical Component에서
+호출하거나 Niagara setter를 실행하지 않는다. 전체 SetParams의 InitialExecution,
+RT/MID lifecycle, stateful cache와 host 연결이 끝났다는 뜻이 아니다.
+사용자 시각 검수를 기다리느라 이 작업을 중단한 것이 아니며, 다음 기술 구현이 남아 있다.
+
+## 원본에서 확인한 우선순위
+
+원본 main SetParams의 중복 setter를 이름별 한 건으로 합치지 않고, 각각의
+`StandardMacros.IsValid` exec 출구를 따라가서 실제 선택 경로를 확인했다.
+
+| 대상 User parameter | 1순위 | 2순위 | 둘 다 없을 때 |
+| --- | --- | --- | --- |
+| VelocityDensityInputTexture | 입력 Texture | 입력 RenderTarget | 검정 RGBA fallback |
+| VelocityOnlyInputTexture | 입력 Texture | 입력 RenderTarget | VelocityNull RGBA fallback |
+| CollisionMaskTexture | 입력 Texture | 없음 | 흰색 RGBA fallback |
+| ExternalHeightData | 입력 RenderTarget | 입력 Texture | setter 호출하지 않음 |
+
+외부 height는 추가로 다음 조건을 모두 만족해야 쓴다.
+
+`EnableHeightField AND NOT UseRVTAsHeightSource AND UseExternalHeightData AND validHeightInput`
+
+원본 RT validity macro에서 upstream을 거슬러 올라간 선형 branch 출구는
+`UseExternalHeightData.then`, `UseRVTAsHeightSource.else`, `EnableHeightField.then`이다.
+이 세 조건은 전체 ancestor 목록을 임의로 AND해서 추정한 것이 아니라 해당 branch
+chain의 실제 exec link를 별도 검사한 결과다. broader initial-execution 경계는 별도다.
+
+중요한 차이: 외부 height 입력이 없거나 비활성 조건이면 null texture로 덮어쓰는 것이
+아니라 **쓰기를 건너뛴다**. 이에 따라 resolver는 `HeightInput`과 `WriteHeight`를 분리했다.
+HeightInput이 유효해도 WriteHeight=false일 수 있다. 향후 caller는 WriteHeight가 false일
+때 기존 Niagara parameter를 유지해야 한다. 이번 테스트가 그 caller의 state 유지까지
+검증한 것은 아니다.
+
+## 새 graph 구성
+
+입력은 Texture 계열 10개와 bool flag 3개다. Texture input은 native
+`/Script/Engine.Texture` 타입이므로 Texture2D와 TextureRenderTarget2D를 둘 다 받는다.
+출력은 DensityInput, VelocityInput, CollisionInput, HeightInput과 bool WriteHeight다.
+
+- native IsValid 7개로 각 입력의 UObject 유효성을 확인한다.
+- typed Select 7개로 우선순위와 fallback을 선택한다.
+- bool OR/NOT/AND 5개로 height write 조건을 계산한다.
+- function entry/result 2개를 포함하여 21개 노드, 연결 42개다.
+
+source graph, node GUID, package/template을 복제하지 않았다.
+`Python/scripts/analysis/build_cube_fluid_ninja_texture_routing.py`의 recipe는 위 선택
+책임에 따라 손으로 새로 작성했으며 source AST에서 graph를 자동 변환하지 않는다.
+source topology replay는 비교 전용이고 Unreal authoring payload로 전달되지 않는다.
+
+fallback은 caller가 공급하므로 library 자체에 아트 package 참조도 없다. 사용할 독립
+지역화본은 이미 `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/`에 존재한다.
+
+- `T_1x1_black_RGBA`
+- `T_1x1_VelocityNull_RGBA`
+- `T_1x1_white_RGBA`
+
+이 세 자산의 역할은 서로 바꿔 쓸 수 없다. fallback art를 연결하고 activation/write
+조건을 적용하는 것은 다음 consumer 통합 단계의 책임이다.
+
+## 기술 검증 증거
+
+동결된 Component/Core source bytes 및 SetParams graph SHA는 앞선
+`CubeFluidNinjaLive_SetParams_SolverPolicy.md`와 동일하며 저작 전후 실제 파일을
+다시 읽어 검사했다. 원본 UObject는 authoring/runtime probe에 load하지 않았다.
+
+1. source의 local IsValid→setter chain과 수작업 resolver를 7개 input presence bit ×
+   3개 flag bit = 1,024조합에서 비교했다.
+2. UE5.6.1에서 transient Texture2D/TextureRenderTarget2D 10개를 생성해 실제
+   compiled Blueprint UFunction에 넣고 1,024조합의 object identity와 WriteHeight를 비교했다.
+3. compile error/warning 0/0, save 성공, 저장 후 exact node/link/type 검사 PASS.
+4. Policies folder audit: forbidden dependency 0, redirector 0, dirty package 0.
+5. 새 단위 테스트 7개와 기존 SetParams 테스트 12개, Python compile PASS.
+
+pending-kill 객체를 의도적으로 생성·파괴하는 테스트는 하지 않았다. native IsValid를
+사용하지만 이번 runtime fixture가 직접 다룬 것은 유효 객체와 null 입력이다.
+cold/plugin-disabled/cook/package는 다음 주요 통합 체크포인트 대상이다. 이번 실행을
+그 검증의 통과로 표시하지 않는다. 시각 판정은 사용자 담당이다.
+공유 도구 코드는 변경하지 않았다. 이번 반복에서는 direct 19-case suite와 dispatcher
+`--profile schema` 2/2를 실행하여 통과했다. full suite는 재실행하지 않았으며 이전 full의
+공유 route 노출 불일치가 해결됐다고 주장하지 않는다.
+
+| 항목 | 값 |
+| --- | --- |
+| contract SHA-256 | `10e72e16367178044e9311446beb417b5050236100160a7eb9f74ca0e10e7068` |
+| asset bytes | 65268 |
+| asset SHA-256 | `e4a8244260ee056c895329951703cee3f5b2c4df24d417c2c9bd9b7bf93a9d5b` |
+| 성공 report | `target/blueprints/NinjaLiveComponent/SetParams/20260905_texture_routing_resume_v001.json` |
+| report bytes / SHA-256 | 581808 / `810be1323c146af5c690e0316752d1b7ecca9937b0a5c9c81defcbf992838135` |
+
+report 경로 기준은 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy`다.
+이미 저장됐으므로 builder의 fresh 실행 또는 unsaved resume를 반복하지 않는다.
+
+## 중간 실패와 복구
+
+v001은 typed Select pin을 true/false로 예상했으나 native readback은 Boolean Index와
+`Option 0/Option 1`을 반환하여 연결 단계에서 중단했다. 21개 노드와 9개 연결만 생성됐고
+disk asset은 없었으며 dirty package는 정확히 이 target 하나였다. 자동 재시도하지 않았다.
+
+read-only inspection으로 상태를 확인한 뒤 false→Option 0, true→Option 1로 adapter를
+수정했다. unsaved resume는 정확한 target/dirty 범위, node class/function/position,
+function signature, null fallback, 기존 연결이 계획의 부분집합인지 검사한다.
+기존 9개 연결은 유지하고 나머지 33개만 연결한 후 compile/runtime/save를 수행했다.
+임의의 잘못된 연결을 교체하거나 source package를 수정하지 않았다.
+
+에디터는 작업 시작 시 종료되어 있었으므로 UE5.6.1/port55561로 새로 실행했다
+(관찰 PID117192). 이는 새 자산 저장 **전** 실행이며 이 자산의 cold-load proof가 아니다.
+
+## 다음 통합의 기술 검증 공백
+
+### 최신: 실제 inactive Niagara store 7/7 PASS
+
+이후 새 temp fixture V002에서 Texture DI 전용 authoring 경로로 선언 문제를 해결했다.
+`create_empty_niagara_emitter`로 빈 emitter를 만들고, 이를 새 빈 system에 붙였다.
+새 blank Scratch Pad의 Module Texture2D 입력 네 개를 만들고
+`set_niagara_texture2d_module_input`으로 User UTexture 네 개를 선언했다.
+원본 Niagara graph/module/scratch 복사는 없으며, 붙인 emitter도 이 검증에서 새로
+생성한 빈 자산이다. 데이터 입력은 저장소 검증용이며 particle 소비/GPU 실행 증거가 아니다.
+
+검증 대상 library는 수정하지 않았다(SHA `646fe63cd503ca7385150a73e1c0807c5f908a5254b6987b4650c2cd28678d81`).
+별도 Actor BP의 auto-activate=false Niagara SCS template에 시스템을 지정하고 실제
+`ApplyTextureInputs` UFunction 호출 후 native inspector로 네 object_path를 읽었다.
+
+| 순서 | 실제 사례 | 결과 |
+| --- | --- | --- |
+| 1 | Texture와 RT 모두 존재: density/velocity는 Texture, height는 RT | PASS |
+| 2 | height disabled: 앞의 height RT 유지, 나머지 fallback 갱신 | PASS |
+| 3 | height RT 없음: height Texture 선택, density/velocity RT 선택 | PASS |
+| 4 | RVT 켜짐: 이전 height Texture 유지 | PASS |
+| 5 | height source 없음: 이전 height Texture 유지 | PASS |
+| 6 | external height 꺼짐: 이전 height 유지 | PASS |
+| 7 | Receiver None: 저장소 네 값 모두 유지 | PASS |
+
+전 사례 total/returned count 4, no truncation, unique name, native UTexture type,
+exact object_path를 추가 decoder로 재검사했다. decoder 6개 단위 테스트 PASS.
+새 검증 스크립트 `Python/scripts/analysis/verify_cube_fluid_ninja_texture_binding.py`.
+성공 증거 `20260905_texture_binding_runtime_v003.json` (상위 SetParams 증거 폴더).
+v001은 기존 dirty package 때문에 mutation 전 거부했다. v002는 생성된 module 이름의
+`_0` 접미사 때문에 선언 전 거부했다. 실제 stack GUID/empty User store/dirty 범위를
+확인한 후 GUID 선택자로 이어서 수행했으며 자동 재시도하지 않았다.
+
+새 NS/BP 저장 완료. 기존 실패 fixture의
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLTextureBinding/NS_CFNL_TextureBindingProbe`
+dirty 상태는 건드리지 않고 보존했다. 마지막 dirty readback도 이 하나뿐이고 dirty map은 0.
+따라서 전역 dirty 0이라고 보고하지 않는다. 원본 hash 재검사 PASS, C++ 수정 없음.
+이번 검증은 inactive SCS store만 닫는다. active GPU deferred write, shader 소비,
+전체 host lifecycle, cold/plugin-disabled/cook 및 59-level acceptance는 여전히 pending.
+
+### 2026-09-05 후속 체크포인트: ApplyTextureInputs (WIP)
+
+같은 라이브러리에 native NiagaraComponent.SetVariableTexture 4개를 사용하는
+`ApplyTextureInputs`를 새 저작했다. 입력 Receiver 유효성 확인 → 기존 resolver →
+density/velocity/collision 순서로 쓰기 → WriteHeight가 참일 때만 height 쓰기다.
+Height 조건이 거짓이면 기존 값을 지우지 않는다. 10 nodes / 35 links이며
+기존 ResolveTextureInputs 그래프 canonical SHA는 변경되지 않았다.
+
+- compile error 0, 저장 및 Policies root forbidden dependency audit PASS.
+- 최신 asset 102036 bytes / SHA `646fe63cd503ca7385150a73e1c0807c5f908a5254b6987b4650c2cd28678d81`.
+- 증거: `target/blueprints/NinjaLiveComponent/SetParams/20260905_binding_checkpoint_v001.json`.
+- 실제 parameter store 검증은 **미통과**. 새 함수는 아직 host에 연결하지 않은 WIP다.
+- source hash 재검사 PASS. 프로젝트 C++ 및 원본 수정 없음.
+
+void 함수 생성 시 entry→return 기본 실행 연결이 생겼다. 최초 연결은 schema가
+교체를 요구해 거부했다. 실패 당시 전체 그래프와 resolver SHA가 동일함을 확인한
+후 이 기본 연결 하나에만 replacement를 허용했다. 임의 연결 교체는 하지 않았다.
+
+기존 `inspect_blueprint_niagara_component_template`로 SCS 저장소를 읽을 수 있었다.
+그러나 system 없는 fixture는 setter 호출 후에도 0 parameters였다. UE5.6 native
+`FNiagaraParameterStore::SetUObject`는 IndexOf가 유효할 때만 갱신하며,
+`SetParameterOverride`도 user redirect가 없으면 반환한다. 따라서 빈 컴포넌트는
+실제 쓰기 검증 fixture로 부적합하다. 호출 성공을 값 전달 성공으로 취급하지 않았다.
+
+테스트 전용 빈 시스템을 새로 만들었지만 `upsert_niagara_user_parameters`는
+Texture를 `Texture Sample`로 해석한 뒤 unsupported로 거부했다(added 0, changed false).
+증거 `20260905_binding_extension_verify_v001.json`. 다음에는 기존 Texture DI 전용
+authoring 경로로 네 User texture를 선언할 수 있는 fixture를 구성해야 한다.
+관련 시스템/Blueprint는 `/Game/_MCP_Temp` 아래이며 최종 library에서 참조하지 않는다.
+검증용 잔여 자산은 보존했고 삭제하지 않았다. frozen checkpoint 스크립트와 extension은
+일회성 복구 도구이므로 이미 저장된 자산에 재실행하지 않는다.
+
+예정된 7개 stateful case는 첫 사례에서 중단되어 통과 수 0이다. inactive store,
+active GPU deferred setter, host lifecycle, cold/plugin-disabled/cook는 이 확장에서
+검증되지 않았다. 기존 1024 resolver 사례는 이전 체크포인트의 별도 증거다.
+
+실제 Niagara setter 적용 후 parameter store를 읽는 방법도 좁게 조사했다.
+native header의 `OverrideParameters`는 존재하지만 UE Python get_editor_property에서는
+protected property로 읽기가 거부됐다. transient NiagaraComponent/texture에 한정한
+probe였으며 Content 저장이나 프로젝트 C++ 변경은 없었다.
+
+따라서 이름만 추정한 getter로 성공을 보고하거나 setter 호출 성공만으로 값 전달 검증을
+대체하지 않는다. 다음은 기존 authoring/inspection 도구 또는 target-only numeric runtime
+fixture로 readback 가능한 경로를 확인하고, bitmap 초기 바인딩과 외부 height no-write를
+실제 Component에 통합하는 단계다. C++가 필요해지면 기존 승인 경계를 지킨다.

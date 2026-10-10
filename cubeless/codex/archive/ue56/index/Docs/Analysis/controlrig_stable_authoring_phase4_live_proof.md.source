@@ -1,0 +1,53 @@
+# ControlRig Stable Authoring Phase 4 Live Proof
+
+Date: 2026-06-30
+
+Scope: one commandlet smoke for the Phase 4 Piper stable fixture. This proof is
+limited to the sample/temp target declared by the fixture recipe:
+`/Game/_MCP_Temp/ControlRigStable/CR_Piper_StablePrototype`.
+
+## Ieta Boundary
+
+- Original assets remain read-only.
+- The only allowed live target is under `/Game/_MCP_Temp`.
+- The fixture keeps `save=false`; no stable fixture `.uasset` is promoted.
+- No solver unit expansion is part of this proof.
+- No AnimBP binding or input-default promotion is part of this proof.
+
+## Command
+
+```powershell
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+$Script = (Resolve-Path .\MCPGameProject\Plugins\UnrealMCP\Scripts\ControlRig\smoke_controlrig_stable_fixture.py).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Binaries\Win64\UnrealEditor-Cmd.exe' $Project -run=pythonscript -script="$Script" -unattended -nop4 -nosplash -nosound -NullRHI -log
+```
+
+## Result
+
+The commandlet exited with status `0`.
+
+Important log lines:
+
+- `LogPythonScriptCommandlet: Display: Python script executed successfully`
+- `LogInit: Display: Success - 0 error(s), 5 warning(s)`
+- `LogTemp: Display: UnrealMCPBridge: Server stopped`
+
+The warnings were non-fatal commandlet/startup warnings. The missing
+`/Game/_MCP_Temp/ControlRigStable/CR_Piper_StablePrototype` package warning
+matched the expected first-run state where there was no pre-existing temp asset
+to delete.
+
+## Post-Run Boundary Checks
+
+- `git status --short -- MCPGameProject\Content MCPGameProject\Plugins\UnrealMCP\Content` reported no tracked content changes.
+- No saved `MCPGameProject/Content/_MCP_Temp/ControlRigStable` asset file was present after the run.
+- No Unreal Editor process remained running.
+- No listener remained on the UE 5.6.1 UnrealMCP bridge port `55561`.
+
+## Interpretation
+
+The Phase 4 stable fixture smoke passed as a live sample/temp proof without
+persisting a generated fixture asset. This does not approve original asset
+mutation, solver unit expansion, AnimBP binding, or stable input-default
+promotion. This live proof does not approve solver work. The Phase 5 solver expansion boundary is tracked separately in
+`Docs/Analysis/controlrig_stable_authoring_phase5_contract.md`.

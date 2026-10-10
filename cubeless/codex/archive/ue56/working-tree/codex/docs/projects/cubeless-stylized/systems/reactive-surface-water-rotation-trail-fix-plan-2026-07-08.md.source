@@ -1,0 +1,129 @@
+# Reactive Surface Water Rotation Trail Fix Plan - 2026-07-08
+
+## Current Status
+
+- Water RT normal output is live in `L_RS_Demo`.
+- V4 demo driver and Phase 6 visual capture pass numerically.
+- Known visual issue remains: the water trail shape behaves like a rigid stamp and rotates with the character orientation.
+
+## Symptom
+
+- When the character rotates while moving or turning, the visible wake/trail cluster keeps its local shape and appears to rotate with the character.
+- This is not acceptable for a world-space water wake. The wake should stay in world/history space and only new impulses should follow current motion.
+
+## Likely Cause
+
+- The current runtime path still mixes character-attached source layout with Water wake drawing.
+- Multiple character/body point sources can produce a local shape that follows actor rotation.
+- The Water channel needs a swimmer profile source that is derived from world-space trajectory, not from the rotating local arrangement of character-attached reactive points.
+
+## Fix Plan
+
+1. Build a rotation ghost test.
+   - Cases: move straight, rotate in place, move while rotating.
+   - Compare one-slot root swimmer source versus character-attached multi-point sources.
+   - PASS condition: rotate-in-place does not rotate an existing trail pattern and does not create a rigid body-shaped stamp.
+
+2. Split Water swimmer source from general reactive points.
+   - Keep Grass/Ground using their normal point-source collection.
+   - For Water, use one canonical swimmer source per character by default.
+   - Position: actor/root world position or configured water source component.
+   - Velocity: world-space position delta or character movement velocity, smoothed/held for wake continuity.
+
+3. Feed Water V4 HLSL only world-space swimmer payload.
+   - `RS_Water_Positions`: one root swimmer point.
+   - `RS_Water_Velocities`: world-space linear velocity.
+   - `RS_Water_SwimParams`: swim mode and wake strength.
+   - Ignore bone/socket point cloud for Water unless an explicit future mode enables it.
+
+4. Re-validate trail history.
+   - Existing trail must remain fixed in RT/world space after character rotation.
+   - New wake direction follows world-space velocity, not actor forward vector unless velocity is too small.
+   - No rotating rigid stamp in RT capture.
+
+5. Preserve existing pass gates.
+   - Controller compile `0/0`.
+   - Water compile `0`.
+   - Phase 6 visual capture `PASS`.
+   - Dirty packages `0`.
+
+## Notes
+
+- This is a follow-up fix after the current live Water RT pass.
+- Do not tune visual style until the rotation/history bug is fixed.
+
+## Result - V5 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v5_rotation_stamp_fix_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v5-rotation-stamp-fix-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v5-rotation-stamp-fix-report-2026-07-08.md`
+- Fix: Water source injection now uses one canonical world-space swimmer source and ignores character-local point-cloud extras.
+- Fix: source taps inject a hollow annular wave pulse instead of a solid positive cosine disk.
+- Checks: single source tail, rotated point-cloud world-X stability, rotated similarity, rotate-in-place no-wake, and hollow source stamp all `PASS`.
+- Key numbers: rotated tail RMS diff `10.0793`; ring center mean dev `0.0`; ring annulus mean dev `27.1807`; final compile `0/0`; audit forbidden hits `0`; saved dirty list `0`.
+
+## Result - V6 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v6_wavefront_trail_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v6-wavefront-trail-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v6-wavefront-trail-report-2026-07-08.md`
+- Fix: moving swimmers now inject a directional rear wakefront fan instead of circular tap stamps.
+- Fix: stationary `SwimMode=1` remains quiet; Water still consumes one canonical world-space swimmer source, so character-local point-cloud rotation does not rotate the wake.
+- Checks: long rear trail, rotated point-cloud world-X stability, rotated similarity, rotate-in-place no-wake, and immediate wavefront-not-source-dot all `PASS`.
+- Key numbers: rotated tail RMS diff `17.0942`; wavefront probe center mean dev `7.6667`; rear mean dev `34.4863`; front mean dev `0.0`; final compile `0/0`; audit forbidden hits `0`; blocking dirty packages `0`.
+- Note: editor had nonblocking dirty packages outside the V6 save scope: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`, `/Game/ReactiveSurface/Demo/L_RS_Demo`.
+
+## Result - V7 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v7_bounded_wake_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v7-bounded-wake-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v7-bounded-wake-report-2026-07-08.md`
+- Fix: V6 directional wakefront is retained, with source-relative corridor damping so waves do not spread across the full render target.
+- Tuning: `RS_Water_Damping=0.989`, `RS_Water_WaveSpeed=0.72`, `RS_Water_NormalStrength=30.0`, `RS_Water_SwimWakeStrength=0.92`, `RS_Water_ImpulseClamp=1.10`.
+- Checks: long rear trail, rotated point-cloud world-X stability, rotated similarity, rotate-in-place no-wake, immediate wavefront-not-source-dot, and far-field bounded all `PASS`.
+- Key numbers: far/near energy ratio `0.01534`; far-field active pixels `4624`; wavefront probe center mean dev `5.5`; rear mean dev `27.0343`; rotated tail RMS diff `15.8311`; final compile `0/0`; audit forbidden hits `0`; blocking dirty packages `0`.
+- Note: editor still had nonblocking dirty packages outside the V7 save scope: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`, `/Game/ReactiveSurface/Demo/L_RS_Demo`.
+
+## Result - V8 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v8_soft_wake_tuning_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v8-soft-wake-tuning-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v8-soft-wake-tuning-report-2026-07-08.md`
+- Fix: V7 corridor cutout was removed. V8 returns to the V6 directional wavefront and only lowers source energy, normal strength, damping, and wake length.
+- Tuning: `RS_Water_Damping=0.991`, `RS_Water_WaveSpeed=0.72`, `RS_Water_NormalStrength=28.0`, `RS_Water_DefaultStrength=0.36`, `RS_Water_SwimWakeStrength=0.82`, `RS_Water_ImpulseClamp=1.05`.
+- Checks: long rear trail, rotated point-cloud world-X stability, rotated similarity, rotate-in-place no-wake, immediate wavefront-not-source-dot, and soft energy control all `PASS`.
+- Key numbers: soft far/near energy ratio `0.00457`; soft far-field active pixels `4470`; wavefront probe center mean dev `7.6667`; rear mean dev `22.4014`; rotated tail RMS diff `12.8104`; final compile `0/0`; audit forbidden hits `0`; blocking dirty packages `0`.
+- Note: editor had nonblocking dirty packages outside the V8 save scope: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`, `/Game/_MCP_Temp/NiagaraGenerated/WaterWave/NS_Water_WaveTmp2`, `/Game/ReactiveSurface/Demo/L_RS_Demo`.
+
+## Result - V9 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v9_detached_history_wake_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v9-detached-history-wake-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v9-detached-history-wake-report-2026-07-08.md`
+- Fix: the current-frame rear wake stamp is shortened; long visible trail is now expected to come from solver history instead of a shape glued behind the character.
+- Tuning: `RS_Water_Damping=0.992`, `RS_Water_NormalStrength=30.0`, `RS_Water_DefaultStrength=0.44`, `RS_Water_SwimWakeStrength=0.88`, `RS_Water_ImpulseClamp=1.05`.
+- Checks: long rear trail, rotated point-cloud world-X stability, rotated similarity, rotate-in-place no-wake, immediate short seed not dot, soft energy control, and turn-does-not-spawn-attached-tail all `PASS`.
+- Key numbers: turn height growth ratio `1.0`; turn after aspect `5.75`; soft far/near energy ratio `0.01138`; soft far-field active pixels `2266`; rotated tail RMS diff `6.3408`; final compile `0/0`; audit forbidden hits `0`; blocking dirty packages `0`.
+- Note: editor had nonblocking dirty packages outside the V9 save scope: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`, `/Game/_MCP_Temp/NiagaraGenerated/WaterWave/NS_Water_WaveTmp2`, `/Game/ReactiveSurface/Demo/L_RS_Demo`.
+
+## Result - V10 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v10_ring_only_wake_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v10-ring-only-wake-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v10-ring-only-wake-report-2026-07-08.md`
+- Fix: all directional current-frame rear wake stamps were removed. A moving swimmer now injects only a ring pulse at the canonical world-space source; any visible trail must come from solver history, not a shape glued behind the character.
+- Tuning: `RS_Water_Damping=0.991`, `RS_Water_WaveSpeed=0.72`, `RS_Water_NormalStrength=31.0`, `RS_Water_DefaultRadius=38.0`, `RS_Water_DefaultStrength=0.62`, `RS_Water_SwimWakeStrength=0.95`, `RS_Water_ImpulseClamp=1.05`.
+- Checks: history trail, circular moving seed, rotate-in-place no-wake, rotated point-cloud similarity, rotated point-cloud world-X stability, soft energy control, and turn-does-not-spawn-attached-tail all `PASS`.
+- Key numbers: ring seed aspect `1.0`; ring seed active pixels `360`; turn height growth ratio `1.0833`; turn after aspect `4.3077`; soft far/near energy ratio `0.0`; soft far-field active pixels `2685`; rotated tail RMS diff `7.5984`; final compile `0/0`; audit forbidden hits `0`; blocking dirty packages `0`.
+- Note: editor had nonblocking dirty packages outside the V10 save scope: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`, `/Game/_MCP_Temp/NiagaraGenerated/WaterWave/NS_Water_WaveTmp2`, `/Game/ReactiveSurface/Demo/L_RS_Demo`.
+
+## Result - V11 PASS
+
+- Runner: `codex/scripts/reactive_surface/reactive_surface_water_v11_contained_ring_wake_runner.py`
+- Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v11-contained-ring-wake-results-2026-07-08.json`
+- Report: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-water-v11-contained-ring-wake-report-2026-07-08.md`
+- Fix: V10 ring-only source policy is retained, with source-centered containment damping to prevent the ripple field from spreading across the full RT.
+- Tuning: `RS_Water_Damping=0.982`, `RS_Water_NormalStrength=28.0`, `RS_Water_DefaultStrength=0.54`, `RS_Water_SwimWakeStrength=0.82`, containment start `max(RadiusWS*2.2, WindowSafe*0.07)`, end `max(start+RadiusWS*1.3, WindowSafe*0.16)`, outer damping `0.32`.
+- Checks: all V10 checks plus contained active pixels, p95 radius, and max radius all `PASS`.
+- Key numbers: spread active pixels `1408`; active fraction `0.055`; radius p50 `39.3559 px`; radius p95 `76.2016 px`; radius p99 `81.2385 px`; radius max `85.7280 px`; final compile `0/0`; audit forbidden hits `0`; blocking dirty packages `0`.
+- Note: the first V11 containment pass failed because the containment zone started too far out. The passing run moved the damping window inward and reduced outer damping.

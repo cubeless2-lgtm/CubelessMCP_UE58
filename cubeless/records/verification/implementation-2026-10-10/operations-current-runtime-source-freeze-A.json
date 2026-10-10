@@ -1,0 +1,69 @@
+{
+  "schema": "cubeless_current_runtime_source_freeze_v1",
+  "status": "source_offline_checks_pass_peer_review_pending_no_engine_execution",
+  "files": [
+    {
+      "path": "cubeless/tools/verification/current_runtime_manifest.py",
+      "sha256": "b5b8b621536a383e6741958516f9a90e30a430be9feaa00bf8dce61e0209156a"
+    },
+    {
+      "path": "cubeless/tools/verification/create_current_runtime_fixture.py",
+      "sha256": "babf22f8ba2612d9fe2d5d570a6b8adb5ac86eaf12885fbbf567a209db686377"
+    },
+    {
+      "path": "cubeless/tools/verification/validate_current_runtime_fixture.py",
+      "sha256": "8d70acd3990b8cf3989e24a88f5a04a6df231d895aae480d67cdc3c6cc5396e5"
+    }
+  ],
+  "manifest": {
+    "path": "UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-current-runtime-manifest-A.json",
+    "sha256": "5050a15d3e6a27708130b5435d3d4cb9891109c2a1f1dbb404fba80a582f28f1"
+  },
+  "offline_tests": "operations-current-runtime-offline-tests-A.json",
+  "source_file_count": 19,
+  "new_clone_count": 3,
+  "new_map": "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\CubelessCurrentRuntimeProof.uproject",
+  "marker_contract_report": {
+    "role": "marker",
+    "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+    "sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a"
+  },
+  "package_proof_required": [
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch",
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone",
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse",
+    "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue",
+    "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC",
+    "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof",
+    "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid",
+    "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+    "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges",
+    "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract",
+    "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+    "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract",
+    "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+    "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+    "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof"
+  ],
+  "copy_performed": false,
+  "engine_executed": false,
+  "compile_and_save_policy": {
+    "new_clones": "one explicit recompile per clone with return-only errors; save_loaded_assets one call for three new clones",
+    "map": "SaveMap once to new package; copied source map never saved",
+    "cold": "in-memory Blueprint compile; no save request"
+  },
+  "limits": [
+    "No shader completion/render quality proof",
+    "New connected MPC clones are official API fixtures, distinct from unchanged Cubeless authored source graphs",
+    "Offline tests cannot validate actual no-MCP Python bindings",
+    "Game C++/engine/plugin files are not copied or changed"
+  ]
+}

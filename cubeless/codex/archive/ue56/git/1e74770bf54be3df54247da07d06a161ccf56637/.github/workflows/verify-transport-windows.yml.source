@@ -1,0 +1,122 @@
+name: verify-transport-windows
+
+# Narrow Windows-only transport regression lane.  C++ builds remain local; this
+# validates the Python client against its offline framing and loopback suites.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Python/services/unreal_bridge_connection.py"
+      - "Python/services/unreal_texture_importer.py"
+      - "Python/tools/ai_tools.py"
+      - "Python/tools/controlrig_authoring_tools.py"
+      - "Python/tools/pcg_tools.py"
+      - "Python/tools/mutation_result_contract.py"
+      - "Python/unreal_mcp_server.py"
+      - "Python/scripts/analysis/run_verification.py"
+      - "Python/scripts/analysis/test_run_verification.py"
+      - "Python/scripts/analysis/test_mutation_result_contract.py"
+      - "Python/scripts/analysis/test_cpp_phase1_transport_safety_contract.py"
+      - "Python/scripts/analysis/test_cpp_phase1c_event_wake_contract.py"
+      - "Python/scripts/analysis/test_cpp_phase1c_transport_telemetry_contract.py"
+      - "Python/scripts/analysis/test_cpp_server_timeout_contract.py"
+      - "Python/scripts/analysis/test_cpp_blueprint_component_property_safety_contract.py"
+      - "Python/scripts/analysis/test_cpp_blueprint_variable_exposure_contract.py"
+      - "Python/scripts/analysis/test_unreal_bridge_connection.py"
+      - "Python/scripts/analysis/test_unreal_bridge_loopback.py"
+      - "Python/scripts/analysis/test_unreal_python_result_file_isolation.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1b_live_transport_gate.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1_release_orchestrator.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1b_live_transport_gate.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1_release_orchestrator.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1_practical_canaries.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1_practical_orchestrator.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1_practical_canaries.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1_practical_orchestrator.py"
+      - "Python/pyproject.toml"
+      - "Python/uv.lock"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPServerRunnable.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportWakeState.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportWakeState.h"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportTelemetry.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintCommands.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part1.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/MCPServerRunnable.h"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/MCPTransportTelemetry.h"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/UnrealMCPBridge.h"
+      - ".github/workflows/verify-transport-windows.yml"
+  pull_request:
+    paths:
+      - "Python/services/unreal_bridge_connection.py"
+      - "Python/services/unreal_texture_importer.py"
+      - "Python/tools/ai_tools.py"
+      - "Python/tools/controlrig_authoring_tools.py"
+      - "Python/tools/pcg_tools.py"
+      - "Python/tools/mutation_result_contract.py"
+      - "Python/unreal_mcp_server.py"
+      - "Python/scripts/analysis/run_verification.py"
+      - "Python/scripts/analysis/test_run_verification.py"
+      - "Python/scripts/analysis/test_mutation_result_contract.py"
+      - "Python/scripts/analysis/test_cpp_phase1_transport_safety_contract.py"
+      - "Python/scripts/analysis/test_cpp_phase1c_event_wake_contract.py"
+      - "Python/scripts/analysis/test_cpp_phase1c_transport_telemetry_contract.py"
+      - "Python/scripts/analysis/test_cpp_server_timeout_contract.py"
+      - "Python/scripts/analysis/test_cpp_blueprint_component_property_safety_contract.py"
+      - "Python/scripts/analysis/test_cpp_blueprint_variable_exposure_contract.py"
+      - "Python/scripts/analysis/test_unreal_bridge_connection.py"
+      - "Python/scripts/analysis/test_unreal_bridge_loopback.py"
+      - "Python/scripts/analysis/test_unreal_python_result_file_isolation.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1b_live_transport_gate.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1_release_orchestrator.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1b_live_transport_gate.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1_release_orchestrator.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1_practical_canaries.py"
+      - "Python/scripts/analysis/mcp_rpc_phase1_practical_orchestrator.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1_practical_canaries.py"
+      - "Python/scripts/analysis/test_mcp_rpc_phase1_practical_orchestrator.py"
+      - "Python/pyproject.toml"
+      - "Python/uv.lock"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPServerRunnable.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportWakeState.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportWakeState.h"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportTelemetry.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintCommands.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part1.cpp"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/MCPServerRunnable.h"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/MCPTransportTelemetry.h"
+      - "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/UnrealMCPBridge.h"
+      - ".github/workflows/verify-transport-windows.yml"
+
+concurrency:
+  group: verify-transport-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  transport-gates:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout transport contract subset
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+          sparse-checkout: |
+            .github/workflows
+            Python
+            MCPGameProject/Plugins/UnrealMCP/Source
+          sparse-checkout-cone-mode: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "Python/uv.lock"
+
+      - name: Sync frozen Python 3.11 environment
+        run: uv --directory .\\Python sync --frozen --python 3.11
+
+      - name: Windows transport verification profile
+        working-directory: ./Python
+        run: uv run python scripts/analysis/run_verification.py --profile windows-transport

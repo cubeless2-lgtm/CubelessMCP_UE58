@@ -1,0 +1,224 @@
+# CubeFluidNinjaLive — 이류·발산·압력 연결 검증
+
+2026-09-06. 원본 `/Game/FluidNinjaLive`는 읽기 전용이다. 이 기록은 원본 그래프
+복제 없이 수식을 새 Custom HLSL과 엔진 Grid2DCollection 단계로 작성한 **임시
+수치 검증 후보**에 관한 것이다. 최종 레벨/호스트 완성이 아니다.
+
+## 원리와 범위
+
+모든 격자는 64×64, 저장 형식 PF_R16F다. 셀 중심은 `(index+.5)/64`.
+초기 입력은 매 프레임 다시 쓰는 통제된 평면장이다. Composite.xyz는 속도 xy와
+밀도 z를 함께 저장한다. 이 실험은 프레임 간 유체 피드백을 아직 구현하지 않는다.
+
+### 이류(Advection)
+
+1. 현재 셀 중심에서 이전 Composite.xy 속도를 샘플한다.
+2. `back = Unit - velocity * SimSpeed / NumCells`로 역추적한다.
+3. SimAreaClamp가 꺼져 있을 때만 `frac(back)`으로 좌표를 감싼다.
+4. 이전 Composite.xyz를 back 위치에서 bilinear 샘플한다.
+5. 전체 xyz에 VelocityFeedback을 곱해 Advection에 기록한다.
+
+VelocityFeedback은 이름과 달리 **밀도 z에도 곱해진다**. 원본 MapSet0의
+Op3 연결에 따른 동작이며 임의로 속도만 감쇠시키지 않았다. 원본의 그래프/스크래치
+패드를 가져오지 않고 이 다섯 연산을 새로 작성했다.
+
+초기 fixture는 `velocity=(SlopeX*u,SlopeY*v)`, `density=DensityBase+u`,
+`pressure=(InitialPressure+u+2v,InitialDivergence)`다.
+
+### 발산(Divergence)
+
+샘플 간격은 `SimSpeed/NumCells`. Advection.xy에서 동/서/북/남을 샘플하여
+`raw=E.x-W.x+N.y-S.y`를 계산한다. 원본에는 .5 또는 간격으로 나누는 항이 없다.
+
+`mult = Crude ? min(.5,DivergenceMult) : DivergenceMult`
+
+`D = clamp((raw + BrushPuncture*.01*PainterB)*mult, -2, 2)`
+
+이전 Pressure를 `Unit+WorldOffset.xy`에서 샘플해 x를 유지하고 y에 D를 쓴다.
+원본의 연결된 HLSL에서는 비-clamp 분기의 frac 결과가 다시 대입되지 않는다.
+따라서 발산 단계에 임의 wrap 보정을 추가하지 않았다. PainterB는 현재 상수 fixture다.
+원본 Divergence uasset SHA-256:
+`f90afa9dfa09f9631e70ce2536be053699f95f88789fcaf85511258a95f43491`.
+
+### 압력 및 기울기
+
+발산 출력 Pressure.xy를 승인된 KI0/offset0 필터의 입력으로 사용한다.
+범위 밖 마지막 계수만0이라는 사용자 승인 범위는 유지하며 가중치를 재정규화하지 않는다.
+X/Y 방향 처리는 별도 복제 모듈이 아닌 native simulation stage의 **2회 반복**이다.
+모든 stage를 생성한 다음 Pressure stage의 iteration count를2로 설정한다.
+이전 후보의 stage IO 누락 재발을 피하기 위한 저작 순서이며 엔진 근본 원인 확정은 아니다.
+
+마지막 기울기는 실제 최종 Pressure.x의 이웃 셀로
+`Gradient=.5*(E-W,N-S)`를 계산한다. 진단 후보의 WeightedP/WeightedD 채널은
+기울기 후보에서만 GradientX/Y를 뜻한다. 최종 데이터 계약으로 사용하면 안 된다.
+
+## GPU 결과와 자산 식별
+
+아래 경로는 `/Game/_MCP_Temp/NiagaraGenerated/` 아래다. Study 승격 없음.
+
+| 후보 디렉터리 / 시스템 | GPU 사례 | SHA-256 |
+| --- | ---: | --- |
+| CFNLDivergenceV002/NS_Divergence | 18 | `2d122bb2a7a9fcb4414eaaa87fce736ce07cf0e60870ee00d4640e1b05136de8` |
+| CFNLDivergencePressureV001/NS_DivergencePressure | 12 | `f0de400d17ccc38f45ff4f77e396642ebe2f7be0943b5eaaa62cbb8efc528b81` |
+| CFNLAdvectionV002/NS_Advection | 21 | `15d9167966c31e2fcb53566c08b84b6bc37d3a5620ace4f5f652c0896ee4c225` |
+| CFNLTransportPressureV001/NS_TransportPressure | 13 | `fd93142a26d3c71136fb829a0f7eba19544387c5376ec14a02ed5fa6c1ebed4a` |
+| CFNLTransportGradientV001/NS_TransportGradient | 13 | `257f750800c7479f65da21d0bc3c98af41edbc0826afe460f851ef016fb3de68` |
+
+모두 PASS, compile error/warning0, GPUUpToDate, outstanding false. unknown2는
+기존 unused script 분류이며 GPU 성공 상태와 구분한다. 매 실행에서 같은 transient
+instance 유지, 4096셀 finite, 정확한 채널 집합, 저장 자산 해시 불변,
+source/MCP forbidden dependency와 dirty audit를 검사했다. 마지막 기본값 복원 PASS.
+
+Advection21: 중심/양 모서리×speed0/1/64×clamp0/1, feedback0/1, 기본값 복원.
+Transport13: 4개 위치, speed0/64, feedback0/1, Crude1, clamp0,
+world offsetX .125, multiplier-2, 기본값 복원. Gradient는 같은 입력13개.
+
+보고서는 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/`
+`NinjaLiveComponent/SetParams/20260906_{divergence,divergence_pressure,advection,`
+`transport_pressure,transport_gradient}_{authoring,runtime}_vNNN.json`이다.
+위 표에 맞는 버전을 사용한다. authoring에는 실제 stage 목록/HLSL/scope를 기록했다.
+
+## 정밀도 모델과 검증 한계
+
+CPU는 bilinear 보간과 순서별 수식을 독립적으로 재생한다. 중간 R16F 저장 오차,
+다음 샘플의 오차, 최종 저장 오차를 각각 전파한다. KI0 가중 필터에서는 각 tap별
+입력 오차의 보간값과 half1ULP 샘플 오차를 가중 합산한다. 전역 임의 tolerance를
+올리거나 GPU 결과를 기대값으로 쓰지 않는다.
+
+Transport 후보는 이류의 저장/샘플 오차를 발산의 네 이웃으로 전달하고,
+발산 배율 및 [-2,2] clamp의 비팽창 성질, 두 pressure 반복, gradient 차분까지
+연결한다. 현재 역추적 속도 입력은 정확히 표현되는 셀 중심 fixture다.
+임의 속도장의 좌표 오차, 서로 다른 해상도, texture filter 설정 전체를 증명한 것은 아니다.
+선택 셀을 최종 grid 전체에 broadcast하여 min/max/mean/abs_mean/rms를 비교한다.
+**최종 4096셀 각각의 위치별 일치나 실제 원본 전체 시각 일치를 주장하지 않는다.**
+
+별도 CPU unit6 PASS: speed0 identity, 밀도 feedback, wrap 좌표, zero bound,
+입력 오차 전파, zero feedback에서 발산0. 실행:
+
+```powershell
+uv --directory .\Python run python scripts/analysis/test_cube_fluid_ninja_transport.py
+```
+
+## 실패 기록 및 수정
+
+- DivergenceV001: 읽기 단계에서 쓰지 않은 Advection 채널이 ping-pong 버퍼에
+  남아 있었다. V002는 최종 진단 단계에서 scratch 채널을 명시적으로0으로 쓴다.
+  원본 버그로 해석하지 않는다. 실패 자산/보고서는 보존했다.
+- AdvectionV001: 저작자가 `SamplePreviousGridVectorValue`라는 존재하지 않는
+  샘플 함수명을 사용해 compile error2. UE5.6.1 엔진 구현의 실제 이름은
+  `SamplePreviousGridVector3Value`. SetVectorValue/GetPreviousVectorValue는 유효하다.
+  샘플 이름만 고쳐 새 V002를 작성했고 compile/GPU21 PASS. 실패V001은 보존했다.
+- 새 후보는 기존 원본, Study 영구 자산, 프로젝트 C++를 수정하지 않았다.
+
+## 독립성 및 남은 통합
+
+`CFNL_Transport_20260906_v001`에서 표의5개 후보 모두 static scan 및
+UnrealMCP 없는 격리 에디터의 cold-load/class 검증 PASS.
+보고서: `MCPGameProject/Saved/MCP/AssetReviews/CFNL_Transport_20260906_v001/`
+`asset_plugin_independence_report.json`.
+NullRHI 로드 증거이며 GPU cook/package/standalone 실행 증거는 아니다.
+
+후속 `run_verification.py --profile full` 42/42 PASS, exit0.
+이는 현재 작업 중 회귀 결과다. 최종 승격용 전체 입력 manifest 동결 및 동등성
+기록은 아직 만들지 않았으므로 미래 수정본의 promotion 증거로 자동 재사용하지 않는다.
+
+다음: 이류 xyz를 유지하는 실제 Composite 연결, temporal feedback,
+다중 해상도/동적 입력, Component 실행 호스트, 각 학습 레벨 연결 및 기술 검증.
+시각 검수는 사용자가 담당한다. 영구 ledger22, 최종 레벨0/59 그대로다.
+이 문서의 사례 합계를 전체 작업 진행률로 환산하지 않는다.
+
+## 후속 — Composite 실제 출력과 시간 누적
+
+### ProjectionV001
+
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLProjectionV001/NS_Projection`, SHA
+`7882df2c7fce1cf247da02e1e2105fff705912db685832e95b66e1e2c724c500`.
+6개 stage: InputFixture, Advection, Divergence, PressureK0(2회), Composite, ReadCell.
+발산/압력 단계에서 Advection.xyz를 명시적으로 carry하여 최종 Composite가
+실제 이류 결과를 읽는다. Composite의 원본 FunctionCall6도 AdvectionGrid를 읽는다.
+
+이번 연결 범위는 brush/noise/height/spline forcing0, scalar collision weights다.
+
+- `velocity=clamp(adv.xy-gradient,-limit,limit)*VelocityMask`
+- `density=saturate(adv.z)`
+- `gain=(DensityFeedback*.5*max(densityEdge,.7)+.5)*densityEdge`
+- `density=max(1e-6,density*gain)*DensityMask`
+- densityEdge의 power는 clamp off일 때0을 입력하고 내부 최소 .01을 유지한다.
+
+GPU16 PASS: 4개 위치, velocity feedback0/1, limit .01, velocity/density mask0/.25,
+density feedback0/2, clamp off, speed64, 기본값 복원. 압력·이류·Composite11채널을
+동시에 검사한다. collision texture/landscape/brush 전체를 통합한 것으로 해석하지 않는다.
+
+### TemporalProjectionV002
+
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLTemporalProjectionV002/NS_TemporalProjection`, SHA
+`66055a6c97109926171ee444e5d307a047d21e2652f73c45ec1d676becf35e9e`.
+5개 stage: InitializeOrCarry, Advection, Divergence, PressureK0(2회), Composite.
+선택 셀 broadcast는 제거했다. Age<.5일 때만 초기화하고 이후 이전 Composite/Pressure를
+다음 프레임에 전달한다. Age는 모든 stage에서 보존하고 Composite에서만1 증가한다.
+
+통제 조건: 균일 velocity=(1,.5), density=.75, Pressure=0, feedback=.99,
+density edge width=.001로 전체 셀 edge1, forcing0. 이상적 프레임 n 결과는
+초기 xyz에 `.99^n`을 곱한 값이다. native GPU에서 동일 instance의 5개 관측,
+**Age35→164**, xyz 감쇠 지속 및 관측마다 Age증가/velocity감소 PASS.
+per-frame 초기화가 계속되었다면 이 감쇠를 통과할 수 없다.
+native age를 기준으로 반복 저장/샘플의 half 오차를 누적한다.
+일반 비균일 비선형 유동의 장기 안정성 검증은 아직 아니다.
+
+Age는 진단용 R16F float이므로 2048 이후 1단위 증가를 신뢰하면 안 된다.
+verifier는 Age512 미만만 허용한다. 이 카운터는 제품용 time/lifecycle 구현이 아니다.
+preview는 이 후보의 저장 기본값 상태로 계속 실행한다; User parameter 변경은 없었다.
+
+TemporalV001은 문자열 치환이 Age getter의 out 인수까지 `age+1`로 바꿔 컴파일 실패했다.
+V002는 정확한 setter 구문에만 증가값을 적용했다. 실패 자산/보고서 보존, 원본 문제 아님.
+
+Projection/Temporal cold-load2/2 PASS, run `CFNL_Projection_20260906_v001`.
+이로써 이번 문서의 신규 성공 후보7개가 plugin-independent cold-load를 통과했다.
+
+### 동결 회귀 체크포인트
+
+`run_cube_fluid_ninja_transport_checkpoint.py` 실행 PASS:
+CPU transport6 + KI0 kernel5, full offline42/42, exit0.
+2,839개 비무시 저장소 텍스트/설정 및 위7개 자산의 before/after SHA를 비교했고
+변경된 입력0. HEAD `59b567bc05ca2dfe724e061654f05477944e78fe`.
+정확한 manifest/명령/환경/로그:
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/transport_checkpoint_v001/report.json`.
+이 기록 뒤 문서만 갱신했다. 향후 구현 변경은 새 최종 full gate가 필요하다.
+이는 bounded 계산 후보의 기술 체크포인트이며 전체 저장소의 모든 dirty 변경에
+대한 검토 승인 또는 전체 프로젝트 서밋 가능 판정이 아니다. 커밋/푸시 없음.
+
+## 후속 — forcing 분기를 계산 연결에 통합
+
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLForcedProjectionV001/NS_ForcedProjection`, SHA
+`c83c2c644d450454f4df5bd324949be775303926416cd52539f129ce47d3b6d6`.
+GPU19 PASS, 기본값 복원, compile0/0, dependency/dirty/hash PASS.
+마지막 preview 소유자는 이 후보로 변경됐다.
+
+Composite 단계에서 다음 원본 의미를 실제 Advection/Pressure 결과에 적용했다.
+
+- delta=adv.xy-gradient.
+- noiseWeight=max(saturate(dot(delta,delta)*.2),1-MaskNoise).
+- field는 HeightReaders 또는 SplineReader가 켜진 경우만 더한다.
+- rawVelocity=delta+(adv.z+BrushDensity*(Eraser*.1))*(mergedVelocity+field)*.5.
+- 여기에 NoiseStrength*noise*noiseWeight를 더하고, clamp off이면
+  noise*(1-VelocityEdge)*20도 더한 뒤 속도 제한과 collision weight를 적용한다.
+- 밀도는 saturate(adv.z-min(Eraser,BrushDensity)+mergedDensity*noiseFactor).
+- noiseFactor는 NoiseEnabled일 때만 NoiseValue, 아니면1.
+- HeightReaders && PeakAvoidance일 때 density feedback을
+  1+FieldHeight*(DensityFeedback-1)로 바꾼다.
+
+기본/모서리, Eraser1, 밀도 주입±2, Height/Spline 분기, Peak+Feedback0/2,
+노이즈 weight 분기, NoiseValue0/2, 비-clamp 외곽 노이즈, 속도 제한, mask0,
+velocity feedback0 및 복원을 대조했다. CPU는 앞서 독립 검증한 velocity_post
+수식과 연결된 압력/이류 오차를 사용한다. dot 기반 noiseWeight의 오차는
+`.2*sum(2*abs(delta)*error+error²)`로 전달한다.
+
+**merged painter, field, noise, collision 입력 자체는 여전히 fixture다.**
+이 실험을 실제 브러시 샘플러, 텍스처 디코드, SDF/RVT, native 노이즈의 완전 통합으로
+해석하지 않는다. 기존 해당 개별 후보들과 연결하는 작업이 남는다.
+
+`CFNL_ForcedProjection_20260906_v001`: 추가 cold-load1/1 PASS.
+후속 동결 `transport_checkpoint_v002`: 입력2842개 before/after 변화0,
+unit6+5 및 full42/42 PASS, exit0. 보고서 경로는 v001과 동일한 상위 폴더의
+`transport_checkpoint_v002/report.json`이다. 이후 이 문서/handoff/index만 수정했다.
+전체 서밋 가능 판정은 보류한다. 영구 ledger22, 최종 레벨0/59 변동 없음.

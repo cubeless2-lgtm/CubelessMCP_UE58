@@ -1,0 +1,43 @@
+# Audio and MetaSound Tools (UE 5.6)
+
+This focused toolset uses only APIs present in Unreal Engine 5.6.1. It covers the highest-value first pass without introducing a second graph framework or any UnrealMCP runtime dependency.
+
+The base `UnrealMCP` plugin does not enable MetaSound for the host project.
+SoundWave and SoundCue routes remain part of the base plugin. To author a
+MetaSound, explicitly enable both the UE 5.6 `Metasound` plugin and the
+editor-only `UnrealMCPMetaSound` companion plugin in the target project, then
+restart the editor.
+
+If either opt-in plugin is disabled, `create_basic_metasound_source` remains in
+the public MCP catalog but returns `dependency_plugin_disabled` with
+`required_plugins` and `disabled_plugins`. This is a pre-dispatch failure with
+`mutation_attempted=false`, `mutation_performed=false`, and `changed=false`;
+enable the listed plugins and restart instead of retrying the mutation.
+
+## Tools
+
+- `list_audio_assets(directory="/Game", recursive=true, max_results=200, offset=0)`
+  - Lists `SoundWave`, `SoundCue`, and `MetaSoundSource` assets with deterministic bounded pagination.
+- `inspect_audio_asset(asset_path)`
+  - Reads common asset metadata. SoundWaves include duration and channel count; SoundCues include root/node information; MetaSounds are identified as standard engine assets. It does not claim that arbitrary existing assets are free of UnrealMCP references without auditing their authored graph.
+- `create_sound_cue_from_wave(name, sound_wave_path, package_path="/Game/Audio/SoundCues")`
+  - Creates and saves a SoundCue with exactly one standard `SoundNodeWavePlayer` root. Saved readback must reference the requested SoundWave exactly.
+- `create_basic_metasound_source(name, package_path="/Game/Audio/MetaSounds", oscillator="sine", frequency=440.0, output_format="mono")`
+  - Creates a continuous source through UE 5.6 `UMetaSoundEditorSubsystem::BuildToAsset`. Supported generators are `sine`, `saw`, `square`, `triangle`, and `noise`; format is `mono` or `stereo`.
+
+Creation never overwrites an existing asset. A clean existing SoundCue is a no-op only when its single Wave-player node references the requested SoundWave. A clean existing MetaSound is a no-op only when document readback proves the exact generator, requested frequency (except noise), continuous-source mode, output format, and output connections. Otherwise the tool returns an `audio_asset_conflict` and leaves the asset untouched.
+
+Mutations are blocked while PIE or SIE is active. MetaSound builder names and author metadata are neutral, and saved readback checks the document, generator node, and audio outputs for MCP-only references. If creation has already happened when a later build, save, or readback step fails, the structured failure sets `partial_mutation` and provides recovery guidance instead of encouraging a blind retry.
+
+The companion is an authoring provider only. Finished SoundCue and MetaSound
+assets must contain standard engine classes and must not persist
+`/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCPMetaSound`, or another MCP-only
+reference. Creation performs both in-memory and persisted dependency audits.
+After authoring, the UnrealMCP plugins may be disabled or removed while the UE
+plugins required by the authored asset remain enabled.
+
+## Deliberate limits
+
+- No session-scoped generic MetaSound graph editor in this pass.
+- No audio playback, ambient actor spawning, source import, or level mutation.
+- No UE 5.7/5.8 API or compatibility branch.

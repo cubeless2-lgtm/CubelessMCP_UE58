@@ -1,0 +1,424 @@
+# Unreal Perf Capture
+
+Unreal Perf Capture는 Windows에서 Unreal Trace, 대상 창 영상, 성능 지표와
+북마크를 하나의 세션 시간축으로 기록하는 독립 실행형 도구입니다. Unreal
+플러그인을 프로젝트에 넣지 않고도 패키징 게임 또는 Unreal Editor를 앱이 직접
+실행하고 녹화할 수 있습니다.
+
+앱의 프리뷰는 문제 구간을 빠르게 찾기 위한 간단한 도구입니다. 전체 Trace를
+앱 안에서 해석하는 것이 목적은 아닙니다. 세션 폴더에는 나중에 Codex가
+`.utrace`와 영상의 같은 시각을 다시 매칭하고 해당 영상 프레임을 추출할 수 있는
+JSON, JSONL, CSV 원본을 함께 저장합니다.
+
+## 빠른 시작
+
+1. 배포 ZIP을 새 폴더에 **전체 압축 해제**합니다.
+2. `UnrealPerfCapture.exe`를 실행합니다.
+3. 상단의 **대상 선택**에서 패키징 게임 `.exe` 또는 `UnrealEditor.exe`를
+   선택합니다.
+4. **영상** 탭에서 원본 프로젝트의 `.uproject`를 선택합니다.
+5. 상단에서 같은 Unreal Engine의 `UnrealInsights.exe`를 자동 탐색하거나 폴더/
+   파일로 등록합니다.
+6. **리포트** 탭에서 세션 출력 폴더를 정합니다.
+7. 목표 FPS, 감지 규칙, 수집 지표, Trace 옵션과 필요하면 추가 실행 인자를
+   조정한 뒤 **모든 설정 저장**을 누릅니다.
+8. 게임이나 에디터를 미리 실행하지 말고 **실제 녹화 시작**을 누릅니다. 앱이
+   선택한 대상을 새 프로세스로 실행합니다.
+9. 문제를 재현하고 필요할 때 메모를 입력해 수동 북마크를 남깁니다.
+10. **실제 녹화 종료**를 누릅니다. Trace를 먼저 닫고 post-roll 뒤 영상을
+    마감한 다음 Evidence와 리포트를 생성합니다.
+11. 자동으로 열린 **세션 미리보기**에서 FPS 그래프를 클릭하면 같은 시각의
+    영상, Trace 시간, 가까운 이벤트와 매핑 오차를 확인할 수 있습니다.
+
+## 사전 준비
+
+### 최종 사용자에게 필요한 항목
+
+| 구분 | 항목 | 설명 |
+| --- | --- | --- |
+| 필수 | Windows 10/11 x64 | 현재 배포와 검증 대상입니다. |
+| 필수 | 캡처할 Unreal 대상 | Windows 패키징 게임 `.exe` 또는 `UnrealEditor.exe`입니다. |
+| 필수 | Unreal Engine 설치 | `Engine\Binaries\Win64` 아래의 `UnrealInsights.exe`와 `UnrealEditor-Cmd.exe`가 필요합니다. 대상과 같은 UE 메이저/마이너 버전을 권장하며 현재 UE 5.6으로 검증했습니다. |
+| 필수 | 원본 `.uproject`와 프로젝트 파일 | Editor 실행 및 Trace 후처리에 사용합니다. 패키징 게임을 캡처할 때도 필요합니다. |
+| 필수 | 쓰기 가능한 출력 폴더 | Trace 채널과 녹화 시간에 따라 파일이 매우 커질 수 있으므로 충분한 여유 공간이 필요합니다. |
+| 선택 | 호환되는 PresentMon | 실시간 presented FPS, 프로세스 CPU, GPU 계열 지표가 필요할 때만 등록합니다. 없어도 Trace와 영상은 녹화되며 종료 후 Unreal Trace FPS로 프리뷰를 만듭니다. |
+| 선택 | Animation Insights 관련 플러그인 | 상세 애니메이션 트랙을 분석하려면 프로젝트에서 Animation Insights, Insights Data Source Filters, Trace Data Filtering 플러그인을 활성화합니다. |
+
+다음 항목은 배포 ZIP 사용자에게 별도 설치가 필요하지 않습니다.
+
+- **.NET 런타임:** 배포본은 `win-x64` self-contained 방식입니다.
+- **FFmpeg / FFprobe:** 배포본의 `tools\ffmpeg`에 포함되며 앱이 우선 자동 탐색합니다.
+- **OBS:** 실제 검증된 녹화 경로는 번들 FFmpeg 창 캡처입니다. OBS 설정은 대체
+  백엔드용으로만 보존되어 있습니다.
+
+배포본은 현재 코드 서명이 없으므로 Windows SmartScreen이 표시될 수 있습니다.
+출처와 ZIP SHA-256을 확인한 다음 압축을 해제해 실행하십시오. ZIP 안에서 직접
+실행하거나 `tools` 폴더만 따로 이동하면 안 됩니다.
+
+### PresentMon을 사용할 때
+
+PresentMon은 선택 사항입니다. 앱은 `--process_id`, `--output_file`,
+`--terminate_on_proc_exit`, `--no_console_stats` 인자를 지원하는 콘솔 버전을
+기대합니다. [공식 PresentMon 콘솔 문서](https://github.com/GameTechDev/PresentMon/blob/main/README-ConsoleApplication.md)와
+[공식 릴리스](https://github.com/GameTechDev/PresentMon/releases)를 참고하십시오.
+
+이 PC에 설치된 FrameViewSDK 1.x의 `PresentMon_x64.exe`는 실제 검수에서 CSV를
+만들지 못하고 종료 코드 1을 반환했습니다. 이 경우에도 세션은 실패하지 않고
+Unreal Trace FPS로 대체됩니다. 라이브 CPU/GPU 규칙까지 사용하려면 호환되는
+standalone PresentMon을 **영상 > 파일과 도구 > 파일 선택**에서 등록해야 합니다.
+
+### Animation Insights를 사용할 때
+
+앱에서 **Animation**, **Object**, **Object Properties** Trace 토글을 사용할 수
+있습니다. Animation이나 Object Properties를 켜면 필요한 Object와 Frame 채널을
+앱이 자동으로 함께 켭니다. Epic의 UE 5.6 문서도 Animation 프리셋에 Object,
+Animation, Frame이 포함된다고 설명합니다.
+
+- [UE 5.6 Animation Insights 사용 및 필수 플러그인](https://dev.epicgames.com/documentation/en-us/unreal-engine/animation-insights-in-unreal-engine?application_version=5.6)
+- [UE 5.6 Unreal Insights Trace 채널 레퍼런스](https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-insights-reference-in-unreal-engine-5?application_version=5.6)
+
+Animation Trace는 Editor 또는 Development/DebugGame 빌드를 권장합니다. UE 5.6의
+Shipping/Test 구성에서는 Animation Trace가 나오지 않을 수 있습니다. 모든 채널을
+무조건 켜면 실행 부하와 `.utrace` 크기가 크게 증가하므로 필요한 채널만
+선택하십시오.
+
+## 설치
+
+1. `UnrealPerfCapture-win-x64.zip`을 원하는 로컬 폴더에 풉니다.
+2. 다음 파일이 함께 있는지 확인합니다.
+
+   ```text
+   UnrealPerfCapture-win-x64/
+     UnrealPerfCapture.exe
+     README.md
+     SHA256SUMS.json
+     THIRD-PARTY-NOTICES.txt
+     tools/ffmpeg/
+       ffmpeg.exe
+       ffprobe.exe
+       LICENSE
+       README.txt
+   ```
+
+3. `UnrealPerfCapture.exe`를 실행합니다. 별도 설치 마법사나 시스템 환경 변수
+   설정은 없습니다.
+4. `SHA256SUMS.json`에는 번들 내부 파일의 크기와 SHA-256이 들어 있습니다.
+
+## 최초 설정
+
+### 1. 캡처 대상 선택
+
+상단의 **대상 선택**에서 다음 중 하나를 고릅니다.
+
+- **패키징 게임:** 게임 `.exe`를 선택합니다. 녹화 시작 시 앱이 `-windowed`,
+  `-ResX=1280`, `-ResY=720`과 선택한 Trace 인자를 붙여 새로 실행합니다.
+- **Unreal Editor:** `Engine\Binaries\Win64\UnrealEditor.exe`를 선택합니다.
+  **영상** 탭의 `.uproject`를 첫 인자로 전달해 새 에디터를 실행합니다. 같은
+  폴더의 `UnrealInsights.exe`가 있으면 함께 자동 등록합니다. 에디터가 열린 뒤
+  필요하면 PIE를 시작해 문제를 재현할 수 있습니다.
+
+앱은 안전한 프로세스 소유권을 위해 **이미 실행 중인 게임이나 에디터에는
+연결하지 않습니다**. 반드시 앱의 **실제 녹화 시작** 버튼으로 대상을 실행해야
+합니다.
+
+#### 추가 실행 인자
+
+**영상 > 영상 캡처 > 추가 실행 인자**에 패키징 게임 또는 Unreal Editor로 넘길
+인자를 한 줄로 입력할 수 있습니다.
+
+```text
+-d3d11 -NoSound "-MyConfig=C:\Path With Spaces\Capture.ini"
+```
+
+공백이 포함된 하나의 값은 큰따옴표로 묶습니다. Windows의 백슬래시와 큰따옴표
+규칙에 따라 각각의 인자로 분리됩니다. 앱의 대상별 기본값과 분리된 사용자 추가
+인자 목록은 `session.json`과 리포트에 기록됩니다. Editor 실행과 Trace 후처리에
+사용한 `.uproject` 경로도 별도 필드로 기록합니다.
+
+다음 항목은 앱이 세션 동기화와 산출물 무결성을 위해 직접 관리하므로 추가 인자로
+덮어쓸 수 없습니다.
+
+```text
+-trace, -tracefile, -tracefiletrunc, -tracehost, -traceautostart,
+-tracecontrol, -NetTrace, -log, -abslog, -ExecCmds, -CmdLineFile,
+-project, -uproject
+```
+
+`-CmdLineFile`을 통한 간접 인자와 다른 `.uproject`를 위치 인자로 추가하는 것도
+거부됩니다. `/`, `--`, 문자열 내부 매치처럼 UE가 같은 옵션으로 해석하는 별칭도
+차단합니다. 닫히지 않은 큰따옴표, 줄바꿈, NUL, 빈 인자가 있으면 대상 실행 전에
+명확한 오류를 표시합니다.
+
+### 2. Unreal Insights와 프로젝트 등록
+
+상단의 Unreal Insights 영역에서 다음 방식을 사용할 수 있습니다.
+
+- **자동 찾기:** 설치된 UE 5.6을 우선 탐색합니다.
+- **폴더 선택:** Engine 루트 또는 `Engine\Binaries\Win64`를 선택합니다.
+- **파일 선택:** `UnrealInsights.exe`를 직접 선택합니다.
+- **열기:** 현재 등록한 Unreal Insights를 실행합니다.
+
+정상 등록하면 같은 폴더의 `UnrealEditor-Cmd.exe`도 자동 동기화됩니다. **영상 >
+Trace 후처리 경로 > 프로젝트 선택**에서 원본 `.uproject`를 지정하십시오.
+
+### 3. 출력 폴더와 영상 설정
+
+- **리포트 > 출력 위치**에서 세션 루트를 선택합니다. 녹화마다 타임스탬프와
+  ID가 붙은 새 하위 폴더가 생성됩니다.
+- **영상** 탭에서 녹화 FPS, 인코더, 품질, pre-roll과 post-roll을 설정합니다.
+- 기본값은 복구 가능한 MKV로 먼저 녹화하고 종료 후 MP4로 remux합니다. 갑작스러운
+  종료가 있어도 MKV 원본을 남기는 구성이 안전합니다.
+- **녹화 종료 시 앱이 실행한 게임/에디터도 종료**를 켜면 정상 종료 요청을
+  보냅니다. 에디터에 저장 확인창이 뜨면 강제 종료하지 않고 에디터를 남기며
+  세션에 경고를 기록합니다.
+
+### 4. 성능 기준과 감지 규칙
+
+- **목표 FPS**를 정하면 프레임 예산이 자동 계산됩니다. 예: 60 FPS는 16.67 ms.
+- 규칙마다 FPS/프레임 시간/CPU/GPU/RHI 계열 지표, 임계값, 연속 프레임 수,
+  최근 N프레임 중 K회, 지속 시간, warm-up, hysteresis, cooldown을 설정할 수
+  있습니다.
+- PresentMon이 없거나 해당 열을 제공하지 않으면 라이브 CPU/GPU 계열 값은
+  `Unavailable`로 기록되며 0으로 오인하지 않습니다.
+- 종료 후에는 Unreal Insights의 `FEngineLoop::Tick` 프레임을 내보내 FPS 그래프와
+  설정된 프레임 히치 Evidence를 생성합니다.
+
+### 5. Trace 옵션
+
+**Trace 옵션** 탭에는 UE 5.6에서 실용적인 35개 채널이 토글로 제공됩니다. 각
+토글에 한국어 설명 툴팁이 있습니다.
+
+기본 활성 9개는 다음과 같습니다.
+
+```text
+cpu, gpu, frame, bookmark, task, stats, counters, loadtime, log
+```
+
+`frame`과 `bookmark`는 Trace/영상 매칭에 필요하므로 필수입니다. `net`을 켜면
+앱이 `-NetTrace=1`도 자동으로 추가합니다. 메모리, 파일, 렌더/RHI, RDG,
+Object Properties 같은 고비용 채널은 조사 목적에 맞을 때만 켜십시오.
+
+### 6. 설정 저장
+
+상단의 **모든 설정 저장**을 누르면 다음 실행에도 값이 복원됩니다. 앱은 자동
+저장도 수행합니다.
+
+```text
+%LOCALAPPDATA%\UnrealPerfCapture\profiles\current.ui-settings.json
+%LOCALAPPDATA%\UnrealPerfCapture\profiles\current.profile.json
+```
+
+대상 경로, 추가 실행 인자, Unreal Insights, `.uproject`, 출력 폴더, FPS, Trace
+토글, 감지 규칙, 영상과 리포트 설정이 모두 저장됩니다. 번들 위치를 옮겨 기존
+FFmpeg 경로가 사라졌다면 새 번들의 FFmpeg를 다시 자동 선택합니다.
+
+## 녹화와 프리뷰 사용법
+
+1. **실제 녹화 시작**을 누릅니다.
+2. 앱이 Trace 파일과 로그 경로를 예약하고 대상을 실행합니다.
+3. 대상의 Trace 준비와 실제 주 창을 확인한 다음 FFmpeg 녹화를 시작합니다.
+4. 문제 상황을 재현합니다. 수동 북마크에는 짧은 현상 설명을 적는 것이 좋습니다.
+5. **실제 녹화 종료**를 누릅니다.
+6. 앱은 PresentMon → Unreal Trace → post-roll → FFmpeg 순서로 마감하고, 필요하면
+   MP4 remux와 Unreal Insights 후처리를 실행합니다.
+7. 완료되면 **세션 미리보기** 탭이 자동으로 열립니다.
+
+프리뷰의 FPS 그래프를 클릭하면 플레이어가 해당 영상 PTS로 이동하고 다음 값을
+함께 표시합니다.
+
+- 영상 시각과 현재 FPS/프레임 시간
+- 변환된 Trace 시각
+- 가장 가까운 북마크 또는 감지 이벤트
+- 매핑 상태와 예상 오차 범위
+
+창 캡처는 시작할 때 확인한 대상 창의 화면 좌표를 녹화합니다. 녹화 중 대상 창을
+이동하거나 크기를 바꾸거나 다른 창으로 덮으면 영상 영역이 달라질 수 있으므로
+대상 창을 같은 위치와 크기로 보이는 상태로 유지하십시오.
+
+실제 세션의 수동/자동 히치 ID는 외부 Evidence 북마크입니다. 시작 시각에는 Unreal
+Trace 내부 북마크를 넣지만, 프로젝트 플러그인 없이 실행 중인 프로세스에 새
+Trace 북마크를 주기적으로 주입하지는 않습니다.
+
+## 생성 파일과 Codex 분석 요청
+
+세션 폴더의 주요 구조는 다음과 같습니다.
+
+```text
+<session>/
+  session.json                 세션 상태, 대상/프로젝트 경로/PID, 실행 인자, Trace 채널과 산출물 목록
+  profile.json                 사용한 FPS/감지 규칙 원본
+  metrics.csv                  라이브 지표 또는 unavailable 기록
+  events.jsonl                 수동/자동 이벤트 원장
+  report.html
+  report.md
+  raw/
+    session.utrace             Unreal Trace 원본
+    capture.mkv                복구 가능한 영상 원본
+    capture.mp4                프리뷰용 remux 영상
+    frame_timing.csv           Unreal Insights 프레임 내보내기
+    sessionBookmarks.csv
+    sessionScopes.csv
+    sessionCounters.csv
+  evidence/
+    clock.json                 세션 시계 정보
+    sync_anchors.json          Trace/영상 동기화 앵커
+    mapping.json               Trace 초 -> 영상 PTS 변환식과 오차
+    frame_timeline.json        GameThread 프레임 시간/FPS와 Trace 시각
+    video_frames.json          실제 영상 프레임 PTS 인덱스
+    trace_bookmarks.json       Unreal 및 외부 Evidence 북마크
+    timeline.jsonl             이벤트 ID -> 영상 시각 -> Trace 시각 조회
+    index.json                 파일 가용성, 크기와 SHA-256
+  logs/
+    unreal-game.log
+    summarize-trace.log
+    insights-frame-export.log
+```
+
+나중에 Codex에게 분석을 요청할 때는 **세션 폴더 전체**를 전달하는 것이 가장
+안전합니다. 최소한 다음 자료가 있어야 영상과 Trace를 다시 맞출 수 있습니다.
+
+```text
+raw/session.utrace
+raw/capture.mp4 또는 raw/capture.mkv
+evidence/ 전체
+logs/unreal-game.log
+session.json
+profile.json
+```
+
+예시 요청:
+
+> 이 Unreal Perf Capture 세션에서 가장 큰 GameThread 히치 세 곳을 찾고,
+> `mapping.json`으로 같은 영상 시각을 계산해 각 구간의 스크린샷과 원인 후보를
+> 정리해 줘.
+
+## 현재 제한 사항
+
+- 현재 동기화 모델은 시작 시 단일 앵커를 사용합니다. 매핑 오차는 항상
+  `mapping.json`과 프리뷰에 표시하지만 장시간 세션의 시계 drift를 보정하는
+  주기적 인프로세스 앵커는 아직 없습니다.
+- 앱의 프리뷰는 FPS와 이벤트 위치를 빠르게 보는 용도입니다. CPU 스코프,
+  Render/RHI, Asset Loading, Network, Animation 트랙의 전문 해석은
+  `raw/session.utrace`를 Unreal Insights로 열어 수행합니다.
+- PresentMon이 없거나 호환되지 않으면 라이브 CPU/GPU 규칙은 사용할 수 없지만,
+  Trace·영상과 종료 후 FPS 프리뷰는 생성됩니다.
+- Animation 데이터는 빌드 구성, 프로젝트 플러그인과 실제 런타임 계측 여부에
+  따라 없을 수 있습니다.
+- 이미 실행 중인 프로세스 attach, 다중 창 전환, 창 이동 추적은 현재 지원하지
+  않습니다.
+
+## 문제 해결
+
+### 실제 녹화 시작이 실패함
+
+- 대상 `.exe`, `.uproject`, `UnrealInsights.exe`, 같은 폴더의
+  `UnrealEditor-Cmd.exe`가 실제로 존재하는지 확인합니다.
+- Unreal Editor 타겟은 `UnrealEditor-Cmd.exe`가 아니라 창이 있는
+  `UnrealEditor.exe`를 선택해야 합니다.
+- 출력 폴더에 쓸 수 있는지와 디스크 공간을 확인합니다.
+- 앱이 이미 실행 중인 대상에 붙지 않으므로 기존 인스턴스를 닫고 앱에서 새로
+  시작합니다.
+
+### PresentMon unavailable 경고가 표시됨
+
+Trace와 영상이 준비 완료라면 정상 폴백입니다. 라이브 CPU/GPU가 꼭 필요할 때만
+호환되는 standalone PresentMon을 등록하십시오.
+
+### Animation 트랙이 비어 있음
+
+- Editor 또는 Development/DebugGame 빌드인지 확인합니다.
+- Animation Insights, Insights Data Source Filters, Trace Data Filtering 플러그인을
+  활성화하고 에디터를 재시작합니다.
+- Animation, Object, Object Properties, Frame 토글과 대상 Actor의 실제 애니메이션
+  동작을 확인합니다.
+
+### `.utrace`가 너무 큼
+
+Memory, Callstack, File, Object Properties, RenderCommands, RHICommands, RDG 등
+고용량 채널을 줄이고 캡처 시간을 짧게 합니다. Epic 문서도 필요한 채널만 선택해
+Trace 부하와 저장 공간을 줄일 것을 권장합니다.
+
+### 에디터가 녹화 종료 후 남아 있음
+
+저장 확인창이나 다른 모달 창이 있는지 확인합니다. 앱은 사용자 작업 손실을 막기
+위해 정상 종료 제한 시간을 넘긴 에디터를 강제 종료하지 않습니다. Trace와 영상은
+이미 각각 마감되며 세션에는 경고가 남습니다.
+
+## 검증 상태
+
+2026-08-07 기준 다음 경로를 실제 UE 5.6 환경에서 검증했습니다.
+
+- Windows 패키징 게임: 앱 실행, Trace, FFmpeg 영상, 종료, Evidence와 프리뷰 생성
+- `UnrealEditor.exe + .uproject`: 실제 Editor 주 창 1920×1200 녹화, Animation/Object
+  채널 포함 Trace, 정상 Editor 종료, Evidence 해시 검증
+- 패키징 게임/Editor 추가 실행 인자: 따옴표 파싱, 예약 인자 차단, 설정 복원과
+  세션 manifest 기록
+- PresentMon 실패: 세션을 중단하지 않고 Unreal Trace FPS로 폴백
+- 자동 테스트: Core, WPF App, Integration, Live Infrastructure 전체 통과
+
+## 소스에서 빌드하는 개발자
+
+최종 사용자와 달리 소스 빌드에는 [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)이
+필요합니다. 배포 ZIP을 만들 때는 `ffmpeg.exe`, `ffprobe.exe`, 라이선스와 README가
+포함된 외부 [FFmpeg](https://ffmpeg.org/) 배포 폴더가 필요합니다. FFmpeg 바이너리는
+소스 저장소에 보관하지 않습니다.
+
+`Tools\UnrealPerfCapture`에서 실행합니다.
+
+```powershell
+dotnet build .\UnrealPerfCapture.slnx -c Release
+dotnet run --project .\src\UnrealPerfCapture.App\UnrealPerfCapture.App.csproj -c Release
+```
+
+자동 테스트:
+
+```powershell
+dotnet run --project .\tests\UnrealPerfCapture.Core.Tests\UnrealPerfCapture.Core.Tests.csproj -c Release
+dotnet run --project .\tests\UnrealPerfCapture.App.Tests\UnrealPerfCapture.App.Tests.csproj -c Release
+dotnet run --project .\tests\UnrealPerfCapture.IntegrationTests\UnrealPerfCapture.IntegrationTests.csproj -c Release
+dotnet run --project .\tests\UnrealPerfCapture.Live.Tests\UnrealPerfCapture.Live.Tests.csproj -c Release
+dotnet format .\UnrealPerfCapture.slnx --verify-no-changes
+```
+
+### FFmpeg 포함 Windows 배포본 생성
+
+`scripts\Publish-WindowsBundle.ps1`은 .NET self-contained 앱, 이 README, FFmpeg,
+FFprobe, 라이선스, 제3자 고지와 SHA-256 manifest를 staging 폴더에서 검증한 뒤
+폴더와 ZIP으로 승격합니다.
+
+FFmpeg 배포 폴더 선택 우선순위:
+
+1. `-FfmpegRoot`
+2. `UNREAL_PERF_CAPTURE_FFMPEG_ROOT`
+3. `%LOCALAPPDATA%\UnrealPerfCapture\tools` 아래의 최신 유효 배포본
+
+```powershell
+# 자동 탐색 결과만 검증
+.\scripts\Publish-WindowsBundle.ps1 -ValidateOnly
+
+# 명시한 FFmpeg 배포 폴더로 생성
+.\scripts\Publish-WindowsBundle.ps1 `
+  -FfmpegRoot 'C:\Path\To\ffmpeg-distribution' `
+  -OutputDirectory "$env:LOCALAPPDATA\UnrealPerfCapture\bundles"
+
+# 기존 번들은 새 staging/ZIP 검증 성공 후에만 교체
+.\scripts\Publish-WindowsBundle.ps1 -Force
+```
+
+출력 폴더를 생략하면 `%LOCALAPPDATA%\UnrealPerfCapture\bundles`를 사용합니다.
+기존 출력은 `-Force` 없이는 덮어쓰지 않으며, 새 폴더·파일 해시·ZIP 검증이 모두
+끝나기 전에는 기존 번들을 교체하지 않습니다.
+
+## 안전과 데이터 원칙
+
+- 앱은 자신이 시작한 프로세스만 제어합니다.
+- 외부 엔드포인트는 기본 loopback이며, OBS 비밀번호는 산출물에 쓰지 않습니다.
+- 사용자 추가 실행 인자는 설정과 세션 리포트에 원문으로 남으므로 토큰, 비밀번호,
+  API 키 같은 비밀값을 넣지 마십시오.
+- 누락된 성능 값은 절대 0으로 바꾸지 않고 `Unavailable`로 남깁니다.
+- 종료는 각 어댑터를 독립적으로 마감해 일부 도구가 실패해도 복구 가능한 Trace,
+  MKV와 Evidence를 최대한 보존합니다.
+- 원격 Unreal 제어나 UnrealMCP 런타임 의존성을 완성 프로젝트에 추가하지 않습니다.
+
+동기화와 산출물 계약의 상세 내용은 [session-contract.md](docs/session-contract.md)를
+참고하십시오.

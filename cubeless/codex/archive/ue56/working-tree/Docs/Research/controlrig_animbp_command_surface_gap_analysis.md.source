@@ -1,0 +1,337 @@
+# ControlRig And AnimBP MCP Command Surface Gap Analysis
+
+Date: 2026-06-27
+
+Scope: docs-only audit of the existing UnrealMCP command surface for
+ControlRig, Animation Blueprint, AnimGraph, state-machine, BlendSpace, and
+skeletal pose proof work. Runtime/gameplay code remains out of scope.
+
+## Inputs
+
+This audit checked:
+
+- Python wrappers in `Python/tools/node_tools.py`
+- Blueprint component wrapper in `Python/tools/blueprint_tools.py`
+- MCP server command list in `Python/unreal_mcp_server.py`
+- C++ handlers in `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands.cpp`
+- C++ handler declarations in `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPBlueprintNodeCommands.h`
+- SkeletalMeshComponent AnimBP default handler in `UnrealMCPBlueprintCommands.cpp`
+- `Docs/Tools/node_tools.md` and `Docs/Tools/blueprint_tools.md`
+
+## Existing Command Surface
+
+### Static Read
+
+| Command | Status | Notes |
+| --- | --- | --- |
+| `inspect_anim_graph_protected_topology` | covered | Read protected AnimGraph nodes, pins, pose links, and optional settings. |
+| `inspect_anim_graph_node_settings` | covered | Read reflected `FAnimNode_*` settings from editor AnimGraph nodes. |
+| `inspect_anim_state_machine_transitions` | covered | Read state-machine nodes, transitions, rule graph topology, and transition settings. |
+| `inspect_blueprint_graph_call_topology` | adjacent | Useful for EventGraph/function call topology, not AnimGraph internals. |
+
+### Runtime Read And Probe
+
+| Command | Status | Notes |
+| --- | --- | --- |
+| `inspect_anim_instance_runtime_state` | covered | Live AnimInstance state-machine, montage summary, curves, weights, timing, and transitions. |
+| `set_anim_instance_runtime_property_for_probe` | covered | Runtime-only property writer for live probe cases; does not save assets. |
+| `sample_anim_state_machine_runtime_response` | covered | Applies runtime property cases, ticks narrowly, and samples state-machine response. |
+| `sample_skeletal_bones_in_sie` | covered | Immediate live bone/socket sampler; does not spawn, tick, or start SIE. |
+| `sample_anim_node_pre_post_runtime_pose` | covered with limits | Dry-run resolver, compiled mapping, PoseWatch capture, active tick delta, and isolated temp components. New node classes may still need extension. |
+
+### ControlRig
+
+| Command | Status | Notes |
+| --- | --- | --- |
+| `controlrig_direct_gate_probe` | covered | Direct transient ControlRig gate proof; not compiled AnimGraph proof. |
+| `sample_controlrig_pre_post_runtime_pose` | covered | Same-instance direct transient rig pre/post solve; not compiled AnimGraph proof. |
+| `profile_controlrig_skeleton` | covered | Read-only skeletal mesh/skeleton profile plus humanoid alias and controls-only preset planning evidence. It does not create assets, add solver units, compile, save, or mutate sources. |
+| `compile_controlrig_profile_recipe` | covered | Deterministic Phase 2 compiler from profile evidence to controls-only preset request, with optional dry-run recipe JSON generation through the existing preset route. It rejects ambiguous required aliases unless explicit overrides are supplied. |
+| `validate_controlrig_recipe` / `dry_run_controlrig_recipe` / `build_controlrig_recipe` | covered with Phase 3 report hardening | Sample/temp recipe transactions now report planned/performed/skipped writes, reused items, cleanup suggestions, and next actions so no-mutation stops and partial failures are distinguishable. |
+| `inspect_controlrig_rigvm_topology` | covered | Read-only ControlRig Blueprint default RigVM graph nodes, pins, links, event names, and dirty-state guards. Use before any RigVM link/default authoring review. |
+| `validate_controlrig_rigvm_links` | covered | Read-only feasibility check for proposed ControlRig RigVM source/target pin links through Unreal's `CanLink` path. It does not author links. |
+| `validate_controlrig_rigvm_pin_defaults` | covered | Read-only feasibility check for RigVM pin default capability, current/default metadata, and proposed default string validity. It does not set values. |
+| `add_controlrig_rigvm_links` | covered for sample/temp ControlRig Blueprints | Adds fully prevalidated RigVM links through `URigVMController::AddLink`, refuses targets outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`, treats already-linked specs as idempotent, and does not create cast nodes or mutate original/engine assets. |
+| `set_controlrig_rigvm_pin_defaults` | covered for sample/temp ControlRig Blueprints | Sets fully prevalidated RigVM pin defaults through `URigVMController::SetPinDefaultValue`, refuses targets outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`, requires explicit values, and disables array resize and linked-pin propagation by default. |
+| `set_anim_graph_controlrig_input_defaults` | covered for sample AnimBPs | Exposes ControlRig AnimGraph input pins and sets defaults. |
+| `ensure_controlrig_forced_driver_animbp` | covered for sample AnimBPs | Inserts/reuses ModifyCurve driver before an existing ControlRig node and applies input defaults. |
+| `ensure_controlrig_sample_asset` | covered for empty/preview/imported-preview-hierarchy/direct-curve/direct-null/scalar-control/transform-control/named-parent/null-transform/direct-control-shape-metadata/event-unit sample assets | Creates/reuses a sample ControlRig Blueprint under sample/temp roots and optionally assigns a preview mesh, imports bounded preview hierarchy from a read-only SkeletalMesh/Skeleton, adds bounded direct hierarchy curves, adds bounded local/global transform nulls, adds bounded float/bool/euler transform controls, or adds/reuses allowlisted single-instance ControlRig event RigVM unit nodes. Direct null/control parents may resolve to existing/imported or earlier direct Bone/Null/Control keys. RigVM links/default writes are handled by separate guarded writer commands; arbitrary script structs, variables, functions, comments, reroutes, dispatch nodes, exposed pins, and graph replacement remain unsupported. |
+
+### BlendSpace
+
+| Command | Status | Notes |
+| --- | --- | --- |
+| `sample_blendspace_runtime_pose_grid` | covered | Runtime pose-grid proof through transient actor/component. |
+| `ensure_blendspace_sample_variant` | covered for sample/temp assets | Duplicates/reuses sample/temp BlendSpace and applies axis/sample edits without modifying source asset. Planner/job-contract execution targets `_MCP_Temp` and pairs it with a runtime pose-grid probe. |
+
+### Sample AnimGraph Authoring
+
+| Command | Status | Notes |
+| --- | --- | --- |
+| `ensure_anim_graph_input_pose_passthrough` | covered for sample AnimBPs | Linked Input Pose to root result. |
+| `ensure_postprocess_anim_demo_variant` | covered for sample assets | Duplicates source AnimBP/SkeletalMesh and assigns sample Post Process ModifyBone variant. |
+| `ensure_anim_graph_modify_bone_demo` | covered for sample AnimBPs | Component-space Modify Bone chain. |
+| `ensure_anim_graph_modify_curve_demo` | covered for sample AnimBPs | Modify Curve chain, useful for ControlRig gate curves. |
+| `ensure_anim_graph_trail_demo` | covered for sample AnimBPs | Component-space Trail Controller chain. |
+| `set_anim_graph_rigidbody_settings` | covered narrowly for sample AnimBPs | RigidBody alpha, external force, simulation space, and world geometry toggle. |
+
+### Component Defaults
+
+| Command | Status | Notes |
+| --- | --- | --- |
+| `set_skeletal_mesh_component_anim_defaults` | covered | Safe SkeletalMeshComponent mesh and AnimBP class defaults on Blueprint component templates. |
+
+## Covered, Do Not Add C++ Yet
+
+No new bridge command is needed for these request classes:
+
+- read AnimGraph topology, node settings, or state-machine transitions;
+- prove a ControlRig gate in a direct transient rig;
+- prove selected AnimGraph node contribution for supported node classes with
+  `sample_anim_node_pre_post_runtime_pose`;
+- inspect current live state-machine state, weights, transition progress,
+  selected curve values, and active montage summary;
+- drive simple live AnimInstance property cases for probe-only state-machine
+  response;
+- duplicate/edit a sample BlendSpace variant;
+- create sample Post Process ModifyBone, ModifyCurve, Trail, or RigidBody study
+  chains;
+- assign mesh and AnimBP defaults on a Blueprint SkeletalMeshComponent template.
+
+## Partial Coverage
+
+These areas have usable routes but need caution:
+
+| Area | Current route | Gap |
+| --- | --- | --- |
+| Same-instance node attribution | `sample_anim_node_pre_post_runtime_pose(mode=pose_watch_capture)` | Node classes without usable runtime pose links may need mapping extension. |
+| ControlRig inside AnimBP | direct probe plus forced-driver sample plus PoseWatch | No general "add new ControlRig node to arbitrary AnimGraph" command. |
+| State-machine behavior | sample authoring plus transition read plus live runtime response | Sample-only command covers regular states, asset players, bounded BlendSpacePlayer input bindings, transitions, and bounded bool/float/enum variable rules; conduits, aliases, nested machines, and arbitrary rule graphs remain gaps. |
+| AnimBP EventGraph locomotion variables | sample-only EventGraph driver plus planner composition | `ensure_anim_bp_event_graph_locomotion_driver` covers Speed from owning pawn XY velocity, optional Direction from CalculateDirection, optional IsInAir from MovementComponent.IsFalling, optional Acceleration/IsAccelerating from CharacterMovement current acceleration, and optional IsValid guard. `bp_authoring_job_contract` can now chain this with `ensure_anim_state_machine_sample_variant` for an automatic sample locomotion pipeline; gait, turn-in-place, and arbitrary EventGraph rewrites remain gaps. |
+| Runtime property probes | live AnimInstance property writer | Probe-only; not asset authoring and not a replacement for graph edits. |
+| Original asset mutation | many commands have `allow_non_sample` | Requires Ieta review and explicit mutation plan before use outside sample/temp roots. |
+| BlendSpace variants | sample/temp axis/sample edits plus planner/job-contract execution | No broad original BlendSpace mutation route by default. |
+| Post Process AnimBP assignment | sample variant path | No general arbitrary SkeletalMesh post-process assignment command outside the variant helper. |
+
+## True Gaps
+
+These are not currently covered by a safe general MCP command:
+
+1. Advanced state-machine authoring
+   - Implemented first pass: `ensure_anim_state_machine_sample_variant`.
+   - Covers sample-only AnimBP duplication/reuse, regular states, one
+     SequencePlayer or BlendSpacePlayer per state, bounded BlendSpacePlayer
+     input bindings, entry links, basic transitions, `always_true`, `always_false`,
+     `automatic_remaining_time`, `bool_variable`, `float_compare`, and
+     `enum_compare` rule modes, compile/save, and readback.
+   - Remaining gap: conduits, state aliases, nested machines, custom transition
+     graphs, multi-node state chains, arbitrary rule Blueprint graphs beyond the
+     bounded variable-rule nodes, and
+     deleting/replacing an existing state machine.
+   - Design: `Docs/Research/ensure_anim_state_machine_sample_variant_design.md`.
+
+2. AnimBP EventGraph locomotion variable driving
+   - Implemented first pass:
+     `ensure_anim_bp_event_graph_locomotion_driver`.
+   - Covers sample-only AnimBP duplication/reuse, float Speed variable creation,
+     optional float Direction, bool IsInAir, float Acceleration, and bool
+     IsAccelerating variable creation,
+     `Event Blueprint Update Animation`, `TryGetPawnOwner`, optional `IsValid`
+     branch, `GetVelocity`, `VSizeXY`, `Set Speed`, optional
+     `GetActorRotation`, `CalculateDirection`, `Set Direction`, optional
+     `GetMovementComponent`, `IsFalling`, `Set IsInAir`, optional
+     `Cast To CharacterMovementComponent`, `GetCurrentAcceleration`,
+     acceleration magnitude, `Set Acceleration`, acceleration threshold compare,
+     `Set IsAccelerating`, compile/save, and EventGraph topology readback.
+   - Remaining gap: gait, turn-in-place, and arbitrary EventGraph rewrites.
+   - Planner/job-contract coverage: `anim_bp_locomotion_sample_pipeline`
+     chains the EventGraph driver with `ensure_anim_state_machine_sample_variant`
+     on the same sample/temp target and binds the sample Move state's
+     BlendSpacePlayer `X` input to `Speed`.
+   - Design:
+     `Docs/Research/ensure_anim_bp_event_graph_locomotion_driver_design.md`.
+
+3. Animation metadata inspection
+   - Implemented first pass: `inspect_animation_asset_metadata_guarded`.
+   - Covers notifies, notify states, curves, sync markers, Montage sections,
+     Montage slots, branch points, metadata summaries, and truncation flags.
+   - Design: `Docs/Research/inspect_animation_asset_metadata_guarded_design.md`.
+   - Keep future changes read-only first.
+
+4. ControlRig asset graph/hierarchy authoring through MCP
+   - Implemented: `ensure_controlrig_sample_asset`.
+   - Covers empty, preview-only, bounded preview-hierarchy, or bounded
+     direct-curve/direct-null/scalar-control/transform-control/named-parent/null-transform/direct-control-shape-metadata/event-unit sample ControlRig Blueprint creation/reuse under sample/temp
+     roots, generated-class readback, optional compile/init, optional save,
+     hierarchy import, direct curve/null/control readback, allowlisted
+     single-instance event-unit node readback, and source dirty guards.
+   - Implemented read-only topology gate: `inspect_controlrig_rigvm_topology`
+     reads default RigVM graph nodes, pins, links, event names, and dirty-state
+     guards before any writer extension is considered.
+   - Implemented read-only link feasibility gate:
+     `validate_controlrig_rigvm_links` checks proposed source/target pin paths
+     with Unreal's `CanLink` path and dirty-state guards before any writer
+     extension is considered.
+   - Implemented read-only pin-default feasibility gate:
+     `validate_controlrig_rigvm_pin_defaults` checks pin existence, default
+     capability, current/default metadata, and proposed default string validity
+     before any writer extension is considered.
+   - Implemented sample/temp writer pass:
+     `add_controlrig_rigvm_links` applies prevalidated links, and
+     `set_controlrig_rigvm_pin_defaults` applies prevalidated pin defaults.
+     Both refuse original/engine assets and keep compile/save optional.
+   - Remaining gap: units beyond the approved event-unit allowlist, variables,
+     functions, exposed pins, comments, reroutes, dispatch nodes, graph
+     replacement, cast-node creation, and original asset mutation. UE 5.6.1
+     public headers do not expose `FRigUnit_EndExecution`.
+   - Design: `Docs/Research/ensure_controlrig_sample_asset_design.md`.
+
+4. Adding a ControlRig AnimGraph node from scratch
+   - Implemented first pass: `ensure_anim_graph_controlrig_node_sample`.
+   - Covers sample/temp-root guarded AnimBP duplication/reuse, ControlRig class
+     resolution, `LinkedInputPose -> ControlRig -> Result` chain creation,
+     compile, optional save, and topology readback.
+   - Implemented recipe orchestration pass:
+     `build_controlrig_recipe_with_animbp_binding` validates an
+     `animbp_binding` recipe, builds the ControlRig through the authoring
+     plugin with binding disabled, calls this sample node command, applies
+     validated input-pin exposure/defaults through
+     `set_anim_graph_controlrig_input_defaults`, and recompiles the sample
+     AnimBP.
+   - Remaining gap: arbitrary insertion before/after a selected node and broader
+     graph rewrite modes.
+   - Design: `Docs/Research/ensure_anim_graph_controlrig_node_sample_design.md`.
+
+5. Linked Anim Graph, Linked Anim Layer, and Sub Anim Instance authoring
+   - Implemented first pass: `ensure_linked_anim_graph_sample_variant`.
+   - Covers sample/temp-root guarded AnimBP duplication/reuse, source/linked
+     TargetSkeleton compatibility, one Linked Anim Graph node targeting an
+     existing linked AnimBP generated class, output-to-root linking, optional
+     input-pose linking when the linked class exposes a pose input pin, compile,
+     optional save, and topology readback.
+   - Planner/job-contract coverage: simple sample/temp linked graph requests
+     now route to this MVP with `inspect_anim_graph_protected_topology`
+     readback. Linked Anim Layer/interface/Sub Anim Instance wording remains
+     outside the safe route.
+   - Remaining gap: Linked Anim Layer/interface creation, Sub Anim Instance
+     compatibility wrappers, arbitrary insertion before/after a selected node,
+     and original asset mutation.
+   - Design:
+     `Docs/Research/linked_anim_graph_layer_sample_authoring_design.md`.
+
+6. PhysicsAsset details for animation physics
+   - Implemented first pass: `inspect_physics_asset_constraints_guarded`.
+   - Covers bodies, bounded collision shape summaries, constraints, limits,
+     drives, profiles, and RBAN solver settings.
+   - Design:
+     `Docs/Research/inspect_physics_asset_constraints_guarded_design.md`.
+
+7. Unsupported node-class PoseWatch mapping
+   - Implemented first diagnostic pass: `sample_anim_node_pre_post_runtime_pose`
+     reports `mapping_support` during dry-run, compiled mapping, and PoseWatch
+     capture so unsupported/source/sink/multi-input/component-space cases are
+     labeled before evidence is overstated.
+   - Remaining gap: node-specific runtime fallbacks when generic reflected
+     `FPoseLink` / `FComponentSpacePoseLink` inventory cannot expose a stable
+     input path for a concrete selected node.
+   - Candidate for remaining work: `extend_anim_node_runtime_mapping`.
+   - Design: `Docs/Research/extend_anim_node_runtime_mapping_design.md`.
+
+8. AnimBP asset creation from Skeleton/SkeletalMesh
+   - Implemented first pass: `create_anim_blueprint_sample`.
+   - Covers sample/temp-root guarded empty AnimBP creation from a Skeleton or
+     SkeletalMesh, AnimInstance parent validation, preview mesh validation,
+     compile, optional save, and readback.
+   - Design: `Docs/Research/create_anim_blueprint_sample_design.md`.
+
+## Candidate Priority
+
+Do not implement these now. Use this order only when a concrete request blocks
+on a missing command.
+
+| Priority | Candidate | Why |
+| --- | --- | --- |
+| P1 | `extend_anim_node_runtime_mapping` fallback expansion | Directly prevents proof failures when a selected node class cannot be attributed after the new `mapping_support` diagnostics identify the missing link path. |
+| P3 | Extend ControlRig RigVM authoring | Needed only when a request requires units beyond the approved event-unit allowlist, variables, functions, comments, reroutes, dispatch nodes, exposed pins, graph replacement, cast-node creation, or original asset mutation. Simple sample/temp links and pin defaults are covered by guarded writer commands. |
+| P3 | Linked Anim Layer/Sub Anim Instance sample authoring | More specialized; wait for a request. Linked Anim Graph MVP is covered by `ensure_linked_anim_graph_sample_variant`. |
+
+## Recommended Next Runtime-Free Work
+
+1. Keep this gap list as the review gate before adding C++.
+2. Use `inspect_animation_asset_metadata_guarded` for animation source metadata
+   requests before considering new reflection work.
+3. Use `inspect_physics_asset_constraints_guarded` for PhysicsAsset body,
+   constraint, profile, and solver requests before considering new reflection
+   work.
+4. Use `ensure_anim_state_machine_sample_variant` for supported sample-only
+   regular state/transition authoring and bounded BlendSpacePlayer input
+   bindings before considering broader state-machine graph work.
+5. Use `ensure_anim_bp_event_graph_locomotion_driver` when a sample AnimBP needs
+   runtime `Speed`, `Direction`, `IsInAir`, `Acceleration`, or
+   `IsAccelerating` variables to feed BlendSpacePlayer inputs or transition
+   rules.
+6. Use `anim_bp_locomotion_sample_pipeline` in the planner/job contract when an
+   automatic sample locomotion AnimBP needs both pawn-driven variables and a
+   sample state machine on the same sample/temp target.
+7. Use `mapping_support` from `sample_anim_node_pre_post_runtime_pose` before
+   extending same-instance AnimGraph node attribution support, then read
+   `Docs/Research/extend_anim_node_runtime_mapping_design.md` for any
+   node-specific fallback expansion.
+8. Use `ensure_anim_graph_controlrig_node_sample` when a sample AnimBP needs a
+   ControlRig node before input-default or forced-driver commands can run.
+9. Use `build_controlrig_recipe_with_animbp_binding` when a recipe includes a
+   sample/temp `animbp_binding` and the desired result is one automatic
+   ControlRig build plus sample AnimBP ControlRig-node/default orchestration.
+10. Use `create_anim_blueprint_sample` when a sample AnimBP target must be
+   created from a Skeleton or SkeletalMesh before authoring or probing.
+11. Use `inspect_controlrig_rigvm_topology` and then
+    `validate_controlrig_rigvm_links` or
+    `validate_controlrig_rigvm_pin_defaults` before any ControlRig RigVM link or
+   pin-default authoring. For sample/temp targets, apply reviewed specs with
+   `add_controlrig_rigvm_links` or `set_controlrig_rigvm_pin_defaults`. UE 5.6.1
+   positive read/write fixtures exist on a temp duplicate of
+   `/ControlRigModules/Modules/AddControl.AddControl`: `VariableNode.Value ->
+   ParentConstraint_1.bMaintainOffset` returns `can_link=true`, and
+   `DISPATCH_RigVMDispatch_ArrayIterator_2.Array=()` plus
+   `ParentConstraint_1.bMaintainOffset=False` return valid proposed defaults.
+12. Use `ensure_controlrig_sample_asset` for empty, preview-only, bounded
+    preview-hierarchy, bounded direct-curve, direct null, scalar control,
+    transform control, named parent, null transform, direct control shape
+   metadata, or allowlisted event-unit sample ControlRig Blueprint creation before
+   depending on engine plugin sample rigs.
+    Read `Docs/Research/ensure_controlrig_sample_asset_design.md` before adding
+   RigVM links or units beyond the approved event-unit allowlist.
+13. Use `profile_controlrig_skeleton` before hand-writing stable ControlRig
+    recipe inputs. It reads bounded reference-skeleton data, reports humanoid
+    alias evidence, and recommends controls-only preset candidates without
+    mutation. Ambiguous aliases should become explicit overrides in Phase 2.
+14. Use `compile_controlrig_profile_recipe` to turn a Phase 1 profile into a
+    deterministic controls-only preset request or dry-run recipe JSON. It does
+    not build, save, or add solver units; ambiguous required aliases require
+    `bone_overrides`.
+15. Before chaining another ControlRig recipe writer, inspect the Phase 3 report
+    fields: `planned_writes`, `performed_writes`, `skipped_writes`,
+    `reused_items`, `cleanup_suggestions`, and `next_action`. If
+    `partial_target_modified=true`, inspect or clean up the sample/temp target
+    before retrying.
+16. Use the planner/job contract or `ensure_linked_anim_graph_sample_variant`
+    for sample/temp Linked Anim Graph MVP composition with an existing
+    compatible linked AnimBP. Use
+    `Docs/Research/linked_anim_graph_layer_sample_authoring_design.md` before
+    adding linked layer/interface or Sub Anim Instance authoring.
+17. Use `Docs/Research/controlrig_animbp_request_routing_checklist.md` to
+    classify concrete requests before editor work.
+17. When a user asks for a concrete animation task, record the chosen route and
+    whether it uses existing commands, a partial route, or a true gap candidate.
+
+## Ieta Review Rule
+
+Before Tivret implements any candidate command, Ieta should write a short review
+with:
+
+- exact user request;
+- existing command attempted or rejected;
+- why read/probe/sample-only routes are insufficient;
+- asset mutation boundary;
+- expected command schema;
+- verification command and expected evidence level.

@@ -1,0 +1,88 @@
+# PCG Tools
+
+These tools are local TA extensions on top of `chongdashu/unreal-mcp`.
+
+They prefer native UnrealMCP bridge commands for fast editor operations, then fall back to the generic `execute_python` bridge command when a running editor has not loaded the newer native command yet (`native_first` parameters control this where exposed).
+
+Exception: `set_pcg_attribute_selector` is native-only. It deliberately does not fall back to Unreal Python because mutating `FPCGAttributePropertySelector` structs through Python can trigger PythonScriptPlugin wrapper ensures and later editor shutdown crashes.
+
+For multi-node graph edits, consider `execute_batch` (`Docs/Tools/batch_tools.md`) to run several PCG commands in one round trip and one editor transaction.
+
+## Asset & Level Discovery
+
+- `list_pcg_assets(root_path="/Game")`
+  - Lists PCG graphs/settings assets by class/name under a content path.
+- `list_pcg_components()`
+  - Lists PCG-like components in the current editor level.
+- `resave_pcg_assets(root_path="/Game")`
+  - Loads and saves PCG-related assets under a content path.
+
+## Level Components & Generation
+
+- `refresh_pcg_components(actor_name="", selected_only=False, cleanup=True, generate=True, refresh=False, force=True, wait_until_complete=False, timeout_seconds=10.0, poll_interval_seconds=0.05, min_generated_output_data_count=-1, min_managed_resource_count=-1, max_components=1000, native_first=True)`
+  - Native-first PCG cleanup/refresh/generate. The C++ bridge returns quickly with component state/readback; with `wait_until_complete=True` the Python tool polls externally until PCG busy state clears, the optional output/resource minimums are met, or the timeout expires.
+- `inspect_pcg_component_outputs(actor_label="", actor_name="", actor_path="", actor_tag="", actor_label_prefix="", component_name="", component_tag="", selected_only=False, max_components=16, max_tagged_data=64, max_points=8, include_point_samples=True)`
+  - Native read-only generated output readback for current-level PCG components. Reports tagged output data and samples point transforms, density, bounds, color, seed, and metadata entries.
+- `set_spline_component_points(points, actor_label="", actor_name="", actor_tag="", actor_label_prefix="", component_name="Road_SourceSpline", component_tag="", selected_only=False, closed_loop=False, native_first=True)`
+  - Native-first SplineComponent point sync that avoids transient `TRASH_` components and reports final point count, length, and max point delta.
+- `set_pcg_debug_enabled(enabled=False, actor_name="", selected_only=False)`
+  - Best-effort toggles common PCG component debug properties.
+- `pcg_actor_smoke_test(graph_path, actor_label="", selected_only=False, cleanup=True, generate=True, dry_run=True)`
+  - Dry-run by default: guarded current-level PCG component smoke test without map switching.
+
+## Graph Authoring — Spec Level
+
+- `create_pcg_graph_from_spec(graph_spec, overwrite_existing=False, allow_overwrite_non_temp=False, save=True, dry_run=False)`
+  - Creates a PCG graph from a deterministic JSON-style spec (nodes, settings, static-mesh spawner entries, edges).
+  - Existing targets are never overwritten automatically. Transient validation cannot guarantee atomic rollback of the original UObject, references, and package after a target-build or save failure; build to an unused candidate path, verify it, and replace the target manually.
+  - `overwrite_existing` and `allow_overwrite_non_temp` remain only for wire compatibility. A real request against an existing target returns `pcg_existing_target_overwrite_unsupported` with `mutation_attempted=false` and leaves the target untouched.
+  - New-target execution first builds the complete spec on a transient PCG graph. Validation failures leave content untouched; an unexpected create, build, or save failure is returned as a partial/unknown mutation where applicable and is never reported as success.
+  - Dry-run reports `can_execute`, `blocked_reason`, `target_exists`, and `would_create_new`; `would_rebuild_existing` and compatibility field `would_overwrite` remain false for every existing target.
+
+## Graph Authoring — Node Level
+
+- `resolve_pcg_graph(graph_path)`
+  - Resolves a graph by short name, package path, or object path.
+- `list_pcg_graph_nodes(graph_path, node_type="", title_contains="", include_pins=True)`
+  - Lists native graph nodes and pins with optional class/title filters.
+- `inspect_pcg_custom_hlsl_nodes(graph_path, node_id="", title_contains="", include_pins=True, include_declarations=True, max_source_chars=4000)`
+  - Native read-only Custom HLSL inspector. Reads reflected `ShaderSource`, helper functions, transient input/output/helper declarations, kernel settings, and pins without including PCG private headers.
+- `add_pcg_node(graph_path, settings_class, node_position=None, node_title="", settings=None)`
+  - Adds a node by settings class, with optional initial settings.
+- `connect_pcg_nodes(graph_path, from_node_id, from_pin, to_node_id, to_pin)`
+  - Connects two nodes by pin label.
+- `set_pcg_node_setting(graph_path, node_id, property_name, value)`
+  - Sets one settings property on a node.
+- `set_pcg_static_mesh_spawner_entries(graph_path, node_id, mesh_entries=None, selector_type="weighted", attribute_name="Meshes", material_override_attributes=None, save=True)`
+  - Replaces weighted/by-attribute Static Mesh Spawner entries.
+- `set_pcg_attribute_selector(graph_path, node_id, selector_property_name, selector_type="attribute", attribute_name="", selected_property_name="", domain_name="", point_property="", extra_property="", extra_names=None, reset_extra_names=True, save=True, dry_run=False)`
+  - Native-only setter for selector struct properties such as `WeightAttribute`, `MatchAttribute`, `InputAttribute`, and `SetTarget`. Use this instead of `execute_python` plus `PCGAttributePropertySelectorBlueprintHelpers.set_*`.
+- `compile_or_notify_pcg_graph(graph_path)`
+  - Compiles or notifies the graph so open editors/components see structural changes.
+- `save_pcg_graph(graph_path)`
+  - Saves the graph asset package.
+
+## Audit & Promotion
+
+- `read_pcg_node_contract(graph_path, node_id="", include_dependencies=False)`
+  - Reads stable node contract data: title, class, position, pins, spawner selector, actor selector.
+- `audit_pcg_graph_contract(graph_path, include_dependencies=True, forbidden_dependency_prefixes=None, fail_on_forbidden_dependencies=True)`
+  - Read-only audit with nodes, pins, spawners, actor selectors, edges, and dependency scan; fails on forbidden dependency prefixes by default.
+- `validate_pcg_source_independence(graph_path, forbidden_dependency_prefixes=None, allowed_dependency_prefixes=None)`
+  - Checks that a recreated graph avoids forbidden source dependencies (e.g. `/Game/Cubeless/PCG/PCGStudy`).
+- `promote_pcg_temp_graph(source_graph_path, target_graph_path, forbidden_dependency_prefixes=None, allowed_dependency_prefixes=None, overwrite_existing=False, allow_non_temp_source=False, dry_run=True)`
+  - Dry-run by default: guarded temp-to-library promotion after source-independence validation.
+  - Promotion requires an unused target path; live Python overwrite of an existing target is disabled because it would require Force Delete.
+  - `overwrite_existing` is retained only for wire compatibility and is deprecated. Build or promote to an unused candidate path, verify it, and perform any replacement manually.
+  - The duplicate must also save successfully. A save failure returns `pcg_promotion_save_failed`, marks the unsaved candidate as a partial/unknown mutation, and requires manual cleanup instead of reporting promotion success.
+  - Dry-run reports `can_promote=false` with `blocked_reason` whenever the target exists, including when `overwrite_existing=true`; `would_overwrite` therefore remains false. A successful real promotion reports `created_new_target=true` instead of the obsolete `overwrote_existing` field.
+
+## Maintenance
+
+Keep upstream updates clean by maintaining this extension as a small patch. For upstream syncs use the repository workflow (`codex/docs/workflows/mcp-upstream-update.md`), preferably:
+
+```powershell
+.\scripts\update_with_pcg_extension.ps1
+```
+
+If upstream changes `Python/unreal_mcp_server.py` or `UnrealMCPBridge.cpp`, reapply only the import/register lines, the `execute_python` route, and the PCG command routing group.

@@ -1,0 +1,227 @@
+# ControlRig And AnimBP API Map For MCP
+
+This is the working API map for ControlRig and Animation Blueprint MCP research
+in the UE 5.6.1 fork. It is meant to guide tool choice and future narrow bridge
+work, not to authorize runtime gameplay code.
+
+## Primary Engine Target
+
+- Unreal Engine: `C:\Program Files\Epic Games\UE_5.6`
+- Repository plugin: `MCPGameProject/Plugins/UnrealMCP`
+- Current UnrealMCP module already depends on editor animation modules:
+  `AnimGraph`, `AnimGraphRuntime`, `ControlRig`, and `ControlRigDeveloper`.
+
+## Official Concepts To Preserve
+
+Animation Blueprints:
+
+- AnimBPs are specialized Blueprints controlling a Skeletal Mesh's animation.
+- EventGraph and AnimGraph are separate surfaces.
+- AnimGraph nodes create and pass animation poses; final output connects to the
+  Output Pose.
+- State machines live inside the AnimGraph and contain states, transitions, and
+  rule graphs.
+
+ControlRig:
+
+- Control Rig uses the RigVM model and controller pattern.
+- `ControlRigDeveloper` contains rig-editing functionality.
+- `RigVMController` is the authority for graph changes.
+- `RigHierarchy` stores bones, controls, nulls, and curves.
+- `RigHierarchyController` mutates the hierarchy.
+
+## Local UE 5.6 Header Anchors
+
+Use installed UE 5.6 headers as the final local truth when official web docs are
+newer than the target engine.
+
+| Surface | UE 5.6 header |
+| --- | --- |
+| AnimBP asset | `Engine/Source/Runtime/Engine/Classes/Animation/AnimBlueprint.h` |
+| AnimBP factory | `Engine/Source/Editor/UnrealEd/Classes/Factories/AnimBlueprintFactory.h` |
+| Skeleton | `Engine/Source/Runtime/Engine/Classes/Animation/Skeleton.h` |
+| SkeletalMesh | `Engine/Source/Runtime/Engine/Classes/Engine/SkeletalMesh.h` |
+| AnimGraph editor base node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_Base.h` |
+| ControlRig AnimGraph node | `Engine/Plugins/Animation/ControlRig/Source/ControlRigDeveloper/Public/AnimGraphNode_ControlRig.h` |
+| ControlRig AnimGraph runtime node | `Engine/Plugins/Animation/ControlRig/Source/ControlRig/Public/AnimNode_ControlRig.h` |
+| ControlRig custom-property base | `Engine/Plugins/Animation/ControlRig/Source/ControlRig/Public/AnimNode_ControlRigBase.h` |
+| ControlRig input/output mapping | `Engine/Plugins/Animation/ControlRig/Source/ControlRigDeveloper/Public/ControlRigIOMapping.h` |
+| ControlRig Blueprint | `Engine/Plugins/Animation/ControlRig/Source/ControlRigDeveloper/Public/ControlRigBlueprint.h` |
+| ControlRig Blueprint factory | `Engine/Plugins/Animation/ControlRig/Source/ControlRigEditor/Public/ControlRigBlueprintFactory.h` |
+| ControlRig Blueprint editor library | `Engine/Plugins/Animation/ControlRig/Source/ControlRigEditor/Public/ControlRigBlueprintEditorLibrary.h` |
+| ControlRig runtime | `Engine/Plugins/Animation/ControlRig/Source/ControlRig/Public/ControlRig.h` |
+| Rig hierarchy | `Engine/Plugins/Animation/ControlRig/Source/ControlRig/Public/Rigs/RigHierarchy.h` |
+| Rig hierarchy controller | `Engine/Plugins/Animation/ControlRig/Source/ControlRig/Public/Rigs/RigHierarchyController.h` |
+| RigVM Blueprint | `Engine/Plugins/Runtime/RigVM/Source/RigVMDeveloper/Public/RigVMBlueprint.h` |
+| RigVM controller | `Engine/Plugins/Runtime/RigVM/Source/RigVMDeveloper/Public/RigVMModel/RigVMController.h` |
+| RigVM graph/node/pin/link readback | `Engine/Plugins/Runtime/RigVM/Source/RigVMDeveloper/Public/RigVMModel/RigVMGraph.h`, `RigVMNode.h`, `RigVMPin.h`, `RigVMLink.h`, `Nodes/RigVMUnitNode.h` |
+| ControlRig event units | `Engine/Plugins/Animation/ControlRig/Source/ControlRig/Public/Units/Execution/RigUnit_BeginExecution.h`, `RigUnit_PrepareForExecution.h`, `RigUnit_InverseExecution.h`, `RigUnit_InteractionExecution.h` |
+| Animation asset metadata | `Engine/Source/Runtime/Engine/Classes/Animation/AnimationAsset.h` |
+| Sequence notifies and curves | `Engine/Source/Runtime/Engine/Classes/Animation/AnimSequenceBase.h` |
+| Sequence sync markers | `Engine/Source/Runtime/Engine/Classes/Animation/AnimSequence.h` |
+| Montage sections and slots | `Engine/Source/Runtime/Engine/Classes/Animation/AnimMontage.h` |
+| Notify and sync marker structs | `Engine/Source/Runtime/Engine/Public/Animation/AnimTypes.h` |
+| Curve structs and raw curve tracks | `Engine/Source/Runtime/Engine/Public/Animation/AnimCurveTypes.h` |
+| Editor animation data model | `Engine/Source/Runtime/Engine/Classes/Animation/AnimData/IAnimationDataModel.h` |
+| State-machine editor graph | `Engine/Source/Editor/AnimGraph/Public/AnimationStateMachineGraph.h` |
+| State-machine schema | `Engine/Source/Editor/AnimGraph/Public/AnimationStateMachineSchema.h` |
+| State and transition nodes | `Engine/Source/Editor/AnimGraph/Public/AnimStateNode.h`, `AnimStateTransitionNode.h` |
+| State/transition result nodes | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_StateResult.h`, `AnimGraphNode_TransitionResult.h` |
+| Generated AnimBP mapping | `Engine/Source/Runtime/Engine/Classes/Animation/AnimBlueprintGeneratedClass.h` |
+| Runtime pose links | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNodeBase.h` |
+| PoseWatch debug data | `Engine/Source/Runtime/Engine/Classes/Engine/PoseWatch.h` |
+| Linked Anim Graph editor node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedAnimGraph.h` |
+| Linked Anim Layer editor node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedAnimLayer.h` |
+| Linked Input Pose editor node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedInputPose.h` |
+| Linked Anim Graph base | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedAnimGraphBase.h` |
+| Linked Anim Graph runtime node | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNode_LinkedAnimGraph.h` |
+| Linked Anim Layer runtime node | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNode_LinkedAnimLayer.h` |
+| Linked Input Pose runtime node | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNode_LinkedInputPose.h` |
+| Anim Layer Interface | `Engine/Source/Runtime/Engine/Classes/Animation/AnimLayerInterface.h` |
+| PhysicsAsset | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/PhysicsAsset.h` |
+| Skeletal body setup | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/SkeletalBodySetup.h` |
+| Physics constraint template | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/PhysicsConstraintTemplate.h` |
+| Constraint instance | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/ConstraintInstance.h` |
+| Collision geometry summary | `Engine/Source/Runtime/Engine/Classes/PhysicsEngine/BodySetup.h`, `AggregateGeom.h` |
+
+## Core C++ Types
+
+| Type | Role for MCP |
+| --- | --- |
+| `UAnimBlueprint` | AnimBP asset. Use `GetAnimBlueprintGeneratedClass()` instead of Python `generated_class` guesses. |
+| `UAnimBlueprintFactory` | Editor factory for sample AnimBP creation with `TargetSkeleton`, `PreviewSkeletalMesh`, and `ParentClass`. |
+| `UAnimBlueprintGeneratedClass` | Compiled AnimBP class and runtime-node mapping boundary. |
+| `USkeleton` / `USkeletalMesh` | Source assets for sample AnimBP creation and PhysicsAsset lookup. |
+| `UAnimGraphNode_Base` | Editor visual node base for pose-generating/pose-consuming AnimGraph nodes. |
+| `FAnimNode_Base` | Runtime node struct paired with editor AnimGraph nodes. |
+| `UEdGraph` / `UEdGraphNode` / `UEdGraphPin` | Graph topology, node placement, pin direction, default values, and links. |
+| `UAnimGraphNode_ControlRig` | Editor ControlRig AnimGraph node wrapping `FAnimNode_ControlRig`. |
+| `FAnimNode_ControlRig` | Runtime ControlRig node struct in AnimGraph evaluation. Use `SetControlRigClass()` in C++ rather than Python property guesses. |
+| `UControlRigBlueprint` | ControlRig asset/editor surface. |
+| `UControlRigBlueprintFactory` | Editor factory for sample ControlRig Blueprint creation. |
+| `UControlRigBlueprintEditorLibrary` | Editor helper surface for preview mesh, hierarchy, hierarchy controller, and initialization. |
+| `UControlRig` | Runtime/transient rig instance. Useful for direct gate probes. |
+| `URigVMController` | RigVM graph mutation authority. |
+| `URigVMGraph` / `URigVMNode` / `URigVMUnitNode` / `URigVMPin` / `URigVMLink` | RigVM graph, node, unit-node, pin, and link readback surfaces used by `inspect_controlrig_rigvm_topology`; `URigVMGraph::CanLink` and pin/link lookup APIs are used by `validate_controlrig_rigvm_links` without authoring links; `URigVMPin::CanProvideDefaultValue`, `IsValidDefaultValue`, and `ClampDefaultValueFromMetaData` are used by `validate_controlrig_rigvm_pin_defaults` without setting values. |
+| `URigVMController` | RigVM mutation authority. Current MCP writer scope is limited to sample/temp `AddLink()` through `add_controlrig_rigvm_links` and sample/temp `SetPinDefaultValue()` through `set_controlrig_rigvm_pin_defaults`; arbitrary nodes, variables, functions, comments, reroutes, exposed pins, graph replacement, cast-node creation, and original asset mutation remain out of scope. |
+| `FRigUnit_BeginExecution`, `FRigUnit_PreBeginExecution`, `FRigUnit_PostBeginExecution`, `FRigUnit_PrepareForExecution`, `FRigUnit_PostPrepareForExecution`, `FRigUnit_InverseExecution` | UE 5.6.1 public single-instance ControlRig event units allowlisted for `ensure_controlrig_sample_asset.unit_nodes`. Local UE 5.6.1 headers do not expose `FRigUnit_EndExecution`; do not synthesize it. `FRigUnit_InteractionExecution` is public but not allowlisted because it does not declare `CanOnlyExistOnce()`. `FRigUnit_SequenceExecution` is deprecated and not allowlisted. |
+| `URigHierarchy` | Hierarchy read surface for bones, controls, nulls, and curves. |
+| `URigHierarchyController` | Hierarchy mutation authority. |
+| `UAnimGraphNode_LinkedAnimGraph` | Editor linked AnimBP instance node wrapping `FAnimNode_LinkedAnimGraph`. |
+| `UAnimGraphNode_LinkedAnimLayer` | Editor linked layer node wrapping `FAnimNode_LinkedAnimLayer`. |
+| `UAnimGraphNode_LinkedInputPose` | Editor linked input pose node; compiler/schema must reconcile pins and function references. |
+| `FAnimNode_LinkedAnimGraph` | Runtime linked AnimGraph node with `InstanceClass` and generated input pose links. |
+| `FAnimNode_LinkedAnimLayer` | Runtime linked layer node with `Interface` and `Layer` fields. |
+| `UAnimLayerInterface` | Interface type for linked Anim Layer signatures. |
+| `UPhysicsAsset` | Static PhysicsAsset source for bodies, constraints, profiles, and RBAN solver settings. |
+| `USkeletalBodySetup` | Per-body collision setup and physical animation profile surface. |
+| `UPhysicsConstraintTemplate` | Per-constraint source containing `DefaultInstance` and profile handles. |
+| `FConstraintInstance` | Constraint bone names, linear/angular limits, projection, breakability, plasticity, and drives. |
+
+## Python API Surfaces That Are Useful
+
+Use Unreal Python where it is an exposed, documented editor API:
+
+- load `ControlRigDeveloper` before ControlRig editing;
+- load existing `ControlRigBlueprint` assets;
+- use `ControlRigBlueprint.get_currently_open_rig_blueprints()`;
+- use `ControlRigBlueprintFactory` for new sample ControlRig assets;
+- set preview meshes on ControlRig assets;
+- use ControlRig Python Log output as a source for rig graph/hierarchy commands;
+- query documented `ControlRigBlueprint`, `RigHierarchy`, and `RigVMController`
+  methods when building safe sample-only scripts.
+
+Do not assume the same Python access model works for protected AnimGraph
+internals.
+
+## Current MCP Command Surface
+
+Use these before considering new C++:
+
+| Need | Command |
+| --- | --- |
+| Static AnimGraph topology | `inspect_anim_graph_protected_topology` |
+| Reflected runtime `FAnimNode_*` settings | `inspect_anim_graph_node_settings` |
+| State-machine transitions and rule graphs | `inspect_anim_state_machine_transitions` |
+| Source animation notifies, curves, sync markers, and Montage layout | `inspect_animation_asset_metadata_guarded` |
+| ControlRig gate behavior on a transient rig | `controlrig_direct_gate_probe` |
+| Direct transient ControlRig pre/post transforms | `sample_controlrig_pre_post_runtime_pose` |
+| Read-only skeleton profile and recipe-planning evidence | `profile_controlrig_skeleton` |
+| Deterministic skeleton-profile to controls-only recipe planning | `compile_controlrig_profile_recipe` |
+| ControlRig recipe transaction report and failure/reuse evidence | `validate_controlrig_recipe`, `dry_run_controlrig_recipe`, `build_controlrig_recipe` |
+| ControlRig RigVM topology, link feasibility, and pin-default feasibility | `inspect_controlrig_rigvm_topology`, then `validate_controlrig_rigvm_links` or `validate_controlrig_rigvm_pin_defaults` |
+| Sample/temp ControlRig RigVM link or pin-default authoring | Validate first, then `add_controlrig_rigvm_links` or `set_controlrig_rigvm_pin_defaults` on `/Game/_MCP_Sample` or `/Game/_MCP_Temp` only |
+| Live AnimGraph target resolver and PoseWatch proof | `sample_anim_node_pre_post_runtime_pose` with `mapping_support` diagnostics for attribution support class and evidence tier |
+| Live SkeletalMeshComponent bones/sockets | `sample_skeletal_bones_in_sie` |
+| BlendSpace runtime pose grid | `sample_blendspace_runtime_pose_grid` |
+| Sample/temp BlendSpace variant authoring | `ensure_blendspace_sample_variant`; planner/job-contract route `blendspace_sample_variant` targets `_MCP_Temp` and verifies with `sample_blendspace_runtime_pose_grid` |
+| Sample-only AnimBP creation from Skeleton/SkeletalMesh | `create_anim_blueprint_sample` |
+| Sample-only AnimBP state-machine authoring | `ensure_anim_state_machine_sample_variant` |
+| Sample-only AnimBP locomotion EventGraph variable driving | `ensure_anim_bp_event_graph_locomotion_driver` |
+| Planner-composed sample locomotion AnimBP | `anim_bp_locomotion_sample_pipeline` in `bp_authoring_job_contract.py`, chaining the EventGraph driver and state-machine authoring commands |
+| Sample-only ControlRig AnimGraph node insertion | `ensure_anim_graph_controlrig_node_sample` |
+| Sample-only Linked Anim Graph composition | `ensure_linked_anim_graph_sample_variant` |
+| Live AnimInstance state read | `inspect_anim_instance_runtime_state` |
+| Runtime-only AnimInstance property probe | `set_anim_instance_runtime_property_for_probe` |
+| State-machine runtime response probe | `sample_anim_state_machine_runtime_response` |
+| Sample Post Process input-pose passthrough | `ensure_anim_graph_input_pose_passthrough` |
+| Sample Post Process ModifyBone chain | `ensure_anim_graph_modify_bone_demo` |
+| Sample ModifyCurve chain | `ensure_anim_graph_modify_curve_demo` |
+| ControlRig input default exposure in sample AnimBP | `set_anim_graph_controlrig_input_defaults` |
+| Forced driver sample around ControlRig node | `ensure_controlrig_forced_driver_animbp` |
+| Sample Trail Controller chain | `ensure_anim_graph_trail_demo` |
+| Sample RigidBody settings | `set_anim_graph_rigidbody_settings` |
+| PhysicsAsset bodies, constraints, profiles, and RBAN solver settings | `inspect_physics_asset_constraints_guarded` |
+| SkeletalMeshComponent AnimBP defaults | `set_skeletal_mesh_component_anim_defaults` |
+
+## New C++ Bridge Triggers
+
+Add or modify UnrealMCP C++ only when a concrete request hits one of these:
+
+- protected AnimGraph topology must be read or written and no command covers it;
+- ControlRig optional pins or custom property bindings must be exposed safely;
+- compiled editor-node to runtime-node mapping fails for a required node class;
+- same-instance pre/post proof is required for a node class that still cannot be
+  attributed after checking `sample_anim_node_pre_post_runtime_pose.mapping_support`;
+  first check
+  `Docs/Research/extend_anim_node_runtime_mapping_design.md`;
+- a sample AnimBP needs arbitrary ControlRig node insertion beyond
+  `ensure_anim_graph_controlrig_node_sample`, such as inserting before/after a
+  selected node or broad graph rewrites;
+- advanced state-machine authoring is required beyond
+  `ensure_anim_state_machine_sample_variant` support, such as conduits, state
+  aliases, nested machines, custom transition graphs, arbitrary rule graphs
+  beyond bounded bool/float/enum variable rules and bounded BlendSpacePlayer
+  input bindings, or
+  replacing/deleting an existing machine;
+- EventGraph variable driving is required beyond the bounded
+  `ensure_anim_bp_event_graph_locomotion_driver`
+  Speed/Direction/IsInAir/Acceleration/IsAccelerating route, such as gait,
+  turn-in-place, or arbitrary EventGraph rewrites;
+- sequence notify, curve, sync marker, or Montage internals are required; use
+  `inspect_animation_asset_metadata_guarded` first;
+- PhysicsAsset body, constraint, limit, drive, or profile data is required; use
+  `inspect_physics_asset_constraints_guarded` first;
+- a sample ControlRig asset must be created or seeded with preview/hierarchy
+  data; first check
+  `Docs/Research/ensure_controlrig_sample_asset_design.md`;
+- linked Anim Graph, linked Anim Layer, or Sub Anim Instance sample authoring is
+  required; first check
+  `Docs/Research/linked_anim_graph_layer_sample_authoring_design.md`;
+- repeated manual setup becomes riskier than a narrow guarded command.
+
+Every new bridge command should be editor-only, guarded, structured, and
+sample-root-first.
+
+## Source Links
+
+- Animation Blueprints: https://dev.epicgames.com/documentation/unreal-engine/animation-blueprints-in-unreal-engine
+- Graphing in Animation Blueprints: https://dev.epicgames.com/documentation/unreal-engine/graphing-in-animation-blueprints-in-unreal-engine
+- Animation Blueprint Nodes: https://dev.epicgames.com/documentation/unreal-engine/animation-blueprint-nodes-in-unreal-engine
+- State Machines: https://dev.epicgames.com/documentation/unreal-engine/state-machines-in-unreal-engine
+- Animation Node Technical Guide: https://dev.epicgames.com/documentation/unreal-engine/animation-node-technical-guide-in-unreal-engine
+- `UAnimBlueprint`: https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/Engine/UAnimBlueprint
+- `UAnimGraphNode_Base`: https://dev.epicgames.com/documentation/unreal-engine/API/Editor/AnimGraph/UAnimGraphNode_Base
+- Control Rig Python Scripting: https://dev.epicgames.com/documentation/unreal-engine/control-rig-python-scripting-in-unreal-engine
+- Unreal Python `ControlRigBlueprint` 5.6: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/ControlRigBlueprint?application_version=5.6
+- Unreal Python `AnimGraphNode_ControlRig` 5.6: https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/AnimGraphNode_ControlRig?application_version=5.6

@@ -1,0 +1,5723 @@
+{
+  "schema_version": 1,
+  "scope": "actual_legacy_registration_inventory_only",
+  "source_root": "C:\\Git\\UnrealMCP5_6_1",
+  "source_files_copied": 41,
+  "source_files_changed_during_audit": [],
+  "planning_inventory_sha256": "8c09d6139b16b93599e073cdc73bb6ecd4a45d56ac215a6719f8ff6ca26e2d7c",
+  "planning_inventory_source_hash_mismatches": [],
+  "static_definition_count": 436,
+  "static_unique_names": 436,
+  "runtime_union_unique_names": 436,
+  "static_missing_from_runtime": [],
+  "runtime_not_in_static": [],
+  "search_eager_catalog_schemas_identical": true,
+  "modes": {
+    "search": {
+      "status": "pass",
+      "counts": {
+        "public": 3,
+        "catalog": 433,
+        "registry": 433
+      },
+      "elapsed_seconds": 2.86699489998864,
+      "process_exit_code": 0,
+      "network_and_process_attempts": [],
+      "outside_isolation_mutation_attempts": [],
+      "unreal_connection_is_none": true
+    },
+    "eager": {
+      "status": "pass",
+      "counts": {
+        "public": 433,
+        "catalog": 433,
+        "registry": 433
+      },
+      "elapsed_seconds": 1.3658061000169255,
+      "process_exit_code": 0,
+      "network_and_process_attempts": [],
+      "outside_isolation_mutation_attempts": [],
+      "unreal_connection_is_none": true
+    }
+  },
+  "per_definition": [
+    {
+      "name": "inspect_ai_authoring_support",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 1907,
+        "end_line": 1917,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_ai_assets",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 1920,
+        "end_line": 1942,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_ai_asset_structure",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 1945,
+        "end_line": 1963,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_ai_blackboard_asset",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 1966,
+        "end_line": 1989,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_ai_blackboard_key",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 1992,
+        "end_line": 2024,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_ai_blackboard_key",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2027,
+        "end_line": 2050,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_ai_behavior_tree_asset",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2053,
+        "end_line": 2078,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_ai_behavior_tree_blackboard",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2081,
+        "end_line": 2104,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "search_ai_behavior_tree_node_classes",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2107,
+        "end_line": 2132,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_ai_eqs_query",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2135,
+        "end_line": 2158,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "run_ai_dummy_patrol_chase_smoke",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2161,
+        "end_line": 2240,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "run_ai_behavior_tree_execution_smoke",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2243,
+        "end_line": 2315,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_ai_patrol_chase_behavior_assets",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2318,
+        "end_line": 2354,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_ai_controller_perception",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2357,
+        "end_line": 2393,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_ai_behavior_assets",
+      "category": "ai",
+      "source": {
+        "path": "Python/tools/ai_tools.py",
+        "line": 2396,
+        "end_line": 2414,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_audio_assets",
+      "category": "audio",
+      "source": {
+        "path": "Python/tools/audio_tools.py",
+        "line": 49,
+        "end_line": 72,
+        "sha256": "c727a83f629fd723c31cea257aac2f598d0117ba20298a45fc20aa89f769ff4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_audio_asset",
+      "category": "audio",
+      "source": {
+        "path": "Python/tools/audio_tools.py",
+        "line": 75,
+        "end_line": 85,
+        "sha256": "c727a83f629fd723c31cea257aac2f598d0117ba20298a45fc20aa89f769ff4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_sound_cue_from_wave",
+      "category": "audio",
+      "source": {
+        "path": "Python/tools/audio_tools.py",
+        "line": 88,
+        "end_line": 111,
+        "sha256": "c727a83f629fd723c31cea257aac2f598d0117ba20298a45fc20aa89f769ff4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_basic_metasound_source",
+      "category": "audio",
+      "source": {
+        "path": "Python/tools/audio_tools.py",
+        "line": 114,
+        "end_line": 154,
+        "sha256": "c727a83f629fd723c31cea257aac2f598d0117ba20298a45fc20aa89f769ff4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "execute_batch",
+      "category": "batch",
+      "source": {
+        "path": "Python/tools/batch_tools.py",
+        "line": 36,
+        "end_line": 122,
+        "sha256": "0f26c494455d82177342be6b540aea3a5126da40b53996213f2d265acdea35db"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_blueprint",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 47,
+        "end_line": 90,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_component_to_blueprint",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 93,
+        "end_line": 172,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_blueprint_components",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 175,
+        "end_line": 216,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_static_mesh_properties",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 219,
+        "end_line": 263,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_component_property",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 266,
+        "end_line": 302,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_actor_tick_settings",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 305,
+        "end_line": 360,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "duplicate_blueprint_to_temp",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 363,
+        "end_line": 411,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "replace_blueprint_component_class",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 414,
+        "end_line": 467,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_skeletal_mesh_component_anim_defaults",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 470,
+        "end_line": 547,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_component_property",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 550,
+        "end_line": 584,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_physics_properties",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 587,
+        "end_line": 629,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_blueprint_rigid_constraint_chain",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 632,
+        "end_line": 744,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_blueprint",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 747,
+        "end_line": 777,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_and_save_blueprint",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 780,
+        "end_line": 821,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_and_validate_blueprint",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 824,
+        "end_line": 868,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_property",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 871,
+        "end_line": 915,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_pawn_properties",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 918,
+        "end_line": 973,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_interface",
+      "category": "blueprint",
+      "source": {
+        "path": "Python/tools/blueprint_tools.py",
+        "line": 976,
+        "end_line": 1009,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_chaos_solver_settings",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 72,
+        "end_line": 105,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_chaos_solver_settings",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 108,
+        "end_line": 151,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_chaos_cloth_asset",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 154,
+        "end_line": 197,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_chaos_cloth_simulation_mesh",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 200,
+        "end_line": 249,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_chaos_cloth_component",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 252,
+        "end_line": 293,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_chaos_cloth_component",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 296,
+        "end_line": 363,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_chaos_cloth_dataflow_node",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 366,
+        "end_line": 425,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_chaos_cloth_weight_map",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 428,
+        "end_line": 529,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_legacy_chaos_clothing_from_skeletal_sections",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 532,
+        "end_line": 586,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_chaos_destruction_learning_fixture",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 589,
+        "end_line": 616,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_geometry_collection_performance_guarded",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 619,
+        "end_line": 641,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_geometry_collection_runtime_state",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 644,
+        "end_line": 691,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "run_chaos_destruction_performance_smoke",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 694,
+        "end_line": 771,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "run_chaos_cache_smoke",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 774,
+        "end_line": 800,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_geometry_collection_from_mesh",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 803,
+        "end_line": 846,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_building_fracture",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 849,
+        "end_line": 922,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_anchor_field",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 925,
+        "end_line": 953,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "trigger_trace_external_strain",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 956,
+        "end_line": 994,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "record_chaos_cache",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 997,
+        "end_line": 1047,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_chaos_cache",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 1050,
+        "end_line": 1094,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_chaos_level_sequence",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 1097,
+        "end_line": 1128,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "bind_chaos_cache_to_sequence",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 1131,
+        "end_line": 1163,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_chaos_sequence_timing",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 1166,
+        "end_line": 1203,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_chaos_cinematic_pipeline",
+      "category": "chaos",
+      "source": {
+        "path": "Python/tools/chaos_tools.py",
+        "line": 1206,
+        "end_line": 1250,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "profile_controlrig_skeleton",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1276,
+        "end_line": 1299,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_controlrig_profile_recipe",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1302,
+        "end_line": 1359,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_controlrig_solver_intents",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1362,
+        "end_line": 1393,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "make_controlrig_preset_recipe",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1396,
+        "end_line": 1418,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_controlrig_recipe",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1421,
+        "end_line": 1432,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "dry_run_controlrig_recipe",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1435,
+        "end_line": 1446,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "build_controlrig_recipe",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1449,
+        "end_line": 1468,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "build_controlrig_recipe_with_animbp_binding",
+      "category": "controlrig_authoring",
+      "source": {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "line": 1472,
+        "end_line": 1496,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_datatable_schema",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 48,
+        "end_line": 60,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_datatable_rows",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 63,
+        "end_line": 90,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_datatable_row",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 93,
+        "end_line": 109,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_or_update_datatable_row",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 112,
+        "end_line": 143,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_datatable_row",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 146,
+        "end_line": 170,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_datatable",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 173,
+        "end_line": 199,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_data_asset",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 202,
+        "end_line": 214,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_data_asset_properties",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 217,
+        "end_line": 245,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_data_asset",
+      "category": "data",
+      "source": {
+        "path": "Python/tools/data_tools.py",
+        "line": 248,
+        "end_line": 274,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_actors_in_level",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 48,
+        "end_line": 88,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "find_actors_by_name",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 91,
+        "end_line": 140,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "spawn_actor",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 143,
+        "end_line": 212,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "delete_actor",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 215,
+        "end_line": 232,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_actor_transform",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 235,
+        "end_line": 264,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_actor_properties",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 267,
+        "end_line": 284,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "line_trace_physical_material",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 287,
+        "end_line": 332,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inject_pie_input_key",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 335,
+        "end_line": 377,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_actor_property",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 380,
+        "end_line": 421,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "focus_viewport",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 424,
+        "end_line": 468,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "take_screenshot",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 471,
+        "end_line": 494,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_viewport_bookmarks",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 497,
+        "end_line": 518,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_active_viewport_realtime",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 521,
+        "end_line": 552,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "capture_viewport_bookmark_screenshot",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 555,
+        "end_line": 617,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "open_editor_level",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 620,
+        "end_line": 667,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_editor_level_open_status",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 670,
+        "end_line": 699,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "clear_dirty_package_flags",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 702,
+        "end_line": 750,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "safe_new_preview_map",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 753,
+        "end_line": 806,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "spawn_blueprint_actor",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 809,
+        "end_line": 872,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "open_niagara_preview_player",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 875,
+        "end_line": 901,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_niagara_preview_player_state",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 904,
+        "end_line": 919,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_niagara_preview_lab_state",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 922,
+        "end_line": 937,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "cleanup_niagara_preview_lab",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 940,
+        "end_line": 955,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "capture_niagara_preview_lab_view",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 958,
+        "end_line": 1009,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "preview_niagara_system_in_preview_lab",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1012,
+        "end_line": 1099,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_niagara_system_in_preview_lab",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1102,
+        "end_line": 1193,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_component_runtime_state",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1196,
+        "end_line": 1284,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_component_parameter_store",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1287,
+        "end_line": 1347,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_render_target2d_region_stats",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1350,
+        "end_line": 1409,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_component_grid2d_runtime",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1412,
+        "end_line": 1455,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "preview_niagara_component_asset_swap",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1458,
+        "end_line": 1555,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_blueprint_niagara_component_template",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1558,
+        "end_line": 1641,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "dry_run_blueprint_niagara_component_template_asset_swap",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1644,
+        "end_line": 1743,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "execute_blueprint_niagara_component_template_asset_swap_canary",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1746,
+        "end_line": 1863,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "execute_blueprint_niagara_component_template_asset_swap_durable",
+      "category": "editor",
+      "source": {
+        "path": "Python/tools/editor_tools.py",
+        "line": 1866,
+        "end_line": 1977,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_gas_blueprint",
+      "category": "gas",
+      "source": {
+        "path": "Python/tools/gas_tools.py",
+        "line": 121,
+        "end_line": 131,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_gameplay_ability_blueprint",
+      "category": "gas",
+      "source": {
+        "path": "Python/tools/gas_tools.py",
+        "line": 134,
+        "end_line": 152,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_gameplay_effect_blueprint",
+      "category": "gas",
+      "source": {
+        "path": "Python/tools/gas_tools.py",
+        "line": 155,
+        "end_line": 173,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_attribute_set_blueprint",
+      "category": "gas",
+      "source": {
+        "path": "Python/tools/gas_tools.py",
+        "line": 176,
+        "end_line": 194,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_ability_system_component_to_blueprint",
+      "category": "gas",
+      "source": {
+        "path": "Python/tools/gas_tools.py",
+        "line": 197,
+        "end_line": 215,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_gameplay_attribute_to_attribute_set",
+      "category": "gas",
+      "source": {
+        "path": "Python/tools/gas_tools.py",
+        "line": 218,
+        "end_line": 244,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "show_ieta_connection_status",
+      "category": "ieta",
+      "source": {
+        "path": "Python/tools/ieta_tools.py",
+        "line": 22,
+        "end_line": 95,
+        "sha256": "d00d026de6f2850bae4586c2231c1117761ab45d508842a8b635be1d4a81a1c3"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_landscapes",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 46,
+        "end_line": 53,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_landscape_info",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 56,
+        "end_line": 68,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_landscape",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 71,
+        "end_line": 125,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_landscape_material",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 128,
+        "end_line": 150,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_foliage_types",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 153,
+        "end_line": 160,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_foliage_instances",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 163,
+        "end_line": 190,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_foliage_instances",
+      "category": "landscape",
+      "source": {
+        "path": "Python/tools/landscape_tools.py",
+        "line": 193,
+        "end_line": 230,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "manage_tools",
+      "category": "management",
+      "source": {
+        "path": "Python/tools/management_tools.py",
+        "line": 963,
+        "end_line": 988,
+        "sha256": "312e329bb508386b4f8ff2c7dffe0a39862b67e07d2150e6d5ad2cf677ea0c6d"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "resolve_material_graph",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 64,
+        "end_line": 84,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_material_nodes",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 87,
+        "end_line": 117,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "analyze_material_graph",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 120,
+        "end_line": 150,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_material_collection_parameter_nodes",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 153,
+        "end_line": 174,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "mirror_material_parameter_collection",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 177,
+        "end_line": 210,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "replace_material_collection_references",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 213,
+        "end_line": 243,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "replace_material_collection_parameters",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 246,
+        "end_line": 270,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "replace_material_texture_references",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 273,
+        "end_line": 300,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_material_node",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 303,
+        "end_line": 343,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_custom_material_node",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 346,
+        "end_line": 396,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_material_node_property",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 399,
+        "end_line": 430,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "connect_material_nodes",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 433,
+        "end_line": 466,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "connect_material_property",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 469,
+        "end_line": 496,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "delete_material_node",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 499,
+        "end_line": 523,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "layout_material_nodes",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 526,
+        "end_line": 546,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_and_save_material",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 549,
+        "end_line": 573,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "refresh_material_cached_expression_data",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 576,
+        "end_line": 596,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "expand_material_function_calls",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 599,
+        "end_line": 635,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_material_parameter_collection_values",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 638,
+        "end_line": 665,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_material_parameter_collection_values",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 668,
+        "end_line": 701,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_material_parameter_collection_sync",
+      "category": "material",
+      "source": {
+        "path": "Python/tools/material_tools.py",
+        "line": 704,
+        "end_line": 742,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_blueprint_networking_settings",
+      "category": "networking",
+      "source": {
+        "path": "Python/tools/networking_tools.py",
+        "line": 54,
+        "end_line": 62,
+        "sha256": "8fe55daf63b6d16809edd5a8497a698a433a2773e0f69fb466982c54b36ad5d8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_networking_settings",
+      "category": "networking",
+      "source": {
+        "path": "Python/tools/networking_tools.py",
+        "line": 65,
+        "end_line": 97,
+        "sha256": "8fe55daf63b6d16809edd5a8497a698a433a2773e0f69fb466982c54b36ad5d8"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "plan_niagara_effect",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 30,
+        "end_line": 72,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_niagara_effect_spec",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 75,
+        "end_line": 95,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "diagnose_niagara_effect_issue",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 98,
+        "end_line": 135,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_niagara_effect_patch",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 138,
+        "end_line": 172,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_refinement_ledger",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 175,
+        "end_line": 207,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "evaluate_niagara_refinement_iteration",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 210,
+        "end_line": 240,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "select_niagara_best_refinement_state",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 243,
+        "end_line": 262,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "critique_niagara_preview_evidence",
+      "category": "niagara_planning",
+      "source": {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "line": 265,
+        "end_line": 295,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "analyze_niagara_system",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3667,
+        "end_line": 3739,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_factory_bootstrap_defaults",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3742,
+        "end_line": 3774,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "audit_niagara_promotion_candidate",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3777,
+        "end_line": 3818,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "promote_niagara_system_candidate",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3821,
+        "end_line": 3867,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "plan_niagara_promotion_manifest",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3870,
+        "end_line": 3921,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "execute_niagara_promotion_manifest",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3924,
+        "end_line": 3960,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_empty_niagara_system",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 3963,
+        "end_line": 4001,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_empty_niagara_emitter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4004,
+        "end_line": 4036,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_basic_sprite_niagara_system",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4039,
+        "end_line": 4083,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_sprite_niagara_preset_system",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4086,
+        "end_line": 4190,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_visible_scratch_pad_snow_seed",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4193,
+        "end_line": 4274,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_renderers",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4277,
+        "end_line": 4289,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_renderer_material",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4292,
+        "end_line": 4333,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_sprite_renderer",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4336,
+        "end_line": 4386,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_mesh_renderer",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4389,
+        "end_line": 4436,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_renderer_enabled",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4439,
+        "end_line": 4480,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "cleanup_niagara_renderers",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4483,
+        "end_line": 4531,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_emitter_enabled",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4534,
+        "end_line": 4571,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_emitter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4574,
+        "end_line": 4608,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_modules",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4611,
+        "end_line": 4674,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_parameter_map_set_nodes",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4677,
+        "end_line": 4737,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_orphan_parameter_map_get_nodes",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4740,
+        "end_line": 4803,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remap_niagara_parameter_collection_references",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4806,
+        "end_line": 4845,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remap_niagara_script_parameter_collection_references",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4848,
+        "end_line": 4894,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "recompile_niagara_scripts_in_root",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4897,
+        "end_line": 4928,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "repair_niagara_parameter_collection",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4931,
+        "end_line": 4957,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_parameter_collection_values",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4960,
+        "end_line": 4988,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_parameter_collection_values",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 4991,
+        "end_line": 5023,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_user_parameters",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5026,
+        "end_line": 5038,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_user_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5041,
+        "end_line": 5073,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "upsert_niagara_user_parameters",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5076,
+        "end_line": 5111,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_user_parameters",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5114,
+        "end_line": 5165,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_unused_module_input_path",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5168,
+        "end_line": 5257,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_stack",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5260,
+        "end_line": 5286,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_graph",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5289,
+        "end_line": 5324,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_graph_actions",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5327,
+        "end_line": 5370,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "apply_niagara_scratch_pad_graph_recipe",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5373,
+        "end_line": 5478,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_custom_hlsl_nodes",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5481,
+        "end_line": 5513,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "replace_niagara_custom_hlsl",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5516,
+        "end_line": 5579,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_scratch_pad_interface",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5582,
+        "end_line": 5614,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "duplicate_or_attach_emitter_from_source",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5617,
+        "end_line": 5667,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_system_from_source_template",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5670,
+        "end_line": 5703,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_scratch_pad_vec2_user_parameter_module",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5706,
+        "end_line": 5769,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_scratch_pad_color_user_parameter_module",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5772,
+        "end_line": 5835,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_scratch_pad_bool_user_parameter_module",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5838,
+        "end_line": 5910,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_scratch_pad_bool_visible_toggle_module",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 5913,
+        "end_line": 5997,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_or_duplicate_scratch_pad_module",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6000,
+        "end_line": 6066,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_scratch_pad_module_to_stack",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6069,
+        "end_line": 6139,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_scratch_pad_assignment_module_to_stack",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6142,
+        "end_line": 6317,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_scratch_pad_parameter_write",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6320,
+        "end_line": 6384,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_scratch_pad_module_input",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6387,
+        "end_line": 6461,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_stock_module_to_stack",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6464,
+        "end_line": 6517,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_emitter_persistent_ids",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6520,
+        "end_line": 6556,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_event_handlers",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6559,
+        "end_line": 6584,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_event_handler",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6587,
+        "end_line": 6646,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_scratch_pad_di_variadic_input",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6649,
+        "end_line": 6712,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_scratch_pad_function_input_default",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6715,
+        "end_line": 6793,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "link_niagara_scratch_pad_pin_to_user_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6796,
+        "end_line": 6870,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "wrap_niagara_scratch_pad_output_with_stack_context",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6873,
+        "end_line": 6952,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "insert_niagara_scratch_pad_custom_hlsl_for_pin",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 6955,
+        "end_line": 7056,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "rewire_niagara_custom_hlsl_input_to_module_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7059,
+        "end_line": 7111,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_compile_status",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7114,
+        "end_line": 7152,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_simulation_stages",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7155,
+        "end_line": 7184,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_simulation_stage_settings",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7187,
+        "end_line": 7284,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_simulation_stage",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7287,
+        "end_line": 7341,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_niagara_scratch_pad_script",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7344,
+        "end_line": 7393,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_niagara_grid_simulation_stage",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7396,
+        "end_line": 7498,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_emitter_local_space",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7501,
+        "end_line": 7542,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_emitter_sim_target",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7545,
+        "end_line": 7589,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_emitter_fixed_bounds",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7592,
+        "end_line": 7642,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_emitter_properties",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7645,
+        "end_line": 7673,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_rapid_iteration_parameters",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7676,
+        "end_line": 7701,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_rapid_iteration_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7704,
+        "end_line": 7750,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_module_static_switch",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7753,
+        "end_line": 7828,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_sprite_renderer_settings",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7831,
+        "end_line": 7883,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_module_inputs",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7886,
+        "end_line": 7924,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_niagara_data_interface_overrides",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7927,
+        "end_line": 7980,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_module_input_value",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 7983,
+        "end_line": 8042,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_module_input_override",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8045,
+        "end_line": 8107,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_module_input_literal_override",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8110,
+        "end_line": 8172,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_render_target2d_module_input",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8175,
+        "end_line": 8243,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_texture2d_module_input",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8246,
+        "end_line": 8311,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_data_interface_module_input",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8314,
+        "end_line": 8382,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "configure_niagara_data_channel_asset",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8385,
+        "end_line": 8421,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_niagara_ndc_reader_scratch_pad_module",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8424,
+        "end_line": 8514,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_module_input_user_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8517,
+        "end_line": 8583,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_array_data_interface_module_input_user_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8586,
+        "end_line": 8648,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_module_input_linked_parameter",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8651,
+        "end_line": 8713,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_niagara_module_inputs_batch",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8716,
+        "end_line": 8766,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "cleanup_generated_niagara_assets_offline",
+      "category": "niagara",
+      "source": {
+        "path": "Python/tools/niagara_tools.py",
+        "line": 8769,
+        "end_line": 8796,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_comment_box",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 79,
+        "end_line": 142,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_node_comment",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 145,
+        "end_line": 181,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_node_positions",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 184,
+        "end_line": 233,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_function_description",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 236,
+        "end_line": 268,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_custom_event_metadata",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 271,
+        "end_line": 332,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 335,
+        "end_line": 391,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_input_action_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 394,
+        "end_line": 447,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_input_key_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 450,
+        "end_line": 498,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_function_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 501,
+        "end_line": 562,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_call_function_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 565,
+        "end_line": 624,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_get_editor_subsystem_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 627,
+        "end_line": 659,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_get_subsystem_from_pc_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 662,
+        "end_line": 694,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_construct_object_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 697,
+        "end_line": 729,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "connect_blueprint_nodes",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 732,
+        "end_line": 788,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "connect_blueprint_graph_pins",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 791,
+        "end_line": 824,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "collapse_blueprint_nodes_to_function",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 827,
+        "end_line": 858,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "import_blueprint_graph_nodes_from_text",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 861,
+        "end_line": 898,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "repair_blueprint_pin_links",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 901,
+        "end_line": 926,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "delete_blueprint_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 929,
+        "end_line": 978,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_user_defined_enum",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 981,
+        "end_line": 1015,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_variable",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1018,
+        "end_line": 1092,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_blueprint_variables",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1095,
+        "end_line": 1116,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_blueprint_variable_metadata",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1119,
+        "end_line": 1145,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_variable_default",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1148,
+        "end_line": 1186,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_variable_order",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1189,
+        "end_line": 1224,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_blueprint_variable",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1227,
+        "end_line": 1249,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_variable_metadata",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1252,
+        "end_line": 1313,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_category_sorting",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1316,
+        "end_line": 1371,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "bind_pcg_generation_settings_to_blueprint",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1374,
+        "end_line": 1442,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_function_parameter",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1445,
+        "end_line": 1490,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_local_variable",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1493,
+        "end_line": 1543,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_get_self_component_reference",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1546,
+        "end_line": 1600,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_dispatcher",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1603,
+        "end_line": 1645,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_dispatcher_call_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1648,
+        "end_line": 1689,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_custom_event_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1692,
+        "end_line": 1758,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_dispatcher_bind_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1761,
+        "end_line": 1802,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_native_delegate_bind_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1805,
+        "end_line": 1854,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_interface_message_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1857,
+        "end_line": 1912,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_create_delegate_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1915,
+        "end_line": 1972,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_dispatcher_unbind_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 1975,
+        "end_line": 2016,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_dispatcher_clear_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2019,
+        "end_line": 2060,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_event_dispatcher_assign_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2063,
+        "end_line": 2104,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_self_reference",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2107,
+        "end_line": 2156,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "find_blueprint_nodes",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2159,
+        "end_line": 2208,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "resolve_blueprint",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2211,
+        "end_line": 2229,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_blueprint_graphs",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2232,
+        "end_line": 2256,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "resolve_blueprint_graph",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2259,
+        "end_line": 2290,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_blueprint_nodes",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2293,
+        "end_line": 2327,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_blueprint_graph_call_topology",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2330,
+        "end_line": 2395,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_controlrig_rigvm_topology",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2398,
+        "end_line": 2458,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_controlrig_rigvm_links",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2461,
+        "end_line": 2511,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_controlrig_rigvm_pin_defaults",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2514,
+        "end_line": 2565,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_controlrig_rigvm_links",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2568,
+        "end_line": 2627,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_controlrig_rigvm_pin_defaults",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2630,
+        "end_line": 2692,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_anim_graph_protected_topology",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2695,
+        "end_line": 2759,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_anim_graph_node_settings",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2762,
+        "end_line": 2805,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_anim_state_machine_transitions",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2808,
+        "end_line": 2847,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_animation_asset_metadata_guarded",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2850,
+        "end_line": 2924,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_physics_asset_constraints_guarded",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2927,
+        "end_line": 2986,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "controlrig_direct_gate_probe",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 2989,
+        "end_line": 3043,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_controlrig_pre_post_runtime_pose",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3046,
+        "end_line": 3115,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_anim_node_pre_post_runtime_pose",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3118,
+        "end_line": 3274,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_skeletal_bones_in_sie",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3277,
+        "end_line": 3325,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_blendspace_runtime_pose_grid",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3328,
+        "end_line": 3408,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_blendspace_sample_variant",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3411,
+        "end_line": 3481,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_state_machine_sample_variant",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3484,
+        "end_line": 3579,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_bp_event_graph_locomotion_driver",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3582,
+        "end_line": 3699,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_anim_blueprint_sample",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3702,
+        "end_line": 3755,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_graph_controlrig_node_sample",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3758,
+        "end_line": 3824,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_linked_anim_graph_sample_variant",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3827,
+        "end_line": 3895,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_controlrig_sample_asset",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 3898,
+        "end_line": 4001,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_anim_instance_runtime_state",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4004,
+        "end_line": 4086,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_anim_instance_runtime_property_for_probe",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4089,
+        "end_line": 4187,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "sample_anim_state_machine_runtime_response",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4190,
+        "end_line": 4298,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_anim_graph_rigidbody_settings",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4301,
+        "end_line": 4353,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_graph_input_pose_passthrough",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4356,
+        "end_line": 4398,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_graph_modify_bone_demo",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4401,
+        "end_line": 4447,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_postprocess_anim_demo_variant",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4450,
+        "end_line": 4525,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_graph_modify_curve_demo",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4528,
+        "end_line": 4583,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_anim_graph_controlrig_input_defaults",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4586,
+        "end_line": 4653,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_controlrig_forced_driver_animbp",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4656,
+        "end_line": 4737,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_graph_trail_demo",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4740,
+        "end_line": 4821,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "ensure_anim_graph_secondary_motion_chain",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4824,
+        "end_line": 4909,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_branch_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4912,
+        "end_line": 4934,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_sequence_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4937,
+        "end_line": 4961,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_return_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4964,
+        "end_line": 4986,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_dynamic_cast_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 4989,
+        "end_line": 5016,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_loop_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5019,
+        "end_line": 5053,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_array_function_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5056,
+        "end_line": 5096,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_make_array_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5099,
+        "end_line": 5139,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_input_axis_event_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5142,
+        "end_line": 5185,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_enhanced_input_action_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5188,
+        "end_line": 5223,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_variable_get_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5226,
+        "end_line": 5265,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_variable_set_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5268,
+        "end_line": 5307,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_math_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5310,
+        "end_line": 5344,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_compare_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5347,
+        "end_line": 5384,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_boolean_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5387,
+        "end_line": 5421,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_select_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5424,
+        "end_line": 5458,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_literal_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5461,
+        "end_line": 5499,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_enum_literal_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5502,
+        "end_line": 5541,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_is_valid_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5544,
+        "end_line": 5578,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_make_struct_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5581,
+        "end_line": 5615,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_break_struct_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5618,
+        "end_line": 5652,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_switch_int_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5655,
+        "end_line": 5699,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_blueprint_switch_enum_node",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5702,
+        "end_line": 5740,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_blueprint_pin_default",
+      "category": "blueprint_node",
+      "source": {
+        "path": "Python/tools/node_tools.py",
+        "line": 5743,
+        "end_line": 5781,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_pcg_assets",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 411,
+        "end_line": 437,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_pcg_components",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 440,
+        "end_line": 459,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "refresh_pcg_components",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 462,
+        "end_line": 612,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_pcg_component_outputs",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 615,
+        "end_line": 678,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_spline_component_points",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 681,
+        "end_line": 852,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_pcg_debug_enabled",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 855,
+        "end_line": 914,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "resave_pcg_assets",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 917,
+        "end_line": 945,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_pcg_graph_from_spec",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 948,
+        "end_line": 1842,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "audit_pcg_graph_contract",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 1845,
+        "end_line": 2148,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "validate_pcg_source_independence",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 2151,
+        "end_line": 2200,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_pcg_static_mesh_spawner_entries",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 2203,
+        "end_line": 2600,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "read_pcg_node_contract",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 2603,
+        "end_line": 2663,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "promote_pcg_temp_graph",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 2666,
+        "end_line": 2874,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "pcg_actor_smoke_test",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 2877,
+        "end_line": 3057,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "resolve_pcg_graph",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3060,
+        "end_line": 3072,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_pcg_graph_nodes",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3075,
+        "end_line": 3102,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_pcg_custom_hlsl_nodes",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3105,
+        "end_line": 3150,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_pcg_node",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3153,
+        "end_line": 3189,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "connect_pcg_nodes",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3192,
+        "end_line": 3223,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_pcg_node_setting",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3226,
+        "end_line": 3253,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_pcg_attribute_selector",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3256,
+        "end_line": 3334,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_or_notify_pcg_graph",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3337,
+        "end_line": 3351,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "save_pcg_graph",
+      "category": "pcg",
+      "source": {
+        "path": "Python/tools/pcg_tools.py",
+        "line": 3354,
+        "end_line": 3366,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_input_mapping",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 43,
+        "end_line": 87,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "audit_content_root_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 90,
+        "end_line": 147,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "recreate_content_folder_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 150,
+        "end_line": 212,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "postprocess_content_folder_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 215,
+        "end_line": 269,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "repair_world_actor_instances_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 272,
+        "end_line": 323,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "replace_asset_references_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 326,
+        "end_line": 392,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "analyze_blueprint_widget_fallbacks_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 395,
+        "end_line": 426,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_volume_texture_from_2d_sheet_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 429,
+        "end_line": 481,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_volume_texture_from_raw_rgba16_sheet_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 484,
+        "end_line": 544,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_material_texture_sample_sampler_type_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 547,
+        "end_line": 582,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "run_content_validation_pipeline_mcp",
+      "category": "project",
+      "source": {
+        "path": "Python/tools/project_tools.py",
+        "line": 585,
+        "end_line": 685,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "execute_unreal_python",
+      "category": "python",
+      "source": {
+        "path": "Python/tools/python_tools.py",
+        "line": 25,
+        "end_line": 112,
+        "sha256": "825aa0e56a585083df0a127a93af1b3406a2f825f6c954f1de1537359877b91a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_level_sequence",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 45,
+        "end_line": 76,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_level_sequence_info",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 79,
+        "end_line": 91,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_level_sequence_actor_binding",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 94,
+        "end_line": 121,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_level_sequence_transform_keys",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 124,
+        "end_line": 161,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_level_sequence_playback_range",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 164,
+        "end_line": 191,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_level_sequence_binding",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 194,
+        "end_line": 220,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_level_sequence_float_property_keys",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 223,
+        "end_line": 263,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_level_sequence_subsequence",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 266,
+        "end_line": 296,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "open_level_sequence_in_editor",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 299,
+        "end_line": 311,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_level_sequence_camera_cut",
+      "category": "sequencer",
+      "source": {
+        "path": "Python/tools/sequencer_tools.py",
+        "line": 314,
+        "end_line": 351,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_skeleton_bones",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 45,
+        "end_line": 69,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_skeletal_sockets",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 72,
+        "end_line": 84,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_skeletal_socket",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 87,
+        "end_line": 127,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_skeletal_socket",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 130,
+        "end_line": 176,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "remove_skeletal_socket",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 179,
+        "end_line": 203,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_bone_translation_retargeting",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 206,
+        "end_line": 236,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_skeletal_physics_asset",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 239,
+        "end_line": 312,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_skeletal_bone_constraint_fixture",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 315,
+        "end_line": 379,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_skeletal_bone_constraint_fixture",
+      "category": "skeletal",
+      "source": {
+        "path": "Python/tools/skeletal_tools.py",
+        "line": 382,
+        "end_line": 414,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_state_trees",
+      "category": "state_tree",
+      "source": {
+        "path": "Python/tools/state_tree_tools.py",
+        "line": 45,
+        "end_line": 64,
+        "sha256": "c23598e126293dbfb3bef237e8577d612db7f3b3785d7f120340c5db4225bfaa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "inspect_state_tree",
+      "category": "state_tree",
+      "source": {
+        "path": "Python/tools/state_tree_tools.py",
+        "line": 67,
+        "end_line": 79,
+        "sha256": "c23598e126293dbfb3bef237e8577d612db7f3b3785d7f120340c5db4225bfaa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_state_tree",
+      "category": "state_tree",
+      "source": {
+        "path": "Python/tools/state_tree_tools.py",
+        "line": 82,
+        "end_line": 103,
+        "sha256": "c23598e126293dbfb3bef237e8577d612db7f3b3785d7f120340c5db4225bfaa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_state_tree_state",
+      "category": "state_tree",
+      "source": {
+        "path": "Python/tools/state_tree_tools.py",
+        "line": 106,
+        "end_line": 130,
+        "sha256": "c23598e126293dbfb3bef237e8577d612db7f3b3785d7f120340c5db4225bfaa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "compile_state_tree",
+      "category": "state_tree",
+      "source": {
+        "path": "Python/tools/state_tree_tools.py",
+        "line": 133,
+        "end_line": 142,
+        "sha256": "c23598e126293dbfb3bef237e8577d612db7f3b3785d7f120340c5db4225bfaa"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "get_static_mesh_uv_layout",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 317,
+        "end_line": 351,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "generate_texture_from_prompt",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 354,
+        "end_line": 373,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "generate_pbr_companion_textures",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 376,
+        "end_line": 418,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "generate_texture_for_mesh_uv",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 422,
+        "end_line": 482,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "import_texture_to_unreal",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 485,
+        "end_line": 499,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "import_texture_set_to_unreal",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 503,
+        "end_line": 535,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_material_instance_with_texture",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 538,
+        "end_line": 559,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "create_material_with_texture_set",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 562,
+        "end_line": 597,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "import_create_and_apply_texture_set",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 601,
+        "end_line": 721,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "apply_material_to_mesh",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 724,
+        "end_line": 738,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "generate_and_apply_ai_texture",
+      "category": "texture_generation",
+      "source": {
+        "path": "Python/tools/texture_generation.py",
+        "line": 742,
+        "end_line": 907,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "list_toolsets",
+      "category": "discovery_meta",
+      "source": {
+        "path": "Python/tools/tool_discovery.py",
+        "line": 722,
+        "end_line": 725,
+        "sha256": "50c176a9f41ba62f44d1a4282e723f1f601f9f5116eb29e8dd98a857052c63ec"
+      },
+      "runtime_catalog": false,
+      "search_public": true,
+      "eager_public": false
+    },
+    {
+      "name": "describe_toolset",
+      "category": "discovery_meta",
+      "source": {
+        "path": "Python/tools/tool_discovery.py",
+        "line": 728,
+        "end_line": 745,
+        "sha256": "50c176a9f41ba62f44d1a4282e723f1f601f9f5116eb29e8dd98a857052c63ec"
+      },
+      "runtime_catalog": false,
+      "search_public": true,
+      "eager_public": false
+    },
+    {
+      "name": "call_tool",
+      "category": "discovery_meta",
+      "source": {
+        "path": "Python/tools/tool_discovery.py",
+        "line": 748,
+        "end_line": 763,
+        "sha256": "50c176a9f41ba62f44d1a4282e723f1f601f9f5116eb29e8dd98a857052c63ec"
+      },
+      "runtime_catalog": false,
+      "search_public": true,
+      "eager_public": false
+    },
+    {
+      "name": "create_umg_widget_blueprint",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 43,
+        "end_line": 87,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_text_block_to_widget",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 90,
+        "end_line": 146,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_button_to_widget",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 149,
+        "end_line": 208,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "bind_widget_event",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 211,
+        "end_line": 262,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_sliders_to_widget",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 265,
+        "end_line": 310,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "add_widget_to_viewport",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 313,
+        "end_line": 354,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    },
+    {
+      "name": "set_text_block_binding",
+      "category": "umg",
+      "source": {
+        "path": "Python/tools/umg_tools.py",
+        "line": 357,
+        "end_line": 404,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      },
+      "runtime_catalog": true,
+      "search_public": false,
+      "eager_public": true
+    }
+  ],
+  "engine_operations_verified": false,
+  "ue58_migration_complete": false,
+  "limitations": [
+    "Actual installed FastMCP and unchanged isolated legacy modules were imported; no fake decorators or registry were used.",
+    "This is execution of the real FastMCP list_tools handler without transport; it is not an MCP wire-protocol or UE endpoint test.",
+    "No lifespan, engine connection, domain tool body, or mutation was invoked.",
+    "CPython audit hooks denied socket/process events and outside-isolation filesystem writes during import/listing; this is not an OS-wide security sandbox or external process observation.",
+    "UNREAL_MCP_* variables were cleared in child processes before setting the requested exposure mode; default registry configuration was measured."
+  ],
+  "status": "pass"
+}

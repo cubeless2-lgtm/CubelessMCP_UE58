@@ -1,0 +1,134 @@
+# Niagara Remaining Boundaries Live Validation 20260703
+
+## Scope
+
+This report records the follow-up validation for the two remaining Niagara research boundaries:
+
+- Arbitrary broad Scratch Pad graph synthesis.
+- Bulk, overwrite, update, redirector-aware promotion.
+
+Both boundaries remain closed. This validation did not open new authoring scope, did not create release assets, and did not write project content.
+
+## Offline Gate Result
+
+Command:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_niagara_authoring_offline_gates.py check --json
+```
+
+Result:
+
+- Status: `pass`.
+- Gate count: `12`.
+- Failed gate count: `0`.
+- Coverage includes the Scratch Pad graph expansion gate, Scratch Pad graph expansion candidate, Scratch Pad assignment-module surface/preflight, Scratch Pad assignment-module route, promotion lifecycle boundary, and promotion overwrite/update preflight contracts.
+
+## UnrealMCP-Disabled Asset Load
+
+Commandlet validation used `UnrealEditor-Cmd.exe -DisablePlugins=UnrealMCP -EnablePlugins=PythonScriptPlugin` through:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\verify_unreal_asset_plugin_independence.py live
+```
+
+Report:
+
+- `MCPGameProject/Saved/MCP/AssetReviews/niagara_remaining_boundaries_plugin_independence_20260703/asset_plugin_independence_report.json`
+
+Result:
+
+- Status: `pass`.
+- Static forbidden-marker scan: `pass`.
+- Isolated editor load with UnrealMCP disabled: `pass`.
+
+Validated assets:
+
+- `/Game/MCPWeather/Generated/NS_MCPWeather_UDSStyleFromScratch_Rain_20260703_V4`
+- `/Game/MCPWeather/Generated/NS_MCPWeather_UDSStyleFromScratch_Snow_20260703_V4`
+- `/Game/MCPWeather/Generated/NS_MCPWeather_BoolVisibleToggleReleaseCandidate_20260703_V1`
+- `/Game/MCPWeather/Generated/NS_MCPWeather_VisibleScratchPadReleaseCandidate_20260702_visible_scratch_pad_release_candidate_v2`
+
+Each asset loaded as `/Script/Niagara.NiagaraSystem` and had no UnrealMCP forbidden-marker hits.
+
+## BP Manager Plugin Independence
+
+Report:
+
+- `MCPGameProject/Saved/MCP/AssetReviews/niagara_bp_manager_current_plugin_independence_20260703/asset_plugin_independence_report.json`
+
+Result:
+
+- Status: `pass`.
+- Static forbidden-marker scan: `pass`.
+- Isolated editor load with UnrealMCP disabled: `pass`.
+- `/Game/MCPWeather/BP_MCPWeatherManager` loaded as `/Script/Engine.Blueprint`.
+
+## Temporary Bridge Smoke
+
+A temporary hidden editor was launched with:
+
+```powershell
+UnrealEditor.exe MCPGameProject.uproject -UnrealMCPPort=55561 -unattended -nop4 -nosplash -nosound -NoLiveCoding -NoLoadStartupPackages
+```
+
+Then the read-only live bridge smoke passed:
+
+```powershell
+uv --directory .\Python run python scripts\smoke_live_bridge.py
+```
+
+Validated bridge checks:
+
+- `ping`
+- `get_actors_in_level`
+- missing-asset `resolve_material_graph` contract
+- structured unknown-command error
+- `batch` round trip
+- nested batch rejection
+
+The editor process started for this check was closed after the smoke. Post-check state:
+
+- No `UnrealEditor.exe` process remained.
+- No listener remained on `127.0.0.1:55561`.
+
+## Follow-Up Viewport Preview Proof
+
+A second temporary hidden editor session ran a temp-only from-scratch assignment-module defaults proof with viewport preview:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_niagara_from_scratch_assignment_module_defaults.py live --run-id 20260703_followup_viewport_v1 --allow-candidate-proof ALLOW_FROM_SCRATCH_ASSIGNMENT_DEFAULTS_PROOF --run-preview --allow-current-map-preview --analysis-output MCPGameProject\Saved\MCP\NiagaraReviews\20260703_followup_from_scratch_assignment_defaults_live.json
+```
+
+Reports:
+
+- `MCPGameProject/Saved/MCP/NiagaraReviews/20260703_followup_viewport_v1/from_scratch_assignment_module_defaults_report.json`
+- `MCPGameProject/Saved/MCP/NiagaraReviews/20260703_followup_from_scratch_assignment_defaults_live.json`
+- `MCPGameProject/Saved/MCP/NiagaraReviews/20260703_followup_from_scratch_assignment_defaults_cleanup.json`
+
+Result:
+
+- Status: `pass`.
+- Generated temp system: `/Game/_MCP_Temp/NiagaraGenerated/NS_MCP_FromScratch_AssignmentDefaults_20260703_followup_viewport_v1`.
+- Compile errors/warnings: `0/0`.
+- Static forbidden-marker scan: `pass`.
+- Preview capture: `pass`.
+- Preview PNG: `MCPGameProject/Saved/MCP/NiagaraReviews/20260703_followup_viewport_v1/preview/from_scratch_assignment_defaults_visible.png`.
+- Preview sparkle ratio: `0.01739083904109589`, above the required `0.001`.
+- Visible by sparkle ratio: `true`.
+- Preview safety: current map was not reloaded or saved, and `map_dirty_after_preview=false`.
+
+Cleanup:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_niagara_from_scratch_assignment_module_defaults.py cleanup --name-prefix NS_MCP_FromScratch_AssignmentDefaults_20260703_followup_viewport_v1 --delete --analysis-output MCPGameProject\Saved\MCP\NiagaraReviews\20260703_followup_from_scratch_assignment_defaults_cleanup.json
+```
+
+- Deleted generated temp package count: `1`.
+- Post-cleanup selected package count: `0`.
+- No `UnrealEditor.exe` process remained.
+- No listener remained on `127.0.0.1:55561`.
+
+## Conclusion
+
+Niagara authoring remains `usable_with_boundaries`: the reviewed project-content paths and temp-validated authoring paths are still usable, while arbitrary Scratch Pad graph synthesis and overwrite/update promotion remain closed until separately reviewed gates add new proof. The follow-up viewport proof strengthens the existing reviewed assignment-module route but does not admit arbitrary graph synthesis, bulk promotion, overwrite, update, redirector fixup, or any new project-content write path.

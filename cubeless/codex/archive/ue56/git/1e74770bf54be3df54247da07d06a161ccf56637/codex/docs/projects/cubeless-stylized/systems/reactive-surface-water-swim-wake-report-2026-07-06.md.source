@@ -1,0 +1,14 @@
+# Reactive Surface Water HTML Wave Normal Report - 2026-07-06
+
+- Verdict: PASS
+- System: `/Game/ReactiveSurface/Water/NS_RS_Water.NS_RS_Water`
+- Contract: one moving Water source remains one slot; `User.RS_Water_ImpulseRadiusPixels` maps the HTML impulse radius into the current RT window, and Niagara converts the height grid to a packed normal render target.
+- Activation contract: production keeps reset-on-activate false; clear/hold remains explicit.
+
+## Tests
+- BUILD_WATER_HTML_SINGLE_SOURCE_NORMAL: PASS
+- COMPILE_AUDIT_DIRTY: PASS
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-swim-wake-results-2026-07-06.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterSwim\water_swim_bridge_results.json`

@@ -1,0 +1,305 @@
+# CubeFluidNinjaLive A03 매니퀸 아트 로컬라이제이션 계약
+
+## 목적과 현재 상태
+
+A03은 `/Game/FluidNinjaLive`의 현재 매니퀸 아트 31개를 `/Game/Study/CubeFluidNinjaLive/Art` 아래 같은 상대 경로로 로컬라이즈하는 배치다. 원본은 읽기 전용이며 로직 에셋은 복제하지 않는다. 2026-09-01 dry-run은 31개 모두를 mutation 이전에 차단했고, `mutation_attempted=false`, `mutation_performed=false`를 확인했다.
+
+- 에셋 구성: `AnimSequence` 28, `SkeletalMesh` 1, `Skeleton` 1, `PhysicsAsset` 1
+- 원본 디스크 크기: 35,815,036 bytes
+- 차단 집합: 머티리얼 3, `ControlRigBlueprint` 1, Animation Modifier Blueprint 5, `AnimCurveCompressionSettings` 1
+- 기준 보고서: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/art/20260901_art_a03_diagnostic_v002/art_localization_report.json`
+- sanitizer 적용 후 read-only 보고서: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/art/20260901_art_a03_sanitizer_preflight_v003/art_localization_report.json`
+- 압축 설정 완전 캡처: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/support/Meshes__Mannequin__Animations__AnimCurveCompressionSettings/reference_inspection.json`
+
+이 문서는 의존성을 무조건 삭제하는 허가서가 아니다. 아래의 정확한 계약을 만족하는 복제본에만 정리 작업을 수행하며, 저장 후 의존성 readback에 원본 루트나 MCP 전용 토큰이 하나라도 남으면 실패다.
+
+v003 사전검사는 mutation 없이 다음을 입증했다.
+
+- 12/12 modifier 대상의 source snapshot이 유효하고 user data가 존재한다.
+- `SKM_Manny_Simple` 한 개에서 expected `CR_Mannequin_Body`가 관찰됐고 Post Process AnimBP는 비어 있다.
+- 5 modifier + 1 rig sanitizer 전략의 expected/observed 집합이 일치한다.
+- custom curve compression 설정과 exact engine default의 직렬화 속성 동등성 검사가 통과했다.
+- global error는 0이며, 남은 validation error 종류는 아직 작성되지 않은 clean-room 머티리얼 3종뿐이다.
+
+## 에셋별 blocker 그래프
+
+표의 `CR`은 `/Game/FluidNinjaLive/Meshes/Mannequin/Rigs/CR_Mannequin_Body`, `Compression`은 `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/AnimCurveCompressionSettings`를 뜻한다. 모든 행에 나타나는 머티리얼과 CR은 선택된 mesh/skeleton 계열을 통한 전이 의존성을 포함한다.
+
+| 선택 에셋 | 원본 루트의 금지/비지원 의존성 |
+|---|---|
+| `MF_Unarmed_Jog_Bwd` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Jog_Bwd_Left` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Jog_Bwd_Right` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Bwd` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Bwd_Left` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Bwd_Right` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Fwd` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Fwd_Left` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Fwd_Right` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Left` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MF_Unarmed_Walk_Right` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MM_DashMini` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MM_Idle` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `MM_Land` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `M_Neutral_Run_Loop_F1` | 5 modifier BPs, 3 materials, `CR`, `Compression` |
+| `M_Neutral_Run_Loop_FL1` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Run_Loop_FR1` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Run_Loop_F_L_21` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Run_Loop_F_R_21` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Sprint_Loop_F1` | 5 modifier BPs, 3 materials, `CR`, `Compression` |
+| `M_Neutral_Sprint_Loop_FL1` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Sprint_Loop_FR1` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Sprint_Loop_F_L_21` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Sprint_Loop_F_R_21` | modifier BPs 4개(phase 제외), 3 materials, `CR`, `Compression` |
+| `M_Neutral_Stand_Idle_Loop1` | `FootSpeed_L`, `FootSpeed_R`, `MoveData_Speed`, 3 materials, `CR`, `Compression` |
+| `M_Neutral_Walk_Loop_F1` | 5 modifier BPs, 3 materials, `CR`, `Compression` |
+| `ThirdPersonJump_Loop` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `ThirdPersonWalk` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `SKM_Manny_Simple` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `SK_Mannequin` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+| `PA_Mannequin` | `M_Mannequin`, `MI_Manny_01_White`, `MI_Manny_02_White`, `CR` |
+
+정확한 modifier Blueprint 5개는 다음과 같다.
+
+- `AM_BakePhaseCurveFromFootstepNotifies`
+- `AM_FootSpeed_L`
+- `AM_FootSpeed_R`
+- `AM_MoveData_Speed`
+- `AM_OrientationWarpingAlpha`
+
+## Animation Modifier provenance 정리 원리
+
+UE 5.6의 `UAnimationModifiersAssetUserData`는 적용 가능한 modifier instance와 적용 provenance를 보관한다. 이미 생성된 curve/notify 자체는 `IAnimationDataModel`과 `UAnimSequenceBase`에 저장된다. 따라서 modifier를 다시 실행하거나 되돌리지 않고, 복제된 target에서 user data 컨테이너만 제거하면 baked 결과를 보존하면서 source Blueprint 의존성을 끊을 수 있다.
+
+이 판단은 다음 조건을 모두 통과할 때만 적용한다.
+
+1. 호출자가 `strip_animation_modifier_user_data=true`, 이유, 정확한 expected path 5개를 제공한다.
+2. expected asset 각각의 generated class가 동적으로 확인한 `UAnimationModifier`의 자식이다. `AnimationModifiers` 모듈은 정적 Build.cs 의존성으로 추가하지 않는다.
+3. 선택된 AnimSequence의 직접 modifier 의존성이 expected 집합의 부분집합이고, 배치 전체 관찰 집합은 expected 집합과 정확히 같다. 미신고 modifier가 있으면 차단한다.
+4. 원본 `IAnimationDataModel::GenerateGuid`, float/transform curve 수, attribute 수, notify 수, sync marker 수와 notify/sync metadata hash를 캡처한다.
+5. target 복제 직후 snapshot이 원본과 같아야 한다.
+6. target에서만 `UAnimationModifiersAssetUserData`를 제거한다. 원본은 수정하지 않는다.
+7. 제거 직후와 저장 후 snapshot이 원본/제거 전과 모두 같고 user data가 없어야 한다.
+8. Asset Registry 재스캔 후 source modifier package가 하나라도 남으면 전체 검증을 실패시킨다.
+
+검증 대상 12개 애니메이션에서 이미 baked된 데이터는 다음과 같다. 대괄호는 key 수다.
+
+| AnimSequence | baked float curves | notify | sync marker |
+|---|---|---|---|
+| `M_Neutral_Run_Loop_F1` | `footspeed_l[75]`, `footspeed_r[75]`, `movedata_speed[75]`, `enable_orientationwarping[1]`, `phase[15]`, `enable_playratewarping[1]` | 없음 | 없음 |
+| `M_Neutral_Run_Loop_FL1` | `footspeed_l[75]`, `footspeed_r[75]`, `movedata_speed[75]`, `enable_orientationwarping[1]` | 없음 | 없음 |
+| `M_Neutral_Run_Loop_FR1` | 위와 같음 | 없음 | 없음 |
+| `M_Neutral_Run_Loop_F_L_21` | 위와 같음 | 없음 | 없음 |
+| `M_Neutral_Run_Loop_F_R_21` | 위와 같음 | 없음 | 없음 |
+| `M_Neutral_Sprint_Loop_F1` | `enable_orientationwarping[1]`, `footspeed_l[60]`, `footspeed_r[60]`, `movedata_speed[60]`, `phase[15]` | 없음 | 없음 |
+| `M_Neutral_Sprint_Loop_FL1` | `enable_orientationwarping[1]`, `footspeed_l[60]`, `footspeed_r[60]`, `movedata_speed[60]` | 없음 | 없음 |
+| `M_Neutral_Sprint_Loop_FR1` | 위와 같음 | 없음 | 없음 |
+| `M_Neutral_Sprint_Loop_F_L_21` | 위와 같음 | 없음 | 없음 |
+| `M_Neutral_Sprint_Loop_F_R_21` | 위와 같음 | 없음 | 없음 |
+| `M_Neutral_Stand_Idle_Loop1` | `footspeed_l[300]`, `footspeed_r[300]`, `movedata_speed[300]` | `PoseSearchBranchIn` 1 | 없음 |
+| `M_Neutral_Walk_Loop_F1` | `footspeed_l[120]`, `footspeed_r[120]`, `enable_orientationwarping[1]`, `movedata_speed[120]`, `phase[15]`, `enable_playratewarping[1]` | 없음 | 없음 |
+
+각 행의 근거는 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/animation/Meshes__Mannequin__Animations__<asset>/metadata.json`이다. 모든 해당 캡처는 완전하고 truncation이 없다.
+
+## Control Rig와 Post Process 정책
+
+`USkeletalMesh::DefaultAnimatingRig`는 UE 5.6 헤더에서 Sequencer에서 애니메이션할 때 쓰는 기본 Control Rig로 정의되어 있다. 복제된 Skeletal Mesh `SKM_Manny_Simple`의 이 soft reference가 명시된 `CR_Mannequin_Body`와 정확히 같을 때만 비운다. `SK_Mannequin`은 이 배치의 `Skeleton` 에셋이다. 저장 전후 모두 빈 값이어야 한다.
+
+반면 `PostProcessAnimBlueprint`는 런타임 pose에 영향을 준다. 자동 제거하지 않는다. source-root의 Post Process AnimBP가 관찰되면 preflight에서 이유와 함께 차단하며, target에서도 값이 원본과 달라지면 실패한다. A03 진단 그래프에는 Post Process AnimBP blocker가 관찰되지 않았다.
+
+## Curve compression 설정
+
+원본 `AnimCurveCompressionSettings` 캡처는 다음 값을 완전하게 기록했다.
+
+- 클래스: `UAnimCurveCompressionSettings`
+- codec: `UAnimCurveCompressionCodec_CompressedRichCurve`
+- `MaxCurveError=0.0`
+- `UseAnimSequenceSampleRate=true`
+- `ErrorSampleRate=60.0`
+
+이는 UE 5.6 `CompressedRichCurve` codec 생성자 기본값과 같다. 로컬라이저는 일반적인 `/Engine` 대체를 허용하지 않는다. 호출자가 별도 opt-in을 제공하고 source/target 설정 클래스, codec 클래스, 모든 직렬화 대상 reflected property가 정확히 같을 때만 정확한 `/Engine/Animation/DefaultAnimCurveCompressionSettings`로 remap한다. 한 속성이라도 다르면 mutation 이전에 실패한다.
+
+## Clean-room 머티리얼 재작성 계약
+
+머티리얼은 구현 그래프이므로 복제하거나 source graph object를 가져오지 않는다. 다음 target을 신규 생성하고, 신규 node/parameter GUID를 사용해야 한다.
+
+- `/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Materials/M_Mannequin`
+- `/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Materials/MI_Manny_01_White`
+- `/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Materials/MI_Manny_02_White`
+
+### M_Mannequin 설정과 파라미터
+
+- `MD_Surface`, `BLEND_Masked`, `MSM_DefaultLit`, `OpacityMaskClipValue=0.3333`
+- two-sided/thin-surface/material-attributes/Substrate 비활성, tangent-space normal 활성
+- `NumCustomizedUVs=2`, Skeletal Mesh와 Static Mesh usage 활성
+- 출력: Base Color, Metallic, Specular, Roughness, Normal, AO, Emissive, Opacity Mask
+- 별도 `MaterialExpressionFirstPersonOutput` 1개
+- 총 71 nodes, custom HLSL 0, material function call 0, texture sample 4, static switch 3
+
+Texture parameter 계약:
+
+- `Base Texture`: target `T_Manny_01_D`, `SAMPLERTYPE_Color`
+- `BNormal`: target `T_Manny_01_BN`, `SAMPLERTYPE_Normal`
+- `MRA`: target `T_Manny_01_MRA`, `SAMPLERTYPE_LinearColor`; R=Metallic, G=Roughness, B=AO
+- non-parameter limb sample: target `T_Manny_LimbMask`, `SAMPLERTYPE_Color`
+- 모두 `SSM_FromTextureAsset`, 기본 UV0, automatic view mip bias 활성
+
+Scalar defaults:
+
+| 이름 | 값 |
+|---|---:|
+| `Specular` | 0.5 |
+| `MetalPaintMetallic` | 0 |
+| `MetalPaintRoughness` | 0 |
+| `BandageBrightness` | 1 |
+| `LimbMaskBrightness` | 0 |
+| `Emissive` | 0 |
+| `Scale` | 99.141594 |
+| `Head Cutout` | 16.407043 |
+
+Vector/switch defaults:
+
+- `Paint Tint=(1,1,1,1)`
+- `BandageEmissive=(0,0,0,1)`
+- `Blend Offset=(0,0,-57.245098,0)`
+- `AdjustBandageColor=false`
+- `EnableLimbMask=false`
+- `LimbMaskPartition1vs2=true`
+
+출력 의미 계약은 다음과 같다. `D=Base Texture.rgb`, `M=MRA.r`, `R=MRA.g`, `AO=MRA.b`, `LM=T_Manny_LimbMask`다.
+
+```text
+BandageMask = saturate(pow((R - M) + 1, 8))
+PaintBase = lerp(D, D * PaintTint, M)
+AdjustedBase = AdjustBandageColor
+    ? lerp(PaintBase, PaintBase * BandageBrightness, BandageMask)
+    : PaintBase
+LimbSelection = LimbMaskPartition1vs2 ? (1 - LM.r) : (1 - LM.g)
+LimbFactor = EnableLimbMask
+    ? saturate(LimbSelection + LimbMaskBrightness * float3(0.9, 0.9, 1.0))
+    : 1
+BaseColor = AdjustedBase * LimbFactor
+Metallic = M * MetalPaintMetallic
+Roughness = lerp(R, MetalPaintRoughness, M) + 0.5 * (1 - LimbFactor)
+Specular = Specular
+Normal = BNormal.rgb
+AmbientOcclusion = AO
+Emissive = PaintTint * (Emissive * (1 - BandageMask)) + BandageMask * BandageEmissive
+OpacityMask = lerp(1, sign(length(CameraRelativeWorldPosition) - Head Cutout), IsFirstPerson)
+FirstPersonInterpolationAlpha = 1 - SphereMask(
+    ObjectPositionWS(Absolute) + Blend Offset,
+    WorldPosition(Default),
+    Scale,
+    HardnessPercent=1)
+```
+
+### MI_Manny_01_White
+
+- parent: 신규 target `M_Mannequin`
+- scalar overrides: `MetalPaintRoughness=0.10000000149`, `Emissive=0.02999999933`, `Specular=1`, `BandageBrightness=1`, `LimbMaskBrightness=0`, `RefractionDepthBias=0`
+- vector overrides: `Paint Tint=(0.6993370056,0.6992419958,0.6992419958,1)`, `BandageEmissive=(0.01,0.01,0.01,1)`
+- texture overrides: target 01 `D`, `BN`, `MRA`
+- direct switches: `AdjustBandageColor=true`, `EnableLimbMask=false`, `LimbMaskPartition1vs2=true`
+- 모든 base-property override flag 비활성
+
+### MI_Manny_02_White
+
+- parent: 신규 target `MI_Manny_01_White`. `M_Mannequin`에 직접 연결하면 안 된다.
+- scalar overrides: `LimbMaskBrightness=0.20000000298`, `RefractionDepthBias=0`
+- vector override 없음
+- texture overrides: target 02 `D`, `BN`, `MRA`
+- direct switches는 `EnableLimbMask=false`, `LimbMaskPartition1vs2=false`만. `AdjustBandageColor=true`는 MI01에서 상속한다.
+- 모든 base-property override flag 비활성
+
+근거 캡처는 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/materials/Meshes__Mannequin__Materials__{M_Mannequin,MI_Manny_01_White,MI_Manny_02_White}` 아래 `analysis.json`, `nodes.json`, `inspection/000000.json`이다. 세 캡처 모두 read-only, complete, untruncated다.
+
+## 최종 검수 게이트
+
+1. dry-run `preflight_pass=true`, `failed_count=0`, mutation 0을 확인한다.
+2. clean-room 머티리얼 3종을 먼저 완성하고 dependency replacement로만 연결한다.
+3. A03 실행은 새로운 confirmation token과 정확한 sanitizer contract로만 허용한다.
+4. 31/31 created, 31/31 saved, failed/skipped/reused 0을 요구한다.
+5. `verification_pass`, `dependency_independence_pass`, `sanitization_verification_pass`가 모두 true여야 한다.
+6. `/Game/FluidNinjaLive`, `/Script/UnrealMCP`, `/UnrealMCP`, `MCPUnreal`, `mcp_unreal` 참조는 0이어야 한다.
+7. 머티리얼은 동일 Manny mesh/material slot, 카메라, 광원, 노출로 MI01/MI02를 비교한다. 1인칭 head cutout 경계도 별도 비교한다.
+8. source revision hash나 GUID equality는 clean-room 검수가 아니다. 71-node class multiset, 배선/상수/파라미터, MI direct-vs-inherited override, target-only dependency, 실제 렌더 결과를 검수한다.
+
+MRA sampler/channel, normal sampler, `IsFirstPerson`, camera-relative world position, `FirstPersonOutput`, masked clip, MI02 parent chain 중 하나라도 다르면 시각 동등성을 주장할 수 없다.
+
+## 실행 순서와 명령
+
+### 결정적 clean-room material builder
+
+`Python/scripts/analysis/build_cube_fluid_ninja_mannequin_materials.py`는 source material/capture를 읽거나 duplicate하지 않는다. UE 5.6 `AssetTools`로 빈 `Material`/`MaterialInstanceConstant`를 만들고, 이 문서의 수식을 데이터 계약으로 표현한 71개 엔진 expression을 `MaterialEditingLibrary`로 새로 생성한다. expression/parameter/named-reroute GUID는 UE가 신규 생성하며 builder에는 GUID literal이나 GUID setter가 없다. `execute_python`과 UnrealMCP native material command는 editor authoring 및 검수에만 사용되고 저장되는 세 에셋은 Engine material class, target texture, 서로의 target parent만 참조한다.
+
+기본 동작은 dry-run이다. 다음을 모두 mutation 전에 검사한다.
+
+- 세 exact target이 모두 존재하지 않음
+- 일곱 localized target texture가 모두 `Texture2D`로 존재함
+- 실제 execution에 쓰는 UE 5.6 Python class/method가 모두 존재함
+- contract의 모든 enum type/member와 `MaterialParameterAssociation.GLOBAL_PARAMETER`가 존재함
+- material/expression property alias를 transient package에 새로 만든 class별 probe에서 `get_editor_property`로 확인하고, 실제 쓰기 대상은 현재 값을 그대로 `set_editor_property`하여 setter도 확인함; CDO와 persistent asset은 얻거나 수정하지 않음
+- Python에 노출되지 않은 GUID와 named-reroute protected field, `DynamicBranch`는 alias preflight 대상에서 분리함; GUID는 builder가 공급하지 않고 native inspector가 신규성/유일성을 검수하며, named-reroute는 UE 5.6 Material Editor와 같은 atomic `Declaration` setter 계약(pointer + `DeclarationGuid=VariableGuid`)으로만 연결하고, `DynamicBranch`는 UE 5.6 constructor default `false`를 native inspector로 확인함
+- 제공 token이 전체 graph/settings/MI contract SHA-256에서 나온 exact token과 같음
+
+기존 target 하나라도 있으면 overwrite, delete, rename, version 자동 증가 없이 중단한다. 실행 도중 실패하여 target이 일부 생성된 경우 `do_not_retry=true`, `manual_recovery_required=true`로 기록하며 자동 삭제하지 않는다. 사용자가 Content Browser 상태와 report를 검토해 수동 복구하기 전에는 재실행하지 않는다.
+
+먼저 dry-run을 실행한다. 프로젝트 binding 기본 endpoint는 `127.0.0.1:55561`이고 `UNREAL_MCP_HOST`, `UNREAL_MCP_5_6_1_PORT`를 우선한다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\build_cube_fluid_ninja_mannequin_materials.py `
+  --run-id 20260901_a03_mannequin_materials_preflight_v001 `
+  --json
+```
+
+`success=true`, `preflight_pass=true`, `mutation_attempted=false`, `mutation_performed=false`, `existing_targets=[]`, `missing_textures=[]`, `missing_api_symbols=[]`, `missing_api_methods=[]`, `missing_enum_members=[]`, `property_probe_errors=[]`, `missing_property_aliases=[]`를 모두 확인한다. frozen v1 contract의 예상 token은 `cfnl-manny-materials-119ac111dd4b1682049e`지만 dry-run 출력값을 최종 권위로 사용한다.
+
+그 token으로 정확히 한 번 실행한다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\build_cube_fluid_ninja_mannequin_materials.py `
+  --execute `
+  --confirmation-token cfnl-manny-materials-119ac111dd4b1682049e `
+  --run-id 20260901_a03_mannequin_materials_execute_v002 `
+  --json
+```
+
+execute의 첫 embedded Python phase는 세 blank target과 71개 expression/MI override를 메모리에 만들되 저장하거나 compile하지 않고, 모든 신규 expression의 exact subobject path를 반환한다. outer script는 8개 named-reroute usage 각각에 대해 native `set_material_node_property(..., "Declaration", declaration_path)`를 정확히 한 번 호출한다. UE 5.6 전용 handler가 같은 graph의 declaration인지와 신규 `VariableGuid` 유효성을 확인한 뒤 pointer와 `DeclarationGuid=VariableGuid`를 atomic하게 기록한다. builder는 각 단일 응답의 atomic/synchronized flag, exact usage/declaration path, top-level `linked_variable_guid`, usage-side `declaration_guid`/`usage_declaration_guid`/`variable_guid`의 동일성, 별도 `declaration_expression_guid`와 VariableGuid의 구분, 그리고 declaration 입력 원본까지의 exact resolved trace path/output/index를 모두 확인한다. 별도 `DeclarationGuid` reflection write는 하지 않는다. 8회 native readback이 모두 일치한 뒤 `inspect_material_asset`으로 71-node topology, named-reroute link/GUID, `DynamicBranch=false`를 저장 전에 검사한다. 그 다음 native `compile_and_save_material`로 base shader compilation 종료/오류 0/save/dirty 0을 확인하고 두 MI를 exact order로 저장한다. 최종 `inspect_material_asset` full readback으로 class multiset, `CFNL_CR::<semantic-id>` 기반 exact wiring, 설정/출력/texture sampler/parameter defaults, 신규 expression GUID 유일성, MI direct override와 MI02의 inherited `AdjustBandageColor=true`를 다시 검증한다. 마지막으로 정확한 Materials 폴더 자체만 비재귀 감사하여 `Material=1`, `MaterialInstanceConstant=2`, asset count 3인지 확인하고, 그 세 asset에서 시작한 dependency traversal로 source/MCP/temp dependency, redirector, dirty package가 0인지 `audit_content_root_mcp`로 검사한다. 기존 증거용 하위 폴더 `Materials/Legacy`는 builder 산출물이 아니므로 asset-count 범위에서 제외된다. `verification_pass=true`, `dependency_independence_pass=true` 전에는 A03 localization으로 진행하지 않는다.
+
+2026-09-01 live dry-run `v001`은 target/texture/API method/enum preflight가 모두 clean이었고 mutation은 0이었지만, UE 5.6 generated Python class에 inherited property descriptor가 노출되지 않아 class-level `hasattr`가 false positive를 냈다. 이를 CDO 없는 transient UObject round-trip probe로 교체한 `v002`에서는 일반 material/expression alias가 모두 통과했고, Python reflection에 의도적으로 노출되지 않은 `MaterialExpressionGuid`, parameter `ExpressionGUID`, named-reroute protected field와 `DynamicBranch`만 남았다. 최초 execute `v001`은 generic two-step reflection이 Material Editor의 atomic pointer/GUID 대입 계약과 다르고, 당시 `RerouteToJson`의 `declaration_guid`가 prefix key collision으로 declaration expression GUID에 덮어써지는 문제까지 있음을 저장 전에 드러냈다. builder는 세 target을 dirty/unsaved 상태로 보존하고 중단했다. 해당 세 package는 디스크에 저장하지 않고 editor 종료 시 discard한 뒤, atomic setter와 충돌 없는 명시적 GUID readback을 빌드한 새 editor session에서 fresh-only builder를 다시 실행한다. 다음 live dry-run에서도 mutation은 0이어야 하며 `property_probe_errors=[]`, `missing_property_aliases=[]`를 확인한다. execute 중 native linkage나 검수가 실패하면 일부 target이 메모리 또는 디스크에 남을 수 있으므로 report는 `do_not_retry=true`, `manual_recovery_required=true`로 닫히며 자동 삭제/재시도하지 않는다.
+
+offline contract test:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_cube_fluid_ninja_mannequin_material_builder.py
+```
+
+### A03 art localization
+
+1. 위 builder로 base material을 target 경로에 신규 생성하고 71-node 계약을 저작한다. source expression, node GUID, parameter GUID를 복제하지 않는다.
+2. MI01을 신규 base target의 child로 만들고 직접 override를 적용한다.
+3. MI02를 MI01 target의 child로 만들고 직접 override 두 switch 및 02 texture/scalar만 적용한다.
+4. 세 target을 저장하고 builder의 material compile/inspection/dependency audit를 통과시킨다. 이 시점에 세 `.uasset`이 디스크에 존재해야 A03 스크립트가 replacement로 포함한다.
+5. 아래 A03 dry-run을 다시 실행한다. 출력 token과 `preflight_pass=true`, `failed_count=0`, mutation 0을 확인한다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\localize_cube_fluid_ninja_art_assets.py `
+  --group a03-current-mannequin `
+  --run-id 20260901_art_a03_ready_v004 `
+  --json
+```
+
+현재의 264 replacements에 위 세 material target이 추가되어 총 267 mappings가 되는 경우 예상 token은 `cfnl-art-33f07e318053a0cc37f6`이다. 디스크 상태가 바뀌면 token도 바뀌므로 dry-run이 출력한 token을 최종 권위로 사용한다.
+
+6. dry-run token이 예상값과 같고 모든 gate가 통과한 경우에만 실행한다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\localize_cube_fluid_ninja_art_assets.py `
+  --group a03-current-mannequin `
+  --execute `
+  --confirmation-token cfnl-art-33f07e318053a0cc37f6 `
+  --run-id 20260901_art_a03_execute_v005 `
+  --json
+```
+
+dry-run이 다른 token을 출력하면 위 execute 명령의 token을 그 값으로 바꾸고, replacement diff를 먼저 검토한다. preflight가 실패한 상태에서는 execute를 시도하지 않는다.

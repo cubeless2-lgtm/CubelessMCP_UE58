@@ -1,0 +1,62 @@
+# ControlRig Stable Authoring Phase 1 Contract
+
+Date: 2026-06-30
+
+`Python/scripts/analysis/controlrig_stable_authoring_phase1_contract.py` is a
+filesystem-only guard for the Phase 1 stable authoring boundary.
+
+## Command
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase1_contract.py
+```
+
+Optional JSON output:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase1_contract.py --json
+```
+
+## Checks
+
+- `UUnrealMCPControlRigAuthoringSubsystem::ProfileSkeletonJson` exists.
+- `profile_controlrig_skeleton` exists and attaches
+  `build_skeleton_profile_planning_evidence`.
+- Phase 1 response markers stay read-only:
+  `read_only=true`, `target_modified=false`, and
+  `partial_target_modified=false`.
+- `planning_evidence.recommended_presets[*].adds_solver_units` stays false.
+- The `ProfileSkeletonJson` function body contains reference-skeleton readback
+  markers and does not contain mutation markers such as package dirtying,
+  saving, compiling, asset creation/deletion/rename, RigVM links, pin defaults,
+  or AnimBP ControlRig class writes.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` does not contain a static
+  dependency string for `UnrealMCPControlRigToolsEditor` or
+  `UnrealMCPControlRigToolsEditor`.
+- The analysis README, release gate note, release verification note, and Phase 1
+  handoff continue to expose this contract.
+
+## Explicitly Excluded
+
+- Unreal Editor launch.
+- Live MCP bridge calls.
+- UnrealBuildTool C++ build.
+- Asset load/save/delete/rename/overwrite operations.
+- Original asset mutation.
+
+## Current Verification
+
+2026-06-30:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase1_contract.py --json
+```
+
+Result: passed with `issue_count=0`; `unreal_editor`, `cpp_build`, and
+`asset_mutation` were skipped.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase1_contract.py
+```
+
+Result: passed, 6 tests.

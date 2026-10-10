@@ -1,0 +1,19 @@
+# Reactive Surface Grass Radial Bend Report
+
+- Date: `2026-07-12`
+- Verdict: `PASS`
+- Production mutation: `/Game/ReactiveSurface/Grass/NS_RS_Grass` only.
+- Direction contract: per-cell radial direction plus up to `0.35` world-velocity bias at `450 cm/s`.
+- Ground, Snow, Water, Controller, Grass RT, and the Grass material were unchanged regression controls for this run, not permanent edit prohibitions.
+
+| Check | Result |
+| --- | --- |
+| Temp matrix | PASS |
+| Production matrix | PASS |
+| Empty field | PASS |
+| Static radial 5-region matrix | PASS |
+| Moving +X bias with radial sides | PASS |
+| Previous world-position trail hold | PASS |
+| Locked production assets unchanged | True |
+| Audit violations | 0 |
+| Dirty packages | 0 |

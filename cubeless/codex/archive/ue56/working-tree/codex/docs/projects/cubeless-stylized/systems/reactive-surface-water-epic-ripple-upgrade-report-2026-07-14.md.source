@@ -1,0 +1,53 @@
+# Reactive Surface Water Epic Ripple Upgrade Report - 2026-07-14
+
+- Verdict: **PASS_PROMOTED**
+- Scope: quality candidate validated under the temp root, then promoted to `/Game/ReactiveSurface/Water/NS_RS_Water` after the user visual gate.
+- Temp root: `/Game/_MCP_Temp/NiagaraGenerated/WaterEpicRipple/20260714_023536`
+- Selected tuning candidate: `WaveSpeed=0.34`, `Damping=0.96`
+- Selected 512 resolution exponent: `0.65`
+- Component placement/source collection/recenter ownership: unchanged.
+
+## Research decisions
+
+- Epic Ripple and current Water use the same second-order 5-sample equation.
+- World-cell normalization is applied to wave speed and packed-normal reconstruction while preserving the 40m/1024 baseline.
+- Niagara fixed tick remains temp-only: UE 5.6 warns about external RT modules, forces game-thread ticking, and exposes only a global max-substep CVar.
+
+## Gates
+
+- R0-R1 algebraic equivalence: `PASS`
+- R2 tuning matrix: `PASS`
+- R3 fixed tick probe: `PASS`
+- R4 world-cell wave and normal: `PASS`
+
+## Fixed tick disposition
+
+- Runtime matrix: `PASS`
+- Production disposition: `NO_GO_UNTIL_PER_SYSTEM_SUBSTEP_AND_SOURCE_CONSUMPTION_CONTRACT`
+
+## Resolution and audit
+
+- 512/1024 world radius: `{"1024": 136.71875, "512": 125.0, "relative_error": 0.08571428571428572}`
+- Normal signal relative error: `0.1081344566233031`
+- Audit checks: `{"asset_count_13": true, "dirty_under_root_zero": true, "mcp_dependency_hits_zero": true, "redirectors_zero": true, "validation_pass": true}`
+- Production guard: `PASS` `{"audit_validation_pass": true, "compile_0_0": true, "dirty_under_root_zero": true, "mcp_dependency_hits_zero": true, "old_formula_present": true, "redirectors_zero": true, "temp_marker_absent": true}`
+
+## Production promotion
+
+- Promotion run: `20260714_080052`
+- Runtime gate: `PASS` with one Controller, one active Water writer, one Controller source position, and one Niagara source position.
+- Stable C++ normal-RT readback: `1009` active R-channel pixels, sum `677.1123046875`, max `0.978515625`, hit radius `47px`, runtime error lines `0`.
+- Controller and Piper defaults survived an independent forced recompile at `WaveSpeed=0.34`, `Damping=0.96`.
+- Promotion evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-epic-ripple-promotion-results-2026-07-14.json`
+
+## Visual evidence
+
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterEpicRippleUpgrade\20260714_023536\water_epic_ripple_quality_contact_sheet.png`
+- Selected animation: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterEpicRippleUpgrade\20260714_023536\water_epic_ripple_selected.gif`
+- Display-only gain/crop: `8.0x`, `1000.0 cm`
+- Metrics use the unamplified RGBA16F EXR and C++ GPU readback.
+
+## Machine evidence
+
+- JSON: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-epic-ripple-upgrade-results-2026-07-14.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterEpicRippleUpgrade\20260714_023536\bridge_results.json`

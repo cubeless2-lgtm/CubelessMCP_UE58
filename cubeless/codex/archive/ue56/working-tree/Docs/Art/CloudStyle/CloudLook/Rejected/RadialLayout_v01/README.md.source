@@ -1,0 +1,15 @@
+# Radial Layout v01 — Unreal review
+
+중심에서 바깥으로 향하는 방사형 광원을 그린 폴라 레이아웃의 엔진 검수 버전이다. 승인 카탈로그 등록본은 아니다.
+
+- 새 에셋: `/Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/RadialLayout_v01/T_CloudLook_RadialLayout_v01`
+- 적용 레벨: `/Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/L_RXSkySystem_PaintedAltitude_v04`
+- 원본 RGB와 투명 RGBA를 별도로 보존했다. 생성 원본은 1254×1254이며 4096×4096 패킹 출력은 업스케일이다.
+- 전체 실루엣이 지평선 원 안에 들어오도록 중심 기준 0.95431856배로 균일 축소했다. 모듈을 재배치하지 않았다.
+- R 음영, G 기존 Hero 밀도 변환, B 중간톤, A 생성 원본의 독립 커버리지. A를 음영 밝기로 계산하지 않았다.
+- 기존 텍스처와 BP/머티리얼은 수정하지 않았다. 배치 액터의 CloudBasisTexture를 새 에셋으로 변경했다.
+- 레이아웃 검수용 액터 값: HighCloudOpacity=0, HeroCloudScale=1, HeroCloudRotation=0, CloudGatherAmount=0. 기존 구름2 텍스처 참조는 보존했다.
+- 현재 사용자가 조정한 색상·시간·합성값은 보존했다. CloudCompositeBlend 약 0.3056.
+- 방사형 광원은 텍스처에 그린 음영이며 새 동적 광원 기능을 추가한 것은 아니다.
+
+변경 전 액터 값과 레벨 백업, 적용 참조 검증, 뷰포트 캡처, full 42/42 통과 로그는 저장소의 `MCPGameProject/Saved/PaintedAltitudeV04/RadialLayout_v01/`에 있다. 두 돔의 동적 머티리얼이 새 텍스처를 사용하는 것을 확인했다. 새 텍스처와 레벨의 직접 hard/soft 의존성 검사에서 UnrealMCP 참조가 없었다. 별도 패키징 검증은 수행하지 않았다.

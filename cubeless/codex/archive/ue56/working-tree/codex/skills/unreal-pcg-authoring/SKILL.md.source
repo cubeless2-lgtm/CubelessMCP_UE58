@@ -1,0 +1,33 @@
+---
+name: unreal-pcg-authoring
+description: Plan, implement, review, and verify Unreal PCG graph and PCG-owning Blueprint work. Use when Codex is asked to create, modify, audit, or review PCG graphs, PCGComponents, actor-property overrides, live refresh behavior, spline or mesh override deltas, PCG dungeon or forest systems, or PCG authoring scripts in Cubeless Unreal projects.
+---
+
+# Unreal PCG Authoring
+
+Use this skill to keep PCG and PCG-owning Blueprint work fast during authoring but conservative at delivery.
+
+## Start Here
+
+1. Read `references/ops-references.md`.
+2. Load the PCG workflow it points to before planning implementation.
+3. If the task touches MCP-authored assets, final content promotion, or map/preview operations, also use `$unreal-mcp-safety-review`.
+4. If the task is CubelessStylized-specific, load that project's binding and local `AGENTS.md` before editing.
+
+## Authoring Rules
+
+- Expose artist-facing mesh choices and generation controls through Blueprint variables and PCG Actor Property paths by default.
+- Use fast batch authoring for graph creation, node wiring, settings changes, and actor-property binding.
+- Keep automatic generation minimized while building; regenerate only at meaningful checkpoints.
+- Do not mutate `FPCGAttributePropertySelector` settings through Unreal Python wrapper assignment. Use the native MCP selector command when available.
+- Finished user-facing PCG Blueprints should use debounced or dirty-flagged live refresh, unless the graph is too expensive and needs a manual refresh path.
+
+## Verification Gates
+
+- Compile and save in grouped checkpoints.
+- Check Blueprint defaults against placed actor overrides.
+- Check `PCGComponent` and `PCGGraphInstance` assignment.
+- Run at least one parameter delta test after final regeneration.
+- For spline PCG, verify a spline-shape delta changes placement as expected.
+- For mesh override work, verify the target mesh assignment changes while unrelated categories remain plausible.
+- Report any bridge, editor, sample-project, or dirty-package blocker as a blocker instead of weakening the gate silently.

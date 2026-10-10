@@ -1,0 +1,32 @@
+---
+name: mcp-release-gate
+description: Verify UnrealMCP changes for commit, push, or release readiness using repository verification and Git policies. Use for scoped commits, pushes, release handoff, or gate diagnosis; pure documentation changes use the documentation tier.
+---
+
+# MCP Release Gate
+
+Keep the requested change attributable and verified at the tier required by its actual scope. Verification does not authorize a commit, push, or editor mutation.
+
+## Start Here
+
+1. Read [references/ops-references.md](references/ops-references.md) for the canonical verification and Git policies.
+2. Inspect Git status and identify the requested candidate, including relevant working-tree changes. Preserve unrelated dirty or untracked work.
+3. Determine the changed surface and whether the work is iteration or promotion using the cost-control policy. Select the applicable verification tier there. A checkpoint commit is not automatically a promotion; a final implementation-complete claim is.
+
+## Verification
+
+- Use `codex/docs/policies/cost-control.md` for tier selection, frozen-candidate identity, evidence reuse, and rerun decisions.
+- Use `codex/projects/UnrealMCP5_6_1.md` for verification commands and build/live requirements. Profile membership and command order belong to `Python/scripts/analysis/run_verification.py`; do not maintain another command ladder here.
+- Apply the Verification Tiers in `codex/docs/policies/cost-control.md`, including Tier 2 for affected contracts and Tier 3 for implementation, executable workflow/configuration, shared-contract, or explicitly high-risk promotion. Pure instruction/documentation-only promotion stays at Tier 0 unless it changes an executable workflow or verification manifest. Whenever Tier 3 requires `full`, obtain a complete passing result for the candidate, freshly run or validly reused; focused results do not substitute.
+- For promotion requiring Tier 3, also read `codex/agents/mcp-release-verifier.md` and satisfy affected build, live, and component-specific checks. For Niagara authoring readiness, read `codex/skills/niagara-authoring-review/SKILL.md`.
+- An editor merely being open does not trigger a live smoke for documentation-only work. When a live check is required, exit code 2 or a skip is not a pass.
+- Apply `codex/docs/policies/safety-matrix.md` when a risk signal matches. Preserve project C++ approval, dependency independence, ownership, lifecycle, and retry boundaries.
+
+## Commit And Push
+
+- Follow `codex/docs/policies/git-repositories.md` for authorization, scoped staging, pre-commit diff checks, synchronization, branch targeting, and commit prefixes. Follow `codex/docs/policies/approvals.md` for existing same-task approval.
+- Before an authorized push, confirm the intended changes are committed and no unrelated work entered the commit. Unrelated dirty files may remain untouched; if they overlap synchronization or invalidate verification evidence, reconcile the affected scope before proceeding.
+- Inspect Git LFS status when Unreal binary assets changed. Do not include generated assets or package outputs unless explicitly requested.
+- Report the candidate, commands and results, reused evidence, skipped checks, and remaining blockers. Report a commit hash or push only when actually performed.
+
+Historical source: `codex/snapshots/20260908-astra-instruction-alignment/codex/skills/mcp-release-gate/SKILL.md`.

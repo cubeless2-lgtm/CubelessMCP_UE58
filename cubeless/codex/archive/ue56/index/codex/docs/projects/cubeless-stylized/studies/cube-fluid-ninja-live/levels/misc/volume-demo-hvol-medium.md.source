@@ -1,0 +1,60 @@
+# 레벨 카드: `VolumeDemo_HVOL_Medium`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_HVOL_Medium` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_HVOL_Medium` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `23` |
+| Direct external | `8` |
+
+## 정적 의미
+
+- **Observed:** 단일 1024² host가 mesh-distance-field와 height reader를 켜고 HVOL512를 출력하며, linear data-channel writers 2개와 Landscape/RVT를 함께 둔다.
+- **Inferred:** 중간 크기 landscape에서 writer input, height/MDF collision, heterogeneous-volume output의 최소 integration case다.
+- **Unknown:** writer-to-host channel binding, landscape/RVT coupling, voxel lighting과 비용.
+- **Target fixture:** `TF_HVOL_Medium` 제안.
+
+## Actor / Component
+
+- manifest=`36 actors / 89 components / 4 pages / 1 component capture`.
+- actor histogram: `StaticMeshActor=14; TextRenderActor=5; NiagaraActor=2; PostProcessVolume=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; MovingBall1_C=1; NinjaLive_C=1; PawnAndCameraUtility_C=1; RuntimeVirtualTextureVolume=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; VolumeDemo_HVOL_Medium_C=1`.
+- component histogram: `StaticMeshComponent=15; LandscapeComponent=12; LandscapeHeightfieldCollisionComponent=12; BillboardComponent=10; ArrowComponent=5; TextRenderComponent=5; SceneComponent=4; BoxComponent=3; BrushComponent=3; MaterialBillboardComponent=2; NiagaraComponent=2; CameraComponent=1; CameraProxyMeshComponent=1; CapsuleComponent=1; CharacterMovementComponent=1; DirectionalLightComponent=1; DrawFrustumComponent=1; ExponentialHeightFogComponent=1; InterpToMovementComponent=1; LandscapeGizmoRenderComponent=1; NinjaLiveComponent_C=1; RotatingMovementComponent=1; RuntimeVirtualTextureComponent=1; SkeletalMeshComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1; SpringArmComponent=1`.
+- sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`7 nodes / 3 links / 18 variables / 0 errors`; HVOL 품질/성능 console variables 4개를 설정하는 graph다.
+- host=`1024²`, extent=`40/40/5`, reader=`TTFTT`, PVD=`TTF`, HVOL512; core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`.
+- moving actor, writers, Landscape heightfield의 실제 순서와 binding은 runtime `pending`.
+
+## Niagara
+
+- standalone `NS_WriteDataCh_GPU_Source_Linear` 2개는 auto=true. 이 system의 full capture=`79 nodes / 95 links / 25 modules / 1 renderer / 0 scratch`, compile warning/error 0.
+- host selected materials=`density red`, `MI_HVOL_SIM_test2_landscp`.
+
+## Material / Art
+
+- material refs=`10`, art refs=`5`; landscape HVOL test2가 핵심 output family다.
+- landscape height/shape, texture, mesh는 조건부 art localization 후보지만 Landscape/RVT/HVOL/material logic은 재작성한다.
+
+## Clean-room 구현 순서
+
+1. dependency-safe Landscape/RVT와 고정 height/MDF collision fixture를 만든다.
+2. semantic-equivalent linear writer와 1024² host channel contract를 독립 작성한다.
+3. HVOL512 material/actor를 연결하고 cvar driver를 새 Level BP로 만든다.
+4. writer/height coupling, no-source/no-MCP, runtime/visual/performance parity를 측정한다.
+
+## Evidence / Parity / Exception
+
+- revision=`524da85284876e29ae9219921c53d166`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; landscape/art data만 조건부 localization 후보다.

@@ -1,0 +1,47 @@
+# Reactive Surface Grass Damped Rebound Report
+
+- Date: `2026-07-12`
+- Verdict: `PASS`
+- Scope: Grass module material and its Grass-only material instance.
+- During this Grass-only run, all non-target assets were unchanged regression controls. This is historical per-run evidence, not a permanent edit prohibition for Ground, Snow, Water, or any other channel.
+- Material marker: `RS_GRASS_MODULE_PP1_DAMPED_REBOUND_V1`.
+- Response: RT directional rigid tilt plus release-gated damped sine rebound.
+- A fully held center and an empty RT cell both add exactly zero rebound.
+- Peak rebound: `5.2993` degrees; 3-second residual: `-0.0820` degrees.
+- Runtime grounded/airborne/landing matrix: `PASS`.
+- Visual QA: `codex/docs/projects/cubeless-stylized/systems/evidence/screenshots/reactive-surface-grass-rebound-qa-2026-07-12.png`.
+
+## Defaults
+
+- `RS_Grass_ReboundAmplitudeDegrees` = `12.0`
+- `RS_Grass_ReboundFrequencyHz` = `2.6`
+- `RS_Grass_ReboundDamping` = `2.4`
+- `RS_Grass_ReboundPhaseVariation` = `0.12`
+
+## Checks
+
+| Check | Result |
+| --- | --- |
+| numeric_qa | PASS |
+| temp_material | PASS |
+| visual_capture | PASS |
+| production_material | PASS |
+| production_mi_defaults | PASS |
+| runtime_smoke | PASS |
+| round_local_non_grass_regression_hash_match | PASS |
+| mcp_audit_0 | PASS |
+| new_dirty_0 | PASS |
+| temp_remaining_0 | PASS |
+
+## Harness Corrections
+
+- Replaced the legacy teleport-only Grass positive path with explicit `MOVE_WALKING -> MOVE_FALLING -> MOVE_WALKING` cells.
+- Final visual verification reuses the hashed initial temp-pass capture; it does not spawn QA actors into or reload the production map.
+- Same-session Python active-map reload is prohibited because hidden `FPyReferenceCollector` references can trigger the fatal World leak guard.
+
+## Research Basis
+
+- [Unreal Engine World Position Offset Material Functions](https://dev.epicgames.com/documentation/en-us/unreal-engine/world-position-offset-material-functions-in-unreal-engine): Chain a secondary foliage motion layer into the existing WPO.
+- [Unreal Engine Pivot Painter Tool 1.0](https://dev.epicgames.com/documentation/unreal-engine/pivot-painter-tool-1.0?application_version=4.27): Keep every blade shape rigid and rotate around its packed root pivot.
+- [GPU Gems 3 Chapter 16 - Vegetation Procedural Animation and Shading in Crysis](https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-16-vegetation-procedural-animation-and-shading-crysis): Separate main directional bend from sine-family detail motion and vary phase per blade.
+- [GPU Gems 3 Chapter 6 - GPU-Generated Procedural Wind Animations for Trees](https://developer.nvidia.com/gpugems/gpugems3/part-i-geometry/chapter-6-gpu-generated-procedural-wind-animations-trees): Use a bounded overshoot that decays as the restoring force settles.

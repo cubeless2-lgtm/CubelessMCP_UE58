@@ -1,0 +1,63 @@
+# Cloud detail review — 2026-09-16
+
+## Scope and result
+
+The live Study03 authoring level samples SVT density directly; its current blur is
+not caused by the final RX 4K channel textures. The material samples
+`floor(max(CloudDetailMip, per-cloud DetailMip))`; the global value is 0.
+High per-cloud mip values retained after source replacement discard fine density.
+
+To limit GPU risk, only three controls were changed, one at a time:
+
+| Actor | Previous DetailMip | New DetailMip |
+| --- | ---: | ---: |
+| CLOUD_S04_F01_Core | 4.175999 | 3 |
+| CLOUD_S04_F02_Lobe | 4.084800 | 3 |
+| CLOUD_S04_F03_Edge | 3.940799 | 2 |
+
+Same-camera screenshots show clearer edges and internal detail on the large left
+cloud. All 28 actor poses and sources were preserved; other mip values were
+unchanged. Live MPC values matched the controls. The Study03 level was saved.
+
+Render target mode 0, view sample cap 256 and shadow view cap 80 were retained.
+No bake, high-resolution capture or full-scene mip reduction was performed.
+No crash occurred during these bounded captures. This is not a sustained GPU
+benchmark or a guarantee against future crashes.
+
+Local evidence: `MCPGameProject/Saved/RXDetailQuality_20260916/` contains before/after
+screenshots, actor snapshots, map backup and verification output. Final RX baked
+textures are unchanged; a later explicit rebake is required to include these edits.
+
+## Follow-up: exterior and internal detail
+
+After the user requested more exterior detail, F01 and F02 were compared at mip 2
+using the same camera and unchanged render settings. Both retain more small-scale
+structure than mip 3. F01 now uses Density 3.1 and EdgeCut 0.024; F02 uses Density
+2.05 and EdgeCut 0.019. These modest density/cut changes reduce weak outer density
+and preserve the central mass. No new noise samples or material code were added.
+
+The saved result improves fine edge definition; it does not fully solve broad
+lighting flatness or the reconstruction limit of render target mode 0. Actor
+poses and source selections, and all values on the other 26 controls, were verified
+unchanged against this follow-up's baseline. F03 retains mip 2 from the first pass.
+Evidence is in `MCPGameProject/Saved/RXEdgeDetail_20260916/`. No crash occurred in
+these captures; sustained GPU stability remains unmeasured.
+
+## Follow-up: internal scattering shade
+
+On `M_VC_CloudAuthoring`, native advanced-volume constants were changed from
+multi-scattering contribution 0.60 to 0.45 and occlusion 0.40 to 0.55. Both input
+pins were verified unconnected, so the constants are active. Octave count stays
+1, eccentricity 0.5 and phase G 0.35. Material compilation passed with no errors.
+On the active CloudLayout component, Sky Light Cloud Bottom Occlusion changed
+from 0.64 to 0.82. Ray-marched volume shadows remain enabled.
+
+The same-camera result is subtle; broad interior depth is still not strongly
+resolved in this lighting/view. Do not describe this pass as a major volumetric
+improvement. No phase, density, source, detail, lighting-actor, render-mode or
+sample-count change was made in this pass. Current render mode/caps are 0/256/80.
+Saved native material dependencies contain no UnrealMCP references. Evidence:
+`MCPGameProject/Saved/RXInternalShade_20260916/` (before/after/final images,
+settings, backups, compile output in session and verification report).
+No GPU crash was observed in the bounded comparison; no sustained benchmark or
+rebake was performed.

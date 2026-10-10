@@ -1,0 +1,32 @@
+# Reactive Surface Grass Internal Rebound Report
+
+- Date: `2026-07-12`
+- Verdict: `PASS`
+- Scope: Grass Niagara internal Grid2D state plus the Grass PP1 WPO material.
+- Additional production render targets: `0`.
+- Ground, Snow, Water, Controller, and demo level are hash-protected and unchanged.
+
+## Runtime evidence
+
+- Release sign sequence: `[1, -1, 1, -1, 1, -1]`.
+- Released old-path sign sequence after the source moved: `[-1, 1, -1]`.
+- The released cell remains measurable after 0.5 s and 1.0 s, then converges to neutral.
+- Recenter response/target shift difference: `0.0005px`.
+- Recenter final centroid alignment: `0.0004px`.
+- Empty RT remained zero; held contact was stable; release converged to neutral.
+- Actual PIE trail bbox span: `187px`; idle sleep hold remained stable and nonzero.
+- Airborne source arrays/RT stayed zero; landing RT read sums: `[194.909, 198.716, 188.98]`.
+- Visual capture: `codex/docs/projects/cubeless-stylized/systems/evidence/screenshots/reactive-surface-grass-internal-rebound-demo-2026-07-12.png`.
+- Runtime video: `codex/docs/projects/cubeless-stylized/systems/evidence/videos/reactive-surface-grass-rebound-run-2026-07-12.mp4` (`1280x720`, `20 s`, `60 fps`).
+
+## Implementation
+
+- `StackContext.ResponseState.xy`: final bend vector.
+- `StackContext.ResponseState.zw`: spring velocity.
+- Default Grass rebound damping: `2.0`; frequency remains `2.0` Hz.
+- The material applies a bounded gamma lift only to low-amplitude released cells, so the trajectory remains visible without increasing live-contact tilt.
+- Live source contact drives the spring; persistent Grass history does not suppress rebound.
+- Existing Grass recenter UV and source namespaces are reused.
+- The material performs rigid PP1 pivot rotation only; no material-time sine remains.
+
+Evidence JSON: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-grass-internal-rebound-results-2026-07-12.json`

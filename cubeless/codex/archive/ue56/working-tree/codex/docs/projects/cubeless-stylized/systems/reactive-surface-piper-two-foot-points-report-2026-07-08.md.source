@@ -1,0 +1,42 @@
+# Reactive Surface Piper Two Foot Points Report - 2026-07-08
+
+- Verdict: `PASS for L_RS_Demo runtime instance`
+- Player Blueprint: `/Game/Cubeless/Reactive/BP_Piper_ReactivePrototype`
+- Demo actor: `RS_Demo_Player_Piper`
+- Change: the single player ReactivePoint was split into left/right foot points for the demo player workflow.
+
+## Configuration
+
+- `BPC_ReactivePoint_L`: parent `CharacterMesh0`, socket `foot_l`, `FootSide=1`, `FootprintMaskIndex=0`
+- `BPC_ReactivePoint_R`: parent `CharacterMesh0`, socket `foot_r`, `FootSide=2`, `FootprintMaskIndex=1`
+- Shared point settings: `ChannelMask=7`, `Radius=18.0`, `Strength=0.85`, `bRequiresGrounded=false`, `VelocityMode=0`
+- Rationale: foot-mounted points should use a smaller radius than the previous single root/body point. The previous root/body radius was `40.0`; the foot radius is now `18.0`.
+
+## Smoke
+
+- Editor instance readback: both demo player points attach to `CharacterMesh0` with sockets `foot_l` and `foot_r`.
+- SIE readback: runtime Piper has two ReactivePoint components with sockets `foot_l` and `foot_r`.
+- 2026-07-08 recheck: the editor instance briefly read back with `socket=None`; the demo instance was reattached to `foot_l`/`foot_r`, saved, and rechecked.
+- 2026-07-08 SIE recheck: `/Game/ReactiveSurface/Demo/UEDPIE_0_L_RS_Demo...BP_Piper_ReactivePrototype_C_0` kept `socket=foot_l` and `socket=foot_r` at runtime.
+- 2026-07-08 post-build recheck: UnrealMCP `set_component_property` now mirrors `AttachSocketName` to the SCS node `AttachToName`. A newly spawned BP instance kept `CharacterMesh0/foot_l` and `CharacterMesh0/foot_r`, proving the Blueprint template path is durable.
+- 2026-07-08 demo-map recheck: `L_RS_Demo` was opened through native `open_editor_level`; editor-world `RS_Demo_Player_Piper` has exactly two point components. Both have relative location `[0, 0, 0]`, relative rotation `[0, 0, 0]`, and `distance_to_socket_cm=0.0`.
+- 2026-07-08 demo SIE recheck: PIE-world `RS_Demo_Player_Piper` kept exactly two point components with `foot_l`/`foot_r`, relative location `[0, 0, 0]`, relative rotation `[0, 0, 0]`, and `distance_to_socket_cm=0.0`.
+- Runtime world positions were separated:
+  - Left: `[10.2924, -198.0785, 29.5574]`
+  - Right: `[-17.8510, -170.7058, 29.6504]`
+- Demo editor-world positions were separated:
+  - Left: `[9.9606, -198.3208, 29.6602]`
+  - Right: `[-17.9863, -170.9549, 29.3511]`
+- Demo PIE-world positions were separated:
+  - Left: `[10.3166, -198.0719, 29.5418]`
+  - Right: `[-17.8285, -170.7048, 29.6502]`
+- Newly spawned template-instance positions were separated:
+  - Left: `[5009.961, 4981.679, 133.66]`
+  - Right: `[4982.014, 5009.045, 133.351]`
+- Both runtime points kept `Radius=18.0`, `ChannelMask=7`, and left/right metadata.
+
+## Tooling Note
+
+- Blueprint template parent was corrected to `CharacterMesh0` for both points through `SubobjectDataSubsystem`.
+- `set_component_property` now supports `FNameProperty` writes and, for `AttachSocketName`, also updates the owning `USCS_Node::AttachToName`.
+- Standard UBT build passed after closing the editor and stale `CrashReportClientEditor.exe` lock process.

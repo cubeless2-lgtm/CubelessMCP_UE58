@@ -1,0 +1,43 @@
+{
+  "schema": "cubeless_material_read_reuse_source_review_v1",
+  "captured_utc": "2026-10-10T10:05:01.394487+00:00",
+  "status": "no_blocker_found_source_review_only",
+  "reviewer": "operations_guidance_migration",
+  "files": [
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Operations/CubelessMaterialOperations.cpp",
+      "sha256": "7fb3c6df68dfc75e0b42b12f542c16b3c72a5f1bef10b67676878cbd00a38382",
+      "bytes": 8105
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialApi.cpp",
+      "sha256": "806a285649994d8b8411e1305e4708fadc412ae9297934e8d46e6332fc114ef8",
+      "bytes": 34356
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialApi.h",
+      "sha256": "861fe3748da4a8a2eb049e9b4507d90e91c8b3c966b7f7ef2c2e27a9ff953876",
+      "bytes": 2300
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCollectionRead.inc",
+      "sha256": "d2913a871c4b9cbac25bc08b3f985d45a12f9ee8a11b02c948527d8915057e4d",
+      "bytes": 19215
+    }
+  ],
+  "checks": [
+    "Reuse restricted to two nonmutating operation enums",
+    "Reuse comes only from successful local Before capture, never caller JSON/global cache",
+    "Shared JSON is not modified by current read response assembly",
+    "New After CaptureState retained, before/after JSON and dirty flags compared",
+    "Mutation transaction, durable Python checkpoint and Execute path not removed",
+    "Capture failures, Execute failure fallback and postcondition failure preserved",
+    "Scoped per-thread metrics restore previous nested scope; counters represent instrumented call sites, not engine-internal work"
+  ],
+  "limitations": [
+    "No build or Unreal execution by reviewer",
+    "J latency/improvement not measured",
+    "No measured I call counters exist; source-derived counts must stay labelled",
+    "Remaining full graph metadata/typed-chain repetition deliberately not claimed fixed"
+  ]
+}

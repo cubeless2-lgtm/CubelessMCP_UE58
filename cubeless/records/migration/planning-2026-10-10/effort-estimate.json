@@ -1,0 +1,155 @@
+{
+  "date_kst": "2026-10-10",
+  "status": "uncalibrated_planning_estimate",
+  "unit": "experienced_human_engineer_person_hours_not_codex_wall_clock_not_price",
+  "platform": "Win64",
+  "core_rows": [
+    {
+      "item": "계약·호출 연결 상세 대응",
+      "low": 32,
+      "base": 56,
+      "high": 96
+    },
+    {
+      "item": "공식 등록·공통 계약·batch/Python/Ieta",
+      "low": 40,
+      "base": 80,
+      "high": 140
+    },
+    {
+      "item": "Data·Sequencer·Landscape·Audio·StateTree·Networking·GAS",
+      "low": 40,
+      "base": 80,
+      "high": 140
+    },
+    {
+      "item": "Editor·Blueprint·Project·UMG",
+      "low": 72,
+      "base": 144,
+      "high": 260
+    },
+    {
+      "item": "Material",
+      "low": 32,
+      "base": 64,
+      "high": 120
+    },
+    {
+      "item": "BlueprintNode/AnimBP·ControlRig·Skeletal",
+      "low": 120,
+      "base": 240,
+      "high": 440
+    },
+    {
+      "item": "Niagara·Niagara planning",
+      "low": 112,
+      "base": 224,
+      "high": 420
+    },
+    {
+      "item": "PCG",
+      "low": 40,
+      "base": 80,
+      "high": 150
+    },
+    {
+      "item": "Chaos 계열",
+      "low": 64,
+      "base": 128,
+      "high": 240
+    },
+    {
+      "item": "AI",
+      "low": 32,
+      "base": 64,
+      "high": 120
+    },
+    {
+      "item": "Texture",
+      "low": 20,
+      "base": 40,
+      "high": 80
+    },
+    {
+      "item": "플러그인 통합·무의존성·성능",
+      "low": 40,
+      "base": 80,
+      "high": 144
+    }
+  ],
+  "operations_rows": [
+    {
+      "item": "파이프라인·검수 전수 목록·공통군·유일차이 매핑",
+      "low": 100,
+      "base": 180,
+      "high": 320
+    },
+    {
+      "item": "외부 공식 MCP 실행·검수 harness",
+      "low": 32,
+      "base": 56,
+      "high": 96
+    },
+    {
+      "item": "특화 파이프라인·검수기 수정·공통화",
+      "low": 120,
+      "base": 300,
+      "high": 650
+    },
+    {
+      "item": "파이프라인 fixture·UE5.8 종단 검증",
+      "low": 160,
+      "base": 400,
+      "high": 900
+    },
+    {
+      "item": "archive·출처·현재지침·경험",
+      "low": 40,
+      "base": 100,
+      "high": 200
+    },
+    {
+      "item": "파이프라인 실패·부분변경·재실행·성능 보고",
+      "low": 60,
+      "base": 140,
+      "high": 300
+    }
+  ],
+  "core_subtotal": {
+    "low": 644,
+    "base": 1280,
+    "high": 2350
+  },
+  "operations_subtotal": {
+    "low": 512,
+    "base": 1176,
+    "high": 2466
+  },
+  "total": {
+    "low": 1156,
+    "base": 2456,
+    "high": 4816
+  },
+  "person_days_at_8_hours": {
+    "low": 144.5,
+    "base": 307,
+    "high": 602
+  },
+  "person_weeks_at_40_hours": {
+    "low": 28.9,
+    "base": 61.4,
+    "high": 120.4
+  },
+  "initial_calibration_slice": {
+    "low": 40,
+    "high": 80,
+    "additional_to_total": false
+  },
+  "assumptions": [
+    "Existing required assets and third-party/editor dependencies can be obtained without new purchases.",
+    "Native tool implementation and its per-tool tests are distinct from whole pipeline orchestration and verifier tests.",
+    "Meaningful behavior of every source entrypoint is retained or explicitly blocked; no omission is assumed.",
+    "High estimate is a scenario, not a fixed upper cap or guarantee that unsupported APIs can be ported.",
+    "No measured AI speedup or parallel-efficiency factor is applied."
+  ]
+}

@@ -1,0 +1,649 @@
+# BP Authoring Quality Planner
+
+- Generated UTC: `2026-06-28T16:45:39.273152+00:00`
+- Planner version: `section_10_animbp_sample_routes`
+- Current authoring ceiling: `temporary_smoke_only_bp_shells_allowlisted_actor_parent_component_hierarchy_property_graph_glue_validation_durable_read_only_asset_exists_preflight_overwrite_rename_decision_save_gate_rollback_draft_executor_readiness_checklist_and_disabled_executor_skeleton`
+- Quality gate status: `existing_bp_authoring_quality_gate_passed`
+- Delegate lifecycle sites from Lyra intake: `263`
+- Async proxy classes from Lyra intake: `13`
+
+## Summary
+
+- Requests planned: `18`
+
+### Status Counts
+
+- `safe_to_author`: 14
+- `blocked_until_reinforced`: 4
+
+### Safe Rule Counts
+
+- `blueprint_shell`: 6
+- `component_setup`: 5
+- `variables_defaults`: 6
+- `function_graph_glue`: 7
+- `event_dispatcher_lifecycle`: 1
+- `anim_bp_sample_creation`: 2
+- `anim_state_machine_sample_authoring`: 2
+- `animation_metadata_read`: 1
+
+### Review Rule Counts
+
+- none
+
+### Blocked Rule Counts
+
+- `advanced_animbp_authoring_gap`: 1
+- `async_proxy_callback_exec`: 1
+- `gas_ability_task`: 1
+- `replication_rpc`: 1
+- `commonui_structure`: 1
+
+## Plans
+
+### simple_actor_bp
+
+- Status: `safe_to_author`
+- Request: Create an Actor Blueprint shell with a Static Mesh Component, exposed health variable, BeginPlay event, branch, and function call.
+- Reason: Only currently safe authoring patterns detected: Blueprint shell / class setup, Component composition, Variables and defaults, Function calls and graph glue.
+
+Safe steps:
+- `blueprint_shell`: Create a narrow Blueprint shell using an existing parent class; keep native behavior in native classes.
+- `component_setup`: Add existing component classes and set exposed defaults; do not recreate native component internals.
+- `variables_defaults`: Add Blueprint variables with explicit type/default metadata and expose only requested controls.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_blueprint`
+- `compile_and_validate_blueprint`
+- `add_component_to_blueprint`
+- `list_blueprint_components`
+- `get_component_property`
+- `set_component_property`
+- `add_blueprint_variable`
+- `set_blueprint_pin_default`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### component_function_glue
+
+- Status: `safe_to_author`
+- Request: Make a Blueprint component setup that calls an existing reflected function and connects simple branch flow.
+- Reason: Only currently safe authoring patterns detected: Blueprint shell / class setup, Component composition, Function calls and graph glue.
+
+Safe steps:
+- `blueprint_shell`: Create a narrow Blueprint shell using an existing parent class; keep native behavior in native classes.
+- `component_setup`: Add existing component classes and set exposed defaults; do not recreate native component internals.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_blueprint`
+- `compile_and_validate_blueprint`
+- `add_component_to_blueprint`
+- `list_blueprint_components`
+- `get_component_property`
+- `set_component_property`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### component_hierarchy
+
+- Status: `safe_to_author`
+- Request: Create an Actor Blueprint shell with a Scene Component root and a child Static Mesh Component attached to that root.
+- Reason: Only currently safe authoring patterns detected: Blueprint shell / class setup, Component composition.
+
+Safe steps:
+- `blueprint_shell`: Create a narrow Blueprint shell using an existing parent class; keep native behavior in native classes.
+- `component_setup`: Add existing component classes and set exposed defaults; do not recreate native component internals.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_blueprint`
+- `compile_and_validate_blueprint`
+- `add_component_to_blueprint`
+- `list_blueprint_components`
+- `get_component_property`
+- `set_component_property`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- compile/readback before save
+- graph/topology readback after authoring
+
+### component_property_defaults
+
+- Status: `safe_to_author`
+- Request: Create an Actor Blueprint shell with a Static Mesh Component visibility false.
+- Reason: Only currently safe authoring patterns detected: Blueprint shell / class setup, Component composition.
+
+Safe steps:
+- `blueprint_shell`: Create a narrow Blueprint shell using an existing parent class; keep native behavior in native classes.
+- `component_setup`: Add existing component classes and set exposed defaults; do not recreate native component internals.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_blueprint`
+- `compile_and_validate_blueprint`
+- `add_component_to_blueprint`
+- `list_blueprint_components`
+- `get_component_property`
+- `set_component_property`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- compile/readback before save
+- graph/topology readback after authoring
+
+### function_graph_body_math
+
+- Status: `safe_to_author`
+- Request: Create a function graph with a local variable, math node, dataflow, and return node.
+- Reason: Only currently safe authoring patterns detected: Variables and defaults, Function calls and graph glue.
+
+Safe steps:
+- `variables_defaults`: Add Blueprint variables with explicit type/default metadata and expose only requested controls.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `add_blueprint_variable`
+- `set_blueprint_pin_default`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### function_graph_local_set
+
+- Status: `safe_to_author`
+- Request: Create a function graph with an input parameter, math node, local variable set node, and return node.
+- Reason: Only currently safe authoring patterns detected: Variables and defaults, Function calls and graph glue.
+
+Safe steps:
+- `variables_defaults`: Add Blueprint variables with explicit type/default metadata and expose only requested controls.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `add_blueprint_variable`
+- `set_blueprint_pin_default`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### function_graph_compare_branch
+
+- Status: `safe_to_author`
+- Request: Create a function graph with an input parameter, compare node, branch, then and else local variable set nodes, and return node.
+- Reason: Only currently safe authoring patterns detected: Variables and defaults, Function calls and graph glue.
+
+Safe steps:
+- `variables_defaults`: Add Blueprint variables with explicit type/default metadata and expose only requested controls.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `add_blueprint_variable`
+- `set_blueprint_pin_default`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### typed_variables_defaults
+
+- Status: `safe_to_author`
+- Request: Create an Actor Blueprint shell with a Scene Component, bool variable default, string variable default, and vector variable default.
+- Reason: Only currently safe authoring patterns detected: Blueprint shell / class setup, Component composition, Variables and defaults.
+
+Safe steps:
+- `blueprint_shell`: Create a narrow Blueprint shell using an existing parent class; keep native behavior in native classes.
+- `component_setup`: Add existing component classes and set exposed defaults; do not recreate native component internals.
+- `variables_defaults`: Add Blueprint variables with explicit type/default metadata and expose only requested controls.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_blueprint`
+- `compile_and_validate_blueprint`
+- `add_component_to_blueprint`
+- `list_blueprint_components`
+- `get_component_property`
+- `set_component_property`
+- `add_blueprint_variable`
+- `set_blueprint_pin_default`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- compile/readback before save
+- graph/topology readback after authoring
+
+### event_sequence_flow
+
+- Status: `safe_to_author`
+- Request: Create an Actor Blueprint shell with BeginPlay, a Sequence node, and two PrintString calls.
+- Reason: Only currently safe authoring patterns detected: Blueprint shell / class setup, Function calls and graph glue.
+
+Safe steps:
+- `blueprint_shell`: Create a narrow Blueprint shell using an existing parent class; keep native behavior in native classes.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_blueprint`
+- `compile_and_validate_blueprint`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### generated_function_invocation
+
+- Status: `safe_to_author`
+- Request: Create a function graph and call the generated function from BeginPlay with an input default, then store the output in a variable.
+- Reason: Only currently safe authoring patterns detected: Variables and defaults, Function calls and graph glue.
+
+Safe steps:
+- `variables_defaults`: Add Blueprint variables with explicit type/default metadata and expose only requested controls.
+- `function_graph_glue`: Author ordinary reflected function calls and simple control-flow glue only.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `add_blueprint_variable`
+- `set_blueprint_pin_default`
+- `resolve_blueprint_graph`
+- `add_blueprint_function_parameter`
+- `add_blueprint_local_variable`
+- `add_blueprint_variable_get_node`
+- `add_blueprint_variable_set_node`
+- `add_blueprint_self_reference`
+- `add_blueprint_math_node`
+- `add_blueprint_compare_node`
+- `add_blueprint_return_node`
+- `add_blueprint_call_function_node`
+- `add_blueprint_branch_node`
+- `add_blueprint_sequence_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- resolve_blueprint
+- compile_and_validate_blueprint
+- list_blueprint_nodes
+- compile/readback before save
+- graph/topology readback after authoring
+
+### event_dispatcher_lifecycle
+
+- Status: `safe_to_author`
+- Request: Create a Blueprint Event Dispatcher, call it, bind it to a compatible custom event, assign it, unbind it, and clear it.
+- Reason: Only currently safe authoring patterns detected: Blueprint Event Dispatcher lifecycle.
+
+Safe steps:
+- `event_dispatcher_lifecycle`: Use Blueprint Event Dispatcher primitives only when the delegate owner and cleanup semantics are Blueprint-equivalent.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `add_blueprint_event_dispatcher`
+- `add_blueprint_event_dispatcher_call_node`
+- `add_blueprint_custom_event_node`
+- `add_blueprint_event_dispatcher_bind_node`
+- `add_blueprint_event_dispatcher_assign_node`
+- `add_blueprint_event_dispatcher_unbind_node`
+- `add_blueprint_event_dispatcher_clear_node`
+- `connect_blueprint_nodes`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- list_blueprint_graphs
+- list_blueprint_nodes
+- compile_and_validate_blueprint
+- compile/readback before save
+- graph/topology readback after authoring
+
+### anim_bp_sample_creation
+
+- Status: `safe_to_author`
+- Request: Create a sample AnimBP from a skeletal mesh under /Game/_MCP_Temp and compile it.
+- Reason: Only currently safe authoring patterns detected: Animation Blueprint sample creation.
+
+Safe steps:
+- `anim_bp_sample_creation`: Create only sample/temp AnimBPs from a Skeleton or SkeletalMesh through the dedicated AnimBP factory route.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_anim_blueprint_sample`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- create_anim_blueprint_sample
+- compile/readback target sample AnimBP
+- compile/readback before save
+- graph/topology readback after authoring
+
+### anim_state_machine_sample
+
+- Status: `safe_to_author`
+- Request: Create a sample Animation Blueprint state machine with Idle and Run states and a basic transition.
+- Reason: Only currently safe authoring patterns detected: Animation Blueprint sample creation, Animation Blueprint sample state-machine authoring.
+
+Safe steps:
+- `anim_bp_sample_creation`: Create only sample/temp AnimBPs from a Skeleton or SkeletalMesh through the dedicated AnimBP factory route.
+- `anim_state_machine_sample_authoring`: Author regular states, SequencePlayer/BlendSpacePlayer states, entry links, and basic transitions only on sample/temp AnimBPs.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `create_anim_blueprint_sample`
+- `inspect_anim_state_machine_transitions`
+- `ensure_anim_state_machine_sample_variant`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- create_anim_blueprint_sample
+- compile/readback target sample AnimBP
+- inspect_anim_state_machine_transitions
+- ensure_anim_state_machine_sample_variant
+- compile/readback before save
+- graph/topology readback after authoring
+
+### animation_metadata_read
+
+- Status: `safe_to_author`
+- Request: Read animation montage notifies, sync markers, curves, and montage sections without modifying assets.
+- Reason: Only currently safe authoring patterns detected: Animation asset metadata read.
+
+Safe steps:
+- `animation_metadata_read`: Read source animation metadata through the guarded inspector; do not mutate or tick assets.
+
+Requires review:
+- none
+
+Blocked items:
+- none
+
+Needed MCP tools:
+- `inspect_animation_asset_metadata_guarded`
+
+Validation plan:
+- resolve target or create under /Game/_MCP_Temp for smoke when possible
+- inspect_animation_asset_metadata_guarded
+- compile/readback before save
+- graph/topology readback after authoring
+
+### advanced_animbp_gap
+
+- Status: `blocked_until_reinforced`
+- Request: Create a linked anim graph with a custom transition graph and nested state machine.
+- Reason: Blocked patterns detected: Advanced Animation Blueprint graph authoring gap.
+
+Safe steps:
+- `anim_state_machine_sample_authoring`: Author regular states, SequencePlayer/BlendSpacePlayer states, entry links, and basic transitions only on sample/temp AnimBPs.
+
+Requires review:
+- none
+
+Blocked items:
+- `advanced_animbp_authoring_gap`: Advanced AnimGraph/state-machine rewrites are still gap candidates and require reinforcement before automatic authoring.
+
+Needed MCP tools:
+- `inspect_anim_state_machine_transitions`
+- `ensure_anim_state_machine_sample_variant`
+
+Validation plan:
+- AnimBP route review
+- new C++/API candidate review if existing commands cannot cover it
+- do not author Blueprint graph until blocked items are removed or reinforced
+
+### async_proxy_request
+
+- Status: `blocked_until_reinforced`
+- Request: Convert a UBlueprintAsyncActionBase async action with callback exec pins, Activate(), Broadcast(), and cancellation cleanup.
+- Reason: Blocked patterns detected: Async proxy callback exec topology.
+
+Safe steps:
+- none
+
+Requires review:
+- none
+
+Blocked items:
+- `async_proxy_callback_exec`: Async proxy nodes need callback exec pin, payload pin, activation, cancellation, and cleanup modeling first.
+
+Needed MCP tools:
+- none
+
+Validation plan:
+- async proxy callback inventory
+- do not author Blueprint graph until blocked items are removed or reinforced
+
+### gas_replication_request
+
+- Status: `blocked_until_reinforced`
+- Request: Build a Gameplay Ability with AbilityTask prediction and replicated Server RPC state changes.
+- Reason: Blocked patterns detected: Gameplay Ability System / AbilityTask, Replication, RPC, or ReplicationGraph.
+
+Safe steps:
+- none
+
+Requires review:
+- none
+
+Blocked items:
+- `gas_ability_task`: GAS internals and AbilityTasks require domain-specific native policy and prediction-safe authoring.
+- `replication_rpc`: Replication and RPC authority policy are native-blocked for generic C++ to BP lowering.
+
+Needed MCP tools:
+- none
+
+Validation plan:
+- GAS classifier
+- native review
+- native networking review
+- do not author Blueprint graph until blocked items are removed or reinforced
+
+### commonui_request
+
+- Status: `blocked_until_reinforced`
+- Request: Create a CommonUI activatable widget tree with layer activation policy and back handling.
+- Reason: Blocked patterns detected: CommonUI structure or activation policy.
+
+Safe steps:
+- none
+
+Requires review:
+- none
+
+Blocked items:
+- `commonui_structure`: CommonUI widget tree, layer, and activation policy authoring need dedicated tooling before BP generation.
+
+Needed MCP tools:
+- none
+
+Validation plan:
+- CommonUI/UMG structure inventory
+- do not author Blueprint graph until blocked items are removed or reinforced
+
+## Policy
+
+- Blocked matches override safe matches.
+- Requests with no known-safe match require review.
+- Lyra intake informs the policy, but rule matching does not depend on Lyra content names.

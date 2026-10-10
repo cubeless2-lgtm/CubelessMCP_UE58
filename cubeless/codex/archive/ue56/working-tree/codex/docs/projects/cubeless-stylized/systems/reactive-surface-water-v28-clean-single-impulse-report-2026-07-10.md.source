@@ -1,0 +1,29 @@
+# Reactive Surface Water V28 Clean Single Impulse Report - 2026-07-10
+
+- Verdict: `PASS`
+- Scope: `/Game/_MCP_Temp` only; production ReactiveSurface assets are untouched.
+- Goal: prove a clean centered heightmap impulse can form an expanding circular wave before any normal map, foot source, or trail work.
+
+## Checks
+- compile error/warning: `0` / `0`
+- activity_nonzero: `True`
+- radius_expands: `True`
+- aspect_near_circle: `True`
+- center_near_middle: `True`
+- no_full_surface_smear: `True`
+- no_vertical_stripe_dominance: `True`
+- no_horizontal_stripe_dominance: `True`
+
+## Frames
+- f04: active=60 aspect=1.0 radius=2.9465624103434807 center_offset=0.0 active_fraction=0.00091552734375 column_peak=1.2909944487358056 row_peak=1.2909944487358056
+- f12: active=76 aspect=1.0 radius=3.2782944422473674 center_offset=0.0 active_fraction=0.00115966796875 column_peak=1.1470786693528088 row_peak=1.1470786693528088
+- f24: active=556 aspect=1.0 radius=9.004809683976864 center_offset=0.0 active_fraction=0.00848388671875 column_peak=1.1874645015519594 row_peak=1.1874645015519594
+- f40: active=1204 aspect=1.0 radius=13.442691149577682 center_offset=0.0 active_fraction=0.01837158203125 column_peak=1.0951417936380465 row_peak=1.0951417936380465
+- f60: active=2364 aspect=1.0 radius=18.38368746133267 center_offset=0.0 active_fraction=0.03607177734375 column_peak=1.1517660977056179 row_peak=1.1517660977056179
+
+## Visuals
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV28CleanImpulse\water_v28_clean_single_impulse_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v28-clean-single-impulse-results-2026-07-10.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV28CleanImpulse\water_v28_clean_single_impulse_bridge_results.json`

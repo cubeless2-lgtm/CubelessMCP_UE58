@@ -1,0 +1,55 @@
+# UnrealMCP Toolsets
+
+The UE 5.6.1 server currently registers **429 tools across 25 toolsets**. Search
+mode exposes only `list_toolsets`, `describe_toolset`, and `call_tool`; use the
+live `describe_toolset` result as the authority for exact arguments and policy.
+
+Verified catalog snapshot: 2026-08-27.
+
+| Toolset | Count | Documentation |
+|---|---:|---|
+| `ai` | 15 | [AI tools](ai_tools.md) |
+| `audio` | 4 | [Audio and MetaSound tools](audio_tools.md) |
+| `batch` | 1 | [Batch tools](batch_tools.md) |
+| `blueprint` | 18 | [Blueprint tools](blueprint_tools.md) |
+| `blueprint_node` | 105 | [Node and AnimBP tools](node_tools.md) |
+| `chaos` | 23 | [Chaos tools](chaos_tools.md) |
+| `controlrig_authoring` | 8 | [Control Rig and animation tools](anim_controlrig_tools.md) |
+| `data` | 9 | [Data tools](data_tools.md) |
+| `editor` | 34 | [Editor tools](editor_tools.md) |
+| `gas` | 6 | [Gameplay Ability System tools](gas_tools.md) |
+| `ieta` | 1 | Ieta connection window; inspect the live schema |
+| `landscape` | 7 | [Landscape tools](landscape_tools.md) |
+| `management` | 1 | [Runtime tool management](../Analysis/mcp_tool_management.md) |
+| `material` | 21 | [Material tools](material_tools.md) |
+| `networking` | 2 | [Networking tools](networking_tools.md) |
+| `niagara` | 89 | [Niagara tools](niagara_tools.md) |
+| `niagara_planning` | 8 | [Niagara planning](niagara_effect_planning.md) |
+| `pcg` | 23 | [PCG tools](pcg_tools.md) |
+| `project` | 11 | [Project tools](project_tools.md) |
+| `python` | 1 | `execute_unreal_python`; inspect the live schema and safety policy |
+| `sequencer` | 10 | [Sequencer tools](sequencer_tools.md) |
+| `skeletal` | 9 | [Skeletal tools](skeletal_tools.md) |
+| `state_tree` | 5 | [StateTree tools](state_tree_tools.md) |
+| `texture_generation` | 11 | [AI texture tools](ai_texture_tools.md) |
+| `umg` | 7 | [UMG tools](umg_tools.md) |
+| **Total** | **429** | |
+
+Regenerate the count after registration changes:
+
+```powershell
+uv --directory .\Python run python scripts\smoke_tool_registration.py
+```
+
+## Discovery workflow
+
+1. Call `list_toolsets`, optionally with a search query.
+2. Call `describe_toolset` with a toolset name and optional query.
+3. Review the returned input schema, effect, risk, and confirmation policy.
+4. Call `call_tool` with the exact `toolset`, `tool_name`, and `arguments`.
+5. Set dispatcher-level `confirm=true` only after reviewing a high-risk
+   mutation.
+
+For broad changes, prefer a dry run or generated-temp target when the selected
+tool supports one. Compile, save, and read back authored assets before treating
+dispatch success as completion.

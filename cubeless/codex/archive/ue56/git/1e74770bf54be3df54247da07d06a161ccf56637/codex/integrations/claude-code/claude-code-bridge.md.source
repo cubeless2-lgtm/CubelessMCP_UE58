@@ -1,0 +1,59 @@
+# Claude Code Bridge
+
+Claude Code can consume this repository's embedded operating copy, but the integration must stay isolated from the Codex skill and agent source tree.
+
+## Ownership
+
+- Shared source: `codex/AGENTS.md`, `agents/`, `docs/`, `projects/`, `skills/`, and `docs/memory/`.
+- Claude adapter shelf: `codex/integrations/claude-code/`.
+- Claude discovery output: a consuming project `.claude/skills/` folder or the user's `~/.claude/skills/`.
+
+Do not place Claude wrapper skills under `codex/skills/`. That folder is reserved for Codex skill originals.
+
+## Reading Model
+
+Claude should start from the consuming repository, read its `CLAUDE.md`, then follow that project's normal bootstrap pointer chain:
+
+```text
+CLAUDE.md -> AGENTS.md -> codex/AGENTS.md -> codex/projects/<ProjectName>.md
+```
+
+When a Claude wrapper points to an embedded skill, Claude reads the original `SKILL.md` and any referenced files at runtime. The wrapper is only a discovery shim.
+
+## Skill Wrappers
+
+Claude Code discovers skills from `.claude/skills/` or `~/.claude/skills/`, not from arbitrary sibling repositories. For that reason this adapter generates thin wrappers:
+
+```text
+codex/skills/<name>/SKILL.md
+  -> generated wrapper in <ProjectRoot>/.claude/skills/<name>/SKILL.md
+```
+
+The wrapper keeps the original `name` for discovery and derives a Claude-facing `description` from source frontmatter. Its body tells Claude to read the original skill and references from this repository.
+
+## Reader Substitutions
+
+Apply these substitutions while reading local content through Claude:
+
+| Local wording | Claude interpretation |
+|---|---|
+| `$skill-name` invocation syntax | Invoke the matching Claude skill, or read that skill's `SKILL.md` and follow it |
+| `Codex` as the current agent | The current Claude Code agent |
+| `AGENTS.md` rules | Apply them as operating rules; if a local Claude rule is stricter, follow the stricter rule and report the difference |
+
+These substitutions are reader-time only. Do not rewrite the source files in this repository.
+
+## Sync Workflow
+
+1. Update and commit source changes in this repository.
+2. In the consuming project, ensure the script points to this repository as the source.
+3. If skill frontmatter changed, or if skills were added or removed from that project's allowlist, run `sync-cubelessops-skills.ps1`.
+4. If only skill body, workflow, policy, project, or memory docs changed, no sync is needed; wrappers read those files live.
+
+## Safety Checks
+
+- Confirm the project manifest exposes only intended skills.
+- Confirm generated wrappers are UTF-8 without BOM.
+- Validate generated wrappers with the Codex skill validator when available.
+- Run `git diff --check` separately in this repository and the consuming project.
+- Keep Git staging, commits, and pushes separate between repositories.

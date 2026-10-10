@@ -1,0 +1,19 @@
+{
+  "date_kst": "2026-10-10T17:00:03.354116+09:00",
+  "engine_build": {
+    "MajorVersion": 5,
+    "MinorVersion": 8,
+    "PatchVersion": 3,
+    "Changelist": 58210709,
+    "CompatibleChangelist": 55116800,
+    "IsLicenseeVersion": 0,
+    "IsPromotedBuild": 1,
+    "BranchName": "++UE5+Release-5.8"
+  },
+  "existing_editor_pid": 36664,
+  "existing_editor_endpoint": "http://localhost:8000/mcp",
+  "existing_editor_was_restarted": false,
+  "existing_editor_all_dirty_packages": "not_yet_enumerated_no_session_restart_or_mutation",
+  "verification_endpoint_planned": "http://localhost:8001/mcp",
+  "uproject_original_sha256": "57a8b3078a382643b99204f8838a1f04524abaf463d141d89a91b55d7bfd9a3e"
+}

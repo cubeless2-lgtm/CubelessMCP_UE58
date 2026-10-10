@@ -1,0 +1,49 @@
+# RX 베이크 하늘 품질 1차 개선
+
+기존 작업은 메인 `d55a5b6a0`에 커밋·푸시했다. 아래 개선은 그 이후의 로컬 검수안이며 별도로 커밋하지 않았다.
+
+## 비교와 결론
+
+현재 Edit03 원본 캡처를 재사용했다. 동일 카메라, TimeOfDay 17.664, 고정된 구름 모션 값으로 기존 결과 → 필터만 변경 → 셰이딩 변경을 비교했다. 필터만 바꿨을 때 변화는 작았고, 실시간 조명 Mip 혼합을 줄였을 때 내부 음영과 작은 덩어리 구분이 뚜렷해졌다.
+
+큰 구름의 밝은 윤곽과 일부 평평한 형태는 여전히 남는다. 이번 변경으로 모든 테두리 문제가 해결된 것은 아니다. 추가 조사에서는 원본 coverage와 최종 알파/하늘 보상색·안개의 합성 관계를 분리해 확인할 필요가 있다.
+
+## 패키징
+
+`rxsky_pair_package.package`에 `output_name`과 `filter_profile`을 추가했다. 기존 기본 동작은 `legacy`이며 기존 결과를 덮어쓰지 않는다. `detail`은 Positive coverage 차이를 가중치로 쓰는 3×3 필터, 1 texel 간격, 최대 45% 혼합이다. 기존 5×5/2 texel 필터보다 경계를 덜 넓게 혼합한다. 여덟 채널은 같은 coverage 가중치를 사용하고, premultiplied transport를 나누거나 샤프닝하지 않는다.
+
+재현 호출:
+
+```python
+rxsky_pair_package.package(
+    "Cubeless_RXPair4K_Edit03_20260917",
+    "Cubeless_RXPair4K_Edit03_Detail_20260917",
+    "detail",
+)
+rxsky_pair_package.apply("Cubeless_RXPair4K_Edit03_Detail_20260917")
+```
+
+이미 생성된 이름은 재사용할 수 없다. 새 비교를 만들 때는 새 output_name을 사용한다. 원본 캡처의 전체 Mip 상주 검사는 유지했다. 새로운 재베이크에도 이 필터를 쓰려면 `detail`을 명시해야 한다.
+
+## 셰이딩
+
+`M_Cubeless_Clouds_Fog`에서 다음을 변경했다.
+
+- broad lighting Mip 4 → 2, PaintMass 혼합에 0.25 배율. 현재 PaintMass 0.6에서 최대 혼합은 60% → 15%.
+- 두꺼운 중심부의 그림자 하늘색 혼합, 낮 중간 음영 혼합, 회화적 팔레트 대체, 그림자 밝기 보정을 줄였다.
+- 황혼의 전체 하늘색 혼합 0.65 → 0.25. 노을 그림자 색을 낮추고, 얇은 외곽의 노을 highlight 가중치를 줄였다.
+- 얇은 외곽에서 하늘색으로 이어지는 별도 RGB 혼합을 추가했다. 실제 silver 기여가 큰 부분은 보호한다.
+- 최종 coverage/태양·별 차폐 공식은 변경하지 않았다. 실시간 텍스처 샘플 호출 수는 그대로이며 GPU 시간은 측정하지 않았다.
+
+기존 영문 파라미터 이름은 유지했다. 프로젝트 C++ 및 MCP 런타임 의존성 추가 없음.
+
+## 적용과 검증
+
+`L_RXSkySystem_Cubeless`의 구름/그림자 MI에 Detail 패키지를 적용하고 active_package.json을 갱신했다. 낮 11.328, 노을 17.664, 황혼 18.1, 밤 21 화면을 확인했다. 최종적으로 원래 시간 17.664와 실시간 모션을 복원했다.
+
+- 머티리얼 컴파일 오류 0. 자식 MI 갱신 후 컴파일 완료까지 확인했다.
+- 잘못된 필터/경로 이름 및 기존 패키지 덮어쓰기 거부를 실제 에디터에서 확인했다.
+- 관련 자산 의존성 검사에서 MCP 전용 참조 없음.
+- Python 구문 검사 통과. 전체 검증 기록: `quality_full.log`.
+
+로컬 증거: `MCPGameProject/Saved/RXQualityPass_20260917/`의 baseline_frozen.png, filter_only.png, final_sunset.png, final_day.png, final_dusk.png, final_night.png, before/after.hlsl, detail_package.json, quality_verification.json. 카메라와 모션 값도 JSON으로 기록했다. 이번 결과는 실제 게임 패키징이나 모든 각도의 아티팩트 검증을 대체하지 않는다.

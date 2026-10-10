@@ -1,0 +1,117 @@
+# Write Verification Observers
+
+These analysis tools implement the observation-only first two phases of MCP
+write verification. They do not change registered tools, registered-tool
+response schemas or success semantics, C++ commands, save behavior, or runtime
+policy.
+
+## Phase 1: Advisory Inventory
+
+Generate a heuristic inventory of all registered tools:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\mcp_write_tool_inventory.py check
+```
+
+The JSON report is written under
+`MCPGameProject/Saved/MCP/WriteVerification` by default. It classifies tools as
+`read`, `write`, `destructive`, or `lifecycle`, assigns a review priority, and
+records wrapper-level verification signals. Warnings are advisory and never
+disable a tool or fail the command.
+
+The inventory is intentionally conservative. A missing Python signal does not
+prove that the corresponding C++ handler lacks a postcondition, and every P0
+or P1 item requires manual review before enforcement is considered. Tools with
+no reliable static classification signal are assigned P1 even when their
+provisional classification is `read`; low confidence never qualifies for P2.
+Read-oriented names do not override known conditional mutation parameters such
+as `create_if_missing`, `write_report`, or `output_path`; those tools remain in
+the write review queue even when the mutating option defaults to false. Wrapper
+source is normalized by its function-level indentation before AST inspection.
+If parsing still fails, `bridge_commands` stays empty and the report records a
+parse error and warning instead of treating arbitrary string literals as
+commands.
+
+## Phase 2: Independent Observer
+
+Validate the observer contract without connecting to Unreal:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_mcp_write_postcondition_observer.py check
+```
+
+Observe an existing Niagara Custom HLSL smoke report without mutating assets:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_mcp_write_postcondition_observer.py observe-niagara `
+  --report .\MCPGameProject\Saved\MCP\NiagaraReviews\<run-id>\scratch_pad_graph_authoring_report.json
+```
+
+Run the single live observer only while the UE 5.6.1 editor bridge is already
+running:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\run_mcp_write_postcondition_observer.py live
+```
+
+The live observer delegates one existing planner-driven Blueprint smoke under
+`/Game/_MCP_Temp/WriteVerificationObserver`. It requests no durable save,
+checks readback and compile evidence, scans new log errors, and requires the
+temporary Blueprint to be deleted by the existing smoke cleanup. Missing log,
+leftover, structural-readback, compile, cleanup, or no-save evidence fails
+closed rather than being interpreted as an empty successful result.
+`durable_save_attempted` is tri-state: `true` means an attempt was reported,
+`false` requires complete no-save evidence, and `null` means the evidence was
+incomplete. Duplicate compile fields at the execution and validation levels
+must agree in both type and value. A live run removes any pre-existing delegated
+JSON for the same run ID before launch, so a zero-exit subprocess must create
+fresh evidence to pass. Default run IDs include microseconds plus a random UUID
+suffix, and an exclusive lock prevents concurrent observers from sharing an
+explicit run ID. A lock conflict fails into a separate report directory without
+touching the active run, including when the conflicting request has an invalid
+timeout. Lock files carry a per-invocation ownership marker so exception and
+interruption cleanup can remove only the current invocation's lock. A lock
+release failure changes the top-level report and exit code to failure instead
+of returning success with a stale lock. Every `safe_executions` item must be an
+object; malformed mixed lists fail closed. Blueprint source reports must identify
+themselves as `planner_driven_bp_authoring_smoke`, and a top-level live-gate
+error is rejected even when the remaining success fields look valid.
+
+The delegated live smoke has a 600-second process timeout by default. Override
+it with `--timeout-seconds` when needed. Timeout and malformed delegated report
+paths produce a structured failed observer report; they never count as a
+successful observation. Malformed JSON includes invalid UTF-8 and JSON syntax.
+A timeout reports that mutation may have occurred and that the temporary scope
+needs a manual cleanup check. Explicit `--run-id` values are restricted to 1-64
+ASCII characters, must start with a letter or digit, and may otherwise contain
+only letters, digits, underscores, or hyphens, so they cannot escape the
+observer output or `/Game/_MCP_Temp` scope.
+
+Exit code `2` means the editor bridge was unavailable and the live observer
+was safely skipped. A skipped JSON report has `success=false` and
+`verification_performed=false`, so report-only consumers cannot mistake the
+skip for live evidence. Pass `--require-live` only when an unavailable bridge
+must be treated as a normal command failure instead of a skip.
+
+For an existing Niagara report, the observer distinguishes
+`asset_absent_now` from `cleanup_verified`. Current file absence alone is only
+state evidence; `cleanup_verified=true` additionally requires explicit cleanup
+execution evidence in the source report. It also verifies the post-compile
+error count and derives the expected output pin from the recorded admission
+request before comparing it with graph readback. The observer performs no
+Niagara write; the source smoke report may describe saved temporary assets, and
+that fact is surfaced separately as `source_report_indicates_save`. Niagara
+asset absence is explicitly filesystem-only; in-memory editor state is not
+claimed by offline observation. Each Custom HLSL replacement must retain and
+verify non-equal chained ChangeIds, changed/stable/applied counts for every
+affected script, zero affected compile errors, and exact expected-versus-actual
+HLSL readback. Older reports that do not contain these raw fields must be rerun;
+source success booleans alone are not accepted. Replacement and graph-node
+lists reject non-object entries, and the graph-readback node GUID must match the
+GUID used by the complete replacement chain.
+
+## Boundaries
+
+These observers do not enforce write postconditions. Durable save/reopen,
+Undo enforcement, automatic live Niagara deletion, mutation locks, and changes
+to existing `success` behavior remain out of scope until separately approved.

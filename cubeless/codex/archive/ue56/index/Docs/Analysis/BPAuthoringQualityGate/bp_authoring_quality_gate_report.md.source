@@ -1,0 +1,47 @@
+# BP Authoring Quality Gate
+
+- Generated UTC: `2026-06-28T17:29:34.809651+00:00`
+- Verdict: `existing_bp_authoring_quality_gate_passed`
+- C++ changes required for this gate: `False`
+- Temp package root: `/Game/_MCP_Temp/BPAuthoringQualityGate`
+
+## Capability Gate Results
+
+| Gate | Ready | Missing Required | Confirmed Optional |
+| --- | --- | --- | --- |
+| Blueprint asset creation under MCP temp path | `True` | none | none |
+| Component authoring | `True` | none | `set_component_property`, `set_static_mesh_properties` |
+| Member variable authoring | `True` | none | `add_blueprint_variable_get_node`, `add_blueprint_variable_set_node` |
+| Event Dispatcher declaration | `True` | none | none |
+| Event Dispatcher call node | `True` | none | none |
+| Custom event node | `True` | none | none |
+| Event Dispatcher bind node | `True` | none | none |
+| Event Dispatcher unbind node | `True` | none | none |
+| Event Dispatcher clear node | `True` | none | none |
+| Event Dispatcher assign node | `True` | none | none |
+| Function graph authoring | `True` | none | `add_blueprint_local_variable`, `add_blueprint_return_node` |
+| Event graph topology | `True` | none | none |
+| Graph inspection | `True` | none | none |
+| Compile and validation | `True` | none | `compile_blueprint`, `compile_and_save_blueprint` |
+| Editor Python cleanup and introspection | `True` | none | none |
+
+## Deferred Authoring Gaps
+
+- `generic delegate lifecycle authoring for non-Event-Dispatcher targets`
+- `async proxy node callback exec pin authoring`
+- `latent continuation topology validation`
+- `CommonUI widget tree and activation policy authoring`
+- `GAS AbilityTask and prediction-safe authoring`
+
+## Live Gate
+
+- Status: `passed`
+- Blueprint: `MCP_BPQualityGate_c8daf1a1`
+- Asset path: `/Game/_MCP_Temp/BPAuthoringQualityGate/MCP_BPQualityGate_c8daf1a1`
+- Compile validation pass: `True`
+- Compile errors: `0`
+- Inspected node count: `12`
+
+## Decision
+
+Use this gate before adding new UnrealMCP C++ Blueprint primitives. A new C++ primitive should add or update a live quality gate assertion, not just expose a command.

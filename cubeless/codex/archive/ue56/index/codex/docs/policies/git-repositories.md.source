@@ -1,0 +1,44 @@
+# Git Repository Boundaries
+
+## Default Scope
+
+- Treat `UnrealMCP5_6_1` as the only required Git repository for routine work in this folder.
+- `codex/`, `Python/`, `Docs/`, `scripts/`, and `MCPGameProject/Plugins/UnrealMCP` are part of this repository's normal tracked workspace.
+- Do not inspect, stage, commit, or push sibling repositories or submodules unless the user explicitly names that external scope.
+- This repository currently has no `.gitmodules`; do not invent a submodule workflow for it.
+
+## Staging
+
+- Check `git status` for `UnrealMCP5_6_1` before staging, committing, or pushing.
+- Stage only files that belong to the requested work.
+- For every change type, run `git diff --cached --check` on the complete intended staged candidate before committing and resolve reported errors within that scope. During unstaged review, use `git diff --check -- <task paths>`; this does not replace the final staged check. Do not modify unrelated dirty work to satisfy this check.
+- Keep generated Unreal assets, package outputs, `_MCP_Temp`, `_MCP_Sample`, and unrelated dirty work out of commits unless explicitly requested.
+
+## Worktree Ownership
+
+- Before substantial edits, inspect status and recent history. Treat unfamiliar dirty or untracked paths as another agent's or the user's in-flight work.
+- Do not edit, revert, delete, move, stage, or commit unfamiliar work unless the user explicitly includes it in the current scope. Respect current user-stated domain locks.
+
+## Explicit External Scope
+
+- If the user explicitly names a consuming project, external legacy MCP workspace, external `CubelessOps`, or a future submodule, inspect that repository separately and keep its Git operations separate.
+- A submodule, if explicitly introduced or named later, is a real independent Git repository. Pushing a parent repository does not push commits inside the submodule.
+
+## Push Intent
+
+- Treat explicit phrases such as `푸쉬`, `푸시`, `push`, `커밋 푸시`, or `브랜치 푸쉬` as approval for routine status inspection, staging, commit, and push for the requested scope.
+- On `main` or `master`, push only when the user has explicitly authorized push for that repository and branch in the same task. That authorization persists within its scope as defined in `approvals.md`; it need not be repeated in the latest message.
+- If authentication blocks Git, report the blocker. Do not rewrite remotes, credentials, or account settings without explicit direction.
+
+## Synchronization And Commit Subjects
+
+- Before pushing an existing tracked branch, pull with `--ff-only`; preserve concurrently changed shared documents additively. A diverged branch or overlapping dirty work requires reconciliation within the approved scope, never an automatic reset, force-push, or overwrite.
+- For a new untracked branch, inspect its remote/branch state and apply the same repository and push-authorization boundaries; do not invent a tracking upstream or change remotes implicitly.
+- Prefix agent-authored commit subjects with `[Codex]`, `[Claude]`, `[Codex+Claude]`, or `[Manual]` so authorship stays visible.
+
+## Scope Phrases
+
+- `5.6 MCP 푸쉬` or `UnrealMCP5_6_1 푸쉬`: this repository only, including embedded `codex/` when relevant.
+- `MCP 푸쉬`: default to this repository when the active checkout is `UnrealMCP5_6_1`.
+- `프로젝트 푸쉬`, `Ops 푸쉬`, or `서브모듈 푸쉬`: act only if the user explicitly names that external scope; otherwise ask for the exact target.
+- `전부 푸쉬`: still perform separate status, staging, commit, and push per explicitly involved repository.

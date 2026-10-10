@@ -1,0 +1,113 @@
+# RXSkyBaking native volume shape study — first art review
+
+The baking level now uses `/Game/RXSkyBaking/Materials/MI_RXSkyBaking_ShapeStudy`.
+This candidate adds regional height variation, bounded displacement, weak curl,
+lower-layer wind shear, and medium-scale subtractive detail to the approved native
+baseline. It remains an Unreal 5.6 legacy Volume material on a native
+VolumetricCloudComponent. No external renderer or project C++ was added.
+
+The native baseline parent and instance were read-only and their before/after
+SHA256 hashes match. Original cloudsky, UltraDynamicSky and RXSkySystem assets
+were not edited. The owned preview map's existing time-of-day edit was saved
+before the native level switch. Cloud appearance in that preview was not updated.
+
+The accepted SunshineClouds2 reference is
+[sampleScene at a73a80b](https://github.com/Bonkahe/SunshineClouds2/blob/a73a80b08fb37b255f8f10d49debd71e5541bd70/addons/SunshineClouds2/SunshineCloudsCompute.glsl).
+The separation of height, broad deformation and subtractive detail informed this
+experiment. Its Godot shader, temporal reconstruction, blur and assets were not
+ported. Existing owned baseline functions remain in use.
+
+## Assets and controls
+
+All new assets are under `/Game/RXSkyBaking`:
+
+| Asset | Purpose |
+| --- | --- |
+| `Materials/M_RXSkyBaking_ShapeStudy` | Native volume parent; original lighting and final cleanup retained |
+| `Materials/MI_RXSkyBaking_ShapeStudy` | Applied C2 art-review candidate |
+| `Materials/MI_RXSkyBaking_ShapeProfile` | Same final height/region settings with curl, shear and medium carving off |
+| `Textures/T_RXSkyBaking_ShapeRegions` | Generated 1024×1024 linear RGBA region data, uncompressed BGRA8 runtime data |
+| `Materials/M_RXSkyBaking_ShapeRegions` | Deterministic field generator, fixed seeds |
+
+Edit the instance's groups 10–13. Current key values:
+
+| Parameter | Value | Effect |
+| --- | --- | --- |
+| Shape Enabled | 1 | 0 restores the baseline density calculation |
+| Region Warp Km | 0.4 | Bounded regional expansion/compression and displacement; not an exact per-cloud scale multiplier |
+| Region Clearance | 0.25 | Reduces density in generated lower-support regions |
+| Height Variation | 0.8 | Regional variation of the existing vertical profile |
+| Height Minimum / Maximum | 0.55 / 1.6 | Profile growth range inside the current physical shell |
+| Base Height Variation | 0.08 | Interior profile shift, preserving zero/one layer endpoints |
+| Curl Strength / Scale Km | 0.18 / 1.8 | Smooth asymmetry in silhouettes |
+| Wind Shear Km | 0.12 | Lower-layer lateral deformation |
+| Medium Shape Strength | 0.65 | Erodes existing bodies without creating new density |
+| Medium Scale Km | 0.65 | Size of the additional internal lobes |
+| Medium Cutoff / Softness | 0.32 / 0.3 | Carving threshold and smooth transition |
+| Shape Far Preserve Start / End Km | 12 / 22 | Gradually returns to baseline shape beyond the fixed bake origin |
+
+The component remains at 0.6 km bottom altitude and 0.7 km layer thickness.
+Height Minimum/Maximum changes the internal profile, not the physical layer bounds.
+For a different physical shell, edit the component and run `apply()` to synchronize
+`Shape Shell Thickness Km`. `apply(save_level=True)` saves both the synchronized
+owned instance and baking level. The original 15–45 km distance fade is unchanged.
+
+The field spans 96 km about fixed world origin `(30144, -12614, 0)` cm. Its channels
+are R clearance, G horizontal flow X, B height growth, A horizontal flow Y/profile.
+The generator is not evaluated along view rays. It is a 1K control map, not the
+final cloud bake. The volume graph adds two 2D fetches and one 3D fetch per evaluated
+sample, plus arithmetic; GPU timing has not been benchmarked.
+
+## Graph and bake contract
+
+Shared deformed position feeds both conservative-density and extinction functions.
+The same remapped normalized height feeds the profile and fragment cleanup.
+Actual world position still drives the original distance fade. All baseline
+scalar, vector, texture and static-switch effective values were compared and
+remain unchanged, including High Frequency Noise 0.24 and the lighting controls.
+
+Height uses an endpoint-preserving monotone remap, avoiding positive profile
+density caused by cutting through an expanded shell. Medium detail only multiplies
+existing extinction and runs before final fragment cleanup. With zero influence,
+position, height and signed extinction pass through unchanged.
+
+`MaterialExpressionCustom_2`, its identity/description, final extinction connection
+and two scattering octaves remain intact. The bake adapter now accepts the exact
+NativeBaseline or ShapeStudy parent, validates the existing final density contract,
+and duplicates the actual approved parent. Shape controls, field and noise textures
+follow the existing frozen parameter snapshot into transport/coverage passes.
+
+## Verification and remaining review
+
+- Native editor compilation and screenshots: baseline A, initial height-only B,
+  initial C and tuned C2 under the same camera. Final C2 additionally inspected at
+  four azimuths and the zenith. Images are in `MCPGameProject/Saved/RXSkyBaking/shape_*.png`.
+- The initial B screenshot predates the final Profile instance settings; its archived
+  settings are in `shape_build_report.json`. Use the current Profile instance for a
+  comparison with the same C2 regional height settings.
+- Current main-camera C2: `shape_C2_study.png`; wider north view: `shape_final_north.png`.
+- Independent review: stronger upper lobes and underside pockets, modest overall
+  improvement. No newly obvious sphere/ring silhouette, shell slicing or full-frame
+  grain regression. Fine detail remains soft; detached tiny specks and some repeated
+  mid/far mound shapes remain. This is an art-review candidate, not final quality.
+- Numeric review: 230,625 height samples across 225 extreme combinations preserve
+  finite range, exact endpoints and monotonicity; 12,960 zero-influence cases preserve
+  full coordinates/height and signed extinction.
+- Bake adapter: 19 mocked contract checks; live `_nodes` and parameter snapshot pass.
+- Saved baking map and five new assets: hard/soft package closure is 20 owned packages,
+  with no original UDS/RX/cloudsky or UnrealMCP content dependency. Editor dirty list
+  was empty after saving. See `shape_validation.json`.
+- Isolated project with no project Plugins folder/modules and only native Python and
+  editor scripting plugins: all 20 copied assets cold-loaded; native material contract
+  passed. Commandlet exit 0, 0 errors. Nine warnings concerned disabled default engine
+  Oodle/ACL compression plugins, not a cloud dependency. Shader recompilation was
+  requested; this is not a cook/package or isolated visual render test.
+- Final Python compile, scoped whitespace check and full repository verification
+  profile 42/42 passed. Full log: `shape_full_verification.log`.
+
+No full BC7 cloud rebake or preview appearance update was performed. Baking-level
+art acceptance remains the next step before the existing 1K packed bake and preview
+validation. The user subsequently authorized submitting this candidate to `main`.
+Final submission evidence and before/after images are archived in the adjacent
+`RXSkyBaking_ShapeStudy_20260913/` directory. The final saved candidate is checked
+again in isolation; it includes the synchronized shell thickness persisted by `apply()`.

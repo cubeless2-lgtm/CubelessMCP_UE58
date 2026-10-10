@@ -1,0 +1,210 @@
+# CubeFluidNinjaLive A10 상위 Material Interface clean-room 구현
+
+## 결과
+
+A10 mesh localization을 막던 상위 Material Interface 4개를 빈 패키지에서 새로
+저작했다. 원본 Material/MI/Material Function을 복제하거나 authoring 입력으로
+로드하지 않았고, 원본 graph의 읽기 전용 구조 증거를 native UE 5.6 expression과
+이미 독립화한 texture로 다시 구성했다.
+
+현재 통과 범위는 다음과 같다.
+
+- fresh-only 생성 및 exact 4-target 저장
+- 3개 Material compile error/warning 0
+- hot exact graph/settings/override/dependency 검수
+- 새 PID cold exact byte/semantic 검수
+- UnrealMCP 비활성 commandlet load/class 검수
+- `/Game/Study/CubeFluidNinjaLive/Art` 318 assets 전체의 source/MCP dependency,
+  redirector, dirty package 0
+
+아직 A10 레벨 전체의 화면 기반 visual parity, cook/package, 독립 실행 fixture까지
+완료했다는 뜻은 아니다.
+
+## 고정 계약
+
+- contract version: `cube_fluid_ninja_a10_parent_materials_v1`
+- contract SHA-256:
+  `8a3dba2983733ee10f207190d44dc7616b1be7dede9c31edb8b6b1777852b583`
+- source-free authoring spec SHA-256:
+  `319b974ccbfb67eee9bbca5f7cf5c46def90c237d2a95e1ab502a8d567e85a32`
+- confirmation token: `cfnl-a10-parents-8a3dba2983733ee10f20`
+- builder identity: 130,744 bytes,
+  `cba4105d56255f79b707db19e8a51dc1773417ba92276585dd7f313ebcde980a`
+
+동결 증거 fingerprint:
+
+- Saved reference evidence:
+  `2f0c2592c8afcb60209e13e2b812945fd83770390305639d05ae4290e41f0bad`
+- Engine NormalBlend capture:
+  `328b393ab55c23be8ffbf1ceb004bfe5432be3a714e62b15a4fec150af2bd28b`
+- localized Texture2D set:
+  `40a95accccc37b29ec447fd35ee98a16505e7b506b210c79a5a227c2d2d83c2e`
+- UE 5.6 all-type direct override capture: 114,307 bytes,
+  `07c9ff56a83adca852d9a93eb7e6cd1bc8ce802f2aebdae765017a59f12af704`
+
+## 생성 자산
+
+| target | class | 최종 bytes | 최종 SHA-256 |
+|---|---|---:|---|
+| `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/M_Null` | Material | 8,140 | `37a22bfbc4485e265a994d844898b6e07f83c9a620983b3a2ce7664550bfa3a5` |
+| `/Game/Study/CubeFluidNinjaLive/Art/Meshes/Vehicle/Materials/M_QuadDrone` | Material | 24,613 | `1155022ef09a68b1aad5386947f4aa5ae0676ccc9c62b8f66a4214d9586042ff` |
+| `/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Materials/Legacy/M_UE4Man_Body` | Material | 42,726 | `99bdc0d593c2daa989e28d6c87f5993ef7120babd00a098726eb47e2db169afd` |
+| `/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Materials/Legacy/M_UE4Man_ChestLogo` | MaterialInstanceConstant | 9,132 | `853c4c08f8c8d07128348800e50fd86d6d54723c4f89183758a91c8b19735794` |
+
+첫 세 자산은 Material이며 ChestLogo의 parent는 새 Body target이다. 별도로 만든
+`/Game/Study/CubeFluidNinjaLive/Materials/Core/MI_CFNL_TraceMesh_Inactive`는
+`/Materials/Core` 아래의 clean-room Base를 parent로 하며 이 네 자산의 fresh-only
+authoring set에는 섞지 않았다.
+
+## clean-room 경계
+
+authoring payload에는 다음만 들어간다.
+
+1. exact target package 4개
+2. UE 5.6 engine-native `MaterialExpression*` class와 새 노드 배치
+3. 이미 `/Game/Study/CubeFluidNinjaLive/Art`로 독립화한 13개 Texture2D
+4. 새 Body target을 parent로 하는 ChestLogo의 3개 direct override
+
+다음은 금지했고 hot/cold dependency 감사에서도 검출 수 0이다.
+
+- source `Material`, `MaterialInstanceConstant`, `MaterialFunction` 참조
+- source graph object/GUID 복제, duplicate/template/consolidate/import
+- `/Game/FluidNinjaLive`, `/Game/_MCP_Temp`
+- `/Script/UnrealMCP`, `/UnrealMCP`, `MCPUnreal`, `mcp_unreal`
+- 완성 asset의 authoring-tool runtime dependency
+
+## 그래프 원리
+
+### M_Null
+
+- `MD_Surface`, `BLEND_Masked`, `MSM_Unlit`, two-sided false
+- `Constant(0)` 한 개
+- `OpacityMask = 0`, clip value `0.3333`
+- 검수 결과: 1 node, 0 edge, 1 root output
+
+### M_QuadDrone
+
+opaque/default-lit, two-sided false이며 22 expression, 19 edge, 5 root output이다.
+
+```text
+BaseColor = max(Color, 1 - pow(ColorMask.rgb, 0.25))
+          * (pow(DiffuseMap.rgb, DiffusePow) + Ambient)
+
+EmissiveColor = pow(1 - DiffuseMap.rgb * (1 - DiffuseMap.rgb), 10)
+              * Ambient
+
+Specular  = DiffuseMap.rgb
+Roughness = pow(RoughnessMap.r, 0.5)
+Normal    = NormalMap.rgb
+```
+
+기본값은 `Ambient=0.02`, `Emissive=0.02`, `DiffusePow=1`,
+`Color=(0.704072,0.514161,0.425043,1)`이다. source에서 선언됐지만 출력에 연결되지
+않은 `MetallicMap`과 `Emissive` parameter도 dead interface로 보존했다.
+
+### M_UE4Man_Body
+
+원본의 project Material Function 4개와 Engine normal wrapper/utility를 구조 캡처로
+분석한 뒤 52 native nodes, 79 links, Material Attributes root 1개로 펼쳤다.
+
+| layer | 직접 재구성한 의미 |
+|---|---|
+| plastic | `BaseColor=BodyColor`, `Roughness=0.1`, metallic 0 |
+| soft metal | `UV0*8`, aluminum color `*0.25`, metallic 1, texture 기반 roughness/normal |
+| glossy latex | `UV0*50`, rubber color `*0.225`, metallic 0, texture 기반 roughness/normal |
+| logo plastic | plastic 속성 + `OpacityMask=UE4_LOGO_CARD.a` |
+
+`UE4_Mannequin_MAT_MASKA` R/B 채널은 각각 soft-metal/glossy-latex alpha다. G 단계는
+동일 plastic을 같은 plastic 위에 blend하는 algebraic no-op라 결과식에서 제거했다.
+
+Normal은 Engine 함수 자산을 참조하지 않고 캡처한 UE 5.6 수식을 primitive node로
+펼쳤다.
+
+```text
+detail = lerp(float3(0,0,1), NormalMap.rgb, 1)
+t = float3(base.rg, base.b + 1)
+u = float3(-detail.rg, detail.b)
+Normal = normalize(normalize(t * dot(t, u) - (base.b + 1) * u))
+```
+
+`PlasticOverride=false`이면 layered body, true이면 logo plastic을 선택한다. 최종
+OpacityMask는 선택한 material mask에 camera/world distance fade를 곱한다. source와
+같이 masked/default-lit, `UseMaterialAttributes=true`, skeletal/static mesh usage
+true다.
+
+### M_UE4Man_ChestLogo
+
+parent는 source가 아니라 새 Body target이며 직접 override는 정확히 세 개다.
+
+- scalar `RefractionDepthBias=0`
+- static switch `PlasticOverride=true`
+- texture `NormalMap=/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Textures/UE4Man_Logo_N`
+
+UE 5.6 직접 override 11종 전체에서 다른 row는 0임을 all-type 캡처와 hot/cold
+readback으로 확인했다.
+
+## UE 5.6 authoring 문제와 해결
+
+실행 중 두 가지 엔진 API 특성을 확인했다.
+
+1. Python `unreal.MaterialProperty`에는 `MP_MaterialAttributes`가 노출되지 않는다.
+   C++ enum과 Material root는 존재하므로 기존 UnrealMCP editor command의
+   `connect_material_property("MaterialAttributes")` 경로로 Body root 한 연결만
+   설정했다. 저장 전에 읽기 전용 inspector로 연결을 다시 확인했다.
+2. UE 5.6 `SetMaterialInstanceParent`, scalar/texture/static-switch editor setter 일부는
+   편집을 수행해도 성공 bool을 유효하게 반환하지 않는다. 반환값을 성공 근거로
+   쓰지 않고 parent readback과 11종 direct override 배열의 exact pre-save 검증을
+   admission 조건으로 바꿨다.
+
+첫 두 실행은 이 fail-closed 검사에서 저장 전에 중단됐다. 그 시점의 exact unsaved
+4개 이내 패키지만 dirty를 해제하고 editor를 저장 없이 종료했다. target disk file은
+0개였으며 failure report를 보존했다. 세 번째 실행은 모든 pre-save readback을
+통과한 뒤 exact 4개만 저장했다.
+
+## 실행 증거
+
+| 단계 | PID/환경 | 결과 | report bytes | report SHA-256 |
+|---|---|---|---:|---|
+| authoring | PID 17256 | exact 4 saved | 15,825 | `29e608d0657b4c6f1a0810fe4a1f9636c7a20c70a6479a62cb2f51a2c9a4f5f4` |
+| hot | PID 17256 | compile/semantic/dependency PASS | 1,754,716 | `78813cbf5c733d86a93225705cb78db0ec66914ed1cec1d899c30ec7184dea00` |
+| cold | PID 60588 | new PID, byte/semantic PASS | 1,753,257 | `90e063dbc4330e3941cd750b8839329647d74f100ba0f7945820273d0fce47e2` |
+| plugin disabled | `-DisablePlugins=UnrealMCP` | 4/4 native Engine class load | 14,029 | `5c254f8dd9b24a2d0fd939cb8812d9ffca6ffe3b138d24fc2a7a0c2792de2ea6` |
+
+증거 위치:
+
+- `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/a10_parents/authoring_17256.json`
+- `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/a10_parents/hot_17256.json`
+- `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/a10_parents/cold_60588.json`
+- `MCPGameProject/Saved/MCP/AssetReviews/cfnl_a10_parents_20260904T2344/asset_plugin_independence_report.json`
+
+plugin-disabled 검사에서는 bridge class와 UnrealMCP Python symbol이 실제로 없고,
+네 target이 각각 Engine `Material`/`MaterialInstanceConstant`로 로드됐으며 shader
+잔여 compile 수와 commandlet error가 0이었다.
+
+## 구현과 회귀 검증
+
+- builder: `Python/scripts/analysis/build_cube_fluid_ninja_a10_parent_materials.py`
+- hot/cold verifier:
+  `Python/scripts/analysis/verify_cube_fluid_ninja_a10_parent_materials.py`
+- builder tests:
+  `Python/scripts/analysis/test_cube_fluid_ninja_a10_parent_material_builder.py`
+- verifier tests:
+  `Python/scripts/analysis/test_cube_fluid_ninja_a10_parent_material_verifier.py`
+- independent evidence analyzer:
+  `Python/scripts/analysis/analyze_cube_fluid_ninja_a10_remaining_evidence.py`
+- analyzer tests:
+  `Python/scripts/analysis/test_cube_fluid_ninja_a10_remaining_evidence.py`
+
+현재 결과는 builder 11/11, verifier 4/4, independent analyzer 19/19 PASS다.
+
+## 남은 검수 범위
+
+A10 parent material 묶음의 authoring/hot/cold/plugin-disabled blocker는 없다. 전체
+프로젝트 최종 합격 전에는 다음을 별도 단계로 수행한다.
+
+1. A10 레벨 및 연결 mesh/material slot을 포함한 화면 기반 원본/타깃 visual parity
+2. 관련 레벨과 runtime 자산의 cook/package 검증
+3. Fluid/Niagara 동작과 함께 실행했을 때의 end-to-end 프레임 검수
+
+따라서 이 문서는 네 Material Interface의 구조·저장·독립성 완료를 주장하지만,
+59개 레벨 전체 완료나 최종 시각 동일성을 주장하지 않는다.

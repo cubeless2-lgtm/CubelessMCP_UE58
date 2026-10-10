@@ -1,0 +1,3 @@
+# v46 alpha-only cleanup
+
+v08 original RGB restored exactly; v45 shading edits discarded. Generated independent coverage donor used only within 40px Manhattan band of original alpha=128 boundary, blending over outermost 16px of band. Original alpha elsewhere preserved. Aligned with v08 fit 0.9756793933809876. Post-save byte readback: RGB differences from v08=0; changed alpha pixels=2,707,954; alpha changes outside band=0. Changes approximate local contour cleanup; engine visual review still required. Original approved asset unchanged. Imported packed linear texture. Current actor switched from v45 to v46, live MID verified, map not saved.

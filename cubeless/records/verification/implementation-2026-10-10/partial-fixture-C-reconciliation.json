@@ -1,0 +1,86 @@
+{
+  "purpose": "Read-only reconciliation after report writer exception following explicit partial-fixture compile/save",
+  "original_create_report": "blueprint-author-C.json",
+  "compile_save_response": "lost_before_persist_due_to_client_calls_attribute_error",
+  "automatic_retry": false,
+  "compile_save_reissued": false,
+  "asset": "/Game/CubelessMCPTests/Run_22a9c7752bba468faebc9f6474ec96c0/BP_MutationContract",
+  "file_exists": true,
+  "file_sha256": "f993e6dc96e82f71cb6f5b98c9cf27df2b1c3f1266850e5779186fb284593b39",
+  "native_diagnostics": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 18132,
+    "instance_id": "5E1F866E-49FB-7E99-7F8A-059D76E5D27E",
+    "session_id": "EE0DDC0A-16E7-4E3C-8000-000000001E00",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.6312020123004913
+  },
+  "save_log_evidence": "isolated-editor-third.log at 2026.10.10-08.21.48:296-326",
+  "compile_validation": "response_not_preserved; not claimed behavior-verified",
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.026757
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 0.016444
+    },
+    {
+      "method": "tools/call",
+      "request_id": 2,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.034461
+    }
+  ]
+}

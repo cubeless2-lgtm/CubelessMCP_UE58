@@ -1,0 +1,10 @@
+{
+  "schema": "cubeless_installed_current_runtime_independent_v1",
+  "passed": true,
+  "errors": [],
+  "scope": "Distribution L installed for Editor only, exact D fixture bytes, actual Shipping cook/Pak exclusion and fresh game marker",
+  "full_migration_complete": false,
+  "actor_M_included": false,
+  "shader_completion_verified": false,
+  "rendering_quality": "not_verified"
+}

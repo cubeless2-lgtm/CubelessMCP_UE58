@@ -1,0 +1,22 @@
+# Cloud review folders
+
+User-organized Unreal inventory (2026-09-26). Asset root: /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude.
+
+## Approved
+
+- T_CloudLook_EdgeColor_v29
+- T_CloudLook_ReferenceFinished_v43_Concept
+- T_CloudLook_ReferenceFlatPlanes_v30_Concept
+- T_CloudLook_V08HorizonVolume_v53
+- T_PaintedCloud_Hero_v04
+- T_PaintedCloud_High_v04
+- T_PaintedCloud_HighIndividual_v04
+- T_PaintedCloud_HighUnderside_Var02_v04
+
+## Rejected
+
+- T_CloudLook_RadialPilot_v15
+
+Source-art folders retain historical version locations; they do not override the current Unreal approval inventory above. Historical notes describe their original review state.
+
+Reusable art direction: [Polar UV look](../PolarUVLook.md).

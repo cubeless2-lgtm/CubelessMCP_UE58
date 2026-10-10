@@ -1,0 +1,28 @@
+# Sunset CloudLook polar candidate v01
+
+2026-09-25. Built-in imagegen revisions of the three SunsetModules_v01 silhouettes, with additional small and high-altitude wisp modules derived from the user's sunset reference. This is an applied candidate, not an automatic catalog approval.
+
+## Art direction
+
+Preserve each silhouette. Simplify internal detail into broad connected soft planar shading, retaining a few major volumes. Suppress repeated small lobes and diagonal brush ridges. Remove lower backlighting and bright lower lips; internal value should transition continuously toward dark gray at the lower contour without a secondary dark band. Dark interior remains opaque; outer coverage is independent of shade.
+
+Built-in imagegen produced the three large originals at 1774×887 and two small originals at 1254×1254. Original files are preserved byte-for-byte. Module exports use a 2048-pixel long edge for large modules and 1024 for small modules; large exports are resampled, not native 2048 generations. Packing uses native originals. Actual sizes and hashes are recorded in manifest.json.
+
+## Packing and layout
+
+- Low: 8192×8192, 12 placements, large clouds at uneven azimuths/elevations and lower horizon banks.
+- High: 4096×4096, 8 placements, supplemental wisps and small clouds. Placement coverage multiplier is 0.9; source edge alpha remains intact.
+- Polar center is zenith, outer circle is horizon. Each module uses local tangent projection with independent roll.
+- R: grayscale shading. G: existing Hero_v04 density transfer with edge support. B: 4R(1-R). A: independent coverage. Edge RGB padding protects filtered samples.
+- No original Unreal texture was overwritten.
+
+## Unreal assets
+
+Folder: /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/SunsetSimple_v01
+
+- T_CloudLook_SunsetSimple_Low_v01 → CloudBasisTexture
+- T_CloudLook_SunsetSimple_High_v01 → HighCloudTexture
+
+Applied in L_RXSkySystem_PaintedAltitude_v04. Restored the missing UpdateSky → ApplyHighCloudLayer call so the high texture and rotation settings persist through construction/update. Existing time-of-day and palette settings were preserved. Blueprint compiled, both live material texture bindings verified, affected dependencies audited without UnrealMCP references.
+
+Evidence and backups: MCPGameProject/Saved/PaintedAltitudeV04/SunsetSimple_v01. Local packing/apply recipes: tmp/AnimeCloud360_Blender/sunset_pack.py and sunset_apply.py. No source C++ edits.

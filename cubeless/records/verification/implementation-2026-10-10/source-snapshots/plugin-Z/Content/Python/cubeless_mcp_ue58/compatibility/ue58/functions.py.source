@@ -1,0 +1,48 @@
+"""UE5.8 named function-graph bindings; no asset loading in the adapter."""
+
+import json
+import unreal
+
+from cubeless_mcp_ue58.operations.state import OperationError
+
+
+def _invoke(method, *arguments):
+    function = getattr(getattr(unreal, "CubelessFunctionLibrary", None), method, None)
+    if function is None:
+        raise OperationError("native_function_api_unavailable", "Build/load CubelessFunctionLibrary; no fallback executed")
+    raw = function(*arguments)
+    return _decode_result(raw)
+
+
+def _decode_result(raw):
+    """Shared typed native mutation envelope; does not invoke an engine API."""
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError) as error:
+        raise OperationError("invalid_native_function_result", "Function result is not valid JSON; inspect the asset and journal before another action") from error
+    flags = ("success", "mutation_attempted", "change_state_known", "postcondition_passed",
+             "compile_requested", "compile_attempted", "save_requested", "save_attempted", "saved")
+    if (type(value) is not dict or type(value.get("data")) is not dict
+            or any(type(value.get(key)) is not bool for key in flags)
+            or "compiled" not in value or value["compiled"] is not None and type(value["compiled"]) is not bool
+            or value["change_state_known"] and type(value.get("changed")) is not bool):
+        raise OperationError("invalid_native_function_result", "Function result lacks typed outcomes; the dispatched result remains unknown")
+    return value
+
+
+def resolve_blueprint_graph(blueprint_path, graph_name, graph_id, graph_type, create_if_missing):
+    return _invoke("resolve_blueprint_graph", blueprint_path, graph_name, graph_id, graph_type, create_if_missing)
+
+
+def add_blueprint_function_parameter(blueprint_path, parameter_name, parameter_type, direction,
+        default_value_json, type_object, is_array, graph_name, graph_id, graph_type, create_graph_if_missing):
+    return _invoke("add_blueprint_function_parameter", blueprint_path, parameter_name, parameter_type,
+        direction, default_value_json, type_object, is_array, graph_name, graph_id, graph_type, create_graph_if_missing)
+
+
+def add_blueprint_call_function_node(blueprint_path, function_class, function_name, param_defaults_json,
+        node_position_json, graph_name, graph_id, graph_type, create_graph_if_missing,
+        allow_latent, allow_editor_only, allow_wildcard, allow_deprecated, allow_internal):
+    return _invoke("add_blueprint_call_function_node", blueprint_path, function_class, function_name,
+        param_defaults_json, node_position_json, graph_name, graph_id, graph_type, create_graph_if_missing,
+        allow_latent, allow_editor_only, allow_wildcard, allow_deprecated, allow_internal)

@@ -1,0 +1,60 @@
+# 레벨 카드: `VolumeDemo_FVOL_Small`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_FVOL_Small` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_FVOL_Small` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `51` |
+| Direct external | `9` |
+
+## 정적 의미
+
+- **Observed:** 4 wrapper hosts와 character embedded host 1개가 모두 FVOL을 켜고 DryIce/Homogen/Shrine/Trails setup을 만든다. 별도 `SurfaceAlignedVolumes`도 있다.
+- **Inferred:** 작은 512 기반 fixture에서 fog-volume 재질·shape와 surface-aligned volume을 비교하는 FVOL gallery다.
+- **Unknown:** FVOL slice/depth 합성, character attachment, world/landscape alignment의 실제 결과와 비용.
+- **Target fixture:** `TF_FVOL_Small` 제안.
+
+## Actor / Component
+
+- manifest=`140 actors / 257 components / 14 pages`.
+- actor histogram: `TextRenderActor=72; StaticMeshActor=38; PointLight=7; MovingBall1_C=4; NinjaLive_C=4; MovingBall2_C=2; ThirdPersonCharacter_C=2; AtmosphericFog=1; BallSpawner1_C=1; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; NiagaraActor=1; PawnAndCameraUtility_C=1; PostProcessVolume=1; Rotor1_C=1; SkyLight=1; VolumeDemo_FVOL_Small_C=1`.
+- component histogram: `BillboardComponent=76; TextRenderComponent=72; StaticMeshComponent=48; SceneComponent=9; BoxComponent=8; PointLightComponent=7; MaterialBillboardComponent=6; ArrowComponent=5; NinjaLiveComponent_C=5; BrushComponent=2; CameraComponent=2; CameraProxyMeshComponent=2; CapsuleComponent=2; CharacterMovementComponent=2; DrawFrustumComponent=2; SkeletalMeshComponent=2; SpringArmComponent=2; AtmosphericFogComponent=1; DirectionalLightComponent=1; ExponentialHeightFogComponent=1; NiagaraComponent=1; SkyLightComponent=1`.
+- sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`8 nodes / 4 links / 0 variables / 0 errors`; BeginPlay에서 UE default 관련 console command 2개를 실행하는 정적 graph다.
+- host labels=`DryIce`, `Homogen`, `Shrine`, `Trails`, embedded `ThirdPersonCharacter`; core는 전부 `/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`.
+- characters/moving balls의 실제 stimulus와 FVOL update order는 runtime `pending`.
+
+## Niagara
+
+- hosts=`512×256×1 + 512²×4`; reader=`FFFTT×5`; PVD=`FTF×1,FTT×4`; FVOL=true×5.
+- standalone `SurfaceAlignedVolumes` 1개는 auto=true. frozen full capture=`111 nodes / 147 links / 25 modules / 3 renderers / 4 scratch pads`, compile warning/error 0.
+
+## Material / Art
+
+- material refs=`23`, art refs=`6`; selected families=`DryIce`, `Puff`, `Shrine`, `Trails` FVOL과 Homogen/Fluorescent/red-buffer surface 후보.
+- primitive/character meshes와 texture만 조건부 localization 후보이고 FVOL/material/Niagara logic은 독립 작성한다.
+
+## Clean-room 구현 순서
+
+1. 512² host four와 512×256 embedded-character host를 만든다.
+2. FVOL density-to-slice/lighting material과 DryIce/Puff/Shrine/Trails 변형을 독립 구현한다.
+3. `SurfaceAlignedVolumes`의 3 renderer/4 scratch 동작 계약을 새 modules로 재구성한다.
+4. character attachment, alignment, console defaults, dependency/runtime/parity를 검수한다.
+
+## Evidence / Parity / Exception
+
+- revision=`5e52c930fead134249fee209d120ea58`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; art만 조건부 localization 후보다.

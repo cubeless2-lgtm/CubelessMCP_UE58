@@ -1,0 +1,186 @@
+# Reactive Surface: Codex 구현 → Claude 검수 프로토콜
+
+> 상태: 운영 계약 (2026-07-04 확정)
+> 분업: Codex = 빌더/테스터, Claude = 검수자/판정 정정, 사용자 = 비주얼 게이트 + 결정
+> 이 계약은 리액티브 서피스 작업의 모든 스모크/구현 라운드에 적용된다.
+
+## 1. 라운드 리듬
+
+- **1 라운드 = 1 주제 = 1 리포트 = 1 검수.** 여러 Phase를 한 세션에 묶지 않는다.
+  (근거: 세션이 길수록 판정이 물러지고, 크래시 1회가 증거를 전멸시킨다 — V1~V6 라운드 실측.)
+- 라운드 종료 조건: 리포트 + 증거 + 커밋이 전부 준비된 상태. 그 전에는 검수 요청 금지.
+
+## 2. Claude에게 검수 요청 시 제출물 (필수 4종)
+
+1. **결과 리포트** (Git 추적 markdown, `codex/docs/projects/cubeless-stylized/systems/` 아래)
+   - 파일명에 `-report-` 포함. 명세(spec)와 결과(report)는 반드시 별도 파일 —
+     명세를 리포트처럼 제출해 "실행됨"으로 오독된 사고가 실제로 있었다.
+   - 항목별 PASS/FAIL/BLOCKED + 수치 증거 + 임시 자산 경로를 표로.
+2. **증거 JSON** (`MCPGameProject/Saved/MCP/<라운드루트>/` — gitignore이므로 핵심 수치는 리포트에 복사)
+   - 각 스텝 실행 직후 flush된 것. 리포트의 모든 수치 주장은 이 JSON에서 재추출 가능해야 한다.
+3. **재현 소스** (Git 추적 스크립트, `codex/scripts/` 아래) — ad-hoc execute_python으로 날린
+   시퀀스는 인정하지 않는다. Claude가 같은 스크립트로 재실행할 수 있어야 검수가 성립한다.
+4. **커밋** — 도구/스크립트/리포트가 커밋된 해시를 리포트에 명기. 미커밋 작업 위 검수 요청 금지.
+
+## 3. 판정 라벨 규칙 (Claude가 정정하는 기준)
+
+- **PASS**: positive path가 수치 증거로 증명됨. "될 것 같다" 금지.
+- **FAIL**: 설계 전제가 positive path 실행에서 **반증**됨. 도구가 없어서 못 돌린 것은 FAIL이 아니다.
+- **BLOCKED**: 도구/환경 갭으로 positive path 미실행. 막힌 지점 + 필요한 보강을 명기.
+- MCP 자동화 실패 = BLOCKED. 설계 FAIL로 쓰면 Claude가 정정한다 (V1 오판 전례).
+- 부분 성과는 PARTIAL 명기 (G5/G7 전례: 과대/과소 라벨 둘 다 정정된 적 있음).
+
+## 4. 증거 규율 (위반 시 해당 라운드 증거 전체 불신)
+
+- Scope/hash-lock semantics: a `hash lock`, `hash-locked`, or non-mutation check is evidence for that validation round only. It expires with the round and must never be interpreted as a permanent ban on Ground, Snow, Water, Grass, or any other asset. Only an explicit user request to promote a restriction into durable policy creates a persistent prohibition.
+
+- 각 테스트 직후 증거 JSON 즉시 flush.
+- **에디터 크래시/브리지 사망 후**: 재시작 → 재감사 스텝(자산/dirty/월드 상태)을 JSON에
+  새로 기록하기 전까지 어떤 주장도 리포트에 쓰지 않는다.
+- readback은 SIE/PIE game world만 신뢰. editor world 값은 GPU sim 증거로 불인정.
+- 판정은 **전체 RT 스캔** 기준 (중앙 고정 판정 금지 — advection이 페인트를 흘린다).
+- 스크린샷을 증거로 쓰면 review-image alpha 규칙(완전 불투명) 적용.
+
+## 5. 재사용 함정 목록 (새 라운드 시작 전 필독)
+
+| 함정 | 규칙 |
+|---|---|
+| 동기 execute_python 중 렌더 프레임 0장 | spawn/readback을 별도 브리지 명령으로 분리 + 실시간 대기 (run-7 하니스) |
+| Niagara mutation 가드 | temp root는 `/Game/_MCP_Temp/NiagaraGenerated/` 아래 |
+| `ENCPoolMethod` 없음 | `NCPoolMethod` 사용 (getattr fallback) |
+| `ArrayVector` 클래스 없음 | `ArrayPosition`/`ArrayFloat3` |
+| RapidIteration vs dynamic input | CircleLocation류는 `set_niagara_module_input_user_parameter` |
+| RT DI 바인딩 누락 | 클론 후 Emitter/Initialize/RenderGrid 3입력 + 런타임 세터 |
+| 열린 맵이 temp root 안 | cleanup 전 `open_editor_level`로 탈출 |
+| raw AssetImportTask | 에디터 크래시 — guarded importer만 |
+| `reset_system` | 그리드를 지우지 않음 — clear 용도 사용 금지 |
+| DI 런타임 입력 hidden `User.*` 직결 | `user_parameter_inputs` 단독 배선 금지. Array/DI 런타임 입력은 `User parameter -> Module input -> HLSL input` 3단 체인을 사용 |
+| 재투영 divisor를 RT size나 과거 `/256`으로 가정 | live Grid2D runtime NumCells inspect를 우선 사용하고, 없으면 seed-domain probe로 도출한 뒤 1-cell probe가 1px를 관측해야 PASS |
+| GPU sim 직후 즉시 C++ RT readback | `advance_simulation` 뒤 실시간 렌더 프레임 대기 필요. 즉시 readback은 export 전 값을 읽을 수 있음 |
+| advance 후 `set_paused` 상태 readback | advance 뒤 `set_paused`를 걸고 읽지 않는다. 클라이언트 실시간 대기 후 같은 region을 2회 연속 read하고 안정화된 두 번째 값을 판정에 사용 |
+| Array DI one-frame delta를 같은 호출에서 push/zero 또는 대기 중 유지 | 같은 `execute_python` 안에서 delta push -> advance -> zero를 끝내면 GPU가 zero만 소비할 수 있고, zero 전 실시간 대기 동안 delta를 유지하면 여러 Niagara tick에 재투영이 반복될 수 있다. delta push/소비와 zero 복귀를 별도 브리지 호출로 분리하고, 기존 target과 신규 state의 centroid 이동이 같은지 대조한 뒤 첫 read를 버리고 연속 안정 read로 판정한다. |
+| 채널 wake activation 계약 | 일반 production wake는 모든 채널을 `activate(false)`로 수행하고 RT는 명시적 clear/hold/reproject 정책으로만 관리한다. `activate(true)`는 아래 Ground recenter 단일 채널 예외 외에는 production 경로가 아니며 reset 의미론 리스크로 별도 기록 |
+| reset 없는 Niagara 재활성 | `activate(false)`는 Phase 6-A 2채널 동시성 PASS 기준 경로다. 단일/다중 채널 검증 시 component active/paused/completion 상태와 명시적 clear/hold 여부를 증거에 남김 |
+| Ground recenter RT pass | Phase 6 lifecycle recenter는 `/Game/ReactiveSurface/Ground/RT_RS_Ground_ReprojectScratch`를 쓰는 explicit canvas copy/reproject pass를 production 경로로 검수한다. MCP/UnrealMCP 참조가 production content에 남으면 FAIL |
+| Ground recenter reset 예외 | Ground recenter에서만 `Deactivate -> RT_RS_Ground_ReprojectScratch 투명 clear -> display history 정수 texel canvas 재투영 -> 2 Tick commit cooldown -> Activate(true)` 순서를 허용한다. 일반 wake와 Water/Grass에는 확장하지 않는다. 승인 증거는 frozen multi-stamp 3회 연속 sum/count `1.0`, 모든 예상 위치 양성·이전 위치 0, 그리고 PIE의 모든 BPC Ground bit 제거 후 `frames/positions/meta=0`을 2회 연속 확인한 `+X/+Y/-X/-Y` 왕복에서 네 단계 sum/count `1.0`·누적 anchor 오차 `<=1px`·Controller/활성 Ground writer 각 1개다. |
+| RGBA16F GPU-written RT readback | 판정은 Unreal Python `read_render_target_pixel`이 아니라 C++ `sample_render_target2d_region_stats` 기준으로 한다 |
+| `set_active_viewport_realtime` | PIE/SIE 중 크래시 이력 있음. 하드닝 전에는 smoke/production 검증에서 사용 금지 |
+| PIE/SIE smoke와 editor-world RT QA 병렬 실행 | SIE/PIE가 다른 하니스의 editor world를 제거/교체해 `no editor world` false FAIL을 만들 수 있다. 런타임 스모크와 editor-world RT 비교 QA는 반드시 순차 실행한다. |
+| SIE `GetPlayerPawn(0)` source binding | In SIE, `GetPlayerPawn(0)` can be the editor `SpectatorPawn`, not the gameplay character. Runtime source QA must bind or inspect the explicit source actor, then record pawn/class/velocity in evidence. |
+| Water solver false pass by decay only | Water propagation PASS requires a real 2-step history (`current`/`previous`) solver and expanding-ring evidence from the same impulse/region. Max-value damping or nonzero output alone is not proof. Record frame radii such as frame10 < frame25, center release, and no divergence. |
+| Water normal RT flat baseline | A normal RT has a nonzero flat baseline such as `(0.5, 0.5, 1)`. Do not judge water activity with `channel=max` on the normal output; use deviation channels, alpha/slope evidence, or the height solver validation RT. |
+| Water Grid2D stage positive path | A newly added Grid2D SimulationStage can compile and report a valid Grid2D binding while still not writing. Before judging wave math, prove the exact stage with a trivial constant-circle write. |
+| Water AdvectGrid preserved input | `preserve_existing_link_as` on template `AdvectGrid` can preserve the old curl-advection sample, not the current cell. A wave solver must explicitly sample `SamplePreviousGridVector4Value(Unit, P)` for current height. |
+| Water normal RT readback baseline | Packed-normal readback may use a channel mode such as `[188,188,255]`, not fixed `[128,128,255]`. Normal RT activity checks must compare against the per-channel background mode. |
+| Water harness frame advance | Client `sleep` may not advance Niagara GPU sim at the expected frame count. For frame-counted propagation evidence, use `advance_simulation` and record that no post-advance `set_paused` call was made. |
+| Niagara Position runtime setter | UE 5.6 Niagara `Position` user parameters require `SetVariablePosition` / `Set Niagara Variable (Position)`. `SetVariableVec3` targets Float3 and can leave the Position value unchanged even when the parameter name matches. |
+| Child Actor class compile during map QA | Compiling a Child Actor class can leave the placed parent actor's preview child serialized into the map while the `ChildActorComponent` spawns another child in PIE. This produced two attached Controllers and two active Ground writers against the same RT/MPC even though the editor showed one child. Every Controller mutation must run `Controller compile -> Piper parent compile/reinstance -> current map save`, then require exactly one runtime Controller, a valid `GetParentComponent`, and exactly one active Niagara writer per channel before RT judgment. The shared `compile_child_actor_owner_chain` helper and the single-owner regression runner are mandatory for Controller-mutating Ground QA. |
+| Single-jump Ground recenter PASS | One successful recenter can miss duplicate writers, replay-source contamination, or directional asymmetry. Seed the retained trail, then in PIE only remove the Ground bit from every `BPC_ReactivePoint` without property-change notification. Require `RS_Ground_StampFramesRemaining=0`, `RS_Ground_Positions=0`, and `RS_Ground_FootMeta=0` for two consecutive polls before crossing `+X/+Y/-X/-Y` boundaries. Require every step to keep sum/count ratio at `1.0` within tolerance, match the exact integer-texel centroid displacement, retain one Controller/one active Ground writer, and finish with cumulative world-anchor error within `1px`. |
+| Python active-World reload from `execute_python` | Do not call `load_map`, `load_level`, or `open_editor_level` from the same Python/MCP session after active-map QA. Explicit variables may be gone while `FPyReferenceCollector` still owns hidden `UWorld`/package references, triggering the fatal `World Memory Leaks` guard. Clean temporary actors, close the editor, and start the target map directly as an editor process argument. Never use same-session map reload merely to clear a dirty flag. |
+| Contact-pulse harness entry | Set the intended horizontal velocity before entering the water contact volume. An idle fall/landing can consume the first contact pulse timing and make the positive movement path unproven. |
+| Teleport-only Water contact QA | Direct SIE `set_actor_location` steps may not establish the puddle overlap/contact positive path. If `RS_Water_ContactDebug=false` and `User.RS_Water_SourceActive=0`, a neutral Water normal RT is `BLOCKED`, not solver `FAIL`. Do not use the normal map's always-nonzero B channel or `max` channel as Water activity proof; sample R/G deviation from neutral after a proven contact path. |
+| Niagara tick freeze before RT export | When component-tick freeze is used for stable readback, perform and discard one realtime C++ RT read first so the Grid-to-RT export is complete; never substitute `set_paused`. |
+| SIE Slate tick as gameplay timing proof | A registered Slate post-tick callback can keep firing while the SIE game world is not advancing normally. Do not use client idle plus Slate callback alone to judge pulse intervals; require game-state changes from explicit runtime probes or active PIE input. |
+| Moving RT window sampled with mesh UV | A solver window can follow the player correctly while a surface material still samples the RT with static `TextureCoordinate` UVs. World-window surfaces must derive UV from `AbsoluteWorldPosition` and the same raw window origin/size as the solver. Raw 0..1 UVs are reserved for debug planes. |
+| Water puddle overlap left in always-active path | `Get Overlapping Actors(BP_RS_PuddleVolume)` silently stops source pushes at the demo volume boundary. When Water is configured as always active, bypass only the puddle-overlap term while retaining movement-mode and both-foot trace gates so airborne writes remain blocked. |
+| Stable Water readback freeze clears RT | `deactivate()` can clear the external Water normal RT and is not a valid hold/readback freeze. After a realtime prime read, a test-only PIE instance may disable component tick and detach its Niagara asset (`set_asset(None)`) to drain GPU work; require two identical nonzero C++ reads and never persist that detachment. |
+| Water window scale and continuous recenter | The production Water default is `4000cm x 4000cm` on a `1024 x 1024` RT. Keep the Controller, Piper ChildActor template, Niagara system/component override, MPC, and surface material synchronized. V45 removes origin `round()` from both the solver and surface material: previous-grid history is sampled at fractional UVs and the material uses the raw MPC origin. `RecenterChunkPixels=1` remains compatibility metadata only. |
+| Pixel-rounded Water recenter stepping | Snapping solver/material origins to 2px still produces a visible whole-field jump during movement; reducing the chunk only reduces the step size. Production must keep raw current/previous origins and fractional Grid2D reprojection. Validate fixed-world-position retention after recenter and reject any reintroduced `round(WindowOrigin...)` path. |
+| Water conservative visible range | For the 40 m production window, the current defaults are `DefaultStrength=0.18`, `Damping=0.95`, `WaveSpeed=0.28`, `DefaultRadius=20cm`, `ImpulseRadiusPixels=1`, `NormalStrength=8`, `NormalDeadZone=0.0035`, and `NormalFadeEnd=0.010`. V43 measured stable R/G nonzero `2225/2258`; the previous 64cm constant world-radius override is forbidden. |
+| Water BP-to-Niagara tuning links | `RS_Water_WaveSpeed`, `RS_Water_Damping`, `RS_Water_ImpulseRadiusPixels`, and `RS_Water_DefaultStrength` are instance-editable Controller variables in `Reactive Surface|Water`. Every `Set Niagara Variable (Float)` for the matching `User.RS_Water_*` parameter must receive `InValue` from the corresponding BP Getter; a matching constant pin/default is not sufficient. V40 requires two linked setter paths for Speed/Damping/Radius and three for Strength, and synchronizes Controller CDO, Niagara component template, Niagara User default, and Piper ChildActor template. |
+| Single-impulse Water range proof | A single impulse can pass while repeated movement pulses still accumulate into an oversized field. Before changing production decay/range, include the current production profile as a baseline cell and compare a moving pulse train using lateral width, path-end extension, active area, and delayed residual energy. Source-foot width creates a lateral lower bound, so range judgment must not rely on radius percentage alone. |
+| Time-only Water pulse visual stepping | A `0.12s` interval produces visible stepping, while `0.06s` with both feet per pulse produces dense overlapping circles. The tuned default is `0.18s` with one preferred traced foot per pulse and opposite-foot fallback. QA must require source array length `<=1`, side alternation topology, active PIE pulse growth, and no airborne regression. |
+| Duplicate Water impulse paths | The solver still exposes the legacy `SourcePositionWS + SourceActive` harness input and the gameplay `Positions` array. Production Controller paths must force every `User.RS_Water_SourceActive` setter from `RS_Water_LegacySourceActive=0`; otherwise one foot pulse is injected twice and the source disk hides the propagated wavefront. |
+| Water world-radius constant bypass | `ImpulseRadiusPixels=1` does not control the source when `DefaultRadius / WindowSize` is larger because the HLSL uses `max()`. Every Controller `User.RS_Water_DefaultRadius` setter must read the BP variable. A stale constant `64cm` produced about a 16px radius at 40m/1024 and caused large overlapping disks. |
+| Controller Tick과 수동 하니스의 RT 이중 구동 | 러너가 collection/push/advance를 직접 수행할 때 production Controller Tick까지 활성화하면 같은 RT를 다음 프레임에 덮어써 hold/reproject가 거짓 FAIL한다. 수동 하니스에서는 Controller Tick을 명시적으로 끄고 단일 드라이버만 유지하며, production Tick 검증은 별도 PIE/패키지 셀로 실행한다. |
+| Active Niagara에 매 Tick `Activate(false)` 반복 | 이미 Active인 Niagara의 `ActivateInternal` early-out은 `IsSolo() == IsComponentTickEnabled()` ensure를 검사한다. 파라미터 push와 wake를 분리하고, Event Tick의 wake는 `IsActive`가 false인 경우에만 `Activate(false)`를 호출한다. |
+| ChildActor temp World 폴더 강제 삭제 | ChildActor 클래스가 들어간 temp World/Blueprint 패키지를 `delete_directory`로 강제 삭제하면 활성 맵이 아니어도 World leak 또는 access violation이 날 수 있다. production 맵으로 탈출한 뒤에도 강제 삭제를 반복하지 말고, 세션 종료 후 파일 상태를 확인하거나 새 temp root를 사용한다. |
+| Water strength constant bypass | Controller CDO/User defaults can look correct while runtime `Set Niagara Variable (Float)` nodes overwrite them with stale constants. V40 found three `User.RS_Water_DefaultStrength` setters fixed at `0.58` despite a BP default of `0.15`; graph audits must inspect every setter `InValue` link, not only CDO or Niagara parameter stores. |
+| Grass/Ground Persistence constant bypass | A runtime `Set Niagara Variable (Float)` node with an unlinked `InValue=0` overrides both the Controller CDO and Niagara User default, leaving only the current-frame stamp. Audit every matching setter and require a BP Getter link before judging missing trails or footprints. |
+| Moving Grass/Ground window without delta | Updating `WindowOriginWS` to follow the player while pushing a zero reprojection delta makes retained pixels follow the player instead of remaining at their original world positions. Push `(previous_origin-current_origin)/window_size` through the channel-specific DeltaControls route, then prove separate old/new RT regions remain nonzero after movement. |
+| Grass encoded direction blended toward black | Interpolating or strength-scaling an ordinary `Direction * 0.5 + 0.5` value against a black clear color corrupts the decoded angle, especially for weak stamps and subpixel window motion. Store Grass RGB coverage-premultiplied, decode with `RGB / A`, and prove all four weak cardinal directions plus an outer falloff region. |
+| Grass source injected in both Paint and Advect | Adding the same source in two simulation stages biases overlapping directions toward the later array element. Keep Paint history-only and inject sources once in Advect; equal +X/+Y overlap must decode to 45 degrees without order bias. |
+| Production Niagara HLSL saved without GPU recompile | The asset can expose the new Custom HLSL string while its production `GPUComputeScript` still executes cached old bytecode. Force compile from the production-authorized HLSL mutation command, then run the same production RT direction matrix; a temp duplicate PASS is not sufficient evidence. |
+| Grass source direction copied uniformly from velocity | Writing one normalized velocity direction across the whole circular stamp looks like a wind/flow map and cannot push grass away on all sides of a character. Derive a radial direction from `GridUnit - StampUV` per cell, then add only a bounded world-velocity bias; prove opposed east/west and north/south samples plus a diagonal sample. |
+| Grass WPO samples per vertex or scales angle by Vertex B | Per-vertex world UVs and gradient-scaled angles warp the blade even when the PP1 pivot is correct. Sample the RT once at the UV2/UV3 pivot and apply one rigid axis/angle to every vertex in that blade. Shape QA must preserve all intra-blade pair distances and keep the pivot fixed. |
+| `bRequiresGrounded` is set but the final Grass collector ignores it | ReactivePoint metadata is passive unless the Controller's active source loop consumes a grounded result. Gate the final BPC Grass add chain with the attached pawn's `IsMovingOnGround`; changing only component defaults or an obsolete earlier branch still writes while jumping. Prove pre-fix airborne reproduction, walking positive, falling arrays/RT zero, and landing positive. |
+| Grass rebound implemented as an ungated global sine | A time sine multiplied only by RT strength makes held or idle-looking grass vibrate forever and can pop at first contact. Keep the original directional PP1 target, start rebound only during release, apply exponential decay, and derive only a small per-pivot phase variation. Prove `Amount=1 -> rebound 0`, `Amount=0 -> rebound 0`, multiple bounded sign changes during recovery, final amplitude below the visible threshold, fixed pivots, and unchanged intra-blade distances. |
+| Released Grass trail judged by identical consecutive RT reads | A released Grass trajectory is intentionally time-varying, so requiring identical positive reads rejects the desired oscillation. Keep empty/airborne zero stable, require every grounded/landing read to remain bounded and nonzero, and judge a released old-path cell by signed direction reversals before final convergence. |
+| Teleport-only Grass positive path after grounded gating | Moving Piper with `set_actor_location` does not guarantee `CharacterMovement.IsMovingOnGround`, so a correct grounded gate can make a legacy RT smoke read zero. A production-positive Grass matrix must explicitly force and record `MOVE_WALKING`, compare `MOVE_FALLING`, then force `MOVE_WALKING` again for landing; inspect member arrays and Niagara arrays, require stable zero C++ reads while airborne, and require bounded nonzero reads after landing. Test released-path temporal behavior in a separate moving-source matrix. |
+| Reactive RT texture addressing left on Wrap | Reactive windows are bounded world-space fields, not periodic textures. Set `Address X/Y = Clamp` on channel outputs and lifecycle scratch/history RTs; Wrap can tile edge data onto the opposite side during sampling, reproject, or wave history updates. |
+| Ground footprints injected every Tick | Supplying both feet every Tick produces an uncontrolled strip even when the Ground HLSL samples a footprint mask. Emit at most one selected foot per Tick: stamp immediately on that foot's valid contact rising edge, then only when its own captured world position has moved by `RS_Ground_DragStampSpacingWS`. Keep left/right last-stamp state independent and push empty arrays outside the pulse/replay window. |
+| One-frame Ground stamp tick-order loss | A correct BP pulse can be cleared before the Niagara component consumes it. Retain the captured source position and metadata for a small fixed frame count; never recompute the held position from the moving socket, or the reliability fix becomes a trail. |
+| BP/Array DI getter PASS인데 GPU가 일부 Ground 펄스를 건너뜀 | BP 멤버 배열과 Niagara Array DI getter에 모든 펄스가 보여도 GPU dispatch가 연속된 1-element 상태를 모두 소비한다는 보장은 없다. 위치와 FootMeta를 같은 인덱스의 고정 8-slot ring에 즉시 기록하고 최근 배열을 30 Tick 재전송한다. 배열 길이/메타 정합/slot 상한을 함께 감사하고, 최종 RT에서 각 펄스 월드 위치를 `StampUV=(P.xy-WindowOrigin.xy)/WindowSize`로 투영한 영역이 모두 nonzero인지 C++ readback으로 확인한다. 마스크 한 개가 여러 축 run으로 갈라질 수 있으므로 단순 run 수 일치만으로 판정하지 않는다. |
+| Per-frame Ground subpixel reprojection | Reprojecting the Ground RT for every small player movement repeatedly filters and erodes old footprints. Hold the Ground window origin inside an explicit dead zone, then perform the existing V4c reproject once when the recenter threshold is crossed. Validate a multi-stamp path that crosses the threshold. |
+| Ground edge-only persistence | `BaseValue * Persistence` over the whole grid conflicts with the Ground hold contract and eventually erases every footprint. Read exact previous Grid2D history for interior cells and apply decay only inside the configured edge band; prove interior sum/count stay constant while an edge seed reaches zero. |
+| Ground fractional reproject filtering | Bilinear UV history sampling during repeated or fractional recenter shifts erodes and can visibly twist a discrete footprint mask. Snap the Ground origin to `WindowSize / RTResolution`, use integer previous-cell reads for integer deltas, and require sum/count preservation plus an exact texel displacement check. |
+| Ground contact inferred from actor-center travel | Actor-center spacing can miss a landing, slow planted-foot slide, or one foot moving while the body barely moves. Build the pulse from each foot trace + allowed PhysMat + contact-distance rising edge, then spatially resample strict held contact from that foot's last captured world stamp. Do not retain the old actor-center `100cm` fallback in the active path. Prove stationary no-restamp, sub-threshold no-restamp, cumulative threshold restamp, airborne no-stamp, landing immediate stamp, and independent left/right state. |
+| Attached Controller yaw sampled from `self` | A ChildActor Controller can follow the player position while retaining a fixed world rotation. Sampling `K2_GetActorRotation(self)` then writes constant `FootMeta.X`, so every footprint keeps one world-axis orientation. Read yaw from the validated attach-parent player, convert degrees to radians once, and test `0/90/180/-90` against both `FootMeta.X` and RT bbox orientation. A vertically authored sole mask needs an explicit `+PI/2` sampling basis so Unreal `+X` is footprint forward. |
+| Blueprint target-name-only Activate selection | A Controller can contain multiple `Activate(false)` calls for the same Niagara component, including BeginPlay and Tick paths. Never select the first node by target variable name; select the runtime node reachable from the channel update branch and assert the contact-state setters execute immediately before that node. |
+| Bridge-held reprojection delta | A client-side hold used to make a GPU write observable can span multiple Niagara dispatches even when production emits the delta for one game Tick. Harness evidence may accept only an exact integer multiple of the expected texel shift, must record the dispatch count, and must still prove unchanged sum/count; it is not permission for production to repeat the delta. |
+| Ground Canvas와 Niagara가 같은 display RT에 연속 write | BP Canvas가 RT를 옮긴 같은 프레임 뒤에 Niagara가 내부 Grid2D 이력을 같은 RT에 export하면 Canvas 결과가 다시 덮인다. Ground는 display RT를 보존 원본/머티리얼 입력으로 두고 Niagara는 scratch RT에 출력한 뒤 Controller가 다음 Tick에 commit한다. 리센터 때만 display -> scratch 정수 이동 복사 -> display 복귀를 수행한다. |
+| Ground 2버퍼 경로를 UDS 입력 지연과 혼동 | footprint source 수집과 Niagara push는 접촉 Tick에 즉시 수행한다. 허용되는 지연은 scratch GPU 출력이 다음 Controller commit에서 display RT에 반영되는 최대 1렌더 프레임뿐이다. Timer, Delay, trail-brush buffer로 입력 자체를 늦추지 않는다. |
+| Canvas scratch clear의 기본 alpha=1 | `Clear Render Target 2D` 기본값 `(0,0,0,1)`은 `channel=max` C++ readback에서 빈 RT 전체를 nonzero로 만든다. Ground source/scratch clear는 반드시 `(0,0,0,0)`을 명시하고, 복사 전후 sum/count와 centroid를 함께 본다. |
+| 캡처 파일 생성만으로 Snow 비주얼 PASS | 잘못된 `Rotator` 생성자 순서나 비활성 viewport 때문에 하늘/빈 바닥도 정상 PNG로 저장될 수 있다. `unreal.Rotator(roll=..., pitch=..., yaw=...)` 키워드 또는 look-at 회전을 사용하고, PIE 중 실제 Snow 바닥을 촬영한다. 파일 존재 외에 눈 표면 픽셀과 발자국 strip 픽셀을 검사한 뒤 직접 이미지를 열어 확인한다. |
+| RGBA16F 전체 readback 시간을 시각 지연으로 판정 | 동기 C++ 전체 RT readback 자체가 수백 ms를 소비할 수 있다. wall-clock readback 소요시간은 화면 지연 증거가 아니다. 첫 post-dispatch read의 hit index, 다음 commit read, 그리고 연속 안정 read를 분리해 기록한다. |
+
+## 6. Claude 검수 범위 (Codex가 기대할 것)
+
+- 리포트 ↔ 증거 JSON 대조 (증거 없는 주장 색출)
+- PASS/FAIL/BLOCKED 라벨 정정
+- validation-plan.md 반영 문구 확정 및 직접 반영
+- 다음 라운드 스코프/프롬프트 설계
+- 검수 결과는 판정 정정 / 문서 수정 / go-no-go / 리스크 행 형식
+
+## 7. 사용자 게이트 (Claude/Codex가 대신 판정하지 않는 것)
+
+- 비주얼 체감 승인 (Grass 트레일, 발자국, 리센터 fade)
+- Open Questions 답변 (현재 대기: T11 BeginPlay 고정 여부, 자국 보존 요구 수준)
+- production 경로/커밋 정책 변경
+
+## 8. 마무리 운영 지침
+
+### 남은 실행
+
+1. **Phase 7-A**: 테스트 머티리얼 3종 + `L_RS_Demo` 연결 + 리센터-wake 정합 1회
+   + 패키지 성능 실측을 완료한 뒤 사용자 비주얼 게이트를 요청한다. 요청에는 PIE 직접 조작 안내를 포함한다.
+2. **Phase 7-B**: 사용자 결정 4건을 반영한다.
+   - mask 아트
+   - 보존 수준
+   - opt-in 목록
+   - 물 튜닝
+   튜닝 루프는 사용자와 직접 핑퐁한다. 이 튜닝 핑퐁에는 §1 라운드 리듬 규칙을 적용하지 않는다.
+3. **Phase 8**: 최종 audit을 수행한다.
+   - MCP 참조 0
+   - UnrealMCP disabled 로드 스모크
+   - 패키징 dry-run
+   - 완료 리포트
+
+### 자가 검수 규율
+
+- Claude 부재 시에도 PASS 판정은 지금까지처럼 수치 증거와 증거 JSON 대조가 가능한 상태에서만 한다.
+- FAIL 판정 전 다음 자기 반박 3문을 통과해야 한다.
+  1. 하니스가 원인일 가능성은 없는가? readback 타이밍, pause, reset 의미론, 배선 경로는 모두 전례가 있다.
+  2. positive path를 실제로 실행했는가?
+  3. 판별에 필요한 매트릭스 셀이 빠지지 않았는가?
+- 위 3문을 통과하지 못하면 FAIL 대신 BLOCKED로 기록하고 교란 목록을 함께 남긴다.
+- §5 함정 목록은 살아있는 문서다. 새 함정을 발견하면 즉시 §5에 추가한다.
+
+### Claude 호출 조건
+
+Claude 호출은 아래 조건에만 사용한다.
+
+- 자기 반박 3문을 통과한 뒤에도 FAIL 판정이 남는 경우
+- 설계 계약을 바꿔야 하는 경우: §9.0 병행, hold, 3단 체인, 네임스페이스 분리
+- `reset=True` 다중 시스템 이상 거동이 production 경로를 침범하는 경우
+
+그 외 PASS, 진행, 튜닝은 자가 판정으로 진행한다.
+
+### 최종 마감
+
+Phase 8 후 다음을 완료한다.
+
+- `validation-plan.md`에 §26 "구현 완료"를 추가 병합한다. 최종 수치 요약과 잔여 리스크를 포함한다.
+- §5 함정 목록 중 리액티브 외 재사용 가치가 있는 항목을 CubelessOps 승격 후보로 목록화한다.
+  목록화는 `promote-shared-work` 절차용이다.
+- 전체 커밋/푸시를 정리한 뒤 사용자에게 완료 보고한다.

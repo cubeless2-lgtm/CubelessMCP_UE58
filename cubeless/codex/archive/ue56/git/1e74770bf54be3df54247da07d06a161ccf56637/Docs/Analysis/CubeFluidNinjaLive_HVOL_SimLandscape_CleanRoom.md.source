@@ -1,0 +1,146 @@
+# HVOL SimLandscape clean-room 구현 및 검증
+
+## 2026-09-05 판정
+
+선택된 landscape static permutation의 수식 재구현과 저장 자산 계약은 통과했다.
+실제 Heterogeneous Volume 렌더링의 원본 동등성, host 연동, cook/package는 미검증이다.
+이 결과를 원본 volume master 전체 또는 59개 레벨의 완료로 해석하지 않는다.
+
+원본 `/Game/FluidNinjaLive/OutputMaterials/HVOLniagara/MI_HVOL_SIM_test2_landscp`와
+그 parent/function의 동결 캡처를 읽어 원리를 분석했다. 저작 payload에는 원본 UObject,
+graph text, source GUID, source template을 넣지 않았다. 프로젝트 C++ 변경은 없다.
+원본 package는 읽기 전용으로 유지했다. 아트는 기존 Study 지역화본만 참조한다.
+
+| 결과 | 경로 (`/Game/Study/CubeFluidNinjaLive` 아래) | bytes | SHA-256 |
+| --- | --- | ---: | --- |
+| parent | `Materials/Output/Volume/M_CFNL_HVOL_SimLandscape` | 134148 | `03983ef8881f382323cb29c247743150c7f991b41536634e4982514876fb1eca` |
+| instance | `Materials/Output/Volume/MI_CFNL_HVOL_SimLandscape` | 36077 | `d270aefe8d7b8565e423261e8f37ccc7df40e8dd7b6489b02ba7a76c089acc36` |
+
+계약 SHA-256: `6292c926d3808ea6e03bdbdd6beded96757f3a8e279bc76d42a23c7c8a863dbb`.
+실행 확인 token: `cfnl-hvol-landscape-6292c926d3808ea6e03b`.
+이미 저장된 자산이므로 fresh `--execute`를 재실행하지 않는다.
+
+## 원본 관찰과 구현 경계
+
+원본 base volume function은 901 expression이며 보수적 active closure는 386이다.
+원본 helper의 UVW 40, flow 41, signed-power 14, sampler 6 expression을 별도로 조사했다.
+수량을 그대로 재현하는 것이 아니라 연결과 채널 변환의 의미를 해석했다.
+분석 semantic SHA는 `33cd796c6441691cd79944c20d37c9e3fcb3406b1ef51d2b279461a0e7d4ad3a`다.
+
+새 graph는 native Material expression 241개(계산 191 + compatibility 선언 50),
+연결 233개다. MaterialFunctionCall 및 Custom HLSL은 없다. MI의 direct override는
+scalar 39, vector 2, texture 5, static 29의 총 75개를 보존한다.
+단, static 선언의 보존은 다른 static permutation의 구현을 뜻하지 않는다.
+이번 parent는 선택된 landscape 분기의 계산만 수행한다. 다른 static 설정으로 바꾸어
+원본 master의 모든 모드를 제공한다고 주장하거나 소비자가 그렇게 사용해서는 안 된다.
+
+## 수식과 책임
+
+수식의 독립 구현은 `Python/scripts/analysis/cube_fluid_ninja_hvol_equations.py`,
+수식을 native expression으로 저작하는 recipe는
+`Python/scripts/analysis/cube_fluid_ninja_hvol_material_recipe.py`에 있다.
+recipe는 원본 graph/capture를 import하지 않으며 의미별 키로 새 노드를 연결한다.
+
+1. **공간과 채널**: world position을 local로 변환한 다음
+   `localUVW = localPosition / volumeExtents + pivot`으로 정규화한다.
+   density UV에는 DensityScale을 적용한다. field의 B가 density, RG가 velocity다.
+   world-space 위치에 pivot만 빼는 식과는 회전·크기 변경 시 결과가 다르다.
+2. **높이 입력**: 활성 입력은 `HeightMap`이다. `AddHeightMap`은 이 permutation에서
+   활성 height 입력이 아니다. AlphaAsHeightSource 조건에 따라 R/A를 고르고,
+   world-height 모드는 HeightUpScale과 bounds.Z로 정규화한다.
+   signed power는 `pow(max(h,0),p)-pow(max(-h,0),p)`이며 BasePlaneHeight를 더한다.
+3. **높이 extrusion**: density power와 density-driven extrusion을 적용하고,
+   `aspect = extents.Z / max(extents.X,extents.Y)`로 높이·softness를 보정한다.
+   plane 위/아래 mirrored extrusion을 계산한다. 단순 Z gradient는 대체물이 아니다.
+4. **볼륨 noise 좌표**: world/extents에 Noise1Scale, `(1,1,aspect)`, XYZ scale을
+   적용하고 time 기반 XYZ animated offset을 더한다. velocity를 local→world로
+   변환하여 density-weighted displacement를 만든다. 함수 scalar input에서 vector의
+   R만 사용하는 강제 변환도 보존한다. vector 전체를 쓰면 원본과 달라진다.
+5. **두 위상 flow**: `frac(time*speed)`와 `frac(time*speed+0.5)`에서 두 번 noise를
+   sample하고 `abs(2*phase-1)`로 blend한다. 각 위상 변위는
+   `-0.5 * strength * densityWeight * velocity * (phase-0.5)`다.
+   위상 wrap의 불연속을 서로 다른 sample이 덮는다. noise power는
+   `10*(1-hardness)`이며 offset/fade 뒤 density에서 뺀다.
+6. **경계와 extinction**: XY의 analytic min edge와 Z의 power/multiply/offset/
+   saturate 경계를 곱한다. `lerp(EdgeMaskValueOffset, density-noise, edgeXY*edgeZ)`를
+   계산하고 원본 MakeMaterialAttributes Opacity의 scalar coercion(R)을 보존한다.
+7. **빛과 색**: Albedo는 BaseColor로 직접 보낸다. ambient/AO, 수직 gradient,
+   skylight 혼합은 EmissiveColor로 보낸다. Albedo에 ambient를 곱하고 emissive를
+   0으로 두는 방식은 원본 의미와 다르다.
+
+정확한 연산 순서, branch threshold, scalar coercion과 parameter 이름은 두 구현 파일과
+검증 report의 frozen contract를 따른다. 위 요약은 전체 shader의 대체 명세가 아니다.
+
+## 독립 수치 검증
+
+`verify_cube_fluid_ninja_hvol_equations.py`는 원본 동결 graph interpreter,
+손으로 쓴 NumPy 수식, 새 recipe interpreter를 세 방향으로 비교한다.
+named reroute의 output index와 function input scalar coercion을 처리한다.
+원본 interpreter는 비교 전용이며 Unreal graph를 생성하지 않는다.
+
+512개 결정론적 fixture에서 좌표, 회전, extent, pivot, 시간, 높이·density·velocity,
+noise, ambient/sky 입력을 변화시켰다. 최대 절대 오차는 BaseColor `0`,
+EmissiveColor `2.321276851291465e-16`, Opacity `1.0998146837692957e-15`다.
+0이 아닌 결과는 각각 512/354/396건이므로 전부 빈 출력인 테스트가 아니다.
+
+한계: double precision CPU와 analytic texture fixture이며 실제 GPU texture filtering,
+shader precision/epsilon, 비균등 transform 전체, volume ray integration, depth/lighting,
+renderer frame latency를 증명하지 않는다. 512-case report는 최종 metadata sampler 조정 전
+생성됐지만 계산 graph/수식은 같으며 조정 대상은 비활성 compatibility texture 선언이다.
+최종 저장 graph는 별도 hot/cold 검사에서 속성까지 전수 비교했다.
+
+## 실패에서 수정한 사항
+
+- 이전 135-node prototype은 좌표, height 입력, density/height power, extrusion,
+  두 위상 flow와 ambient/emissive가 원본과 달랐다. 재개 시 검토에서 기각하고
+  equation-first recipe로 새로 작성했다. 단순 compile 성공을 동등성으로 인정하지 않았다.
+- v003의 두 VolumeTexture sample 중 첫 번째만 MI parameter 설정 과정에서 Color로
+  보정되고 두 번째는 Masks가 남아 shader compile이 실패했다. `VolumeNoise2`의 실제
+  texture에는 Color sampler가 필요했다. 저장 전 compile gate가 실패를 차단했다.
+  exact 두 target만 존재하고 disk file이 없는 상태를 검사한 한정 repair로 두 sample을
+  Color로 맞춘 후 compile/save했다. 원본 함수 내부 sampler 표기를 직접 parameter
+  sample로 옮기는 것은 effective texture object sampler와 같지 않았다.
+- 추가 property readback은 비활성 AddHeightMap의 LinearColor와 EdgeMaskTexture의
+  Alpha 자동 보정을 발견했다. 최종 recipe에 engine의 유효 sampler 계약을 반영했다.
+- UE material recompilation은 package를 dirty로 만든다. verify-existing의 compile도
+  `save=True`로 exact target을 저장하고 dirty 0을 재감사하도록 고쳤다.
+  이 mode를 read-only 검증이라고 표기하지 않는다.
+- source snapshot은 상수 반환이 아니라 실제 bytes/size/SHA를 읽게 수정했다.
+  graph pagination에는 query/revision, 연속 offset/count, 중복 ID 검사를 추가했다.
+  native page의 `complete=false`만으로 전체 graph를 잘못 실패/통과시키지 않는다.
+
+## 저장·재시작·독립 로드 증거
+
+아래 파일은 `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/HVOL/` 아래다.
+
+| 증거 | SHA-256 | 판정 |
+| --- | --- | --- |
+| `20260905_equations_cpu_v001.json` | `747d3485b9a21059a5fba598f5ea701aa9a18d9f3d41bb85e0d0d4c18fea5870` | CPU 512-case PASS; GPU/visual 아님 |
+| `20260905_hvol_hot_properties_v002.json` | `66b7ad4459765951639d1dfedcadb5fe3c01421dfd73fe62afb2f79201829419` | node class/label/property/link/output, 75 override, compile/save, 독립성 PASS |
+| `20260905_hvol_cold_v001.json` | `6841e8393f7618d4ab5783c02b7ca4cf95c2cb2fcd6420c1eba43d611d6a8586` | 실제 editor 종료·재시작 후 동일 계약 PASS |
+| `20260905_hvol_plugin_disabled_v001.json` | `d82b71113809eca654b9ab8b9d1a7d8bd7c678e4c082d59e5aa9318427990ec7` | `-DisablePlugins=UnrealMCP -NullRHI` 별도 process의 parent/MI/art 9개 native-class load PASS |
+
+hot/cold target audit의 source/temp/MCP dependency, redirector, dirty package는 0이다.
+NullRHI load는 cook, packaging, 실제 renderer 실행 검증이 아니다.
+Python bridge의 QUIT_EDITOR는 기존 종료 충돌 방지 장치가 차단했다. 미저장 package 0을
+별도 확인한 후 Windows 정상 창 닫기로 종료하고 UE 5.6.1을 재시작했다.
+
+scoped builder 9개 및 analyzer 6개 테스트와 관련 Python compile은 통과했다.
+전체 offline profile은 **4/39 단계에서 실패**했다. 기존 dirty bridge의
+`inspect_geometry_collection_pair_mcp` route에 Python tool 노출이 없어
+python_tools 451/cpp_routes 404, missing_in_python 1이었다.
+이번 HVOL 작업에서 그 공유 route/tool 파일을 변경하지 않았다. 전체 verification 또는
+main promotion 통과로 표시하지 않으며 unrelated 변경을 임의로 수정하지 않는다.
+
+## 다음 실행 경계
+
+Component dry-run `target/blueprints/NinjaLiveComponent/20260905_hvol_dependency_update_v001.json`
+에서 identity closure는 여전히 32 reviewed/0 unresolved이며 7개 실행 blocker는 남는다.
+reviewed target 중 이 HVOL MI는 이제 disk에 있다. root NinjaLive 부재 및 Component
+runtime 구현 gate는 별개다. source preset 12개, host bridge, full Niagara core,
+59개 target level과 최종 시각 검수는 완료되지 않았다.
+
+다음은 native UE5.6 volume fixture에서 동일 입력·transform·시간의 source/target을
+실제로 렌더링해 비교하고, 이어 host/Component 구현 blocker를 하나씩 닫는 것이다.
+source asset이나 source 참조가 든 fixture를 최종 Study package에 저장하지 않는다.
+프로젝트 C++가 필요해지면 현재-task `c++1218` 승인 전에는 작성하지 않는다.

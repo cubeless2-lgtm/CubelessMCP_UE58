@@ -1,0 +1,59 @@
+# 레벨 카드: `Water_Sparse_DoubleSim_TilingWaves`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/Water_Sparse_DoubleSim_TilingWaves` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Sparse_DoubleSim_TilingWaves` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `42` |
+| Direct external | `7` |
+
+## 정적 의미
+
+- **Observed:** area host 2048²/extent 80과 tile host 1600²/extent 8을 함께 쓰고, area surface에는 simulated tile-water material, tile host에는 black buffer view를 선택한다. `SurfaceAlignedMeshes`가 auto=true다.
+- **Inferred:** 큰 sparse water 영역과 작은 repeating wave generator를 분리한 double-simulation tiling fixture다.
+- **Unknown:** 두 simulation의 RT binding, world-space tile transform/seam suppression, fog Z-lock와 wave timing.
+- **Target fixture:** `TF_WaterSparse_DoubleSim_Tiling` 제안.
+
+## Actor / Component
+
+- manifest=`53 actors / 96 components / 6 pages`.
+- actor histogram: `StaticMeshActor=16; TextRenderActor=14; MovingBall1_C=8; PostProcessVolume=3; NinjaLive_C=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; NiagaraActor=1; PawnAndCameraUtility_C=1; PointLight=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; Water_Sparse_DoubleSim_TilingWaves_C=1`.
+- component histogram: `StaticMeshComponent=24; BillboardComponent=18; TextRenderComponent=14; SceneComponent=9; ArrowComponent=4; BoxComponent=4; BrushComponent=4; MaterialBillboardComponent=4; NinjaLiveComponent_C=2; CameraComponent=1; CameraProxyMeshComponent=1; CapsuleComponent=1; CharacterMovementComponent=1; DirectionalLightComponent=1; DrawFrustumComponent=1; ExponentialHeightFogComponent=1; NiagaraComponent=1; PointLightComponent=1; SkeletalMeshComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1; SpringArmComponent=1`.
+- sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`40 nodes / 33 links / 5 variables / 0 errors`; light-relative warm/cold post-process blend, volume-fog mesh Z lock와 cvars를 연결한다.
+- area=`2048²,80/80/1,FFFTT/FTT`, selected `MI_Water_Tile_Simulated`; tile=`1600²,8/8/1,FFFTT/FTF`, selected black-buffer view. 둘 다 core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`.
+- area/tile update and sampling order는 runtime `pending`.
+
+## Niagara
+
+- standalone `SurfaceAlignedMeshes` 1개는 auto=true. full capture=`191 nodes / 275 links / 58 modules / 5 renderers / 4 scratch pads`, warning/error 0.
+
+## Material / Art
+
+- material refs=`14`, art refs=`7`; simulated tile-water가 최종 surface family다.
+- surface/mesh texture와 static mesh만 조건부 localization 후보이며 double-sim binding, Niagara와 material graph는 독립 작성한다.
+
+## Clean-room 구현 순서
+
+1. 8m deterministic tile solver와 seam-test pattern을 만든다.
+2. 80m area solver가 tile RT/normal을 world-space 반복 샘플하도록 독립 binding을 작성한다.
+3. clean-room `SurfaceAlignedMeshes`, PP/fog Z-lock driver를 연결한다.
+4. seam, phase, fog, no-source/no-MCP, runtime/visual/performance parity를 측정한다.
+
+## Evidence / Parity / Exception
+
+- revision=`e3408c5d163164dd5920a10ac61a6ca4`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; art만 조건부 localization 후보다.

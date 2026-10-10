@@ -1,0 +1,41 @@
+# 얇은 구름 점상 무늬 비교 — 2026-09-14
+
+**공통 확대·가장자리·Mip 설정만으로 점상 무늬를 해결하는 안은 채택하지 않았습니다.** 시험 값을 모두 복원했으며 저장 자산과 설정 파일은 이번 비교 전과 같습니다. Shadow 1·Mode 0·View 4·상한 384·Mip 0·Feather 0.04를 유지합니다. 노이즈 수정 완료를 뜻하지 않습니다.
+
+PIE가 실행되지 않은 상태여서 독립적으로 가능한 에디터 시각 비교를 먼저 진행했습니다. 실제 플레이 GPU 측정과 연속 이동 잔상 검수는 여전히 남아 있습니다.
+
+## 같은 구도에서 비교한 결과
+
+활성 에디터 뷰포트 1214×748, FOV 100, 같은 카메라를 사용했습니다. 네이티브 캡처가 적용한 redraw 수는 최대 20회입니다. 정지 이미지 비교이며 캡처 소요 시간을 GPU 프레임 시간으로 해석하지 않습니다.
+
+| 시험 | 관찰 | 판단 |
+| --- | --- | --- |
+| UpsamplingMode 4 → 0 | 가는 부분의 점상 무늬와 계단이 남음 | 기존 4 유지 |
+| UpsamplingMode 4 → 1 | 점이 흐려지지만 큰 몸체도 흐려지고 잔입자가 나타남 | 제외 |
+| ReprojectionBoxConstraint 0 → 1 | 정지 상태의 점상 무늬를 없애지 못함 | 기존 0 복원; 이동 잔상 개선 여부는 이 검사로 판정 불가 |
+| Feather 0.04 → 0.08 / 0.10 | 낮은 밀도는 줄어들지만 작은 조각의 분리는 남음 | 기존 0.04 유지 |
+| Mip 0 → 0.5 / 1 / 2 | 큰 구름의 작은 굴곡이 손실되며 얇은 무늬는 상당 부분 남음 | 기존 0 유지 |
+| View 4·상한 384 → View 8·상한 768 | 일부 미세 점이 완화되지만 분리된 무늬가 남음 | 전체 샘플 증가를 이번 해결책으로 채택하지 않음; 이 시험의 GPU 비용은 측정하지 않음 |
+
+![유지한 상태](Images/FinalRestored.png)
+
+비교 이미지: [기준](Images/Baseline.png), [Bilinear](Images/Bilinear.png), [Jitter](Images/Jitter.png), [History Clamp](Images/HistoryClamp.png), [Feather 0.04](Images/Feather04.png), [0.08](Images/Feather08.png), [0.10](Images/Feather10.png), [Mip 0.5](Images/MipHalf.png), [1](Images/MipOne.png), [2](Images/MipTwo.png), [768 샘플](Images/Samples768.png).
+
+큰 몸체의 품질을 떨어뜨리는 공통 필터를 추가하기보다, 남은 원인은 얇은 구름을 개별적으로 분리해서 확인하는 편이 적절합니다. 이번 결과는 원본 밀도 구조와 광선 샘플링 양쪽의 영향을 시사하지만, 어느 하나를 유일한 원인으로 확정하지 않습니다. 구름 삭제·원본 교체·배치 수정은 하지 않았습니다.
+
+## 시험 방식과 복원
+
+- Feather·Mip 비교는 `/Engine/Transient`의 MID를 적용하고 촬영한 뒤 기존 MIC를 복원하는 네이티브 batch를 사용했습니다. 촬영 직후 MID 경로와 실제 파라미터 값을 확인했습니다. 여섯 비교 모두 3/3 성공했습니다. [Feather 확인](Feather08_atomic.json), [Mip 확인](MipTwo_atomic.json).
+- 첫 Feather batch는 코드 들여쓰기 구문 오류로 첫 명령 실행 전에 중단되었습니다. 엔진 로그의 `IndentationError`, executed 1 / succeeded 0, 기존 MIC 유지 상태를 확인한 뒤 수정했습니다. 결과가 불명확한 변경을 반복한 것은 아닙니다.
+- [CVar 원래 값](cvars_before.json)과 [복원 값](cvars_restored.json)이 같습니다. View 배율과 샘플 상한도 [원래 값](samples_restored.json)으로 복원했습니다.
+- [70개 액터 보존](preservation.json): Transform 최대 변화 0, 부모·개별 Density·EdgeCut·아이콘 값 유지. [28개 SourceVolume 보존](source_preservation.json).
+- [최종 상태와 파일 해시](final_state.json): 맵·마스터 머티리얼·MIC·DefaultEngine.ini가 비교 전과 동일합니다. dirty map/content 0, GameMode·PlayerStart·카메라 유지. 임시 MID를 저장하지 않았습니다.
+- 이번 산출물은 비교 이미지와 MD/JSON 기록입니다. 제품 구현 변경이 없어 전체 오프라인·cook을 다시 실행하지 않았습니다. 기존 ShadowPass 검증을 새 실행 결과로 주장하지 않습니다.
+
+## 남은 검수
+
+1. 사용자가 실행한 1920×1200 PIE에서 실제 viewport 크기와 구름 GPU 비용 측정.
+2. 실제 플레이 카메라 이동 중 깜빡임·잔상 확인.
+3. 얇은 구름의 개별 원인 분리 후 필요한 부분만 조정. 이번에 제외한 공통 설정 시험을 그대로 반복하지 않기.
+
+플레이 시작·종료는 [기존 공통 검수 원칙](../CubelessClouds_ArtCompositionPlan_20260913.md)에 따라 사용자가 수행합니다. 측정 준비 상태와 이전 성능 결과는 [그림자 최적화 기록](../CubelessClouds_ShadowPass_20260914/README.md)에 있습니다.

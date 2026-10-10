@@ -1,0 +1,72 @@
+# Prismatiscape Sample BP Inventory
+
+작성일: 2026-06-26
+
+목적: 플러그인 샘플 BP를 "어떤 컴포넌트가 어떤 Manager 배열을 채우는가" 기준으로 학습한다.
+
+## 샘플 분류
+
+| 샘플 | 주 학습 포인트 | 입력 데이터 | Manager 출력 |
+| --- | --- | --- | --- |
+| `Prismatiscape_CharlieBall` | 움직이는 공이 잔디를 누르고 큰 foliage를 밀어내는 기본 패턴 | Interaction bubble, Deform capsule | InteractionBubble RT, Deform RT |
+| `Prismatiscape_ExampleBallDrawer` | Owner 위치/속도를 deform capsule로 변환 | Deform capsule arrays | Deform RT |
+| `Prismatiscape_BalldWind` | Owner 위치/속도를 wind capsule로 변환 | Wind capsule arrays | Wind RT |
+| `Prismatiscape_CharlieStick` | 두 소켓 사이 선분을 deform capsule로 변환 | Two-socket deform capsule | Deform RT |
+| `PS_BP_PlayerCharacter` | skeletal mesh bone/profile 기반 deform | Character deform profile | Deform RT |
+| `Prismatiscape_PeriodicExploder` | Manager pulse API 호출 | Deform/Wind pulse struct | Deform RT, Wind RT |
+
+## 컴포넌트 패턴
+
+| 패턴 | 플러그인 컴포넌트 | 이번 학습용 대응 |
+| --- | --- | --- |
+| 이동 trail deform | `UPrismatiscapeDeformComponent` 계열 BP 구현 | `UPrismatiscapeStudyDeformTrailComponent` |
+| 이동 trail wind | `UPrismatiscapeWindComponent` 계열 BP 구현 | `UPrismatiscapeStudyWindTrailComponent` |
+| 큰 foliage push | `UPrismatiscapeInteractionBubbleComponent` | `APrismatiscapeStudyInteractionDeformBall` |
+| 큰 foliage push 전용 | `UPrismatiscapeInteractionBubbleComponent` | `APrismatiscapeStudyInteractionBubbleBall` |
+| 두 endpoint deform | `UPrismatiscapeDeformComponentTwoSocket` 샘플을 reference로 읽기 | `APrismatiscapeStudyTwoSocketStick` + `UPrismatiscapeStudySegmentDeformComponent` |
+| 캐릭터 profile deform | `UPrismatiscapeDeformComponentCharacter` | `APrismatiscapeStudyCharacterDeformProxy` |
+
+## 현재 만든 학습 BP
+
+위치:
+
+```text
+/Game/_MCP_Temp/PrismatiscapeStudy
+```
+
+| BP | 부모 C++ 클래스 | 기본 의도 |
+| --- | --- | --- |
+| `BP_PrisStudy_CPP_InteractionDeformBall` | `APrismatiscapeStudyInteractionDeformBall` | interaction bubble + deform trail을 동시에 확인 |
+| `BP_PrisStudy_CPP_WindBall` | `APrismatiscapeStudyWindBall` | wind capsule trail 확인 |
+| `BP_PrisStudy_CPP_TwoSocketStick` | `APrismatiscapeStudyTwoSocketStick` | socket asset 의존성 없는 local segment deform 확인 |
+| `BP_PrisStudy_CPP_CharacterDeformProxy` | `APrismatiscapeStudyCharacterDeformProxy` | `OnlyFeet` profile 기반 character deform 확인 |
+
+정식 후보 위치:
+
+```text
+/Game/PrismatiscapeStudy
+```
+
+| BP | 부모 C++ 클래스 | 기본 의도 |
+| --- | --- | --- |
+| `BP_PrisStudy_InteractionDeformBall` | `APrismatiscapeStudyInteractionDeformBall` | grass deform + interaction을 한 actor로 확인 |
+| `BP_PrisStudy_WindBall` | `APrismatiscapeStudyWindBall` | wind RT 입력 확인 |
+| `BP_PrisStudy_BushPushBall` | `APrismatiscapeStudyInteractionBubbleBall` | bush push용 interaction-only 입력 확인 |
+| `BP_PrisStudy_SegmentDeformStick` | `APrismatiscapeStudyTwoSocketStick` | 두 endpoint 기반 deform capsule 확인 |
+| `BP_PrisStudy_CharacterDeformProxy` | `APrismatiscapeStudyCharacterDeformProxy` | `OnlyFeet` profile 기반 character deform 확인 |
+
+## 학습 순서
+
+1. 플러그인 샘플 BP는 읽기 전용 reference로 둔다.
+2. 같은 패턴을 C++ wrapper + BP child로 재현한다.
+3. Details에서 radius, strength, profile만 조정한다.
+4. PIE에서 Manager 배열 count와 RT readback을 확인한다.
+5. 시각 검수 screenshot을 남긴다.
+
+## 주의
+
+BP-generated component class를 MCP `add_component_to_blueprint`로 SCS에 붙이는 경로는 현재 크래시 이력이 있다. 샘플 BP 자체를 변형해서 학습하지 않고, 네이티브 wrapper를 통해 같은 데이터 흐름을 만든다.
+
+`Prismatiscape_SM_LiterallyACube`는 누락된 `/Game/Prismatica/Core/PrisPhysMaterials/*` 의존성을 만들었기 때문에 학습용 C++ actor에서 제거했다. TwoSocket 샘플은 원본 플러그인 reference로만 보고, 프로젝트 temp actor는 Engine cube와 segment component로 endpoint deform을 재현한다.
+
+Character deform는 정지 상태에서 capsule은 생성되어도 velocity가 0이면 RT가 비어 있을 수 있다. 정식 `BP_PrisStudy_CharacterDeformProxy`는 parent C++의 runtime study motion으로 PIE/package smoke에서 자동 이동하도록 구성했다.

@@ -1,0 +1,26 @@
+{
+  "status": "pass",
+  "stages": 54,
+  "negative_guard_requests": 10,
+  "mutation_negative_requests": 8,
+  "readback_calls": 40,
+  "diagnostic_calls": 2,
+  "positive_filter_controls": 2,
+  "all_raw_payloads_match_decoded_results": true,
+  "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\material-fname-guards-L2.json",
+  "source_sha256": "6c16b15f472a21298a87a4370af51c74a5e1350fbf7147840ed561e2c931074b",
+  "synthetic_counterexamples_rejected": {
+    "missing_stage": "missing/reordered/extra stage",
+    "raw_decoded_disagreement": "raw/result mismatch: add_property_name",
+    "dirty_end": "dirty/play/thread invariant failed",
+    "after_state_change": "independent observed state changed: add_property_name:custom"
+  },
+  "engine_or_network_actions": 0,
+  "limitations": [
+    "Disk DLL hash plus diagnostics PID is reported; this offline review does not independently hash a loaded module",
+    "Selected official properties and complete helper node arrays are compared; arbitrary UObject state is outside this observation",
+    "No successful long FString operation or save/reload is established by this rejection report",
+    "Short filter control returns zero rows; it proves accepted safe unknown-name lookup, not a positive matching parameter",
+    "Audit negative package is 1030 UTF-16 units, not an exact 1024 boundary test"
+  ]
+}

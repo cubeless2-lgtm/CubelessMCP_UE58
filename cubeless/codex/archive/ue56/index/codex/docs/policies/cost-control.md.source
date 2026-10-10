@@ -1,0 +1,66 @@
+# Cost Control
+
+## Image And API Billing
+
+- Do not use `OPENAI_API_KEY`, OpenAI Images API calls, or any user-billed API route unless the user explicitly approves that billing route.
+- Built-in image generation may be used when available and allowed by the active session.
+- Local procedural generation may be used for deterministic data textures, UV grids, masks, LUTs, gradients, and validation patterns.
+- For freeform art requests, do not substitute local procedural texture synthesis unless the user explicitly asks for procedural/deterministic output.
+
+## Before Paid Routes
+
+- Explain why the paid route appears necessary.
+- Name the route or tool that would bill the user.
+- Wait for explicit approval scoped to that route.
+
+## Model Routing
+
+- Preserve the user's selected current model and reasoning setting for all task types, including Astra sessions. Do not automatically switch models or reasoning settings based on role or risk; change them only when the user explicitly requests it and the runtime supports it.
+- When delegation is authorized, inherit the parent model and reasoning setting unless the user explicitly requests an override. Do not assume a role name selects a model or that the agent can change its own runtime model.
+- Control cost through narrow reads, useful tool-call batching, bounded delegation, and avoiding duplicate verification. Never weaken validation, evidence, or safety requirements to compensate for model availability; report a material availability limitation.
+
+## Agent Count And Review
+
+- Simple answers, status checks, routine inspection, and a single-file low-risk edit stay with the current agent.
+- For ordinary work, the same agent may plan, implement, and verify without a separate handoff document or agent. Reading a role file does not itself require spawning an agent. Honor an explicit planning-only user request.
+- For ordinary work, spawn at most two subagents, and only for independent subtasks with a concrete quality or elapsed-time benefit. State the reason briefly.
+- For high-risk work, obtain one independent second-eye review of the relevant frozen diff or decision. Additional rereview is required only after a material diff changes the reviewed risk surface.
+- High-risk review triggers include changes to mutation retry/reconciliation, timeout/queue/job/cancel semantics, shared editor lifecycle, C++ ownership/threading/lifetime, approval or dependency enforcement, and destructive operations. State the affected risk before requesting review; routine prose clarification that preserves these boundaries does not itself trigger independent review. Independent review requires a separate reviewer; a same-agent role change is not independent review.
+- Do not split trivial checks, duplicate the same review, or keep agents alive after their independent work is complete.
+
+## Verification Tiers
+
+- These terms govern verification readiness; they do not replace project C++ approval, the MCP API promotion gate, asset dependency audits, or Git authorization.
+- **Iteration:** investigation, edits, failed-check correction, and explicitly unfinished drafts. Saving a file, making a checkpoint commit, or pushing an explicitly identified draft is not by itself a readiness claim. Use the affected focused tier and report remaining checks.
+- **Frozen candidate:** the exact inputs selected for final verification, including relevant unstaged/untracked work. Record their identity before verification and confirm it afterward; HEAD alone does not freeze the working tree. Unrelated concurrent work stays untouched and must not silently enter the candidate.
+- **Promotion:** declaring the candidate ready for use or final handoff, releasing it, or integrating it into `main`/`master`. A final implementation-complete claim counts even without commit/push. Required gates must be satisfied before that claim or integration; a draft label cannot bypass a gate for an actual promotion.
+- A final reply may report incomplete work or a blocked/skipped gate without claiming promotion. Missing required evidence is not a pass, and verification does not itself authorize commit, push, packaging, or an editor lifecycle action.
+
+- **Tier 0 — documentation only:** run focused UTF-8, referenced-path/link, Markdown fence, `git diff --check`, and applicable safety-matrix/self-review checks. Do not run the full Python gate solely because prose changed.
+- **Tier 1 — implementation iteration:** run the explicit focused dispatcher profile and direct unit or smoke check for the affected implementation surface.
+- **Tier 2 — contract affected:** run the affected profile plus the contract, schema, transport, policy, or cross-surface checks that can prove the changed contract. Repeat only the failed or materially affected subset while correcting it.
+- **Tier 3 — promotion:** for implementation, executable workflow/configuration, shared-contract, or explicitly high-risk promotion, obtain a complete passing `full` result for the frozen candidate, either freshly run or validly reused under Evidence Reuse below; also satisfy the affected UE build, live canary, rollback drill, or platform lane required by the release workflow. A pure instruction or documentation-only promotion stays at Tier 0 unless it changes an executable workflow or verification manifest.
+- Release/torture scopes such as long soak, extreme saturation, large restart matrices, or nightly stress run only when the current user request explicitly includes release, nightly, or torture verification. Do not infer that scope from routine implementation or a normal focused check.
+
+## Evidence Reuse
+
+- Reuse requires proven equivalence of the gate's inputs and relevant environment, not merely an unchanged HEAD. A different commit containing the same tested content can reuse evidence; an unchanged commit with edited working-tree files cannot. Disclose the original run and the equivalence basis instead of calling reused evidence a fresh run.
+- Record the command/profile and arguments, exit status, result/log location, original HEAD, candidate scope, and content identity. Use a Git tree identity for a completely committed input set, or a manifest of repository-relative paths, content hashes, and added/deleted status for working-tree inputs. Include relevant unstaged/untracked sources, tests, dispatcher/manifest, dependency locks, configuration, fixtures, and assets; a file-name list or HEAD alone is insufficient.
+- For `full`, identify the complete input set of the profile and shared dependencies. A hash of only edited files does not establish equivalence of the rest. This is evidence validation, not an automatic changed-file/profile-skipping policy.
+- Record relevant environment identity: OS/platform, Python/dependency or compiler versions, UE build identity, target/configuration, feature flags, and fixtures as applicable. For live checks include project, loaded plugin/binary state, editor session, and scene/package state. Do not store secrets. Use repository-relative identifiers; a C:-to-D: relocation alone is neither proof of equivalence nor a reason to rebuild everything.
+- Compare input identity before and after a run. If another process changed a consumed input during verification, reconcile it and rerun the affected gate. Expected generated outputs are not source changes, but identify them separately and check whether a later gate consumes them. Do not claim all work in a dirty checkout was verified when only a bounded candidate was covered.
+- Reuse only passing, sufficiently identified results. Missing fingerprints in older evidence must be supplemented with verifiable records or treated as insufficient for reuse; never invent a snapshot after the fact. Failed, skipped, partial, unavailable, or environment-incompatible results cannot satisfy a required passing gate.
+- Do not rerun unchanged expensive gates just for a newer timestamp. Use the table below after a material change and preserve the final promotion requirements.
+- Cost control never overrides a safety source, No-Go condition, required approval, independent high-risk review, or promotion gate.
+
+## Rerun Decisions
+
+| Change since the recorded run | Required action |
+| --- | --- |
+| Only commit metadata, staging state, branch name, or an identical-content commit changed | Compare complete input identity; reuse if the gate does not consume the changed metadata and the environment is equivalent. Disclose the new HEAD. |
+| Pure prose changed, with no executable/configuration/contract effect | Run Tier 0 for the prose; retain unrelated passing implementation evidence with the scope difference recorded. |
+| Implementation, test, fixture, contract, lockfile, executable configuration, or verification-manifest input changed | Run affected Tier 1/2 checks during iteration. Before promotion, run complete `full` again for the new implementation candidate; focused passes do not patch together an old `full` pass. Rerun any affected build/live/platform gate too. |
+| Only one gate's relevant environment changed | Rerun that gate and gates depending on its results. If the offline profile's relevant environment changed, rerun `full` before implementation promotion. |
+| Editor restart, plugin reload, map/package state change, or a different project/target | Revalidate affected live evidence; a prior session's smoke is not a current-session pass. Reuse unaffected offline evidence only with established equivalence. |
+| Different machine or checkout/engine drive | Verify content, dependency, toolchain, platform, and configuration equivalence. Reuse only portable evidence whose assumptions still hold; run local discovery and any machine/session-sensitive gates. Never label reuse as execution on the new machine. |
+| Inputs changed concurrently, evidence is incomplete, or impact cannot be bounded | Reconcile the candidate, then rerun the gate whose equivalence cannot be established. Uncertain `full` equivalence requires complete `full` at promotion, not a guessed subset. |

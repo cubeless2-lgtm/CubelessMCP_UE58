@@ -1,0 +1,66 @@
+# DensityNoise 텍스처 → Composite → WetMask
+
+2026-09-06. 원본 read-only, 그래프/스크래치/HLSL import 없이 native Texture DI와
+새 scratch HLSL로 작성했다. 프로젝트 C++ 변경과 Study 승격은 하지 않았다.
+
+## 원본에서 확인한 식
+
+```text
+sampleUV = worldOffset*(tile+1)
+           + randomize + uv*aspect*(tile+1) + time*speed*(0.5,1)
+factor = sample.R*amount - amount*0.5 + 1
+```
+
+aspect는 worldOffset에 곱하지 않는다. time 이동은 X/Y 비율이 1:2다.
+tile=-1이면 UV/worldOffset 항만 사라지고 time/randomize는 남는다.
+factor에 clamp/saturate를 추가하지 않는다. 텍스처는 mip0의 R만 사용한다.
+UV에도 frac를 추가하지 않았다. sampler의 주소 모드는 texture/DI 동작이며
+이번 테스트에서 임의 wrap 정책을 만들어 넣지 않았다.
+
+Convert38/43의 실제 Connections를 read-only T3D로 확인했다.
+원본 uasset SHA 불변 `0781e4509d658d7e0107f26d8c62beb36d84e1354f277f4760c206bfe05c9fd7`.
+독립식 vs frozen graph replay 8192건 PASS, 경계 unit7 PASS.
+
+## 통합 후보와 GPU 검증
+
+`/Game/_MCP_Temp/NiagaraGenerated/CFNLDensityNoiseV001/NS_DensityNoise`
+SHA256 `5376f7c3c4840f74c1de74dae6ec5bd9424505ed341f5fad972bb6bc459aec32`.
+이전 Composite/Wet 후보의 수동 NoiseValue 대신 실제 Texture DI 샘플을 사용한다.
+NoiseEnabled=false는 샘플 결과를 최종 density에 적용하지 않는다.
+진단 NoiseRed/NoiseFactor를 더하여 전체 16채널이다.
+
+4×4 transient RGBA16F에 서로 다른 네 사분면 색을 그린 뒤 CPU로 16 texel을 확인했다.
+다섯 UV 지점 × amount 0/1/4, time 이동, tile/worldOffset, randomize/비활성,
+저장된 white texture 기본값 복원까지 총 GPU19건 PASS.
+각 채널 4096 finite, NoiseRed/NoiseFactor/FinalDensity/FinalVX/Y min/max/mean 비교.
+PF_R16F 한 ULP 기준이며 density epsilon 대신 0을 허용하지 않는다.
+UV는 상수 입력이므로 전체 공간의 texture sampling parity는 아니다.
+
+복원된 기본 white texture에서 NoiseRed=1, factor=1.5,
+실제 FinalDensity=.75, FinalVX=-1/64, FinalVY=-2/64를 확인했다.
+본 후보의 frame recurrence는 native ReinitializeSystem 후 같은 인스턴스
+Age61→123→185에서 검사했다. density=.75가 들어간 WetMask 누적 구간 PASS.
+단순 sampler 출력이 아니라 실제 최종 밀도와 WetMask까지 연결한 증거다.
+가변 texture 입력 변경 중의 전체 WetMask history는 이번 검증 범위가 아니다.
+
+compile error/warning0, GPU UpToDate, unknown2/outstanding false.
+MCP disabled NullRHI cold-load 1/1 PASS. cook/package 증거는 아니다.
+saved hash 불변, source/MCP dependency와 dirty audit PASS.
+
+## 증거 / 다음 작업
+
+- analyze_cube_fluid_ninja_density_noise.py, test_cube_fluid_ninja_density_noise.py.
+- 기존 collision builder의 모든 통합 옵션 + --density-texture (fresh-only).
+- verify_cube_fluid_ninja_density_noise.py.
+- verify_cube_fluid_ninja_wet_feedback.py --composite --density-noise.
+- Saved SetParams `20260906_density_noise_*`와 AssetReviews/CFNL_DensityNoise_20260906_v001.
+
+현재 preview는 이 DensityNoise 후보 기본 입력으로 실행 중이다.
+Pressure는 여전히 analytic fixture이고 이전 density/brush/field 등 일부 입력은
+명시적인 외부 값이다. 실제 전체 Solver/Painter/host/레벨 구현은 미완료다.
+이 후보를 영구 asset ledger나 완료 레벨에 추가하지 않는다.
+
+최종 frozen checkpoint full offline39/39 PASS(exit0), 관련 py_compile PASS,
+DensityNoise unit7/WetMask unit6 재실행 PASS.
+다음 VelocityDirectionalNoise는 좌표를 128 및 .5/size로 변환하고 시간 축을 더한
+3D noise 함수 선택 경로다. DensityNoise texture 방식으로 대체하지 않는다.

@@ -1,0 +1,75 @@
+# ControlRig Stable Authoring Phase 7 Contract
+
+Date: 2026-06-30
+
+`Python/scripts/analysis/controlrig_stable_authoring_phase7_contract.py` is a
+filesystem-only guard for the sampleless solver intent validation boundary. It
+does not launch Unreal Editor, build C++, create ControlRig assets, add RigVM
+solver units, compile, save, or run direct solve proof.
+
+## Command
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase7_contract.py
+```
+
+Optional JSON output:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase7_contract.py --json
+```
+
+## Checks
+
+- The design, tools, execution-plan, handoff, and release docs keep
+  `validate_controlrig_solver_intents`, `validation-only`,
+  `validation_only_no_sample`, `FRigUnit_TwoBoneIKSimplePerItem`,
+  `requires_sample_live_proof`, `build_allowed=false`, and
+  `asset_mutation_allowed=false` visible.
+- `controlrig_authoring_tools.py` exposes the Python wrapper, the
+  `include_solver_intents` compiler option, `adds_solver_units=false`
+  evidence, and dispatches validation to the UnrealMCP native bridge.
+- `UnrealMCPBridge.cpp` routes `validate_controlrig_solver_intents` to
+  `UnrealMCPBlueprintNodeCommands`.
+- `UnrealMCPBlueprintNodeCommands.h/.cpp` expose
+  `HandleValidateControlRigSolverIntents` as a validation-only native handler
+  with no asset load, save, compile, RigVM writer, or authoring module call.
+- `mcp_tool_parity_audit.py` must not keep `validate_controlrig_solver_intents`
+  as a Python-only exception.
+- `controlrig_animbp_mcp_surface_audit.py` tracks the tool in the Python,
+  docs, bridge dispatch, node handler, and node header surfaces.
+- `smoke_controlrig_solver_intent_native_bridge.py` remains an optional
+  pure-JSON live bridge smoke with `--require-bridge`, clean skip evidence,
+  `asset_mutation_allowed=false`, `solver_units_added=false`, and blocked
+  save/materialized-solver checks.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` does not contain a
+  static dependency string for `UnrealMCPControlRigToolsEditor` or
+  `UnrealMCPControlRigToolsEditor`.
+
+## Explicitly Excluded
+
+- Unreal Editor launch.
+- Live MCP bridge calls.
+- UnrealBuildTool C++ build.
+- ControlRig or AnimBP asset mutation.
+- RigVM solver unit authoring.
+- Direct solve proof.
+- Original asset mutation.
+- `asset_mutation` is skipped by this filesystem-only contract.
+
+## Current Verification
+
+2026-06-30:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase7_contract.py --json
+```
+
+Result: passed with `issue_count=0`; `unreal_editor`, `cpp_build`,
+`asset_mutation`, `live_sample`, and `solver_build` were skipped.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase7_contract.py
+```
+
+Result: passed, 5 tests.

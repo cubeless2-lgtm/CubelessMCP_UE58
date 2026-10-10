@@ -1,0 +1,60 @@
+# 레벨 카드: `Water_Dense_Rain`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/Water_Dense_Rain` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Dense_Rain` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `51` |
+| Direct external | `9` |
+
+## 정적 의미
+
+- **Observed:** 단일 2048² dense host가 MDF+height+data-channel readers와 painter/velocity/pressure outputs를 켜고, rain linear writer와 surface-aligned particle output을 한 station에 둔다.
+- **Inferred:** dense rain particle input이 wet surface와 water simulation/output에 미치는 결합을 고립한 fixture다.
+- **Unknown:** rain spawn rate, droplet-to-channel write, splash/foam/normal timing, 실제 visual/performance.
+- **Target fixture:** `TF_WaterDense_Rain` 제안.
+
+## Actor / Component
+
+- manifest=`58 actors / 83 components / 6 pages`.
+- actor histogram: `StaticMeshActor=39; TextRenderActor=5; PostProcessVolume=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; LandscapeGizmoActiveActor=1; NiagaraActor=1; NinjaLive_C=1; PawnAndCameraUtility_C=1; PointLight=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; Water_Dense_Rain_C=1`.
+- component histogram: `StaticMeshComponent=39; BillboardComponent=9; TextRenderComponent=5; ArrowComponent=4; BrushComponent=3; BoxComponent=2; MaterialBillboardComponent=2; NiagaraComponent=2; SceneComponent=2; CameraComponent=1; CameraProxyMeshComponent=1; CapsuleComponent=1; CharacterMovementComponent=1; DirectionalLightComponent=1; DrawFrustumComponent=1; ExponentialHeightFogComponent=1; InterpToMovementComponent=1; LandscapeGizmoRenderComponent=1; NinjaLiveComponent_C=1; PointLightComponent=1; SkeletalMeshComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1; SpringArmComponent=1`.
+- sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`3 nodes / 0 links / 20 variables / 0 errors`; BeginPlay/EndPlay/Tick events에 연결이 없어 runtime orchestration은 component config가 담당한다.
+- host=`2048²`, extent=`40/40/2`, reader=`TTFTT`, PVD=`TTT`; core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`, internal volume/SimplePainter off.
+- selected=`MI_WetTestDark2`, `MI_Water_DENSE_Rain`; frame별 rain/channel/surface 순서는 runtime `pending`.
+
+## Niagara
+
+- standalone `NS_WriteDataCh_GPU_Source_Linear` 1개는 auto=true, `SurfaceAlignedParticles` 1개는 auto=false.
+- frozen captures: `NS_WriteDataCh_GPU_Source_Linear=79 nodes / 95 links / 25 modules / 1 renderer / 0 scratch`; `SurfaceAlignedParticles=363/562 / 150 modules / 2 renderers / 0 scratch`; warning/error 0.
+
+## Material / Art
+
+- material refs=`17`, art refs=`10`; wet surface와 dense-rain water가 핵심 family다.
+- rain/wet textures와 mesh/Landscape data만 조건부 art-localization 후보이며 writer, surface-particle modules와 water materials는 독립 작성한다.
+
+## Clean-room 구현 순서
+
+1. 2048² host와 deterministic flat wet-surface fixture를 만든다.
+2. rain writer의 spawn-to-data-channel contract를 독립 구현한다.
+3. dense solver output과 새 surface-aligned splash/particle system을 연결한다.
+4. rain rate/splash timing, no-source/no-MCP, runtime/visual/performance parity를 측정한다.
+
+## Evidence / Parity / Exception
+
+- revision=`0a5231887a53d6d8583fc118c84c8755`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; art/Landscape data만 조건부 localization 후보다.

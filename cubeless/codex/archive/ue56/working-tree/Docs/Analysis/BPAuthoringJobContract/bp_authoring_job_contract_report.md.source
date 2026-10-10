@@ -1,0 +1,2595 @@
+# BP Authoring Job Contract
+
+- Generated UTC: `2026-06-28T17:18:09.846973+00:00`
+- Manifest version: `section_58_bp_authoring_job_contract_v36`
+- Temp package path: `/Game/_MCP_Temp/PlannerDrivenSmoke`
+- Manifests: `23`
+- Executable manifests: `16`
+- Non-executable manifests: `7`
+- Non-safe authoring command count: `0`
+- Structural assertions: `201`
+- Component default contracts: `7`
+- Component hierarchy contracts: `1`
+- Component property contracts: `1`
+- Function call contracts: `4`
+- Graph layout contracts: `38`
+- Graph layout spacing contracts: `54`
+- Anim authoring steps: `3`
+- Anim validation steps: `2`
+- Durable authoring requests: `1`
+- Durable authoring eligible: `0`
+- Durable preflight requests: `1`
+- Durable preflight pass: `0`
+- Durable overwrite/rename decision required: `1`
+- Durable overwrite/rename decision present: `0`
+- Durable overwrite/rename decision conflicts: `0`
+- Durable save gate requests: `1`
+- Durable save allowed: `0`
+- Durable rollback policy ready: `0`
+- Durable executor readiness requests: `1`
+- Durable executor ready: `0`
+- Durable executor skeleton requests: `1`
+- Durable executor skeleton enabled: `0`
+- Durable executor skeleton executable: `0`
+- Durable executor skeleton command count: `0`
+- Durable ownership marker requests: `1`
+- Durable ownership marker policy ready: `1`
+- Durable delete without marker allowed: `0`
+- Durable delete preexisting asset allowed: `0`
+- Durable dry-run plan requests: `1`
+- Durable dry-run plan created: `1`
+- Durable dry-run plan valid: `1`
+- Durable dry-run executor may execute: `0`
+- Durable dry-run live command count: `0`
+- Durable save simulation requests: `1`
+- Durable save simulation evaluated: `1`
+- Durable save simulation conditions satisfied: `0`
+- Durable save simulation save=true allowed: `0`
+- Durable save simulation save_asset allowed: `0`
+- Durable save simulation live command count: `0`
+- Durable canary prep requests: `1`
+- Durable canary prep ready: `1`
+- Durable canary live execution allowed: `0`
+- Durable canary general Blueprints package allowed: `0`
+- Durable canary approval gates passed: `1`
+- Durable canary executor may open: `0`
+- Durable canary approval live execution allowed: `0`
+- Durable canary live preflight read-only allowed: `1`
+- Durable canary live preflight execution allowed: `0`
+- Durable canary bridge refresh required: `1`
+- Durable canary bridge refresh satisfied: `0`
+- Durable canary bridge refresh executor may open: `0`
+- Durable canary recovery matrix ready: `1`
+- Durable canary recovery scenarios: `6`
+- Durable canary recovery cleanup commands allowed: `0`
+- Durable enable contract requests: `1`
+- Durable enable contract satisfied: `0`
+- Durable enable executor may open: `0`
+- Durable enable forbidden command allowed: `0`
+- Durable enable failed required gates: `2`
+- Durable enable target allowlist passed: `1`
+- Durable enable overwrite/rename passed: `0`
+- Durable enable rollback readiness passed: `0`
+- Durable enable ownership marker passed: `1`
+
+## Status Counts
+
+- `safe_to_author`: 19
+- `requires_review`: 1
+- `blocked_until_reinforced`: 3
+
+## Manifests
+
+### safe_actor_shell
+
+- Request: Create an Actor Blueprint shell with a Static Mesh Component, exposed health variable, BeginPlay event, and branch.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- `component_primary` `add_component_to_blueprint`
+
+Component defaults:
+- none
+
+Component default contracts:
+- `component_primary_defaults_contract` `component_default_contract`
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- `variable_health` `add_blueprint_variable`
+
+Event graph steps:
+- `receive_begin_play` `add_blueprint_event_node`
+- `branch` `add_blueprint_branch_node`
+- `branch_condition_default` `set_pin_default`
+- `begin_play_to_branch` `connect`
+
+Function graph steps:
+- `function_graph_scope` `contract_note`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `receive_begin_play_layout` `graph_layout_contract`
+- `branch_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `receive_begin_play_to_branch_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `component_primary_defaults_verified` `assert_component_default`
+- `variable_health_default_verified` `assert_variable_default`
+
+Structural validation plan:
+- `receive_begin_play_node_exists` `assert_node_exists`
+- `branch_node_exists` `assert_node_exists`
+- `branch_condition_default_default_verified` `assert_pin_default`
+- `begin_play_to_branch_link_verified` `assert_pin_link`
+- `receive_begin_play_layout_verified` `assert_node_layout`
+- `branch_layout_verified` `assert_node_layout`
+- `receive_begin_play_to_branch_spacing_verified` `assert_layout_spacing`
+
+### safe_function_call_defaults
+
+- Request: Create an Actor Blueprint shell with a Static Mesh Component using the Engine cube mesh, float speed variable default 450, BeginPlay branch, and PrintString function call.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- `component_primary` `add_component_to_blueprint`
+
+Component defaults:
+- `component_static_mesh_default` `set_static_mesh_properties`
+
+Component default contracts:
+- `component_primary_defaults_contract` `component_default_contract`
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- `variable_speed` `add_blueprint_variable`
+
+Event graph steps:
+- `receive_begin_play` `add_blueprint_event_node`
+- `branch` `add_blueprint_branch_node`
+- `branch_condition_default` `set_pin_default`
+- `begin_play_to_branch` `connect`
+- `print_string_call` `add_blueprint_call_function_node`
+- `branch_true_to_print_string` `connect`
+
+Function graph steps:
+- `function_call_authored_in_event_graph` `contract_note`
+
+Function call contracts:
+- `print_string_call_contract` `function_call_contract`
+
+Graph layout contracts:
+- `receive_begin_play_layout` `graph_layout_contract`
+- `branch_layout` `graph_layout_contract`
+- `print_string_call_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `receive_begin_play_to_branch_spacing` `graph_layout_spacing_contract`
+- `receive_begin_play_to_print_string_call_spacing` `graph_layout_spacing_contract`
+- `branch_to_print_string_call_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `component_primary_defaults_verified` `assert_component_default`
+- `variable_speed_default_verified` `assert_variable_default`
+
+Structural validation plan:
+- `receive_begin_play_node_exists` `assert_node_exists`
+- `branch_node_exists` `assert_node_exists`
+- `branch_condition_default_default_verified` `assert_pin_default`
+- `begin_play_to_branch_link_verified` `assert_pin_link`
+- `print_string_call_node_exists` `assert_node_exists`
+- `print_string_call_instring_default_verified` `assert_pin_default`
+- `branch_true_to_print_string_link_verified` `assert_pin_link`
+- `print_string_call_contract_verified` `assert_function_call_contract`
+- `receive_begin_play_layout_verified` `assert_node_layout`
+- `branch_layout_verified` `assert_node_layout`
+- `print_string_call_layout_verified` `assert_node_layout`
+- `receive_begin_play_to_branch_spacing_verified` `assert_layout_spacing`
+- `receive_begin_play_to_print_string_call_spacing_verified` `assert_layout_spacing`
+- `branch_to_print_string_call_spacing_verified` `assert_layout_spacing`
+
+### safe_component_hierarchy
+
+- Request: Create an Actor Blueprint shell with a Scene Component root named PlannerSmokeRoot and a child Static Mesh Component named PlannerSmokeMesh attached to PlannerSmokeRoot, plus BeginPlay branch.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- `component_root` `add_component_to_blueprint`
+- `component_child_mesh` `add_component_to_blueprint`
+
+Component defaults:
+- none
+
+Component default contracts:
+- `component_root_defaults_contract` `component_default_contract`
+- `component_child_mesh_defaults_contract` `component_default_contract`
+
+Component hierarchy contracts:
+- `component_child_mesh_hierarchy_contract` `component_hierarchy_contract`
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- `receive_begin_play` `add_blueprint_event_node`
+- `branch` `add_blueprint_branch_node`
+- `branch_condition_default` `set_pin_default`
+- `begin_play_to_branch` `connect`
+
+Function graph steps:
+- `function_graph_scope` `contract_note`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `receive_begin_play_layout` `graph_layout_contract`
+- `branch_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `receive_begin_play_to_branch_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `component_root_defaults_verified` `assert_component_default`
+- `component_child_mesh_defaults_verified` `assert_component_default`
+- `component_child_mesh_hierarchy_verified` `assert_component_hierarchy`
+
+Structural validation plan:
+- `receive_begin_play_node_exists` `assert_node_exists`
+- `branch_node_exists` `assert_node_exists`
+- `branch_condition_default_default_verified` `assert_pin_default`
+- `begin_play_to_branch_link_verified` `assert_pin_link`
+- `receive_begin_play_layout_verified` `assert_node_layout`
+- `branch_layout_verified` `assert_node_layout`
+- `receive_begin_play_to_branch_spacing_verified` `assert_layout_spacing`
+
+### safe_component_property_defaults
+
+- Request: Create an Actor Blueprint shell with a Static Mesh Component visibility false and BeginPlay branch.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- `component_primary` `add_component_to_blueprint`
+
+Component defaults:
+- `component_visibility_default` `set_component_property`
+
+Component default contracts:
+- `component_primary_defaults_contract` `component_default_contract`
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- `component_visibility_default_contract` `component_property_contract`
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- `receive_begin_play` `add_blueprint_event_node`
+- `branch` `add_blueprint_branch_node`
+- `branch_condition_default` `set_pin_default`
+- `begin_play_to_branch` `connect`
+
+Function graph steps:
+- `function_graph_scope` `contract_note`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `receive_begin_play_layout` `graph_layout_contract`
+- `branch_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `receive_begin_play_to_branch_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `component_primary_defaults_verified` `assert_component_default`
+- `component_visibility_default_property_verified` `assert_component_property`
+
+Structural validation plan:
+- `receive_begin_play_node_exists` `assert_node_exists`
+- `branch_node_exists` `assert_node_exists`
+- `branch_condition_default_default_verified` `assert_pin_default`
+- `begin_play_to_branch_link_verified` `assert_pin_link`
+- `receive_begin_play_layout_verified` `assert_node_layout`
+- `branch_layout_verified` `assert_node_layout`
+- `receive_begin_play_to_branch_spacing_verified` `assert_layout_spacing`
+
+### review_component_property_unsupported
+
+- Request: Create an Actor Blueprint shell with a Static Mesh Component component property CastShadow false.
+- Planner status: `safe_to_author`
+- Executable: `False`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `requires_review` `contract_unsupported_component_property`: Component property authoring is executable only for allowlisted properties with post-authoring introspection.
+
+### review_parent_class_unsupported
+
+- Request: Create a Character Blueprint shell with a Static Mesh Component and BeginPlay branch.
+- Planner status: `safe_to_author`
+- Executable: `False`
+- Blueprint kind: `character_blueprint`
+- Parent class: `Character`
+- Parent class executable allowed: `False`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `requires_review` `contract_unsupported_parent_class`: Parent class `Character` for `character_blueprint` is not in the Section 31 executable allowlist.
+
+### review_durable_authoring_save_requested
+
+- Request: Create and save a durable Actor Blueprint named BP_PlannerDurable in /Game/Blueprints with a Static Mesh Component and BeginPlay branch.
+- Planner status: `safe_to_author`
+- Executable: `False`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `True`
+- Durable eligible: `False`
+- Durable package path: `/Game/Blueprints`
+- Durable save allowed: `False`
+- Durable preflight target: `/Game/Blueprints/BP_PlannerDurable`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `missing`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `True`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `True`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `blocked`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `True`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `True`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `True`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `True`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `overwrite_rename_decision, rollback_readiness`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `requires_review` `contract_durable_executor_not_enabled`: The request asks for a saved or durable Blueprint asset, but Section 51 only separates the durable enable conditions. Dry-run durable preflight, read-only live asset-exists checking, target allowlist, overwrite/rename decision classification, save-gate/rollback policy drafting, executor-readiness checking, ownership-marker readiness, a disabled durable executor skeleton, and temporary-smoke execution with save=false are allowed; durable save execution remains disabled.
+
+### safe_function_graph_authoring
+
+- Request: Create an Actor Blueprint shell with a function graph named ComputePlannerValue, int input InputValue default 3, int output ResultValue default 7, and a return node.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- `resolve_function_graph` `resolve_blueprint_graph`
+- `function_input_value` `add_blueprint_function_parameter`
+- `function_output_value` `add_blueprint_function_parameter`
+- `function_return_node` `add_blueprint_return_node`
+- `function_return_default` `set_pin_default`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `function_return_node_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_function_nodes` `list_blueprint_nodes`
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+
+Structural validation plan:
+- `resolve_function_graph_graph_resolved` `assert_graph_resolved`
+- `function_input_value_node_exists` `assert_node_exists`
+- `function_output_value_node_exists` `assert_node_exists`
+- `function_return_node_node_exists` `assert_node_exists`
+- `function_return_default_default_verified` `assert_pin_default`
+- `function_return_node_layout_verified` `assert_node_layout`
+
+### safe_function_graph_body_math
+
+- Request: Create an Actor Blueprint shell with a function graph named ComputePlannerBody, double local variable LocalValue default 5, an add math node using LocalValue plus 2, double output ResultValue, connect the math result to the return node, and compile.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- `resolve_function_graph` `resolve_blueprint_graph`
+- `function_output_value` `add_blueprint_function_parameter`
+- `function_local_value` `add_blueprint_local_variable`
+- `local_value_get` `add_blueprint_variable_get_node`
+- `math_add_node` `add_blueprint_math_node`
+- `math_add_rhs_default` `set_pin_default`
+- `local_value_to_math_add` `connect`
+- `function_return_node` `add_blueprint_return_node`
+- `math_result_to_return` `connect`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `local_value_get_layout` `graph_layout_contract`
+- `math_add_node_layout` `graph_layout_contract`
+- `function_return_node_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `local_value_get_to_math_add_node_spacing` `graph_layout_spacing_contract`
+- `local_value_get_to_function_return_node_spacing` `graph_layout_spacing_contract`
+- `math_add_node_to_function_return_node_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_function_nodes` `list_blueprint_nodes`
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+
+Structural validation plan:
+- `resolve_function_graph_graph_resolved` `assert_graph_resolved`
+- `function_output_value_node_exists` `assert_node_exists`
+- `local_value_get_node_exists` `assert_node_exists`
+- `math_add_node_node_exists` `assert_node_exists`
+- `math_add_rhs_default_default_verified` `assert_pin_default`
+- `local_value_to_math_add_link_verified` `assert_pin_link`
+- `function_return_node_node_exists` `assert_node_exists`
+- `math_result_to_return_link_verified` `assert_pin_link`
+- `local_value_get_layout_verified` `assert_node_layout`
+- `math_add_node_layout_verified` `assert_node_layout`
+- `function_return_node_layout_verified` `assert_node_layout`
+- `local_value_get_to_math_add_node_spacing_verified` `assert_layout_spacing`
+- `local_value_get_to_function_return_node_spacing_verified` `assert_layout_spacing`
+- `math_add_node_to_function_return_node_spacing_verified` `assert_layout_spacing`
+
+### safe_function_graph_local_set
+
+- Request: Create an Actor Blueprint shell with a function graph named ComputePlannerLocalSet, double input InputValue default 3, double local variable AccumulatedValue default 0, add 2 to InputValue, set AccumulatedValue from the math result, then return AccumulatedValue as ResultValue.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- `resolve_function_graph` `resolve_blueprint_graph`
+- `function_input_value` `add_blueprint_function_parameter`
+- `function_output_value` `add_blueprint_function_parameter`
+- `function_local_accumulated_value` `add_blueprint_local_variable`
+- `pre_local_set_compile` `compile_and_validate_blueprint`
+- `math_add_node` `add_blueprint_math_node`
+- `math_add_rhs_default` `set_pin_default`
+- `local_value_set` `add_blueprint_variable_set_node`
+- `input_value_to_math_add` `connect`
+- `math_result_to_local_value_set` `connect`
+- `function_entry_to_local_value_set` `connect`
+- `local_value_set_to_return_exec` `connect`
+- `local_value_set_output_to_return` `connect`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `math_add_node_layout` `graph_layout_contract`
+- `local_value_set_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `math_add_node_to_local_value_set_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_function_nodes` `list_blueprint_nodes`
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+
+Structural validation plan:
+- `resolve_function_graph_graph_resolved` `assert_graph_resolved`
+- `function_input_value_node_exists` `assert_node_exists`
+- `function_output_value_node_exists` `assert_node_exists`
+- `math_add_node_node_exists` `assert_node_exists`
+- `math_add_rhs_default_default_verified` `assert_pin_default`
+- `local_value_set_node_exists` `assert_node_exists`
+- `input_value_to_math_add_link_verified` `assert_pin_link`
+- `math_result_to_local_value_set_link_verified` `assert_pin_link`
+- `function_entry_to_local_value_set_link_verified` `assert_pin_link`
+- `local_value_set_to_return_exec_link_verified` `assert_pin_link`
+- `local_value_set_output_to_return_link_verified` `assert_pin_link`
+- `math_add_node_layout_verified` `assert_node_layout`
+- `local_value_set_layout_verified` `assert_node_layout`
+- `math_add_node_to_local_value_set_spacing_verified` `assert_layout_spacing`
+
+### safe_function_graph_compare_branch
+
+- Request: Create an Actor Blueprint shell with a function graph named ComputePlannerBranch, double input InputValue default 3, double output ResultValue default 0, double local variable BranchResult default 0, compare InputValue greater than 10, branch on the comparison, set BranchResult to 1 on then and -1 on else, then return BranchResult as ResultValue.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- `resolve_function_graph` `resolve_blueprint_graph`
+- `function_input_value` `add_blueprint_function_parameter`
+- `function_output_value` `add_blueprint_function_parameter`
+- `function_local_branch_result` `add_blueprint_local_variable`
+- `pre_compare_branch_compile` `compile_and_validate_blueprint`
+- `compare_greater_node` `add_blueprint_compare_node`
+- `compare_threshold_default` `set_pin_default`
+- `branch_node` `add_blueprint_branch_node`
+- `branch_then_value_set` `add_blueprint_variable_set_node`
+- `branch_then_value_default` `set_pin_default`
+- `branch_else_value_set` `add_blueprint_variable_set_node`
+- `branch_else_value_default` `set_pin_default`
+- `branch_result_get` `add_blueprint_variable_get_node`
+- `input_value_to_compare` `connect`
+- `compare_result_to_branch` `connect`
+- `function_entry_to_branch` `connect`
+- `branch_then_to_value_set` `connect`
+- `branch_else_to_value_set` `connect`
+- `branch_then_set_to_return_exec` `connect`
+- `branch_else_set_to_return_exec` `connect`
+- `branch_result_to_return` `connect`
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `compare_greater_node_layout` `graph_layout_contract`
+- `branch_node_layout` `graph_layout_contract`
+- `branch_then_value_set_layout` `graph_layout_contract`
+- `branch_else_value_set_layout` `graph_layout_contract`
+- `branch_result_get_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `compare_greater_node_to_branch_node_spacing` `graph_layout_spacing_contract`
+- `compare_greater_node_to_branch_then_value_set_spacing` `graph_layout_spacing_contract`
+- `compare_greater_node_to_branch_else_value_set_spacing` `graph_layout_spacing_contract`
+- `compare_greater_node_to_branch_result_get_spacing` `graph_layout_spacing_contract`
+- `branch_node_to_branch_then_value_set_spacing` `graph_layout_spacing_contract`
+- `branch_node_to_branch_else_value_set_spacing` `graph_layout_spacing_contract`
+- `branch_node_to_branch_result_get_spacing` `graph_layout_spacing_contract`
+- `branch_then_value_set_to_branch_else_value_set_spacing` `graph_layout_spacing_contract`
+- `branch_then_value_set_to_branch_result_get_spacing` `graph_layout_spacing_contract`
+- `branch_else_value_set_to_branch_result_get_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_function_nodes` `list_blueprint_nodes`
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+
+Structural validation plan:
+- `resolve_function_graph_graph_resolved` `assert_graph_resolved`
+- `function_input_value_node_exists` `assert_node_exists`
+- `function_output_value_node_exists` `assert_node_exists`
+- `compare_greater_node_node_exists` `assert_node_exists`
+- `compare_threshold_default_default_verified` `assert_pin_default`
+- `branch_node_node_exists` `assert_node_exists`
+- `branch_then_value_set_node_exists` `assert_node_exists`
+- `branch_then_value_default_default_verified` `assert_pin_default`
+- `branch_else_value_set_node_exists` `assert_node_exists`
+- `branch_else_value_default_default_verified` `assert_pin_default`
+- `branch_result_get_node_exists` `assert_node_exists`
+- `input_value_to_compare_link_verified` `assert_pin_link`
+- `compare_result_to_branch_link_verified` `assert_pin_link`
+- `function_entry_to_branch_link_verified` `assert_pin_link`
+- `branch_then_to_value_set_link_verified` `assert_pin_link`
+- `branch_else_to_value_set_link_verified` `assert_pin_link`
+- `branch_then_set_to_return_exec_link_verified` `assert_pin_link`
+- `branch_else_set_to_return_exec_link_verified` `assert_pin_link`
+- `branch_result_to_return_link_verified` `assert_pin_link`
+- `compare_greater_node_layout_verified` `assert_node_layout`
+- `branch_node_layout_verified` `assert_node_layout`
+- `branch_then_value_set_layout_verified` `assert_node_layout`
+- `branch_else_value_set_layout_verified` `assert_node_layout`
+- `branch_result_get_layout_verified` `assert_node_layout`
+- `compare_greater_node_to_branch_node_spacing_verified` `assert_layout_spacing`
+- `compare_greater_node_to_branch_then_value_set_spacing_verified` `assert_layout_spacing`
+- `compare_greater_node_to_branch_else_value_set_spacing_verified` `assert_layout_spacing`
+- `compare_greater_node_to_branch_result_get_spacing_verified` `assert_layout_spacing`
+- `branch_node_to_branch_then_value_set_spacing_verified` `assert_layout_spacing`
+- `branch_node_to_branch_else_value_set_spacing_verified` `assert_layout_spacing`
+- `branch_node_to_branch_result_get_spacing_verified` `assert_layout_spacing`
+- `branch_then_value_set_to_branch_else_value_set_spacing_verified` `assert_layout_spacing`
+- `branch_then_value_set_to_branch_result_get_spacing_verified` `assert_layout_spacing`
+- `branch_else_value_set_to_branch_result_get_spacing_verified` `assert_layout_spacing`
+
+### safe_typed_variables_defaults
+
+- Request: Create an Actor Blueprint shell with a Scene Component transform default, bool variable bPlannerEnabled default true, string variable PlannerLabel default Section22, and vector variable PlannerOffset default X=10 Y=20 Z=30.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- `component_primary` `add_component_to_blueprint`
+
+Component defaults:
+- none
+
+Component default contracts:
+- `component_primary_defaults_contract` `component_default_contract`
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- `variable_planner_enabled` `add_blueprint_variable`
+- `variable_planner_label` `add_blueprint_variable`
+- `variable_planner_offset` `add_blueprint_variable`
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `component_primary_defaults_verified` `assert_component_default`
+- `variable_planner_enabled_default_verified` `assert_variable_default`
+- `variable_planner_label_default_verified` `assert_variable_default`
+- `variable_planner_offset_default_verified` `assert_variable_default`
+
+Structural validation plan:
+- none
+
+### safe_event_sequence_flow
+
+- Request: Create an Actor Blueprint shell with BeginPlay, a Sequence node with two outputs, and two PrintString calls for the first and second sequence outputs.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- `receive_begin_play` `add_blueprint_event_node`
+- `sequence_node` `add_blueprint_sequence_node`
+- `begin_play_to_sequence` `connect`
+- `sequence_first_print_string` `add_blueprint_call_function_node`
+- `sequence_second_print_string` `add_blueprint_call_function_node`
+- `sequence_then_0_to_first_print` `connect`
+- `sequence_then_1_to_second_print` `connect`
+
+Function graph steps:
+- `function_graph_scope` `contract_note`
+
+Function call contracts:
+- `sequence_first_print_string_contract` `function_call_contract`
+- `sequence_second_print_string_contract` `function_call_contract`
+
+Graph layout contracts:
+- `receive_begin_play_layout` `graph_layout_contract`
+- `sequence_node_layout` `graph_layout_contract`
+- `sequence_first_print_string_layout` `graph_layout_contract`
+- `sequence_second_print_string_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `receive_begin_play_to_sequence_node_spacing` `graph_layout_spacing_contract`
+- `receive_begin_play_to_sequence_first_print_string_spacing` `graph_layout_spacing_contract`
+- `receive_begin_play_to_sequence_second_print_string_spacing` `graph_layout_spacing_contract`
+- `sequence_node_to_sequence_first_print_string_spacing` `graph_layout_spacing_contract`
+- `sequence_node_to_sequence_second_print_string_spacing` `graph_layout_spacing_contract`
+- `sequence_first_print_string_to_sequence_second_print_string_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+
+Structural validation plan:
+- `receive_begin_play_node_exists` `assert_node_exists`
+- `sequence_node_node_exists` `assert_node_exists`
+- `sequence_node_output_count_verified` `assert_exec_pin_count`
+- `begin_play_to_sequence_link_verified` `assert_pin_link`
+- `sequence_first_print_string_node_exists` `assert_node_exists`
+- `sequence_first_print_string_instring_default_verified` `assert_pin_default`
+- `sequence_second_print_string_node_exists` `assert_node_exists`
+- `sequence_second_print_string_instring_default_verified` `assert_pin_default`
+- `sequence_then_0_to_first_print_link_verified` `assert_pin_link`
+- `sequence_then_1_to_second_print_link_verified` `assert_pin_link`
+- `sequence_first_print_string_contract_verified` `assert_function_call_contract`
+- `sequence_second_print_string_contract_verified` `assert_function_call_contract`
+- `receive_begin_play_layout_verified` `assert_node_layout`
+- `sequence_node_layout_verified` `assert_node_layout`
+- `sequence_first_print_string_layout_verified` `assert_node_layout`
+- `sequence_second_print_string_layout_verified` `assert_node_layout`
+- `receive_begin_play_to_sequence_node_spacing_verified` `assert_layout_spacing`
+- `receive_begin_play_to_sequence_first_print_string_spacing_verified` `assert_layout_spacing`
+- `receive_begin_play_to_sequence_second_print_string_spacing_verified` `assert_layout_spacing`
+- `sequence_node_to_sequence_first_print_string_spacing_verified` `assert_layout_spacing`
+- `sequence_node_to_sequence_second_print_string_spacing_verified` `assert_layout_spacing`
+- `sequence_first_print_string_to_sequence_second_print_string_spacing_verified` `assert_layout_spacing`
+
+### safe_generated_function_invocation
+
+- Request: Create an Actor Blueprint shell with BeginPlay, a function graph named ComputePlannerInvocation, double input AddendValue default 2, double local variable LocalValue default 5, an add math node returning ResultValue, then call the generated function from BeginPlay with AddendValue default 2 and store the ResultValue output in double variable LastInvocationResult default 0.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- `variable_last_invocation_result` `add_blueprint_variable`
+
+Event graph steps:
+- `receive_begin_play` `add_blueprint_event_node`
+- `branch` `add_blueprint_branch_node`
+- `branch_condition_default` `set_pin_default`
+- `begin_play_to_branch` `connect`
+
+Function graph steps:
+- `resolve_function_graph` `resolve_blueprint_graph`
+- `function_input_addend` `add_blueprint_function_parameter`
+- `function_output_value` `add_blueprint_function_parameter`
+- `function_local_value` `add_blueprint_local_variable`
+- `local_value_get` `add_blueprint_variable_get_node`
+- `math_add_node` `add_blueprint_math_node`
+- `local_value_to_math_add` `connect`
+- `input_addend_to_math_add` `connect`
+- `function_return_node` `add_blueprint_return_node`
+- `math_result_to_return` `connect`
+
+Function call contracts:
+- `generated_function_call_contract` `function_call_contract`
+
+Graph layout contracts:
+- `receive_begin_play_layout` `graph_layout_contract`
+- `branch_layout` `graph_layout_contract`
+- `local_value_get_layout` `graph_layout_contract`
+- `math_add_node_layout` `graph_layout_contract`
+- `function_return_node_layout` `graph_layout_contract`
+- `generated_function_call_layout` `graph_layout_contract`
+- `event_graph_self_reference_layout` `graph_layout_contract`
+- `last_invocation_result_set_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `receive_begin_play_to_branch_spacing` `graph_layout_spacing_contract`
+- `receive_begin_play_to_generated_function_call_spacing` `graph_layout_spacing_contract`
+- `receive_begin_play_to_event_graph_self_reference_spacing` `graph_layout_spacing_contract`
+- `receive_begin_play_to_last_invocation_result_set_spacing` `graph_layout_spacing_contract`
+- `branch_to_generated_function_call_spacing` `graph_layout_spacing_contract`
+- `branch_to_event_graph_self_reference_spacing` `graph_layout_spacing_contract`
+- `branch_to_last_invocation_result_set_spacing` `graph_layout_spacing_contract`
+- `generated_function_call_to_event_graph_self_reference_spacing` `graph_layout_spacing_contract`
+- `generated_function_call_to_last_invocation_result_set_spacing` `graph_layout_spacing_contract`
+- `event_graph_self_reference_to_last_invocation_result_set_spacing` `graph_layout_spacing_contract`
+- `local_value_get_to_math_add_node_spacing` `graph_layout_spacing_contract`
+- `local_value_get_to_function_return_node_spacing` `graph_layout_spacing_contract`
+- `math_add_node_to_function_return_node_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- `pre_invocation_compile` `compile_and_validate_blueprint`
+- `generated_function_call` `add_blueprint_call_function_node`
+- `generated_function_result_output_exists` `assert_pin`
+- `event_graph_self_reference` `add_blueprint_self_reference`
+- `last_invocation_result_set` `add_blueprint_variable_set_node`
+- `generated_function_to_result_set_exec` `connect`
+- `generated_result_to_last_invocation_result` `connect`
+- `self_to_last_invocation_result_target` `connect`
+- `branch_true_to_generated_function` `connect`
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_function_nodes` `list_blueprint_nodes`
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `variable_last_invocation_result_default_verified` `assert_variable_default`
+
+Structural validation plan:
+- `receive_begin_play_node_exists` `assert_node_exists`
+- `branch_node_exists` `assert_node_exists`
+- `branch_condition_default_default_verified` `assert_pin_default`
+- `begin_play_to_branch_link_verified` `assert_pin_link`
+- `resolve_function_graph_graph_resolved` `assert_graph_resolved`
+- `function_input_addend_node_exists` `assert_node_exists`
+- `function_output_value_node_exists` `assert_node_exists`
+- `local_value_get_node_exists` `assert_node_exists`
+- `math_add_node_node_exists` `assert_node_exists`
+- `local_value_to_math_add_link_verified` `assert_pin_link`
+- `input_addend_to_math_add_link_verified` `assert_pin_link`
+- `function_return_node_node_exists` `assert_node_exists`
+- `math_result_to_return_link_verified` `assert_pin_link`
+- `generated_function_call_node_exists` `assert_node_exists`
+- `generated_function_call_addendvalue_default_verified` `assert_pin_default`
+- `generated_function_result_output_exists_postcondition` `assert_pin`
+- `event_graph_self_reference_node_exists` `assert_node_exists`
+- `last_invocation_result_set_node_exists` `assert_node_exists`
+- `generated_function_to_result_set_exec_link_verified` `assert_pin_link`
+- `generated_result_to_last_invocation_result_link_verified` `assert_pin_link`
+- `self_to_last_invocation_result_target_link_verified` `assert_pin_link`
+- `branch_true_to_generated_function_link_verified` `assert_pin_link`
+- `generated_function_call_contract_verified` `assert_function_call_contract`
+- `receive_begin_play_layout_verified` `assert_node_layout`
+- `branch_layout_verified` `assert_node_layout`
+- `local_value_get_layout_verified` `assert_node_layout`
+- `math_add_node_layout_verified` `assert_node_layout`
+- `function_return_node_layout_verified` `assert_node_layout`
+- `generated_function_call_layout_verified` `assert_node_layout`
+- `event_graph_self_reference_layout_verified` `assert_node_layout`
+- `last_invocation_result_set_layout_verified` `assert_node_layout`
+- `receive_begin_play_to_branch_spacing_verified` `assert_layout_spacing`
+- `receive_begin_play_to_generated_function_call_spacing_verified` `assert_layout_spacing`
+- `receive_begin_play_to_event_graph_self_reference_spacing_verified` `assert_layout_spacing`
+- `receive_begin_play_to_last_invocation_result_set_spacing_verified` `assert_layout_spacing`
+- `branch_to_generated_function_call_spacing_verified` `assert_layout_spacing`
+- `branch_to_event_graph_self_reference_spacing_verified` `assert_layout_spacing`
+- `branch_to_last_invocation_result_set_spacing_verified` `assert_layout_spacing`
+- `generated_function_call_to_event_graph_self_reference_spacing_verified` `assert_layout_spacing`
+- `generated_function_call_to_last_invocation_result_set_spacing_verified` `assert_layout_spacing`
+- `event_graph_self_reference_to_last_invocation_result_set_spacing_verified` `assert_layout_spacing`
+- `local_value_get_to_math_add_node_spacing_verified` `assert_layout_spacing`
+- `local_value_get_to_function_return_node_spacing_verified` `assert_layout_spacing`
+- `math_add_node_to_function_return_node_spacing_verified` `assert_layout_spacing`
+
+### safe_event_dispatcher
+
+- Request: Create a Blueprint Event Dispatcher, call it, bind it to a compatible custom event, assign it, unbind it, and clear it.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- `dispatcher_call_layout` `graph_layout_contract`
+- `dispatcher_custom_event_layout` `graph_layout_contract`
+- `dispatcher_bind_layout` `graph_layout_contract`
+- `dispatcher_assign_layout` `graph_layout_contract`
+- `dispatcher_unbind_layout` `graph_layout_contract`
+- `dispatcher_clear_layout` `graph_layout_contract`
+
+Graph layout spacing contracts:
+- `dispatcher_call_to_dispatcher_custom_event_spacing` `graph_layout_spacing_contract`
+- `dispatcher_call_to_dispatcher_bind_spacing` `graph_layout_spacing_contract`
+- `dispatcher_call_to_dispatcher_assign_spacing` `graph_layout_spacing_contract`
+- `dispatcher_call_to_dispatcher_unbind_spacing` `graph_layout_spacing_contract`
+- `dispatcher_call_to_dispatcher_clear_spacing` `graph_layout_spacing_contract`
+- `dispatcher_custom_event_to_dispatcher_bind_spacing` `graph_layout_spacing_contract`
+- `dispatcher_custom_event_to_dispatcher_assign_spacing` `graph_layout_spacing_contract`
+- `dispatcher_custom_event_to_dispatcher_unbind_spacing` `graph_layout_spacing_contract`
+- `dispatcher_custom_event_to_dispatcher_clear_spacing` `graph_layout_spacing_contract`
+- `dispatcher_bind_to_dispatcher_assign_spacing` `graph_layout_spacing_contract`
+- `dispatcher_bind_to_dispatcher_unbind_spacing` `graph_layout_spacing_contract`
+- `dispatcher_bind_to_dispatcher_clear_spacing` `graph_layout_spacing_contract`
+- `dispatcher_assign_to_dispatcher_unbind_spacing` `graph_layout_spacing_contract`
+- `dispatcher_assign_to_dispatcher_clear_spacing` `graph_layout_spacing_contract`
+- `dispatcher_unbind_to_dispatcher_clear_spacing` `graph_layout_spacing_contract`
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- `dispatcher_declare` `add_blueprint_event_dispatcher`
+- `dispatcher_call` `add_blueprint_event_dispatcher_call_node`
+- `dispatcher_custom_event` `add_blueprint_custom_event_node`
+- `dispatcher_bind` `add_blueprint_event_dispatcher_bind_node`
+- `dispatcher_assign` `add_blueprint_event_dispatcher_assign_node`
+- `dispatcher_unbind` `add_blueprint_event_dispatcher_unbind_node`
+- `dispatcher_clear` `add_blueprint_event_dispatcher_clear_node`
+- `custom_event_delegate_output_exists` `assert_pin`
+- `bind_delegate_input_exists` `assert_pin`
+- `clear_delegate_input_absent` `assert_pin`
+- `custom_event_to_bind_delegate` `connect`
+- `custom_event_to_unbind_delegate` `connect`
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_graphs` `list_blueprint_graphs`
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+
+Structural validation plan:
+- `dispatcher_call_node_exists` `assert_node_exists`
+- `dispatcher_custom_event_node_exists` `assert_node_exists`
+- `dispatcher_bind_node_exists` `assert_node_exists`
+- `dispatcher_assign_node_exists` `assert_node_exists`
+- `dispatcher_unbind_node_exists` `assert_node_exists`
+- `dispatcher_clear_node_exists` `assert_node_exists`
+- `custom_event_delegate_output_exists_postcondition` `assert_pin`
+- `bind_delegate_input_exists_postcondition` `assert_pin`
+- `clear_delegate_input_absent_postcondition` `assert_pin`
+- `custom_event_to_bind_delegate_link_verified` `assert_pin_link`
+- `custom_event_to_unbind_delegate_link_verified` `assert_pin_link`
+- `dispatcher_call_layout_verified` `assert_node_layout`
+- `dispatcher_custom_event_layout_verified` `assert_node_layout`
+- `dispatcher_bind_layout_verified` `assert_node_layout`
+- `dispatcher_assign_layout_verified` `assert_node_layout`
+- `dispatcher_unbind_layout_verified` `assert_node_layout`
+- `dispatcher_clear_layout_verified` `assert_node_layout`
+- `dispatcher_call_to_dispatcher_custom_event_spacing_verified` `assert_layout_spacing`
+- `dispatcher_call_to_dispatcher_bind_spacing_verified` `assert_layout_spacing`
+- `dispatcher_call_to_dispatcher_assign_spacing_verified` `assert_layout_spacing`
+- `dispatcher_call_to_dispatcher_unbind_spacing_verified` `assert_layout_spacing`
+- `dispatcher_call_to_dispatcher_clear_spacing_verified` `assert_layout_spacing`
+- `dispatcher_custom_event_to_dispatcher_bind_spacing_verified` `assert_layout_spacing`
+- `dispatcher_custom_event_to_dispatcher_assign_spacing_verified` `assert_layout_spacing`
+- `dispatcher_custom_event_to_dispatcher_unbind_spacing_verified` `assert_layout_spacing`
+- `dispatcher_custom_event_to_dispatcher_clear_spacing_verified` `assert_layout_spacing`
+- `dispatcher_bind_to_dispatcher_assign_spacing_verified` `assert_layout_spacing`
+- `dispatcher_bind_to_dispatcher_unbind_spacing_verified` `assert_layout_spacing`
+- `dispatcher_bind_to_dispatcher_clear_spacing_verified` `assert_layout_spacing`
+- `dispatcher_assign_to_dispatcher_unbind_spacing_verified` `assert_layout_spacing`
+- `dispatcher_assign_to_dispatcher_clear_spacing_verified` `assert_layout_spacing`
+- `dispatcher_unbind_to_dispatcher_clear_spacing_verified` `assert_layout_spacing`
+
+### safe_anim_bp_sample_creation
+
+- Request: Create a sample AnimBP from a skeletal mesh under /Game/_MCP_Temp and compile it.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `animation_blueprint`
+- Parent class: `AnimInstance`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `/Game/_MCP_Temp`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- `create_anim_bp_sample` `create_anim_blueprint_sample`
+
+Anim validation steps:
+- none
+
+Validation plan:
+- none
+
+Structural validation plan:
+- none
+
+### safe_anim_state_machine_sample
+
+- Request: Create a sample Animation Blueprint state machine with Idle and Run states and a basic transition.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `animation_blueprint`
+- Parent class: `AnimInstance`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- `ensure_anim_state_machine_sample` `ensure_anim_state_machine_sample_variant`
+
+Anim validation steps:
+- `inspect_anim_state_machine_sample` `inspect_anim_state_machine_transitions`
+
+Validation plan:
+- none
+
+Structural validation plan:
+- none
+
+### safe_animation_metadata_read
+
+- Request: Read animation montage notifies, sync markers, curves, and montage sections without modifying assets.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `animation_asset_metadata`
+- Parent class: `AnimationAsset`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- `inspect_animation_metadata` `inspect_animation_asset_metadata_guarded`
+
+Validation plan:
+- none
+
+Structural validation plan:
+- none
+
+### safe_skeletal_component_anim_defaults
+
+- Request: Create an Actor Blueprint shell with a Skeletal Mesh Component and assign a SkeletalMesh plus AnimBP class defaults.
+- Planner status: `safe_to_author`
+- Executable: `True`
+- Blueprint kind: `actor_blueprint`
+- Parent class: `Actor`
+- Parent class executable allowed: `True`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- `component_primary` `add_component_to_blueprint`
+
+Component defaults:
+- none
+
+Component default contracts:
+- `component_primary_defaults_contract` `component_default_contract`
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- `set_skeletal_component_anim_defaults` `set_skeletal_mesh_component_anim_defaults`
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `list_event_nodes` `list_blueprint_nodes`
+- `compile_validate` `compile_and_validate_blueprint`
+- `component_primary_defaults_verified` `assert_component_default`
+
+Structural validation plan:
+- none
+
+### review_umg_button
+
+- Request: Create a UMG button click event graph for a UserWidget.
+- Planner status: `requires_review`
+- Executable: `False`
+- Blueprint kind: `widget_blueprint`
+- Parent class: `UserWidget`
+- Parent class executable allowed: `False`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `requires_review` `umg_widget_event`: Widget-specific event binding can be reviewed, but widget tree construction and layout policy are not generic BP graph work.
+
+### blocked_async_proxy
+
+- Request: Convert a UBlueprintAsyncActionBase async action with callback exec pins, Activate(), Broadcast(), and cancellation cleanup.
+- Planner status: `blocked_until_reinforced`
+- Executable: `False`
+- Blueprint kind: `unknown_blueprint`
+- Parent class: ``
+- Parent class executable allowed: `False`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `blocked_until_reinforced` `async_proxy_callback_exec`: Async proxy nodes need callback exec pin, payload pin, activation, cancellation, and cleanup modeling first.
+
+### blocked_gas_replication
+
+- Request: Build a Gameplay Ability with AbilityTask prediction and replicated Server RPC state changes.
+- Planner status: `blocked_until_reinforced`
+- Executable: `False`
+- Blueprint kind: `gameplay_ability_blueprint`
+- Parent class: `GameplayAbility`
+- Parent class executable allowed: `False`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `blocked_until_reinforced` `gas_ability_task`: GAS internals and AbilityTasks require domain-specific native policy and prediction-safe authoring.
+- `blocked_until_reinforced` `replication_rpc`: Replication and RPC authority policy are native-blocked for generic C++ to BP lowering.
+
+### blocked_commonui
+
+- Request: Create a CommonUI activatable widget tree with layer activation policy and back handling.
+- Planner status: `blocked_until_reinforced`
+- Executable: `False`
+- Blueprint kind: `commonui_widget_blueprint`
+- Parent class: `CommonActivatableWidget`
+- Parent class executable allowed: `False`
+- Durable requested: `False`
+- Durable eligible: `False`
+- Durable package path: `none`
+- Durable save allowed: `False`
+- Durable preflight target: `none`
+- Durable preflight pass: `False`
+- Durable overwrite/rename decision: `not_required`
+- Durable save gate allowed: `False`
+- Durable ownership marker ready: `False`
+- Durable ownership delete without marker: `False`
+- Durable dry-run plan valid: `False`
+- Durable dry-run executor may execute: `False`
+- Durable save simulation status: `not_requested`
+- Durable save simulation save=true allowed: `False`
+- Durable canary prep ready: `False`
+- Durable canary live allowed: `False`
+- Durable canary approval passed: `False`
+- Durable canary approval live allowed: `False`
+- Durable canary live preflight read-only allowed: `False`
+- Durable canary live preflight execution allowed: `False`
+- Durable canary bridge refresh satisfied: `False`
+- Durable canary bridge refresh executor may open: `False`
+- Durable canary recovery matrix ready: `False`
+- Durable canary recovery cleanup allowed: `False`
+- Durable rollback ready: `False`
+- Durable executor ready: `False`
+- Durable enable satisfied: `False`
+- Durable enable executor may open: `False`
+- Durable enable failed gates: `none`
+- Durable executor skeleton enabled: `False`
+- Durable executor skeleton executable: `False`
+
+Component list:
+- none
+
+Component defaults:
+- none
+
+Component default contracts:
+- none
+
+Component hierarchy contracts:
+- none
+
+Component property contracts:
+- none
+
+Variables/defaults:
+- none
+
+Event graph steps:
+- none
+
+Function graph steps:
+- none
+
+Function call contracts:
+- none
+
+Graph layout contracts:
+- none
+
+Graph layout spacing contracts:
+- none
+
+Generated function invocation steps:
+- none
+
+Dispatcher lifecycle steps:
+- none
+
+Anim authoring steps:
+- none
+
+Anim validation steps:
+- none
+
+Validation plan:
+- `dry_run_no_authoring` `review_only`
+
+Structural validation plan:
+- none
+
+Blocked/review reasons:
+- `blocked_until_reinforced` `commonui_structure`: CommonUI widget tree, layer, and activation policy authoring need dedicated tooling before BP generation.
+
+## Decision
+
+A user request must become one of these manifests before live UnrealMCP Blueprint authoring. Only executable safe manifests may create assets; review and blocked manifests are dry-run records.

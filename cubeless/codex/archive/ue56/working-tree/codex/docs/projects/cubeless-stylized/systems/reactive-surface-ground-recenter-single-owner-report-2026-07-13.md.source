@@ -1,0 +1,12 @@
+# Reactive Surface Ground Recenter Single-Owner Report - 2026-07-13
+
+- Verdict: **PASS**
+- Ownership guard: compile the Controller child, compile/reinstance the Piper parent, save L_RS_Demo, then require exactly one runtime Controller and Ground writer.
+- Recenter repair: deactivate Ground Niagara, transparently clear its output scratch, reproject display history by integer texels, hold a two-Tick commit cooldown, then reactivate with reset.
+- Initial runtime owners: Controller `1`, active Ground `1`.
+- Recenter isolation: the PIE-only Ground bit is removed from every BPC after the seed trail expires, then frames/positions/meta must remain zero twice so boundary movement cannot add new footprints to the history-anchor measurement.
+- Recenter step verdicts: `['PASS', 'PASS', 'PASS', 'PASS']`.
+- Cumulative anchor error: `0.0` px.
+- Final checks: `{'status': 'PASS', 'checks': {'audit_0': True, 'dirty_0': True, 'log_marker_found': True, 'runtime_errors_0': True}, 'audit_count': 0, 'dirty': [], 'runtime_log_hits': {'Accessed None': 0, 'Blueprint Runtime Error': 0, 'Infinite loop detected': 0, 'NCS_Error': 0}}`.
+
+Recurrence gate: every Controller class mutation must run the child-parent-map owner chain and prove exactly one PIE Controller plus one active Ground Niagara owner before any RT/recenter PASS.

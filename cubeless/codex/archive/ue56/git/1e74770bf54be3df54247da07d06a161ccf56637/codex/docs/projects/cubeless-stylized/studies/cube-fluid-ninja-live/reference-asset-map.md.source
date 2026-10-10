@@ -1,0 +1,148 @@
+# CubeFluidNinjaLive Reference Asset Map
+
+## 기준 증거
+
+이 문서는 다음 읽기 전용 Asset Registry 캡처를 기준으로 한다.
+
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference_inventory.json`
+
+| 필드 | 값 |
+| --- | --- |
+| schema version | `1` |
+| reference root | `/Game/FluidNinjaLive` |
+| reference level root | `/Game/FluidNinjaLive/Levels` |
+| study root | `/Game/Study/CubeFluidNinjaLive` |
+| Asset Registry asset count | `1,796` |
+| level count | `59` |
+| disk size | `695,773,968` bytes (`663.54 MiB`) |
+| source tree read-only | `true` |
+| source mutation performed | `false` |
+
+이 수치는 파일 확장자 개수가 아니라 Unreal Asset Registry가 반환한 자산
+수다. `World=61`은 `/Levels`의 59개와 레퍼런스 루트 다른 위치의 World
+자산을 포함하므로 `level_count=59`와 혼동하지 않는다.
+
+## 최상위 폴더 분포
+
+| 폴더 | Asset Registry 자산 수 |
+| --- | ---: |
+| `(root)` | 3 |
+| `Core` | 141 |
+| `Input` | 77 |
+| `Levels` | 59 |
+| `Meshes` | 389 |
+| `Misc` | 182 |
+| `OutputMaterials` | 605 |
+| `OutputNiagara` | 97 |
+| `Presets` | 12 |
+| `Textures` | 216 |
+| `Utilities` | 15 |
+| **합계** | **1,796** |
+
+### 폴더별 초기 해석
+
+- `Core`: 공통 Blueprint, Data Channel, enum, function, LOD, Niagara module과
+  시뮬레이션 핵심 자산 후보.
+- `Input`: painter/cache/RVT/height map/cross-section/Niagara 입력 경로 후보.
+- `Levels`: 59개 기능·튜토리얼·성능 검증 레벨.
+- `Meshes`: 환경, primitive, character, skeletal, destructible 아트 후보.
+- `Misc`: 장식, legacy preset, sequence, 보조 자산 후보.
+- `OutputMaterials`: `CVOL`, `FVOL`, `HVOL`, `SVOL`, surface water와 기타
+  표면 출력의 큰 재질 계층.
+- `OutputNiagara`: 출력 renderer/module, legacy sim-driven, passive decor 후보.
+- `Presets`: `NinjaPreset_C` 12개와 일치하는 preset 인스턴스 후보.
+- `Textures`: 시뮬레이션 입력, noise, mask, volume, 임시 RT 후보.
+- `Utilities`: camera, spline, material-to-RT, 외부 시스템 구동 보조 흐름 후보.
+
+위 역할은 폴더와 이름에서 얻은 초기 분류다. 실제 책임과 runtime 연결은
+레벨별 관찰 전까지 `pending`이다.
+
+## class 분포
+
+| Asset class | 개수 |
+| --- | ---: |
+| `AnimBlueprint` | 3 |
+| `AnimCurveCompressionSettings` | 1 |
+| `AnimSequence` | 53 |
+| `BlendSpace` | 1 |
+| `BlendSpace1D` | 1 |
+| `Blueprint` | 49 |
+| `ControlRigBlueprint` | 3 |
+| `CurveFloat` | 3 |
+| `DataTable` | 1 |
+| `Dataflow` | 3 |
+| `GeometryCollection` | 6 |
+| `InputAction` | 9 |
+| `InputMappingContext` | 3 |
+| `LevelSequence` | 2 |
+| `Material` | 86 |
+| `MaterialFunction` | 64 |
+| `MaterialFunctionMaterialLayer` | 2 |
+| `MaterialFunctionMaterialLayerBlend` | 1 |
+| `MaterialFunctionMaterialLayerInstance` | 12 |
+| `MaterialInstanceConstant` | 798 |
+| `MaterialParameterCollection` | 2 |
+| `MoviePipelinePrimaryConfig` | 1 |
+| `NiagaraDataChannelAsset` | 2 |
+| `NiagaraEffectType` | 6 |
+| `NiagaraEmitter` | 1 |
+| `NiagaraScript` | 92 |
+| `NiagaraSystem` | 68 |
+| `NinjaPreset_C` | 12 |
+| `PhysicsAsset` | 3 |
+| `RuntimeVirtualTexture` | 3 |
+| `SkeletalMesh` | 3 |
+| `Skeleton` | 3 |
+| `SoundWave` | 1 |
+| `StaticMesh` | 104 |
+| `Texture2D` | 253 |
+| `TextureRenderTarget2D` | 63 |
+| `UserDefinedEnum` | 9 |
+| `UserDefinedStruct` | 1 |
+| `VolumeTexture` | 6 |
+| `WidgetBlueprint` | 1 |
+| `World` | 61 |
+| **합계** | **1,796** |
+
+## 기능 학습 우선순위에 주는 의미
+
+1. `MaterialInstanceConstant=798`이 가장 크므로 인스턴스를 그대로 따라가기
+   전에 master/function/parameter contract를 먼저 추출해야 한다.
+2. `NiagaraScript=92`, `NiagaraSystem=68`, `NiagaraDataChannelAsset=2`는
+   stack, module input, stage, Data Channel 연결을 별도 인벤토리로 만들어야
+   함을 뜻한다.
+3. `TextureRenderTarget2D=63`은 asset default와 실제 runtime target 상태를
+   분리해 캡처해야 함을 뜻한다.
+4. `Blueprint=49`, `NinjaPreset_C=12`, 입력 자산 12개는 control, preset,
+   input mapping을 단순 시각 자산과 분리해 조사해야 함을 뜻한다.
+5. `StaticMesh=104`, `Texture2D=253`, `AnimSequence=53` 등은 독립 지역화가
+   가능한 아트 후보지만, package별 직접·재귀 dependency 감사 전에는
+   허용 완료로 간주하지 않는다.
+6. `GeometryCollection=6`, `Dataflow=3`, `ChaosNiagara` script dependency가
+   나타나는 레벨은 destructible 연동과 UE 5.6 plugin/runtime 경계를 별도로
+   검증해야 한다.
+
+## 레벨 분포
+
+| 위치 | 개수 |
+| --- | ---: |
+| `/Levels/_Starter` | 7 |
+| `/Levels/CoreOnly` | 6 |
+| `/Levels/Misc` | 22 |
+| `/Levels` 직접 하위 | 24 |
+| **합계** | **59** |
+
+개별 경로와 목표 1:1 매핑은 `reference-level-manifest.md`가 정본이다.
+
+## 다음 인벤토리 작업
+
+모두 아직 `pending`이다.
+
+- 59개 레벨별 actor/component/class count.
+- 레벨별 direct internal/external dependency 요약과 공통 dependency 집합.
+- Blueprint parent/SCS/K2 graph 책임 분류.
+- Material parent/function/MPC/RT parameter 연결 분류.
+- Niagara system→emitter→script→module→DI→renderer 연결 분류.
+- runtime actor/default/MID/MPC/RT/Data Channel 상태 캡처.
+- 아트와 논리 자산의 자동 분류 및 source-to-target ledger 생성.
+- 외부 plugin/script dependency의 UE 5.6.1 허용 여부와 대체 계획.

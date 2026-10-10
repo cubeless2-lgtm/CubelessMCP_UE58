@@ -1,0 +1,18 @@
+# Reactive Surface Water Demo Runtime Fix - 2026-07-07
+
+- Verdict: `PASS`
+- Scope: L_RS_Demo runtime wiring, Water RT writer ownership, player ReactivePoint mask, and Water tuning defaults.
+- Water writer policy: production demo uses `NS_RS_Water` through the controller. The material `BP_RS_WaterRTDriver` remains in the level but is disabled.
+
+## Phase Results
+- Phase 1 - defaults and ghost PASS tuning: `PASS`
+- Phase 2 - single Water writer: `PASS`
+- Phase 3 - Controller Water target cleanup: `PASS`
+- Phase 4 - exposed Korean tooltips: `PASS`
+- Phase 5 - demo sources and player mask: `PASS`
+- Integrated SIE runtime smoke: `PASS`
+- Compile audit dirty: `PASS`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-demo-runtime-fix-results-2026-07-07.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterDemoRuntimeFix\water_demo_runtime_fix_bridge_results.json`

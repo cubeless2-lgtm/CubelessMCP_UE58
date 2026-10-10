@@ -1,0 +1,675 @@
+Running AutomationTool...
+Using bundled DotNet SDK version: 10.0 win-x64
+Starting AutomationTool...
+Parsing command line: BuildCookRun -project=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject -noP4 -platform=Win64 -clientconfig=Shipping -build -cook -stage -pak -package -archive -archivedirectory=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\CurrentRuntimeShipping-20261010-D -utf8output -unattended -map=/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof -SkipCookingEditorContent
+Initializing script modules...
+Total script module initialization time: 0.30 s.
+Using C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe
+Executing commands...
+Setting up ProjectParams for C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject
+********** BUILD COMMAND STARTED **********
+Running: C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\ThirdParty\DotNet\10.0\win-x64\dotnet.exe "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" -Target="CubelessCurrentRuntimeProofEditor Win64 Development -Project=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject" -Target="CubelessCurrentRuntimeProof Win64 Shipping -Project=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject  -remoteini=\"C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\"  -skipdeploy " -log="C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\UBA-CubelessCurrentRuntimeProofEditor-Win64-Development.txt"
+Log file: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\UBA-CubelessCurrentRuntimeProofEditor-Win64-Development.txt
+Determining max actions to execute in parallel (14 physical cores, 20 logical cores)
+  Executing up to 14 processes, one per physical core
+  Requested 1.5 GB memory per action, 10.15 GB available: limiting max parallel actions to 6
+UbaServer - Listening on 0.0.0.0:1345
+Target is up to date
+Using Unreal Build Accelerator local executor to run 0 action(s)
+Total time in Unreal Build Accelerator local executor: 0.08 seconds
+Output binary: C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Binaries\Win64\CubelessCurrentRuntimeProof-Win64-Shipping.exe
+Output binary: C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe
+
+Result: Succeeded
+Total execution time: 1.31 seconds
+Trace written to file C:\Users\Lenovo\AppData\Local\UnrealBuildTool\Trace.uba with size 3.2kb
+Took 1.50s to run dotnet.exe, ExitCode=0
+No build products were made
+Build command time: 1.51 s
+********** BUILD COMMAND COMPLETED **********
+********** COOK COMMAND STARTED **********
+HasMapsToCook /Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof
+Params.HasMapsToCook /Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof
+Running UnrealEditor Cook for project C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject
+Commandlet log file is C:\Program Files\Epic Games\UE_5.8\Engine\Programs\AutomationTool\Saved\Cook-2026.10.10-19.40.15.txt
+Running: C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe "C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject" -run=Cook -Map=/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof -TargetPlatform=Windows  -unversioned -skipeditorcontent -fileopenlog -abslog="C:\Program Files\Epic Games\UE_5.8\Engine\Programs\AutomationTool\Saved\Cook-2026.10.10-19.40.15.txt" -stdout -CrashForUAT -unattended -NoLogTimes
+LogInit: Display: Running engine for game: CubelessCurrentRuntimeProof
+LogCore: Display: Requested channels: 'cpu,gpu,frame,log,bookmark,screenshot,region'
+LogTrace: Display: Control listening on port 39880
+LogCsvProfiler: Display: Metadata set : platform="Windows"
+LogCsvProfiler: Display: Metadata set : config="Development"
+LogCsvProfiler: Display: Metadata set : buildversion="++UE5+Release-5.8-CL-58210709"
+LogCsvProfiler: Display: Metadata set : engineversion="5.8.3-58210709+++UE5+Release-5.8"
+LogCsvProfiler: Display: Metadata set : enginereleaseversion="5.8.3"
+LogCsvProfiler: Display: Metadata set : os="Windows 11 (25H2) [10.0.26200.9457] "
+LogCsvProfiler: Display: Metadata set : cpu="GenuineIntel|13th Gen Intel(R) Core(TM) i7-13650HX"
+LogCsvProfiler: Display: Metadata set : pgoenabled="0"
+LogCsvProfiler: Display: Metadata set : pgoprofilingenabled="0"
+LogCsvProfiler: Display: Metadata set : ltoenabled="0"
+LogCsvProfiler: Display: Metadata set : asan="0"
+LogCsvProfiler: Display: Metadata set : mergedmodules="0"
+LogCsvProfiler: Display: Metadata set : compacttset="0"
+LogCsvProfiler: Display: Metadata set : commandline="" C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject -run=Cook -Map=/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof -TargetPlatform=Windows -unversioned -skipeditorcontent -fileopenlog -abslog="C:\Program Files\Epic Games\UE_5.8\Engine\Programs\AutomationTool\Saved\Cook-2026.10.10-19.40.15.txt" -stdout -CrashForUAT -unattended -NoLogTimes""
+LogCsvProfiler: Display: Metadata set : loginid="05c163914f568cebe3e8e49182cee7a7"
+LogCsvProfiler: Display: Metadata set : llm="0"
+LogCsvProfiler: Display: Metadata set : zenstreaming="0"
+LogCsvProfiler: Display: Metadata set : systemresolution.resx="1280"
+LogCsvProfiler: Display: Metadata set : systemresolution.resy="720"
+LogAudio: Display: Audio Device Manager not initializing due to all audio being disabled. If this is not intentional, please check command line arguments for "-nosound".
+LogAssetRegistry: Display: FindShardedCacheFiles: 1 via .ref, 0 via migration fallback, 1 total
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles (PreLoad): 1 .ref files found, 1 referenced binaries
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles: 1 total binaries, 1 referenced (kept), 0 old-style pre-migration (kept), 0 orphans deleted, 0 orphans locked (kept)
+LogAssetRegistry: Display: LoadCacheFiles: loading 1 cache files, memory-mapping=enabled
+LogAssetRegistry: Display: Asset registry cache read as 11.8 MiB from ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Intermediate/CachedAssetRegistry/CachedAssetRegistry_0_6930A60A464F3BA93BC382A070A37F68.bin (memory-mapped=yes)
+LogConfig: Display: Loading Mac ini files took 0.07 seconds
+Running UnrealBuildTool: dotnet "..\..\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" -Mode=ValidatePlatforms -OutputSDKs  -AllPlatforms  -project="C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/CubelessCurrentRuntimeProof.uproject" -log="C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Saved/Logs/AutoSDKInfo.txt" -verbose -timestamps
+LogConfig: Display: Loading VulkanPC ini files took 0.07 seconds
+LogConfig: Display: Loading IOS ini files took 0.07 seconds
+LogConfig: Display: Loading Android ini files took 0.07 seconds
+LogConfig: Display: Loading VisionOS ini files took 0.08 seconds
+LogConfig: Display: Loading TVOS ini files took 0.08 seconds
+LogConfig: Display: Loading Unix ini files took 0.08 seconds
+LogConfig: Display: Loading Windows ini files took 0.08 seconds
+LogConfig: Display: Loading Linux ini files took 0.09 seconds
+LogStreaming: Display: AsyncLoading2 - Created: Async Loading Thread: false, Async Post Load: false, Multithreaded: false
+LogHAL: Display: Platform has ~ 32 GB [34070192128 / 34359738368 / 32], which maps to Largest [LargestMinGB=32, LargerMinGB=12, DefaultMinGB=8, SmallerMinGB=6, SmallestMinGB=0)
+LogCsvProfiler: Display: Metadata set : extradevelopmentmemorymb="0"
+LogObj: Display: Attempting to load config data for Default__DownlinkBandwidthManagerConfig before the Class has been constructed/registered/linked (likely during module loading or early startup). This will result in the load silently failing and should be fixed.
+Log file: C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Saved\Logs\AutoSDKInfo.txt
+##PlatformValidate: Win64 VALID 10.0.22621.0
+##PlatformValidate: Mac INVALID 26.1.1
+##PlatformValidate: IOS INVALID 26.1.1
+##PlatformValidate: Android VALID r27c
+##PlatformValidate: Linux INVALID v26_clang-20.1.8-rockylinux8
+##PlatformValidate: LinuxArm64 INVALID <UNKNOWN>
+##PlatformValidate: TVOS INVALID 26.1.1
+##PlatformValidate: VisionOS INVALID <UNKNOWN>
+Unable to find required SDK version 'MainVersion' for platform LinuxArm64. Check your SDK.json files
+Unable to find required SDK version 'MainVersion' for platform VisionOS. Check your SDK.json files
+Trace written to file C:\Users\Lenovo\AppData\Local\UnrealBuildTool\Trace.uba with size 299b
+LogTextureFormatASTC: Display: ASTCEnc version 5.0.1 library loaded
+LogTextureFormatManager: Display: Loaded Base TextureFormat: TextureFormatASTC
+LogTextureFormatManager: Display: Loaded Base TextureFormat: TextureFormatDXT
+LogTextureFormatManager: Display: Loaded Base TextureFormat: TextureFormatETC2
+LogTextureFormatManager: Display: Loaded Base TextureFormat: TextureFormatIntelISPCTexComp
+LogTextureFormatOodle: Display: Oodle Texture TFO init; latest sdk version = 2.9.16
+LogTextureFormatOodle: Display: Oodle Texture loading DLL: oo2tex_win64_2.9.16.dll
+LogTextureFormatManager: Display: Loaded Base TextureFormat: TextureFormatOodle
+LogTextureFormatManager: Display: Loaded Base TextureFormat: TextureFormatUncompressed
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_ASTC'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_DXT'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_ETC2'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'AndroidClient'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_ASTCClient'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_DXTClient'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_ETC2Client'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_Multi'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Android_MultiClient'
+LogTargetPlatformManager: Display: Failed to SetupSDK for platform 'IOS'
+LogTargetPlatformManager: Display: Failed to SetupSDK for platform 'Linux'
+LogTargetPlatformManager: Display: Failed to SetupSDK for platform 'Mac'
+LogTargetPlatformManager: Display: Failed to SetupSDK for platform 'TVOS'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'Windows'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'WindowsEditor'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'WindowsServer'
+LogTargetPlatformManager: Display: Loaded TargetPlatform 'WindowsClient'
+LogTargetPlatformManager: Display: Building Assets For Windows
+LogAudioDebug: Display: Lib vorbis DLL was dynamically loaded.
+LogObj: Display: Attempting to load config data for Default__SlateThemeManager before the Class has been constructed/registered/linked (likely during module loading or early startup). This will result in the load silently failing and should be fixed.
+LogCsvProfiler: Display: Metadata set : verbatimrhiname="Null"
+LogCsvProfiler: Display: Metadata set : rhiname="Null"
+LogCsvProfiler: Display: Metadata set : rhifeaturelevel="SM6"
+LogCsvProfiler: Display: Metadata set : shaderplatform="PCD3D_SM6"
+LogCsvProfiler: Display: Metadata set : gpu=""
+LogCsvProfiler: Display: Metadata set : gpudriver=""
+LogDerivedDataCache: Display: ../../../Engine/DerivedDataCache/Compressed.ddp: Opened pak cache for reading. (1670 MiB)
+LogZenServiceInstance: Display: Launching zen utility 'C:/Program Files/Epic Games/UE_5.8/Engine/Binaries/Win64/zen.exe service status'.
+LogZenServiceInstance: Display: Writing plugin version info to 'C:/Users/Lenovo/AppData/Local/UnrealEngine/Common/Zen/Install/zen_plugin_versions.json'
+LogZenServiceInstance: Display: Read zen version cache file from 'C:/Users/Lenovo/AppData/Local/UnrealEngine/5.8/Saved/Zen/zen.version', version: '5.8.13-202605190912-windows-x64-release-094f62c2'
+LogZenServiceInstance: Display: Read zen version cache file from 'C:/Users/Lenovo/AppData/Local/UnrealEngine/Common/Zen/Install/zen.version', version: '5.8.13-202605190912-windows-x64-release-094f62c2'
+LogZenServiceInstance: Display: Installed service at 'C:/Users/Lenovo/AppData/Local/UnrealEngine/Common/Zen/Install/zenserver.exe' is up to date
+LogZenServiceInstance: Display: Unreal Zen Storage Server HTTP service at http://[::1]:8558 status: OK!.
+LogDerivedDataCache: Display: ZenLocal: Using ZenServer HTTP service at [::1] with namespace ue.ddc. Status: OK!.
+LogDerivedDataCache: Display: C:/Users/Lenovo/AppData/Local/UnrealEngine/Common/DerivedDataCache: Performance: Latency=0.05ms. RandomReadSpeed=425.08MBs, RandomWriteSpeed=102.65MBs. Assigned SpeedClass 'Local'
+LogAsyncCompilation: Display: MemorySharingInfo: UsedMemory=715MiB, MaxMemoryAvailable=36852MiB
+LogShaderCompilers: Display: No distributed shader compiler controller found
+LogShaderCompilers: Display: Using 17 local workers for shader compilation
+LogShaderCompilers: Display: Compiling shader autogen file: ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Intermediate/ShaderAutogen/PCD3D_SM6/AutogenShaderHeaders.ush
+LogShaderCompilers: Display: Autogen file is unchanged, skipping write.
+LogEditorDomain: Display: EditorDomain is Disabled
+LogAssetRegistry: Display: AssetDataGatherer spent 0.000s loading caches from ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Intermediate/CachedAssetRegistry.
+LogDeviceProfileManager: Display: Deviceprofile LinuxArm64Editor not found.
+LogDeviceProfileManager: Display: Deviceprofile LinuxArm64 not found.
+LogCsvProfiler: Display: Metadata set : deviceprofile="WindowsEditor"
+LogStreaming: Display: FlushAsyncLoading(1): 1 QueuedPackages, 0 AsyncPackages
+LogTextureEncodingSettings: Display: Texture Encode Speed: Final (cook).
+LogTextureEncodingSettings: Display: Oodle Texture Encode Speed settings: Fast: RDO Off Lambda=0, Effort=Normal Final: RDO Off Lambda=0, Effort=Normal
+LogTextureEncodingSettings: Display: Shared linear texture encoding: Disabled
+LogMeshReduction: Display: Skeletal mesh reduction module (r.SkeletalMeshReductionModule) set to "SkeletalMeshReduction" which doesn't exist.
+LogMeshReduction: Display: HLOD mesh reduction module (r.ProxyLODMeshReductionModule) set to "ProxyLODMeshReduction" which doesn't exist.
+LogMeshReduction: Display: Using QuadricMeshReduction for automatic static mesh reduction
+LogMeshReduction: Display: No automatic skeletal mesh reduction module available
+LogMeshReduction: Display: No automatic mesh merging module available
+LogMeshReduction: Display: No distributed automatic mesh merging module available
+LogShaderCompilers: Display: Compiling shader autogen file: ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Intermediate/ShaderAutogen/PCD3D_SM5/AutogenShaderHeaders.ush
+LogShaderCompilers: Display: Autogen file is unchanged, skipping write.
+LogVirtualization: Display: VirtualizationSystem name found in ini file: None
+LogVirtualization: Display: FNullVirtualizationSystem mounted, virtualization will be disabled
+LogWorldPartition: Display: FWorldPartitionClassDescRegistry::Initialize started...
+LogWorldPartition: Display: FWorldPartitionClassDescRegistry::Initialize took 1.562 ms
+LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimBoneCompressionSettings'을(를) 찾지 못했습니다.
+LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimBoneCompressionSettings'
+LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimCurveCompressionSettings'을(를) 찾지 못했습니다.
+LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimCurveCompressionSettings'
+LogCsvProfiler: Display: Metadata set : largeworldcoordinates="1"
+LogCsvProfiler: Display: Metadata set : raytracing="0"
+LogCook: Display: CookProcessCount=1. CookMultiprocess is disabled and the cooker is running as a single process.
+LogCook: Display: CookSettings for Memory:
+	MemoryMaxUsedVirtual 0MiB
+	MemoryMaxUsedPhysical 0MiB
+	MemoryMinFreeVirtual 2048MiB
+	MemoryMinFreePhysical 2048MiB
+	MemoryTriggerGCAtPressureLevel None
+	SoftGCMemoryUseTrigger disabled
+	SoftGCTimeBudgetTrigger enabled (0.05 budget, 30s min period)
+LogCook: Display: SkipOnlyEditorOnly is enabled, unsolicited packages will not be cooked unless they are referenced from the cooked version of the instigator package.
+LogCook: Display: ---- Pre Content Initialisation: End ----
+LogCook: Display: ---- Post Content Initialisation: Start ----
+LogEditorDomain: Display: Class /Script/AnimationData.AnimationSequencerDataModel is imported by a package but does not exist in memory. EditorDomain keys for packages using it will be invalid if it still exists.
+	To clear this message, resave packages that use the deleted class, or load its module earlier than the packages that use it are referenced.
+LogEditorDomain: Display: Class /Script/WorldPartitionHLODUtilities.HLODBuilderInstancingSettings is imported by a package but does not exist in memory. EditorDomain keys for packages using it will be invalid if it still exists.
+	To clear this message, resave packages that use the deleted class, or load its module earlier than the packages that use it are referenced.
+LogEditorDomain: Display: Class /Script/WorldPartitionHLODUtilities.HLODBuilderMeshApproximate is imported by a package but does not exist in memory. EditorDomain keys for packages using it will be invalid if it still exists.
+	To clear this message, resave packages that use the deleted class, or load its module earlier than the packages that use it are referenced.
+LogEditorDomain: Display: Class /Script/WorldPartitionHLODUtilities.HLODBuilderMeshMerge is imported by a package but does not exist in memory. EditorDomain keys for packages using it will be invalid if it still exists.
+	To clear this message, resave packages that use the deleted class, or load its module earlier than the packages that use it are referenced.
+LogEditorDomain: Display: Class /Script/WorldPartitionHLODUtilities.HLODBuilderMeshSimplify is imported by a package but does not exist in memory. EditorDomain keys for packages using it will be invalid if it still exists.
+	To clear this message, resave packages that use the deleted class, or load its module earlier than the packages that use it are referenced.
+LogZenStore: Display: Establishing oplog 'CubelessCurrentRuntimeProof.261b89d5/EditorDomain'
+LogZenStore: Display: Zen project 'CubelessCurrentRuntimeProof.261b89d5' already exists
+LogZenStore: Display: Zen oplog 'CubelessCurrentRuntimeProof.261b89d5/EditorDomain' already exists
+LogCook: Display: Waiting for Asset Registry
+LogAssetRegistry: Display: Starting OnFilesLoaded.Broadcast
+LogAssetRegistry: Display: Completed OnFilesLoaded.Broadcast: 0.001s
+LogAssetRegistry: Display: Asset registry cache written as 11.8 MiB to ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Intermediate/CachedAssetRegistry/CachedAssetRegistry_*.ref
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles (PostWrite): 1 .ref files found, 1 referenced binaries
+LogAssetRegistry: Display:   CachedAssetRegistry_0_6930A60A464F3BA93BC382A070A37F68.bin: deleted (orphaned, unreferenced by any .ref)
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles: 2 total binaries, 1 referenced (kept), 0 old-style pre-migration (kept), 1 orphans deleted, 0 orphans locked (kept)
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles (PostWrite): 1 .ref files found, 1 referenced binaries
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles: 1 total binaries, 1 referenced (kept), 0 old-style pre-migration (kept), 0 orphans deleted, 0 orphans locked (kept)
+LogCook: Display: INCREMENTAL COOK DEPENDENCIES: Disabled. Incremental Cook Dependencies are disabled because the cooker is not using ZenStore, and we do not yet support storage of Incremental Cook dependency data with loose cooked packages. Falling back to legacy iterative cook mode.
+LogCook: Display: CalculateGlobalDependenciesHash(Windows):
+LogCook: Display: 	FGuid CookIncrementalVersion = ffa12fdc-c822-1fe2-7757-627a12f1d3a7
+LogCook: Display: 	[Editor]:CookSettings.ProjectCookIncrementalVersion = 00000000-0000-0000-0000-000000000000
+LogCook: Display: 	[Engine]:Core.System.CanStripEditorOnlyExportsAndImports = True
+LogCook: Display: 	[Engine]:Core.System.CanSkipEditorReferencedPackagesWhenCooking = False
+LogCook: Display: 	CanUseUnversionedPropertySerialization = True
+LogCook: Display: 	[Editor]:CookSettings.AutomaticOptionalInclusionAssetType = /Script/Niagara.NiagaraScript, /Script/Niagara.NiagaraEmitter, /Script/Niagara.NiagaraSystem, /Script/NiagaraEditor.NiagaraParameterDefinitions, /Script/Niagara.NiagaraEffectType, /Script/Niagara.NiagaraValidationRuleSet
+LogCook: Display: 	IsCookFlagSet(ECookInitializationFlags::Unversioned) = True
+LogCook: Display: 	FCoreRedirects::AppendHashOfGlobalRedirects = 58336cccd69ba620f54a8a74ab5611ec709c825a2b3df97ea2ee57c91e550baa
+LogCook: Display: 	GlobalDependenciesHash(Windows) = 2c75e397889c6d3a7ff7c8568e1727c11a48ae24c867471c52305d7b8c4f2b75
+LogCook: Display: FULL COOK: Incremental Cook Dependencies are disabled, and -legacyiterative was not specified. Deleting previously cooked packages for platform Windows and recooking all packages discovered in the current cook.
+LogCook: Display: Sandbox cleanup took 0.033 seconds for platforms Windows
+LogCook: Display: Compiling global changed shaders for platform 'Windows'
+LogShaderLibrary: Display:
+LogShaderLibrary: Display: Shader Library 'Global' (PCD3D_SM5-PCD3D_SM5) Stats:
+LogShaderLibrary: Display: =================
+LogShaderLibrary: Display: Assets: 1, Unique Shadermaps: 257 (25700.00%)
+LogShaderLibrary: Display: Total Shaders: 3335, Unique Shaders: 3325 (99.70%)
+LogShaderLibrary: Display: Total Shader Size: 9.35mb, Unique Shaders Size: 9.35mb (99.96%)
+LogShaderLibrary: Display: === Extended info:
+LogShaderLibrary: Display: Minimum number of shaders in shadermap: 1
+LogShaderLibrary: Display: Median number of shaders in shadermap: 3
+LogShaderLibrary: Display: Maximum number of shaders in shadermap: 264
+LogShaderLibrary: Display: Number of shadermaps referencing top 10 most shared shaders:
+LogShaderLibrary: Display:     3, 2, 2, 2, 2, 2, 2, 2, 2, 1
+LogShaderLibrary: Display: Unique shaders itemization (sorted by compressed size):
+LogShaderLibrary: Display: SF_Pixel: 1505 shaders (45.26%), compressed size: 4.99 MB (3.39 KB avg per shader), uncompressed size: 21.93 MB (14.92 KB avg per shader)
+LogShaderLibrary: Display: SF_Compute: 1718 shaders (51.67%), compressed size: 4.30 MB (2.56 KB avg per shader), uncompressed size: 17.51 MB (10.44 KB avg per shader)
+LogShaderLibrary: Display: SF_Vertex: 100 shaders (3.01%), compressed size: 0.06 MB (0.59 KB avg per shader), uncompressed size: 0.12 MB (1.28 KB avg per shader)
+LogShaderLibrary: Display: SF_Geometry: 2 shaders (0.06%), compressed size: 0.00 MB (0.49 KB avg per shader), uncompressed size: 0.00 MB (1.55 KB avg per shader)
+LogShaderLibrary: Display: Textual dump saved to '../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Saved/Shaders/PCD3D_SM5-PCD3D_SM5/ShaderDebug-Global-PCD3D_SM5-PCD3D_SM5/Dump.txt'
+LogShaderLibrary: Display: =================
+LogCook: Display: Discovering localized assets for cultures: en
+LogCook: Display: Found 0 localized assets
+LogCook: Display: ---- Post Content Initialisation: End ----
+LogCook: Display: Cooked packages 0 Packages Remain 189 Total 189
+LogCook: Display: Cook Diagnostics: OpenFileHandles=165, VirtualMemory=1053MiB, VirtualMemoryAvailable=5950MiB
+LogCook: Display: Cooking /Engine/VREditor/ViewportInteractionAssetContainerData -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/SnapGrid/SnapGridPlaneMesh -> Rejected EngineEditorContent
+LogCook: Display: Garbage collection triggered (Soft). Triggered by conditions:
+  CookSettings.SoftGCTimeTrigger: Periodic triggering of SoftGC: No duration data.
+LogCookCommandlet: Display: GarbageCollection... (Periodic GC)
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/LandscapeLayerUsageMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMeshes/Camera/SM_CraneRig_Base -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMeshes/Camera/SM_CraneRig_Arm -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMeshes/Camera/SM_CraneRig_Mount -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMeshes/Camera/SM_CraneRig_Body -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMeshes/Camera/SM_RailRig_Track -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMeshes/Camera/SM_RailRig_Mount -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/TransformGizmoFreeRotation -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/MaskBrushMaterial_MaskedRegion -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/SnapGrid/SnapGridMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/TransformGizmoMaterial_Inst -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/PlaneTranslationHandle -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/RotationHandleFull -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/RotationHandleIndicator -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/RotationHandleQuarter -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/StartRotationHandleIndicator -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/TranslateArrowHandle -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/UniformScaleHandle -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/BoundingBoxCorner -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/BoundingBoxEdge -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/SelectBrushMaterial_Selected -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/ColorMaskBrushMaterial_MaskedRegion -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/Camera/MI_CineMat_Rig -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/SplineEditorMesh -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/TranslucentTransformGizmoMaterial_Inst -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/TransformGizmoMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/LayerVisMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/PreviewShadowIndicatorMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/SelectBrushMaterial_SelectedRegion -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/MaskBrushMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/SelectBrushMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/ColorMaskBrushMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/LandscapeDirtyMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/PreviewShadowIndicator -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_Actor -> Rejected EngineEditorContent
+LogTextureFormatOodle: Display: Oodle Texture loading DLL: oo2tex_win64_2.9.11.dll
+LogTextureFormatOodle: Display: Oodle Texture loading DLL: oo2tex_win64_2.9.12.dll
+LogTextureFormatOodle: Display: Oodle Texture loading DLL: oo2tex_win64_2.9.15.dll
+LogTextureFormatOodle: Display: Oodle Texture loading DLL: oo2tex_win64_2.9.13.dll
+LogCook: Display: Cooking /Engine/EditorResources/BSPVertex -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/DefaultAlphaTexture -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/Camera/CineMat -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_Trigger -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_BoxReflectionCapture -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_TriggerBox -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_TriggerCapsule -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_TriggerSphere -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/WidgetVertexColorMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_Solver -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/SplineEditorMeshMat -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Drop_Item_From_ContentBrowser -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Gizmo_Handle_Clicked -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Object_PickUp -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Object_Snaps_To_Another_Actor -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Object_Snaps_To_Grid -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Scaling_Down -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Scaling_Up -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/Sounds/UI/Selection_Changes -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/TransformGizmo/TranslucentTransformGizmoMaterial -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/VREditor/LaserPointer/VR_LaserPower_01 -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/ParticleSystems/PSysThumbnail_NoImage -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorMaterials/ParticleSystems/PSysThumbnail_OOD -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorLandscapeResources/WhiteSquareTexture -> Rejected EngineEditorContent
+LogCook: Display: Cooking /Engine/EditorResources/S_Terrain -> Rejected EngineEditorContent
+LogCook: Display: Cooked packages 218 Packages Remain 0 Total 218
+LogCook: Display: Cook Diagnostics: OpenFileHandles=3734, VirtualMemory=1206MiB, VirtualMemoryAvailable=5688MiB
+LogCook: Display: ---- Finalisation: Start ----
+LogAssetRegistryGenerator: Display: Saving asset registry v24.
+LogAssetRegistryGenerator: Display: Generated development asset registry C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Saved/Cooked/Windows/CubelessCurrentRuntimeProof/Metadata/DevelopmentAssetRegistry.bin num assets 227, size is 166.66kb, XxHash64[LE] = 0xDC5F6484113B6E3C, waited on hash 0.00 seconds
+LogAssetRegistryGenerator: Display: Generated asset registry num assets 165, size is 47.09kb
+LogShaderLibrary: Display:
+LogShaderLibrary: Display: Shader Library 'CubelessCurrentRuntimeProof' (PCD3D_SM5-PCD3D_SM5) Stats:
+LogShaderLibrary: Display: =================
+LogShaderLibrary: Display: Assets: 36, Unique Shadermaps: 32 (88.89%)
+LogShaderLibrary: Display: Total Shaders: 635, Unique Shaders: 515 (81.10%)
+LogShaderLibrary: Display: Total Shader Size: 1.45mb, Unique Shaders Size: 1.20mb (82.67%)
+LogShaderLibrary: Display: === Extended info:
+LogShaderLibrary: Display: Minimum number of shaders in shadermap: 2
+LogShaderLibrary: Display: Median number of shaders in shadermap: 6
+LogShaderLibrary: Display: Maximum number of shaders in shadermap: 323
+LogShaderLibrary: Display: Number of shadermaps referencing top 10 most shared shaders:
+LogShaderLibrary: Display:     12, 11, 6, 5, 5, 4, 4, 4, 4, 4
+LogShaderLibrary: Display: Unique shaders itemization (sorted by compressed size):
+LogShaderLibrary: Display: SF_Pixel: 283 shaders (54.95%), compressed size: 0.62 MB (2.25 KB avg per shader), uncompressed size: 1.94 MB (7.03 KB avg per shader)
+LogShaderLibrary: Display: SF_Vertex: 232 shaders (45.05%), compressed size: 0.57 MB (2.53 KB avg per shader), uncompressed size: 1.75 MB (7.73 KB avg per shader)
+LogShaderLibrary: Display: Textual dump saved to '../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Saved/Shaders/PCD3D_SM5-PCD3D_SM5/ShaderDebug-CubelessCurrentRuntimeProof-PCD3D_SM5-PCD3D_SM5/Dump.txt'
+LogShaderLibrary: Display: =================
+LogCook: Display: Finalize package store(s)...
+LogCook: Display: Cook by the book total time in tick 1.200079s total time 2.683839
+LogCook: Display: Peak Used virtual 1232 MiB Peak Used physical 1240 MiB
+LogCook: Display: Packages Cooked: 156, Packages Incrementally Skipped: 0, Packages Skipped by Platform: 62, Total Packages: 218
+LogCookStats: Display: Hierarchy Timer Information:
+LogCookStats: Display:   Root: 0.000s (0)
+LogCookStats: Display:     CleanSandbox: 0.033s (1)
+LogCookStats: Display:     CollectFilesToCook: 0.004s (1)
+LogCookStats: Display:       CookModificationDelegate: 0.000s (1)
+LogCookStats: Display:     GenerateLongPackageName: 0.000s (1)
+LogCookStats: Display:     TickMainCookLoop: 1.200s (2)
+LogCookStats: Display:       PumpPollables: 0.000s (2)
+LogCookStats: Display:       PumpRequests: 0.011s (7)
+LogCookStats: Display:       LoadPackageForCooking: 0.797s (3308)
+LogCookStats: Display:       ValidateSourcePackage: 0.000s (218)
+LogCookStats: Display:       SavingPackages: 0.302s (28)
+LogCookStats: Display:         PollPendingCookedPlatformDatas: 0.018s (1265)
+LogCookStats: Display:         PrepareSave: 0.077s (1071)
+LogCookStats: Display:         PrecachePlatformDataForNextPackage: 0.067s (217)
+LogCookStats: Display:           PrepareSave: 0.067s (264)
+LogCookStats: Display:         SaveCookedPackage: 0.134s (218)
+LogCookStats: Display:           GEditorSavePackage: 0.120s (156)
+LogCookStats: Display:             VerifyCanCookPackage: 0.001s (156)
+LogCookStats: Display:         ClearAllCachedCookedPlatformData: 0.004s (218)
+LogCookStats: Display:       PostLoadPackageFixup: 0.000s (2)
+LogCookStats: Display:       WaitForAsync: 0.019s (1945)
+LogCookStats: Display:     CookByTheBookFinished: 0.144s (1)
+LogCookStats: Display:       SavingCurrentIniSettings: 0.050s (1)
+LogCookStats: Display:         ProcessingAccessedStrings: 0.002s (1)
+LogCookStats: Display:       ChunkGeneration: 0.016s (1)
+LogCookStats: Display:       FinishPopulateShaderLibrary: 0.000s (1)
+LogCookStats: Display:       CalculateReferencedSet: 0.000s (1)
+LogCookStats: Display:       CookArtifacts.UpdateOplogPackages: 0.002s (1)
+LogCookStats: Display:       GeneratorPreSave: 0.000s (1)
+LogCookStats: Display:       BuildChunkManifest: 0.012s (1)
+LogCookStats: Display:         FixupPackageDependenciesForChunks: 0.007s (1)
+LogCookStats: Display:       SaveManifests: 0.000s (1)
+LogCookStats: Display:       SaveAssetRegistry: 0.019s (1)
+LogCookStats: Display:       WriteCookerOpenOrder: 0.007s (1)
+LogCookStats: Display:       WriteCookMetadata: 0.000s (1)
+LogCookStats: Display:       WriteReferencedSet: 0.000s (1)
+LogCookStats: Display:       FinalizePackageStore: 0.001s (1)
+LogCookStats: Display: Misc Cook Stats
+LogCookStats: Display: ===============
+LogCookStats: Display: ShaderCompiler
+LogCookStats: Display:     BlockingTimeSec=0.000056
+LogCookStats: Display:     AsyncCompileTimeSec=0.000000
+LogCookStats: Display:     GlobalBeginCompileShaderTimeSec=0.000000
+LogCookStats: Display:     GlobalBeginCompileShaderCalls=0
+LogCookStats: Display:     ProcessAsyncResultsTimeSec=0.000050
+LogCookStats: Display: GlobalShader.Misc
+LogCookStats: Display:     ShadersCompiled=0
+LogCookStats: Display: Material
+LogCookStats: Display:     FinishCacheShadersSec=0.017475
+LogCookStats: Display: Cook.Profile.Params
+LogCookStats: Display:     CookProject=CubelessCurrentRuntimeProof
+LogCookStats: Display:     CookCultures=
+LogCookStats: Display:     CookLabel=
+LogCookStats: Display:     TargetPlatforms=Windows
+LogCookStats: Display:     IsCookAll=false
+LogCookStats: Display:     IsCookOnTheFly=false
+LogCookStats: Display:     IsIncrementalCook=false
+LogCookStats: Display:     IsIterativeCook=false
+LogCookStats: Display:     IsFastCook=false
+LogCookStats: Display:     IsUnversioned=true
+LogCookStats: Display: CookOnTheFlyServer.Package.Load
+LogCookStats: Display:     NumRequestedLoads=3115
+LogCookStats: Display:     NumPackagesLoaded=3136
+LogCookStats: Display:     NumInlineLoads=21
+LogCookStats: Display: CookOnTheFlyServer.Package.Save
+LogCookStats: Display:     NumPackagesIncrementallySkipped=0
+LogCookStats: Display: CookOnTheFlyServer.QueueSize
+LogCookStats: Display:     PeakRequest=218
+LogCookStats: Display:     PeakLoad=40
+LogCookStats: Display:     PeakSave=89
+LogCookStats: Display: Package.Load
+LogCookStats: Display:     LoadPackageTimeSec=0.879318
+LogCookStats: Display: Package.Save
+LogCookStats: Display:     NumPackagesSaved=156
+LogCookStats: Display:     SavePackageTimeSec=0.112958
+LogCookStats: Display:     TagPackageExportsPresaveTimeSec=0.000000
+LogCookStats: Display:     TagPackageExportsTimeSec=0.000000
+LogCookStats: Display:     FullyLoadLoadersTimeSec=0.000000
+LogCookStats: Display:     ResetLoadersTimeSec=0.000000
+LogCookStats: Display:     TagPackageExportsGetObjectsWithOuter=0.000000
+LogCookStats: Display:     TagPackageExportsGetObjectsWithMarks=0.000000
+LogCookStats: Display:     SerializeImportsTimeSec=0.000000
+LogCookStats: Display:     SortExportsSeekfreeInnerTimeSec=0.000000
+LogCookStats: Display:     SerializeExportsTimeSec=0.000000
+LogCookStats: Display:     SerializeBulkDataTimeSec=0.000703
+LogCookStats: Display:     AsyncWriteTimeSec=0.000000
+LogCookStats: Display:     MBWritten=0.000000
+LogCookStats: Display: Package.DifferentPackagesSizeMBPerAsset
+LogCookStats: Display: Package.NumberOfDifferencesInPackagesPerAsset
+LogCookStats: Display: Package.PackageDifferencesSizeMBPerAsset
+LogCookStats: Display: Package.DiffTotal
+LogCookStats: Display:     NumberOfDifferentPackages=0
+LogCookStats: Display:     DifferentPackagesSizeMB=0.000000
+LogCookStats: Display:     NumberOfDifferencesInPackages=0
+LogCookStats: Display:     PackageDifferencesSizeMB=0.000000
+LogCookStats: Display: UnversionedProperties
+LogCookStats: Display:     SavedStructs=0
+LogCookStats: Display:     SavedMB=0
+LogCookStats: Display:     EquivalentTaggedMB=0
+LogCookStats: Display:     CompressionRatio=-nan(ind)
+LogCookStats: Display:     BitfieldWasteKB=0
+LogCookStats: Display:
+LogCookStats: Display: Cook Profile
+LogCookStats: Display: ============
+LogCookStats: Display:  0.CookWallTimeSec=5.813529
+LogCookStats: Display:  0. 0.StartupWallTimeSec=3.069253
+LogCookStats: Display:  0. 1.CookProcessingTime=2.744276
+LogCookStats: Display:  0. 1. 1.StartCookByTheBookTimeSec=1.385840
+LogCookStats: Display:  0. 1. 1. 0.BlockOnAssetRegistryTimeSec=0.540943
+LogCookStats: Display:  0. 1. 1. 1.GameCookModificationDelegateTimeSec=0.000023
+LogCookStats: Display:  0. 1. 2.TickCookOnTheSideTimeSec=0.069453
+LogCookStats: Display:  0. 1. 2. 0.TickCookOnTheSideLoadPackagesTimeSec=0.797290
+LogCookStats: Display:  0. 1. 2. 1.TickCookOnTheSideSaveCookedPackageTimeSec=0.133688
+LogCookStats: Display:  0. 1. 2. 1. 0.TickCookOnTheSideResolveRedirectorsTimeSec=0.000000
+LogCookStats: Display:  0. 1. 2. 2.TickCookOnTheSidePrepareSaveTimeSec=0.144590
+LogCookStats: Display:  0. 1. 3.TickLoopGCTimeSec=0.012394
+LogCookStats: Display:  0. 1. 4.TickLoopRecompileShaderRequestsTimeSec=0.000000
+LogCookStats: Display:  0. 1. 5.TickLoopShaderProcessAsyncResultsTimeSec=0.000007
+LogCookStats: Display:  0. 1. 6.TickLoopProcessDeferredCommandsTimeSec=0.000001
+LogCookStats: Display:  0. 1. 7.TickLoopTickCommandletStatsTimeSec=0.000000
+LogCookStats: Display:  0. 1. 8.TickLoopFlushRenderingCommandsTimeSec=0.000114
+LogCookStats: Display:  0. 1. 9.ShaderFlushTimeSec=0.000000
+LogCookStats: Display:  0. 1. 10.ValidationTimeSec=0.000028
+LogCookStats: Display:
+LogCookStats: Display: DDC Summary Stats
+LogCookStats: Display: =================
+LogCookStats: Display: BackEnd         = Installed
+LogCookStats: Display: HasLocalCache   =      true
+LogCookStats: Display: HasSharedCache  =     false
+LogCookStats: Display: HasCloudCache   =     false
+LogCookStats: Display: HasZenCache     =      true
+LogCookStats: Display: TotalGetHits    =      3640
+LogCookStats: Display: TotalGetMisses  =         0
+LogCookStats: Display: TotalGets       =      3640
+LogCookStats: Display: TotalGetHitPct  =  1.000000
+LogCookStats: Display: GetMissPct      =  0.000000
+LogCookStats: Display: TotalPutHits    =         0
+LogCookStats: Display: TotalPutMisses  =         0
+LogCookStats: Display: TotalPuts       =         0
+LogCookStats: Display: TotalPutHitPct  =  0.000000
+LogCookStats: Display: PutMissPct      =  0.000000
+LogCookStats: Display: LocalGetHits    =      3408
+LogCookStats: Display: LocalGetMisses  =         0
+LogCookStats: Display: LocalGetTotal   =      3408
+LogCookStats: Display: LocalGetHitPct  =  1.000000
+LogCookStats: Display: SharedGetHits   =         0
+LogCookStats: Display: SharedGetTotal  =         0
+LogCookStats: Display: SharedGetHitPct =  0.000000
+LogCookStats: Display: ZenLocalGetHits =      3408
+LogCookStats: Display: ZenLocalGetTotal=      3408
+LogCookStats: Display: ZenLocalGetHitPct=  1.000000
+LogCookStats: Display: ZenRemoteGetHits=         0
+LogCookStats: Display: ZenRemoteGetTotal=         0
+LogCookStats: Display: ZenRemoteGetHitPct=  0.000000
+LogCookStats: Display: ZenRemoteReadSpeed=  0.000000
+LogCookStats: Display: ZenRemoteWriteSpeed=  0.000000
+LogCookStats: Display: ZenRemoteLatency=  0.000000
+LogCookStats: Display: CloudGetHits    =         0
+LogCookStats: Display: CloudGetTotal   =         0
+LogCookStats: Display: CloudGetHitPct  =  0.000000
+LogCookStats: Display: LocalLatency    =  0.416085
+LogCookStats: Display: LocalReadSpeed  = 17.690588
+LogCookStats: Display: LocalWriteSpeed =  0.000000
+LogCookStats: Display: SharedLatency   =  0.000000
+LogCookStats: Display: SharedReadSpeed =  0.000000
+LogCookStats: Display: SharedWriteSpeed=  0.000000
+LogCookStats: Display: CloudLatency    =  0.000000
+LogCookStats: Display: CloudReadSpeed  =  0.000000
+LogCookStats: Display: CloudWriteSpeed =  0.000000
+LogCookStats: Display:
+LogCookStats: Display: DDC Resource Stats
+LogCookStats: Display: =======================================================================================================
+LogCookStats: Display: Asset Type                          Total Time (Sec)  GameThread Time (Sec)  Assets Built  MB Processed
+LogCookStats: Display: ----------------------------------  ----------------  ---------------------  ------------  ------------
+LogCookStats: Display: BulkDataList                                    1.38                   0.00             0          0.56
+LogCookStats: Display: MaterialShader                                  0.80                   0.02             0          2.07
+LogCookStats: Display: GlobalShader                                    0.19                   0.01             0         10.17
+LogCookStats: Display: Texture                                         0.02                   0.00             0          6.13
+LogCookStats: Display: StaticMesh                                      0.00                   0.00             0          0.32
+LogCookStats: Display: STREAMEDAUDIO                                   0.00                   0.00             0          0.09
+LogCookStats: Display: CardRepresentation                              0.00                   0.00             0          0.01
+LogCookStats: Display: NavCollision                                    0.00                   0.00             0          0.01
+LogCookStats: Display: Audio                                           0.00                   0.00             0          0.08
+LogCookStats: Display: BodySetup                                       0.00                   0.00             0          0.31
+LogCookStats: Display:
+LogCookStats: Display: Accumulated DDC Resource Stats Per Asset Type
+LogCookStats: Display: =======================================================================================================
+LogCookStats: Display: AnimationSequence                               0.00                   0.00             0          0.00
+LogCookStats: Display: Audio                                           0.00                   0.00             0          0.08
+LogCookStats: Display: CardRepresentation                              0.00                   0.00             0          0.01
+LogCookStats: Display: DistanceField                                   0.00                   0.00             0          0.00
+LogCookStats: Display: MaterialShader                                  0.80                   0.02             0          2.07
+LogCookStats: Display: MaterialTranslation                             0.00                   0.00             0          0.00
+LogCookStats: Display: NiagaraScript                                   0.00                   0.00             0          0.00
+LogCookStats: Display: SkeletalMesh                                    0.00                   0.00             0          0.00
+LogCookStats: Display: StaticMesh                                      0.00                   0.00             0          0.32
+LogCookStats: Display: Texture                                         0.02                   0.00             0          6.13
+LogCookStats: Display: Other                                           1.57                   0.01             0         11.14
+LogPackageBuildDependencyTracker: Display: Package Accesses (78 referencing packages with a total of 276 unique accesses)
+LogConfigBuildDependencyTracker: Display: Config Accesses (142 referencing packages with a total of 341 unique accesses). 1461 unique accesses that were not associated with a package.
+LogCook: Display: ---- Finalisation: End ----
+LogCook: Display: Done!
+LogSavePackage: Display: Took 0.000098s to verify the EDL loading graph.
+LogInit: Display:
+LogInit: Display: Warning/Error Summary (Unique only)
+LogInit: Display: -----------------------------------
+LogInit: Display: LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimBoneCompressionSettings'을(를) 찾지 못했습니다.
+LogInit: Display: LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimBoneCompressionSettings'
+LogInit: Display: LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimCurveCompressionSettings'을(를) 찾지 못했습니다.
+LogInit: Display: LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimCurveCompressionSettings'
+LogInit: Display:
+LogInit: Display: Success - 0 error(s), 4 warning(s)
+LogInit: Display:
+
+Execution of commandlet took:  2.75 seconds, PeakPhysMemoryMB=1240 MB, PeakVirtMemoryMB=1232 MB
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles (PostWrite): 1 .ref files found, 1 referenced binaries
+LogAssetRegistry: Display: CleanupOrphanedCacheFiles: 1 total binaries, 1 referenced (kept), 0 old-style pre-migration (kept), 0 orphans deleted, 0 orphans locked (kept)
+LogStreaming: Display: ============ Loader Stats ============
+LogStreaming: Display: Unique Partial Flushes: 0
+LogStreaming: Display: ============ Loader Stats End ============
+LogShaderCompilers: Display: Exiting ShaderCompilingThread
+Took 7.51s to run UnrealEditor-Cmd.exe, ExitCode=0
+Cook command time: 7.59 s
+********** COOK COMMAND COMPLETED **********
+********** STAGE COMMAND STARTED **********
+Creating Staging Manifest...
+Patching bootstrap executable; C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Intermediate\Staging\CubelessCurrentRuntimeProof.exe
+Begin update resource 'C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Intermediate\Staging\CubelessCurrentRuntimeProof.exe' (0)
+Add resource 101, length 104 (True)
+Add resource 1, length 1996 (True)
+Add resource 2, length 2447 (True)
+Add resource 3, length 2535 (True)
+Add resource 4, length 3037 (True)
+Add resource 5, length 3244 (True)
+Add resource 6, length 3531 (True)
+Add resource 7, length 6931 (True)
+Add resource 201, length 180 (True)
+Add resource 202, length 56 (True)
+Add resource 205, length 2 (True)
+End update resource (True/0)
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\WordCount.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\PortableObjectImport.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\PropertyNames.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\Keywords.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\PortableObjectExport.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\Editor.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\Engine.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\Category.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BasePakFileRules.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseSourceControlSettings.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseUnrealInsightsSettings.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\ConsoleVariables.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseLightmass.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseEditorSettings.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseEditor.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\RepairData.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Localization\ToolTips.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseEditorKeyBindings.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\WindowsEditorPerProjectUserSettings.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseEditorPerProjectUserSettings.ini
+Excluding config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\WindowsEditorSettings.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseGame.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseEngine.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\WindowsInput.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\WindowsGame.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseDeviceProfiles.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseCompat.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Base.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\BaseWindowsGame.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\BaseWindowsEngine.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseInput.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseHardware.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseGameUserSettings.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseMaterialExpressions.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Layouts\DefaultLayout.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\PluginBase.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Layouts\UE4ClassicLayout.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\DataDrivenPlatformInfo.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\Windows\BaseWindowsInput.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\VulkanPC\DataDrivenPlatformInfo.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseScalability.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseRuntimeOptions.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\BaseInstallBundle.ini
+Including config file C:\Program Files\Epic Games\UE_5.8\Engine\Config\ConfigRedirects.ini
+Including config file C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Config\DefaultGame.ini
+Including config file C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Config\DefaultEngine.ini
+Cleaning Stage Directory: C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Saved\StagedBuilds\Windows
+Creating pak using staging manifest.
+DumpManifest: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\PrePak_Windows_NonUFSFiles.txt, NumItems: 16
+DumpManifest: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\PrePak_Windows_NonUFSFilesDebug.txt, NumItems: 3
+DumpManifest: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\PrePak_Windows_UFSFiles.txt, NumItems: 1818
+No matching platform for PakFileRules for Section ExcludeContentForMobile : Windows
+Using 1 pak order files:
+    C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Build\Windows\FileOpenOrder\CookerOpenOrder.log Priority 0
+Running UnrealPak with arguments: "C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject"  -cryptokeys="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Saved\Cooked\Windows\CubelessCurrentRuntimeProof\Metadata\Crypto.json" -secondaryOrder="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Build\Windows\FileOpenOrder\CookerOpenOrder.log" -unattended -patchpaddingalign=2048 -compressionformats=Oodle -compresslevel=4 -compressmethod=Kraken  -platform=Windows  -CreateMultiple="C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\PakCommands.txt"
+Running: C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealPak.exe "C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\CubelessCurrentRuntimeProof.uproject"  -cryptokeys="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Saved\Cooked\Windows\CubelessCurrentRuntimeProof\Metadata\Crypto.json" -secondaryOrder="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Build\Windows\FileOpenOrder\CookerOpenOrder.log" -unattended -patchpaddingalign=2048 -compressionformats=Oodle -compresslevel=4 -compressmethod=Kraken  -platform=Windows  -CreateMultiple="C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\PakCommands.txt"
+OodleDataCompression: Display: Oodle v2.9.16 format for pak/iostore with method=Kraken, level=4=Normal
+LogStreaming: Display: AsyncLoading2 - Created: Async Loading Thread: false, Async Post Load: false, Multithreaded: false
+LogPakFile: Display: ProjectDir: ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/
+LogPakFile: Display: Parsing crypto keys from a crypto key cache file
+LogPakFile: Display: CompressionFormats in priority order: Oodle, Zlib
+LogPakFile: Display: Oodle enabled on 'NoPluginCompression' files
+LogPakFile: Display: Loading pak order file C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Build\Windows\FileOpenOrder\CookerOpenOrder.log...
+LogPakFile: Display: Finished loading pak order file C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Build\Windows\FileOpenOrder\CookerOpenOrder.log.
+LogPakFile: Display: Loading response file C:\Program Files\Epic Games\UE_5.8\Engine\Programs\AutomationTool\Saved\ResponseFiles\PakList_CubelessCurrentRuntimeProof-Windows.txt
+LogPakFile: Display: Added 1818 entries to add to pak file.
+LogPakFile: Display: Collecting files to add to pak file...
+LogPakFile: Display: Collected 1818 files in 0.01s.
+LogPakFile: Display: Creating pak C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Saved/StagedBuilds/Windows/CubelessCurrentRuntimeProof/Content/Paks/CubelessCurrentRuntimeProof-Windows.pak.
+LogPakFile: Display: Created pak file: C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58CurrentRuntimeProof/Saved/StagedBuilds/Windows/CubelessCurrentRuntimeProof/Content/Paks/CubelessCurrentRuntimeProof-Windows.pak
+LogPakFile: Display: CompressionFormat 0 [Oodle] : 497 files, 48780886 -> 14662914 bytes
+LogPakFile: Display: CompressionFormat 2 [None] : 1321 files, 13119662 -> 13119662 bytes
+LogPakFile: Display: Added 1818 files, 28514969 bytes total
+LogPakFile: Display: PrimaryIndex size: 26846 bytes
+LogPakFile: Display: PathHashIndex size: 34963 bytes
+LogPakFile: Display: FullDirectoryIndex size: 51106 bytes
+LogPakFile: Display: Compression summary: 30.06% of original size. Compressed Size 14662914 bytes, Original Size 48780886 bytes.
+LogPakFile: Display: Encryption - DISABLED
+LogPakFile: Display:
+LogPakFile: Display: Writer and Compression Threads exited.
+LogPakFile: Display: UnrealPak executed in 0.178440 seconds
+Took 0.43s to run UnrealPak.exe, ExitCode=0
+DumpManifest: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\FinalCopyWin64_UFSFiles.txt, NumItems: 1819
+DumpManifest: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\FinalCopyWin64_NonUFSFiles.txt, NumItems: 16
+DumpManifest: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\FinalCopyWin64_NonUFSFilesDebug.txt, NumItems: 3
+Copying NonUFSFiles to staging directory: C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Saved\StagedBuilds\Windows
+Copying DebugFiles to staging directory: C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\workspaces\UE58CurrentRuntimeProof\Saved\StagedBuilds\Windows
+Stage command time: 0.84 s
+********** STAGE COMMAND COMPLETED **********
+********** PACKAGE COMMAND STARTED **********
+Package command time: 0.00 s
+********** PACKAGE COMMAND COMPLETED **********
+********** ARCHIVE COMMAND STARTED **********
+Archiving to C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\CurrentRuntimeShipping-20261010-D
+Archive command time: 0.10 s
+********** ARCHIVE COMMAND COMPLETED **********
+BuildCookRun time: 11.10 s
+BUILD SUCCESSFUL
+AutomationTool executed for 0h 0m 11s
+AutomationTool exiting with ExitCode=0 (Success)

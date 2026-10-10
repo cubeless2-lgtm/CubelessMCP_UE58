@@ -1,0 +1,76 @@
+# Reactive Surface Per-Component Radius Report — 2026-07-17
+
+## Result
+
+`BPC_ReactivePoint`의 채널별 월드 반경을 컴포넌트 단위로 분리했다. 프로덕션 결과는 일반 Blueprint/Niagara/레벨 자산이며 UnrealMCP는 authoring 및 검증에만 사용된다. 프로젝트 C++ 변경은 없다.
+
+- `GrassRadius`: `0`이면 Controller 기본값 `80cm`
+- `GroundRadius`: `0`이면 Controller 기본값 `24cm`
+- `WaterRadius`: `0`이면 Controller 기본값 `20cm`
+- `RS_Water_ImpulseRadiusPixels`: Water의 월드 반경과 분리된 최소 `1px` 보장
+- 레거시 공용 `Radius`는 채널별 반경 이전을 끝내고 BPC 선언에서 제거했다.
+
+각 public/internal 변수의 툴팁에는 단위, 0의 상속 의미, 채널 분리, 런타임 직접 편집 여부를 기록했다.
+
+후속 최적화에서는 실행 도달성, C++ 이름 기반 리플렉션, 레벨·컴포넌트 오버라이드를 교차검증한 뒤 Controller dead 변수 61개와 BPC의 대체 완료 변수 `Radius`, `FootSide`, `GroundContact`, `GroundContactFamily`를 제거했다. `SourceFamily`, `Priority`, `Strength`, `VelocityMode`는 향후 기능 예약값으로 유지하되 현재 런타임에는 적용되지 않는다고 툴팁에 명시했다. 시스템이 할당되지 않고 그래프 참조도 없던 `RS_Ground_Niagara1/2/3` 컴포넌트도 제거했다.
+
+## Runtime Contract
+
+- Controller는 Attached Parent의 `BPC_ReactivePoint`를 `SourceIndex 0..3` 순서로 먼저 예약한다. Registry 동적 소스는 그 뒤에 `ActorComponent` 참조로 합쳐지므로 플레이어 BPC가 소스 예산 뒤로 밀리지 않는다.
+- BPC는 Tick하지 않는다. `BeginPlay`에서 Registry에 자기 컴포넌트 참조를 `AddUnique` 등록하고 `EndPlay`에서 제거하므로 나중에 스폰/디스폰되는 소스도 태그 없이 생명주기를 따른다.
+- Grass/Water trail 이동 거리는 월드 Z를 제외한 XY 거리로 계산하며 이전 위치 상태는 BPC별로 분리된다.
+- Ground는 플레이어 BPC 최대 4개를 처리하고, BPC별 `GroundRadius`, 접촉 히스테리시스, 마지막 스탬프 위치를 독립적으로 유지한다.
+- Water는 기존 이동 게이트와 단일 펄스 에너지를 유지한다. 플레이어 BPC 최대 4개를 round-robin하며 선택된 컴포넌트의 월드 XY와 `WaterRadius`를 `RS_Water_Positions.Z`에 기록한다. 한 펄스의 Position/Velocity/Swim 배열 길이는 최대 1이다.
+- Water HLSL은 `Positions.Z > 0 ? Positions.Z : DefaultRadius`를 소스별 월드 반경으로 사용하고, 별도로 `ImpulseRadiusPixels`의 픽셀 하한을 적용한다.
+
+현재 의도적인 경계는 그대로 둔다. 플레이어 prefix 안의 슬롯이 Water 비활성 또는 Trace 실패이면 커서는 다음 슬롯으로 진행하지만 그 펄스는 비운다. 같은 펄스에서 다음 후보까지 탐색하는 정책과 전체 배열 상한 확장은 후속 배열/선택 정책 작업이다.
+
+## Level Migration
+
+- `RS_Demo_Player_Piper`
+  - `BPC_ReactivePoint_L`: `SourceIndex=0`, `Grass/Ground/Water=50/0/15cm`
+  - `BPC_ReactivePoint_R`: `SourceIndex=1`, `Grass/Ground/Water=50/0/15cm`
+  - 두 컴포넌트 모두 `ChannelMask=7`
+- 레벨 `Sphere`
+  - `ChannelMask=2`(Grass 전용)
+  - `GrassRadius=200cm`
+  - `GroundRadius=0`, `WaterRadius=15cm`
+- `BPC_ReactivePoint` 클래스 기본값은 `Grass/Ground/Water=60/0/15cm`다.
+- Controller는 Piper의 `ChildActorComponent`가 소유한 인스턴스 1개만 남겼다. 직접 부착돼 있던 중복 Controller를 제거하고 `Controller compile -> Piper compile -> map save` 순서를 적용했다.
+
+## Verification
+
+### Numeric runtime A/B
+
+- Grass: Piper L/R `30/90cm`, Sphere `500cm`가 `RS_Grass_Positions.Z = [30, 90, 500]`으로 관측됐다.
+- Ground: Piper L/R `10/60cm`가 `RS_Ground_Positions.Z = [10, 60]`으로 관측됐다.
+- Water 기본값: Piper L/R이 모두 `0`일 때 10개 유효 펄스가 전부 `Positions.Z=20cm`였다.
+- Water A/B: L/R을 임시로 `12/70cm`로 설정한 PIE에서 35개 유효 펄스가 `70, 12, 70, 12, ...`로 교대했다. 모든 유효 샘플의 Position/Velocity/Swim 배열 길이는 `1/1/1`이었다.
+- 임시 A/B 값은 PIE 종료 후 L/R 모두 `0`으로 복구하고 레벨을 저장했다.
+
+### Structural and safety gates
+
+- Blueprint compile/validation `0 errors / 0 warnings`:
+  - `BPC_ReactivePoint`
+  - `BP_ReactiveSurfaceRegistry`
+  - `BP_ReactiveSurfaceControllerActor`
+  - `BP_Piper_ReactivePrototype`
+  - `BP_RS_Demo_ReactiveSourceSphere`
+- `NS_RS_Water`: Niagara error/warning `0/0`, per-source HLSL marker 1개
+- authoring marker 재실행: 중복 생성 없이 기존 marker를 찾아 `created=false`
+- 에디터/PIE Controller 수 `1`, 유효 `ChildActorComponent` parent `1`, 활성 Ground/Grass/Water writer 각각 `1`
+- `/Game/ReactiveSurface` MCP 의존성 감사: 42 assets, forbidden dependency `0`, redirector `0`
+- 검증 종료 시 dirty content/map package `0`
+- 고스트 자산은 `/Game/_MCP_Temp/NiagaraGenerated/ReactiveSurfacePerComponentRadius`에서 제거했고 잔여 자산 `0`
+- 현재 테스트 시작 로그 이후 `Blueprint Runtime Error`, `Accessed None`, `NCS_Error`, Blueprint compiler error `0`
+- `Python/scripts/smoke_live_bridge.py`: PASS
+
+## Reproduction
+
+Authoring runner:
+
+`codex/scripts/reactive_surface/reactive_surface_per_component_radius_runner.py`
+
+날짜가 붙은 초기 `phase0/phase3/phase4/phase6` 및 구형 Ground/Water runner는 당시 구조를 재현하는 역사적 도구다. 현재 프로덕션 Controller에 다시 실행하면 제거한 변수를 재생성할 수 있으므로 사용하지 않는다. 위 per-component runner는 제거된 공용 Radius와 Ground 호환 필드를 더 이상 읽거나 설정하지 않으며 현재 기본값을 보존한다.
+
+중요한 Controller 변경 뒤에는 `compile_child_actor_owner_chain`을 사용해 Controller, Piper, 현재 맵을 순서대로 컴파일/저장해야 한다. Controller만 컴파일하면 ChildActor preview가 레벨에 직렬화되어 PIE에서 중복 writer가 생길 수 있다.

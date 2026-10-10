@@ -1,0 +1,80 @@
+# CubelessStylized Project Binding
+
+> Reference binding copied from external Ops. This file is not the active binding for `UnrealMCP5_6_1`; use `projects/UnrealMCP5_6_1.md` for this repository. If `CubelessStylized` consumes this UE 5.6 MCP checkout, prefer the sibling path `../UnrealMCP5_6_1/Python` over the legacy `../unreal-mcp-cubeless/Python`.
+
+## Workspace Scope
+
+- Default related repositories:
+  - Project: `CubelessStylized`.
+  - MCP sibling for this embedded 5.6 MCP copy: `../UnrealMCP5_6_1`.
+  - Embedded ops: `../UnrealMCP5_6_1/codex`.
+- Resolve these paths relative to the discovered project parent first. Use `UNREAL_MCP_CUBELESS_ROOT` or `CUBELESS_OPS_ROOT` only as explicit fallbacks.
+- Keep Git status, staging, commits, pushes, and summaries separate for `CubelessStylized`, `../UnrealMCP5_6_1`, and plugin submodules.
+
+## Primary UnrealMCP Binding
+
+- Primary chat shortcut server: `.mcp.json` server `unrealMCP`.
+- Expected command shape for this 5.6 MCP checkout: `uv --directory ../UnrealMCP5_6_1/Python run --python 3.11 unreal_mcp_server.py`.
+- Expected editor bridge: `127.0.0.1:55557`.
+- Expected MCP sibling integration branch: `main`.
+- If secondary tooling such as `mcp_unreal` or `plugin_port 8090` is checked, label it separately from the primary bridge.
+
+## Current Engine Target
+
+- Current target engine: Unreal Engine 5.6.1 installed at `C:\Program Files\Epic Games\UE_5.6`.
+- `StylizedCubeless.uproject` should use `EngineAssociation` `5.6`; project/plugin Target.cs and Build.cs files should use UE 5.6 compatible build settings/include order.
+- Current verification target is Win64 Editor. Android packaging is not active for the UE 5.6.1 pass unless the user explicitly re-enables it.
+- Keep every PCG plugin shipped with UE_5.6 enabled in the project: `PCG`, `PCGBiomeCore`, `PCGBiomeSample`, `PCGExternalDataInterop`, `PCGGeometryScriptInterop`, `PCGInstancedActorsInterop`, `PCGNiagaraInterop`, and `PCGWaterInterop`.
+- UE 5.7-only PCG interop plugins are unavailable under UE 5.6.1 and must remain disabled or absent: `PCGFastGeoInterop`, `PCGNaniteAssembliesInterop`, and `PCGPythonInterop`.
+
+## Local Safety Roots
+
+- Disposable MCP output root: `/Content/_MCP_Temp/`.
+- Use package paths such as `/Game/_MCP_Temp/<SourceName>_MCP` for recreate and validation targets.
+- `_MCP_Temp` outputs are gitignored disposable generated artifacts and must not be staged unless explicitly requested.
+- Local MCP learning/sample root: `/Content/_MCP_Sample/`. This is gitignored by default and should not be staged unless explicitly requested.
+- Use `/Content/MCPTestFixtures/` only for deliberate stable test fixtures.
+
+## Review Alpha Hooks
+
+- Review-display alpha hook: `Tools/Image/ensure_review_image_opaque_alpha.py`.
+- Integrated PCG visual QA hook: `Tools/Unreal/run_pcg_bookmark_visual_qa.py`.
+- Use these only for review/display copies, not deliverable transparent or packed images.
+
+## Git Hooks
+
+- Versioned Git hooks live in `.githooks`.
+- Local clones should point Git at that folder with `Tools/GitHooks/install-hooks.ps1`.
+- The active pre-commit hook runs `Tools/GitHooks/check_unreal_python_uv_safety.py` and blocks staged Unreal Python scripts that call `StaticMeshDescription.GetVertexInstanceUV` without an obvious UV channel count guard.
+- The active pre-commit hook also runs `Tools/GitHooks/check_no_project_mcp_plugin_dependency.py` and blocks project C++/module/descriptor/config changes that introduce hard dependencies on `UnrealMCP`, `/Script/UnrealMCP`, `MCPUnreal`, or `mcp_unreal` without the explicit approval token.
+- CubelessStylized intentionally keeps the editor-only `UnrealMCP` plugin enabled in `StylizedCubeless.uproject` as the project authoring bridge. Do not treat that existing `.uproject` entry alone as a review finding; continue to report new C++/Blueprint/PCG/asset/runtime hard references to UnrealMCP.
+
+## Packaging
+
+- Repository-local packaging output root: `Build/`.
+- Android package output, if explicitly reactivated later: `Build/Android/`.
+- Windows package output: `Build/Windows/`.
+- Use platform-specific subfolders under `Build/`.
+- Do not run packaging for rule-only requests such as `룰만 적용해줘` or `아직 패키징은 안해도 돼`.
+- Treat package outputs under `Build/` as generated artifacts. Do not stage or commit them unless the user explicitly asks to version a specific packaging artifact or configuration file.
+- Android is out of scope for the current UE 5.6.1 compatibility pass. Do not spend verification time on Android unless the user asks for Android packaging again.
+- If Android is explicitly reactivated, use `C:\Program Files\Epic Games\UE_5.6\Engine\Config\Android\Android_SDK.json` as the SDK package source of truth.
+- Current machine notes: Android Studio at `C:\Program Files\Android\Android Studio`, SDK root at `C:\Users\cubel\AppData\Local\Android\Sdk`, and `JAVA_HOME` should point at Android Studio `jbr`.
+- The user manually installs Unreal/Epic Android platform support. Do not install Epic Launcher engine components automatically.
+- If Turnkey lists only `Win64` or reports no Android platform despite SDK/NDK being installed, check whether `C:\Program Files\Epic Games\UE_5.6\Engine\Binaries\Android\UnrealGame.target` exists and report missing Unreal Android platform support as the blocker.
+
+## Local Docs
+
+- Use the project local documentation index for CubelessStylized learning, hook, skill, review, reference, and research notes.
+- Project tools that keep legacy `docs/...` tokens should resolve them through `CubelessStylized/Tools/Unreal/cubeless_ops_paths.py`.
+- For Unreal C++ reviews, apply the local `docs/workflows/unreal-cpp-review.md` flow first, then the project convention checklist.
+- Apply the local Git hook convention docs when explaining or repairing local Git hook setup.
+- Keep a migration snapshot in this repository if you need a pre-migration instruction baseline.
+- To verify a fresh Codex section, use `docs/workflows/codex-session-bootstrap.md`.
+- To promote a CubelessStylized lesson or rule, use the local `docs/workflows/promote-shared-work.md`.
+
+## Claude Code Adapter
+
+- Claude Code integration for this project is managed through the local project Claude adapter.
+- Keep Claude-specific wrappers, manifests, templates, and sync tooling isolated from the Codex `skills/` tree.
+- The project-facing Claude discovery output is `CubelessStylized/.claude/skills/`.

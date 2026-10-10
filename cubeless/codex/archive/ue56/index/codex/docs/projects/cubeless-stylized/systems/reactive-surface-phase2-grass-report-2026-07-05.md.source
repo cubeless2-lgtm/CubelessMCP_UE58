@@ -1,0 +1,72 @@
+# Reactive Surface Phase 2 Grass Report - 2026-07-05
+
+## Summary
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| Production assets | PASS | `/Game/ReactiveSurface/Grass/NS_RS_Grass`, `RT_RS_Grass`, `MF_RS_GrassSample` saved. |
+| Niagara compile | PASS | `NS_RS_Grass` compile error/warning `0/0` in runner bridge results. |
+| Material compile | PASS | `MF_RS_GrassSample` and temp debug material compile/save succeeded. |
+| PIE RT write | PASS | +X nonzero `78`, +Y nonzero `82`, pair nonzero `183` at 8px scan. |
+| Direction channels | PASS | +X sums `R=7476 > G=5333`; +Y sums `G=7317 > R=5212`. |
+| Material V-flip | PASS | Capture +X centroid `[380.457, 253.943]`; +Y centroid `[252.941, 387.765]`; `plus_x_not_u_flipped=true`. |
+| Zero-source sleep | PASS | Before deactivate nonzero `0`; after deactivate nonzero `0`; component active `false`. |
+| Dependency audit | PASS | Forbidden MCP refs `0`; dirty packages `0`. |
+| Temp cleanup | PASS | `_MCP_Temp/NiagaraGenerated/ReactiveGhost_Phase2Grass` remaining `false`; dirty packages `0`. |
+
+## Assets
+
+Production:
+
+- `/Game/ReactiveSurface/Grass/NS_RS_Grass`
+- `/Game/ReactiveSurface/Grass/RT_RS_Grass`
+- `/Game/ReactiveSurface/Grass/MF_RS_GrassSample`
+- `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`
+
+Temp validation only:
+
+- `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_Phase2Grass/L_Phase2Grass`
+- `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_Phase2Grass/M_RS_Grass_MF_Debug`
+- `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_Phase2Grass/RT_RS_Grass_Capture`
+
+## Reproduction
+
+Runner:
+
+```powershell
+python .\codex\scripts\reactive_surface\reactive_surface_phase2_grass_builder.py --run
+```
+
+Rebuild production from template:
+
+```powershell
+python .\codex\scripts\reactive_surface\reactive_surface_phase2_grass_builder.py --run --rebuild-production
+```
+
+Evidence:
+
+- Runtime evidence JSON: `MCPGameProject/Saved/MCP/ReactiveSurfacePhase2/phase2_grass_results.json`
+- Tracked evidence JSON: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-phase2-grass-results-2026-07-05.json`
+- Runtime capture: `MCPGameProject/Saved/MCP/ReactiveSurfacePhase2/phase2_grass_vflip_capture.png`
+- Tracked capture: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-phase2-grass-vflip-capture-2026-07-05.png`
+
+The tracked capture is a generated `256x256 RGBA` PNG preview from RT readback. Numeric pass/fail comes from RT scans, not visual interpretation.
+
+## Implementation Notes
+
+- Grass source inputs use the validated 3-step chain: Custom HLSL input -> `Module.*` ParameterMapGet -> `User.RS_Grass_*`.
+- Array DI links were verified by `inspect_niagara_data_interface_overrides`: `Module.Positions -> User.RS_Grass_Positions` and `Module.Velocities -> User.RS_Grass_Velocities`, each with one override link.
+- Scalar links are present in graph inspection for `User.RS_Grass_Active`, `WindowOriginWS`, `WindowSizeWS`, `DefaultRadius`, `DefaultStrength`, and `Persistence`.
+- The runner uses split PIE commands with real editor-frame waits. A single synchronous `execute_python` command can produce a false zero RT because it blocks render/GPU simulation frames.
+- The direction/V-flip smoke fixes runtime `User.RS_Grass_Persistence` to `0.0` so each direction is a single-stamp test and previous Grid2D content cannot bleed into the next direction.
+- Controller has Grass namespace/source variables and Phase 1 shell functions. Full controller-side source collection, compaction, and Niagara push graph remains Phase 3 per implementation plan.
+
+## Unsure Decisions
+
+- User visual gate is still required for whether the Grass response looks good in the actual foliage materials.
+- Phase 3 must prove the controller BP graph path, not just direct Niagara component runtime push.
+- Phase 6 must prove Ground+Grass simultaneous activation with isolated RT/User namespaces.
+
+## Tooling Note
+
+No project C++ was used. No UnrealMCP C++ change was required for Phase 2. The earlier RT zero result was a harness issue: spawn/push/readback happened inside one synchronous Python command.

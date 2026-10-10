@@ -1,0 +1,25 @@
+# Safety Matrix
+
+## Purpose
+
+- This file is a routing index, not a duplicate safety-rule body.
+- When a risk signal matches, load the canonical source before the related mutation, retry, promotion, lifecycle action, or approval decision.
+- If several signals match, load every applicable source. Cost or speed policy never suppresses a safety source.
+
+## Risk Routing
+
+| Risk signal | Load trigger | Canonical source |
+| --- | --- | --- |
+| Mutation outcome is unknown; timeout, cancellation, partial composite result, `mutation_state_unknown`, or `do_not_retry` appears | Before deciding whether to retry, reconcile, cancel, close, or promote | `codex/docs/workflows/mcp-rpc-verification-first.md`, especially its mutation-timeout and Automatic No-Go sections |
+| Project C++ or a non-UnrealMCP project-plugin source may be created or modified | Before planning or performing the first source mutation | `codex/docs/policies/project-cpp-approval-gate.md` |
+| Saved Unreal content, project APIs, descriptors, or modules may acquire an MCP-only dependency | Before mutation and again before promotion, packaging, or final handoff | `codex/docs/policies/authoring-dependency-boundary.md` |
+| Dirty, untracked, concurrent, or unfamiliar work is present | Before editing, reverting, staging, committing, pulling, or pushing near it | `codex/docs/policies/git-repositories.md` |
+| Editor bridge restart, shutdown, rebind, shared endpoint, `QUIT_EDITOR`, or another transport lifecycle action is involved | Before the lifecycle action | `codex/docs/workflows/mcp-rpc-verification-first.md`; for shared-editor coordination also use `codex/AGENTS.md` |
+| Map open, map switch, preview-map creation, or dirty-package transition is involved | Before the map or preview lifecycle action | `codex/docs/workflows/map-and-preview-safety.md` |
+| Repository text contains Korean/non-ASCII text, PowerShell reads or writes text, or output looks garbled | Before reading through an unsafe default or rewriting the file | `codex/AGENTS.md` Text Encoding Safety |
+| Destructive, irreversible, approval-scoped, credential, account, remote, or external-state action is considered | Before requesting approval or acting | Active system/developer destructive-action boundary first, then `codex/docs/policies/approvals.md` for repository-local approval scope |
+
+## Matrix Review
+
+- A new safety rule must have one canonical body and, when cross-cutting, one routing entry here.
+- Update a row only when its trigger or canonical source changes; do not copy implementation details, tokens, commands, or No-Go bodies into this matrix.

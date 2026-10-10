@@ -1,0 +1,53 @@
+# Reactive Surface Water V12 Thin Ring Report - 2026-07-08
+
+- Verdict: `PASS`
+- System: `/Game/ReactiveSurface/Water/NS_RS_Water.NS_RS_Water`
+- Change: wide radial source sine was replaced with a thinner shell impulse.
+- Change: Water normal strength and source radius were reduced for thinner visible wave bands.
+
+## Defaults
+- RS_Water_CellSize: `0.001953125`
+- RS_Water_Damping: `0.983`
+- RS_Water_DefaultRadius: `30.0`
+- RS_Water_DefaultStrength: `0.46`
+- RS_Water_ImpulseClamp: `0.82`
+- RS_Water_ImpulseRadiusPixels: `7.0`
+- RS_Water_NormalStrength: `18.0`
+- RS_Water_SpongeDamping: `0.09`
+- RS_Water_SpongeWidth: `0.05`
+- RS_Water_StrokeInterval: `14.0`
+- RS_Water_SwimSpeedThreshold: `12.0`
+- RS_Water_SwimWakeStrength: `0.68`
+- RS_Water_WaveSpeed: `0.72`
+- RS_Water_WindowSizeWS: `1500.0`
+
+## Checks
+- history_trail_exists: `True`
+- rotated_cloud_similarity: `True`
+- rotated_cloud_stays_world_x: `True`
+- rotate_in_place_no_wake: `True`
+- moving_seed_is_circular_not_tail: `True`
+- soft_energy_control: `True`
+- turn_does_not_spawn_attached_tail: `True`
+- thin_seed_not_blob: `True`
+- thin_active_pixels: `True`
+- thin_radius_p95: `True`
+- contained_radius_max: `True`
+
+## Key Numbers
+- Seed active pixels: `136`
+- Seed aspect: `1.0`
+- Tail image RMS diff, single vs rotated point cloud: `4.712776296055932`
+- Spread active pixels: `935`
+- Spread p95 radius px: `73.21536723939859`
+- Spread max radius px: `84.2133599852185`
+- Blocking dirty packages: `[]`
+- Nonblocking editor dirty packages: `[]`
+
+## Visuals
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV12ThinRingTuning\water_v12_thin_ring_motion.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV12ThinRingTuning\water_v12_thin_ring_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v12-thin-ring-results-2026-07-08.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV12ThinRingTuning\water_v12_thin_ring_bridge_results.json`

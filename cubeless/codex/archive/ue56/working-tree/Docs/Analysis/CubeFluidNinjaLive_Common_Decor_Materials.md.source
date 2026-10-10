@@ -1,0 +1,369 @@
+# CubeFluidNinjaLive 공통 데코 머티리얼 clean-room 구현
+
+## 목적과 현재 결론
+
+이 문서는 `/Game/FluidNinjaLive` 원본을 로드·복제하지 않고 공통 데코 Material 3개와
+Material Instance 5개를 새로 저작하는 원리, frozen 근거, 실패 계보, 현재 recovery
+generation 3 절차를 기록한다.
+
+- Builder: `Python/scripts/analysis/build_cube_fluid_ninja_common_decor_materials.py`
+- Offline test: `Python/scripts/analysis/test_cube_fluid_ninja_common_decor_material_builder.py`
+- Authoring contract: `cube_fluid_ninja_common_decor_materials_v2`
+- Authoring SHA-256: `6bb9c4957eaa840f8fff3794ccd6d38bc492c542ae2862b7f1b57b8524ff762f`
+- Fresh execute token: `cfnl-common-decor-materials-6bb9c4957eaa840f8fff`
+- Recovery contract: `cube_fluid_ninja_common_decor_materials_partial_recovery_v3`
+- Recovery generation: `3`
+- Recovery SHA-256: `567bdc5bb45480972056d45a8b2d0135900973163a1684ef65783a151afed796`
+- Recovery execute token: `cfnl-common-decor-recovery-567bdc5bb45480972056`
+
+현재 에디터에는 recovery-v2 실패가 남긴 정확히 4개의 dirty, unsaved asset이 있다.
+따라서 빈 root만 허용하는 fresh execute를 지금 실행하면 안 된다. 현재 허용된 경로는
+아래 v2 실패 report와 live state를 모두 exact 검증하는 generation-3 recovery뿐이다.
+이 문서 작성과 offline 검증 과정에서는 Content, live editor, C++를 수정하지 않았다.
+
+## 정확한 8개 target
+
+| Family | Target | Class |
+| --- | --- | --- |
+| Logo base | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/M_CFNL_FluidNinjaLiveLogo` | Material |
+| Logo Green | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_FluidNinjaLiveLogo_Green` | MaterialInstanceConstant |
+| Logo Red | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_FluidNinjaLiveLogo_Red` | MaterialInstanceConstant |
+| Logo Yellow | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_FluidNinjaLiveLogo_Yellow` | MaterialInstanceConstant |
+| Text emissive | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/M_CFNL_TextEmissive` | Material |
+| Checker base | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/M_CFNL_CheckerBasic` | Material |
+| Checker Red emissive | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_CheckerRed` | MaterialInstanceConstant |
+| Checker Red non-emissive | `/Game/Study/CubeFluidNinjaLive/Art/Misc/Materials_Decor/M_CFNL_CheckerRed_NonEmissive` | MaterialInstanceConstant |
+
+`MI_CFNL_CheckerRed`는 MovingBall1의 정확한 prerequisite이며 `EmissivePower=1.0`이다.
+마지막 A05 prerequisite는 이름이 `M_`으로 시작하지만 class는
+`MaterialInstanceConstant`이고 `EmissivePower=0.5`다. 두 asset은 같은 색을 쓰지만
+서로 대체할 수 없다.
+
+최종 audit root 계약은 다음과 같다.
+
+| Root | Asset count | Class count |
+| --- | ---: | --- |
+| `/Game/Study/CubeFluidNinjaLive/Materials/Decor` | 7 | Material 3, MaterialInstanceConstant 4 |
+| `/Game/Study/CubeFluidNinjaLive/Art/Misc/Materials_Decor` | 1 | MaterialInstanceConstant 1 |
+
+## clean-room 경계와 허용 dependency
+
+Authoring payload에는 source package path가 들어가지 않는다. Source asset을 load,
+duplicate, migrate 또는 template으로 사용하지 않는다. 허용되는 persistent dependency는
+아래 네 개뿐이다.
+
+| Key | Path | Class |
+| --- | --- | --- |
+| logo texture | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/T_FluidNinjaLiveLogo` | Texture2D |
+| text font | `/Engine/EngineFonts/RobotoDistanceField` | Font |
+| hue function | `/Engine/Functions/Engine_MaterialFunctions02/HueShift` | MaterialFunction |
+| checker function | `/Engine/ArtTools/RenderToTexture/MaterialFunctions/CheckerPattern` | MaterialFunction |
+
+`/Game/FluidNinjaLive`, MCP temp/sample roots, `/Script/UnrealMCP`, `/UnrealMCP`,
+`MCPUnreal`, `mcp_unreal`은 authoring payload와 최종 dependency audit에서 금지된다.
+완성 asset은 UnrealMCP plugin이 없어도 load, cook, package, runtime 실행이 가능해야 한다.
+
+## frozen 근거
+
+Builder는 다음 11개 capture의 bytes와 SHA-256을 모두 고정하고, identity/class,
+complete/untruncated 상태, settings, node/pin, function path, parameter default와 MI direct
+override도 의미 검증한다.
+
+| Evidence | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Logo base inspection | 341,889 | `098a69fd509a527b1886a95b5ecd81914f31d441a95be6d59331bc57785c7570` |
+| Logo nodes | 61,164 | `e458ab64316761e8f6fcf8d9077b2f6ad673f646c7cbe7eb4a8d01eb1f86471c` |
+| Logo Green MI | 43,993 | `a548fd3b680180bce3641679436d28b146b7f6dbeb8f5e74ae931f7e407333fa` |
+| Logo Red MI | 43,225 | `9aa9df2f059db2dc6b4f757fc929012c75f57decf3ce3d2fdcdf94856a47f908` |
+| Logo Yellow MI | 43,841 | `0a5400cbb0c3402a9f004af868a63a13e2a14545965d833c515d8e04a5969220` |
+| Text inspection | 317,835 | `d254397f6c385f46ed78df6f5ddb74738de6bddfb96476d8c33ae7b10c703cd8` |
+| Text nodes | 68,682 | `37ce7aa0ccf33f858966a75378c223f090a900f70f8b3ef5bab1b1c7cf69afb2` |
+| Checker inspection | 580,543 | `718e69ea310d0c79942d996f4067bd7b756b56836470b70f30506ba6972a0829` |
+| Checker nodes | 141,312 | `36cba789456a92083a56ba9c4e4797c1bc9ac8a0d729a4d20179bca81d3b22db` |
+| Checker Red emissive MI | 44,523 | `90b2e1f403cb9c5ec077035b83628d94d59582f0f4abafdb4e54a186da83ecbc` |
+| Checker Red non-emissive MI | 44,593 | `3b8321ba4642e96e748778b6599d550abf3d0c0b4071263df15078cfa1a3a9d0` |
+
+## Material 구현 원리
+
+### Logo
+
+Surface, Masked, Unlit, two-sided이며 clip value는 `0.3333`이다. Clean-room graph는
+11 nodes, 10 edges다.
+
+1. Localized `TextureObjectParameter(Texture)`를 `TextureSample`에 연결한다.
+2. RGB와 `Hue`를 Engine `HueShift`에 넣는다.
+3. 결과를 `Desaturate` scalar로 desaturation한다.
+4. `Multiplier`를 곱하고 `Power`를 적용한다.
+5. `EyeAdaptationInverse` 결과를 EmissiveColor에 연결한다.
+6. texture alpha를 Opacity와 OpacityMask에 연결한다.
+
+기본값은 Hue 0, Desaturate 0, Multiplier 1.2, Power 1이다. API pin과 native raw
+identity가 다른 두 edge를 별도로 기록한다.
+
+| Edge | Native raw input | Editor/API input |
+| --- | --- | --- |
+| TextureObjectParameter → TextureSample | `TextureObject` | `Tex` |
+| PowerAmount → Power | `Exponent` | `Exp` |
+
+MI direct scalar 계약은 다음과 같다.
+
+| MI | Direct scalars |
+| --- | --- |
+| Green | Desaturate 0.20000000298, Hue 1.46000003815, Multiplier 1, Power 4, RefractionDepthBias 0 |
+| Red | Multiplier 1.04999995232, Power 1.79999995232, RefractionDepthBias 0 |
+| Yellow | Desaturate 0, Hue 0.07999999821, Multiplier 1, Power 1, RefractionDepthBias 0 |
+
+### Text emissive
+
+Surface, Masked, Unlit, two-sided이며 RobotoDistanceField page 0을 쓴다. Graph는
+15 nodes, 14 edges다. Font R channel을 `Lerp(-90, 90, Font.R)`로 변환해 signed
+distance mask를 얻고, optional distance fade를 다음 식으로 계산한다.
+
+```text
+fade = 1 - saturate((distance(WorldPosition, CameraPosition) - FadeDistance)
+                    / FadeDistanceFalloff)
+```
+
+기본값은 FadeDistance 2000, FadeDistanceFalloff 100,
+UseDistanceBasedOpacityMasking false다. Static switch false는 raw signed mask, true는
+signed mask와 fade의 곱을 선택한다. 결과는 Opacity와 OpacityMask에 연결되고,
+VertexColor는 EyeAdaptationInverse를 거쳐 EmissiveColor가 된다.
+
+Unary node의 native raw input은 `Input`이지만 UE 5.6 authoring API는 빈 문자열을
+요구한다.
+
+| Edge | Native raw input | Editor/API input |
+| --- | --- | --- |
+| Divide → Saturate | `Input` | `""` |
+| Saturate → OneMinus | `Input` | `""` |
+
+### Checker
+
+Surface, Opaque, DefaultLit, single-sided다. StaticMesh, GeometryCollections,
+NiagaraMeshParticles usage를 유지하고 InstancedStaticMeshes usage는 false다. 현재
+clean-room active-surface graph는 13 nodes, 13 edges, BaseColor/EmissiveColor/Roughness
+3 roots다.
+
+1. TextureCoordinate와 CheckerPatternTiling 1을 Engine CheckerPattern에 넣는다.
+2. `max(pattern, CheckerPatternStrength=0.7)`로 checker floor를 만든다.
+3. UseSecondColor false일 때 Color, true일 때 pattern alpha로 Color/Color2를 보간한다.
+4. floor와 선택 색을 곱해 BaseColor를 만든다.
+5. BaseColor와 EmissivePower를 곱해 EmissiveColor를 만든다.
+6. Roughness 기본값 0.8을 연결한다.
+
+중요한 범위 제한: frozen source의 Opacity와 OpacityMask는 이 13-node graph에서 나오지
+않고, 생략한 `UseOpacityFresnel` 및 `UseDistanceBasedOpacityMasking` auxiliary static-switch
+subgraph에서 나온다. 현재 opaque red recipe에서 두 분기는 false이므로 active visual
+surface에는 영향을 주지 않지만, 이 builder는 그 inactive roots나 전체 39-node source
+graph parity를 주장하지 않는다. 임의 constant/false branch를 만들어 채우지 않는다.
+따라서 현재 계약은 **active-surface semantic parity**이고, inactive Opacity/OpacityMask와
+auxiliary graph full parity는 별도 후속 작업이다.
+
+두 checker MI는 같은 Color
+`(0.6979169845581055, 0.03998500108718872, 0.057760998606681824, 1)`을 사용한다.
+EmissivePower만 각각 1.0과 0.5이며 RefractionDepthBias는 0, effective
+UseSecondColor는 false다.
+
+## 실패 계보와 API 원인
+
+### Fresh execute v001
+
+- Report: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/20260901_common_decor_materials_execute_v001/common_decor_material_builder_report.json`
+- Bytes/SHA: 48,525 / `e7d8f9567647e8ae6a5e86f6dd3cdd0e8a7239cc3160077c0cd5d9e58c0a28dd`
+- Failed stage: `author_independent_material_graphs`
+- Created: Logo, Text, Checker Materials
+- Saved: none
+
+`TextureObject`를 API pin label로 사용해 첫 edge가 실패했다. Frozen nodes는 native
+`raw_name=TextureObject`, editor name/API `Tex`를 증명한다. Connection loop는 나머지
+edge 시도를 계속했으므로 실제 partial Logo에는 9개의 다른 edge가 남았다.
+
+### Recovery v1 execute
+
+- Report: `.../20260901_common_decor_materials_recovery_execute_v001/common_decor_material_builder_report.json`
+- Bytes/SHA: 846,849 / `f707d0a36f29827b65b2f4bf89b7de38e0efcc84ce8ea8d4123ad6d8db17e772`
+- Failed stage: `continue_exact_partial_material_graphs`
+- Error: Divide→Saturate와 Saturate→OneMinus에 native `Input`을 API label로 사용
+- Saved: none
+
+이 실패 뒤 Logo는 완성됐고 Text는 15 nodes 중 12/14 edges가 연결됐다. 두 unary edge의
+API input을 `""`로 고친 recovery-v2 contract가 이 report에 직접 묶였다.
+
+### Recovery v2 execute
+
+- Report: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/20260901_common_decor_materials_recovery_v2_execute_v001/common_decor_material_builder_report.json`
+- Bytes/SHA: 1,011,499 / `8c908ad56e5556c0557f746970540be546263df78f74646553ebc4f3d4bfd133`
+- Failed stage: `create_exact_five_fresh_material_instances`
+- Error: Green `Desaturate` scalar setter returned false
+- Reused: three Materials
+- Created: Green MI only
+- Saved: none
+
+Setter 반환값은 실패를 뜻하지 않았다. Green에 `Desaturate=0.20000000298023224`가 실제로
+direct override로 들어갔지만 immediate false check가 예외를 만들었다.
+
+## UE 5.6 Material Instance setter 반환 버그 증명
+
+설치된 UE 5.6 source를 읽기 전용으로 검증한다.
+
+- File: `C:/Program Files/Epic Games/UE_5.6/Engine/Source/Editor/MaterialEditor/Private/MaterialEditingLibrary.cpp`
+- Bytes: 50,242
+- SHA-256: `f7cbd05660207de4697996982ae0383eca9c23afd46f5cb2d02cebbe3a0c8cf0`
+- Setter 시작 line: scalar 1143, texture 1165, vector 1231, static switch 1254
+
+네 구현 모두 `bool bResult = false`로 시작하고 `Set*ParameterValueEditorOnly`와
+`UpdateMaterialInstance`로 mutation을 수행하지만 `bResult=true`를 한 번도 설정하지 않은
+채 `return bResult`한다. Builder는 source bytes/hash와 각 함수 body 패턴을 모두 검사한다.
+
+따라서 정책은 다음과 같다.
+
+- Setter boolean은 기록만 하며 성공/실패 판정에 사용하지 않는다.
+- `false`를 이유로 raise하지 않는다.
+- 정확한 parent와 structured direct override native inspection이 유일한 성공 authority다.
+- 첫 save 전에 8개 target을 모두 native inspect하고, 하나라도 다르면 저장하지 않는다.
+- 저장 후에도 동일 계약을 다시 native inspect한다.
+
+## Recovery generation 3의 exact admission state
+
+Generation 3은 v2 실패 report의 exact bytes/SHA, embedded v2 authoring/recovery
+canonical self-hash, token, stage/error, mutation flags와 v1/fresh nested lineage를 먼저
+검사한다. 이어 현재 live state가 아래와 정확히 같아야 한다.
+
+| Asset | Structural revision | Exact state |
+| --- | --- | --- |
+| Logo Material | `36c5f514d9ce7dc82b664035b686553987a32915` | 11 nodes, 10 edges, Emissive/Opacity/OpacityMask, Masked/Unlit |
+| Text Material | `63678911e994c7c5cb369c50f3d181f643c8205b` | 15 nodes, 14 edges, Emissive/Opacity/OpacityMask, Masked/Unlit |
+| Checker Material | `a34ecf9bcf0a770ae8ec93003b794d437b260e1a` | 13 nodes, 13 edges, BaseColor/Emissive/Roughness, Opaque/DefaultLit |
+| Green MI | `49993a4ac4dadf026b3d3e047275504c854191c5` | Logo parent, direct Desaturate만 0.20000000298 |
+
+추가 admission 조건:
+
+- Decor root에는 위 4개만 있고 A05 root는 비어 있다.
+- class는 Material 3, MaterialInstanceConstant 1로 정확하다.
+- 네 package 모두 dirty다.
+- target `.uasset`은 disk에 하나도 없다.
+- 모든 Material node/class/tag/property/function/edge/root/GUID/settings가 exact하다.
+- Green의 vector/texture/static/effective override와 base-property override는 모두 비어 있다.
+- 예상 외 asset, class, dirty package, disk file, topology 또는 override는 mutation 전에
+  fail closed한다.
+
+## Generation 3 continuation과 저장 분리
+
+Admission 후 첫 mutation phase는 Material graph를 전혀 수정하지 않는다.
+
+1. 기존 3개 Material을 그대로 reuse한다. Edge reconnect, output reconnect, recompile,
+   node creation을 하지 않는다.
+2. 기존 Green MI를 reuse하고 이미 존재하는 Desaturate는 다시 설정하지 않는다.
+3. Green에 Hue, Multiplier, Power, RefractionDepthBias만 추가한다.
+4. Red, Yellow, Checker Red emissive, A05 Checker Red non-emissive 4개 MI만 fresh 생성한다.
+5. 모든 setter return을 `authoritative=false`로 report에 기록한다.
+6. 아직 아무 asset도 저장하지 않고 `save_ready=true`로 종료한다.
+7. Native inspector로 Material 3개와 MI 5개, 총 8개를 exact 검증한다.
+8. 별도 save phase가 root inventory, class, exact 8 dirty package, disk target 0, token을
+   다시 검사한다.
+9. 모두 맞을 때만 정확한 8개를 저장한다.
+10. 저장 후 Material 3개 compile/save, 8개 native inspection, 두 root dependency audit를
+    수행한다.
+
+Fresh execute도 같은 setter 정책과 pre-save native eight-target gate를 사용한다. 차이는
+fresh admission에서 두 target root가 완전히 비어 있어야 하고, Material/MI 8개를 모두
+처음부터 만드는 것뿐이다.
+
+## Inspector와 최종 검수 계약
+
+- `max_total_property_chars_per_page <= 1,048,576`
+- `max_total_property_work_per_page <= 131,072`
+- MaterialProperty 비교는 case/underscore만 무시한다.
+- Python에서 `material_expression_guid`를 get/set하지 않는다.
+- Native inspector가 expression GUID valid/nonzero/unique를 검사한다.
+- 두 StaticSwitchParameter GUID도 valid/nonzero/unique여야 한다.
+- node tag, class multiset, edge raw identity, root, settings, usage, function path가 exact다.
+- Material compile은 compiled/finished/saved true, error/warning 0, dirty false여야 한다.
+- 최종 audit은 required asset exact, forbidden dependency 0, redirector 0, dirty 0이다.
+
+## 실행 명령
+
+### Fresh 경로
+
+현재 partial state에서는 사용 금지다. 완전히 빈 전용 roots에서만 허용된다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\build_cube_fluid_ninja_common_decor_materials.py --run-id 20260901_common_decor_materials_dryrun_v003 --json
+
+uv --directory .\Python run python scripts\analysis\build_cube_fluid_ninja_common_decor_materials.py --execute --confirmation-token cfnl-common-decor-materials-6bb9c4957eaa840f8fff --run-id 20260901_common_decor_materials_execute_v003 --json
+```
+
+### 현재 허용 경로: recovery generation 3
+
+먼저 read-only dry-run을 실행한다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\build_cube_fluid_ninja_common_decor_materials.py --recover-partial-report .\MCPGameProject\Saved\MCP\CubeFluidNinjaLiveStudy\target\materials\20260901_common_decor_materials_recovery_v2_execute_v001\common_decor_material_builder_report.json --run-id 20260901_common_decor_materials_recovery_v3_dryrun_v001 --json
+```
+
+Dry-run success report의 contract/token과 exact admission을 확인한 뒤에만 execute한다.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\build_cube_fluid_ninja_common_decor_materials.py --recover-partial-report .\MCPGameProject\Saved\MCP\CubeFluidNinjaLiveStudy\target\materials\20260901_common_decor_materials_recovery_v2_execute_v001\common_decor_material_builder_report.json --execute --confirmation-token cfnl-common-decor-recovery-567bdc5bb45480972056 --run-id 20260901_common_decor_materials_recovery_v3_execute_v001 --json
+```
+
+Live execute는 root 작업자가 담당한다. 이 builder/test/doc 구현 작업에서는 실행하지 않았다.
+
+## 성공 report의 필수 consumer gate
+
+성공 report 기본 위치:
+
+```text
+MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/<run_id>/common_decor_material_builder_report.json
+```
+
+Recovery gen3 성공은 최소 다음을 만족해야 한다.
+
+- `success=true`, `mode=recovery_execute`, `recovery_mode=true`
+- `recovery_generation=3`, `recovery_pass=true`, `recovery_admission_pass=true`
+- `contract_sha256=authoring_contract_sha256=6bb9c495...ff762f`
+- embedded authoring contract의 canonical self-hash가 동일
+- `recovery_contract_sha256=567bdc5b...ed796`
+- embedded recovery contract의 canonical self-hash가 동일
+- `expected_confirmation_token=cfnl-common-decor-recovery-567bdc5bb45480972056`
+- `failed_report_sha256=8c908ad5...d133`
+- `failed_recovery_v1_report_sha256=f707d0a3...17e772`
+- `inherited_failed_execute_report_sha256=e7d8f956...a28dd`
+- `lineage_reused_paths`는 3개 Material, `lineage_created_paths`는 Green,
+  `lineage_saved_paths=[]`
+- `reused_paths`는 3개 Material과 Green MI, `recovery_new_created_paths`는 나머지 MI 4개
+- `material_graph_mutation_performed=false`
+- `presave_exact_eight_target_verification_pass=true`, `presave_saved_paths=[]`
+- save phase `save_admission_pass=true`, `saved_paths`는 exact ordered 8 targets
+- `verification_pass=true`, `dependency_independence_pass=true`
+- Material compile 3, final native inspection 8, exact audit 2
+- `dependency_audit_mismatches={}`
+- MovingBall/A05 prerequisite path가 exact
+
+## 실패 및 resume 정책
+
+자동 resume은 없다. Generation 3 admission mismatch는 mutation 없이 실패한다. Mutation
+phase, presave native inspection, save admission, save, post-save 검수 중 하나라도 실패하면
+`do_not_retry=true`, `manual_recovery_required=true`다. 일부 setter나 일부 save가 이미
+실행되었을 수 있으므로 동일 token으로 blind retry하지 않는다. 삭제, overwrite,
+rollback, reconnect, recreate로 상태를 추측 복구하지 않는다. 새 실패 report bytes/SHA와
+새 live read-only state를 다시 capture해 별도 recovery generation을 설계해야 한다.
+
+## Offline 검증
+
+```powershell
+uv --directory .\Python run python -m py_compile scripts\analysis\build_cube_fluid_ninja_common_decor_materials.py scripts\analysis\test_cube_fluid_ninja_common_decor_material_builder.py
+
+uv --directory .\Python run python scripts\analysis\test_cube_fluid_ninja_common_decor_material_builder.py
+```
+
+현재 test suite는 30개이며 contract/hash, 세 실패 report lineage, UE 5.6 source proof,
+pin aliases, gen3 partial validators, false-return 정책, pre-save/save 분리, native graph/MI
+validators, compile/audit schema를 offline 검증한다.
+
+## 아직 남은 parity 범위
+
+이 구현은 parameter/default, active graph semantics, compile, persistence, dependency
+independence를 검증한다. Checker inactive Opacity/OpacityMask auxiliary graph full parity와
+레벨 내 source/target screenshot 비교는 별도 시각 fixture 검수 범위다. 그 작업이 끝나기
+전에는 전체 source graph parity나 최종 visual parity 완료라고 표시하지 않는다.

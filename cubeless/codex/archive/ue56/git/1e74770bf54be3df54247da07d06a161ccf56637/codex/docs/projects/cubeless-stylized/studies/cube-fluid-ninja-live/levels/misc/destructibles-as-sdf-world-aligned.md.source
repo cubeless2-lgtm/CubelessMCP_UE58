@@ -1,0 +1,58 @@
+# 레벨 카드: `Destructibles_as_SDF_WorldAligned`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/Destructibles_as_SDF_WorldAligned` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Destructibles_as_SDF_WorldAligned` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `14` |
+| Direct external | `10` |
+
+## 정적 의미
+
+- **Observed:** actor/component 배치는 points-world variant와 같지만 host는 MDF+height+DC를 켜고 destructible-point reader를 끈다.
+- **Inferred:** 동일 scene에서 point event 대신 mesh distance field/SDF 입력 효과를 고립하는 A/B case다.
+- **Unknown:** SDF update latency, fracture 후 field 갱신, world alignment/parity.
+- **Target fixture:** `TF_DestructibleSDF_WorldAligned` 제안.
+
+## Actor / Component
+
+- manifest=`19 actors / 48 components / 2 pages`.
+- actor histogram: `TextRenderActor=5; PostProcessVolume=2; Brush=1; Destructibles_as_SDF_WorldAligned_C=1; DirectionalLight=1; ExponentialHeightFog=1; GeometryCollectionActor=1; Landscape=1; LandscapeGizmoActiveActor=1; NinjaLive_C=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; StaticMeshActor=1`.
+- component histogram: `BillboardComponent=8; LandscapeComponent=6; LandscapeHeightfieldCollisionComponent=6; TextRenderComponent=5; BrushComponent=3; SceneComponent=3; StaticMeshComponent=3; ArrowComponent=2; BoxComponent=2; MaterialBillboardComponent=2; DirectionalLightComponent=1; ExponentialHeightFogComponent=1; GeometryCollectionComponent=1; LandscapeGizmoRenderComponent=1; NinjaLiveComponent_C=1; RotatingMovementComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1`.
+- standalone Niagara/sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`9 nodes / 5 links / 18 variables / 0 errors`; HVOL quality/성능 console command 5개만 관찰된다.
+- SDF 갱신은 graph가 아니라 host reader 계약이며 runtime은 `pending`.
+
+## Niagara
+
+- host=`1024²`, extent=`40/40/5`, reader=`TTFTF`(MDF+height+DC, destructible points off), PVD=`TTF`, HVOL512, selected=`MI_DensityBuffer_Red + MI_HVOL_SIM_destruct_gray`, core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`.
+
+## Material / Art
+
+- material refs=`7`, art refs=`2`; points variant와 같은 output material을 써 입력 방식만 분리한다.
+- GC/Landscape는 art 후보, MDF sampling/host/material logic은 독립 구현 대상이다.
+
+## Clean-room 구현 순서
+
+1. points-world fixture와 동일한 GC/Landscape를 사용해 비교 조건을 고정한다.
+2. UE 5.6 MDF를 world-aligned grid mask로 읽는 독립 input을 만든다.
+3. 같은 painter/HVOL output과 cvar BP를 연결한다.
+4. points vs SDF의 field shape/update/runtime/performance/parity를 A/B 검수한다.
+
+## Evidence / Parity / Exception
+
+- revision=`f33b6d975c8c7734d87a00b794315166`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; GC/Landscape art만 조건부 localization 후보다.

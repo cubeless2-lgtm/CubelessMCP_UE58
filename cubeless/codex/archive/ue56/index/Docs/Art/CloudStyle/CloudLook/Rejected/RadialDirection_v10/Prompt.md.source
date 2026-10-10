@@ -1,0 +1,9 @@
+# RadialDirection_v10
+
+Built-in image generation; new version, not catalog approved.
+
+Art prompt: Edit RadialCalm_v09 grayscale polar cloud texture preserving cloud placement and center opening. Only inward-facing crowns retain crisp filled silhouettes. Tangential sides and ends soften progressively; outward undersides fade broadly. Remove thin white outlines and replace contour highlights with broad matte light planes. Reduce small serration amplitude, retaining unequal gentle lobes. Simplify internal highlights; avoid repeated brush scales, white lace, embossed bands. Distant clouds retain readable lower shapes with narrower fades. Grayscale on black, no text.
+
+Coverage prompt: Create registered independent opacity coverage for the new art. White opaque bodies, black clear sky; no lighting or internal tonal texture. Crisp antialiased inward crowns, moderate smooth tangential side fades, broad hero underside fades. Distant banks retain solid cores and narrow lower fades. Preserve exact placement and silhouettes.
+
+Generated sources are 1254 square, packed to 4096 square by resampling. R shade, G existing density transfer, B midtone weight, A independently generated coverage. Existing originals preserved. CloudCompositeBlend remains 0.

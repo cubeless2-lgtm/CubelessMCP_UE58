@@ -1,0 +1,20 @@
+# Reactive Surface Water Material RT BP Report - 2026-07-06
+
+## Scope
+
+- Adds a BP-only Water RT driver for the Material/RT water path.
+- The driver is independent from `NS_RS_Water`; existing Niagara assets are left intact.
+- Demo map `/Game/ReactiveSurface/Demo/L_RS_Demo` contains `BP_RS_WaterRTDriver`.
+- `RS_Water_SourceActor` is exposed and the demo instance is bound to `BP_Piper_ReactivePrototype`, avoiding the SIE spectator pawn path.
+- Runtime default `RS_Water_MinSpeedWS` is `5.0` cm/s so stationary players do not keep injecting impulses; this matches the HTML drag/input-only impulse behavior.
+- Runtime default `RS_Water_WaveSpeed` is `0.38`, a conservative speed increase over the previous `0.31` while staying inside the solver clamp.
+- Runtime default `RS_Water_WindowSizeWS` is `1500.0` cm, so the Water RT covers 15m x 15m.
+- Runtime default `RS_Water_Damping` is `0.9813`, which stretches the previous `0.945` decay time about 3x without clamping to 1.0.
+- Runtime trail controls are exposed: length `360.0` cm, strength `0.65`, fade `0.82`, tap count `6.0`.
+
+## Evidence
+
+- Verdict: `PASS`
+- Driver compile errors: `0`
+- Audit verdict: `PASS`
+- Evidence JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-material-rt-bp-results-2026-07-06.json`

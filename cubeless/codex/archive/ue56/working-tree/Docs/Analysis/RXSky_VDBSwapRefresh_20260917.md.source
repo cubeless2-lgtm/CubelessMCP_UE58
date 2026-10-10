@@ -1,0 +1,26 @@
+# VDB 교체 시 전체 구름이 사라지는 현상
+
+- 대상: `L_Study_03_AnvilCrown`, `cubeless_cloud_authoring.py`.
+- 재현: F01의 VDB를 교체하자 다음 뷰포트 캡처에서 전체 구름이 사라졌다. 컴파일 오류나 소스 누락은 없었다.
+- 원인: 공유 머티리얼 재컴파일이 비동기로 진행되는 동안 레이아웃 갱신이 완료되어, 준비되지 않은 볼륨 머티리얼로 화면이 그려졌다.
+- 수정: `recompile_material` 다음에 UE 5.6의 `MaterialEditingLibrary.get_statistics`로 해당 머티리얼의 컴파일 완료를 기다린다. 인스턴스 갱신 후에도 완료를 확인한 다음 `RefreshLayout`을 호출한다. UE 5.6 `MaterialEditingLibrary.cpp`의 `GetStatistics`는 내부에서 `FMaterialResource::FinishCompilation`을 호출한다.
+- 한계: 셰이더 캐시가 없는 새로운 조합은 교체 시 에디터가 컴파일 완료까지 잠시 대기할 수 있다. 비동기 이중 버퍼 전환을 구현한 것은 아니다. 렌더링 샘플 수나 GPU 품질 설정은 변경하지 않았다.
+
+## 사용자 지정 교체 검증
+
+- `CLOUD_S03_W01_Wind_Main`: `AP_Cirrus_Cloud_02` → `AP_Cumulonimbus_Cloud_01`.
+- 지정한 RXSkySystem의 VDB가 실제 샘플 슬롯 9에 연결됐으며, 동일 카메라에서 교체 전후 형태 변화와 다른 구름 유지가 확인됐다.
+- 기존 권운의 `BoundsReferenceVolume`과 액터 비율은 유지하므로 적란운도 얇고 긴 배치 상자에 맞춰진다. 원본 적란운 비율로 재배치한 상태는 아니다.
+- 28개 컨트롤 비교 결과 W01의 SourceVolume만 변경됐다. 임시 테스트한 F01은 원복했다.
+- 레벨과 공유 머티리얼을 저장했다. 프로젝트 C++ 및 MCP 종속성 추가 없음. 관련 자산 의존성 검사에서 MCP 참조 없음.
+
+## 로컬 증거
+
+`MCPGameProject/Saved/VDBSwapFix_20260917/`:
+
+- `baseline_swap_immediate.png`: 수정 전 교체 직후 구름 전체 소실.
+- `old_w01.png`, `new_w01.png`: 동일 카메라 비교.
+- `verification.json`, `comparison.json`, `candidate_hashes.json`: 소스·배치 보존과 연결 검증.
+- `full.log`: 전체 오프라인 검증 결과.
+
+Python 편집 동기화만 수정했으며, 저장된 게임 콘텐츠에 새로운 함수·클래스 참조를 추가하지 않았다.

@@ -1,0 +1,14 @@
+{
+  "schema": "cubeless_current_runtime_editor_independent_v1",
+  "passed": false,
+  "errors": [
+    "Connected runtime clone lacks MPC hard reference"
+  ],
+  "scope": "Specified editor author/cold evidence plus actual source/copy/new-file SHA and recorded public API observations",
+  "dependency_evidence": "author_observation_only",
+  "shipping_execution": "not_verified_by_this_report",
+  "pak_membership": "not_verified_by_this_report",
+  "shader_completion_verified": false,
+  "rendering_quality": "not_verified",
+  "report_sha256": "e749f9cc9a57b49ae7d06f891e32c8cbaba408990f6e2a8923019abec1c9b962"
+}

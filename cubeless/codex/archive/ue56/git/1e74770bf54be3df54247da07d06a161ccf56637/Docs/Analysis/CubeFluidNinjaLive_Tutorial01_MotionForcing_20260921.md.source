@@ -1,0 +1,123 @@
+# Tutorial01 NinjaLive18 이동 유래 속도: 구현 중
+
+목표는 남은 Fluid 11개 구현과 Tutorial01 통합 기술 확인까지다.
+이 문서는 네 번째 사례 NinjaLive15_3의 진행 증거이며 완료 판정이 아니다.
+
+## 원본 차이
+
+직전 NinjaLive15_2 대비 DirectVelocityY 0.25→0, Divergence 1→0.5,
+EdgeMaskWidth/PainterEdgeMaskWidth 0.25→0, PressureEdgeMasking True→False,
+VeloFromSimAreaMotion 0→1이다. 호스트 설정 차이는 없다.
+부모는 MovingBall15_3, 표시 라벨은 NinjaLive18이다.
+
+## 버퍼 이동과 속도 입력은 다르다
+
+원본 SimPositionAndOffsetLocal의
+StackContext.WorldOffsetDeltaForVelocityOffset 입력은 reroute를 따라
+Multiply Vector with Quaternion의 출력에 연결된다. 그 Vector 입력은
+StackContext.SimMotionVector다. Step -3의 버퍼 보정 계수0을 거친 값이 아니다.
+CompositeAndGradient는 이 별도 벡터를 받아 local direct XY와 결합하고 Y를 반전한다.
+이 사례는 direct XY=0, strength=1이므로 결과는 (-motion.x,-motion.y)다.
+
+따라서 기존 CFNLFluidFrameDelta(버퍼 보정량0)를 속도 입력으로 재사용하면
+움직여도 속도가 생기지 않는 잘못된 구현이 된다. 자체 shader 어댑터는 Painter에서
+회전된 이동량을 CFNLFluidMotionVelocityx/y 별도 채널에 기록하고 Composite가
+이를 읽게 구성했다. 기존 offset/delta 채널은 변경하지 않는다.
+원본 모듈/스크래치 복제가 아니라 기존 자체 HLSL의 제한된 입력 경로 변경이다.
+
+## 검증 및 남은 작업
+
+test_cube_fluid_ninja_t01_motion_forcing의 4개 테스트 PASS:
+정확한 설정 차이, 원본 pre-offset 연결, 속도 부호·정지값, 자체 shader 연결 구분.
+이는 오프라인 계약 검사다. 임시 Niagara 작성/컴파일, 채널 가시성과 같은 프레임
+GPU 계산, 호스트/배치, 재진입, 의존성 및 최종 검증은 아직 남아 있다.
+
+현재 연결된 에디터 PID60476은 별도 Cloud Scatter 레벨이며 PIE off/dirty0이다.
+다른 작업 상태를 보존하기 위해 이번 단계에서는 에디터 에셋·레벨을 변경하지 않았다.
+실제 저작 전에 공유 에디터 사용 상태를 다시 확인해야 한다. 사용자 시각 검수는 보류한다.
+
+## 저작 준비 후속
+
+`build_cube_fluid_ninja_t01_motion_forcing.py`에 별도 임시 후보 저작 경로를 추가했다.
+PID/프로젝트/Study world/PIE off/dirty0/대상 미존재 검사를 통과해야 작성하며,
+기존 Study와 원본 레벨 해시를 보호한다. 실패 결과는 보존하고 자동 재시도하지 않는다.
+Painter의 별도 채널 기록과 Composite 읽기, 스칼라 입력 갱신, HLSL 확인과 컴파일을
+실행할 준비 단계다. 아직 실행 또는 GPU 통과 증거가 아니다.
+실제 이전 사례 HLSL 캡처에도 변환을 적용하고, 스칼라 값은 원본 설정 번역과
+대조하는 테스트를 추가했다. 공유 에디터 전환 가능 여부는 사용자에게 확인 중이다.
+
+## 사용자 허용 후 임시 solver 작성
+
+사용자가 Cloud 레벨에서 Study로 전환하는 것을 허용했다. native dry-run에서
+dirty0/can_load를 확인하고 요청 `8c0740ec-421d-c151-fc6e-ce9afd020d53`의
+loaded/target_world_is_current/dirty0를 확인했다. Cloud 레벨은 저장하거나 수정하지 않았다.
+PID60476에서 `build_cube_fluid_ninja_t01_motion_forcing`을 실행했다.
+`t01_motion_forcing_author_v001/report.json` success=true: 자체 이전 solver로부터
+임시 후보 작성, HLSL readback, compile, 저장과 보호 해시 검사를 통과했다.
+후보: `/Game/_MCP_Temp/NiagaraGenerated/CFNLT01MotionForcingV001/NS_CFNL_NinjaLive15_3`.
+SHA256: `6ff4bfddf68a501466ff37a58f16f7988100f5e813eb104d272285d1e14f44fb`.
+runtime_verified=false이며 host 작성/실행/배치와 GPU 동작 검증은 후속 작업이다.
+
+## 임시 호스트 및 생명주기 실행
+
+`t01_motion_host_author_v001/report.json` PASS. 이전 자체 호스트의 원본 host
+설정 동등성을 확인하고 별도 임시 호스트에 새 SystemAsset을 연결했다.
+호스트 SHA256: `7e20c06cfeca017005bd935643ce3cda473b1c7fb759c518944e8a32d530801e`.
+`t01_first_fluid_attachment_motionv001/report.json` PASS: MovingBall15_3에
+부착하여 활성화/종료/재진입 2회, 가시성 전환, 연속 위치 이동과 XY 경계 이동
+16회의 버퍼 보정량0을 검증했다. 테스트 종료 후 디스크 보호 해시는 유지됐다.
+이는 이동 속도 강제항 자체의 GPU 수치 일치 증거가 아니다.
+별도 motion_forcing_values_verified=false를 남겨 생명주기 통과와 구분한다.
+후속은 속도 강제항 GPU 대조, 스칼라 실제 바인딩 확인, 저장본 배치 및 의존성 검증이다.
+
+## 출력 edge 누락 수정
+
+`t01_motion_bindings_v001`에 실제 user parameters, module inputs, graph를 캡처했다.
+일부 resolved input API는 unresolved_default로 표시하므로 그것만으로 바인딩
+실패라고 판단하지 않는다. 실제 graph에는 User.CFNL_FluidDivergenceMult에서
+NM_FluidDivergence_0.FluidDivergenceMult로 연결된 ParameterMapSet 경로가 있다.
+동시에 원본 EdgeMaskWidth는 내부 밀도와 최종 출력에 모두 쓰임을 재확인했다.
+누락한 FluidExportEdgeWidth=0을 authoring controls와 원본 대조 테스트에 추가했다.
+기존 임시 후보는 `t01_motion_export_edge_fix_v001`에서 해당 user parameter만
+0으로 수정·저장하고 readback했다. 현재 solver SHA256은
+`9ed3ec91bd11ff3f88e386429c2200cd54a571a05be796f81d51217491c86e79`이다.
+앞선 runtime 증거는 수정 전 후보에 대한 것이므로 현재 후보의 재검사가 필요하다.
+
+수정 후 `t01_first_fluid_attachment_motionv002/report.json`을 새로 실행해 PASS를
+확인했다. 재진입/가시성/XY 이동16회 및 보호 해시 검사가 현재 solver 대상으로
+통과했다. 속도 강제항 자체의 수치 검증은 여전히 별도다.
+Composite HLSL의 기존 FluidInputMergeRT에는 (mergedV.x,mergedV.y,rawBrush.z,weight)가
+기록된다. `mergedV=brush+weight*(fieldState+FluidVelocityStrength*painter.xy)`이고
+fieldState는 이동 강제항과 bitmap velocity에 amplitude를 적용한 값이다.
+따라서 속도 검증은 이 출력에서 입력·amplitude·brush 조건을 명시적으로 통제하고
+동일 프레임 이동량과 비교해야 한다. 최종 FluidRT만 보며 속도 일치를 추정하지 않는다.
+
+## 이동 강제항 GPU 및 Study 저장
+
+`t01_first_fluid_attachment_motionvaluesv001/report.json` PASS. 테스트 인스턴스에서
+브러시 속도, bitmap 속도, amplitude를 끄고 부모의 자동 이동을 일시 정지했다.
+Slate tick마다 (0,0), (0.25,0), (0,0.25), (-0.25,-0.25) cm 이동을 주었다.
+안정된 구간에서 각각 3번, 총12번 FluidInputMergeRT를 측정하여
+`-inverseYaw45(delta)/1.1718749738065526`과 비교했다. weight=1이며
+최대 절대오차 `3.654343905257207e-08`. callback 제거/부모 tick 복원/PIE 종료 및
+디스크 보호 해시 검사까지 통과했다. 다른 속도 입력과의 모든 조합을 검증한 것은 아니다.
+
+`t01_motion_integration_{plan,solver,host,place}_v001` 모두 PASS.
+Study solver `NS_CFNL_NinjaLive15_3`와 Fluid/NinjaLive15_3 전용 호스트를 저장하고
+Tutorial01 레벨의 MovingBall15_3에 NinjaLive18을 배치했다. 기존 액터 상태는 보존했다.
+Solver SHA256: `1028f3a595b16517d6fd3c399ed32f6ec1167a242c00ad27acd75672fc2c6459`.
+Host SHA256: `646dcc420e91fd7f5d05147b7a69b70d8c5cedd8f248e63110e54295155e03c3`.
+Map SHA256: `3854ed30f1ee2dd9763b04bde80e82e9e0716b32b10f7e5b034d26680b5c39cc`.
+현재는 Study iteration이며 submit_ready=false다. 저장본 실행, 의존성/NoMCP,
+현재 구현 후보 full 검증과 전체 Tutorial01 나머지 사례는 아직 남아 있다.
+
+## 저장본 재검증
+
+`t01_first_fluid_attachment_motionplacedv001/report.json` PASS: 임시 후보가 아니라
+실제 배치된 Study host/solver를 대상으로 재진입/가시성/경계 이동16회와
+보호 파일 해시 검사를 통과했다.
+`CFNL_MotionFluid_NoMCP_20260921_v001/asset_plugin_independence_report.json` PASS:
+static scan과 UnrealMCP 비활성화 격리 에디터에서 host/solver/map을 각각
+Blueprint/NiagaraSystem/World 클래스로 로드했다. cook/package나 시각 검수 증거는 아니다.
+`t01_motion_dependencies_v001/report.json`에는 현재 저장본의 재귀 참조 결과를 남겼다.
+현재 변경분에 대한 최종 full gate는 아직 수행하지 않았으므로 제출 준비 완료가 아니다.

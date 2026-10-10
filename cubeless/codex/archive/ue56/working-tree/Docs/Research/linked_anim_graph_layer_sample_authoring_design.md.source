@@ -1,0 +1,194 @@
+# linked_anim_graph_layer_sample_authoring Design
+
+Date: 2026-06-27
+Updated: 2026-06-29
+
+Status: Linked Anim Graph MVP implemented as
+`ensure_linked_anim_graph_sample_variant`. Planner/job-contract routing now
+recognizes simple sample/temp Linked Anim Graph requests with an existing
+compatible linked AnimBP. Linked Anim Layer/interface creation, Sub Anim
+Instance compatibility wrappers, and arbitrary graph insertion remain Ieta
+design only.
+
+Scope: editor-only, sample-only Linked Anim Graph and Linked Anim Layer
+authoring. Runtime/gameplay code and original asset mutation are out of scope.
+
+## Purpose
+
+`ensure_linked_anim_graph_layer_sample_variant` is a proposed guarded design
+area for requests that need sample AnimBP modular composition with Linked Anim
+Graph, Linked Anim Layer, or the legacy Sub Anim Instance surface.
+
+The first implementation does not cover the whole feature family. MVP supports
+one narrow route:
+
+- duplicate or reuse a sample AnimBP under `/Game/_MCP_Sample/` or
+  `/Game/_MCP_Temp/`;
+- insert a `UAnimGraphNode_LinkedAnimGraph` that points to an existing linked
+  AnimBP class with a compatible skeleton;
+- build a simple output-to-root chain, plus input-pose-to-linked-graph when
+  the linked class exposes a pose input pin;
+- compile and read back the linked node settings and topology.
+
+The automatic authoring planner maps simple requests such as "create a sample
+Animation Blueprint linked anim graph using an existing compatible linked
+AnimBP" to this MVP and keeps linked layer/interface/Sub Anim Instance wording
+out of the safe route.
+
+Linked Anim Layer support should be a later increment unless the user supplies
+an existing Anim Layer Interface and layer name. Creating interfaces, layer
+override graphs, linked input poses, and linked layer nodes in one command is
+too broad for a first pass.
+
+## Ieta Review
+
+Request class: create a safe sample modular AnimBP composition using Linked
+Anim Graph, Linked Anim Layer, or Sub Anim Instance style nodes.
+
+Existing routes checked:
+
+- `inspect_anim_graph_protected_topology` can read linked nodes when they
+  already exist.
+- `inspect_anim_graph_node_settings` can read reflected linked node settings
+  when supported.
+- `create_anim_blueprint_sample` can create a setup AnimBP target but does not
+  author linked graph nodes.
+- `ensure_anim_state_machine_sample_variant` and ControlRig sample commands do
+  not cover linked AnimBP composition.
+
+Why existing routes are insufficient: they do not safely create linked graph or
+linked layer nodes, set their target class or interface/layer, allocate linked
+input pose pins, and compile/read back the result.
+
+Asset mutation boundary: source AnimBPs, Anim Layer Interfaces, Skeletons, and
+animation assets are read-only. The command may modify only target sample assets
+under `/Game/_MCP_Sample/` or `/Game/_MCP_Temp/`.
+
+Proposed command family:
+
+- MVP: `ensure_linked_anim_graph_sample_variant`
+- Later: `ensure_linked_anim_layer_sample_variant`
+- Combined docs label: `ensure_linked_anim_graph_layer_sample_variant`
+
+Default safety guard: require source and linked AnimBP assets to have compatible
+Skeletons, require target sample path, reject original asset mutation, and
+return `unsupported_feature` for interface/layer creation in MVP.
+
+Approval needed before Tivret implementation: completed for the Linked Anim
+Graph MVP. Further C++/API expansion still needs Ieta review before Linked Anim
+Layer/interface creation, Sub Anim Instance wrappers, or arbitrary graph
+insertion.
+
+## UE 5.6 API Anchors
+
+Use installed UE 5.6 headers as local truth:
+
+| Need | UE 5.6 anchor | Safe access rule |
+| --- | --- | --- |
+| Linked Anim Graph editor node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedAnimGraph.h` | Use `UAnimGraphNode_LinkedAnimGraph` and its `FAnimNode_LinkedAnimGraph Node` member. |
+| Linked Anim Graph base | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedAnimGraphBase.h` | Respect `AllocatePoseLinks()`, custom pins, filtering, and loop validation. |
+| Linked Anim Graph runtime node | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNode_LinkedAnimGraph.h` | Set `InstanceClass` to a compatible `UAnimInstance` subclass; do not mutate runtime instances. |
+| Linked Anim Layer editor node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedAnimLayer.h` | Use only with an existing interface and valid layer; call layer setup/update helpers where accessible. |
+| Linked Anim Layer runtime node | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNode_LinkedAnimLayer.h` | Validate `Interface` and `Layer`; do not manage live linked layer instances. |
+| Linked input pose editor node | `Engine/Source/Editor/AnimGraph/Public/AnimGraphNode_LinkedInputPose.h` | Let compiler/schema logic create or validate input pose nodes; do not hand-edit arrays blindly. |
+| Linked input pose runtime node | `Engine/Source/Runtime/Engine/Classes/Animation/AnimNode_LinkedInputPose.h` | Treat dynamic links as runtime behavior, not editor proof. |
+| Animation graph schema | `Engine/Source/Editor/AnimGraph/Public/AnimationGraphSchema.h` | Use schema-compatible node creation and link behavior. |
+| Anim Layer Interface | `Engine/Source/Runtime/Engine/Classes/Animation/AnimLayerInterface.h` and `UAnimLayerInterfaceFactory` | Interface creation is a separate higher-risk task. |
+| Linked graph compiler extensions | `Engine/Source/Editor/AnimGraph/Private/AnimBlueprintExtension_LinkedAnimGraph.h`, `AnimBlueprintExtension_LinkedInputPose.h` | Compile/readback must confirm extension-generated mappings rather than assuming pins. |
+
+## Command Schema
+
+Proposed MVP input fields for `ensure_linked_anim_graph_sample_variant`:
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `source_anim_bp_path` | string | required | Existing AnimBP to duplicate or use as sample template. |
+| `linked_anim_bp_path` | string | required | Existing AnimBP whose generated class becomes `InstanceClass`. |
+| `target_anim_bp_path` | string | required | Must be under `/Game/_MCP_Sample/` or `/Game/_MCP_Temp/`. |
+| `insert_mode` | enum | `input_pose_to_linked_graph_to_root` | MVP should support only one small sample chain. |
+| `allow_existing_target_reuse` | bool | `true` | Reuse target under sample/temp root. |
+| `replace_existing_sample_graph` | bool | `false` | Replace only supported sample chain. |
+| `compile` | bool | `true` | Compile after mutation. |
+| `save_asset` | bool | `false` | Save only the target sample asset. |
+| `dry_run` | bool | `false` | Resolve and validate without mutation. |
+
+Future input fields for linked layer support:
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `anim_layer_interface_path` | string | required for layer route | Existing interface only in first layer pass. |
+| `layer_name` | string | required for layer route | Must resolve to an existing layer. |
+| `linked_layer_instance_bp_path` | string | optional | Existing AnimBP implementing the interface. |
+
+## Response Schema
+
+Return structured evidence:
+
+| Field | Meaning |
+| --- | --- |
+| `success` | Whether the sample command completed. |
+| `dry_run` | Whether mutation was skipped. |
+| `source_anim_bp_path` | Source AnimBP path. |
+| `linked_anim_bp_path` | Linked target AnimBP path. |
+| `target_anim_bp_path` | Target sample AnimBP path. |
+| `source_modified` | Must be false. |
+| `linked_source_modified` | Must be false. |
+| `target_modified` | True only when dry run is false and target changed. |
+| `linked_instance_class` | Resolved generated class used by the linked graph node. |
+| `created_node_id` | Linked node GUID. |
+| `created_links` | Pose-link summary. |
+| `linked_input_pose_summary` | Input pose names and generated pins when available. |
+| `compile_result` | Compile status, warnings, and errors. |
+| `readback` | Topology/settings summary. |
+| `warnings` | Skeleton mismatch, unsupported layer route, loop risk, or skipped detail. |
+
+## Guardrails
+
+Forbidden patterns:
+
+- modifying source AnimBPs, linked AnimBPs, interfaces, Skeletons, or animation
+  assets;
+- writing outside sample/temp roots;
+- creating Anim Layer Interfaces in the linked graph MVP;
+- creating linked layer nodes without an existing interface and layer name;
+- hand-editing `InputPoses`, `InputPoseNames`, or linked input pose arrays
+  without compiler/schema reconciliation;
+- ignoring skeleton compatibility or linked-instance loop validation;
+- managing live linked instances or calling runtime linking APIs as editor
+  authoring proof;
+- claiming modular AnimBP runtime behavior without compile/readback and, when
+  requested, a separate runtime probe.
+
+## Verification
+
+Docs-only verification for this design:
+
+- `git diff --check`
+- Markdown link and trailing-whitespace sanity checks.
+
+Future implementation verification:
+
+1. `dry_run=true` resolves source, linked, and target assets and validates
+   Skeleton compatibility without dirtying packages.
+2. Create or reuse a target sample AnimBP and insert one linked graph node.
+3. Compile and read back `InstanceClass`, pose links, and output link.
+4. Confirm source and linked AnimBPs are not dirty.
+5. Reject a target path outside sample/temp roots.
+6. Reject incompatible Skeletons with a structured error.
+7. For later linked layer support, verify the interface and layer name exist
+   before creating any node.
+
+## Tivret instruction
+
+For any further expansion from this design, Tivret should:
+
+- keep the implemented Linked Anim Graph MVP as the baseline before linked
+  layer authoring;
+- keep all writes sample-only and editor-only;
+- add or change Python wrappers and server registration only after each C++
+  command schema is stable;
+- document linked graph and linked layer limits in `Docs/Tools/node_tools.md`;
+- avoid creating Anim Layer Interfaces, live linked instances, runtime code,
+  gameplay dependencies, or original asset mutation without a new review pass;
+- verify dry-run, skeleton compatibility, compile/readback, existing-target
+  behavior, and no-dirty-source behavior.

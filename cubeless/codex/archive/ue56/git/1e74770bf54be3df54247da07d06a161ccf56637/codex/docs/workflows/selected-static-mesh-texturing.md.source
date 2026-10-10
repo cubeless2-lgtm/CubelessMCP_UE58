@@ -1,0 +1,35 @@
+# Selected Static Mesh Texturing
+
+## Gate
+
+- When the user asks to add, draw, generate, or replace texture art for the currently selected Static Mesh, route source-art work to 케일란 first.
+- Do not modify Unreal texture assets or materials until 이에타 has reviewed and approved the generated source art, UV layout, UV-fitted texture, and preview.
+- Do not skip the preview-and-review gate unless the user explicitly says to apply directly without review.
+
+## Capture
+
+- 티브렛 captures a screenshot centered on the selected Static Mesh before source-art generation.
+- 티브렛 also captures or exports the real UV layout.
+- When inspecting UVs through Unreal Python, never probe arbitrary UV channel indexes with `StaticMeshDescription.GetVertexInstanceUV`. Check the mesh UV channel count first and read only confirmed channels.
+- If the editor UV preview differs from extracted data, use the editor-rendered UV preview as the user-facing source of truth before applying texture work.
+
+## Art And UV Fit
+
+- 케일란 creates concept/source art following the user's visual direction and cost-control rules.
+- Concept/reference sheets must keep views, callouts, material samples, trims, and previews spatially separated. Do not allow overlap, occlusion, cropping, or tangency between reference elements.
+- After direction is accepted, create the UV-fitted texture using both source art and the real UV layout.
+- Show the generated source art, real UV layout, UV-fitted texture, and UV texture preview before asset application.
+
+## Review
+
+- 이에타 checks style match, material intent, mesh form, UV direction, UV scale, UV island placement, and whether major motifs were preserved.
+- For repeated forms such as stairs, tiles, bricks, planks, fence slats, windows, or panels, compare count, spacing, rhythm, and alignment between source art and UV-fitted texture.
+- If texture-space orientation and editor/display orientation may differ, explain V-flip differences and distinguish preview-display issues from final applied UV errors.
+- If review fails, request a specific correction and repeat the preview/review loop.
+
+## Material Outputs
+
+- Preserve original mesh shape and UV layout unless the user explicitly asks for UV or geometry edits.
+- Default to a PBR texture set for mesh texturing unless the user asks for a preview-only concept image.
+- Keep BaseColor, Normal, Roughness, Metallic, Height, AO, and packed masks separate unless channel packing is requested.
+- If transparency is required, verify alpha before import and final review.

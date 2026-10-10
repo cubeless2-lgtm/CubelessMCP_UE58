@@ -1,0 +1,471 @@
+# CubeFluidNinjaLive `NinjaLiveCore` clean-room 재구현 계약
+
+## 1. 현재 판정
+
+이 문서는 원본을 복제하거나 템플릿으로 삼지 않고, 동결된 읽기 전용 관찰값만으로
+`NinjaLiveCore`의 외부 계약과 구현 책임을 다시 만드는 기준서다. 이 작업에서는
+Content asset, 프로젝트 C++, UnrealMCP C++, 에디터 상태와 현재 world를 변경하지 않았다.
+
+현재 결론은 **정적 계약 동결 완료, 실제 authoring 실행 차단**이다. 실행을 억지로
+진행하면 네 개 emitter의 fresh 생성 경로, 복잡한 User Data Interface, SimulationStage
+binding, 64개 독립 NiagaraScript의 의미 구현을 추정하게 된다. 이는 clean-room 목표와
+“원본과 같아야 통과” 조건을 동시에 위반한다.
+
+별도 Study foundation인 `NS_CFNL_Core2D_Solver_v002`, `NS_CFNL_PointPainter_v001`,
+`NS_CFNL_PersistentPointSolver_v001`은 각각 five-stage 수치, deterministic point input,
+fixed-step reset/carry를 검증했다. 이들은 full root `NinjaLiveCore`의 4 emitter/17 stage/
+64-script closure, renderer/export 또는 220-user-parameter 표면을 구현한 target이 아니며
+template/parent/runtime dependency로 사용할 수 없다. full
+`/Game/Study/CubeFluidNinjaLive/NinjaLiveCore`는 여전히 미생성·미완료다.
+
+### 경로 정정
+
+요청에 적힌 `/Game/FluidNinjaLive/Blueprints/NinjaLiveCore`에는 이 대상이 없다.
+동결된 blocker analysis와 Niagara full capture가 가리키는 정확한 원본은 다음과 같다.
+
+- 원본 package: `/Game/FluidNinjaLive/NinjaLiveCore`
+- 원본 object: `/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`
+- class: `/Script/Niagara.NiagaraSystem`
+- planner의 임시 blocker target:
+  `/Game/Study/CubeFluidNinjaLive/Pending/Logic/NinjaLiveCore.NinjaLiveCore`
+- 최종 clean target:
+  `/Game/Study/CubeFluidNinjaLive/NinjaLiveCore.NinjaLiveCore`
+
+`Pending/Logic` 경로는 level blocker planner가 만든 분류용 placeholder다. 다른 Study
+계약에서 `NinjaLive`와 `NinjaLiveComponent`가 참조하는 실제 core 위치와 일치시키기
+위해 최종 target은 Study root의 `NinjaLiveCore`로 확정한다.
+
+## 2. 동결 증거와 무결성
+
+모든 수치는 아래 파일의 **byte size와 SHA-256이 모두 일치할 때만** 사용할 수 있다.
+builder는 하나라도 달라지면 semantic extraction 전에 종료한다.
+
+| 증거 | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `reference/niagara/NinjaLiveCore.json` | 10,483,649 | `49e4b4a326ad7bc87c788b9ddadf1118ced917e37b2d0069af09e4163d2ccc3b` |
+| `ninja_live_core_analysis.tmp.json` | 2,540,664 | `7088d4e88206202c780d87625286c02d188ec74219fad36e4e28c830bf406edb` |
+| `reference/core_niagara_live_inspection_v2.json` | 276,793 | `5ad70f0efba32f60d13eff6fb56291a8be1ad5d78f27f7597937b81f2abf88f0` |
+| `core_solver_observation_summary.json` | 26,224 | `1142072d928551af64fd8140871c537742e083427580800bb9127b609e798fd3` |
+| `reference_source_hashes.json` | 618,354 | `0f0038acce137f613872bfc4f95b2b0c620ea685742447c9bb9773bd8e0889c0` |
+| `reference/niagara-scripts/manifest.json` | 91,354 | `3e9634938b7882c620499b309bb7f61b1f2f41297a8d57862d5df9f886228fe1` |
+| `target/levels/blocker_analysis_v003/level_blocker_analysis.json` | 5,401,417 | `6363e4ff92fed961f84593e5a7018284ccd4016c73b12ded9972a3432f34605e` |
+
+blocker analysis JSON 내부 canonical analysis SHA는
+`87421acacfacb252d574f47aa22921e37830b73d7980352d39673a474f475732`다.
+
+원본 uasset 자체도 별도로 검사한다.
+
+- 파일: `MCPGameProject/Content/FluidNinjaLive/NinjaLiveCore.uasset`
+- bytes: 6,558,385
+- SHA-256: `7b9ed72f4f80c874d307b205e448739e1d11a3ba3acc2f692aea29aaa3d5de1e`
+
+blocker inventory에는 이 asset 하나가 55개 world, 465회 occurrence로 나타난다.
+중복 464회가 하나의 blocker로 접혔고 prerequisite resolution rank는 141이다.
+
+## 3. asset 모델: Blueprint 항목은 N/A
+
+이 asset은 Blueprint가 아니라 `UNiagaraSystem`이다. 따라서 Blueprint 용어를 억지로
+채우지 않고 다음과 같이 명시적으로 N/A 처리한다.
+
+| Blueprint 질문 | 정확한 판정 | Niagara 대응 계약 |
+| --- | --- | --- |
+| parent class | generated Blueprint parent 없음 | `/Script/Niagara.NiagaraSystem` |
+| SCS | 없음 | emitter handle/stack 구성 |
+| CDO | Blueprint generated-class CDO 없음 | system/emitter properties와 User parameter defaults |
+| variables | Blueprint variables 아님 | User parameters 220개 |
+| functions | Blueprint functions 아님 | system/emitter function-call record와 standalone NiagaraScript |
+| graphs | K2 graph 아님 | system/emitter Niagara graph 6 records + dormant parent Scratch graph 2 records |
+
+이 구분은 중요하다. Blueprint builder로 asset을 만들거나 SCS/CDO를 상상해서 채우면
+class부터 틀린 결과가 된다.
+
+## 4. 정확한 시스템 표면
+
+### emitter와 graph
+
+| Index | Emitter | Enabled | Main nodes | Main links | Stack function calls |
+| ---: | --- | --- | ---: | ---: | ---: |
+| 0 | `PainterAndSim` | true | 779 | 1,404 | 35 |
+| 1 | `ChaosReader` | true | 46 | 61 | 13 |
+| 2 | `BoneReader` | false | 57 | 70 | 20 |
+| 3 | `ArrayReader` | true | 65 | 85 | 20 |
+
+system script records는 Spawn/Update 각각 28개 function call을 가진다. emitter
+function call 88개와 합치면 system+emitter record는 144개다. 고유
+`function_script` 경로는 71개이며 정확한 분할은 다음과 같다.
+
+- source standalone script 직접 호출: 46
+- Engine/Niagara 기본 script: 16
+- system 내부 assignment call: 9
+
+초기 요약값 17이 아니라 동결 JSON에서 다시 집계한 실제 Engine dependency는
+16개다. 46 + 16 + 9 = 71이며 builder 테스트가 이 분할을 고정한다.
+
+main graph record는 system 2 + emitter 4 = 6개이고 합계는 1,171 nodes / 1,986
+links다. source의 graph 8개라는 집계에는 아래 dormant parent Scratch Pad 2개가 더해진다.
+
+| Owner | Scratch Pad | Usage | Nodes / links | 활성 call |
+| --- | --- | --- | ---: | ---: |
+| `PainterAndSim` | `GetTexelSize_0` | Dynamic Input | 6 / 6 | 0 |
+| `ChaosReader` | `UpdateParticlePos_0` | Module | 11 / 12 | 0 |
+
+정적 의미는 각각 `(1/NumCellsX, 1/NumCellsY)` 계산과 destruction position에 offset을
+더하는 보조 로직으로 관찰되지만, 활성 호출이 0이므로 clean target의 실행 stack에
+추가하지 않는다. “정의가 있었다”와 “runtime에 호출된다”를 구분한다.
+
+builder는 각 main/Scratch graph의 전체 payload canonical SHA를 보관한다. 노드 배열을
+새 asset으로 import하지 않고 topology/count/function responsibility 검증에만 사용한다.
+
+### User parameter
+
+User parameter는 220개이며 현재 authoring surface에서 직접 설정 가능하다고 표시된 것은
+212개다. 전체 이름, 순서, 타입, default payload는 semantic manifest에 그대로 동결된다.
+
+| Type | Count | Type | Count |
+| --- | ---: | --- | ---: |
+| `bool` | 61 | `float` | 108 |
+| `int32` | 15 | `Texture` | 10 |
+| `Object` | 6 | `Material Interface` | 4 |
+| `Texture Render Target` | 3 | `Vector` | 2 |
+| `Linear Color` | 1 | `Static Mesh` | 1 |
+| `Skeletal Mesh` | 1 | `Spline` | 1 |
+| `Position Array` | 1 | `Vector 4 Array` | 1 |
+| `Chaos Destruction Data` | 1 | `Geometry Collection` | 1 |
+| `Landscape Sample` | 1 | `Runtime Virtual Texture Sample` | 1 |
+| `Rigid Mesh Collision Query` | 1 |  |  |
+
+현재 surface에서 settable이 아닌 정확한 8개 이름은 다음과 같다.
+
+1. `GeometryCollection`
+2. `LandscapeSample`
+3. `RVTSample`
+4. `Spline`
+5. `TrackedBones`
+6. `TrackedDestructiblesChaos`
+7. `TrackedMeshesSDF`
+8. `TrackedParams`
+
+asset default에 들어 있던 source texture/material/mesh object path는 future authoring
+payload에서 반드시 Study target object path로 바꾼다. package만 바꾸고 `.ObjectName`
+suffix를 원본 이름으로 남기는 것도 dependency 오류이므로 package와 object leaf를 함께
+치환한다.
+
+## 5. 17개 SimulationStage 계약
+
+모든 stage는 `enabled=true`, `execute_behavior=Always`, partial particle update true,
+`OneD / NumThreads`, default thread tuple `[64,1,1]`, GPU thread override false,
+literal `num_iterations=1`이다. Pressure만 iteration count binding을 별도로 가진다.
+`[64,1,1]`은 override가 꺼진 default tuple이므로 실제 workload 크기라고 해석하지 않는다.
+
+| # | Stage | Full Usage ID | Module chain | Iteration | Gate | Direct X / iteration binding |
+| ---: | --- | --- | --- | --- | --- | --- |
+| 0 | `ReadCachedSimData` | `8F6833AE-47DC-E6D7-A562-B2BFA7E6801D` | `ReadCachedSimData` | DI `Emitter.AdvectionGrid` | `Emitter.FluidNinja.EnableCacheReader` | none / none |
+| 1 | `World to Unit for DataCh` | `27F1A1BC-408A-B0C9-09F7-EB9C36028F59` | `WorldToUnitDataCh` | DirectSet | none | `PainterAndSim.DataChElementCount` / none |
+| 2 | `Double Hash Pass-1` | `EB87F470-4E5A-C81F-FBD1-E4AF185E0EA5` | `HashGrid1` | DirectSet | none | `PainterAndSim.AllTrackedPointsCount` / none |
+| 3 | `Double Hash Pass-2` | `1B8FABCC-4D10-E254-2FA3-93BB8252C3C2` | `HashGrid` | DI `Emitter.NeighborGrid2` | none | none / none |
+| 4 | `Mesh DistanceField Painter` | `F5DE88FF-440A-5C60-2063-B1BAF8850421` | `Ninja_SDF_ReadAndPaint` → `Ninja_GeometryCollection_ReadAndPaint` | DI `Emitter.FieldCaptureGrid` | `Emitter.FluidNinja.EnableMeshDistanceFieldReader` | none / none |
+| 5 | `HeightField via Landscape DI` | `1198CDEA-4EF9-2B1B-39E6-6F98BC726FE5` | `Ninja_RVT_ReadAndPaint` | DI `Emitter.FieldCaptureGrid` | `Emitter.FluidNinja.EnableLandscapeDIReader` | none / none |
+| 6 | `HeightField via RVT DI` | `B5E31148-46C6-0744-F410-1D86A912DB11` | `Ninja_RVT_ReadAndPaint001` | DI `Emitter.FieldCaptureGrid` | `Emitter.FluidNinja.EnableRVTReader` | none / none |
+| 7 | `Spline Curve to Velocity Field` | `06BFAF04-4375-3B9B-F485-3FAB518DB607` | `Ninja_SplineReadAndPaint` | DI `Emitter.FieldCaptureGrid` | `Emitter.FluidNinja.EnableSplineReader` | none / none |
+| 8 | `TrackPoint Painter` | `21443E08-4789-141F-AA55-ADB144527310` | `Ninja_Painter` | DI `Emitter.PainterGrid` | none | none / none |
+| 9 | `Composite and Gradient` | `607A00B6-4C65-A5B6-7934-478AD885C42A` | `Ninja_CompositeAndGradient18` | DI `Emitter.CompositeGrid` | `Emitter.FluidNinja.FluidSimEnabled` | none / none |
+| 10 | `Advection` | `7BE5D907-4D0E-5A54-3147-8482CAC44111` | `Ninja_Advection` | DI `Emitter.AdvectionGrid` | `Emitter.FluidNinja.FluidSimEnabled` | none / none |
+| 11 | `Divergence` | `AC545382-4BFD-2A3D-711F-DBBA94A82878` | `Ninja_Divergence1` | DI `Emitter.PressureGrid` | `Emitter.FluidNinja.FluidSimEnabled` | none / none |
+| 12 | `Pressure` | `87B1F98C-497F-EC5E-E4CC-51863F3C2665` | `Ninja_Pressure` | DI `Emitter.PressureGrid` | `Emitter.FluidNinja.FluidSimEnabled` | none / `PainterAndSim.Pressure.NumberOfPressureIterations` |
+| 13 | `Export Painter` | `150455B0-477C-0589-E7F7-F2A648D3A394` | `CopyGridToRenderTarget` | DI `Emitter.RT_Painter` | `Emitter.FluidNinja.EnableOutputPainter` | none / none |
+| 14 | `Copy Painter` | `A6813B19-4B0E-6745-801C-DD8997BD639A` | authored `SetSimplePainterMode`, script `CopyPaintBuffer` | DI `Emitter.RT_Painter` | `Emitter.FluidNinja.CopyPaintBufferToSimBuffer` | none / none |
+| 15 | `Export VelocityAndDensity` | `910E7763-4393-F957-CF8F-3A8718B2374B` | `CopyGridToRenderTarget001` | DI `Emitter.RT_Composite` | `Emitter.FluidNinja.EnableOutputVelocityDensity` | none / none |
+| 16 | `Export PressureAndDivergence` | `0B62784C-4F8A-3E2A-3FF0-70919431E794` | `CopyGridToRenderTarget003` | DI `Emitter.RT_Pressure` | `Emitter.FluidNinja.EnableOutputPressureDivergence` | none / none |
+
+순서는 graph Y 좌표나 이름 정렬이 아니라 native stage array의 `stage_index`를 따른다.
+stage 1/2의 emitter-parameter DirectSet X binding, stage 12의 iteration binding,
+나머지 runtime enabled binding을 literal로 축약하면 안 된다.
+
+## 6. buffer와 renderer 계약
+
+### buffer family
+
+- Grid2D Collection 5개:
+  `Emitter.FieldCaptureGrid`, `Emitter.PainterGrid`, `Emitter.CompositeGrid`,
+  `Emitter.AdvectionGrid`, `Emitter.PressureGrid`
+- Neighbor Grid3D 2개:
+  `Emitter.NeighborGrid1`, `Emitter.NeighborGrid2`
+
+export mapping은 다음과 같다.
+
+| Stage | SelectedBuffer | Primary grid | User RT | Format |
+| ---: | ---: | --- | --- | --- |
+| 13 | 0 | `Emitter.PainterGrid` | `User.RT_Painter` | `RTF_RGBA16f` |
+| 15 | 1 | `Emitter.CompositeGrid` | `User.RT_VelocityDensity` | `RTF_RGBA16f` |
+| 16 | 2 | `Emitter.PressureGrid` | `User.RT_PressureDivergence` | `RTF_RG16f` |
+
+static evidence로 buffer family와 binding은 확정됐지만 channel의 정확한 order/sign/range와
+frame 간 previous/current surface visibility는 runtime readback 전까지 확정하지 않는다.
+
+### renderer witness
+
+동결 inspector가 반환한 enabled renderer record는 `PainterAndSim`의 index 1~5 다섯
+개다.
+
+| Index | Class | 핵심 dependency |
+| ---: | --- | --- |
+| 1 | Sprite | parameter-carrier material |
+| 2 | Mesh | wire-box material + wire-box static mesh |
+| 3 | Mesh | visualization material + visualization mesh |
+| 4 | Mesh | parameter-carrier material + `/Engine/BasicShapes/Cube` |
+| 5 | Volume | heterogeneous-volume material instance |
+
+renderer index 0 또는 disabled renderer 전체 inventory는 frozen evidence에 없다. 따라서
+“다섯 개가 전체 renderer다”라고 단정하지 않고 enabled-only witness로 기록한다.
+
+Study target에서 확인된 renderer/art dependency는 9개 중 5개다.
+
+- 존재: visualization mesh, debug visualization material, noise texture 3개
+- 없음: `M_CFNL_ParamCarrier`, `M_CFNL_WireBox`, `SM_CFNL_WireBox`,
+  `MI_CFNL_HVOL_SimLandscape`
+
+텍스처·mesh·material처럼 독립 localization이 허용되는 art는 target-owned asset으로
+가져올 수 있다. 그러나 이 작업에서는 네 missing target을 추정 생성하거나 원본
+Niagara renderer를 복제하지 않았다. 아직 없는 asset을 원본 경로로 임시 연결하면
+runtime dependency가 남기 때문이다.
+
+## 7. NiagaraScript closure와 Engine dependency
+
+시스템이 직접 부르는 source standalone package 46개에서 manifest의 function-script
+참조를 재귀적으로 따라가면 exact closure는 64개다.
+
+- captured nodes: 3,974
+- captured links: 5,016
+- Custom HLSL nodes: 30
+- closure capture bytes: 20,333,280
+- compile status: `NCS_Unknown` 58, `NCS_UpToDate` 6
+- validation failure: 0
+- source hash before/after mismatch: 0
+- closure file-ledger SHA-256:
+  `6c464dfaf97fbd97c264a23c923ffce65534a86df3b14b30fb6b1d4238c874db`
+
+Engine/Niagara 기본 script dependency 16개는 engine 제공 기능이므로 새로 복제하지 않고
+그대로 허용한다.
+
+- `/Niagara/DynamicInputs/Bool/Boolean_AndOperation.Boolean_AndOperation`
+- `/Niagara/DynamicInputs/Bool/Boolean_NotOperation.Boolean_NotOperation`
+- `/Niagara/DynamicInputs/Divide/Divide_Float.Divide_Float`
+- `/Niagara/DynamicInputs/Math/Min_Int.Min_Int`
+- `/Niagara/DynamicInputs/Multiply/Multiply_Float.Multiply_Float`
+- `/Niagara/DynamicInputs/Multiply/Multiply_FloatByInt.Multiply_FloatByInt`
+- `/Niagara/DynamicInputs/TypeConversions/MakeCustomIntFromBool.MakeCustomIntFromBool`
+- `/Niagara/DynamicInputs/TypeConversions/MakeCustomQuaternionFromBool.MakeCustomQuaternionFromBool`
+- `/Niagara/DynamicInputs/TypeConversions/MakeFloatFromInt.MakeFloatFromInt`
+- `/Niagara/DynamicInputs/TypeConversions/MakeFloatFromVector.MakeFloatFromVector`
+- `/Niagara/DynamicInputs/TypeConversions/MakeVector2D.MakeVector2D`
+- `/Niagara/Modules/Emitter/EmitterState.EmitterState`
+- `/Niagara/Modules/Solvers/SolveForcesAndVelocity.SolveForcesAndVelocity`
+- `/Niagara/Modules/Spawn/Initialization/V2/InitializeParticle.InitializeParticle`
+- `/Niagara/Modules/System/SystemState.SystemState`
+- `/Niagara/Modules/Update/Lifetime/ParticleState.ParticleState`
+
+source NiagaraScript는 어느 것도 target asset의 dependency로 남기지 않는다. 64개 모두
+새 target script로 의미를 재작성하고 개별 compile/readback/fixture를 통과해야 한다.
+
+## 8. exact source-to-target remap 74개
+
+아래 매핑은 system 1 + transitive script 64 + art/material 9 = 74개다.
+
+| Source package | Target package |
+| --- | --- |
+| `/Game/FluidNinjaLive/Core/Assets/DefaultVisualizationMesh` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/DefaultVisualizationMesh` |
+| `/Game/FluidNinjaLive/Core/Assets/MI_DefaultMaterial_ForVisualizationMesh` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/DebugVisualizationMaterial/M_CFNL_DebugVisualization` |
+| `/Game/FluidNinjaLive/Core/Assets/M_ParamPlaceHolderForNiagara` | `/Game/Study/CubeFluidNinjaLive/Materials/Core/M_CFNL_ParamCarrier` |
+| `/Game/FluidNinjaLive/Core/Assets/M_WireBoxMaterial` | `/Game/Study/CubeFluidNinjaLive/Materials/Core/M_CFNL_WireBox` |
+| `/Game/FluidNinjaLive/Core/Assets/SM_WireBox` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/SM_CFNL_WireBox` |
+| `/Game/FluidNinjaLive/Core/Assets/T_Noise3_128px` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/T_Noise3_128px` |
+| `/Game/FluidNinjaLive/Core/Assets/T_NoiseTemplate1_128px` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/T_NoiseTemplate1_128px` |
+| `/Game/FluidNinjaLive/Core/Assets/T_NoiseTemplate2` | `/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/T_NoiseTemplate2` |
+| `/Game/FluidNinjaLive/Core/Functions/AreValuesOutOfRange` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_AreValuesOutOfRange` |
+| `/Game/FluidNinjaLive/Core/Functions/AssignBuffersToRenderTargets` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_AssignBuffersToRenderTargets` |
+| `/Game/FluidNinjaLive/Core/Functions/BitmapDefinedDensity` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_BitmapDefinedDensity` |
+| `/Game/FluidNinjaLive/Core/Functions/CalculateLinePlaneIntersection` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_CalculateLinePlaneIntersection` |
+| `/Game/FluidNinjaLive/Core/Functions/CorrectExtremes` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_CorrectExtremes` |
+| `/Game/FluidNinjaLive/Core/Functions/DensityNoise` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_DensityNoise` |
+| `/Game/FluidNinjaLive/Core/Functions/EdgeMask` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_EdgeMask` |
+| `/Game/FluidNinjaLive/Core/Functions/ForceVerticalPosition` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_ForceVerticalPosition` |
+| `/Game/FluidNinjaLive/Core/Functions/GetAspect` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_GetAspect` |
+| `/Game/FluidNinjaLive/Core/Functions/InputTexture` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_InputTexture` |
+| `/Game/FluidNinjaLive/Core/Functions/KillFracOnGivenAxis` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_KillFracOnGivenAxis` |
+| `/Game/FluidNinjaLive/Core/Functions/LockMovementOnGivenAxis` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_LockMovementOnGivenAxis` |
+| `/Game/FluidNinjaLive/Core/Functions/NinjaInitGrids` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_NinjaInitGrids` |
+| `/Game/FluidNinjaLive/Core/Functions/NinjaInitHashGrid` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_NinjaInitHashGrid` |
+| `/Game/FluidNinjaLive/Core/Functions/PainterSourceData` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_PainterSourceData` |
+| `/Game/FluidNinjaLive/Core/Functions/ProjectPositionToCameraFacingPlane` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_ProjectPositionToCameraFacingPlane` |
+| `/Game/FluidNinjaLive/Core/Functions/SimPositionInitial` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_SimPositionInitial` |
+| `/Game/FluidNinjaLive/Core/Functions/TranslucentBlend` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_TranslucentBlend` |
+| `/Game/FluidNinjaLive/Core/Functions/VelocityAmplitudeNoise` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_VelocityAmplitudeNoise` |
+| `/Game/FluidNinjaLive/Core/Functions/VelocityDirectionalNoise` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_VelocityDirectionalNoise` |
+| `/Game/FluidNinjaLive/Core/Functions/VelocityFromBrush` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_VelocityFromBrush` |
+| `/Game/FluidNinjaLive/Core/Functions/WithinBoundsCheck` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Functions/NF_CFNL_WithinBoundsCheck` |
+| `/Game/FluidNinjaLive/Core/Modules/BoneReader/ReadBoneScale` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/BoneReader/NM_CFNL_ReadBoneScale` |
+| `/Game/FluidNinjaLive/Core/Modules/BoneReader/ReadTrackedBonePosition` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/BoneReader/NM_CFNL_ReadTrackedBonePosition` |
+| `/Game/FluidNinjaLive/Core/Modules/BoneReader/SpawnTrackerParticlesForBones` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/BoneReader/NM_CFNL_SpawnTrackerParticlesForBones` |
+| `/Game/FluidNinjaLive/Core/Modules/Chaos/ApplyChaosData` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Chaos/NM_CFNL_ApplyChaosData` |
+| `/Game/FluidNinjaLive/Core/Modules/Chaos/SpawnFromChaos` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Chaos/NM_CFNL_SpawnFromChaos` |
+| `/Game/FluidNinjaLive/Core/Modules/CheckCachedSimData` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_CheckCachedSimData` |
+| `/Game/FluidNinjaLive/Core/Modules/CopyPaintBuffer` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_CopyPaintBuffer` |
+| `/Game/FluidNinjaLive/Core/Modules/HashGrid1` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_HashGrid1` |
+| `/Game/FluidNinjaLive/Core/Modules/HashGrid2` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_HashGrid2` |
+| `/Game/FluidNinjaLive/Core/Modules/InitTrackerParticle` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_InitTrackerParticle` |
+| `/Game/FluidNinjaLive/Core/Modules/KillTrackerParticle` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_KillTrackerParticle` |
+| `/Game/FluidNinjaLive/Core/Modules/MouseToWorld` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_MouseToWorld` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_Advection` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_Advection` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_CompositeAndGradient` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_CompositeAndGradient` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_Divergence` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_Divergence` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_GeometryCollection_ReadAndPaint` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_GeometryCollection_ReadAndPaint` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_Painter` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_Painter` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_Pressure` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_Pressure` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_RVT_ReadAndPaint` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_RVT_ReadAndPaint` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_SDF_ReadAndPaint` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_SDF_ReadAndPaint` |
+| `/Game/FluidNinjaLive/Core/Modules/Ninja_SplineReadAndPaint` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_Ninja_SplineReadAndPaint` |
+| `/Game/FluidNinjaLive/Core/Modules/Output/CopyGridToRenderTarget` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Output/NM_CFNL_CopyGridToRenderTarget` |
+| `/Game/FluidNinjaLive/Core/Modules/Output/EnableOutputBuffers` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Output/NM_CFNL_EnableOutputBuffers` |
+| `/Game/FluidNinjaLive/Core/Modules/ParticleVelocity` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_ParticleVelocity` |
+| `/Game/FluidNinjaLive/Core/Modules/PositionModifier` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_PositionModifier` |
+| `/Game/FluidNinjaLive/Core/Modules/PreparePosAndVeloArraysForDataCh` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_PreparePosAndVeloArraysForDataCh` |
+| `/Game/FluidNinjaLive/Core/Modules/ReadCachedSimData` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_ReadCachedSimData` |
+| `/Game/FluidNinjaLive/Core/Modules/ReadTrackedParams` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_ReadTrackedParams` |
+| `/Game/FluidNinjaLive/Core/Modules/ReadTrackedPosition` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_ReadTrackedPosition` |
+| `/Game/FluidNinjaLive/Core/Modules/SetPreviousPositionValues` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_SetPreviousPositionValues` |
+| `/Game/FluidNinjaLive/Core/Modules/Setup/ExportParamsToBP` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Setup/NM_CFNL_ExportParamsToBP` |
+| `/Game/FluidNinjaLive/Core/Modules/Setup/Ninja_CoreParams` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Setup/NM_CFNL_Ninja_CoreParams` |
+| `/Game/FluidNinjaLive/Core/Modules/Setup/Ninja_InitParams` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Setup/NM_CFNL_Ninja_InitParams` |
+| `/Game/FluidNinjaLive/Core/Modules/Setup/SetEmitterBounds` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/Setup/NM_CFNL_SetEmitterBounds` |
+| `/Game/FluidNinjaLive/Core/Modules/SimPositionAndOffsetLocal` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_SimPositionAndOffsetLocal` |
+| `/Game/FluidNinjaLive/Core/Modules/SimPositionAndOffsetWorld` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_SimPositionAndOffsetWorld` |
+| `/Game/FluidNinjaLive/Core/Modules/SimStep` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_SimStep` |
+| `/Game/FluidNinjaLive/Core/Modules/SpawnTrackerParticles` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_SpawnTrackerParticles` |
+| `/Game/FluidNinjaLive/Core/Modules/TransformMatrices2D` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_TransformMatrices2D` |
+| `/Game/FluidNinjaLive/Core/Modules/WorldToUnit` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_WorldToUnit` |
+| `/Game/FluidNinjaLive/Core/Modules/WorldToUnitChaos` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_WorldToUnitChaos` |
+| `/Game/FluidNinjaLive/Core/Modules/WorldToUnitDataCh` | `/Game/Study/CubeFluidNinjaLive/Niagara/Core/Reauthored/Modules/NM_CFNL_WorldToUnitDataCh` |
+| `/Game/FluidNinjaLive/NinjaLiveCore` | `/Game/Study/CubeFluidNinjaLive/NinjaLiveCore` |
+| `/Game/FluidNinjaLive/OutputMaterials/HVOLniagara/MI_HVOL_SIM_test2_landscp` | `/Game/Study/CubeFluidNinjaLive/Materials/Output/Volume/MI_CFNL_HVOL_SimLandscape` |
+
+## 9. 구현 원리와 권장 순서
+
+### clean-room 규칙
+
+1. source NiagaraSystem/Emitter/Script/Scratch Pad를 duplicate, template, export/import,
+   graph-text paste의 입력으로 사용하지 않는다.
+2. frozen capture는 이름·타입·default·pin/link 책임·수치 fixture를 이해하는 증거일 뿐,
+   노드 GUID·레이아웃·내부 graph를 새 asset에 주입하는 데이터가 아니다.
+3. target script는 새 package, 새 asset, 새 graph/node GUID로 만든다.
+4. engine Niagara 기본 script 16개만 engine dependency로 허용한다.
+5. art는 target-owned localization을 허용하지만 source package reference, redirector,
+   temp package를 남기지 않는다.
+6. `/Script/UnrealMCP`, `/UnrealMCP`, `MCPUnreal`, `mcp_unreal`은 authoring 결과의
+   runtime dependency가 될 수 없다.
+7. 기존 `NS_CFNL_Core2D_Solver_v002`, `NS_CFNL_PointPainter_v001`,
+   `NS_CFNL_PersistentPointSolver_v001`은 숫자/입력/lifecycle 회귀 fixture의 증거로만
+   쓰며 template, parent, full-core runtime dependency로 쓰지 않는다.
+
+### 의미 단위 구현 순서
+
+1. 64개 script closure의 각 input/output/type/static-switch 책임을 독립 manifest로
+   고정한다.
+2. 순수 helper부터 새로 작성한다: aspect, edge mask, texture coordinate/codec,
+   noise wrapper, blend, bounds/position helpers.
+3. grid domain과 RT allocator를 작성해 5 Grid2D, 2 NeighborGrid3D, 3 RT 크기와
+   binding을 검증한다.
+4. cache decoder를 별도 책임으로 만들고 signed channel round-trip과 downscale index를
+   확인한다.
+5. Array/DataChannel/Chaos/Bone/SDF/Landscape/RVT/Spline 입력을 한 번에 섞지 않고
+   source adapter별 0/1/N fixture로 만든다.
+6. Painter를 source normalization, neighbor lookup, brush footprint, density/velocity
+   accumulation, field merge의 작은 책임으로 나눈다.
+7. Composite를 field/paint merge, pressure correction, noise/input texture, collision mask,
+   wet/density feedback 책임으로 나눈다.
+8. Advection, Divergence, Pressure를 순서대로 구현하고 interior/edge/impulse fixture를
+   각각 통과한다. pressure KI=0/OOB와 sampler address는 추정하지 않는다.
+9. Copy Painter와 세 export codec을 channel marker로 검증한다.
+10. 네 reader emitter와 PainterAndSim을 fresh 구성하고 17-stage manifest를 exact order,
+    gate, DirectSet/DI iteration binding으로 연결한다.
+11. enabled renderer 5개와 User parameter 220개를 target-only default로 구성한다.
+12. compile/readback, cold reload, dependency audit, plugin-disabled cook/package/runtime,
+    reference-target parity를 모두 통과한 뒤에만 완료로 판정한다.
+
+## 10. 현재 명시적 blocker
+
+builder는 다음 blocker가 하나라도 남아 있으면 valid token을 받아도 editor connection
+전에 종료한다.
+
+| ID | 이유 |
+| --- | --- |
+| `fresh_four_emitter_authoring_route_missing` | 현재 route는 다른 asset의 emitter attach/duplicate에 의존하며, 검토된 blank four-emitter manifest가 없다. |
+| `simulation_stage_binding_surface_incomplete` | enabled binding과 emitter-parameter DirectSet/count binding을 exact하게 설정할 surface가 부족하다. |
+| `complex_user_data_interface_authoring_incomplete` | 정확한 8개 complex User DI type을 현재 surface로 만들고 설정할 수 없다. |
+| `transitive_script_reimplementation_incomplete` | 64개 target NiagaraScript의 의미 재작성과 개별 검증이 아직 없다. |
+| `renderer_replacement_assets_incomplete` | parameter carrier, wire material/mesh, volume material target이 없다. |
+| `reference_runtime_unknowns_unresolved` | ping-pong, sampler/address, KI=0 pressure, dispatch, RT property와 tolerance가 미확정이다. |
+| `disabled_renderer_inventory_incomplete` | enabled index 1~5 외 renderer inventory가 frozen evidence에 없다. |
+| `compile_baseline_requires_reconciliation` | full capture는 warning 0/outstanding true, secondary capture는 warning 3/outstanding false다. |
+| `end_to_end_fresh_authoring_manifest_not_implemented` | rollback, grouped compile/save, cold load, dependency/cook/runtime parity executor가 없다. |
+
+이 중 “만들 수 없는 원본 로직”을 source asset dependency로 가져오지는 않았다. 이펙트
+내부 module/Scratch Pad를 그대로 가져오는 것은 사용자가 금지한 방식이며 clean-room
+검증도 불가능하게 만든다. art localization은 허용되지만 위 네 asset은 target-owned
+대체물과 dependency audit가 준비될 때까지 blocker로 남긴다.
+
+## 11. builder 동작과 해시
+
+구현 파일:
+`Python/scripts/analysis/build_cube_fluid_ninja_live_core_system.py`
+
+기본 실행은 offline dry-run이다.
+
+```powershell
+py -3 Python/scripts/analysis/build_cube_fluid_ninja_live_core_system.py
+```
+
+확정된 해시는 다음과 같다.
+
+- script closure file-ledger SHA-256:
+  `6c464dfaf97fbd97c264a23c923ffce65534a86df3b14b30fb6b1d4238c874db`
+- semantic manifest SHA-256:
+  `28a4e2ac7804754006df18cc3c4b1307beb6a78e348a54878185056507b9a943`
+- base contract SHA-256:
+  `fefb8a1e7bcd3f2daffa5a98c8745820f16d398c7157df1e33d4762850a8b731`
+- SHA-bound confirmation token:
+  `cfnl-ninja-live-core-fefb8a1e7bcd3f2daffa`
+
+execute 문법은 의도적으로 존재하지만 blocker를 우회하지 않는다.
+
+```powershell
+py -3 Python/scripts/analysis/build_cube_fluid_ninja_live_core_system.py `
+  --execute `
+  --confirmation-token cfnl-ninja-live-core-fefb8a1e7bcd3f2daffa
+```
+
+wrong token은 token mismatch로, valid token은 unresolved blocker 목록과 함께 종료한다.
+두 경로 모두 `editor_connection_attempted=false`,
+`target_mutation_attempted=false`, `target_mutation_performed=false`다.
+
+optional JSON report는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/niagara` 아래의 새 `.json`
+파일에만 쓸 수 있다. 기존 파일 overwrite와 root 밖 경로는 거부한다.
+
+## 12. 최종 parity gate
+
+최종 “원본과 같다” 판정에는 최소한 다음이 모두 필요하다.
+
+1. source/template/temp package를 전혀 읽지 않는 fresh authoring executor.
+2. 220 User parameter의 이름·순서·타입·default, 4 emitter enable state, 17 stage
+   순서/Usage ID/gate/binding, enabled renderer witness의 exact readback.
+3. 64 target script의 graph responsibility 및 compile 성공.
+4. target cold reload 뒤 `/Game/FluidNinjaLive`, temp, MCP-only dependency와 redirector 0.
+5. compile error 0과 reference warning baseline reconciliation.
+6. fixed seed/frame/parameter snapshot으로 Grid/helper/cache/painter/advection/divergence/
+   pressure/export fixture의 reference-target readback 일치.
+7. 반복 실행으로 nondeterminism/tolerance envelope 확정.
+8. UnrealMCP plugin disabled 또는 absent 상태에서 load, compile, cook, package, runtime.
+
+현재 산출물은 이 gate를 거짓으로 통과시키지 않는다. 정적 계약과 다음 구현 순서를
+정확히 고정하고, 증거 또는 authoring capability가 부족한 지점에서 멈추는 것이 이번
+단계의 완료 조건이다.

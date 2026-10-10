@@ -1,0 +1,53 @@
+# 다음 세션용 프롬프트
+
+아래 내용을 새 Codex 세션의 첫 메시지로 그대로 전달한다.
+
+---
+
+`D:\Git\UnrealMCP5_6_1`에서 독립 워터 시스템 고스트 테스트를 이어서 구현해라.
+
+먼저 다음 인계 문서를 끝까지 읽고, 문서의 확정 제약·Gate 0~5·첫 실행 순서를 그대로 따른다.
+
+`D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\studies\independent-water\independent-water-smoke-handoff-2026-07-16.md`
+
+핵심 목표는 `/Game/Study/Water`에 WaterZone, Unreal Water, Landscape, SceneCapture 없이 동작하는 프로젝트 소유의 BP/Niagara 독립 워터를 만드는 것이다. 필수 순서는 `River -> Lake -> Niagara Grid2D 얕은 물 -> 승격/독립성 검증`이다. Niagara Grid2D는 핵심 기능이므로 절대 생략하거나 BP/material-only 효과로 대체하지 마라. Texture2D Bake만 현재 범위에서 제외한다. 현재는 설계와 라이브 브리지 기준선만 끝났고 실제 River/Lake/Niagara 자산은 아직 만들지 않았다.
+
+절대 조건:
+
+- 전체 콘텐츠는 BP/Niagara only다. River/Lake 형상·질의·오케스트레이션은 Blueprint, Grid2D 상태와 Simulation Stage는 Niagara로 구현한다.
+- 프로젝트 소유 StaticMesh, Material/MaterialInstance, 기존·수작업 소스 Texture2D, Niagara가 직접 쓰는 runtime `TextureRenderTarget2D`는 허용한다. SceneCapture RT, RT→Texture2D 변환, 생성 Texture2D, Texture2D Bake는 금지한다.
+- UnrealMCP/티브렛 C++는 저작과 검증 보조일 뿐 완성 자산이 MCP에 의존하면 즉시 FAIL이다.
+- `/Script/Water`, `/Water`, `/Script/WaterAdvanced`, `/WaterAdvanced`, `/Script/WaterExtras`, `/WaterExtras`, `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal` 참조는 최종 루트에서 0건이어야 한다.
+- `/Script/Niagara`와 표준 Niagara 자산은 필수 허용이다. Niagara Plan A는 필요한 NiagaraFluids Shallow Water module을 exact allowlist로 사용할 수 있고, Plan B는 Niagara core와 프로젝트 소유 Scratch Pad만 사용한다.
+- WaterZone, Landscape, SceneCapture를 만들거나 참조하지 마라. NiagaraFluids source에 직렬화된 Landscape/SceneCapture DI도 제거해라.
+- 프로젝트 C++ 승인 토큰 `c++1218`이 없으므로 프로젝트 C++은 수정하지 마라.
+- 정확한 저작 도구 공백이 증명될 때만 `MCPGameProject/Plugins/UnrealMCP/**`에 좁은 에디터/read-only helper를 추가할 수 있다. 최종 BP/Niagara에는 Engine/Niagara 표준 class·node·DI, Lake Plan A의 GeometryScriptingCore BP 노드, exact allowlist NiagaraFluids module, 프로젝트 소유 Niagara module만 남겨라.
+- 현재 작업트리의 기존 dirty/untracked 변경은 다른 에이전트 작업이다. 덮어쓰기, 되돌리기, 스테이징하지 마라.
+- 현재 active map과 기존 dirty map/package를 저장하거나 버리지 마라. 런타임 검증은 맵 전환 없는 SIE transient world를 사용해라.
+- 사용자 검수를 기다리지 말고 이에타가 PASS/FAIL을 판정해 계속 진행한다. Lake/Niagara Plan A 실패 시 `Epic 공식 문서/UE 5.6 엔진 소스 -> 신뢰 가능한 웹 사례 -> URL·최소 재현 기록 -> 최소 1회 재시도` 순서를 따른다. 정확 실패 evidence와 유사 효과 근거 없이 Plan B로 전환하지 마라.
+
+실행 시작:
+
+1. 루트와 `codex/`의 AGENTS 및 인계 문서가 지정한 정책/역할/워크플로 문서를 읽어라.
+2. `git status --short`, UE 5.6.1 editor process, UnrealMCP port 55561, dirty package를 다시 점검해라.
+3. `uv --directory .\Python run python scripts\smoke_live_bridge.py`를 실행해 Gate 0 기준선을 재확인해라.
+4. `codex/scripts/independent_water/independent_water_smoke_runner.py`를 만들고 모든 bridge 응답과 evidence를 `MCPGameProject/Saved/MCP/IndependentWaterSmoke/`에 기록해라.
+5. ghost root `/Game/_MCP_Temp/IndependentWaterGhost`에 River BP와 프로젝트 소유 mesh/material을 만들고 Gate 1을 완전히 통과시켜라. Gate 1 전에는 Lake나 Niagara로 넘어가지 마라.
+6. Lake Plan A는 closed Spline + DynamicMeshComponent + Geometry Script `AppendTriangulatedPolygon3D`로 구현해 Gate 2를 시도한다. 정확 실패 후 `LAKE_PLAN_A_FAIL`이 있을 때만 closed Spline + ISM tile fill Plan B로 전환한다.
+7. Gate 2 PASS 후 `BP_IW_ShallowWaterController`, `NS_IW_ShallowWater`, `RT_IW_ShallowWater`와 analytic River/Lake/Blocker WetMask를 구현해 Gate 3을 통과시켜라.
+8. Niagara Plan A는 UE 5.6 `Grid2D_SW_Pool`의 프로젝트 소유 trimmed copy를 출발점으로 하되 Landscape/SceneCapture 경로를 제거하고, Grid2D 보존형 depth/momentum shallow-water를 fixed step으로 실행해 Gate 4를 시도한다.
+9. Plan A가 공식/엔진/웹 조사와 재시도 뒤에도 실패하면 `NIAGARA_PLAN_A_FAIL`을 남기고 Niagara Grid2D damped height-field Plan B를 구현한다. Plan B도 Grid2D, WetMask, impulse/wake, blocker, runtime RT와 Gate 4의 Plan B 분기를 반드시 유지한다.
+10. Gate 4 PASS 뒤 Bake 없이 Gate 5 승격/독립성 검증을 수행한다.
+
+티브렛에게 전달할 지시
+
+- River/Lake에는 기존 BP component/graph 도구와 Unreal Python을 먼저 사용한다. Niagara에는 기존 source clone, Simulation Stage, User parameter, RT binding, Scratch Pad/Custom HLSL, compile/runtime Grid2D inspect, RT readback 도구를 먼저 사용한다.
+- 전용 helper 부재를 기능 공백으로 간주하지 말고, 기존 도구 조합 -> 정확한 실패의 최소 재현 -> 공식 API/엔진 소스 -> 신뢰 가능한 웹 사례와 재시도 -> 증명된 공백에만 좁은 UnrealMCP helper 순으로 진행한다.
+- C++ helper가 필요하면 프로젝트 C++이 아니라 UnrealMCP 플러그인만 수정하고, 로컬 규칙의 선행 문서를 읽은 뒤 UE 5.6 build, Python offline gates, live bridge smoke를 통과시켜라.
+- 최종 BP/Niagara graph, stack, DI, package dependency, serialized 문자열을 검사해 Water/WaterAdvanced/WaterExtras/WaterZone/Landscape/SceneCapture/UnrealMCP/MCPUnreal/mcp_unreal이 0건임을 증명하고, Niagara/NiagaraFluids 허용 참조는 exact manifest로 남겨라.
+- Niagara Grid2D 없이 Gate 4를 PASS 처리하지 마라. 기존 ReactiveSurface 2-history wave를 보존형 shallow-water라고 오인하지 마라.
+- runtime RGBA16F RT는 허용하지만 Texture2D Bake와 Flipbook Baker는 실행하지 마라.
+
+완료 조건은 River Gate 1, 선택된 Lake Gate 2, Niagara Grid2D Mask Gate 3, Niagara shallow-water Plan A 또는 Plan B Gate 4가 모두 PASS하고, Gate 5에서 최종 `/Game/Study/Water` 승격, Water/WaterAdvanced/WaterExtras/WaterZone/Landscape/SceneCapture/UnrealMCP/MCPUnreal/mcp_unreal 비의존 감사 0건, Niagara allowlist 감사 PASS, 생성·baked Texture2D 0건, Niagara-enabled content-only 소비 프로젝트 load/cook/runtime smoke PASS, task-owned ghost/redirector/final package cleanup과 시작 시 기록한 보호 dirty/untracked baseline 불변이 모두 PASS인 것이다. 중간에 멈추게 되면 같은 형식의 새 인계 문서와 다음 프롬프트를 갱신해라.
+
+---

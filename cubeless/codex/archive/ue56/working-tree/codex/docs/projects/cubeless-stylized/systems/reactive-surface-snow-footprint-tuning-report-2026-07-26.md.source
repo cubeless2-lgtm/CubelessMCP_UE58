@@ -1,0 +1,145 @@
+# Reactive Surface Snow Footprint Tuning Report — 2026-07-26
+
+## Scope
+
+- Controller: `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`
+- Ground Niagara: `/Game/ReactiveSurface/Ground/NS_RS_Ground`
+- 복원 half-life BP 파라미터 기본값 `120초`
+- 접촉 유지 중 `5cm` 이동 재스탬프
+- Left/Right 발 마스크 재스탬프 경로
+- 발바닥 SDF 경계의 `2cm` world-space softness
+- Piper ChildActor 단일 owner/writer 복구
+- 프로젝트 C++ 변경 없음
+
+## 확인된 원인
+
+### 짧은 이동 누락
+
+`RS_Ground_DragStampSpacingWS` 기본값은 10cm였고,
+`RS_ProcessGroundReactivePoint`의 `Distance2D >= DragStampSpacing` 결과는
+`GroundStampMask == Round` 게이트를 통과해야만 stamp-reason OR에
+도달했다. Production Piper의 Left/Right 발은 접촉을 유지한 채 짧게
+움직일 때 이 경로에서 제외됐다.
+
+### 뷰포트의 발자국 누락과 리센터 불일치
+
+최초 튜닝 적용 스크립트는 Controller만 컴파일했다. Piper parent와 현재
+맵을 재인스턴스하지 않아 PIE에서 같은 Piper에 아래 두 Controller가
+동시에 생성됐다.
+
+- stale preview/orphan `_C_0`: 플레이어 발 소스 2개
+- 실제 ChildActor `_C_1`: 발 2개와 정적 데모 소스 3개
+
+두 인스턴스 모두 Tick 및 Ground Niagara가 활성화되어 같은 Display,
+Output, Canvas RT와 MPC를 서로 다른 replay/ring 상태로 덮어썼다. 이
+경쟁 상태가 발자국 누락, 오래된 자국 잔류, 리센터 copyback 불일치를
+동시에 만들었다.
+
+이전 short-walk PASS는 `DESTROYED_...CHILDACTOR` 경로를 사용했고 RT
+export도 실제로는 실패했으므로 최종 증거에서 제외했다.
+
+## 구현
+
+### Blueprint
+
+- `RS_Ground_RecoveryHalfLifeSeconds`
+  - 기본값 `120.0`
+  - instance editable
+  - UI 최대값 `300초`
+- `RS_Ground_DragStampSpacingWS`
+  - 기본값 `5.0cm`
+  - instance editable
+- `RS_ProcessGroundReactivePoint`
+  - 이동 거리 비교 결과가 Left/Right/Round의 stamp-reason OR에 직접 연결
+  - Round 전용 contact-distance/static keepalive 로직은 유지
+  - 마커: `RS_GROUND_FOOT_MASK_DRAG_RESAMPLE_V1`
+
+### Niagara soft edge
+
+`RS_Ground_MaskAccumulator`와 `RS_Ground_EdgeZero`에 기존 output-grid
+AA floor를 유지하면서 `2cm` world-space SDF transition을 추가했다.
+
+```text
+EncodedSoftness = 4 * 2cm / RadiusWS
+SDFWidth = max(existing output-grid floor, EncodedSoftness)
+```
+
+마커: `RS_GROUND_FOOTPRINT_SOFT_EDGE_2CM_V1`.
+
+### ChildActor owner-chain
+
+Controller → Piper → `L_RS_Demo` 순서로 컴파일·재인스턴스·저장해 stale
+preview child를 제거했다. 튜닝 runner도 직접 Controller compile 대신
+`compile_child_actor_owner_chain`을 사용하도록 변경했다. 같은 runner를
+다시 적용한 뒤에도 runtime Controller와 active Ground writer가 각각
+1개인지 재검증했다.
+
+## 검증
+
+### Compile 및 정적 감사
+
+- Controller Blueprint: 0 errors, 0 warnings
+- Piper Blueprint: 0 errors, 0 warnings
+- Ground Niagara: 0 errors, 0 warnings
+- Controller/ChildActor template: half-life `120초`, spacing `5cm`
+- `/Game/ReactiveSurface` forbidden MCP dependency: 0
+- 에디터 맵: `/Game/ReactiveSurface/Demo/L_RS_Demo`
+- 검증 종료 후 PIE/SIE 정지, dirty package 0
+
+### 실제 production 초기화
+
+원본 `RS_Demo_Player_Piper`만 사용하고 수동 source collect, duplicate
+Piper, 다른 Controller/BPC disable 없이 확인했다.
+
+- Controller: 1
+- active Ground writer: 1
+- 자동 수집 소스: 전체 5, 플레이어 발 2
+- 초기 Controller origin = MPC origin
+- 초기 player UV: 약 `(0.5, 0.5)`
+
+### 10.5cm held-contact 재스탬프
+
+공중 해제 → 착지로 접촉 상태를 초기화한 뒤 `1.5cm × 7` 이동했다.
+
+- 실제 actor 이동: `10.5cm`
+- Left `LastStampWS` 이동: 약 `6.24cm`
+- Right `LastStampWS` 이동: 약 `5.55cm`
+- 예측 Left/Right RT 영역의 유효 픽셀: `167 / 204`
+- 결과: PASS
+
+### 4방향 리센터와 월드 앵커
+
+정적 데모 Ground 소스를 먼저 끄고 RT를 비운 뒤, 화면 경계에서 충분히
+떨어진 플레이어 발자국만 seed했다. 이후 모든 Ground source를 격리하고
+±X/±Y 네 번의 리센터를 검사했다.
+
+- 4단계 모두 integer-texel 원점 이동 PASS
+- 각 단계 RT pixel count ratio `1.0`
+- 각 단계 energy ratio 약 `0.996`
+- 예상/실제 centroid 이동 일치
+- 누적 world-anchor 오차: 약 `0.000079px`
+- Controller 1 / active Ground writer 1 유지
+- 결과: PASS
+
+### 시각 확인
+
+정적 원형 데모 소스를 런타임에서 격리하고 공중 이동 → 착지로 자국을
+띄워 배치한 캡처에서 둥근 점이 아니라 발바닥 sole 형태와 부드러운
+경계가 확인됐다.
+
+## 재현 및 증거
+
+- 적용 runner:
+  `codex/scripts/reactive_surface/reactive_surface_snow_footprint_tuning_runner.py`
+- idempotent apply:
+  `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowFootprintTuning20260726/snow_footprint_tuning_apply.json`
+- production singleton/초기화:
+  `MCPGameProject/Saved/MCP/ReactiveSurfaceGroundViewportReliability20260726/production_pie_probe.json`
+- 10.5cm 양발/RT 영역:
+  `MCPGameProject/Saved/MCP/ReactiveSurfaceGroundViewportReliability20260726/production_short_step_probe.json`
+- 4방향 리센터:
+  `MCPGameProject/Saved/MCP/ReactiveSurfaceGroundViewportReliability20260726/recenter_single_owner_probe.json`
+- 시각 캡처:
+  `MCPGameProject/Saved/Screenshots/WindowsEditor/HighresScreenshot00003.png`
+- 수정 전 backup:
+  `MCPGameProject/Saved/MCP/ReactiveSurfaceGroundViewportReliability20260726/backup_before_owner_chain`

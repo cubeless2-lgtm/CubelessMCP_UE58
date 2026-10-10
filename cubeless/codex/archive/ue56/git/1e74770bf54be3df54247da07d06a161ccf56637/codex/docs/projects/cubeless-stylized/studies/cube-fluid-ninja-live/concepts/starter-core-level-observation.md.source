@@ -1,0 +1,402 @@
+# _Starter / CoreOnly 13개 레벨 정적 관찰 지도
+
+## 목적과 판정 경계
+
+이 문서는 /Game/FluidNinjaLive/Levels 아래에서 완전 캡처된 _Starter 7개와
+CoreOnly 6개 레벨을 clean-room 재구현용 정적 의미 지도로 묶는다. 원본 레벨,
+에디터, bridge, Content, C++, Python은 이 문서를 작성하는 동안 사용하거나
+수정하지 않았다. 근거는 이미 저장된 native level manifest, level Blueprint
+그래프, inventory/dependency, Blueprint/Niagara/material/support 문서뿐이다.
+
+판정 표기는 다음과 같다.
+
+- Observed: 캡처 파일에 직렬화된 actor, component, property, graph, text 또는
+  dependency로 직접 확인했다.
+- Inferred: 여러 정적 증거를 종합한 학습 책임 해석이다. 런타임 동작을
+  확정하지 않는다.
+- Unknown: PIE/SIE replay, 프레임별 RT 값, 타이밍, 성능, 화면 동등성 등
+  현재 증거가 답하지 못한다.
+- Target fixture: 나중에 독립 구현과 검증을 분리하기 위한 제안 단위다.
+  아직 생성된 asset이 아니다.
+
+따라서 이 문서의 완료 범위는 static semantics 13/13이다. runtime,
+implementation, visual/behavior parity는 모두 pending이다.
+
+## 13/13 캡처 완전성
+
+모든 행은 capture_complete=true, capture_truncated=false,
+source_package_dirty=false, source_mutation_performed=false이며 최종 병합본에서
+component/property truncation이 남은 actor는 0개다.
+
+| # | Level | Actor | Component | Actor pages | Solver host | Level BP nodes / variables |
+| ---: | --- | ---: | ---: | ---: | --- | ---: |
+| 1 | _Starter/_StartingGuide | 60 | 106 | 6 | 없음 | 2 / 0 |
+| 2 | _Starter/Tutorial01_Basics | 547 | 1,093 | 55 | NinjaLiveComponent 23개: NinjaLive 21 + Torch 내장 2 | 2 / 0 |
+| 3 | _Starter/Tutorial02_Inputs_Interaction | 327 | 669 | 33 | NinjaLiveComponent 25개: NinjaLive 24 + pawn 내장 1 | 2 / 0 |
+| 4 | _Starter/Tutorial03_KeyConceptsForWater | 455 | 894 | 46 | NinjaLiveComponent 14개 | 85 / 20 |
+| 5 | _Starter/Tutorial04_Presets_Spawning_Caching | 132 | 747 | 14 | NinjaLiveComponent 3개 | 44 / 4 |
+| 6 | _Starter/Tutorial05_Tricks | 197 | 442 | 20 | NinjaLiveComponent 30개 | 2 / 0 |
+| 7 | _Starter/Tutorial06_SplineBasedRivers | 159 | 436 | 16 | NinjaLiveComponent 5개 | 6 / 4 |
+| 8 | CoreOnly/CamfaceTest | 27 | 55 | 3 | direct NinjaLiveCore 2개 | 2 / 0 |
+| 9 | CoreOnly/Desert_SimplePainter_Landscape | 27 | 62 | 3 | direct NinjaLiveCore 1개 | 75 / 15 |
+| 10 | CoreOnly/Desert_SimplePainter_Mesh | 38 | 94 | 4 | direct NinjaLiveCore 1개 | 93 / 15 |
+| 11 | CoreOnly/Destructibles_as_SDF | 22 | 61 | 3 | direct NinjaLiveCore 1개 | 9 / 18 |
+| 12 | CoreOnly/LandscapeAlignedWater_ProtoVersion | 32 | 84 | 4 | direct NinjaLiveCore 1개 | 66 / 18 |
+| 13 | CoreOnly/River | 40 | 108 | 4 | direct NinjaLiveCore 1개 | 101 / 18 |
+
+| Level | Revision hash | Query hash |
+| --- | --- | --- |
+| _StartingGuide | 7a4d7da9fb0cdd0a948bfdf398ee380f | dbe118d962f805ea0f2e882742c27311 |
+| Tutorial01 | b33bc7c6bd66000e16915d57383c6d7b | dbe118d962f805ea0f2e882742c27311 |
+| Tutorial02 | 7be34bb3ba8c457011fdcc4a00cad52b | 4ba42f7ae0ee0e7cebbc8cd2313a31cd |
+| Tutorial03 | 985ba8934e6189146365bb80b26494ff | 4ba42f7ae0ee0e7cebbc8cd2313a31cd |
+| Tutorial04 | 4ec255713c8e9a1e0615c383852e82ba | 2b4c03e69735c35a736b1d14f52bf507 |
+| Tutorial05 | 70fbb545026cd3e69bee52f7782d049d | dbe118d962f805ea0f2e882742c27311 |
+| Tutorial06 | e95d761675756b6e0b039fb64daf7881 | 4ba42f7ae0ee0e7cebbc8cd2313a31cd |
+| CamfaceTest | ba922b11af04cd12e3ea8394135492a1 | 2b4c03e69735c35a736b1d14f52bf507 |
+| Desert Landscape | 41119d2178b1c4ec583ddc63ea4d1cce | 2b4c03e69735c35a736b1d14f52bf507 |
+| Desert Mesh | 2de6e07b49589e0fdb14ce0e19ea16be | 2b4c03e69735c35a736b1d14f52bf507 |
+| Destructibles | 4bfd736409c355d9530f6a91fe7277d5 | 2b4c03e69735c35a736b1d14f52bf507 |
+| LandscapeAligned | 0c71c7e45a86bb88d884e0a18585ccb4 | 2b4c03e69735c35a736b1d14f52bf507 |
+| River | f049639e2b4317688c78c87c18667373 | 2b4c03e69735c35a736b1d14f52bf507 |
+
+## Actor-class histogram
+
+아래 합계에는 각 레벨의 generated level-script actor도 정확한 class 이름으로
+포함한다.
+
+| Level | Exact class=count histogram |
+| --- | --- |
+| _StartingGuide | TextRenderActor=47; StaticMeshActor=10; _StartingGuide_C=1; Brush=1; PostProcessVolume=1 |
+| Tutorial01 | TextRenderActor=417; StaticMeshActor=64; MovingBall1_C=26; NinjaLive_C=21; NiagaraActor=5; SmokeVolume_C=2; Torch_C=2; Brush=1; DirectionalLight=1; PawnAndCameraUtility_C=1; PointLight=1; PostProcessVolume=1; SkeletalMeshActor=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; Tutorial01_Basics_C=1 |
+| Tutorial02 | TextRenderActor=217; StaticMeshActor=50; NinjaLive_C=24; MovingBall1_C=9; SkeletalMeshActor=7; NiagaraActor=5; GeometryCollectionActor=3; AtmosphericFog=1; Brush=1; DirectionalLight=1; Landscape=1; PawnAndCameraUtility_C=1; PointLight=1; PostProcessVolume=1; SceneCapture2D=1; SkyLight=1; SplineGenerator_C=1; ThirdPersonCharacter_NinjaAsComponent_C=1; Tutorial02_Inputs_Interaction_C=1 |
+| Tutorial03 | TextRenderActor=225; StaticMeshActor=162; NiagaraActor=18; NinjaLive_C=14; ThirdPersonCharacter_C=9; Landscape=5; TriggerBox=5; DriveExternalSystemsWithSimData_C=3; PostProcessVolume=3; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; MovingBall1_C=1; PawnAndCameraUtility_C=1; RuntimeVirtualTextureVolume=1; SceneCaptureCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; SplineGenerator_C=1; Tutorial03_KeyConceptsForWater_C=1 |
+| Tutorial04 | TextRenderActor=61; StaticMeshActor=41; MovingBall1_C=10; NinjaLive_C=3; NinjaSpawner_EXAMPLE_C=2; PostProcessVolume=2; ThirdPersonCharacter_C=2; Brush=1; Character=1; DirectionalLight=1; ExponentialHeightFog=1; Landscape=1; NiagaraActor=1; PawnAndCameraUtility_C=1; SceneCaptureCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; Tutorial04_Presets_Spawning_Caching_C=1 |
+| Tutorial05 | TextRenderActor=110; MovingBall1_C=34; NinjaLive_C=30; StaticMeshActor=11; NiagaraActor=2; NinjaLive_InterfaceController_C=2; AtmosphericFog=1; Brush=1; DirectionalLight=1; LevelSequenceActor=1; PawnAndCameraUtility_C=1; PostProcessVolume=1; SkyLight=1; Tutorial05_Tricks_C=1 |
+| Tutorial06 | TextRenderActor=79; StaticMeshActor=31; SplineGenerator_C=12; MovingBall1_C=10; NiagaraActor=6; NinjaLive_C=5; MovingBall2_C=4; PostProcessVolume=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; Tutorial06_SplineBasedRivers_C=1 |
+| CamfaceTest | TextRenderActor=7; StaticMeshActor=4; GeometryCollectionActor=2; NiagaraActor=2; PostProcessVolume=2; Brush=1; CamfaceTest_C=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1 |
+| Desert Landscape | StaticMeshActor=8; NiagaraActor=3; PostProcessVolume=2; TextRenderActor=2; Brush=1; Desert_SimplePainter_Landscape_C=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; GeometryCollectionActor=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1 |
+| Desert Mesh | MovingBall2_C=9; StaticMeshActor=9; TextRenderActor=3; NiagaraActor=2; PostProcessVolume=2; Brush=1; Desert_SimplePainter_Mesh_C=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; GeometryCollectionActor=1; Landscape=1; LandscapeGizmoActiveActor=1; MovingBall1_C=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1 |
+| Destructibles | StaticMeshActor=5; TextRenderActor=3; PostProcessVolume=2; Brush=1; Destructibles_as_SDF_C=1; DirectionalLight=1; ExponentialHeightFog=1; GeometryCollectionActor=1; Landscape=1; LandscapeGizmoActiveActor=1; MovingBall1_C=1; NiagaraActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1 |
+| LandscapeAligned | StaticMeshActor=12; NiagaraActor=6; PostProcessVolume=2; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeAlignedWater_ProtoVersion_C=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; TextRenderActor=1; ThirdPersonCharacter_C=1 |
+| River | StaticMeshActor=12; MovingBall2_C=5; PostProcessVolume=3; TextRenderActor=3; MovingBall1_C=2; NiagaraActor=2; SplineGenerator_C=2; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; River_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1 |
+
+## Wrapper host 구성
+
+P/V/D는 EnableOutputPainterElevation, EnableOutputVelocityDensity,
+EnableOutputPressureDivergence 순서다. 입력은 캡처된 reader enable 조합을
+요약한다. 모든 wrapper component의 CoreNiagaraSystem과 inherited
+Niagara Asset은 NinjaLiveCore다. Preset은 명시된 예외 외에는 None이다.
+
+| Level | Host configuration | Preset / output / input | Instance override |
+| --- | --- | --- | --- |
+| Tutorial01 | 23개; resolution 368²×12, 256²×6, 512²×3, 368×366×1, 720×368×1; Simple 9; SVOL 1; HVOL 1 | NinjaLive7만 NP_Water_Sparse_Lake1; P/V/D = F/T/T×17, F/T/F×4, T/T/F×1, T/T/T×1; default×20, MDF×2, height×1 | 23/23 non-empty |
+| Tutorial02 | 25개; 512²×10, 256²×7, 368²×6, 1024²×2; Simple 4; HVOL 1 | host preset 없음; P/V/D 전부 F/T/T; default×16, MDF×7, spline×1, height×1 | 25/25 non-empty |
+| Tutorial03 | 14개; 2048²×8, 256²×5, 368²×1; Simple 0; HVOL 1 | preset 없음; P/V/D = T/T/T×7, F/T/T×7; height+MDF×5, height×4, default×2, MDF×1, height+MDF+RVT×1, height+spline+MDF×1 | 14/14 non-empty |
+| Tutorial04 | NinjaLive_Smoke 368×256 / extents 6,4,1; NinjaLive_Volume 368² / 10,10,2; NinjaLive_Tank 368² / 5,5,4; Simple 0; HVOL 1 | host preset 없음; Smoke T/T/T, Volume T/T/F, Tank F/T/T; default×2, height×1 | 3/3 non-empty |
+| Tutorial05 | 30개; 368²×17, 256²×5, 256×368×2, 512²×2, 184²×1, 2048²×1, 368×92×1, 92×368×1; Simple 8; volume 없음 | preset 없음; P/V/D = F/T/T×29, T/T/T×1; MDF×1, 나머지 default | 30/30 non-empty |
+| Tutorial06 | 5개; 368²×3, 2048²×2; Simple 0; volume 없음 | preset 없음; P/V/D = F/T/F×2, F/F/T×1, F/T/T×1, T/T/T×1; 전부 spline, 그중 spline+MDF×1, height+spline+MDF×1 | 5/5 non-empty |
+
+InstanceParameterOverrides는 wrapper가 최종 Niagara user parameter를 어떻게
+직렬화했는지 보여 주는 중요한 정적 증거다. 그러나 중복된 derived byte
+payload를 그대로 복제하는 구현 지시가 아니다. clean-room target에서는
+semantic config를 설정한 뒤 생성된 override와 RT binding을 독립 검증한다.
+
+### Wrapper 레벨의 보조 Niagara와 머티리얼
+
+| Level | Standalone Niagara actors | Material evidence |
+| --- | --- | --- |
+| Tutorial01 | NS_WriteDataCh_GPU_Source_Linear×3; NS_Demo_BasicGrid×2 | MI_PaintDensityBuffer, MI_DensityBuffer_Red/Black, MI_DensityBuffer_Translucent_EdgeMask, MI_DensityBuffer_Translucent_HeightMapped, MI_Water_CausticsDemo_v2, MI_FluidBlast_RayMarching_Mono_Demo_Test |
+| Tutorial02 | radial Data Channel writer×1; linear writer×3; NS_WriteDataCh_GPU_MagicCauldron×1 | debug buffer, translucent, FluidBlast, sand, opaque water, pool-caustics 후보 배열; MagicCauldron host에 MI_MagicCauldron |
+| Tutorial03 | linear Data Channel writer×16; SurfaceAlignedMeshes×2 | MI_Water_DENSE_Creek 계열, MI_Water_DENSE_Protoversion, pool caustics, surface-aligned density, inverse-density clear/foam, MI_WetTest_CheckerLight |
+| Tutorial04 | SurfaceAlignedMeshes×1 | Smoke: red/translucent; Volume: red + MI_HVOL_SIM_DepthMappedFluid2; Tank: MI_Water_CausticsDemo_v2 |
+| Tutorial05 | linear Data Channel writer×1; NS_Area_Large_Fixed_PreSpawn_PainterDriven×1, AutoActivate=false | painter/velocity/pressure/debug, random color, textured stroke, smoke, blood/mud, sand output 후보 배열 |
+| Tutorial06 | linear Data Channel writer×6 | world-space pressure/velocity debug, MI_Water_River_ExampleComposite, white/clear river families; spline sections에 local/world checker와 river L1/L2/L3/composite material |
+
+후보 배열은 serialized Primary/Secondary/TertiaryOutputMaterials의 존재를
+뜻한다. 현재 선택 index, 런타임 MID 파라미터, 실제 프레임 렌더 결과는
+별도 검증 전까지 Unknown이다.
+
+## Direct-core 구성
+
+CoreOnly 레벨은 NinjaLive wrapper actor가 없고 NiagaraActor의 Asset이
+NinjaLiveCore인 standalone 구성이다. 7개 direct core 모두 non-empty
+InstanceParameterOverrides를 갖는다.
+
+따라서 CoreOnly의 wrapper host count는 모두 0이고 wrapper Preset field는
+N/A다. 아래 direct Niagara instance config가 그 자리를 대신한다.
+
+| Level | Direct core config | External/input actors | Output/material |
+| --- | --- | --- | --- |
+| CamfaceTest | 2개, 모두 512² / extents 7,7,7 / CameraFacing=true / MDF=true. Core1 AutoActivate=false, visualization off, force-local off. Core2 AutoActivate=true, visualization on, force-local on | GeometryCollectionActor×2, Landscape, DriveExternalSystemsWithSimData, MakeObjectsCameraFacing component | 둘 다 painter+velocity output. Core1은 세 RT를 명시. driver가 Core1과 Engine Plane ExternalMesh에 MI_DensityBuffer_Translucent 적용 |
+| Desert_SimplePainter_Landscape | 1개, AutoActivate=false, 2048² / extents 80,80,1 / Simple=true / MDF+height+RVT reader / painter only | linear writer×2, Landscape2, FracturedMesh_136chunks, character, driver | RT_Painter 명시. driver의 RenderTargetToBeUsedAsVeloDensityBuffer도 RT_Painter이며 Landscape material은 MI_Sand_RiverBank1 |
+| Desert_SimplePainter_Mesh | 1개, AutoActivate=false, 2048² / extents 80,80,1 / Simple=true / MDF input / velocity+pressure off | linear writer×1, MovingBall2×9, MovingBall1×1, GeometryCollection, SandPlane, driver | RT_Painter; driver와 SandPlane MID의 source material은 MI_Sand_RiverBank1 |
+| Destructibles_as_SDF | 1개, AutoActivate=true, 1024² / extents 40,40,2 / MDF+height+RVT / P/V/D 모두 on | FracturedMesh_568chunks_Clustered, Landscape 25+25+root, MovingBall1 | explicit 3 RT; VolumeMaterial MI_HVOL_SIM_destruct_gray; GC MI_CheckerRed_NonEmissive; Landscape MI_CheckerGray18 |
+| LandscapeAlignedWater_ProtoVersion | 1개, AutoActivate=false, 2048² / extents 60,60,1 / MDF+height+RVT / P/V/D 모두 on / point Data Channel on | linear writer×5, Landscape 25+25+root, water plane, driver, character | explicit 3 RT; driver MI_Water_DENSE_Protoversion; Landscape MI_WetTest_CheckerLight; initial water plane M_Null |
+| River | 1개, AutoActivate=false, 2048² / extents 80,80,1 / MDF+height+RVT+spline / P/V/D 모두 on; spline XY=4, Z=0.5; landscape-intersection on | linear writer×1, Landscape 25+25+root, River/Bedrock SplineGenerator, MovingBall1/2, driver, character | explicit 3 RT; driver MI_Water_River_Large_Wavy1_v3; Landscape M_RVToutput; bedrock MI_Bedrock_WorldSpace_dry |
+
+NinjaLiveCore의 4 emitter, 17 simulation stage, 1,171 node, 1,986 link
+정적 토폴로지는 core-solver-observation.md가 정본이다. 이 표는 level
+instance의 config와 wiring만 맡는다.
+
+## 레벨별 정적 학습 책임과 target fixture
+
+### 1. _StartingGuide
+
+- Observed: 47 TextRenderActor와 10 StaticMeshActor로 된 안내 gallery이며 solver,
+  standalone Niagara, 캐릭터가 없다. Level BP는 연결되지 않은 BeginPlay/Tick
+  2개 node뿐이다.
+- Inferred: 제품 기능 구현이 아니라 welcome, resource, key feature,
+  tutorial route를 보존하는 navigation shell이다.
+- Unknown: canonical camera, 텍스트별 화면 배치 parity.
+- Target fixture: TF_StartingGuide_Navigation. 텍스트, 표지 mesh, camera framing만
+  분리 검수하고 simulation 책임은 두지 않는다.
+
+### 2. Tutorial01_Basics
+
+- Observed: 21 NinjaLive actor와 Torch에 내장된 2 component를 합쳐 solver 23개,
+  MovingBall1 26개, standalone Niagara 5개다. 텍스트는 painter/full sim,
+  simple painter, sparse water, 2D surface, 3D mass/volume, internal/external
+  visualization을 구분한다.
+- Inferred: wrapper와 core/output 형태의 기본 분류를 한눈에 비교하는 gallery다.
+- Unknown: 숫자 key와 section 이동 규칙, 각 section의 runtime dispatch/RT 값.
+- Target fixture: TF_T01_BasicModes. 대표 mode를 작은 독립 case로 나눈 뒤
+  gallery 배치로 합친다.
+
+### 3. Tutorial02_Inputs_Interaction
+
+- Observed: solver 25개 외에 MovingBall1×9, SkeletalMeshActor×7,
+  GeometryCollectionActor×3, Landscape×1, SplineGenerator×1,
+  SceneCapture2D×1, NinjaLiveComponent 내장 pawn×1이 있다. 텍스트는 points와
+  fields 아래 bitmap, object SDF, spline, landscape, destructible SDF/points,
+  particle, object point 입력을 열거한다. Level BP는 연결되지 않은
+  BeginPlay/Tick뿐이다.
+- Inferred: actor wrapper와 component wrapper가 여러 입력 adapter를 같은
+  core contract로 정규화하는 input matrix다.
+- Unknown: overlap/touch/mouse 우선순위와 입력 합성 수치.
+- Target fixture: TF_T02_InputAdapters. 입력 종류마다 한 source, 한 host,
+  한 debug output을 둔다.
+
+### 4. Tutorial03_KeyConceptsForWater
+
+- Observed: solver 14, Landscape 5, TriggerBox 5, external driver 3,
+  SplineGenerator 1, RVTVolume 1, SceneCaptureCameraUtility 1,
+  Niagara 18개다. Level BP 85 nodes/20 variables는 5개 trigger/timeline
+  묶음에서 cube/SDF trigger의 ActorLocation을 바꾸는 정적 graph다.
+- Inferred: dense/sparse water, surface alignment, sim area extension,
+  height source, spline/landscape, wave generator를 단계적으로 결합한다.
+- Unknown: floodgate timeline duration과 실제 수면 반응, material 선택별 parity.
+- Target fixture: TF_T03_WaterConcepts. height-source, external-surface,
+  wave/spline, trigger-motion을 별도 case로 만든다.
+
+### 5. Tutorial04_Presets_Spawning_Caching
+
+- Observed: solver 3, NinjaSpawner_EXAMPLE 2, Landscape 1, MovingBall1 10,
+  캐릭터 3, SceneCaptureCameraUtility 1, SurfaceAlignedMeshes 1이다.
+  Spawner1은 NP_Water_Sparse_Lake1, Spawner2는
+  NP_Tracks_SimplePainter1과 AlsoSpawnLandscapeHandler=true를 직렬화한다.
+  둘 다 PossesSpawnedCharacter=false다. Level BP 44 nodes/4 variables는
+  세 pawn까지의 거리를 비교한 뒤 delay 후 가장 가까운 pawn을 possess하는
+  navigation helper이며 comment가 preset/spawner의 본질적 일부가 아님을
+  명시한다.
+- Inferred: preset editor read/write, sea/landscape surface handler spawn,
+  painter/velocity/pressure cache, StartSimFromCachedData, SceneCapture 또는
+  external height texture의 bake/load 계약을 설명하는 workflow level이다.
+- Unknown: spawned actor lifecycle, cache serialization format/시점, possession
+  runtime 결과.
+- Target fixture: TF_T04_PresetSpawnCache. preset round-trip, sea spawn,
+  landscape spawn, three-buffer cache, height cache를 독립 test로 나눈다.
+
+### 6. Tutorial05_Tricks
+
+- Observed: solver 30개 label이 buffers, persistence, output material,
+  inverse brush, brush random, puncture, asset references, preprogrammed
+  sequence, dynamic control, SingleTG, tiling/aspect/scaling, viscous blood를
+  직접 구분한다. InterfaceController 2개와
+  SequenceTest1_ControllingNinjaParams LevelSequenceActor 1개가 있으며
+  autoplay=true, loop=-1, play rate=1이다. Level BP는 비어 있다.
+- Inferred: core 구조가 아니라 user parameter 조작과 외부 control surface의
+  edge case catalogue다.
+- Unknown: sequencer key 값, interface call timing, SingleTG 성능 차이.
+- Target fixture: TF_T05_ControlAndTricks. 각 label을 독립 parameter
+  assertion으로 바꾸고 sequence/interface는 별도 fixture로 둔다.
+
+### 7. Tutorial06_SplineBasedRivers
+
+- Observed: solver 5개가 전부 spline reader를 켜며 SplineGenerator 12개,
+  Landscape 25+25+root, linear Data Channel writer 6개가 있다. 작은
+  generator 10개는 local/world mapping과 material pattern을, River1/2는
+  runtime high-detail plane과 큰 tile/width를 보여 준다. Level BP 6 nodes는
+  Begin/End/Tick과 PrintString 두 개 수준이다.
+- Inferred: spline mesh 생성, local/world UV, spline 방향 velocity,
+  passive+sim composite, spline-landscape intersection mask의 학습 순서다.
+- Unknown: spline 변화 재수집 시점, 속도장의 실제 방향/세기, landscape
+  intersection 결과.
+- Target fixture: TF_T06_SplineRiver. mapping, direction drive, composite,
+  intersection을 네 case로 나눈다.
+
+### 8. CamfaceTest
+
+- Observed: wrapper 없이 direct core 2개가 같은 512²/7m cube config를
+  비교한다. driver는 비활성 Core1, ExternalMesh, MI_DensityBuffer_Translucent를
+  연결하고 MakeObjectsCameraFacing component를 가진다. Core2는 내장
+  visualization을 켠다. Level BP는 비어 있다.
+- Inferred: external visualization plane과 core-owned visualization의
+  camera-facing/local-space 차이를 비교한다.
+- Unknown: 카메라 회전 추종의 축/보간/프레임 순서.
+- Target fixture: TF_Core_CameraFacing.
+
+### 9. Desert_SimplePainter_Landscape
+
+- Observed: standalone simple painter core, Landscape2, driver, linear writers
+  2개, GeometryCollection, character가 있다. Level BP 75 nodes/15 variables는
+  pawn/mesh bounds/mouse deprojection에서 Position/Vector4 arrays를 만들어
+  Niagara에 설정한다. manifest에는 MovingBall actor가 없다.
+- Inferred: RT_Painter를 landscape dynamic material에 전달하는 wrapperless
+  painter contract다.
+- Unknown: 배열 population의 실제 branch 결과와 landscape tile 갱신 순서.
+- Target fixture: TF_Core_SimplePainter_Landscape.
+
+### 10. Desert_SimplePainter_Mesh
+
+- Observed: standalone simple painter core, SandPlane, driver, MovingBall2×9,
+  MovingBall1×1, GeometryCollection, linear writer가 있다. Level BP
+  93 nodes/15 variables는 moving ball/pawn/wreck/mouse sources를 배열로
+  합치고 빠른 sphere와 add/remove 경로를 갖는다.
+- Inferred: 동일 painter buffer를 external static mesh MID에 적용하는
+  landscape case의 대조군이다.
+- Unknown: editor driver mode와 runtime source 등록/삭제 타이밍.
+- Target fixture: TF_Core_SimplePainter_Mesh.
+
+### 11. Destructibles_as_SDF
+
+- Observed: standalone core는 Chaos/RigidMesh/RVT/GeometryCollection/Landscape
+  data interface와 all-output RT를 가진다. FracturedMesh_568chunks_Clustered,
+  Landscape 25+25+root, MovingBall1이 있다. Level BP는 BeginPlay에서
+  t.MaxFPS 30, r.HeterogeneousVolumes.Preshading 0,
+  r.HeterogeneousVolumes.MaxStepCount 256,
+  r.HeterogeneousVolumes.VolumeResolution.Z 256을 순서대로 실행하고
+  EndPlay에서 t.MaxFPS 60을 실행하는 9-node graph다.
+- Inferred: Geometry Collection을 SDF/collision input으로 읽고 HVOL로
+  시각화하는 성능 제한 fixture다.
+- Unknown: 파괴 chunk 변화가 data interface에 반영되는 프레임과 HVOL
+  품질/성능 수치.
+- Target fixture: TF_Core_DestructibleSDF. CVAR 변경은 fixture-local
+  setup/teardown으로 격리한다.
+
+### 12. LandscapeAlignedWater_ProtoVersion
+
+- Observed: standalone all-output core, Landscape, water plane, driver,
+  linear writers 5개와 character가 있다. Level BP 66 nodes/18 variables는
+  pawn/wreck/mouse Position/Vector4 arrays를 Niagara에 보낸다. manifest에는
+  MovingBall actor가 없다.
+- Inferred: height/RVT와 point sources를 합친 landscape-aligned dense-water
+  prototype다.
+- Unknown: water plane displacement, shoreline, gap filling, relative-height
+  runtime 결과.
+- Target fixture: TF_Core_LandscapeAlignedWater.
+
+### 13. River
+
+- Observed: standalone core가 spline, height, MDF, RVT reader와 spline
+  landscape intersection을 함께 켠다. driver는 SplineGenerator_River1에
+  MI_Water_River_Large_Wavy1_v3을 적용한다. River spline은 6개 mesh segment,
+  Bedrock spline은 3개 segment를 캡처했다. Level BP 101 nodes/18 variables는
+  MovingBall1/2, pawn socket, wreck bounds, mouse sources를 add/remove하며
+  Position/Vector4 arrays를 보낸다.
+- Inferred: direct core에서 spline surface, bedrock, landscape height,
+  point inputs를 한 번에 결합하는 통합 river fixture다.
+- Unknown: spline intersection mask, flow direction, shoreline와 material
+  animation의 runtime parity.
+- Target fixture: TF_Core_RiverIntegration.
+
+## Tutorial04 Landscape 505개 component 재수집 증거
+
+Tutorial04의 Landscape actor path는
+/Game/FluidNinjaLive/Levels/_Starter/Tutorial04_Presets_Spawning_Caching.Tutorial04_Presets_Spawning_Caching:PersistentLevel.Landscape_0
+이다.
+
+- ordinary actor page의 max_components_per_actor는 16이어서
+  ordinary_returned_component_count=16, ordinary_components_truncated=true였다.
+- component-only paging은 page size 16, 32 pages로 31×16 + 9 = 505개를
+  수집했다.
+- 정확한 class 합계는 LandscapeComponent 252,
+  LandscapeHeightfieldCollisionComponent 252, SceneComponent 1이다.
+- component capture는 capture_complete=true,
+  component revision 851fdab8ea81a967c2c6ab49843425d9,
+  query 177c09f77b441066f47292df28ce7200이다.
+- 각 page budget은 max_serialized_utf8_bytes=12,582,912이고 32/32 page가
+  within_limit=true다. component scan/property/value truncation은 모두 0,
+  source_mutation_performed=false다.
+- 최종 병합은 reported=1, resolved=1, unresolved=0,
+  non_component_truncation_retained=false다. 최종 manifest는
+  adaptive_page_size=10, component_page_capture_count=1,
+  revision 4ec255713c8e9a1e0615c383852e82ba다.
+
+따라서 505는 추정치가 아니라 동일 actor revision을 지키며 budget 안에서
+완료된 component page 합계다.
+
+## Blueprint evidence의 사용 제한
+
+13개 level Blueprint는 graph capture error/truncation 없이 한 EventGraph씩
+확보됐다. BeginPlay/Tick만 있는 graph를 기능 구현 근거로 확대하지 않는다.
+Tutorial03의 trigger timeline, Tutorial04의 possession helper, 세 direct
+input-demo의 array writer, Destructibles의 CVAR setup은 정적 책임으로만
+기록했다. 실제 node 실행, branch, timeline, actor spawn/possess, Niagara
+parameter 전송 결과는 runtime evidence 전까지 Unknown이다.
+
+## clean-room 구현 순서에 주는 의미
+
+정적 학습 순서는 다음 dependency 방향을 권장한다.
+
+1. _StartingGuide의 navigation shell과 Tutorial01의 wrapper/output taxonomy.
+2. Tutorial02의 input adapters.
+3. Tutorial03의 height/surface/water composition.
+4. Tutorial04의 preset/spawn/cache workflow.
+5. Tutorial05의 parameter control edge cases.
+6. Tutorial06의 spline pipeline.
+7. CoreOnly의 camera-facing, landscape painter, mesh painter, destructible SDF,
+   landscape-aligned water, river integration.
+
+이 순서는 asset 복사 순서가 아니라 책임을 작은 fixture로 분해하는 순서다.
+텍스처/mesh 같은 아트 소스를 나중에 의존성 없이 localize하더라도 Niagara
+module, scratch pad, Blueprint graph, material logic은 관찰된 계약을 바탕으로
+새로 저작해야 한다.
+
+## 남은 검증
+
+- Runtime: pending. 각 target fixture에 고정 seed/camera/input/time replay와
+  RT/buffer probe가 필요하다.
+- Implementation: pending. 이 문서는 target asset을 생성하지 않았다.
+- Parity: pending. source/target 시각, 동작, 상호작용, 타이밍, 성능 비교가
+  없다.
+- Material selection/runtime MID: pending. serialized candidate와 static
+  material graph 캡처만으로 현재 프레임 출력을 단정하지 않는다.
+- Exception/localization: pending. 재저작 불가 판단은 실제 구현 시
+  dependency audit와 함께 항목별 사유를 기록해야 한다.
+
+## 근거
+
+- reference/levels/_Starter___StartingGuide.json
+- reference/levels/_Starter__Tutorial01_Basics.json
+- reference/levels/_Starter__Tutorial02_Inputs_Interaction.json
+- reference/levels/_Starter__Tutorial03_KeyConceptsForWater.json
+- reference/levels/_Starter__Tutorial04_Presets_Spawning_Caching.json
+- reference/levels/_Starter__Tutorial05_Tricks.json
+- reference/levels/_Starter__Tutorial06_SplineBasedRivers.json
+- reference/levels/CoreOnly__CamfaceTest.json
+- reference/levels/CoreOnly__Desert_SimplePainter_Landscape.json
+- reference/levels/CoreOnly__Desert_SimplePainter_Mesh.json
+- reference/levels/CoreOnly__Destructibles_as_SDF.json
+- reference/levels/CoreOnly__LandscapeAlignedWater_ProtoVersion.json
+- reference/levels/CoreOnly__River.json
+- reference/level_blueprints/Levels___Starter__*/catalog.json, variables.json,
+  graphs.json 및 graph shard
+- reference/level_blueprints/Levels__CoreOnly__*/catalog.json, variables.json,
+  graphs.json 및 graph shard
+- reference_inventory.json과 dependency evidence
+- concepts/blueprint-responsibility-map.md
+- concepts/core-solver-observation.md
+- concepts/preset-rt-channel-lod-contract.md
+- reference/niagara/NinjaLiveCore.json
+- reference/materials 전수 v2 capture

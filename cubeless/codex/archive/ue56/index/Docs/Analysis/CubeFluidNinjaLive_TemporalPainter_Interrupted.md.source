@@ -1,0 +1,60 @@
+# TemporalPainter 저작 중 autosave 재진입 충돌
+
+2026-09-06. 이번 작업은 공간 PainterTexture 입력과 Composite의 프레임 carry를
+연결하는 후보 구현이다. **저작 미완료, GPU 검증 미실행, 승격 금지**.
+
+후속: 사용자 승인으로 MCP 전용 저장/GC 가드를 구현하고 빌드·독립 리뷰·합성
+저장 native 테스트·full42·새 에디터 read-only smoke6을 통과했다.
+`CubeFluidNinjaLive_BridgeSavingGuard.md` 참조. 아래는 수정 전 사고 기록이다.
+TemporalPainterV001 자체는 여전히 부분 자산이며 실패 명령을 재시도하지 않았다.
+
+## 구현 초안
+
+InitializeOrCarry → PainterTexture → Advection → Divergence → PressureK0(2회) →
+Composite의6단계. Painter 단계도 이전 Composite/Pressure/Age를 보존한다.
+ResetState 입력이 켜지면 최초 상태와 Age0을 다시 기록하고 마지막 stage에서 Age+1.
+통제 검증 조건은 velocity0, DensityOnly, multiplier.01, edge1이므로 공간별
+`density += .001*sampledR` 반복을 비교할 계획이다. 입력 해제 후 유지,
+리셋 후1e-6 density floor, 다시 Age 진행하는 경로도 verifier 초안에 포함했다.
+이것은 원본 lifecycle 전체 재현 또는 일반 유동 동등성 증거가 아니다.
+
+## 사고 증거
+
+에디터 PID91396 종료 확인. 기존 preview도 종료되어 현재 활성 preview 없음.
+04:46:18 UTC 로그에서 Template/Empty 자동 저장과 TemporalPainter 썸네일 생성 직후,
+request4908 `set_niagara_module_input_user_parameter`가 실행됐다.
+대상은 신규 temp `/Game/_MCP_Temp/NiagaraGenerated/CFNLTemporalPainterV001/NS_TemporalPainter`,
+PressureK0 모듈의 NoiseEnabled→User.CFNL_NoiseEnabled, save=false/request_compile=false.
+
+Fatal: `Illegal call to StaticFindObjectFast() while serializing object data!`
+스택: UObjectGlobals.h LoadObject →
+UnrealMCPNiagaraCommands_Part5.cpp:2299 HandleSetNiagaraModuleInputUserParameter →
+UnrealMCPBridge.cpp:605/613 game-thread async 실행 → RenderCore/Slate/저장 호출 스택.
+단순 네트워크 오류 또는 원본 FluidNinja 계산 오류로 분류하지 않는다.
+
+브리지 코드의 해당 callback은 세션 유효성 검사 뒤 ExecuteCommandInternal을 호출한다.
+그 경로에서 GIsSavingPackage/GC 직렬화 가드가 검색되지 않았다.
+수정 후보는 저장/GC 중 객체 접근 전에 명시적인 미실행 응답을 반환하는 공통 가드다.
+정확한 응답 계약과 허용 시점, 독립 리뷰/빌드/검증이 필요하므로 아직 변경하지 않았다.
+
+로그: `MCPGameProject/Saved/Logs/MCPGameProject.log`.
+crash: `MCPGameProject/Saved/Crashes/UECC-Windows-539FA1824BB37711C045AFAD7675BC49_0000`.
+authoring failure: SetParams 보고서 루트의 `20260906_temporal_painter_authoring_v001.json`.
+WinError10054 이후 write-started/fully-sent/response0, outcome unknown으로 기록됐다.
+마지막 호출의 완료 여부는 미확정이다. **실패 호출 재시도 없음**.
+신규 temp 파일282171바이트가 남아 있지만 완성본 또는 롤백본으로 해석하지 않는다.
+저장/자동 저장 복구 파일과 crash 증거는 삭제하지 않았다.
+
+## 보존 및 다음 조건
+
+transport_checkpoint_v004에 포함된 기존11개 검증 자산 SHA 전부 불변.
+원본 Core/Component 및 캡처의 frozen pin audit PASS. 새 프로젝트 C++ 수정 없음.
+두 신규 Python 파일 py_compile PASS. runtime verifier는 authoring success 검사에서
+중단했으며 새 GPU runtime 보고서는 생성하지 않았다.
+
+에디터를 자동 재실행하거나 autosave를 비활성화하지 않았다.
+기존 미커밋 변경이 있는 UnrealMCPBridge.cpp를 임의 수정하지 않았다.
+`codex/docs/policies/git-repositories.md`의 Worktree Ownership에 따라 해당 중첩
+변경 범위 확인 후 안전 가드를 구현/리뷰/빌드해야 한다. 일반 프로젝트 C++ 승인
+토큰과는 별개로, UnrealMCP authoring 도구 내부의 변경 범위 문제다.
+이 문제가 해결될 때까지 live 저작/승격 보류. 시각 검수 요청 단계가 아니다.

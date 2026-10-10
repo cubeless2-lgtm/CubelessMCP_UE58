@@ -1,0 +1,14 @@
+# Reactive Surface Ground Sole Mask Report
+
+- Date: `2026-07-12`
+- Verdict: `FAIL`
+- Scope: Snow/Ground footprint masks and Ground mask sampling only.
+- Mask: low-frequency heel/waist/ball/toe silhouette; no high-frequency tread grid.
+- Filter: weighted five-tap area sample instead of max dilation.
+
+| Check | Temp | Production |
+| --- | --- | --- |
+| Left sole | None | PASS |
+| Right sole | None | PASS |
+| Mirrored pair | None | PASS |
+| Grass/Water unchanged | n/a | True |

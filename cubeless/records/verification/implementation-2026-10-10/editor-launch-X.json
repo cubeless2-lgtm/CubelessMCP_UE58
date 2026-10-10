@@ -1,0 +1,20 @@
+{
+  "schema": "cubeless_editor_launch_v1",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+  "process_id": 39104,
+  "stopped_owned_pid": 35420,
+  "arguments": [
+    "\"C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject\"",
+    "-nullrhi",
+    "-unattended",
+    "-NoSplash",
+    "-NoSound",
+    "-ModelContextProtocolStartServer",
+    "-ModelContextProtocolPort=8000",
+    "-LogCmds=\"LogAutomationTest Log\"",
+    "-abslog=\"C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\editor-guarded-links-X.log\""
+  ],
+  "dll_sha256": "0E56F1DE117741F11BADCE4D1CC5367D9D92A90247674467D8DB30F10866787D",
+  "launched_utc": "2026-10-10T15:00:16.1035602Z",
+  "build": "build-guarded-links-X1.log"
+}

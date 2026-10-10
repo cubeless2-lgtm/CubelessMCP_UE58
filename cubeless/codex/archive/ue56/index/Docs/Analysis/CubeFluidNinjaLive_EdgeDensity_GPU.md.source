@@ -1,0 +1,74 @@
+# EdgeMask / Collision / Density-post GPU 경로
+
+2026-09-05. 원본 변경·그래프 복제·프로젝트 C++ 변경 없음. 세 후보는 각각
+native GPU emitter/Grid2D와 새 scratch HLSL로 작성했으며 Study에는 아직 승격하지 않았다.
+
+## 이번 검증 결과
+
+| 후보 경로 (`/Game/_MCP_Temp/NiagaraGenerated/` 아래) | GPU 사례 | SHA256 |
+| --- | ---: | --- |
+| CFNLCollisionFinalV001/NS_CollisionFinal | 15 | bde91707bfdbef1dc344fe4a82f616e6a8825181dd17341ba603888e2bf1b84c |
+| CFNLEdgeCollisionV001/NS_EdgeCollision | 23 | c9f89089c93ebd6facf959c6053a69bcf4e5850efb929c5c44eebf6d453dc9c6 |
+| CFNLDensityCollisionV001/NS_DensityCollision | 35 | d1fb80cd2f0634a50f78e8fa899572e2465c7b0994ea9b70fef82b33ac071f92 |
+
+세 후보 모두 compile GPU UpToDate, error/warning 0, outstanding false.
+기존 unknown script 2개는 그대로이며 모든 script가 known이라고 주장하지 않는다.
+각 후보 MCP disabled 별도 NullRHI cold-load 1/1 PASS, native NiagaraSystem class 확인.
+이는 cook/package나 plugin-disabled GPU 실행을 증명하지 않는다.
+각 GPU 검증은 같은 preview instance에서 64×64, 3채널의 4096 finite sample 및
+min/max/mean을 PF_R16F 한 ULP 범위로 비교했다. 기본값 복원, 저장 SHA 불변,
+원본/MCP dependency와 dirty audit도 통과했다. 상수 입력 시험으로 공간별 parity는 아니다.
+
+## EdgeMask 원리
+
+```text
+inv = 1 / max(width, 0.001)
+p = uv * 2 * inv
+coverage = saturate(inv - 0.01 - max(abs(p.x-inv), abs(p.y-inv)))
+output = binary ? float(coverage >= 1) : pow(coverage, max(power,0.01))
+```
+
+원본 Convert0/1의 실제 vector/bool Connections를 read-only T3D로 확인했다.
+export는 후보에 import하지 않았다. 원본 uasset SHA 불변:
+`9b15c0505ef57d06bb02640337e768d6300da26c6fb4d63b5da9c7cb45bbde1d`.
+독립식 vs frozen graph replay 4096건 PASS.
+collision fallback에 쓰는 EdgeMask와 density 감쇠용 EdgeMask는 설정을 분리했다.
+SimAreaClamp=false일 때 density power는 0이지만 함수 내부 최소 지수 .01이 적용된다.
+따라서 경계를 무조건 1로 대체하면 원본과 달라진다.
+
+## 초기 merge 이후 밀도 경로
+
+```text
+d = saturate(previousDensity - min(eraser,brushDensity)
+             + mergedDensity * (noiseEnabled ? noiseValue : 1))
+gain = heightReaders && peakAvoidance
+       ? 1 + fieldHeight*(feedback-1) : feedback
+baseDensity = (gain*0.5*max(densityEdge,0.7)+0.5)*d*densityEdge
+```
+
+이후 기존 최종 출력 단계의 landscape/epsilon/collision mask를 적용한다.
+saturate는 feedback 증폭 전이므로 최종 density는 1을 넘을 수 있다.
+원본 Op45는 3입력 Multiply이므로 C 입력(max(edge,.7))도 포함했다.
+독립식 vs frozen graph replay 8192건 PASS. Edge/density 경계 unit 7건 PASS.
+collision weight unit 6건은 이전 체크포인트에서 PASS했다.
+
+## 구현·증거 파일
+
+- build_cube_fluid_ninja_collision_final_gpu.py: 기본, --edge-mask,
+  --edge-mask --density-post 각각 새 경로. 동일 경로/보고서 재실행 금지.
+- verify_cube_fluid_ninja_collision_final_gpu.py: 동일 옵션으로 preview/GPU 검사.
+- analyze_cube_fluid_ninja_edge_mask.py, analyze_cube_fluid_ninja_density_post.py.
+- test_cube_fluid_ninja_edge_density.py.
+- Saved study SetParams 보고서 접두사 20260905_collision_final_,
+  20260905_edge_collision_, 20260905_density_collision_.
+- Saved/MCP/AssetReviews/CFNL_{CollisionFinal,EdgeCollision,DensityCollision}_20260905_v001.
+
+## 남은 경계
+
+실제 collision texture sampling/Smooth Step, DensityNoise texture, previous Grid,
+brush/SDF/RVT/height 입력 생성은 아직 분리된 입력이다. GPU bool-like 추가 설정은
+float 0/1 입력을 >.5로 판정하며 원본 typed bool 호스트 연결은 별도 작업이다.
+UV도 이번 후보에서는 상수 입력이므로 전체 Grid의 공간 분포 검증이 필요하다.
+속도 Op40→Op44 보정, WetMask, full Painter/Solver/host, 59개 레벨은 미완료다.
+현재 preview는 DensityCollision 기본값 복원 상태. 영구 logical asset 22,
+완료 레벨 0/59를 유지한다. 아직 사용자 시각 검수를 요청할 단계가 아니다.

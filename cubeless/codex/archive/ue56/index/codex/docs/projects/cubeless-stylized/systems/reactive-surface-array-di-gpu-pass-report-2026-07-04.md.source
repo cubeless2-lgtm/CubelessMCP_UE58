@@ -1,0 +1,78 @@
+# Reactive Surface: Array DI GPU Visibility — PASS Report (Claude)
+
+Date: 2026-07-04  
+Executor: Claude (crosscheck round, direct bridge driver 55561)  
+Overturns: S3 FAIL / No-Go in `reactive-surface-s3-s4-followup-report-2026-07-04.md`  
+Runner: `codex/scripts/reactive_surface/array_di_crosscheck_runner.py`  
+Evidence: `MCPGameProject/Saved/MCP/ReactiveGhost_ArrayX/array_di_crosscheck_results.json`
+
+## Final Verdict
+
+**PASS — `all_three_array_positions_stamped`.** Runtime-pushed Niagara User Array
+values ARE GPU-visible in a Grid2D simulation stage on UE 5.6.1.
+
+| Measure | Value |
+|---|---|
+| CPU getter count | 3 (`[128,128,0] [256,256,0] [384,128,0]` via `set_niagara_array_position`) |
+| RT full scan (step 16) nonzero | 71 |
+| Channel sums R/G/B | 2836 / 2491 / 2735 — all three per-index channel stamps present |
+| World | game_world (SIE), spawn/readback split commands |
+
+## Root Cause (why S3 previously failed)
+
+The engine was never the problem. The failing wiring was the hidden `User.*`
+input-node route created by `insert_niagara_scratch_pad_custom_hlsl_for_pin
+user_parameter_inputs`: GPU translation binds that DI input to a private
+instance, while the Blueprint array setter writes the component override —
+two different objects (CPU getter 3 / GPU 0 signature).
+
+The engine-standard chain (externally documented in the ZukoMedia UE 5.1
+Grid2D tutorial): `Blueprint -> User parameter -> Module input -> HLSL input`.
+The Module-input step is what registers the binding in the compiled parameter
+store. Corner-marker probes proved the HLSL executed while the array read
+empty, isolating the binding as the sole failure point.
+
+## The Working Recipe (3-step chain, fully automated)
+
+```text
+1. insert_niagara_scratch_pad_custom_hlsl_for_pin
+     usage=Function, user_parameter_inputs=[Positions -> User.V1_Positions]
+     (creates the HLSL node + Positions input pin)
+2. rewire_niagara_custom_hlsl_input_to_module_parameter          [NEW C++ command]
+     input Positions -> Module.Positions ParameterMapGet pin
+     (registers scratch metadata, deletes orphaned hidden input node)
+3. set_niagara_module_input_linked_parameter
+     Positions -> User.V1_Positions
+     (stack-level link; requires the scratch-metadata fallback patch)
+```
+
+Plus the usual G1 harness: DirectSet/TwoD stage, RT DI trio bind, SIE start,
+split spawn/readback with real-time waits, full-RT scan judgment.
+
+## Tool Changes In This Commit
+
+- NEW: `rewire_niagara_custom_hlsl_input_to_module_parameter`
+  (Part5 handler, header decl, Part1 + Bridge routing). Reuses the proven
+  ParameterMapGet pin pattern (ParameterPin subcategory, PersistentGuid,
+  default-pin pair map, script-variable metadata registration).
+- `HandleSetNiagaraModuleInputLinkedParameter`: scratch-pad metadata fallback
+  (committed earlier as 7a9d508e) — required for step 3.
+- Builds: UBT `MCPGameProjectEditor Win64 Development` passed (x2, including
+  bridge routing patch after "Unknown command").
+
+## validation-plan.md Updates Required
+
+- §10.3: withdraw "BP runtime Array DI No-Go"; record the 3-step chain as the
+  array authoring recipe. 20-source/64-slot array design is viable again.
+- §23.6 Go/No-Go: runtime array source row -> PASS with recipe reference.
+- Fixed-parameter spec-down remains valid as the Phase 1-2 starting point;
+  array path is now the proven Phase 3 route.
+
+## Residual
+
+- Python wrapper for the new command not yet added to `Python/tools/niagara_tools.py`
+  (bridge command works via raw driver; wrapper is a follow-up).
+- CLEANUP step recorded FAIL in some runs (temp root audit pending); verify
+  `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost_ArrayX` absence next round.
+- Codex handoff: next rounds should use this chain instead of
+  `user_parameter_inputs`-only wiring for any DI input that needs runtime data.

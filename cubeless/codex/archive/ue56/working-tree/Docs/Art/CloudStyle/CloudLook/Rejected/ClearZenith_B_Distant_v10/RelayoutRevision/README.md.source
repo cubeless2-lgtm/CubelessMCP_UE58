@@ -1,0 +1,7 @@
+# Distant cloud relayout
+
+Reuses eleven distinct modules painted from the MyPSB cloud brush catalog: 01, 03, 04, 06, 07, 08, 09, 12, 13, 17, 20. No module is repeated. Brush 08 forms a broad bank in the northwest sector. Other modules have varied arc widths, partial overlaps and radial placement offsets. Placement.json records exact parameters.
+
+Polar transform maps upright module crowns inward and bases outward. Lower alpha retains the previous soft visible-edge treatment. RGB shading and alpha coverage remain separate. Final packed texture is 4096 square; module sheet source resolution is retained in GeneratedSheet.png and is not native 4K per module.
+
+Target: /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/Rejected/T_CloudLook_ClearZenith_B_Distant_v10. User requested overwrite. Before_Relayout.uasset.bak preserves the previous saved asset. Previous source art remains in UniqueBrushRevision. Level assignments are unchanged.

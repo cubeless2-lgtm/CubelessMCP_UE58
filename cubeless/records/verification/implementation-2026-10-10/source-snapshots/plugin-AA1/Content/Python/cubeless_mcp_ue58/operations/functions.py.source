@@ -1,0 +1,190 @@
+"""Named graph resolution, parameter and validated-call contracts with shared journals."""
+
+import copy
+import re
+import uuid
+
+from cubeless_mcp_ue58.compatibility.ue58 import functions as api
+from . import state, variables
+from .state import OperationError, fail, mutate, new_result
+
+
+def _shared(validator, *args, **kwargs):
+    # Reuse the already bounded text/JSON/path parser without changing S contracts.
+    try:
+        return validator(*args, **kwargs)
+    except OperationError as error:
+        raise OperationError(error.code.replace("variable_", "function_"), str(error)) from error
+
+
+def _text(value, field, *, empty=False):
+    return _shared(variables._text, value, field, empty=empty)
+
+
+def _bool(value, field):
+    return _shared(variables._boolean, value, field)
+
+
+def _json(value, field):
+    return _shared(variables._json_value, value, field)
+
+
+def _selectors(blueprint_name, graph_name, graph_id, graph_type):
+    guid = _text("" if graph_id is None else graph_id, "graph_id", empty=True)
+    if guid:
+        try:
+            parsed = uuid.UUID(guid)
+            if not parsed.int:
+                raise ValueError("zero GUID")
+            guid = parsed.hex
+        except ValueError as error:
+            raise OperationError("function_graph_id_invalid", "graph_id must be an exact nonzero graph GUID") from error
+    kind = _text("" if graph_type is None else graph_type, "graph_type", empty=True).lower().replace(" ", "").replace("-", "_")
+    aliases = {"eventgraph": "event", "event_graph": "event", "ubergraph": "event", "uber_graph": "event",
+               "functiongraph": "function", "function_graph": "function", "macrograph": "macro", "macro_graph": "macro"}
+    kind = aliases.get(kind, kind)
+    if kind not in ("", "any", "event", "function", "macro", "delegate"):
+        raise OperationError("function_graph_type_invalid", "graph_type must be event, function, macro, delegate or any")
+    return {"blueprint_path": _shared(variables._path, blueprint_name, write=True),
+        "graph_name": _text("" if graph_name is None else graph_name, "graph_name", empty=True),
+        "graph_id": guid, "graph_type": kind}
+
+
+def _resolve_arguments(blueprint_name, graph_name, graph_id, graph_type, create_if_missing):
+    return {**_selectors(blueprint_name, graph_name, graph_id, graph_type),
+        "create_if_missing": _bool(create_if_missing, "create_if_missing")}
+
+
+def _parameter_arguments(blueprint_name, parameter_name, parameter_type, direction, default_value_json,
+        type_object, is_array, graph_name, graph_id, graph_type, create_graph_if_missing):
+    name = _text(parameter_name, "parameter_name")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,99}", name) is None or name.lower() == "none":
+        raise OperationError("function_parameter_name_invalid", "Parameter names must be ASCII identifiers of 1..100 characters, excluding None")
+    direction = _text(direction, "direction", empty=True).lower()
+    if direction == "":
+        direction = "input"
+    if direction == "return":
+        direction = "output"
+    if direction not in ("input", "output"):
+        raise OperationError("function_parameter_direction_invalid", "direction must be input or output (legacy return alias accepted)")
+    default = _json(default_value_json, "default_value_json") if default_value_json is not None else None
+    return {**_selectors(blueprint_name, graph_name, graph_id, graph_type),
+        "parameter_name": name, "parameter_type": _text(parameter_type, "parameter_type"), "direction": direction,
+        "default_value_json": "" if default is None else variables._json_text(default),
+        "type_object": _text("" if type_object is None else type_object, "type_object", empty=True),
+        "is_array": _bool(is_array, "is_array"),
+        "create_graph_if_missing": _bool(create_graph_if_missing, "create_graph_if_missing")}
+
+
+def _call_arguments(blueprint_name, function_class, function_name, param_defaults_json, node_position_json,
+        graph_name, graph_id, graph_type, create_graph_if_missing,
+        allow_latent, allow_editor_only, allow_wildcard, allow_deprecated, allow_internal):
+    flags = {name: _bool(value, name) for name, value in (
+        ("allow_latent", allow_latent), ("allow_editor_only", allow_editor_only), ("allow_wildcard", allow_wildcard),
+        ("allow_deprecated", allow_deprecated), ("allow_internal", allow_internal))}
+    if flags["allow_editor_only"]:
+        raise OperationError("function_editor_only_forbidden", "Editor-only functions cannot be embedded into persistent runtime Blueprint assets")
+    if any(flags.values()):
+        raise OperationError("function_option_unsupported", "Latent, wildcard, deprecated and internal call opt-ins remain unsupported; no action dispatched")
+    defaults = _json(param_defaults_json, "param_defaults_json")
+    if defaults is None:
+        defaults = {}  # Legacy Optional[dict]=None is an empty default map.
+    if type(defaults) is not dict or len(defaults) > 64 or len({key.casefold() for key in defaults}) != len(defaults):
+        raise OperationError("function_defaults_invalid", "param_defaults_json must be an object of at most 64 distinct case-insensitive pin names")
+    position = _json(node_position_json, "node_position_json")
+    if position is None:
+        position = [0, 0]  # Legacy node_position=None uses the origin.
+    if type(position) is not list or len(position) != 2 or any(type(v) is not int or abs(v) > 1000000 for v in position):
+        raise OperationError("function_position_invalid", "node_position_json must contain two integers from -1000000 to 1000000")
+    return {**_selectors(blueprint_name, graph_name, graph_id, graph_type),
+        "function_class": _text(function_class, "function_class"), "function_name": _text(function_name, "function_name"),
+        "param_defaults_json": variables._json_text(defaults), "node_position_json": variables._json_text(position),
+        "create_graph_if_missing": _bool(create_graph_if_missing, "create_graph_if_missing"), **flags}
+
+
+def _run_action(result, identity, arguments, checkpoint_callback=None, operation_api=None):
+    result["data"].update(operation=identity, resolved_blueprint_path=arguments["blueprint_path"],
+        adapter_preloaded_asset=False, loading_side_effects_verified=False, full_legacy_function_parity=False,
+        pending_mutation={"operation": identity, **arguments, "dispatch_state_at_checkpoint": "not_yet_dispatched",
+                          "interrupted_outcome": "unknown_inspect_asset_and_journal"})
+    result["stage"] = "before_mutation_checkpoint"
+    (checkpoint_callback or state.checkpoint)(result)
+    result["stage"] = "native_function_operation"
+    result["data"].update(native_dispatched=True, mutation_state_unknown=True)
+    result["changes"] = [{"kind": identity, "asset_path": arguments["blueprint_path"],
+        "attempted": None, "changed": None, "change_state_known": False, "outcome": "unknown_until_native_result"}]
+    try:
+        native = getattr(operation_api or api, identity)(**arguments)
+    except Exception as error:
+        if getattr(error, "code", "") in ("native_function_api_unavailable", "native_event_api_unavailable", "native_pin_api_unavailable"):
+            result["data"].update(native_dispatched=False, mutation_state_unknown=False, mutation_performed=False)
+            result["changes"] = []
+        raise
+    result["data"].update(copy.deepcopy(native["data"]))
+    result["data"].update(operation=identity, native_outcome={k: copy.deepcopy(v) for k, v in native.items() if k != "data"},
+        native_mutation_attempted=native["mutation_attempted"], mutation_state_unknown=not native["change_state_known"],
+        mutation_performed=native.get("changed") if native["change_state_known"] else None)
+    result["stage"] = native.get("stage", "native_function_operation")
+    result["compile"].update(requested=native["compile_requested"], attempted=native["compile_attempted"], compiled=native["compiled"], status="not_requested")
+    result["save"].update(requested=native["save_requested"], attempted=native["save_attempted"], saved=native["saved"])
+    result["changes"] = [] if native["change_state_known"] and native.get("changed") is False and not native["mutation_attempted"] else [{
+        "kind": identity, "asset_path": arguments["blueprint_path"], "attempted": native["mutation_attempted"],
+        "changed": native.get("changed") if native["change_state_known"] else None, "change_state_known": native["change_state_known"],
+        "dirty_before": native.get("dirty_before"), "dirty_after": native.get("dirty_after"),
+        "outcome": "scoped_native_observation" if native["change_state_known"] else "unknown_after_native_dispatch"}]
+    result["validation"].update(status="native_function_postcondition" if native["postcondition_passed"] else "native_postcondition_failed",
+        native_postcondition_passed=native["postcondition_passed"], independent_value_check="not_run", disk_reload="not_run")
+    if any(native[key] for key in ("compile_requested", "compile_attempted", "save_requested", "save_attempted", "saved")) or native["compiled"] is True:
+        result["data"]["mutation_state_unknown"] = True
+        raise OperationError("unexpected_function_compile_save", "Native outcome reports unrequested explicit compilation/saving; retained observations require inspection")
+    if not native["success"]:
+        raise OperationError(native.get("error_code") or "native_function_operation_failed", native.get("error") or "Function operation failed; actual outcomes retained")
+    if not native["change_state_known"] or not native["postcondition_passed"]:
+        raise OperationError("function_result_unverified", "Native success lacks known postconditions")
+    result["success"] = True
+    result["stage"] = "complete"
+    result["retry"]["duplicate_risk"] = "function_action_would_repeat" if native.get("changed") else "none_observed"
+
+
+def _prepared(identity, arguments, operation_id):
+    try:
+        values = arguments()
+    except Exception as error:
+        return fail(new_result(operation_id), error)
+    return mutate(identity, values, operation_id, lambda result: _run_action(result, identity, values))
+
+
+def resolve_blueprint_graph(blueprint_name, graph_name=None, graph_id=None, graph_type=None, create_if_missing=False, operation_id=None):
+    return _prepared("resolve_blueprint_graph", lambda: _resolve_arguments(blueprint_name, graph_name, graph_id, graph_type, create_if_missing), operation_id)
+
+
+def resolve_blueprint_graph_action(result, blueprint_name, graph_name=None, graph_id=None, graph_type=None, create_if_missing=False, checkpoint_callback=None):
+    _run_action(result, "resolve_blueprint_graph", _resolve_arguments(blueprint_name, graph_name, graph_id, graph_type, create_if_missing), checkpoint_callback)
+
+
+def add_blueprint_function_parameter(blueprint_name, parameter_name, parameter_type, direction="input", default_value_json=None,
+        type_object=None, is_array=False, graph_name=None, graph_id=None, graph_type="function", create_graph_if_missing=False, operation_id=None):
+    return _prepared("add_blueprint_function_parameter", lambda: _parameter_arguments(blueprint_name, parameter_name, parameter_type,
+        direction, default_value_json, type_object, is_array, graph_name, graph_id, graph_type, create_graph_if_missing), operation_id)
+
+
+def add_blueprint_function_parameter_action(result, blueprint_name, parameter_name, parameter_type, direction="input", default_value_json=None,
+        type_object=None, is_array=False, graph_name=None, graph_id=None, graph_type="function", create_graph_if_missing=False, checkpoint_callback=None):
+    _run_action(result, "add_blueprint_function_parameter", _parameter_arguments(blueprint_name, parameter_name, parameter_type,
+        direction, default_value_json, type_object, is_array, graph_name, graph_id, graph_type, create_graph_if_missing), checkpoint_callback)
+
+
+def add_blueprint_call_function_node(blueprint_name, function_class, function_name, param_defaults_json="{}", node_position_json="[0,0]",
+        graph_name=None, graph_id=None, graph_type=None, create_graph_if_missing=False, allow_latent=False, allow_editor_only=False,
+        allow_wildcard=False, allow_deprecated=False, allow_internal=False, operation_id=None):
+    return _prepared("add_blueprint_call_function_node", lambda: _call_arguments(blueprint_name, function_class, function_name,
+        param_defaults_json, node_position_json, graph_name, graph_id, graph_type, create_graph_if_missing,
+        allow_latent, allow_editor_only, allow_wildcard, allow_deprecated, allow_internal), operation_id)
+
+
+def add_blueprint_call_function_node_action(result, blueprint_name, function_class, function_name, param_defaults_json="{}", node_position_json="[0,0]",
+        graph_name=None, graph_id=None, graph_type=None, create_graph_if_missing=False, allow_latent=False, allow_editor_only=False,
+        allow_wildcard=False, allow_deprecated=False, allow_internal=False, checkpoint_callback=None):
+    _run_action(result, "add_blueprint_call_function_node", _call_arguments(blueprint_name, function_class, function_name,
+        param_defaults_json, node_position_json, graph_name, graph_id, graph_type, create_graph_if_missing,
+        allow_latent, allow_editor_only, allow_wildcard, allow_deprecated, allow_internal), checkpoint_callback)

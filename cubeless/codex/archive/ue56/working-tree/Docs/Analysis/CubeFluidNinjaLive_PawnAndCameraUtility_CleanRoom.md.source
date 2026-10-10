@@ -1,0 +1,544 @@
+# CubeFluidNinjaLive PawnAndCameraUtility 클린룸 학습 계약
+
+## 상태와 결론
+
+상태: `offline v3 identity evidence integrated / exact Actor parent and tick proven / full authoring blocked`.
+
+`/Game/FluidNinjaLive/Utilities/PawnAndCameraUtility`를 동결된 읽기 전용 캡처만으로
+분석했고, 새 target
+`/Game/Study/CubeFluidNinjaLive/Utilities/PawnAndCameraUtility`의 클린룸 저작 계약을
+작성했다. v3 계약 통합 단계에서는 Editor, bridge, World, source Content, target
+Content를 열거나 변경하지 않았다. Blueprint graph text import도 사용하지 않았다.
+
+이후 공통 로고 parent와 Green/Gray target MI의 성공한 저작·readback·dependency
+보고서가 생겼으므로 로고 자체는 더 이상 미구현 blocker가 아니다. 또한 현재
+`list_blueprint_graphs`의 immediate parent identity와 Actor tick 설정 명령의
+`dry_run=true` tick CDO before/after를 source dirty probe 전후로 감싼 네 호출
+source-identity stage도 한 번 성공했다. v3 builder는 그 성공 보고서의 파일 SHA와
+selected-state fingerprint를 고정하고 모든 핵심 필드를 offline에서 다시 검증한다.
+실행은 compile, save, dirty flag clear, target mutation을 전혀 수행하지 않았다.
+
+현재 결론은 “Blueprint를 만들 수 없음”이 아니라 “현재 저작 API로는 원본 기능을
+빠짐없이 새로 만들 수 있다는 증거가 아직 없음”이다. 특히 raw key event,
+`ForEachLoop`, `UK2Node_CreateWidget`, MaterialBillboard의 typed `Elements` 저작이
+부족하다. 대체 노드나 generic property 문자열을 추측하면 입력 방식, dependency,
+분기, 직렬화가 달라질 수 있으므로 execute는 에디터 연결 전에 중단된다.
+
+정본 계약은 다음과 같다.
+
+| 항목 | 값 |
+| --- | --- |
+| contract version | `cube_fluid_ninja_pawn_camera_utility_v3` |
+| canonical contract SHA-256 | `ba486f749e51907a26397d50d1c6a52d3b0054318de6d3031770be871882dec8` |
+| SHA-bound execute token | `cfnl-pawn-camera-ba486f749e51907a2639` |
+| source uasset frozen SHA-256 | `5561ed9bf938827c5650ca3e956aa014bf0e06f79e29938a96c2a3c083c038cf` |
+| source uasset frozen bytes | `586,506` |
+| source-identity report SHA-256 | `8e8d708230bfe95e5fa70722c7b738131f9e4d8fbd061346791442bed087d1a8` |
+| selected-state fingerprint | `cb7fb8bbd808fce89b999b231eb4d37705da8cef7821c1c5bc9b81675036b77e` |
+| source usage | `58 World / 11 blocker row / 301 occurrence / rank 137` |
+| target mutation | `0` |
+| default dry-run editor connection | `0` |
+| completed read-only stage | source identity/tick-CDO four-call capture |
+| reviewed next executable stage | 없음; 다음 기능은 아직 blocker |
+
+execute token은 실행 허가가 아니다. 정확한 증거·target mapping·기능 계약·blocker가
+포함된 canonical contract의 SHA에서 파생된 식별자다. 현재 token을 넣어도 blocker
+목록을 보고 에디터 연결 전에 실패하는 것이 정상 동작이다.
+
+## 클린룸 경계
+
+이번 분석과 향후 구현은 다음 경계를 유지한다.
+
+- source `.uasset`를 template로 로드, duplicate, rename, migrate하지 않는다.
+- 정본 `--capture-source-identity` 실행은 source를 읽기 위해 로드했지만 source bytes,
+  SHA-256, mtime과 dirty=false를 호출 전후에 동일하게 검증했다. 이 옵션은 새 경로의
+  추가 재현 보고서에만 사용할 수 있고, 기존 정본 보고서를 덮어쓰지 않는다.
+- source graph의 copied-node text를 export/import하지 않는다.
+- source GUID, SCS GUID, variable GUID, graph GUID, node GUID를 재사용하지 않는다.
+- 새 Blueprint와 모든 graph/node/variable/component GUID는 UE가 새로 만든다.
+- frozen JSON에서 기능과 타입을 이해한 뒤, Engine class와 target-owned class만으로
+  node를 새로 배치하고 연결한다.
+- 완성 자산에는 `/Game/FluidNinjaLive`, `/Game/_MCP_Temp`, `/Script/UnrealMCP`,
+  `/UnrealMCP`, `MCPUnreal`, `mcp_unreal` 참조가 없어야 한다.
+- UnrealMCP는 editor authoring 도구일 뿐 완성 자산의 runtime dependency가 아니다.
+- project runtime C++를 만들거나 수정하지 않는다.
+
+`import_blueprint_graph_nodes_from_text`는 기술적으로 존재하지만 이 작업에서는
+복사/붙여넣기에 해당하므로 명시적으로 금지했다.
+
+## 동결 증거
+
+### Blueprint와 level 정본
+
+| key | bytes | SHA-256 |
+| --- | ---: | --- |
+| catalog | 1,369 | `cf131e8a668a579194137abc620e835307129213dd46265b7def32435f00e6e8` |
+| components | 1,641 | `32076236ad2c576e0e515bdee6440025d759cb29fef0f5b8ad8f36a3c85f489f` |
+| graphs | 522 | `092add8a9abbabce459dfe14756a80a6e8ce6dcd4a28c5f75fa54eec0498211b` |
+| variables | 15,860 | `581ea9dc6084034cabd326b0571412886320d3ef174fc627f616f7639bf521b3` |
+| Construction graph | 27,834 | `cf0fb826b76b38b390935c8f288f42a89766f919723cd146d8d1af6d9281180c` |
+| EventGraph | 1,065,403 | `c087f7b8d4b4dce9e0bd05157c33eb8cdee185fafb427c760632fe1f19ee8674` |
+| source hash ledger | 618,354 | `0f0038acce137f613872bfc4f95b2b0c620ea685742447c9bb9773bd8e0889c0` |
+| blocker analysis v003 file | 5,401,417 | `6363e4ff92fed961f84593e5a7018284ccd4016c73b12ded9972a3432f34605e` |
+
+level plan의 canonical SHA는
+`e70d87e44577fae2be8a4dc123b487b9e4c7741e35a605d83a3d1a1615eac744`,
+blocker analysis의 canonical SHA는
+`87421acacfacb252d574f47aa22921e37830b73d7980352d39673a474f475732`다.
+file SHA와 canonical JSON SHA는 목적이 다르므로 둘 다 잠갔다.
+
+### 로고 dependency 증거
+
+| source material evidence | bytes | SHA-256 |
+| --- | ---: | --- |
+| Gray analysis | 26,850 | `6f6c793f48f81220393a2ff4b58d7f88aaa765629a7cf713c45741ffee2f453a` |
+| Green analysis | 28,246 | `f44ea0507c9d38d5e50603a2ce1dc54e1e175523988864603ea79399de7028a1` |
+
+Gray는 Green이나 base material의 별칭이 아니다. 같은 base를 사용하지만 Gray MI는
+직접 scalar override `Desaturate=1`, `Power=2.027353048324585`,
+`RefractionDepthBias=0`을 가진다. 따라서 construction의 disabled 표시를 Green이나
+base로 바꾸는 것은 parity가 아니다. target Gray MI가 별도 선행 조건인 이유다.
+
+### 성공한 target-owned 로고 선행 조건
+
+| evidence | bytes | SHA-256 |
+| --- | ---: | --- |
+| common decor recovery v3 execute report | 3,982,372 | `59e0532c456d7a6f543699f8b2c418728dca84874910637b399dd0d4899fbfd4` |
+| Gray logo execute report | 111,741 | `ac64392c75646b428bc92dbde84c9c50b131c13687eb85c239d3181c4e2d2f23` |
+| target logo parent `.uasset` | 19,212 | `6d495cc12f919ef74737849047e9d48a1a796d041f9f1b8c44153f7dd07e83c3` |
+| target Green MI `.uasset` | 11,357 | `42a82a613c35486627dcd50651ce6328e22072dd9c94d59562fdc3979c16d7a4` |
+| target Gray MI `.uasset` | 8,874 | `190fe3ae8ab6fc91f93f1dcb832e4ace18139a7f379d21de59ba73926c07bc22` |
+
+두 execute report 모두 success, exact presave/readback, dependency independence,
+forbidden dependency 0을 증명한다. Gray report는 위 common-decor report SHA와 contract
+SHA를 직접 lineage로 고정한다. 따라서
+`gray_logo_clean_room_prerequisite_pending`은 v2에서 해제했다. 다만 이 증거는
+same-session 저작 증거이며 PawnAndCameraUtility의 최종 cold-load 검증을 대신하지
+않는다.
+
+### 성공한 source-identity 읽기 전용 캡처
+
+정본 보고서는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/20260901_pawn_camera_source_identity_v001/pawn_camera_utility_builder_report.json`이며,
+크기 `55,384` bytes, SHA-256
+`8e8d708230bfe95e5fa70722c7b738131f9e4d8fbd061346791442bed087d1a8`이다.
+selected state의 canonical JSON을 다시 해시한 값은
+`cb7fb8bbd808fce89b999b231eb4d37705da8cef7821c1c5bc9b81675036b77e`다.
+
+v3 builder는 보고서 존재 여부만 보지 않고 다음을 전부 검증한다.
+
+| 증거 | exact 값 |
+| --- | --- |
+| source file | `586,506` bytes / `5561ed9bf938827c5650ca3e956aa014bf0e06f79e29938a96c2a3c083c038cf` |
+| Blueprint type | `BPTYPE_Normal` |
+| generated class flags | `12847364` |
+| immediate parent | `/Script/Engine.Actor` |
+| Construction graph | `7EEFD308472A30A5F1F7A09E5D165D59` / `UserConstructionScript` / function / `EdGraphSchema_K2` / 7 nodes |
+| EventGraph | `9CD140C441A8DA7A5C629495D523D279` / `EventGraph` / event / `EdGraphSchema_K2` / 241 nodes |
+| PrimaryActorTick | `can_ever=false`, `start_enabled=true`, `dedicated=true`, `paused=false`, `interval=0`, `hz=0` |
+| dirty count | 호출 전 `0`, 호출 후 `0` |
+| prohibited work | source/target mutation `0`, compile `0`, save `0`, dirty clear `0` |
+
+보고서의 historical v2 contract SHA
+`d81264bb57178b57dadafab843ff9c602c09d7a1071ea82bfe364b2ddb13eed7`,
+네 command의 순서와 파라미터, raw command result와 selected state의 상호 일치,
+dirty package added/removed/cleared 목록이 모두 비어 있음도 검증한다. 따라서
+`source_parent_identity_capture_pending`은 v3 blocker 목록에서 해제됐다.
+
+## 관찰된 Blueprint 구조
+
+### 자산과 immediate parent
+
+- asset class는 `/Script/Engine.Blueprint`다.
+- 읽기 전용 정본 캡처가 immediate parent를 `/Script/Engine.Actor`로 exact하게
+  증명했다. 더 이상 구조 관찰에서 유도한 후보나 추정이 아니다.
+- 같은 캡처에서 `BPTYPE_Normal`, generated class flags `12847364`, 두 graph의
+  GUID/name/type/schema/node count를 frozen graph 증거와 exact 비교했다.
+- PrimaryActorTick은 `can_ever_tick=false`, `start_with_tick_enabled=true`,
+  `allow_tick_on_dedicated_server=true`, `tick_even_when_paused=false`,
+  `tick_interval=0`, `tick_hz=0`으로 고정됐다.
+- tick 이외 inherited Actor override를 전수 또는 bounded allowlist로 읽는 안정된
+  API는 아직 없다. 그래서 `actor_cdo_non_tick_read_only_inspection_missing`은 별도
+  blocker로 유지한다. parent와 tick이 증명됐다는 사실을 non-tick CDO 전체의
+  증명으로 확대하지 않는다.
+
+### SCS
+
+| 순서 | component | class | parent | relative location / rotation / scale |
+| ---: | --- | --- | --- | --- |
+| 0 | `Root` | `/Script/Engine.SceneComponent` | none | `(0,0,0) / (0,0,0) / (1,1,1)` |
+| 1 | `EditorIcon` | `/Script/Engine.MaterialBillboardComponent` | `Root` | `(0,0,0) / (0,0,0) / (1,1,1)` |
+
+class, parent, transform은 exact다. `EditorIcon.Elements`는 target Green 로고를 가져야
+하지만 현재 Blueprint component capture는 이 struct-array template default 전체를
+담지 않는다. Construction Script가 slot 0 material을 항상 Gray 또는 Green으로
+갱신한다는 사실은 exact지만, initial `FMaterialSpriteElement` 전체를 generic property
+문자열로 만드는 것은 금지한다.
+
+### 23개 새 변수
+
+`generated_variables=0`, `expose_on_spawn=false`는 23개 모두 공통이다.
+
+| # | name | type | default | instance editable | category |
+| ---: | --- | --- | --- | --- | --- |
+| 1 | `DisableBlueprint` | bool | false | yes | `LiveToolsGeneric` |
+| 2 | `OverrideEditor120-FPS-Limit` | bool | true | yes | `LiveTools- FPS` |
+| 3 | `MaxEditorFPS` | int | 60 | yes | `LiveTools- FPS` |
+| 4 | `CameraAndCursorSmoothing` | bool | true | yes | `LiveToolsCamera` |
+| 5 | `MaxCameraMoveSpeed` | int | 8000 | yes | `LiveToolsCamera` |
+| 6 | `PossessNearestPawn` | bool | false | yes | `LiveToolsCamera` |
+| 7 | `DisableNonPossessedPawns` | bool | false | yes | `LiveToolsCamera` |
+| 8 | `TempArray1` | int array | empty | no | `LiveToolsCamera` |
+| 9 | `TempArray2` | Pawn object array | empty | no | `LiveToolsCamera` |
+| 10 | `ShowMouseCursor` | bool | true | yes | `LiveToolsGeneric` |
+| 11 | `WidgetToRotateDirectionalLight` | UserWidget class | null | yes | `LiveToolsGeneric` |
+| 12 | `WidgetTargetDirectionalLight` | DirectionalLight object | null | yes | `LiveToolsGeneric` |
+| 13 | `WidgetText` | text | empty | yes | `LiveToolsGeneric` |
+| 14 | `GetDirectionalLightViaTag` | name | `None` | yes | `LiveToolsGeneric` |
+| 15 | `TemporalAntialiasing` | double | 0.25 | yes | `LiveToolsGeneric` |
+| 16 | `DepthOfFieldQuality` | int | 1 | yes | `LiveToolsGeneric` |
+| 17 | `MotionBlurAmount` | int | 0 | yes | `LiveToolsGeneric` |
+| 18 | `MotionBlurQuality` | int | 0 | no | `LiveToolsGeneric` |
+| 19 | `VSync` | bool | true | yes | `LiveToolsGeneric` |
+| 20 | `Show Time Dilation Messages on Screen` | bool | true | yes | `LiveToolsGeneric` |
+| 21 | `SupressUE51TextureSmearing` | bool | true | no | `LiveToolsGeneric` |
+| 22 | `Logo Visibility` | int | 2 | yes | `LiveToolsGeneric` |
+| 23 | `HDScreenPercentage` | int | 150 | yes | `LiveToolsGeneric` |
+
+friendly name, tooltip, clamp/UI metadata도 builder 상수와 frozen variable JSON을
+전수 비교한다. 주의할 점은 변수 내부 category와 사용자에게 보이는 category sorting
+문자열이 다르다는 것이다.
+
+```text
+Default
+None
+Event Graph
+Live Tools- FPS
+Live Tools Generic
+Live Tools Camera
+```
+
+## graph 구조
+
+### 총계
+
+| graph | node | link | truncation / capture error |
+| --- | ---: | ---: | --- |
+| `UserConstructionScript` | 7 | 6 | 0 |
+| `EventGraph` | 241 | 273 | 0 |
+
+Construction class 합계는 FunctionEntry 1, Branch 1, SetMaterial call 2,
+VariableGet 2, Comment 1이다.
+
+EventGraph node class는 다음과 같이 정확히 합계 241이다.
+
+| class | count | class | count |
+| --- | ---: | --- | ---: |
+| `K2Node_CallFunction` | 75 | `K2Node_Knot` | 50 |
+| `K2Node_VariableGet` | 30 | `EdGraphNode_Comment` | 18 |
+| `K2Node_VariableSet` | 15 | `K2Node_IfThenElse` | 10 |
+| `K2Node_MacroInstance` | 10 | `K2Node_CommutativeAssociativeBinaryOperator` | 10 |
+| `K2Node_InputKey` | 6 | `K2Node_CallArrayFunction` | 4 |
+| `K2Node_ExecutionSequence` | 4 | `K2Node_DynamicCast` | 3 |
+| `K2Node_GetArrayItem` | 3 | `K2Node_CreateWidget` | 1 |
+| `K2Node_Event` | 1 | `K2Node_PromotableOperator` | 1 |
+
+raw input key 6개는 `Left Mouse Button`, `Middle Mouse Button`,
+`Right Mouse Button`, `Num +`, `Num -`, `Escape`다. Enhanced Input asset이나
+InputAction으로 치환하면 원본에 없던 dependency와 mapping 설정이 생기므로 exact
+replacement가 아니다.
+
+함수 호출의 큰 반복군은 다음과 같다.
+
+- `MakeLiteralString` 13.
+- `ExecuteConsoleCommand` 11.
+- string append 8.
+- int-to-string 5.
+- `GetPlayerController` 3.
+- `GetAllActorsOfClass`, `GetPlayerPawn`, `Array_Add`, bool-to-int,
+  double-to-string, `SetInputMode_GameOnly`, `SetIgnoreLookInput` 각각 2.
+- 나머지 Actor/Controller/Pawn/Widget/array/math 호출은 builder의 exact
+  `EVENT_FUNCTION_COUNTS`에 고정되어 있다.
+
+## 기능 원리
+
+### Construction Script
+
+```text
+Construction
+  -> Branch(DisableBlueprint)
+       true  -> EditorIcon.SetMaterial(slot 0, Gray)
+       false -> EditorIcon.SetMaterial(slot 0, Green)
+```
+
+Gray와 Green은 서로 다른 target MI여야 한다. 여기서 아이콘은 runtime sim 기능이
+아니라 level authoring 상태를 즉시 보여 주는 표지다.
+
+### BeginPlay 상위 순서
+
+`DisableBlueprint=true`이면 아무 기능도 실행하지 않는다. false이면 Sequence의
+6개 output이 다음 순서로 평가된다.
+
+1. `CameraAndCursorSmoothing`이 true일 때 player 0 controller로 self input을
+   enable하고 cursor/input mode를 설정한다.
+2. player 0 Pawn의 movement component가 valid이고
+   `FloatingPawnMovement` cast가 성공하면 `MaxSpeed=double(MaxCameraMoveSpeed)`로
+   설정한다.
+3. MaxFPS와 렌더링 console 변수를 설정한다.
+4. `PossessNearestPawn`이면 최근접 Pawn을 찾아 possess하고 필요 시 나머지 Pawn에
+   붙은 Ninja actor/component를 비활성화한다.
+5. widget class가 valid이면 light rotator widget을 생성·설정한다.
+6. `SupressUE51TextureSmearing`이면 두 TSR flicker heuristic console 변수를 끈다.
+
+이 순서는 단순 기능 목록이 아니다. 같은 BeginPlay frame에서 input setup, Pawn
+movement, global render state, possession, widget, TSR state가 차례대로 바뀐다.
+
+### cursor와 mouse
+
+BeginPlay setup은 `EnableInput(self, player 0 controller)`, controller의
+`bShowMouseCursor=ShowMouseCursor`, `SetInputMode_GameAndUIEx`를 수행한다.
+GameAndUI는 `DoNotLock`, `bHideCursorDuringCapture=false`, `bFlushInput=false`다.
+
+- Left press: GameOnly → `SetIgnoreLookInput(true)` → GameAndUI.
+- Left release: `SetIgnoreLookInput(false)`.
+- Middle 또는 Right press: GameOnly → controller cursor false.
+- Middle 또는 Right release: controller cursor를 `ShowMouseCursor` 값으로 복원 →
+  GameAndUI.
+
+Left press가 GameOnly 뒤 다시 GameAndUI로 이어지는 구조는 다소 이상해 보여도
+frozen exec topology가 직접 지지한다. 임의로 “고쳐서” 다른 흐름으로 만들지 않는다.
+
+### time dilation
+
+`Num +` press는 Actor `CustomTimeDilation += 0.25`, `Num -` press는
+`CustomTimeDilation -= 0.25`다. clamp가 없다. 바뀐 값을 global time dilation에도
+같이 적용한다.
+
+`Show Time Dilation Messages on Screen`이 true이면 0.5초 동안 cyan 계열로
+`Time dilation: <value>`를 표시한다. 이후 다음 값을 console command로 보낸다.
+
+```text
+r.DefaultFeature.MotionBlur
+  MotionBlurQuality * int(CustomTimeDilation != 0)
+```
+
+즉 time dilation이 정확히 0이면 motion blur 값을 강제로 0으로 만든다.
+
+### BeginPlay console settings
+
+| condition | exact command construction |
+| --- | --- |
+| `OverrideEditor120-FPS-Limit` | `t.MaxFPS <MaxEditorFPS>` |
+| enabled BeginPlay | `r.TemporalAACurrentFrameWeight <TemporalAntialiasing>` |
+| enabled BeginPlay | `r.DepthOfFieldQuality <DepthOfFieldQuality>` |
+| enabled BeginPlay | `r.MotionBlur.Amount <MotionBlurAmount>` |
+| enabled BeginPlay | `r.VsyncEditor <int(VSync)>` |
+| enabled BeginPlay | `r.Vsync <int(VSync)>` |
+| `SupressUE51TextureSmearing` | `r.TSR.ShadingRejection.Flickering 0` |
+| `SupressUE51TextureSmearing` | `r.TSR.ShadingRejection.Flickering.Period 0` |
+
+`HDScreenPercentage`는 console command가 아니라 widget 변수로 전달된다.
+
+### 최근접 Pawn 선택
+
+1. 모든 Pawn을 가져온다.
+2. 현재 player Pawn과 object-equal인 항목은 제외한다.
+3. 나머지를 `TempArray2`에 넣는다.
+4. self에서 각 Pawn까지의 거리를 `Trunc`하고 `Abs`한 int를 같은 순서로
+   `TempArray1`에 넣는다.
+5. `MinOfIntArray`의 index로 `TempArray2` 항목을 고른다.
+6. possess 전에 기존 controlled Pawn이 valid하면 그 RootComponent를 world origin
+   `(0,0,0)`으로 옮기고 child까지 visibility false로 바꾼다. comment가 설명하는
+   DefaultPawn sphere 노출 방지다.
+7. player 0 controller가 고른 Pawn을 possess한다.
+
+정확한 거리 float가 아니라 `Abs(Trunc(distance))`로 비교한다는 점이 중요하다.
+같은 truncated 거리의 tie behavior도 `MinOfIntArray`에 의해 결정된다.
+
+### 비소유 Pawn의 Ninja 비활성화
+
+`DisableNonPossessedPawns=true`이면 새 possessed Pawn을 배열에서 제거하고 나머지를
+순회한다.
+
+- 각 Pawn의 attached actor를 순회한다.
+- target `NinjaLive`로 cast되면 그 actor의 `DisableBlueprint=true`.
+- 그 actor의 `LegacyTraceMesh`가 valid하면 모든 collision channel response를
+  `Ignore`로 설정한다.
+- 각 Pawn에서 target `NinjaLiveComponent`를 찾는다.
+- valid이면 `TickBlocker=true`, component tick false, `Deactivate` 순서로 처리한다.
+
+source `NinjaLive`/`NinjaLiveComponent`를 그대로 참조하면 독립성 규칙을 위반한다.
+동일한 member contract를 가진 target-owned replacement가 먼저 compile되어야 한다.
+
+### light rotator widget
+
+`WidgetToRotateDirectionalLight`가 valid class일 때 player 0 controller를 owner로
+widget을 만든 뒤 exact target widget class로 cast한다. 성공하면
+`WidgetText1=WidgetText`를 먼저 설정한다.
+
+그 뒤 분기가 두 가지다.
+
+1. `GetDirectionalLightViaTag == None`
+   - `LogoVisibility`와 `HDscreenpercentage`를 widget에 쓴다.
+   - explicit `WidgetTargetDirectionalLight`가 valid이면 사용한다.
+   - 아니면 첫 번째 valid DirectionalLight actor를 사용한다.
+2. tag가 `None`이 아님
+   - `GetAllActorsOfClassWithTag` 결과의 첫 번째 valid DirectionalLight를 사용한다.
+   - frozen topology상 이 분기에서는 `LogoVisibility`와 `HDscreenpercentage` setter를
+     통과하지 않는다.
+
+valid light를 widget의 `DirectionalLight`에 쓴 후 `AddToViewport(ZOrder=1)` 한다.
+valid light가 없으면 viewport에 넣는 exec 경로도 없다. 이 차이는 결과 위젯 상태와
+표시 여부에 영향을 주므로 단일 “light 찾기” helper로 합치더라도 동일한 분기
+semantics를 보존해야 한다.
+
+## inactive지만 학습해야 하는 graph 조각
+
+EventGraph에는 실행 seed와 연결되지 않은 조각도 있다. runtime 기능으로 오인하지
+않되 최종 구조 parity 범위를 정할 때 버리면 안 된다.
+
+- camera manager `DefaultFOV=90`, actor location `(-7600,16480,2400)`, actor rotation
+  `(-7,-84,49)`을 쓰는 6-node disconnected chain.
+- 연결되지 않은 `Escape` input node.
+- DOF 1, default motion blur 1을 설정하고 QuitGame하는 5-node disconnected chain.
+- `DetachFromActor` 단독 node, 세 transform rule 모두 `KeepWorld`.
+- `r.DefaultFeature.MotionBlur ` literal 단독 node.
+
+원본에서 실행되지 않는 node를 runtime graph에 연결해 “완성”하면 오히려 behavior가
+달라진다. 최종 구현에서는 inactive reference subgraph로 남기거나, visual graph
+parity 범위에서 제외하는 결정을 명시적으로 해야 한다.
+
+## source-to-target dependency mapping
+
+| source | target | 상태 |
+| --- | --- | --- |
+| `/Game/FluidNinjaLive/Utilities/PawnAndCameraUtility` | `/Game/Study/CubeFluidNinjaLive/Utilities/PawnAndCameraUtility` | 이번 계약, 미저작 |
+| `/Game/FluidNinjaLive/Misc/Logo/MI_FluidNinjaLiveLogo_Gray` | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_FluidNinjaLiveLogo_Gray` | SHA-pinned target-owned 저작/readback 완료; final cold-load는 보류 |
+| `/Game/FluidNinjaLive/Misc/Logo/MI_FluidNinjaLiveLogo_Green` | `/Game/Study/CubeFluidNinjaLive/Materials/Decor/MI_CFNL_FluidNinjaLiveLogo_Green` | SHA-pinned common-decor 저작/readback 완료; final cold-load는 보류 |
+| `/Game/FluidNinjaLive/NinjaLive` | `/Game/Study/CubeFluidNinjaLive/NinjaLive` | clean-room logic 선행 |
+| `/Game/FluidNinjaLive/NinjaLiveComponent` | `/Game/Study/CubeFluidNinjaLive/NinjaLiveComponent` | clean-room logic 선행 |
+| `/Game/FluidNinjaLive/Utilities/Viewport_LightRotatorWidget` | `/Game/Study/CubeFluidNinjaLive/Utilities/Viewport_LightRotatorWidget` | clean-room Widget 선행 |
+
+EventGraph의 source `/Game` reference set은 self의 generated/SKEL class 두 개와 위
+세 logic dependency의 generated/SKEL class 여섯 개로 정확히 닫힌다. target에서는
+SKEL path를 직접 직렬화하지 않고 compile 과정이 target generated class를 만든다.
+
+## 58 World fan-out
+
+blocker analysis는 이 자산에 11개의 deduplicated blocker row와 301 occurrence를
+기록한다.
+
+| binding | occurrence / World |
+| --- | ---: |
+| generated-by | 58 / 58 |
+| class | 58 / 58 |
+| `DepthOfFieldQuality` | 3 / 3 |
+| `DisableNonPossessedPawns` | 16 / 16 |
+| `Logo Visibility` | 2 / 2 |
+| `MaxCameraMoveSpeed` | 2 / 2 |
+| `PossessNearestPawn` | 44 / 44 |
+| `TemporalAntialiasing` | 6 / 6 |
+| `WidgetTargetDirectionalLight` | 51 / 51 |
+| `WidgetText` | 8 / 8 |
+| `WidgetToRotateDirectionalLight` | 53 / 53 |
+| 합계 | 301 occurrence |
+
+59개 source World 중 58개가 사용한다. 따라서 이 Blueprint가 compile·cold-load·audit
+되지 않으면 level reconstruction의 거의 전체가 막힌다. 반대로 단순히 asset이
+존재하는 것만으로 blocker를 해제하면 안 된다. level override가 쓰는 exact 변수
+이름과 타입까지 유지해야 한다.
+
+## 현재 blocker와 필요한 해제 순서
+
+해제된 선행 조건은 세 개다.
+
+- `source_parent_identity_capture_verified`
+- `green_logo_clean_room_authoring_verified`
+- `gray_logo_clean_room_authoring_verified`
+
+남은 blocker는 7개이며 해제 순서는 다음과 같다.
+
+1. `actor_cdo_non_tick_read_only_inspection_missing`: tick 외 Actor CDO override를
+   추측하지 않도록 bounded read-only inspector와 canary를 마련한다.
+2. `typed_raw_input_key_node_authoring_missing`: raw `K2Node_InputKey` 6개를 typed하게 만드는 editor-only authoring API와 temp
+   canary를 마련한다.
+3. `typed_foreach_loop_authoring_missing`: shared working tree에는 typed
+   `ForEachLoop` 구현이 생겼지만, 이 계약이 수용할 UE 5.6 build/live canary와 exact
+   pin/type persistence, compile/cold-readback 보고서는 아직 없다. 그 증거를 먼저
+   고정한 뒤 blocker를 별도로 해제한다.
+4. `typed_create_widget_node_authoring_missing`: `UK2Node_CreateWidget`의 class reconstruction, owning-player pin, readback을 갖춘
+   typed authoring API를 마련한다.
+5. `material_billboard_elements_authoring_unverified`: `FMaterialSpriteElement` 배열을 추측 없이 쓰고 읽는 MaterialBillboard typed
+   authoring canary를 마련한다.
+6. `target_logic_prerequisites_pending`: target `NinjaLive`,
+   `NinjaLiveComponent`, `Viewport_LightRotatorWidget`을 먼저
+   compile/cold-load/audit한다.
+7. `end_to_end_blueprint_executor_and_runtime_fixture_pending`: fresh-only Blueprint
+   mutation manifest를 별도 검토한 뒤 execute support를 계약에 추가하고,
+   compile/save, editor restart 뒤 cold-load, dependency audit, deterministic PIE
+   fixture를 통과한다.
+
+현재 builder는 로고 완료를 SHA-pinned 보고서와 실제 target 파일 해시로 검증하고,
+source identity 완료도 별도의 SHA-pinned 보고서와 재계산 fingerprint로 검증한다.
+이번 통합은 parent blocker 하나만 해제했으며, 다른 7개 blocker를 자동으로
+완료 처리하지 않았다. full `--execute`는 계속 editor connection 전에 실패한다.
+
+## 최종 검증 기준
+
+### 정적 검증
+
+- exact target이 실행 전에는 존재하지 않아야 한다.
+- Blueprint immediate parent가 frozen evidence와 일치해야 한다.
+- SCS 2개, class/parent/transform가 exact해야 한다.
+- 변수 23개의 순서, 이름, pin type, array/object class, default, instance editable,
+  expose-on-spawn, friendly name, category, metadata가 exact해야 한다.
+- Construction 7 / 6, EventGraph 241 / 273의 의미와 모든 active exec/data route가
+  일치해야 한다. fresh GUID는 source와 달라야 한다.
+- compile error 0, warning은 사전 allowlist 없이는 실패다.
+- save 뒤 unload/reload/cold-load readback이 같은 구조를 보고해야 한다.
+- target root dependency audit에서 source/temp/UnrealMCP marker 0, redirector 0,
+  dirty package 0이어야 한다.
+
+### runtime fixture
+
+- `DisableBlueprint` true/false와 editor icon Gray/Green.
+- mouse 세 버튼의 press/release에 따른 input mode, cursor, ignore-look 상태.
+- Num +/- 여러 회 입력 시 unclamped time dilation 값과 motion blur command.
+- distance가 같거나 truncation 경계에 있는 Pawn fixture의 선택 결과.
+- old Pawn root origin/visibility cleanup.
+- attached target Ninja actor와 embedded target Ninja component 비활성화.
+- explicit light, untagged fallback, tagged lookup, no valid light 네 widget case.
+- 모든 console variable의 값과 실행 조건.
+- level instance override가 많은 11개 binding의 serialize/readback.
+
+이 runtime 검증 전에는 “원본과 똑같음”이나 58 World blocker 해제를 주장하지 않는다.
+
+## 재현 명령
+
+```powershell
+uv --directory .\Python run python -m scripts.analysis.build_cube_fluid_ninja_pawn_camera_utility --json
+
+# 선택적인 추가 재현이다. shared editor 사용권을 확보하고 반드시 새 report 경로로만
+# 실행한다. source/target mutation은 0이며 v3 정본 증거를 대체하지 않는다.
+uv --directory .\Python run python -m scripts.analysis.build_cube_fluid_ninja_pawn_camera_utility `
+  --capture-source-identity `
+  --run-id 20260901_pawn_camera_source_identity_recheck_v001 `
+  --output MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/20260901_pawn_camera_source_identity_recheck_v001/pawn_camera_utility_builder_report.json `
+  --json
+
+uv --directory .\Python run python -m unittest `
+  scripts.analysis.test_cube_fluid_ninja_pawn_camera_utility_builder
+
+uv --directory .\Python run python -m py_compile `
+  scripts/analysis/build_cube_fluid_ninja_pawn_camera_utility.py `
+  scripts/analysis/test_cube_fluid_ninja_pawn_camera_utility_builder.py
+```
+
+현재 기본 dry-run의 기대 출력은 canonical SHA와 token을 보여 주면서
+`blocked=true`, `editor_connection_attempted=false`,
+`target_mutation_performed=false`, `source_parent_identity_proven=true`,
+`remaining_blocker_count=7`, `next_executable_stage_ready=false`,
+`next_executable_stage_completed=true`를 유지하는 것이다. 마지막 completed 표시는
+정본 source-identity stage가 이미 완료됐다는 뜻이며, 다음 mutation stage가 준비됐다는
+뜻이 아니다. `--capture-source-identity`에는 mutation token이 필요 없고, 추가 재현이
+성공해도 full authoring은 blocked 상태로 남는다.

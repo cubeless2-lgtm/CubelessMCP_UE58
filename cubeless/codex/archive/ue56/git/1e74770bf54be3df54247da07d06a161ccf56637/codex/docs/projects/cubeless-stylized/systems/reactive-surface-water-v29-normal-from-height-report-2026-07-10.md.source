@@ -1,0 +1,30 @@
+# Reactive Surface Water V29 Normal From Height Report - 2026-07-10
+
+- Verdict: `PASS`
+- Scope: `/Game/_MCP_Temp` only; production ReactiveSurface assets are untouched.
+- Goal: prove V28 clean height waves can be converted to packed normal RGB without smear or stripes.
+
+## Checks
+- compile error/warning: `0` / `0`
+- normal_activity_nonzero: `True`
+- normal_radius_expands: `True`
+- normal_aspect_near_circle: `True`
+- normal_center_near_middle: `True`
+- normal_background_neutral: `True`
+- normal_no_full_surface_smear: `True`
+- normal_no_vertical_stripe_dominance: `True`
+- normal_no_horizontal_stripe_dominance: `True`
+
+## Frames
+- f04: active=24 bg=[188, 188, 255] aspect=1.0 radius=1.8482873830845588 center_offset=0.2855541113267538 active_fraction=0.0003662109375 column_peak=1.2247448713915892 row_peak=1.2247448713915892
+- f12: active=104 bg=[188, 188, 255] aspect=1.0 radius=3.8453879723142865 center_offset=0.5491076335640993 active_fraction=0.0015869140625 column_peak=1.1766968108291043 row_peak=1.1766968108291043
+- f24: active=504 bg=[188, 188, 255] aspect=1.0 radius=10.519012916392262 center_offset=0.027077146702572958 active_fraction=0.0076904296875 column_peak=1.0690449676496976 row_peak=1.0690449676496976
+- f40: active=1243 bg=[188, 188, 255] aspect=1.0 radius=14.055735567233498 center_offset=0.32775180900835077 active_fraction=0.0189666748046875 column_peak=1.1345520555947992 row_peak=1.1345520555947992
+- f60: active=1739 bg=[188, 188, 255] aspect=1.0 radius=22.11455005142552 center_offset=0.26830368152997036 active_fraction=0.0265350341796875 column_peak=1.0551225029645703 row_peak=1.0551225029645703
+
+## Visuals
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV29NormalFromHeight\water_v29_normal_from_height_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v29-normal-from-height-results-2026-07-10.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV29NormalFromHeight\water_v29_normal_from_height_bridge_results.json`

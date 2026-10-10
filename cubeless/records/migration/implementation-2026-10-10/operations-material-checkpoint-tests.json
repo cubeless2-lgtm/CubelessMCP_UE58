@@ -1,0 +1,21 @@
+{
+  "schema": "cubeless_material_checkpoint_validation_v1",
+  "exit_code": 0,
+  "stdout": "",
+  "stderr": "test_checkpoint_failure_stops_before_next_mutation (__main__.JournalTests.test_checkpoint_failure_stops_before_next_mutation) ... ok\ntest_checkpoint_outside_active_operation_is_rejected (__main__.JournalTests.test_checkpoint_outside_active_operation_is_rejected) ... ok\ntest_checkpoint_survives_interrupt_without_claiming_actual_changes (__main__.JournalTests.test_checkpoint_survives_interrupt_without_claiming_actual_changes) ... ok\ntest_exclusive_create_race_does_not_overwrite_other_editor_journal (__main__.JournalTests.test_exclusive_create_race_does_not_overwrite_other_editor_journal) ... ok\ntest_finalize_failure_keeps_started_record_and_reports_uncertain_outcome (__main__.JournalTests.test_finalize_failure_keeps_started_record_and_reports_uncertain_outcome) ... ok\ntest_identical_request_replays_without_repeating_mutation (__main__.JournalTests.test_identical_request_replays_without_repeating_mutation) ... ok\ntest_initial_journal_scope_is_backward_compatible (__main__.JournalTests.test_initial_journal_scope_is_backward_compatible) ... ok\ntest_interrupted_mutation_is_not_rerun (__main__.JournalTests.test_interrupted_mutation_is_not_rerun) ... ok\ntest_multiple_checkpoints_preserve_request_identity_and_increment (__main__.JournalTests.test_multiple_checkpoints_preserve_request_identity_and_increment) ... ok\ntest_path_traversal_is_rejected_before_mutation (__main__.JournalTests.test_path_traversal_is_rejected_before_mutation) ... ok\n\n----------------------------------------------------------------------\nRan 10 tests in 0.219s\n\nOK\n",
+  "engine_executed": false,
+  "files": [
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/state.py",
+      "sha256": "b2736f5c0c6daf677a5c6bc8d4ed1a8c0d3e32865cb1ab39ca60bdc478c303ae"
+    },
+    {
+      "path": "Plugins/CubelessMCP_UE58/Content/Python/tests/test_operation_journal.py",
+      "sha256": "f532c382a7273409bed7dffe38f95abc9a3b14f50ee62d5fe46e4a279c1fcdac"
+    },
+    {
+      "path": "cubeless/tools/pipelines/material_graph_smoke.py",
+      "sha256": "2fd29683561a5e811136cf81ef123c918b2a5e123963420f031d49102c989f6a"
+    }
+  ]
+}

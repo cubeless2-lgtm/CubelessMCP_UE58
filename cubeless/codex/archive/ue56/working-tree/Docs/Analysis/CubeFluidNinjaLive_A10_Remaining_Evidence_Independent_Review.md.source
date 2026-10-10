@@ -1,0 +1,129 @@
+# CubeFluidNinjaLive A10 잔여 증거 독립 검수
+
+검수 갱신일: 2026-09-04 KST
+판정: **두 항목 모두 GO**
+
+이 문서는 `build_cube_fluid_ninja_a10_parent_materials.py`에서 한때 차단했던 두
+질문을 builder 실행과 분리된 오프라인 분석기로 다시 판정한 기록이다.
+
+1. 원본 Body가 호출한 Engine `MatLayerBlend_NormalBlend`를 native expression으로
+   펼친 구현이 의미상 정확한가.
+2. ChestLogo와 TraceMesh Inactive의 UE 5.6 직접 오버라이드 11종이 모두 완전하게
+   관찰되었는가.
+
+분석기는 Unreal Python, MCP transport, editor에 연결하지 않는다. 동결된 Saved
+캡처와 로컬 UE 5.6.1 엔진 파일, 현재 builder bytes만 읽는다. Content와 C++ 변경은
+0이며, 입력 byte 또는 schema가 달라지면 판정을 내리지 않고 exit 2로 닫힌다.
+
+## 동결 입력
+
+- assessed builder: 130,744 bytes,
+  `cba4105d56255f79b707db19e8a51dc1773417ba92276585dd7f313ebcde980a`
+- UE 5.6 all-type MI capture: 114,307 bytes,
+  `07c9ff56a83adca852d9a93eb7e6cd1bc8ce802f2aebdae765017a59f12af704`
+- source Body inspection: 467,857 bytes,
+  `5da35d2efcf670d502a2afd562698ccb7b73cd41daae2f9913a9d9bd42937639`
+- Engine NormalBlend inspection: 113,153 bytes,
+  `5a637f62d01e9f9e6444433a7dff0afed3a673b8b24ff72cde20fabe35e14fd6`
+- Engine BlendAngleCorrectedNormals inspection: 171,750 bytes,
+  `0b978cfc664de037adeec30c07f3c156079c34ca4c9e9dd23cb86db69fcf58a5`
+- installed UE: 5.6.1, changelist 44394996
+- Engine wrapper uasset:
+  `3de0e45b7e32d06f11343be8d95a18e3515d664cec60f01e130594070b7a4ad0`
+- Engine utility uasset:
+  `ceec92a8602d1962e65cb76a970963f2a5e47d8d8283b752846050238a2884b7`
+
+## Normal blend 판정: GO
+
+원본 Body의 함수 경계는 다음과 같다.
+
+- wrapper: `/Engine/Functions/MaterialLayerFunctions/MatLayerBlend_NormalBlend`
+- `NormalMask`, index 0: 미연결, preview 1
+- `Material`, index 1: source static switch 결과
+- `Normal`, index 2: `NormalMap` RGB
+
+wrapper 캡처는 10 nodes/10 edges, 내부
+`BlendAngleCorrectedNormals` utility 캡처는 16 nodes/20 edges다. utility의 입력 순서는
+`BaseNormal`, `AdditionalNormal`이며 wrapper는 utility 결과를 다시 normalize한 후
+Material Attributes의 Normal에 넣는다. 현재 builder는 존재하지 않는
+`MaterialExpressionBlendAngleCorrectedNormals`를 전혀 사용하지 않고, 이 두 캡처의
+Lerp, mask, append, dot, multiply, subtract, normalize를 UE 5.6 native expression으로
+직접 펼친다. Engine Material Function asset 참조는 타깃에 남지 않는다.
+
+분석기는 다음을 모두 고정한다.
+
+- wrapper/utility class histogram
+- 정확한 10/20 edge 집합
+- mask 기본값과 두 입력의 순서
+- utility 내부 부호와 최종 normalize/Normal assignment
+- builder에 비존재 native class token이 다시 들어오지 않았는지
+- UE Runtime Material source 전체에서 그 class 선언이 실제로 0인지
+
+따라서 이전 `engine_normal_blend_direct_equivalence_observation_pending`은
+해소됐다.
+
+## Material Instance 전체 타입 판정: GO
+
+읽기 전용 캡처는 두 원본 MI에 대해 UE 5.6 직접 오버라이드 11종을 모두 명시한다.
+
+1. scalar
+2. vector
+3. double_vector
+4. texture
+5. static_switch
+6. texture_collection
+7. runtime_virtual_texture
+8. sparse_volume_texture
+9. font
+10. static_component_mask
+11. user_scene_texture
+
+각 유형은 비어 있어도 `<type>_overrides` 배열과 count를 갖는다. total count는 전체
+count 합과 같고, full row를 포함한 canonical JSON SHA-256을 네이티브 inspector와
+독립 Python 구현이 각각 계산해 비교했다. 캡처 전후 전역 dirty package는 0이며 두
+source package도 모두 clean이다.
+
+| source MI | non-zero direct overrides | total | canonical SHA-256 |
+|---|---|---:|---|
+| ChestLogo | scalar 1, texture 1, static switch 1 | 3 | `631bbcc309c75a8b6c86cc11020a888bc8fa5598fd591e42745968ec7893363a` |
+| TraceMesh Inactive | scalar 4, vector 1 | 5 | `3c782f39a0a7643e3053a2753a4c6e8c6a64f1ea280abb0903ccd7e118b11370` |
+
+ChestLogo의 vector/double-vector 및 희귀 6종은 모두 0이다. TraceMesh Inactive의
+double-vector/texture/static-switch 및 희귀 6종은 모두 0이다. 특히 이전 완전성
+구멍이었던 `static_component_mask`는
+`GetStaticParameters().EditorOnly.StaticComponentMaskParameters`의 override row를
+직접 구조화한 결과 두 자산 모두 0으로 확정됐다. 이전 scalar/vector 중심 캡처는
+기록용 `historical_partial_captures`로만 남고 새 all-type 캡처가 이를 대체한다.
+
+따라서 이전 `material_instance_unstructured_override_type_audit_pending`은
+해소됐다.
+
+## 재현 도구와 결과
+
+- 분석기:
+  `Python/scripts/analysis/analyze_cube_fluid_ninja_a10_remaining_evidence.py`
+- 테스트:
+  `Python/scripts/analysis/test_cube_fluid_ninja_a10_remaining_evidence.py`
+
+2026-09-04 결과:
+
+```text
+py_compile                                      PASS
+focused unittest                               19/19 PASS
+analysis_version                               cube_fluid_ninja_a10_remaining_evidence_review_v3
+normal_blend.decision                          GO
+material_instance_override_absence.decision   GO
+overall_decision                               GO
+promotion_blockers_confirmed                   []
+```
+
+현재 canonical report SHA-256은
+`873198fd1583705e96c4fadbb8a8d69f4c7a831d47ee80841b1558d85d93c7f4`다.
+이 값은 `sha256(canonical_json(report_without_report_sha256))` 범위다. builder나
+동결 증거가 바뀌면 새 검수 없이 이 값을 재사용할 수 없다.
+
+## 범위 제한
+
+이 GO는 두 잔여 증거 질문에 대한 판정이다. 실제 타깃 authoring, hot/cold readback,
+플러그인 비활성 로드는 별도 실행 증거로 검수한다. 화면 기반 최종 visual parity나
+전체 A10 레벨 완성 판정을 대신하지 않는다.

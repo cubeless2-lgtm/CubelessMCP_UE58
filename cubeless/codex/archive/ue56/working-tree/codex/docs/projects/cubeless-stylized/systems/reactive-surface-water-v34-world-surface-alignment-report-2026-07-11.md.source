@@ -1,0 +1,37 @@
+# Reactive Surface Water V34 World Surface Alignment Report
+
+- Date: 2026-07-11
+- Verdict: **PASS**
+- Scope: Water RT display world alignment and moving local-player window tracking.
+
+## Result
+
+- Temp material: PASS
+- Temp Controller: PASS
+- Production material: PASS
+- Production Controller: PASS
+- Puddle-volume gate bypass: PASS
+- Runtime beyond old radius: PASS
+- Final checks: PASS
+
+## Runtime Evidence
+
+- Pawn delta: `[1743.8215650121247, 0.0]` cm
+- MPC origin delta: `[1743.8215942382812, 0.0]` cm
+- Before UV: `[0.5, 0.4971875]`
+- After UV: `[0.4984852100080831, 0.4971875]`
+- Pulse count: `1` -> `25`
+- Water R prime/stable nonzero: `19682` / `20489`
+- Water G prime/stable nonzero: `27316` / `28944`
+- Water R nonzero: `20489`
+- Water G nonzero: `28944`
+
+## Contract
+
+- `M_RS_Demo_Puddle` samples the Water RT with Absolute World Position and the Controller-owned Water window MPC.
+- The debug Water plane intentionally keeps raw 0..1 RT UVs.
+- The material uses the same 8-pixel recenter snapping as the Niagara Water solver.
+- Puddle-volume overlap no longer gates Water source generation; movement mode and both foot traces still gate airborne writes.
+- Production content contains no UnrealMCP dependency.
+
+Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v34-world-surface-alignment-results-2026-07-11.json`

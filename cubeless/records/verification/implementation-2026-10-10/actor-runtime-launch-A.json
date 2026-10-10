@@ -1,0 +1,23 @@
+{
+  "schema": "cubeless_runtime_launch_v1",
+  "success": true,
+  "baseline": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\actor-runtime-marker-baseline-A.json",
+  "baseline_sha256": "9a60e3d96c39c4c0348f5d84d2598e21478915049a98c69359af7b84303d620e",
+  "executable": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\ActorRuntimeShipping-20261010-A\\Windows\\CubelessActorRuntimeProof\\Binaries\\Win64\\CubelessActorRuntimeProof-Win64-Shipping.exe",
+  "executable_sha256": "8645d42071dd2f6942424f2df922308fdb18f4b542ddba2a6848d3093464196b",
+  "arguments": [
+    "-nullrhi",
+    "-unattended",
+    "-NoSplash",
+    "-NoSound",
+    "-UserDir=C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\ActorRuntimeUser-A"
+  ],
+  "automatic_retry": false,
+  "stage": "exited",
+  "exit_code": 0,
+  "launcher_sha256": "6e3c0836a8f215211b4bf51cbc22ddd7170c23db60cab308792a2fb895baa0ad",
+  "console_log": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\actor-runtime-launch-A.console.log",
+  "started_ns": 1791631249279352100,
+  "pid": 42924,
+  "ended_ns": 1791631251070257900
+}

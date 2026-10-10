@@ -1,0 +1,40 @@
+# Reactive Surface Water V11 Contained Ring Wake Report - 2026-07-08
+
+- Verdict: `PASS`
+- System: `/Game/ReactiveSurface/Water/NS_RS_Water.NS_RS_Water`
+- Change: V10 ring-only swimmer source is retained.
+- Change: a soft source-centered containment damping pass limits waves before they fill the full RT.
+
+## Checks
+- history_trail_exists: `True`
+- rotated_cloud_similarity: `True`
+- rotated_cloud_stays_world_x: `True`
+- rotate_in_place_no_wake: `True`
+- moving_seed_is_circular_not_tail: `True`
+- soft_energy_control: `True`
+- turn_does_not_spawn_attached_tail: `True`
+- contained_active_pixels: `True`
+- contained_radius_p95: `True`
+- contained_radius_max: `True`
+
+## Key Numbers
+- Tail image RMS diff, single vs rotated point cloud: `5.291181490225033`
+- Seed active pixels: `360`
+- Seed aspect: `1.0`
+- Soft far-field active pixels: `1715`
+- Soft far/near energy ratio: `0.0`
+- Spread active pixels: `1408`
+- Spread p95 radius px: `76.20164040229055`
+- Spread max radius px: `85.7280000933184`
+- Turn height growth ratio: `1.0909090909090908`
+- Turn after aspect: `4.041666666666667`
+- Blocking dirty packages: `[]`
+- Nonblocking editor dirty packages: `['/Game/Template/Empty']`
+
+## Visuals
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV11ContainedRingWake\water_v11_contained_ring_wake_motion.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV11ContainedRingWake\water_v11_contained_ring_wake_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v11-contained-ring-wake-results-2026-07-08.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV11ContainedRingWake\water_v11_contained_ring_wake_bridge_results.json`

@@ -1,0 +1,310 @@
+# Reactive Surface Snow UDS V2 구현 보고서 - 2026-07-22
+
+## 현재 판정
+
+- Snow V2 재질 제작: `PASS`
+- UDS 영향 스탬프 Atlas 제작: `PASS`
+- `NS_RS_Ground` 기본 Atlas와 Controller 컴포넌트 소스 동기화: `PASS`
+- 프레임 독립 Ground/Snow 복원 반감기: `PASS`
+- `L_RS_Demo` Snow V2 재질 교체: `PASS` (`41/41`)
+- 생산 PIE 30/60/120 FPS 및 HalfLife 0 행렬: `PASS` (각 `33/33`)
+- Ground 다중 스탬프 리센터 회귀: `PASS`
+- 동일 카메라 V1/V2 수동 A/B: `선택 잔여 항목`
+
+## 목적과 범위
+
+목표는 UDS 눈의 표면 재질 인상과 눈 파임 표현을 ReactiveSurface의 기존 Ground RT 파이프라인에 맞게 가져오는 것이다. UDS의 날씨 시스템 전체를 이식하지 않고 다음 부분만 선택했다.
+
+- POM과 Pixel Depth Offset으로 보강한 압흔 깊이
+- 미세 눈, 거친 눈, 바람결을 합친 표면 노멀
+- 신선한 눈과 압설된 눈의 색·Roughness 차이
+- 압흔 가장자리의 밀려 올라온 눈과 접촉 AO
+- 선택 가능한 눈 결정 Sparkle
+- 기존 발자국 실루엣을 보존하면서 UDS 노이즈를 넣은 스탬프
+- 시간이 지나면 원래 상태로 돌아오는 프레임 독립 복원
+
+수정 범위는 Snow/Ground에 한정한다. Water와 Grass의 Niagara, RT, 재질 및 룩은 수정하지 않는다. 각 생산 단계의 해시 잠금으로 Water/Grass 및 UDS 원본이 변하지 않았음을 확인했다.
+
+UDS 원본 재질 함수 `/Game/UltraDynamicSky/Materials/Weather/DLWE_Snow` 자체는 참조하거나 수정하지 않는다. V2 재질 dependency closure에는 `/Game/UltraDynamicSky` 또는 UnrealMCP 런타임 의존성이 없다. 다만 `L_RS_Demo`에는 작업 전부터 존재하던 `DLWE_Interaction` 직접 의존성이 남아 있으며, 이번 V2가 새로 만든 의존성은 아니다.
+
+## 생산 자산
+
+새 V2 자산:
+
+- `/Game/ReactiveSurface/Ground/MF_RS_SnowSurface_V2`
+- `/Game/ReactiveSurface/Demo/M_RS_Demo_Snow_V2`
+- `/Game/ReactiveSurface/Demo/MI_RS_Snow_UDSLook_V2`
+- `/Game/ReactiveSurface/Ground/T_RS_GroundStampAtlas_UDS`
+
+새 RS 로컬 텍스처:
+
+- `/Game/ReactiveSurface/Ground/Textures/T_RS_Snow_RoughNormal`
+- `/Game/ReactiveSurface/Ground/Textures/T_RS_Snow_WindsweptNormal`
+- `/Game/ReactiveSurface/Ground/Textures/T_RS_Snow_SparkleNoise`
+
+수정된 기존 자산:
+
+- `/Game/ReactiveSurface/Ground/NS_RS_Ground`: Atlas 기본값과 RenderGrid의 복원 곱셈 추가
+- `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`: Ground Niagara 소스 동기화, 30Hz 복원 스텝, 제한된 RT 커밋 재시도 추가
+- `/Game/ReactiveSurface/Demo/L_RS_Demo`: `RS_Demo_Snow_Ground_PhysMatSlot`을 `MI_RS_Snow_UDSLook_V2`로 교체
+
+기존 V1 자산 `/Game/ReactiveSurface/Ground/MF_RS_SnowSurface`와 `/Game/ReactiveSurface/Demo/M_RS_Demo_Snow`는 수정하지 않았다. `M_RS_Demo_Snow_V2`에는 기존 눈 전용 Physical Material `/Game/ReactiveSurface/Demo/PM_RS_Demo_Snow`가 유지된다.
+
+## UDS에서 가져온 재질 효과
+
+| 효과 | V2 적용 방식 | UDS 전체 기능과의 경계 |
+| --- | --- | --- |
+| 눈 표면 색 | Scatter 노이즈로 신선한 눈의 미세 명암을 만들고 압설도에 따라 Track 색으로 보간 | UDS 날씨·적설 전역 파라미터는 가져오지 않음 |
+| 미세/거친 노멀 | 신선한 눈은 `Snow_Normal`, 압설부만 `Rough_Snow`로 보간 | UDS 재질 함수를 직접 참조하지 않음 |
+| 바람결 | 패킹된 `Windswept_Snow_Normal.rg - 0.5`를 신선한 눈 노멀에 합성 | Static Switch로 완전히 제거 가능 |
+| Sparkle | `WhiteNoise512` 계열과 시선 벡터를 이용해 신선한 눈에만 작은 Emissive 반짝임 생성 | Static Switch로 샘플과 연산 제거 가능 |
+| 눈 파임 | Ground RT의 깊이·피복을 POM, PDO, 압흔 노멀에 사용 | UDS의 별도 Trail/Displacement 시스템은 이식하지 않음 |
+| 압설/가장자리 | Ground RT의 Compaction과 Rim을 색, Roughness, AO에 사용 | 기존 ReactiveSurface RGBA 계약을 유지 |
+| 표면 높이 | 마스터 재질에서 Vertex Normal 방향으로 고정 `10 cm` WPO 오프셋 | 공개 파라미터를 추가하지 않음 |
+
+마스터 재질은 V2 함수 호출 1개를 중심으로 구성했다. 최종 생산 그래프는 함수 `67`노드, 마스터 `5`노드이며 Material Function Call은 정확히 `1`개다.
+
+## RS 로컬 텍스처와 실제 사용처
+
+| RS 텍스처 | UDS 원본 | 현재 사용처 |
+| --- | --- | --- |
+| `T_RS_Snow_Normal` | UDS `Snow_Normal`과 동일 원본 | 미세 눈 노멀, 기존 RS 소유 자산 재사용 |
+| `T_RS_Snow_Scatter` | UDS `Snow_Scatter`와 동일 원본 | 표면 색의 미세 분산, 기존 RS 소유 자산 재사용 |
+| `T_RS_Snow_RoughNormal` | `/Game/UltraDynamicSky/Textures/Weather/Rough_Snow` | 거친 눈 노멀 |
+| `T_RS_Snow_WindsweptNormal` | `/Game/UltraDynamicSky/Textures/Weather/Windswept_Snow_Normal` | 선택적 바람결 노멀 |
+| `T_RS_Snow_SparkleNoise` | `/Game/UltraDynamicSky/Textures/Weather/WhiteNoise512` | 선택적 Sparkle |
+
+새 로컬 복사본은 정확히 위 3개다. `T_RS_Snow_Normal`, `T_RS_Snow_Scatter`는 기존 RS 자산을 재사용한다. UDS `ParticleClouds`는 Atlas를 베이크할 때만 입력으로 사용했으며 별도 런타임 텍스처로 복제하지 않았다. 따라서 사용하지 않는 `CompressionNoise` 자산도 존재하지 않는다.
+
+## V2 재질 파라미터
+
+모든 파라미터 이름과 카테고리는 영어로 유지하고, 툴팁은 기능·권장 범위·성능 영향을 한국어로 기록했다.
+
+### Deformation
+
+| 파라미터 | 기본값 | 의미 | 성능 영향 |
+| --- | ---: | --- | --- |
+| `RS_Snow_FootprintDepthCm` | `11.2` | UDS의 `14 cm` 적설 깊이와 `0.8` 상호작용 깊이를 기준으로 한 시각적 압흔 깊이 | Step 수가 같으면 거의 없음. 너무 크면 경사 시 왜곡 증가 |
+| `RS_Snow_TrackColor` | `(0.62, 0.70, 0.80)` | 눌리고 압설된 눈 색 | 없음 |
+| `RS_Snow_RimTint` | `(0.95, 0.98, 1.00)` | 압흔 가장자리에 밀린 눈 색 | 없음 |
+| `RS_Snow_TrackRoughness` | `0.48` | 압설된 영역의 Roughness | 없음 |
+| `RS_Snow_FootprintNormalStrength` | `2.0` | Ground RT 경사에서 만든 압흔 노멀 세기 | 추가 샘플 수 변화 없음 |
+| `RS_Snow_FootprintAOIntensity` | `0.45` | 깊은 자국의 접촉 AO | 거의 없음, 추가 텍스처 샘플 없음 |
+
+### Surface
+
+| 파라미터 | 기본값 | 의미 | 성능 영향 |
+| --- | ---: | --- | --- |
+| `RS_Snow_TileScaleCm` | `500` | Normal, Rough, Windswept, Scatter의 공용 월드 타일 크기 | 없음 |
+| `RS_Snow_SparkleTileScaleCm` | `36` | Sparkle 노이즈의 월드 타일 크기 | 없음 |
+| `RS_Snow_BaseColor` | `(0.90, 0.90, 0.90)` | 신선한 눈 기본색 | 없음 |
+| `RS_Snow_Roughness` | `0.70` | 신선한 눈 Roughness | 없음 |
+| `RS_Snow_MicroNormalStrength` | `1.0` | 미세 눈 노멀 세기 | 없음 |
+| `RS_Snow_RoughNormalStrength` | `1.40` | `Compaction * Coverage`로 눌린 눈에만 적용되는 거친 노멀 세기 | 없음 |
+| `RS_Snow_WindsweptNormalStrength` | `0.70` | `(Windswept.rg - 0.5)` 바람결 세기 | 강도만 바꾸면 샘플 수 동일 |
+| `RS_Snow_Specular` | `0.35` | 눈 표면 Specular | 없음 |
+| `RS_Snow_SparkleStrength` | `0.16` | 눈 결정 반짝임 밝기 | 샘플 수는 동일하나 큰 값은 TSR 서브픽셀 흔들림 가능 |
+
+### Performance
+
+| 파라미터 | 기본값 | 의미 | 성능 영향 |
+| --- | ---: | --- | --- |
+| `RS_USE_SNOW_POM` | `true` | 압흔 POM 컴파일 여부 | 큼. 끄면 반복 Ground RT 샘플 제거 |
+| `RS_Snow_POMMinSteps` | `8` | 정면 시 최소 POM Step | Pixel Shader 반복 비용에 직접 영향 |
+| `RS_Snow_POMMaxSteps` | `16` | 비스듬한 시야의 최대 POM Step | Pixel Shader 반복 비용에 가장 직접적인 영향 |
+| `RS_Snow_POMFadeStartCm` | `800` | POM 거리 Fade 시작 | 작을수록 먼 픽셀 비용 감소 |
+| `RS_Snow_POMFadeEndCm` | `1500` | POM이 완전히 꺼지는 거리 | 클수록 POM 적용 픽셀 증가 |
+| `RS_USE_SNOW_WINDSWEPT` | `true` | 바람결 노멀 컴파일 여부 | 중간. 끄면 텍스처 샘플 제거 |
+| `RS_USE_SNOW_SPARKLE` | `true` | Sparkle 컴파일 여부 | 중간. 끄면 WhiteNoise 샘플과 연산 제거 |
+
+Texture Object/Texture 파라미터는 `RS_Ground_RT`, `RS_Snow_NormalTexture`, `RS_Snow_ScatterTexture`, `RS_Snow_RoughNormalTexture`, `RS_Snow_WindsweptNormalTexture`, `RS_Snow_SparkleTexture`다. 이는 룩 자산 교체 지점이며 일반 수치 튜닝용 변수는 아니다.
+
+## POM 비용과 동작
+
+기본 POM은 시야각에 따라 `8~16` Step을 사용하고, HLSL 안전 한계는 `4~24` Step으로 고정했다. `800 cm`부터 거리 Fade를 시작하고 `1500 cm`에서 완전히 꺼진다. 지나치게 비스듬한 시야와 RT 경계에서도 별도 Fade/Edge Guard가 적용된다.
+
+POM이 켜진 근거리 픽셀은 Ground RT를 반복 샘플하므로 V2에서 가장 큰 GPU 비용이다. 품질을 낮춰야 할 때의 우선순위는 다음과 같다.
+
+1. `RS_Snow_POMMaxSteps`를 `16`에서 `12` 또는 `8`로 낮춘다.
+2. `RS_Snow_POMFadeEndCm`를 줄인다.
+3. 저사양 프리셋에서는 `RS_USE_SNOW_POM=false`로 컴파일한다.
+
+POM을 꺼도 Ground RT 기반 색, Roughness, 압흔 노멀, PDO, AO는 유지된다. Wind와 Sparkle도 각각 별도 Static Switch로 제거할 수 있다. 세 스위치의 On/Off 조합은 함수와 마스터 양쪽 모두 컴파일 에러 0으로 검증했다.
+
+## Ground 스탬프 Atlas 계약
+
+생산 Atlas는 `/Game/ReactiveSurface/Ground/T_RS_GroundStampAtlas_UDS`, 크기는 `2048 x 1024`다.
+
+| 구역/채널 | 계약 |
+| --- | --- |
+| 왼쪽 `1024 x 1024` | 기존 발바닥 실루엣. Stamp code `0`은 왼발, `1`은 같은 타일을 X 반전한 오른발 |
+| 오른쪽 `1024 x 1024` | 원형 스탬프. Stamp code `2` |
+| `R` | `0.5`를 경계로 하는 encoded SDF. 내부는 `0.5`보다 큼 |
+| `G` | 압설/접촉 압력 패턴 |
+| `B` | 압흔 가장자리 Rim |
+| `A` | Coverage |
+
+기존 RS Atlas의 실루엣과 좌우/원형 타일 계약은 그대로 유지했다. UDS `ParticleClouds`와 `WhiteNoise512`는 경계의 미세 불규칙성과 압설 내부 변화에만 사용했다. UDS 노이즈가 발바닥 윤곽 자체를 다른 모양으로 바꾸지 않게 제한했다.
+
+Ghost/생산 수치:
+
+- 왼쪽 발바닥 Coverage bbox: `451 x 937`, 세로/가로 비 `2.078`
+- 오른쪽 원형 Coverage bbox: `938 x 937`, 세로/가로 비 `0.999`
+- R SDF와 A Coverage의 IoU: 양쪽 모두 `1.0`
+- PNG -> Texture2D -> PNG 왕복: 최대 채널 오차 `0`, 정확 픽셀 비율 `1.0`
+- Texture 설정: `sRGB=false`, `TC_VECTOR_DISPLACEMENTMAP`, Alpha 보존, No Mipmaps, X/Y Clamp
+
+Atlas 기본 바인딩 Ghost 런타임은 컴포넌트에서 `RS_Ground_MaskTexture`를 따로 설정하지 않고 code `0/1/2`를 찍었다. 읽힌 크기는 왼발 `70 x 34`, 오른발 `70 x 34`, 원형 `70 x 70`이며 두 번의 GPU readback이 일치했다.
+
+## Niagara 기본값과 Controller 소스 동기화
+
+Atlas의 단일 원본은 `NS_RS_Ground`의 exposed parameter `RS_Ground_MaskTexture`다.
+
+- Niagara System 기본값: `/Game/ReactiveSurface/Ground/T_RS_GroundStampAtlas_UDS`
+- Controller의 `RS_Ground_Niagara` 컴포넌트: 같은 `NS_RS_Ground` 소스를 재동기화하여 System 기본값을 복사
+- 명시적 컴포넌트 override: 추가하지 않음
+- 기존 명시적 override: `User.RS_Ground_WindowSizeWS` 하나만 그대로 보존
+- Blueprint 공개/내부 Atlas 변수: 추가하지 않음
+- Niagara RenderGrid: `RS_Ground_OutputRecovery` Custom HLSL 추가
+- 최종 복원 개념식: `BaseValue * RS_Ground_DeltaControls[0].Z`
+- Advect Simulation Stage: 기존 비활성 상태 유지
+
+실제 HLSL은 배열 길이가 0이면 retention `1`을 사용하고, Z가 양수일 때만 `saturate(Z)`를 적용한 뒤 `BaseValue * Retention`을 반환한다. 따라서 빈 입력이나 무효 Z가 Ground RT를 지우지 않는다.
+
+따라서 이후 Atlas를 교체할 때 `NS_RS_Ground.RS_Ground_MaskTexture` 한 곳을 바꾸고 컴포넌트 소스를 재동기화하면 된다. System 기본값과 Controller override 두 곳에 서로 다른 값을 관리하는 구조를 만들지 않았다.
+
+Atlas 동기화 단계에서는 Event Graph와 HLSL이 불변이었지만, 최종 상태에서는 Snow 복원을 위해 위 RenderGrid 곱셈과 Controller의 30Hz 계산/커밋 게이트가 추가됐다. `NS_RS_Ground`와 Controller는 모두 컴파일 에러·경고 `0`이며 금지된 UnrealMCP 런타임 의존성도 `0`이다.
+
+### 기존 빈 `SetVariableObject`가 기본 Texture를 지우지 않는 근거
+
+기존 BeginPlay 흐름에는 `User.RS_Ground_MaskTexture`를 대상으로 하는 `Set Niagara Variable (Object)` 노드가 있지만 `InValue` 연결과 Object 기본값이 모두 비어 있다.
+
+Niagara의 실제 exposed parameter 타입은 generic Object가 아니라 `/Script/Engine.Texture`이고, 컴포넌트에 읽힌 값은 `/Script/Engine.Texture2D`다. Niagara parameter store의 키는 이름뿐 아니라 타입도 포함하므로 빈 generic Object setter는 Texture 타입 엔트리와 일치하지 않아 no-op가 된다. 이번 작업에서는 기능 회귀 위험을 피하기 위해 해당 기존 그래프 노드를 삭제하거나 다시 배선하지 않았다.
+
+이를 뒷받침하는 정적/런타임 근거는 다음과 같다.
+
+- Atlas 바인딩 단계의 Event Graph 해시가 변경 전후 동일하다. 이후 복원 단계에서만 별도 변경됐다.
+- Controller 컴포넌트 template readback에서 `User.RS_Ground_MaskTexture`가 새 Texture2D로 정상 복사됐다.
+- `User.RS_Ground_MaskTexture`는 명시적 template override 목록에 들어가지 않았다.
+- 컴포넌트 측 Mask setter를 일부러 호출하지 않은 Ghost 런타임에서 왼발/오른발/원형 스탬프가 모두 출력됐다.
+
+실제 `L_RS_Demo` Controller의 전체 BeginPlay를 포함한 생산 PIE에서도 새 Atlas 유지와 왼발/오른발/원형 입력 경로를 검증했다.
+
+## Ground/Snow 복원 반감기
+
+Controller에 공개 변수 `RS_Ground_RecoveryHalfLifeSeconds`를 추가하고, 내부 상태 2개로 고정 30Hz 복원과 비동기 GPU 결과 표시를 제어한다.
+
+| 항목 | 값 |
+| --- | --- |
+| 기본값 | `8.0 s` |
+| 범위 | `0.0~60.0 s` |
+| 카테고리 | `Reactive Surface|Ground & Snow|Direct Controls` |
+| Instance Editable | `true` |
+| `0`의 의미 | 자동 복원 비활성, 기존 retention `1` 유지 |
+| 내부 누적값 | `RS_Ground_RecoveryStepAccumulatorSeconds` (`float`, 외부 비노출) |
+| 내부 복사 카운터 | `RS_Ground_RecoveryCommitCopiesRemaining` (`int`, 외부 비노출) |
+
+복원 계수는 매 프레임을 그대로 누적하지 않고 30Hz 스텝으로 양자화한다.
+
+```text
+StepSeconds = 1 / 30
+Accumulated = PreviousRemainder + DeltaSeconds
+Remainder = fmod(Accumulated, StepSeconds)
+ConsumedSeconds = Accumulated - Remainder
+
+Retention = HalfLife > 0
+  ? clamp(pow(0.5, ConsumedSeconds / HalfLife), 1e-6, 1)
+  : 1
+```
+
+기본값 `8`에서는 현재 강도가 약 8초마다 절반으로 감소한다. 30Hz 고정 스텝은 RGBA16F RT에 1에 가까운 계수를 고FPS에서 매 프레임 곱할 때 생길 수 있는 반정밀도 누적 오차를 줄인다. `HalfLife=0`이면 retention을 `1`, accumulator를 `0`으로 유지해 자동 복원을 완전히 끈다. 기존 `DeltaControls` X/Y 리센터 계약은 유지하고 Z만 복원 계수로 사용한다.
+
+### 비동기 Scratch RT 커밋 안정화
+
+Niagara/GPU가 Scratch RT를 갱신하는 시점과 Blueprint가 Scratch→Main을 복사하는 시점은 같은 게임 프레임 안에서도 항상 일치하지 않는다. 한 프레임 bool pending 또는 다음 30Hz 펄스까지 기다리는 방식은 고FPS에서 갱신 전 Scratch를 복사하거나, 비펄스 프레임이 Scratch를 다시 덮는 경우가 있어 제거했다.
+
+최종 방식은 다음과 같다.
+
+1. 실제 30Hz 복원 펄스가 발생하면 `RS_Ground_RecoveryCommitCopiesRemaining=2`로 설정한다.
+2. 기존 정상 Scratch→Main 프레젠테이션 경로는 Stamp Hold 또는 counter가 `0`보다 클 때 실행한다.
+3. 실제 복사가 끝날 때만 counter를 1 감소시킨다.
+4. 리센터 최종 copyback에서는 이전 위치의 재시도를 무효화하도록 counter를 `0`으로 초기화한다.
+5. 실험 과정의 `RS_Ground_RecoveryCommitPending` bool과 관련 노드는 최종 자산에서 제거했다.
+
+이렇게 하면 각 30Hz 펄스 뒤 최대 두 렌더 프레임에서만 기존 복사를 재시도하므로 GPU 지연을 흡수하면서도 무제한 커밋을 만들지 않는다. 최종 정규화 토폴로지는 Event Graph `924`노드, `RS_HandleGroundRecenter` `68`노드, Blueprint 변수 `78`개이며 구조 검사는 `15/15`를 통과했다.
+
+### 복원 성능
+
+- 새 RT, Niagara Simulation Stage, GPU Dispatch, 공개 튜닝 변수를 추가하지 않았다.
+- 30FPS에서는 전체 Ground Scratch→Main 복사가 최대 약 `30회/초`다.
+- 60FPS 이상에서는 펄스당 최대 2회이므로 최대 약 `60회/초`다. 120FPS에서도 이 상한은 늘지 않는다.
+- 실제 비용은 Ground RT 해상도와 GPU 메모리 대역폭에 비례한다.
+- `RS_Ground_RecoveryHalfLifeSeconds`의 값 자체는 복사 빈도를 바꾸지 않는다. `0`일 때만 복원 펄스와 추가 복사가 꺼진다.
+
+제한: 기존 Ground 스탬프 신뢰성을 위한 `30-frame replay`는 변경하지 않았다. replay 중에는 같은 접촉이 다시 주입되므로 시각적으로 복원이 늦게 시작되는 것처럼 보일 수 있다. replay가 끝난 뒤의 감쇠는 프레임 독립이다. 이 제한을 제거하려면 별도의 스탬프 신뢰성 설계와 재검증이 필요하므로 이번 범위에서는 유지했다.
+
+## 검증 증거
+
+| 단계 | 결과 | 핵심 검사 | 증거 |
+| --- | --- | --- | --- |
+| Snow V2 Ghost | `PASS` | 13/13, 함수/재질 compile 0, 3개 스위치 On/Off compile 0, 금지 의존성 0 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2/snow_uds_v2_temp.json` |
+| Snow V2 생산 | `PASS` | 16/16, 함수 67노드, 마스터 5노드/Function Call 1개, Physical Material 보존 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2/snow_uds_v2_production.json` |
+| Atlas Ghost | `PASS` | 26/26, RGBA/실루엣/UDS 영향/왕복/readback 검증 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSStampAtlas/snow_uds_stamp_atlas_temp.json` |
+| Atlas 생산 | `PASS` | 21/21, 정확히 Texture2D 1개 생성, 설정/왕복/해시 잠금 검증 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSStampAtlas/snow_uds_stamp_atlas_production.json` |
+| Atlas 기본 바인딩 Ghost | `PASS` | 15/15, override 없이 왼발/오른발/원형 GPU 출력 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSAtlasBinding/snow_uds_atlas_binding_temp.json` |
+| Atlas 기본 바인딩 생산 | `PASS` | 23/23, NS default + Controller source sync | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSAtlasBinding/snow_uds_atlas_binding_production.json` |
+| Level Integration Ghost/생산 | `PASS` | 각각 41/41, Snow 슬롯·MI Parent·Physical Material·맵 해시 계약 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2LevelIntegration/` |
+| Niagara Recovery Ghost/생산 | `PASS` | 9/9, 11/11, HLSL marker·DeltaControls binding·Advect 비활성 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowRecoveryNiagara/` |
+| Fixed 30Hz Ghost/생산 | `PASS` | 6/6, 9/9, accumulator·HalfLife 수식·메인 UDS 맵 보존 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowRecoveryFixed30Hz/` |
+| Bounded Commit Gate Ghost/생산 | `PASS` | 10/10, 9/9, counter 계약·pending 제거·최종 topology | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowRecoveryCommitGate/` |
+| Ghost 런타임 행렬 | `PASS` | 30/60/120FPS HalfLife 8 + 30FPS HalfLife 0, 케이스별 19/19 | `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowRecoveryNiagara/snow_recovery_ghost_runtime_*.json` |
+| 생산 PIE 행렬 | `PASS` | 4개 케이스 각각 33/33, 맵 전환/저장/dirty 생성 없음 | 아래 명시한 최종 4개 JSON |
+| Ground 다중 스탬프 리센터 | `PASS` | 8/8 위치 유지, 이전 픽셀 0, sum ratio 0.885778 | `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-ground-recenter-multistamp-diagnosis-2026-07-12.json` |
+
+### 생산 PIE 복원 행렬
+
+허용 오차는 `0.20`이며, HalfLife 8의 기대값은 4초 `0.707107`, 8초 `0.5`다.
+
+| 요청 FPS | HalfLife | 4초 실제/기대 | 8초 실제/기대 | 결과 |
+| ---: | ---: | ---: | ---: | --- |
+| 30 | 8 | `0.664725 / 0.707107` | `0.443140 / 0.500000` | `PASS` |
+| 60 | 8 | `0.649198 / 0.707107` | `0.427122 / 0.500000` | `PASS` |
+| 120 | 8 | `0.653408 / 0.707107` | `0.431073 / 0.500000` | `PASS` |
+| 30 | 0 | `1.000000 / 1.000000` | `1.000000 / 1.000000` | `PASS` |
+
+HalfLife 8 케이스는 모두 단조 감소했고, HalfLife 0은 정확히 유지됐다. counter 표본은 30FPS에서 `{2}`, 60/120FPS에서 `{0,1,2}`, HalfLife 0에서 `{0}` 범위만 관측됐다. 제거한 `RS_Ground_RecoveryCommitPending`은 모든 생산 표본에서 존재하지 않았다.
+
+최종 생산 PASS 근거는 다음 4개 파일로 한정한다.
+
+- `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/snow_uds_v2_runtime_qa_fps30_hl8.json`
+- `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/snow_uds_v2_runtime_qa_fps60_hl8.json`
+- `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/snow_uds_v2_runtime_qa_fps120_hl8.json`
+- `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/snow_uds_v2_runtime_qa_fps30_hl0.json`
+
+같은 폴더의 접미사 없는 JSON, `fps30_hldefault`, `*_ghost_NS_RS_Ground_RecoveryGhost` 파일은 최종 counter 방식 적용 전의 실패 원인을 보존한 과거 진단 자료이며 최종 PASS 근거가 아니다.
+
+Ghost 행렬도 별도로 통과했다. 실효 FPS는 24.232/46.579/109.939였고, 8초 실제 비율은 각각 0.439184/0.434706/0.425502였다. 이는 생산 PIE 결과의 대체 증거가 아니라 임시 자산 단계의 독립 안전 게이트다.
+
+기술 캡처:
+
+- Atlas 생성 미리보기: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSStampAtlas/ground_stamp_atlas_uds_ghost.png`
+- 생산 Atlas 왕복 이미지: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSStampAtlas/ground_stamp_atlas_uds_production_roundtrip.png`
+- Atlas code `0/1/2` 런타임 출력: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSAtlasBinding/snow_uds_atlas_binding_runtime.png`
+- 생산 V2 표면 근접 캡처: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/snow_v2_runtime_detail_fps30_hl8.png`
+- 생산 V2 120FPS 전경 캡처: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/snow_v2_runtime_overview_fps120_hl8.png`
+- 생산 Ground RT 착지/8초 복원: `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/ground_rt_landed_fps30_hl8.png`, `MCPGameProject/Saved/MCP/ReactiveSurfaceSnowUDSV2RuntimeQA/ground_rt_recovered_8s_fps30_hl8.png`
+
+## 완료 범위와 남은 수동 비교
+
+- [x] `L_RS_Demo` Snow 슬롯을 `MI_RS_Snow_UDSLook_V2`로 교체
+- [x] 수정 중이던 메인 UDS DemoMap 전환·저장·폐기 없이 보존
+- [x] Atlas 기본값과 실제 BeginPlay 이후 Texture 유지 검증
+- [x] 30/60/120 FPS 복원과 HalfLife 0 검증
+- [x] 리센터 다중 스탬프 월드 위치 회귀 검증
+- [x] Water/Grass 및 UDS 원본 비수정 확인
+- [x] 임시 Ghost 자산 제거와 isolated editor clean 종료
+- [ ] 필요할 경우 V1/V2를 동일 카메라·동일 조명으로 캡처해 미술 판단용 A/B를 추가
+
+## 최종 판단
+
+UDS 눈의 재질 인상은 RS 로컬 자산과 하나의 V2 Material Function으로 가져왔고, 발자국·원형 스탬프·리센터는 기존 ReactiveSurface Ground RT 계약을 유지했다. 시간 복원은 30Hz 고정 스텝과 최대 2회의 제한된 presentation retry로 30/60/120FPS에서 일관되게 동작한다. 현재 기능 완료를 막는 필수 TODO는 없으며, 동일 카메라 V1/V2 A/B만 선택적인 미술 검수로 남는다.

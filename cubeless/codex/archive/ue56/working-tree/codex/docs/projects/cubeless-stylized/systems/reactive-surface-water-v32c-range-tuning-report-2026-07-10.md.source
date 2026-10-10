@@ -1,0 +1,18 @@
+# Reactive Surface Water V32-C Range Tuning Report - 2026-07-10
+
+- Verdict: `PASS`
+- Selected damping: `0.982`
+- Fixed defaults: `{'RS_Water_ImpulseRadiusPixels': 2.0, 'RS_Water_DefaultStrength': 0.28, 'RS_Water_NormalStrength': 8.0, 'RS_Water_NormalDeadZone': 0.0015, 'RS_Water_NormalFadeEnd': 0.006}`
+
+## Matrix
+- damping `0.97`: pass=`True` max_radius_uu=`145.01953125` energy_ratio_160_to_50=`0.0` max_thickness_px=`12.404990992991157`
+- damping `0.976`: pass=`True` max_radius_uu=`181.640625` energy_ratio_160_to_50=`0.0` max_thickness_px=`12.414085561167836`
+- damping `0.982`: pass=`True` max_radius_uu=`197.75390625` energy_ratio_160_to_50=`0.0` max_thickness_px=`12.856182625311991`
+
+## Final
+- audit pass: `True`
+- dirty packages: `0`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v32c-range-tuning-results-2026-07-10.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV32CRangeTuning\water_v32c_range_tuning_bridge_results.json`

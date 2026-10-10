@@ -1,0 +1,58 @@
+# 레벨 카드: `PerformanceTest_Primitives`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_Primitives` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_Primitives` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `32` |
+| Direct external | `8` |
+
+## 정적 의미
+
+- **Observed:** 144 static meshes, 72 moving-ball actors, 9 generic actors with instanced meshes가 단일 2048² host 주위에 배치된다.
+- **Inferred:** 다수 primitive/transform input의 CPU·GPU ingestion과 field accumulation stress case다.
+- **Unknown:** 실제 reader inclusion, motion path, frame/GPU/memory scaling.
+- **Target fixture:** `TF_Perf_Primitives` 제안.
+
+## Actor / Component
+
+- manifest=`238 actors / 326 components / 24 pages`.
+- actor histogram: `StaticMeshActor=144; MovingBall1_C=72; Actor=9; PostProcessVolume=3; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; NinjaLive_C=1; PawnAndCameraUtility_C=1; PerformanceTest_Primitives_C=1; SkyAtmosphere=1; SkyLight=1; TextRenderActor=1; ThirdPersonCharacter_C=1`.
+- component histogram: `StaticMeshComponent=216; SceneComponent=73; InstancedStaticMeshComponent=9; BillboardComponent=4; BrushComponent=4; ArrowComponent=3; BoxComponent=2; MaterialBillboardComponent=2; CameraComponent=1; CameraProxyMeshComponent=1; CapsuleComponent=1; CharacterMovementComponent=1; DirectionalLightComponent=1; DrawFrustumComponent=1; ExponentialHeightFogComponent=1; NinjaLiveComponent_C=1; SkeletalMeshComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1; SpringArmComponent=1; TextRenderComponent=1`.
+- standalone Niagara/sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`17 nodes / 15 links / 5 variables / 0 errors`; light-relative warm/cold post-process blend만 관찰된다.
+- 72 moving actors의 transform update와 144 static/9 ISM의 실제 input 역할은 runtime `pending`.
+
+## Niagara
+
+- host=`2048²`, extent=`100/100/0.5`, reader=`FFFTT`, PVD=`FTT`, volume/SimplePainter off, selected secondary=`MI_Water_OPAQUE_Minimal1`, core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`; standalone Niagara 0.
+
+## Material / Art
+
+- material refs=`8`, art refs=`10`; primitive mesh set은 dependency-safe art localization 후보이다.
+- input collection/solver/material logic은 독립 구현한다.
+
+## Clean-room 구현 순서
+
+1. 144 static, 72 moving, 9 ISM fixture를 count-stable generator로 새로 배치한다.
+2. transform/point record 수집을 독립 구현하고 단일 host에 연결한다.
+3. post-process는 측정에 영향을 주지 않도록 별도 on/off 기준을 둔다.
+4. actor/component count, update cost, RT result, runtime/performance parity를 검수한다.
+
+## Evidence / Parity / Exception
+
+- revision=`3e61dfafcf12eab6aa81706084065efc`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- 구현·성능·parity는 `pending`; primitive art만 조건부 localization 후보다.

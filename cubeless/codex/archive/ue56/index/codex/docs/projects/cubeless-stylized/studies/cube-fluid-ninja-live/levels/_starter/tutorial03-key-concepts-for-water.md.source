@@ -1,0 +1,106 @@
+# 레벨 카드: `Tutorial03_KeyConceptsForWater`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/_Starter/Tutorial03_KeyConceptsForWater` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial03_KeyConceptsForWater` |
+| 문서 계층 | `_starter` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `111` |
+| Direct external | `14` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+dense/sparse water, height source, surface alignment, sim-area extension,
+wave generator, spline/landscape 결합을 단계적으로 비교하는 water-concept
+gallery다.
+
+- **Observed:** manifest의 host/input/output actor, tutorial text와 85-node
+  level Blueprint graph.
+- **Inferred:** 물 표현을 solver, height/collision input, external surface,
+  material의 네 책임으로 분해하는 학습 레벨.
+- **Unknown:** floodgate runtime, 수면 반응, material별 화면 parity.
+- **Target fixture:** `TF_T03_WaterConcepts` — height-source,
+  external-surface, wave/spline, trigger-motion case를 분리한다.
+
+## Actor
+
+native manifest는 455 actor, 894 component를 46 page로 완전 캡처했다.
+
+`TextRenderActor=225; StaticMeshActor=162; NiagaraActor=18; NinjaLive_C=14; ThirdPersonCharacter_C=9; Landscape=5; TriggerBox=5; DriveExternalSystemsWithSimData_C=3; PostProcessVolume=3; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; MovingBall1_C=1; PawnAndCameraUtility_C=1; RuntimeVirtualTextureVolume=1; SceneCaptureCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; SplineGenerator_C=1; Tutorial03_KeyConceptsForWater_C=1`
+
+- solver host는 14개다. resolution 2048²×8, 256²×5, 368²×1이며
+  `SimplePainterMode`는 전부 false, HVOL은 1개다.
+- extents는 5,5,0.5×4, 60,60,2×3, 5,5,1×2와
+  120,120,1 / 50,50,0.5 / 50,50,2 / 50,60,2 / 60,60,1이다.
+- 관련 input/output actor는 Landscape×5, TriggerBox×5,
+  `DriveExternalSystemsWithSimData`×3, SplineGenerator,
+  RVTVolume, SceneCaptureCameraUtility와 MovingBall1이다.
+
+## Runtime
+
+- Level BP는 EventGraph 1개, 85 nodes, 20 variables다. 다섯
+  TriggerBox custom-event/timeline 묶음이 cube/SDF trigger의 위치를
+  get/break/add/make/set ActorLocation 순서로 바꾸는 정적 wiring을 갖는다.
+- 이 graph는 floodgate 책임의 **Observed static evidence**일 뿐 timeline
+  duration, trigger 조건, 수면 결과는 `pending`이다.
+
+## Niagara
+
+- 14/14 host의 core/system은 `NinjaLiveCore`, preset은 모두
+  `None`, non-empty `InstanceParameterOverrides`는 14/14다.
+- output P/V/D는 T/T/T×7, F/T/T×7이다.
+- input 조합은 height+MDF×5, height×4, default×2, MDF×1,
+  height+MDF+RVT×1, height+spline+MDF×1이다.
+- standalone Niagara 18개는 linear Data Channel writer×16과
+  `SurfaceAlignedMeshes`×2다. 두 surface actor의 template mesh는
+  `SM_plane_500x500_MultiLOD`다.
+
+## Material
+
+- output candidate에는 `MI_Water_DENSE_Creek_*`,
+  `MI_Water_DENSE_Protoversion`, pool caustics,
+  surface-aligned density, inverse-density clear/foam,
+  `MI_WetTest_CheckerLight`가 있다.
+- level BP source-material defaults도 dense creek foam/clear 계열을
+  가리킨다. candidate/graph default는 **Observed**, runtime 선택과
+  MID parameter 및 최종 수면은 **Unknown**이다.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- `reference/levels/_Starter__Tutorial03_KeyConceptsForWater.json`:
+  capture complete, 46 pages, 455 actors, 894 components, truncation 0,
+  source dirty false.
+- revision `985ba8934e6189146365bb80b26494ff`, query
+  `4ba42f7ae0ee0e7cebbc8cd2313a31cd`.
+- `reference/level_blueprints/Levels___Starter__Tutorial03_KeyConceptsForWater/**`:
+  85 nodes, 20 variables, capture error/truncation 0.
+- `concepts/starter-core-level-observation.md`,
+  `concepts/blueprint-responsibility-map.md`,
+  `concepts/core-solver-observation.md`.
+- `pending`: trigger/runtime replay, target implementation, material/visual parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

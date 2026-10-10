@@ -1,0 +1,65 @@
+# ControlRig Stable Authoring Phase 4 Contract
+
+Date: 2026-06-30
+
+`Python/scripts/analysis/controlrig_stable_authoring_phase4_contract.py` is a
+filesystem-only guard for the first stable ControlRig fixture boundary.
+
+## Command
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase4_contract.py
+```
+
+Optional JSON output:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase4_contract.py --json
+```
+
+## Checks
+
+- The Piper stable fixture recipe remains
+  `Docs/Research/fixtures/controlrig_piper_stable_prototype_recipe.json`.
+- The target remains under `/Game/_MCP_Temp`:
+  `/Game/_MCP_Temp/ControlRigStable/CR_Piper_StablePrototype`.
+- The fixture keeps `verification.compile=true`, `verification.save=false`,
+  `verification.inspect_topology=true`, and `verification.dependency_audit=true`.
+- The base fixture keeps `animbp_binding.enabled=false`; binding proof remains a
+  later sample/temp workflow.
+- Required Piper controls and weight/gate curves remain present.
+- RigVM scope remains controls-only with the single allowlisted
+  `FRigUnit_BeginExecution` event unit and no variables, template nodes,
+  function references, pin defaults, links, exposed pins, or pose-changing
+  solver units.
+- The stable fixture smoke still runs validate, dry-run, and build reports with
+  no save request by default.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` does not contain a static
+  dependency string for `UnrealMCPControlRigToolsEditor` or
+  `UnrealMCPControlRigToolsEditor`.
+
+## Explicitly Excluded
+
+- Unreal Editor launch.
+- Live MCP bridge calls.
+- UnrealBuildTool C++ build.
+- Actual ControlRig build, compile, save, solve, cleanup, or asset mutation.
+- Original asset mutation.
+- `asset_mutation` is skipped by this filesystem-only contract.
+
+## Current Verification
+
+2026-06-30:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase4_contract.py --json
+```
+
+Result: passed with `issue_count=0`; `unreal_editor`, `cpp_build`, and
+`asset_mutation` were skipped.
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase4_contract.py
+```
+
+Result: passed, 8 tests.

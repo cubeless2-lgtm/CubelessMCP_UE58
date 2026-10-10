@@ -1,0 +1,23 @@
+# Reactive Surface Water V36 Conservative Range Report
+
+- Date: 2026-07-11
+- Verdict: **PASS**
+- Window: `40 m x 40 m`, RT remains `1024 x 1024`.
+- Selected damping: `0.965`
+- Default strength: `0.18`
+- Normal dead zone/fade end: `0.0025` / `0.008`
+
+## Candidate Matrix
+
+- damping `0.955`: pass=`True`, radius=`214.84375` cm, energy160/50=`0.0`, thickness=`7.064425861111226` px
+- damping `0.965`: pass=`True`, radius=`246.09375` cm, energy160/50=`0.0`, thickness=`7.326024457399244` px
+- damping `0.972`: pass=`True`, radius=`259.765625` cm, energy160/50=`0.0`, thickness=`7.73445514488375` px
+
+## Runtime
+
+- Base runtime status: `PASS`
+- Stable R/G nonzero: `14957` / `14711`
+- Active fraction: `0.014264106750488281`
+- Airborne contact gate remains enabled.
+
+Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v36-conservative-range-results-2026-07-11.json`

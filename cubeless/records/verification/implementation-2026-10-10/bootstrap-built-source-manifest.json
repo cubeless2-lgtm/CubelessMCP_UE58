@@ -1,0 +1,137 @@
+{
+  "build": "build-plugin-B.log",
+  "files": [
+    {
+      "path": "CubelessMCP_UE58.uplugin",
+      "sha256": "38a0af4e71b2d1eb7cb2dab79b32f7f6f9154175d4a61199d9ad352fc5c2b93a"
+    },
+    {
+      "path": "Config/FilterPlugin.ini",
+      "sha256": "b7776c3df4f21643b440b96bdfcfb22e111f353a1d99bc5e0d8ac95133bfa8c1"
+    },
+    {
+      "path": "Binaries/Win64/UnrealEditor-CubelessMCPUE58Editor.dll",
+      "sha256": "af0f0c8cb35f46dce0acf840ee481cfd721421f463ea58eb8c8ef214673d3b48"
+    },
+    {
+      "path": "Binaries/Win64/UnrealEditor-CubelessMCPUE58Editor.pdb",
+      "sha256": "7b0b7829a480bd5ac315d75c65d82a914fd6b67d7ca30aa40dda37b17a9537cd"
+    },
+    {
+      "path": "Binaries/Win64/UnrealEditor.modules",
+      "sha256": "6c28a52d22a490f8414e6e55d28f18248ab35284eea5d311d185fd0659ce038f"
+    },
+    {
+      "path": "Content/Python/init_unreal.py",
+      "sha256": "9dceea0c7afa3ac8c06b8104b7bf6e968d0d71beb5198a7b159813a34607f752"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/__init__.py",
+      "sha256": "279a8c7118d8a7f2e73d71e7f7fd1d46356d98d90ccc490977717a224caf49d3"
+    },
+    {
+      "path": "Content/Python/tests/test_operation_journal.py",
+      "sha256": "db03c936c3c70234c17410660c22fe479ebf5170516e562a826157c7bd3b85f1"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/compatibility/__init__.py",
+      "sha256": "d075c4ebe059fd6e4ce28df5c3718a035ce4545496d32ca68f5b92e5bb9aa021"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/operations/blueprint.py",
+      "sha256": "2ea5b0e03f0ae0d24d495cc76df6e8b720210c69235a11c65defcab364a032c6"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/operations/graph.py",
+      "sha256": "5ecb5197062d8c963e40b31b5fe6ed704852a0f84b15bd8790b47e7cdd7e5403"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/operations/state.py",
+      "sha256": "e7c731d5444ae2fe43ca1f6a18d9d04b1d0f779224447307100e61558a5e9795"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/operations/__init__.py",
+      "sha256": "c02abd0fdca7d6f75f1d78196d9fd2573e1b0277d10c4064ee9562d7c5ec645b"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/pipelines/__init__.py",
+      "sha256": "2d97fd2f0f9ed42b6f09376cb68f32b882ab1373ba20c15f8100f8e427d49b54"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/registration/graph_toolset.py",
+      "sha256": "4c9a8100b51336506b5c54fc2cf86849e237230d190f53f9dfffa11f6faf8389"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/registration/results.py",
+      "sha256": "b354baae85db86cf8823dafd91c2711ec1e5cea93ba0c7cf673a4bab4fcb2edf"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/registration/toolsets.py",
+      "sha256": "a4b7132d0374819f04087739eda5edc5f874a66c659fadb3f4eda7259f7b1a31"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/registration/__init__.py",
+      "sha256": "f37c3f5bc60cd991fb75aa440a0b74aaba014c435a86343a1654102453fbe9bc"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/validators/dependencies.py",
+      "sha256": "592749662cbd1c0dc57f780e862b4213fec87627f750b890de21eee14081c19c"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/validators/__init__.py",
+      "sha256": "d65dbfb765fdc6054ef547868b931a0f86e4dedaa7abf887c854f569c79b4d6b"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/blueprint.py",
+      "sha256": "e194bf09aa2a46155a7d9e67459fc1749d801c981b33744f1294f93ecbac0e80"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/graph.py",
+      "sha256": "6d29c1269119915861fc24c8f4d4589f73ee34d7c6840be7cedadc48e21fbbf5"
+    },
+    {
+      "path": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__init__.py",
+      "sha256": "33d33333bcf4f482b5f65ba519ef331c6d1e17dd8a0d4d1748e141d945bb443d"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/CubelessMCPUE58Editor.Build.cs",
+      "sha256": "85e6a120f99d5237d5181d3d20707b5f55f6cd0cf364b50248a50656a0f4542f"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/CubelessMCPUE58EditorModule.cpp",
+      "sha256": "03ac6eff3f5872b552e8eb621c9118b36e530de7557c23f6a6d53681aa680717"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Operations/CubelessInspectionOperations.cpp",
+      "sha256": "33828c116b6faffb7cae377d2345bced7f5102d094dec86d669d1933eb982000"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Operations/CubelessInspectionOperations.h",
+      "sha256": "0cea4a5ea09f83fc0b7e6337cb3db17d17aa7d59181985de0d0d02d4d0d69af4"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Registration/CubelessNativeToolset.cpp",
+      "sha256": "005164c226d4c197a51cc1a95770b0670c18d8e86334904068f2af2fb058afe5"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Registration/CubelessNativeToolset.h",
+      "sha256": "4f3e678486785019478a8e01e5e862c574c3794eb2f1f64f46e8af6d22ee15e4"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessCompilerDiagnostics.cpp",
+      "sha256": "8a6ff2db076c00c607e6ccfb6be20e14ba73fb7e535a2be4b22035ac6abc9937"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessCompilerDiagnostics.h",
+      "sha256": "2fef766dd6f4b716e048208e5bd48a9f92b8211d9892ffb7485bb9b2e12d30f4"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessEditorApi.cpp",
+      "sha256": "983a064479abb8f5e2d1baf656931917a26bf4b513ef4df1647b6222ef89c880"
+    },
+    {
+      "path": "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessEditorApi.h",
+      "sha256": "f7cbd59432a6bb2bab6b7f8877bdb04a05b7429c20030601e3b72edfc0742388"
+    }
+  ]
+}

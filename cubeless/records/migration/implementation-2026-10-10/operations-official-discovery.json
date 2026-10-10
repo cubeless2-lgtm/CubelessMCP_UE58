@@ -1,0 +1,114 @@
+{
+  "schema": "cubeless_official_mcp_discovery_v1",
+  "endpoint": "http://localhost:8000/mcp",
+  "mutation": false,
+  "initialize": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "resources": {},
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "serverInfo": {
+      "name": "",
+      "title": "",
+      "version": ""
+    }
+  },
+  "tools": {
+    "tools": [
+      {
+        "name": "list_toolsets",
+        "description": "List all available toolsets with names and descriptions.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "describe_toolset",
+        "description": "Get detailed information about a toolset including all tool names, descriptions, and input schemas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "toolset_name": {
+              "type": "string",
+              "description": "Name of the toolset to describe. Use list_toolsets to see available names."
+            }
+          },
+          "required": [
+            "toolset_name"
+          ]
+        }
+      },
+      {
+        "name": "call_tool",
+        "description": "Call a tool by name. Provide toolset_name to call a toolset tool, or omit it to call a top-level MCP tool. Use list_toolsets and describe_toolset to discover available tools and their input schemas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "toolset_name": {
+              "type": "string",
+              "description": "Optional. Name of the toolset containing the tool. Omit to call a top-level MCP tool. Use list_toolsets to discover toolset names."
+            },
+            "tool_name": {
+              "type": "string",
+              "description": "Name of the tool to call, without toolset prefix. Use describe_toolset to discover tool names and input schemas."
+            },
+            "arguments": {
+              "type": "object",
+              "description": "Arguments to pass to the tool. Must match the tool's input schema. Defaults to an empty object."
+            }
+          },
+          "required": [
+            "tool_name"
+          ]
+        }
+      }
+    ]
+  },
+  "toolsets": {
+    "content": [
+      {
+        "type": "text",
+        "text": "- ToolsetRegistry.AgentSkillToolset: 스킬의 나열, 읽기, 생성/업데이트에 사용되는 툴을 제공합니다.\n- AutomationTestToolset.AutomationTestToolset: 자동화 테스트 검색 및 실행 툴세트입니다.\n\n세션 프론트엔드가 사용하는 것과 동일한 백엔드인 IAutomationControllerManager API를\n래핑하며, MCP 클라이언트가 사용 가능한 테스트를 나열하고 실행하여 결과를\n얻을 수 있도록 합니다.\n\n일반적인 워크플로:\n  1. 세션별로 한 번 DiscoverTests()를 호출하여 워커를 초기화하고 테스트 목록을 로드합니다.\n  2. ListTests()로 이름 또는 태그별 테스트를 찾습니다.\n  3. 원하는 테스트 이름으로 RunTests()를 실행합니다.\n  4. GetTestStatus()/GetTestResults()로 결과를 모니터링하고 얻습니다.\n  5. 필요한 경우 StopTests()로 중단합니다.\n- ConfigSettingsToolset.ConfigSettingsToolset: 환경설정 세팅 섹션을 나열, 검사 및 편집하는 데 사용되는 툴입니다.\n- DataflowAgent.DataflowAgentToolset: 데이터플로 에이전트 툴세트로, 데이터플로 그래프 편집 오퍼레이션을 AI 에이전트 툴로 노출합니다.\n- DataRegistryToolset.DataRegistryTools: 데이터 레지스트리를 쿼리하고 검사하는 데 사용되는 툴을 제공합니다.\n- GameFeaturesToolset.GameFeaturesToolset: 게임 피처 플러그인을 나열, 활성화 및 비활성화하는 데 사용되는 툴을 제공합니다.\n- EditorToolset.EditorAppToolset: 언리얼 에디터 스테이트를 쿼리하고 수정하는 데 사용되는 툴입니다. 콘솔 변수,\n에셋 이미징, 액터 및 에셋 선택, 뷰포트 카메라, 콘텐츠 브라우저 탐색, 에디터에서 플레이 세션 제어\n등을 지원합니다.\n- EditorToolset.LogsToolset: 언리얼 엔진 출력 로그를 읽고 로그 카테고리의 상세도를\n제어하는 툴을 제공합니다.\n- GASToolsets.GameplayCueToolset: 게임플레이 큐와 해당 노티파이 에셋을 검사, 실행 및 관리하는 데 사용되는 툴을 제공합니다.\n- GASToolsets.AttributeSetToolset: AttributeSet 클래스와 해당 게임플레이 어트리뷰트를 검색하는 데 사용되는 툴을 제공합니다.\n- GASToolsets.AbilitySystemInspectorToolset: AbilitySystemComponent의 런타임 스테이트를 검사하는 데 사용되는 툴을 제공합니다.\n각 함수는 직접 액터 포인터를 취하며, 액터가 null이거나 AbilitySystemComponent가\n없는 경우 스크립트 오류가 발생합니다.\n- GameplayTagsToolset.GameplayTagsToolset: 프로젝트의 GameplayTagsManager에서 게임플레이 태그를 읽고 관리하는 데 사용되는 툴을 제공합니다.\n- NiagaraToolsets.NiagaraToolset_Info: 일반적인 나이아가라 정보 및 가이드를 위한 나이아가라 툴세트입니다.\n\n제공:\n- 열거형 값 조회\n- 일반적인 사용 정보\n\n나이아가라 타입에 대한 컨텍스트가 필요한 경우 이 함수를 호출하세요.\n- NiagaraToolsets.NiagaraToolset_Component: 나이아가라 컴포넌트 오퍼레이션을 위한 나이아가라 툴세트입니다.\n\n다음으로 작업할 경우 이 툴세트를 사용하세요.\n- 액터의 나이아가라 컴포넌트\n- 런타임 나이아가라 시스템 조작\n- 컴포넌트 인스턴스에서 사용자 변수 오버라이드\n- 레벨 또는 블루프린트 내 FX 관련 오퍼레이션\n\n이는 런타임 나이아가라 오퍼레이션을 위한 주요 툴세트입니다.\n- NiagaraToolsets.NiagaraToolset_Blueprint: 나이아가라 및 블루프린트 통합을 위한 나이아가라 툴세트입니다.\n\n나이아가라 시스템을 감싸는 블루프린트 래퍼를 생성하는 데 사용할 수 있는 유틸리티를 제공하며,\n나이아가라 이펙트를 재사용 가능한 블루프린트 액터로 노출하기 쉽게 만들어줍니다.\n\n나이아가라 시스템에서 블루프린트 기반 FX 액터를 생성해야 하는 경우 이 툴세트를 사용하세요.\n- NiagaraToolsets.NiagaraToolset_System: 나이아가라 시스템 오퍼레이션을 위한 나이아가라 툴세트입니다.\n\n다음을 포함하여 나이아가라 시스템 편집에 대한 포괄적인 액세스를 제공합니다.\n- 시스템, 이미터, 모듈 생성과 수정\n- 구조 이해를 위한 스키마 검색\n- 현재 환경설정을 보기 위한 토폴로지 및 요약 검사\n- 프로퍼티 읽기 및 쓰기를 위한 데이터 액세스\n- GetSystemDependencies를 통한 종속성 롤업\n- GetDynamicInputChain을 통한 다이내믹 입력 체인 탐색\n\n이는 에디터에서 나이아가라 시스템으로 작업하기 위한 주요 툴세트입니다.\n- NiagaraToolsets.NiagaraToolset_Assets: 나이아가라 스크립트 에셋을 검색하는 데 사용되는 나이아가라 툴세트입니다.\n\n제공:\n- GetAssetDiscoveryInfo: 프로젝트에 환경설정된 에셋 검색 그룹\n- FindNiagaraScripts: 사용 용도, 비저빌리티, 이름, 모듈 사용 비트마스크로 필터링된 에셋 레지스트리 검색\n- GetNiagaraScriptDigest: 단일 스크립트에 대한 디코딩된 에셋 레지스트리 태그\n\n모든 함수는 LoadObject 없이 에셋 레지스트리에서 데이터를 읽습니다. 검색된 모듈을 스택에 드롭하려면\nNiagaraToolset_System.AddModule과 쌍으로 연결하세요.\n\n참고: FAssetData의 JSON 시리얼라이제이션에는 TagsAndValues 맵이 포함되지 않으므로\n(UPROPERTY가 아님), FindNiagaraScripts의 결과 행에서 디코딩된 메타데이터를\n원하는 호출자는 GetNiagaraScriptDigest를 거치는 라운드트립을 수행해야 합니다.\n- PCGToolset.PCGToolset: PCG 그래프를 빌드 및 수정하는 데 사용되는 툴세트입니다.\n- PCGToolset.PCGSpatialToolset: PCGSpatial Toolset\n- PhysicsToolsets.PhysicsAssetToolset: 피직스 에셋을 생성하고 관리하는 데 사용되는 툴을 제공합니다.\n- PluginToolset.PluginToolset: 언리얼 플러그인을 생성, 편집, 활성화 및 쿼리하는 데 사용되는 툴입니다.\n- SemanticSearchToolset.SemanticSearchToolset: SemanticSearch 플러그인의 하이브리드 벡터 + BM25 에셋 검색 기능을 AI 툴세트 레지스트리에\n노출하는 툴세트입니다.\n- SlateInspectorToolset.SlateInspectorToolset: 플레이라이트 스타일의 슬레이트 UI 자동화 툴세트입니다.\n\n언리얼 에디터 UI를 프로그래밍 방식으로 제어하는 데 사용되는\n스냅샷, 스크린샷, 인터랙션 툴을 노출합니다.  ModelContextProtocol 플러그인이\n이를 자동으로 탐지할 수 있도록 UToolsetRegistry를 통해 등록됩니다.\n\n얕은 루트 관찰자(뎁스 0)가 최상위 창을 지속적으로\n트래킹합니다.  특정 창 또는 패널로 작업하기 전에 Observe()를 호출하여\n깊은 위젯 커버리지를 확보하고, 작업이 끝나면 Unobserve()를\n호출하세요.  관찰자는 약 100ms마다 서브트리를 순회하여 새로 나타난 위젯에 레퍼런스를 할당하고\n레퍼런스 캐시를 최신 상태로 유지합니다.\n\n입력 시뮬레이션은 AutomationDriver 대신 직접 슬레이트 이벤트 API(ProcessKeyCharEvent,\nProcessMouseButtonDownEvent 등)를 사용합니다. AutomationDriver의\n동기식 API는 게임 스레드(MCP 툴 호출이 실행되는 위치)에서 호출될 때\n데드록을 유발하기 때문입니다.\n- WorldConditionsToolset.WorldConditionTools: 월드 조건(FWorldConditionQueryDefinition, FWorldConditionBase) 구조체를 검사합니다.\n- UMGToolSet.UMGToolSet: AI 기반 위젯 생성 및 트리 조작을 위한 UMG 위젯 툴세트입니다.\n\n중요 워크플로 - 이 툴세트에서 반환하는 모든 위젯 및 슬롯은 다음 절차를 따라야 합니다.\n  1. 정확한 프로퍼티 이름을 검색하기 위해 ObjectTools.list_properties(widget)를 호출합니다.\n  2. 확인된 정확한 이름을 사용하여 ObjectTools.get_properties(widget, [...])를 호출합니다.\n  3. 방금 확인한 정확한 이름으로 ObjectTools.set_properties(widget, {...})를 호출합니다.\n프로퍼티 이름은 위젯 클래스마다 고유하므로 유추할 수 없습니다. 반드시 list_properties를 확인해야 합니다.\n단계 1을 건너뛰면 set_properties가 경고 없이 실패하거나 잘못된 프로퍼티를 설정하게 됩니다.\n\nUObject 포인터를 반환합니다. ToolsetRegistry가 이를 자동으로 {\"refPath\": \"...\"} 포맷으로 시리얼라이즈합니다.\n반환된 Widget, Slot 및 Parent 포인터는 ObjectTools에 직접 전달하거나 해당 툴세트로 다시 반환할 수 있습니다.\n- state_tree_toolset.toolsets.state_tree.StateTreeTools: Inspect StateTree (ST) assets.\n- editor_toolset.toolsets.actor.ActorTools: Provides tools for inspecting and modifying actors, including\n    their transforms, labels, parent-child relationships, and components.\n- editor_toolset.toolsets.asset.AssetTools: Provides tools for interacting with assets in the Unreal project and files on disk.\n- editor_toolset.toolsets.blueprint.BlueprintTools: Provides tools for working with Blueprints.\n- editor_toolset.toolsets.curve_table.CurveTableTools: Provides tools for creating and editing CurveTable assets.\n- editor_toolset.toolsets.data_asset.DataAssetTools: Provides tools for working with Data Assets.\n- editor_toolset.toolsets.data_table.DataTableTools: Provides tools for creating and editing DataTable assets.\n- editor_toolset.toolsets.material.MaterialTools: Provides tools for creating and editing Material and MaterialFunction assets.\n- editor_toolset.toolsets.material_instance.MaterialInstanceTools: Provides tools for creating and modifying MaterialInstanceConstant assets.\n- editor_toolset.toolsets.object.ObjectTools: Provides tools for inspecting and modifying the properties of\n    Unreal Objects and Unreal Classes, including those in Blueprints.\n    Also use this toolset to discover available classes and subclasses.\n- editor_toolset.toolsets.primitive.PrimitiveTools: Provides tools for adding primitive geometry components to actors.\n- editor_toolset.toolsets.scene.SceneTools: Provides tools for working with the currently loaded level, including\n    loading levels, placing and removing actors, controlling the level camera,\n    and organizing actors in the outliner.\n- editor_toolset.toolsets.skeletal_mesh.SkeletalMeshTools: Provides tools for inspecting and modifying skeletal mesh assets, including\n    the mesh/materials, bone hierarchies, and sockets.\n- editor_toolset.toolsets.static_mesh.StaticMeshTools: Provides tools for inspecting and modifying static mesh assets.\n- editor_toolset.toolsets.string_table.StringTableTools: Provides tools for creating and editing StringTable assets.\n- editor_toolset.toolsets.programmatic.ProgrammaticToolset: Batches calls to other registered tools through a small sandboxed Python\n    script that glues them together with custom logic. The script's purpose is\n    tool orchestration, not general Python execution.\n- editor_toolset.toolsets.texture.TextureTools: Provides tools for working with Texture assets.\n- conversation_toolset.toolsets.conversation.ConversationTools: Inspect Conversation Graph (UConversationDatabase) dialogue assets.\n- animation_toolset.toolsets.controlrig.ControlRigTools: Tools for creating and editing Control Rig assets, including hierarchy\n    management, graph operations, and node/pin manipulation.\n- animation_toolset.toolsets.sequencer.SequencerTools: Core tools for creating and editing Level Sequences in Sequencer. Use\n    whenever working with Sequencer - covers sequence lifecycle (create, open,\n    close), playback control (play, pause, scrub, speed, loop), sequence\n    properties (display rate, frame ranges, marked frames, tick resolution),\n    actor bindings (add actors, spawnables, cameras, find and manage bindings),\n    tracks (add, find, remove any track type), sections (range, easing, blend\n    type, completion mode), selection state, folder organization, sub-sequence\n    navigation, event tracks, track filters, and sequence locking. For\n    keyframing use SequencerKeyframingTools. For Control Rig use\n    SequencerControlRigTools. For outliner inspection use\n    SequencerOutlinerTools.\n- animation_toolset.toolsets.keyframing.SequencerKeyframingTools: Tools for keyframing and animating properties on the Sequencer\n    timeline. Use when adding, querying, or removing keyframes on channels,\n    setting default values, evaluating channels at specific times, working\n    with the Curve Editor, or managing channel selection. Covers float, bool,\n    integer, and string key types with configurable interpolation.\n- animation_toolset.toolsets.controlrig_sequencer.SequencerControlRigTools: Tools for animating with Control Rig inside Sequencer. Use when adding\n    Control Rig tracks to bindings, getting or setting control values (bool,\n    float, int, position, rotator, scale, euler transform, transform), keying\n    controls, baking animation to Control Rig, managing layered rigs and\n    priority, masking controls per section, space switching (world, parent,\n    control, bone), tweening and blending between keys, snapping controls to\n    actors, mirroring poses, zeroing transforms, or managing animation layers\n    (add, delete, duplicate, reorder, merge, collapse).\n- animation_toolset.toolsets.outliner.SequencerOutlinerTools: Tools for inspecting and managing the Sequencer outliner tree. Use when\n    getting a snapshot of the outliner hierarchy, querying node children,\n    managing outliner selection, expanding or collapsing nodes, or toggling\n    node states like mute, solo, deactivate, lock, and pin. Also useful for\n    test verification of Sequencer UI state.\n- animation_toolset.toolsets.conditions.SequencerConditionTools: Tools for managing runtime conditions on Sequencer tracks, sections, and\n    track rows. Use when setting up dynamic conditions that control whether\n    tracks or sections evaluate at runtime based on platform, gameplay state,\n    or custom logic. Supports MovieScenePlatformCondition,\n    MovieSceneDirectorBlueprintCondition, and MovieSceneGroupCondition types.\n- animation_toolset.toolsets.custom_bindings.SequencerCustomBindingTools: Tools for converting and managing custom binding types in Sequencer. Use\n    when converting between possessable, spawnable, and custom/replaceable\n    bindings, querying what custom binding type a binding uses, accessing\n    custom binding objects for property inspection, or changing the actor\n    template class on spawnables/replaceables.\n- animation_toolset.toolsets.import_export.SequencerImportExportTools: Tools for importing and exporting animation data to and from Sequencer.\n    Use when exporting bindings or Control Rig animation to FBX files,\n    importing FBX animation onto bindings or Control Rig tracks, exporting\n    animation to AnimSequence assets, or linking AnimSequences for\n    auto-updates.\n- aimodule_toolset.toolsets.behavior_tree.BehaviorTreeTools: Inspect BehaviorTree (BT) assets.\n"
+      }
+    ]
+  },
+  "status": "pass",
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 2.236738
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 2.33272
+    },
+    {
+      "method": "tools/list",
+      "request_id": 2,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 2.331636
+    },
+    {
+      "method": "tools/call",
+      "request_id": 3,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 2.333587
+    }
+  ]
+}

@@ -1,0 +1,149 @@
+# Cube Fluid Ninja Live Reference Level Manifest
+
+## 목적과 범위
+
+이 문서는 읽기 전용 레퍼런스 `/Game/FluidNinjaLive/Levels` 아래 59개 레벨과 독립 재구현 대상 `/Game/Study/CubeFluidNinjaLive` 사이의 추적 기준선이다. 현재 단계에서 확정된 내용은 패키지 경로, 문서 계층, Target 이름, 직접 내부·외부 의존성 개수뿐이다. 액터 구성, 런타임 동작, Niagara 내부, 머티리얼, 아트 사용, 구현 절차, 패리티 증거 및 예외 판단은 각 카드에서 `pending`으로 관리한다.
+
+원본은 참고 전용이며 이 문서가 원본 에셋의 복사·붙여넣기나 원본 변경을 승인하지 않는다. Target은 원리를 파악한 뒤 새로 작성하는 독립 구현이어야 한다.
+
+## 인벤토리 기준선
+
+| 항목 | 값 |
+| --- | --- |
+| 증거 파일 | `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference_inventory.json` |
+| Schema | `1` |
+| Reference root | `/Game/FluidNinjaLive` |
+| Reference level root | `/Game/FluidNinjaLive/Levels` |
+| Study root | `/Game/Study/CubeFluidNinjaLive` |
+| 전체 에셋 | `1,796` |
+| 레벨 | `59` |
+| 인벤토리 전체 디스크 크기 | `695,773,968 bytes` |
+| Source read-only | `true` |
+| Source mutation performed | `false` |
+
+`reference_inventory.json`에는 `World` 에셋이 총 61개 기록되어 있지만, 그중 레퍼런스 레벨 루트에 속한 목록은 별도 `levels` 배열의 59개다. 이 매니페스트는 그 59개만 다룬다.
+
+## 계층과 이름 규칙
+
+| Source 계층 | 카드 계층 | Target 계층 | 레벨 수 |
+| --- | --- | --- | ---: |
+| `Levels/_Starter` | `levels/_starter` | `Levels/_Starter` | 7 |
+| `Levels/CoreOnly` | `levels/core-only` | `Levels/CoreOnly` | 6 |
+| `Levels/Misc` | `levels/misc` | `Levels/Misc` | 22 |
+| `Levels` 바로 아래 | `levels/root` | `Levels` 바로 아래 | 24 |
+| **합계** |  |  | **59** |
+
+Target 레벨 이름은 `L_CFNL_<SourceName>` 규칙을 사용한다. 유일한 정규화 예외는 Source `_StartingGuide`이며 Target은 중복 밑줄을 만들지 않고 `L_CFNL_StartingGuide`로 기록한다. 카드 파일명은 lowercase kebab-case다.
+
+## 직접 의존성 개수의 의미
+
+- **Direct internal**은 해당 레벨의 `direct_internal_dependencies` 배열 길이다.
+- **Direct external**은 해당 레벨의 `direct_external_dependencies` 배열 길이다.
+- 두 값은 인벤토리 수집 시점의 직접 참조 스냅샷이며 전이 의존성, 런타임 로드 순서, 구현 난이도 또는 의존성 유지 허용을 의미하지 않는다.
+- 실제 독립 구현에서 필요한 아트 반입, 재작성 대상, 제거 대상 및 예외는 상세 증거 수집 뒤 각 카드의 해당 섹션에 기록한다.
+
+## 상태 규칙
+
+- `inventory-baseline`: 경로와 직접 의존성 개수만 인벤토리로 확인됨.
+- `pending`: 아직 직접 증거를 수집하거나 검증하지 않음.
+- 패리티는 Target이 생성되었다는 사실만으로 통과하지 않는다. 시각, 동작, 상호작용, 타이밍, 런타임 안정성 및 필요한 성능 비교 증거가 모두 채워져야 한다.
+
+## _Starter
+
+| Source | Target | Internal | External | Card |
+| --- | --- | ---: | ---: | --- |
+| `/Game/FluidNinjaLive/Levels/_Starter/_StartingGuide` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_StartingGuide` | 11 | 4 | [starting-guide](levels/_starter/starting-guide.md) |
+| `/Game/FluidNinjaLive/Levels/_Starter/Tutorial01_Basics` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial01_Basics` | 90 | 11 | [tutorial01-basics](levels/_starter/tutorial01-basics.md) |
+| `/Game/FluidNinjaLive/Levels/_Starter/Tutorial02_Inputs_Interaction` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial02_Inputs_Interaction` | 111 | 15 | [tutorial02-inputs-interaction](levels/_starter/tutorial02-inputs-interaction.md) |
+| `/Game/FluidNinjaLive/Levels/_Starter/Tutorial03_KeyConceptsForWater` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial03_KeyConceptsForWater` | 111 | 14 | [tutorial03-key-concepts-for-water](levels/_starter/tutorial03-key-concepts-for-water.md) |
+| `/Game/FluidNinjaLive/Levels/_Starter/Tutorial04_Presets_Spawning_Caching` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial04_Presets_Spawning_Caching` | 63 | 13 | [tutorial04-presets-spawning-caching](levels/_starter/tutorial04-presets-spawning-caching.md) |
+| `/Game/FluidNinjaLive/Levels/_Starter/Tutorial05_Tricks` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial05_Tricks` | 53 | 10 | [tutorial05-tricks](levels/_starter/tutorial05-tricks.md) |
+| `/Game/FluidNinjaLive/Levels/_Starter/Tutorial06_SplineBasedRivers` | `/Game/Study/CubeFluidNinjaLive/Levels/_Starter/L_CFNL_Tutorial06_SplineBasedRivers` | 66 | 12 | [tutorial06-spline-based-rivers](levels/_starter/tutorial06-spline-based-rivers.md) |
+
+## CoreOnly
+
+| Source | Target | Internal | External | Card |
+| --- | --- | ---: | ---: | --- |
+| `/Game/FluidNinjaLive/Levels/CoreOnly/CamfaceTest` | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_CamfaceTest` | 22 | 12 | [camface-test](levels/core-only/camface-test.md) |
+| `/Game/FluidNinjaLive/Levels/CoreOnly/Desert_SimplePainter_Landscape` | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_Desert_SimplePainter_Landscape` | 26 | 15 | [desert-simple-painter-landscape](levels/core-only/desert-simple-painter-landscape.md) |
+| `/Game/FluidNinjaLive/Levels/CoreOnly/Desert_SimplePainter_Mesh` | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_Desert_SimplePainter_Mesh` | 25 | 17 | [desert-simple-painter-mesh](levels/core-only/desert-simple-painter-mesh.md) |
+| `/Game/FluidNinjaLive/Levels/CoreOnly/Destructibles_as_SDF` | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_Destructibles_as_SDF` | 27 | 12 | [destructibles-as-sdf](levels/core-only/destructibles-as-sdf.md) |
+| `/Game/FluidNinjaLive/Levels/CoreOnly/LandscapeAlignedWater_ProtoVersion` | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_LandscapeAlignedWater_ProtoVersion` | 31 | 11 | [landscape-aligned-water-proto-version](levels/core-only/landscape-aligned-water-proto-version.md) |
+| `/Game/FluidNinjaLive/Levels/CoreOnly/River` | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_River` | 40 | 11 | [river](levels/core-only/river.md) |
+
+## Misc
+
+| Source | Target | Internal | External | Card |
+| --- | --- | ---: | ---: | --- |
+| `/Game/FluidNinjaLive/Levels/Misc/Destructibles_as_Points_CameraFacing` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Destructibles_as_Points_CameraFacing` | 32 | 10 | [destructibles-as-points-camera-facing](levels/misc/destructibles-as-points-camera-facing.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Destructibles_as_Points_WorldAligned` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Destructibles_as_Points_WorldAligned` | 14 | 10 | [destructibles-as-points-world-aligned](levels/misc/destructibles-as-points-world-aligned.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Destructibles_as_SDF_WorldAligned` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Destructibles_as_SDF_WorldAligned` | 14 | 10 | [destructibles-as-sdf-world-aligned](levels/misc/destructibles-as-sdf-world-aligned.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/DrivingParticlesWithFluidsim` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_DrivingParticlesWithFluidsim` | 43 | 10 | [driving-particles-with-fluid-sim](levels/misc/driving-particles-with-fluid-sim.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Lava_Sparse` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Lava_Sparse` | 44 | 10 | [lava-sparse](levels/misc/lava-sparse.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_Particles` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_Particles` | 4 | 4 | [performance-test-particles](levels/misc/performance-test-particles.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_Primitives` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_Primitives` | 32 | 8 | [performance-test-primitives](levels/misc/performance-test-primitives.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_SimContainers` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_SimContainers` | 20 | 7 | [performance-test-sim-containers](levels/misc/performance-test-sim-containers.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_SimplePainterContainers` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_SimplePainterContainers` | 20 | 7 | [performance-test-simple-painter-containers](levels/misc/performance-test-simple-painter-containers.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/PerformanceTest_SkeletalMeshes` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_PerformanceTest_SkeletalMeshes` | 32 | 9 | [performance-test-skeletal-meshes](levels/misc/performance-test-skeletal-meshes.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_FAKE` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_FAKE` | 59 | 11 | [volume-demo-fake](levels/misc/volume-demo-fake.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_FVOL_Small` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_FVOL_Small` | 51 | 9 | [volume-demo-fvol-small](levels/misc/volume-demo-fvol-small.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_HVOL_Medium` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_HVOL_Medium` | 23 | 8 | [volume-demo-hvol-medium](levels/misc/volume-demo-hvol-medium.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_HVOL_Small` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_HVOL_Small` | 114 | 14 | [volume-demo-hvol-small](levels/misc/volume-demo-hvol-small.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_HVOL_Small_PASSIVE` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_HVOL_Small_PASSIVE` | 46 | 10 | [volume-demo-hvol-small-passive](levels/misc/volume-demo-hvol-small-passive.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_SVOL_Medium` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_SVOL_Medium` | 39 | 8 | [volume-demo-svol-medium](levels/misc/volume-demo-svol-medium.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/VolumeDemo_SVOL_Small` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_VolumeDemo_SVOL_Small` | 76 | 10 | [volume-demo-svol-small](levels/misc/volume-demo-svol-small.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Water_Dense_Rain` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Dense_Rain` | 51 | 9 | [water-dense-rain](levels/misc/water-dense-rain.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Water_Dense_vs_Sparse` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Dense_vs_Sparse` | 62 | 9 | [water-dense-vs-sparse](levels/misc/water-dense-vs-sparse.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Water_Sparse_DoubleSim_TilingWaves` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Sparse_DoubleSim_TilingWaves` | 42 | 7 | [water-sparse-double-sim-tiling-waves](levels/misc/water-sparse-double-sim-tiling-waves.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Water_Sparse_DoubleSim_Vortex` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Sparse_DoubleSim_Vortex` | 55 | 7 | [water-sparse-double-sim-vortex](levels/misc/water-sparse-double-sim-vortex.md) |
+| `/Game/FluidNinjaLive/Levels/Misc/Water_Sparse_Sea_Ship` | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Sparse_Sea_Ship` | 34 | 6 | [water-sparse-sea-ship](levels/misc/water-sparse-sea-ship.md) |
+
+## Root
+
+| Source | Target | Internal | External | Card |
+| --- | --- | ---: | ---: | --- |
+| `/Game/FluidNinjaLive/Levels/Clouds` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Clouds` | 54 | 13 | [clouds](levels/root/clouds.md) |
+| `/Game/FluidNinjaLive/Levels/Clouds_PASSIVE` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Clouds_PASSIVE` | 27 | 11 | [clouds-passive](levels/root/clouds-passive.md) |
+| `/Game/FluidNinjaLive/Levels/Fire_Smoke_Explosive` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Fire_Smoke_Explosive` | 153 | 18 | [fire-smoke-explosive](levels/root/fire-smoke-explosive.md) |
+| `/Game/FluidNinjaLive/Levels/Fog_Mist` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Fog_Mist` | 38 | 13 | [fog-mist](levels/root/fog-mist.md) |
+| `/Game/FluidNinjaLive/Levels/Fog_Mist_PASSIVE` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Fog_Mist_PASSIVE` | 14 | 9 | [fog-mist-passive](levels/root/fog-mist-passive.md) |
+| `/Game/FluidNinjaLive/Levels/Grass` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Grass` | 54 | 12 | [grass](levels/root/grass.md) |
+| `/Game/FluidNinjaLive/Levels/Sand` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Sand` | 86 | 18 | [sand](levels/root/sand.md) |
+| `/Game/FluidNinjaLive/Levels/Sand_Destructibles` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Sand_Destructibles` | 58 | 17 | [sand-destructibles](levels/root/sand-destructibles.md) |
+| `/Game/FluidNinjaLive/Levels/Snow` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Snow` | 78 | 18 | [snow](levels/root/snow.md) |
+| `/Game/FluidNinjaLive/Levels/Snow_Minimal` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Snow_Minimal` | 30 | 14 | [snow-minimal](levels/root/snow-minimal.md) |
+| `/Game/FluidNinjaLive/Levels/Viscous_Blood_Mud` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Viscous_Blood_Mud` | 60 | 17 | [viscous-blood-mud](levels/root/viscous-blood-mud.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Dense_Creek1` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Dense_Creek1` | 77 | 15 | [water-dense-creek1](levels/root/water-dense-creek1.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Dense_Creek2` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Dense_Creek2` | 71 | 11 | [water-dense-creek2](levels/root/water-dense-creek2.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Dense_Lake` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Dense_Lake` | 68 | 13 | [water-dense-lake](levels/root/water-dense-lake.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Dense_Sea` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Dense_Sea` | 96 | 15 | [water-dense-sea](levels/root/water-dense-sea.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Lake` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Lake` | 64 | 12 | [water-sparse-lake](levels/root/water-sparse-lake.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_River` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_River` | 97 | 13 | [water-sparse-river](levels/root/water-sparse-river.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Rivers_Minimal` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Rivers_Minimal` | 83 | 15 | [water-sparse-rivers-minimal](levels/root/water-sparse-rivers-minimal.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Sea_Minimal` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Sea_Minimal` | 63 | 11 | [water-sparse-sea-minimal](levels/root/water-sparse-sea-minimal.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Sea_Quiet` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Sea_Quiet` | 67 | 13 | [water-sparse-sea-quiet](levels/root/water-sparse-sea-quiet.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Sea_Stormy` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Sea_Stormy` | 74 | 11 | [water-sparse-sea-stormy](levels/root/water-sparse-sea-stormy.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Sea_Windy` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Sea_Windy` | 71 | 10 | [water-sparse-sea-windy](levels/root/water-sparse-sea-windy.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Swamp` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Swamp` | 61 | 12 | [water-sparse-swamp](levels/root/water-sparse-swamp.md) |
+| `/Game/FluidNinjaLive/Levels/Water_Sparse_Various` | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Various` | 129 | 13 | [water-sparse-various](levels/root/water-sparse-various.md) |
+
+## 카드 채움 계약
+
+각 카드는 다음 증거 묶음이 실제로 수집될 때만 `pending`을 구체값으로 교체한다.
+
+1. Actor: 액터·컴포넌트 계층, 클래스, 트랜스폼, 핵심 프로퍼티.
+2. Runtime: PIE/SIE 관찰, 입력과 상태 전이, 시뮬레이션 순서, 로그와 성능.
+3. Niagara: 시스템·이미터·모듈·스크래치 패드, 데이터 인터페이스, 파라미터와 실행 단계.
+4. Material: 머티리얼·인스턴스·함수 그래프, 파라미터, 렌더링 용도.
+5. Art: 텍스처·스태틱 메시·스켈레탈 메시·애니메이션 등 반입 가능한 아트 소스와 의존성 분리 결과.
+6. Implementation: 원리를 기반으로 한 독립 작성 순서와 재현 가능한 설정.
+7. Parity: 동일 조건에서 얻은 Source/Target 비교 결과와 판정.
+8. Evidence: 캡처·덤프·검사 결과의 위치와 수집 조건.
+9. Exception: 새로 만들 수 없어 의존성 없이 가져온 항목, 불가능 사유, 검증 및 남은 위험.
+
+## 현재 결론
+
+- 레벨 범위: `59/59` 카드화.
+- 구현 완료: `pending`.
+- 패리티 통과: `pending`.
+- 예외 승인: `pending`.

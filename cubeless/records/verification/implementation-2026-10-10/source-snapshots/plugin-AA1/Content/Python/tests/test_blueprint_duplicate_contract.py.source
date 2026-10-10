@@ -1,0 +1,244 @@
+"""Focused clone contract tests with fake engine dispatch; no Unreal execution."""
+
+import copy
+import importlib
+from pathlib import Path
+import sys
+import tempfile
+import types
+import unittest
+from unittest.mock import patch
+
+
+PACKAGE = Path(__file__).parents[1] / "cubeless_mcp_ue58"
+SOURCE = "/Game/Source/BP_Source"
+TARGET = "/Game/_MCP_Temp/V/BP_Clone"
+
+
+def observation(package, guid="1" * 32, saved=True):
+    name = package.rsplit("/", 1)[-1]
+    asset = package + "." + name
+    return {"asset_class": "/Script/Engine.Blueprint", "compiled": True,
+        "blueprint": {"name": name, "asset_path": asset, "path": package, "parent_class": "/Script/Engine.ActorComponent",
+            "parent_chain": ["/Script/Engine.ActorComponent"], "generated_class": asset + "_C",
+            "status": "up_to_date", "dirty": not saved, "graph_names": ["Timer"], "variable_names": ["Time"]},
+        "graphs": [{"graph_name": "Timer", "node_count": 1, "total_node_count": 1,
+            "nodes": [{"node_id": asset + ":Timer.Getter", "node_guid": guid, "name": "Getter", "class": "K2Node_VariableGet",
+                "title": "Get Time", "variable_property_path": package + ".SKEL_" + name + "_C:Time", "pins": [
+                    {"name": "Time", "direction": "output", "category": "number", "type_display": "Float",
+                     "native_type_export": '(PinCategory="real",PinSubCategory="float")', "value": "", "links": []}]}]}],
+        "variables": {"new_variables": [{"name": "Time", "guid": guid, "pin_type": {"category": "real", "subcategory": "float"},
+            "default_value": 0.0, "metadata": {}, "stored_default": ""}], "generated_variables": [], "category_sorting": []},
+        "file": {"path": package + ".uasset", "exists": saved, "sha256": "source_hash" if package == SOURCE else "clone_hash" if saved else None}}
+
+
+class BlueprintDuplicateTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        modules = {"unreal": types.SimpleNamespace(Paths=types.SimpleNamespace(project_saved_dir=lambda: temporary.name),
+            SystemLibrary=types.SimpleNamespace(get_engine_version=lambda: "5.8.3-offline-test"))}
+        for suffix in ("", ".operations", ".compatibility", ".compatibility.ue58", ".validators"):
+            name = "cubeless_mcp_ue58" + suffix
+            module = types.ModuleType(name)
+            module.__path__ = [str(PACKAGE.joinpath(*suffix.strip(".").split("."))) if suffix else str(PACKAGE)]
+            modules[name] = module
+        self.bp = types.ModuleType("cubeless_mcp_ue58.compatibility.ue58.blueprint")
+        self.bp.ensure_editor_idle = lambda: None
+        self.bp.new_asset_path = lambda name, folder: folder + "/" + name
+        for domain in ("graph", "variables"):
+            name = "cubeless_mcp_ue58.compatibility.ue58." + domain
+            modules[name] = types.ModuleType(name)
+        modules[self.bp.__name__] = self.bp
+        dependencies = types.ModuleType("cubeless_mcp_ue58.validators.dependencies")
+        dependencies.reject_tool_reference = lambda value: None
+        modules[dependencies.__name__] = dependencies
+        self.patch = patch.dict(sys.modules, modules)
+        self.patch.start()
+        self.addCleanup(self.patch.stop)
+        for name in list(sys.modules):
+            if name.startswith("cubeless_mcp_ue58.") and name not in modules:
+                del sys.modules[name]
+        self.ops = importlib.import_module("cubeless_mcp_ue58.operations.blueprint_duplicates")
+        self.state = importlib.import_module("cubeless_mcp_ue58.operations.state")
+        self.api = self.ops.api
+        self.source = types.SimpleNamespace(get_path_name=lambda: SOURCE + ".BP_Source")
+        self.clone = types.SimpleNamespace(get_path_name=lambda: TARGET + ".BP_Clone")
+        self.source_state = observation(SOURCE)
+        self.clone_state = observation(TARGET, "2" * 32, saved=False)
+        self.calls = []
+        self.checkpoints = []
+        self.bp.resolve_blueprint = lambda path: self.source if path == SOURCE else self.clone
+        self.bp.snapshot = lambda value: self.capture(value)["blueprint"]
+        self.api.capture = self.capture
+        self.actual_policy = self.api.policy
+        self.api.policy = lambda: {"save_on_compile": "SoC_Never", "source_control_enabled": False}
+        self.api.require_target_absent = lambda path: {"file": {"exists": False}, "asset_registered": False}
+        self.api.dependency_audit = lambda path: {"success": True, "passed": True}
+        self.api.require_source = lambda asset, value, allow_dirty: self.require_source(value, allow_dirty)
+        self.api.duplicate = self.duplicate
+        self.api.save = self.save
+        self.bp.compile_validation = self.compile
+
+    def capture(self, value):
+        return copy.deepcopy(self.source_state if value is self.source else self.clone_state)
+
+    def require_source(self, value, allow_dirty):
+        if value["blueprint"]["dirty"]:
+            raise self.state.OperationError("duplicate_dirty_source_unsupported" if allow_dirty else "duplicate_source_dirty", "dirty")
+
+    def duplicate(self, source, target, before, after):
+        before()
+        self.checkpoints.append(self.state.get_operation(self.state._active_operation))
+        self.calls.append("duplicate")
+        after(self.clone)
+        return self.clone
+
+    def save(self, asset):
+        self.calls.append("save")
+        self.clone_state["blueprint"]["dirty"] = False
+        self.clone_state["file"].update(exists=True, sha256="clone_hash")
+        return True
+
+    def compile(self, asset, save, refresh):
+        self.calls.append(("compile", save, refresh))
+        if save:
+            self.save(asset)
+        return {"mutation_performed": True, "compiled": True, "validation_pass": True, "saved": save, "status": "up_to_date"}
+
+    def call(self, **options):
+        return self.ops.duplicate_blueprint_to_temp(SOURCE, TARGET, **options)
+
+    def test_source_control_script_name_and_missing_binding_fail_before_clone(self):
+        self.api.policy = self.actual_policy
+        self.bp.creation_policy = lambda: {"save_on_compile": "SoC_Never"}
+        for source_control, code in ((None, "duplicate_source_control_api_unavailable"),
+                (types.SimpleNamespace(is_enabled=lambda: None), "duplicate_source_control_api_unavailable"),
+                (types.SimpleNamespace(is_enabled=lambda: True), "duplicate_source_control_unsupported")):
+            with patch.object(self.api.unreal, "SourceControl", source_control, create=True):
+                result = self.call(dry_run=False)
+            self.assertEqual(result["error_code"], code)
+            self.assertEqual(result["changes"], [])
+            self.assertFalse(result["compile"]["implicit_postduplicate_compile"]["duplicate_call_attempted"])
+        with patch.object(self.api.unreal, "SourceControl", types.SimpleNamespace(is_enabled=lambda: False), create=True):
+            self.assertTrue(self.call()["success"])
+        self.assertEqual(self.calls, [])
+
+    def test_default_dry_run_and_actual_clone_replay(self):
+        dry = self.call(operation_id="dry")
+        self.assertTrue(dry["success"], dry)
+        self.assertEqual(dry["changes"], [])
+        self.assertTrue(dry["save"]["requested"])
+        self.assertFalse(dry["save"]["attempted"])
+        self.assertEqual(self.calls, [])
+        result = self.call(dry_run=False, operation_id="clone")
+        self.assertTrue(result["success"], result)
+        self.assertEqual(self.calls, ["duplicate", "save"])
+        self.assertFalse(result["compile"]["attempted"])
+        self.assertTrue(result["compile"]["implicit_postduplicate_compile"]["attempted"])
+        self.assertTrue(result["save"]["saved"])
+        self.assertEqual(result["data"]["source_before"], result["data"]["source_after"])
+        self.assertEqual(self.checkpoints[0]["result"]["changes"], [])
+        self.assertEqual(self.checkpoints[0]["result"]["data"]["pending_mutation"]["dispatch_state_at_checkpoint"], "not_yet_dispatched")
+        replay = self.call(dry_run=False, operation_id="clone")
+        self.assertTrue(replay["retry"]["replayed"])
+        self.assertEqual(self.calls, ["duplicate", "save"])
+
+    def test_generated_parent_audit_timing_does_not_fail_clone_or_hide_changed_edges(self):
+        # Preserve raw diagnostics while comparing only the known parent-audit
+        # timing field semantically. All source snapshot fields still matter.
+        original = self.capture
+        captures = []
+        corrupt = False
+
+        def timed(asset):
+            value = original(asset)
+            edge = "/Script/UnrealEd" if corrupt and captures else "/Script/Engine"
+            value["generated_parent"] = {"inspection": {"dependency_audit": {
+                "elapsed_ms": len(captures) + .25, "edges": [edge]}}, "parents": [{"sha256": "parent_hash"}]}
+            captures.append(1)
+            return value
+
+        self.api.capture = timed
+        result = self.call(dry_run=False, operation_id="parent-timed-clone")
+        self.assertTrue(result["success"], result)
+        self.assertNotEqual(result["data"]["source_before"]["generated_parent"], result["data"]["source_after"]["generated_parent"])
+        self.assertEqual(self.calls, ["duplicate", "save"])
+        corrupt = True
+        captures.clear()
+        result = self.call(operation_id="parent-edge-changed")
+        self.assertFalse(result["success"])
+        self.assertEqual(result["error_code"], "duplicate_source_changed")
+        self.assertEqual(self.calls, ["duplicate", "save"])
+
+    def test_lost_reply_and_failed_readback_preserve_known_creation(self):
+        def lost(source, target, before, after):
+            before()
+            self.calls.append("duplicate_lost")
+            raise RuntimeError("reply lost")
+        self.api.duplicate = lost
+        result = self.call(dry_run=False, operation_id="lost")
+        self.assertFalse(result["success"])
+        self.assertIsNone(result["changes"][0]["created"])
+        self.assertTrue(result["data"]["mutation_state_unknown"])
+        replay = self.call(dry_run=False, operation_id="lost")
+        self.assertTrue(replay["retry"]["replayed"])
+        self.assertEqual(self.calls, ["duplicate_lost"])
+        self.api.duplicate = self.duplicate
+        original_capture = self.api.capture
+        self.api.capture = lambda asset: original_capture(asset) if asset is self.source else (_ for _ in ()).throw(RuntimeError("readback failed"))
+        result = self.call(dry_run=False, operation_id="readback")
+        self.assertTrue(result["changes"][0]["created"])
+        self.assertTrue(result["compile"]["implicit_postduplicate_compile"]["duplicate_returned"])
+        self.assertFalse(result["save"]["attempted"])
+
+    def test_second_policy_and_unsupported_options_never_dispatch(self):
+        for index, options in enumerate(({"overwrite_existing": True}, {"required_root": "/Game/Other"}, {"dry_run": 1})):
+            result = self.call(operation_id="guard-" + str(index), **options)
+            self.assertFalse(result["success"])
+            self.assertEqual(result["changes"], [])
+        self.source_state["blueprint"]["dirty"] = True
+        result = self.call(allow_dirty_source=True)
+        self.assertEqual(result["error_code"], "duplicate_dirty_source_unsupported")
+        self.source_state["blueprint"]["dirty"] = False
+        def rejected(*args):
+            raise self.state.OperationError("duplicate_source_control_unsupported", "second policy rejection")
+        self.api.duplicate = rejected
+        result = self.call(dry_run=False)
+        self.assertFalse(result["compile"]["implicit_postduplicate_compile"]["duplicate_call_attempted"])
+        self.assertEqual(result["changes"], [])
+        self.assertEqual(self.calls, [])
+
+    def test_explicit_compile_reuses_core_and_saves_once(self):
+        result = self.call(dry_run=False, compile=True)
+        self.assertTrue(result["success"], result)
+        self.assertEqual(self.calls, ["duplicate", ("compile", True, True), "save"])
+        self.assertTrue(result["compile"]["attempted"])
+        self.assertTrue(result["save"]["saved"])
+
+    def test_pin_types_guid_and_skeleton_identity_without_rewriting_literals(self):
+        before = self.api.semantic_content(self.source_state)
+        self.assertEqual(before, self.api.semantic_content(self.clone_state))
+        self.clone_state["graphs"][0]["nodes"][0]["pins"][0]["native_type_export"] = '(PinCategory="real",PinSubCategory="double")'
+        self.assertNotEqual(before, self.api.semantic_content(self.clone_state))
+        self.clone_state = observation(TARGET, "2" * 32, saved=False)
+        for value, text in ((self.source_state, SOURCE + ".BP_Source"), (self.clone_state, TARGET + ".BP_Clone")):
+            value["variables"]["new_variables"][0].update(pin_type={"category": "string"}, default_value=text)
+        self.assertNotEqual(self.api.semantic_content(self.source_state), self.api.semantic_content(self.clone_state))
+
+    def test_failed_implicit_compile_and_save_reply_are_not_success(self):
+        self.clone_state["compiled"] = False
+        result = self.call(dry_run=False)
+        self.assertEqual(result["error_code"], "duplicate_implicit_compile_failed")
+        self.assertEqual(self.calls, ["duplicate"])
+        self.clone_state["compiled"] = True
+        self.api.save = lambda asset: (_ for _ in ()).throw(RuntimeError("lost save reply"))
+        result = self.call(dry_run=False)
+        self.assertTrue(result["changes"][0]["created"])
+        self.assertTrue(result["save"]["attempted"])
+        self.assertIsNone(result["save"]["saved"])
+        self.assertTrue(result["data"]["mutation_state_unknown"])
+
+
+if __name__ == "__main__":
+    unittest.main()

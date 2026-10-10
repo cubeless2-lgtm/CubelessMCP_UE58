@@ -1,0 +1,59 @@
+# 레벨 카드: `Water_Sparse_DoubleSim_Vortex`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Misc/Water_Sparse_DoubleSim_Vortex` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/Misc/L_CFNL_Water_Sparse_DoubleSim_Vortex` |
+| 문서 계층 | `misc` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `55` |
+| Direct external | `7` |
+
+## 정적 의미
+
+- **Observed:** area host 2048²/extent 80×80×3과 vortex host 1024²/extent 8×8×1을 함께 두고, 10 generic `Actor`의 instanced meshes와 external `SmokeVolume_C` 1개가 있다.
+- **Inferred:** 작은 high-detail vortex simulation의 normal/volume signal을 큰 sparse-water 영역에 합성하는 double-sim fixture다.
+- **Unknown:** 두 RT의 binding/coordinate transform, vortex bottom-light 반응, level-local MID 값과 fog/volume timing.
+- **Target fixture:** `TF_WaterSparse_DoubleSim_Vortex` 제안.
+
+## Actor / Component
+
+- manifest=`71 actors / 116 components / 8 pages`.
+- actor histogram: `StaticMeshActor=22; TextRenderActor=15; Actor=10; MovingBall1_C=8; PostProcessVolume=3; NinjaLive_C=2; PointLight=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; SmokeVolume_C=1; ThirdPersonCharacter_C=1; Water_Sparse_DoubleSim_Vortex_C=1`.
+- component histogram: `StaticMeshComponent=31; BillboardComponent=18; TextRenderComponent=15; InstancedStaticMeshComponent=10; SceneComponent=10; BoxComponent=5; BrushComponent=4; MaterialBillboardComponent=4; ArrowComponent=3; NinjaLiveComponent_C=2; PointLightComponent=2; CameraComponent=1; CameraProxyMeshComponent=1; CapsuleComponent=1; CharacterMovementComponent=1; DirectionalLightComponent=1; DrawFrustumComponent=1; ExponentialHeightFogComponent=1; SkeletalMeshComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1; SmokeVolumeComponent_C=1; SpringArmComponent=1`.
+- standalone Niagara/sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`45 nodes / 38 links / 5 variables / 0 errors`; tiling fixture와 같은 warm/cold PP, fog Z-lock/cvars에 vortex bottom-light intensity 계산을 더한다.
+- area=`2048²,80/80/3,FFFTT/FTT`, selected black-buffer view; vortex=`1024²,8/8/1,FFFTT/FTT`, selected `MI_Water_Vortex_Simulated_Normal`; core=`/Game/FluidNinjaLive/NinjaLiveCore.NinjaLiveCore`, preset `None`.
+- external SmokeVolume/instanced meshes와 두 host의 frame order는 runtime `pending`.
+
+## Niagara
+
+- 비-core standalone system은 없다. vortex output은 host material, external `SmokeVolumeComponent_C`, instanced-mesh scene 구조의 contract로 남는다.
+
+## Material / Art
+
+- material refs=`23`, art refs=`13`; vortex simulated-normal과 buffer/surface/volume variants가 관찰된다.
+- refs 중 level-local runtime MID 1개는 target에서 재생성할 transient state다. texture/mesh만 조건부 art-localization 후보이며 double-sim/material logic은 독립 작성한다.
+
+## Clean-room 구현 순서
+
+1. 8m vortex solver에 deterministic radial flow/normal probe를 만든다.
+2. 80m area host가 vortex output을 좌표 변환해 합성하는 contract를 독립 작성한다.
+3. SmokeVolume, instanced scene, bottom-light와 PP/fog driver를 새로 연결한다.
+4. phase/normal/lighting, no-source/no-MCP, runtime/visual/performance parity를 측정한다.
+
+## Evidence / Parity / Exception
+
+- revision=`60ba2308bcc70af5fe6e92066f9680ed`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; art만 조건부 localization 후보이고 runtime MID는 재생성한다.

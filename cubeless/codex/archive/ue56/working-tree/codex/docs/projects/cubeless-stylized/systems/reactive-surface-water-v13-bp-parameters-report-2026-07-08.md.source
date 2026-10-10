@@ -1,0 +1,29 @@
+# Reactive Surface Water V13 BP Parameters - 2026-07-08
+
+- Verdict: `PASS`
+- Blueprint: `/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor`
+- Scope: Water V13 tuning parameters, Grass/Water window sizes, channel/debug toggles.
+
+## Defaults
+- RS_Ground_WindowSizeWS: default=`4000`, editable=`True`
+- RS_Grass_WindowSizeWS: default=`3000`, editable=`True`
+- RS_Water_WindowSizeWS: default=`1500`, editable=`True`
+- RS_Water_DefaultRadius: default=`31`, editable=`True`
+- RS_Water_DefaultStrength: default=`0.4399999976158142`, editable=`True`
+- RS_Water_SwimWakeStrength: default=`0.6600000262260437`, editable=`True`
+- RS_Water_WaveSpeed: default=`0.7200000286102295`, editable=`True`
+- RS_Water_Damping: default=`0.984000027179718`, editable=`True`
+- RS_Water_ImpulseRadiusPixels: default=`7`, editable=`True`
+- RS_Water_NormalStrength: default=`19`, editable=`True`
+- bGrassEnabled: default=`True`, editable=`True`
+- bGroundEnabled: default=`True`, editable=`True`
+- bWaterEnabled: default=`True`, editable=`True`
+- bDebugDraw: default=`False`, editable=`True`
+
+## Verification
+- Metadata checks: `PASS`
+- Compile errors: `0`
+- Compile warnings: `0`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v13-bp-parameters-results-2026-07-08.json`

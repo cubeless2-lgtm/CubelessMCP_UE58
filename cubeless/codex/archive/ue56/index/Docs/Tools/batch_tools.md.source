@@ -1,0 +1,35 @@
+# Batch Tools
+
+## execute_batch
+
+Run up to 100 bridge commands in ONE socket round trip and ONE editor transaction.
+
+```python
+execute_batch(
+    commands=[
+        {"type": "set_static_mesh_properties", "params": {...}},
+        {"type": "compile_blueprint", "params": {...}},
+    ],
+    stop_on_error=True,   # halt at the first failing entry (default)
+    timeout_seconds=0,    # 0 = auto-scale with entry count (120..600s)
+)
+```
+
+### Behavior
+
+- The C++ bridge executes entries sequentially on the game thread.
+- The whole batch is wrapped in a single `FScopedTransaction` ("MCP batch"), so one Ctrl+Z undoes the entire batch in the editor.
+- Nested `batch` entries are rejected.
+- Generic `execute_python` is allowed in a batch only with explicit `interchange_policy="none"`, which is a trusted declaration that the script cannot import. The default `auto` and explicit `legacy`, `preserve`, or `interchange` policies are rejected because their required next-tick dispatch would deadlock the synchronous batch loop. `defer_to_ticker` cannot make a batch entry safe.
+
+### Response
+
+Bridge result fields: `total`, `executed`, `succeeded`, `failed`, `stopped_at_index` (-1 when not stopped), `stop_on_error`, and `results` — one `{index, type, status, response|error}` per executed entry.
+
+### Timeouts
+
+The bridge-side wall clock (`UNREAL_MCP_COMMAND_TIMEOUT_SECONDS`, default 120s, clamp 10..3600) bounds the WHOLE batch. For long batches raise that env var on the editor process or split the work. The Python-side socket timeout auto-scales (`120 + 10*n`, capped at 600s) unless `timeout_seconds` is passed.
+
+### Verification
+
+Live coverage lives in `Python/scripts/smoke_live_bridge.py` (batch round trip + nested-batch rejection), run when an editor with the bridge is up.

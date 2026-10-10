@@ -1,0 +1,20 @@
+# Chaos Pillar BP V02 checkpoint
+
+Open `/Game/Study/ChaosDestructionV02Review/Maps/L_ChaosPillarBPReview_V02` and start PIE. The camera, projectile, destruction and reset run automatically without player input.
+
+## Saved behavior
+
+- `BP_ChaosPillar_BP_V02` uses the engine Actor parent. Geometry Collections start Kinematic, keeping the initial visual position until impact releases the anchors.
+- The fixed base has convex collision. Original pillar scale and surface material slots are preserved.
+- Actual Chaos break callbacks write their position and velocity into `NDC_ChaosPillarEvents_V02` from Blueprint.
+- Publication is capped at 48 break events, with 10 Niagara fragments per event (480 total). Chaos geometry fragment counts are unchanged.
+- `NS_ChaosPillarFX_BP_V02` adds independent pseudorandom position offsets and velocity direction/speed variation. The fragment material is orange for inspection.
+- The projectile and automatic review director are Blueprint-only, using engine Actor and CameraActor parents.
+
+## Verification and limitations
+
+Blueprint and Niagara compile checks passed. GPU simulation cache confirmed 480 fragments with varied positions and velocities. Initial-hold testing recorded zero root translation before impact and working destruction afterward.
+
+The saved review's project-asset dependency closure has no project C++ or UnrealMCP runtime references. Legacy native pillar/review implementations are not part of this checkpoint. Engine Chaos, Niagara and FieldSystem support remain required. Clean-project migration/cook has not been tested.
+
+Independent random mesh rotation remains unfinished: experimental orientation wiring produced excess particles, so that module was removed from the saved system. An unused experimental `Particles.DebrisRotation` scratch value remains, but is not consumed by the renderer. This checkpoint deliberately retains the verified 480-particle position/velocity variation.

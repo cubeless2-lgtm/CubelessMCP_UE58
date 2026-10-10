@@ -1,0 +1,80 @@
+{
+  "schema": "cubeless_inherited_tick_verification_v1",
+  "status": "pass",
+  "checks": [
+    [
+      "author_complete",
+      true
+    ],
+    [
+      "actual_codex_parent_call_noop",
+      true
+    ],
+    [
+      "actual_codex_saved_graphs",
+      true
+    ],
+    [
+      "saved_dependency_audit",
+      true
+    ],
+    [
+      "editor_same_clean_instance",
+      true
+    ],
+    [
+      "runtime_six_calls",
+      true
+    ],
+    [
+      "runtime_parent_and_child_markers",
+      true
+    ],
+    [
+      "separate_no_mcp_process",
+      true
+    ],
+    [
+      "same_saved_packages",
+      true
+    ],
+    [
+      "cleanup_and_preservation",
+      true
+    ],
+    [
+      "saved_bytes_source_destination",
+      true
+    ],
+    [
+      "runtime_verifier_unchanged",
+      true
+    ],
+    [
+      "deployed_Z3_snapshot",
+      true
+    ]
+  ],
+  "performance": {
+    "named_calls": 28,
+    "http_observations": 38,
+    "sum_named_call_seconds": 3.8974208999999997,
+    "pipeline_wall_seconds": 5.7551638,
+    "runtime_body_seconds": 0.2259137,
+    "explicit_compile": 2,
+    "explicit_save": 2,
+    "nodes": 16,
+    "physical_edges": 17,
+    "conditions": "one loopback NullRHI trial; two Blueprints authored; excludes editor startup; no speedup comparison"
+  },
+  "deployed_file_count": 133,
+  "source_snapshot": "source-snapshot-Z3.json",
+  "author": "blueprint-inherited-tick-Z3.json",
+  "actual_codex": "actual-codex-inherited-tick-Z3.json",
+  "runtime": "inherited-tick-runtime-Z3.json",
+  "parent_reference_modes": {
+    "before_explicit_compile": "original_native_declaration",
+    "after_explicit_compile": "direct_generated_parent"
+  },
+  "scope": "Saved Actor Blueprint inheritance, exact Tick override/parent call, inherited Boolean getters, guarded old-flow replacement/reconnect and external component call; six direct reflected ReceiveTick invocations in separate no-MCP editor; no scheduled game-world Tick/full original host/Shipping parity"
+}

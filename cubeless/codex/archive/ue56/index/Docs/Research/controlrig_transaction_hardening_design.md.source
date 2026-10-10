@@ -1,0 +1,70 @@
+# ControlRig Transaction Hardening Design
+
+This note records the Phase 3 transaction report hardening for stable
+ControlRig authoring.
+
+## Scope
+
+The implementation does not add new writer surfaces, runtime modules, solver
+units, or gameplay dependencies. It only strengthens the existing
+`UnrealMCPControlRigToolsEditor` editor-only recipe transaction report and keeps all
+asset writes limited to sample/temp targets already enforced by validation.
+
+The UnrealMCP Python adapter still calls the editor plugin through reflection.
+`UnrealMCP` does not statically depend on `UnrealMCPControlRigToolsEditor`.
+
+## Report Fields
+
+`FUnrealMCPControlRigBuildReport` now includes:
+
+- `planned_writes`
+- `performed_writes`
+- `skipped_writes`
+- `reused_items`
+- `cleanup_suggestions`
+- `next_action`
+
+Validation and dry-run responses populate `planned_writes` without mutating
+assets. Build responses append performed, skipped, and reused entries as the
+transaction progresses.
+
+## Failure Contract
+
+Validation, JSON parse, options parse, and AnimBP binding blocks use a
+no-mutation stop:
+
+- `target_modified=false`
+- `partial_target_modified=false`
+- `skipped_writes` includes `asset_mutation_not_started`
+- `next_action` points to the validation or binding route to run next
+
+Build failures after the target was created or modified use a partial failure
+contract:
+
+- `success=false`
+- `partial_target_modified=true`
+- `next_action=inspect_then_cleanup_or_retry_sample_temp_target`
+- `cleanup_suggestions` includes target inspection and sample/temp cleanup
+  guidance
+
+Failures before any mutation keep `partial_target_modified=false` and ask the
+caller to fix the recipe before retrying.
+
+## Reuse And Skip Evidence
+
+The build path records common non-writes:
+
+- existing target reuse
+- preview mesh already set
+- allowlisted RigVM unit struct already present
+- compile, dependency audit, or save not requested
+- save skipped because earlier errors were present
+
+This keeps repeated sample/temp builds inspectable instead of silently hiding
+important transaction decisions.
+
+## Verification
+
+The Python analysis test suite checks that the C++ report schema and JSON keys
+remain present. The editor smoke still exercises actual sample/temp
+transactions and rejects unexpected `partial_target_modified=true`.

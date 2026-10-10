@@ -1,0 +1,119 @@
+# ControlRig Stable Authoring Phase 6 Handoff
+
+Date: 2026-06-30
+
+Scope: Phase 6 stable AnimBP binding and the reviewed scalar input-default
+promotion for the ControlRig stable authoring plan. This handoff covers only
+sample/temp targets. It does not approve original asset mutation, runtime or
+gameplay modules, solver unit expansion, broad AnimGraph rewrites, or automatic
+binding-contract patching.
+
+## Ieta Review Line
+
+- Keep the stable binding target under `/Game/_MCP_Temp` or `/Game/_MCP_Sample`.
+- Keep the source AnimBP read-only.
+- Keep `verification.save=false` for stable binding proofs.
+- Keep automatic binding-contract updates forbidden.
+- Keep `UnrealMCP` free of a static C++ dependency on
+  `UnrealMCPControlRigToolsEditor`.
+- Do not add solver units as part of this handoff.
+- Do not expand stable input defaults beyond reviewed live proof values.
+- Do not serialize MCP-only references into generated assets.
+
+## Tivret Implementation Evidence
+
+- The stable binding contract is
+  `Docs/Research/fixtures/controlrig_piper_stable_animbp_binding_contract.json`.
+- The reviewed scalar input default is
+  `PiperStable_GlobalStableGate_CTRL=1.0`.
+- `input_default_gate.status=reviewed` records the manual promotion state.
+- The candidate file is
+  `Docs/Research/fixtures/controlrig_piper_stable_input_default_golden_candidate.json`
+  with `status=promoted` and `promoted_to_binding_contract=true`.
+- Evidence, decision, and patch records live under
+  `Docs/Analysis/ControlRigStableInputGolden/`.
+- No automatic patcher writes the binding contract; the patch plan is
+  `status=patched` only after manual Ieta/Tivret approval.
+
+## Current Gate State
+
+Latest filesystem-only gate:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_animbp_mcp_release_gate.py
+```
+
+Result: passed with `total=32`, `failed=0`, `cpp_build=skipped`,
+`unreal_editor=skipped`, and `asset_mutation=skipped`.
+
+Additional checks run for this handoff state:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\controlrig_stable_authoring_phase6_contract.py --json
+uv --directory .\Python run python scripts\analysis\test_controlrig_stable_authoring_phase6_contract.py
+uv --directory .\Python run python scripts\analysis\controlrig_animbp_mcp_semantic_audit.py --json
+uv --directory .\Python run python scripts\analysis\test_controlrig_animbp_mcp_semantic_audit.py
+uv --directory .\Python run python scripts\analysis\controlrig_stable_input_golden_evidence_contract.py --json
+uv --directory .\Python run python scripts\analysis\controlrig_stable_input_golden_decision_contract.py --json
+uv --directory .\Python run python scripts\analysis\controlrig_stable_input_golden_patch_plan_contract.py --json
+uv --directory .\Python run python scripts\analysis\controlrig_stable_input_golden_promotion_check.py --proof ..\Docs\Analysis\ControlRigStableInputGolden\stable_input_candidate_live_proof.json --json
+git diff --check
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat' MCPGameProjectEditor Win64 Development -Project="$Project" -WaitMutex
+```
+
+Results:
+
+- Phase 6 contract passed with `issue_count=0`;
+- Phase 6 contract tests passed, 15 tests;
+- semantic audit passed with `issue_count=0`;
+- semantic audit tests passed, 25 tests;
+- evidence, decision, patch-plan, and promotion checks passed;
+- `git diff --check` reported no whitespace errors, only line-ending
+  normalization warnings;
+- UE 5.6.1 C++ build reported `Target is up to date` and `Result: Succeeded`.
+
+## Live Proof State
+
+The promoted binding contract was verified against a temporary UE 5.6.1 editor
+bridge with:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_controlrig_animbp_binding_bridge.py --stable-fixture --json
+```
+
+Result: passed with `set_anim_graph_controlrig_input_defaults`,
+`compile_bound_anim_bp`, `input_defaults_applied=true`,
+`save_requested=false`, `dependency_audit_passed=true`, and
+`partial_target_modified=false`.
+
+A follow-up bridge assertion confirmed the temp targets no longer existed:
+
+- `/Game/_MCP_Temp/ControlRigStable/ABP_Piper_StablePrototype_Binding`
+- `/Game/_MCP_Temp/ControlRigStable/CR_Piper_StablePrototype`
+
+## Asset And Dependency State
+
+- No tracked changes were reported under `MCPGameProject/Content`.
+- No tracked changes were reported under
+  `MCPGameProject/Plugins/UnrealMCP/Content`.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP` contains no
+  `UnrealMCPControlRigToolsEditor` or `UnrealMCPControlRigToolsEditor` reference
+  strings.
+- No listener or Unreal Editor process remained on port `55561` after the live
+  proof.
+
+## Next Recommended Step
+
+Do not move from this handoff into solver unit expansion or original AnimBP
+mutation. The next safe action is a new reviewed proof for one narrow item at a
+time:
+
+- another scalar stable input default, using the same live proof and manual
+  patch pattern; or
+- a separate Phase 5 solver-unit task that first updates the solver boundary
+  contract and proves the change on sample/temp assets only.
+
+Until that new review exists, keep
+`Docs/Analysis/controlrig_stable_authoring_phase5_contract.md` and
+`Docs/Analysis/controlrig_stable_authoring_phase6_contract.md` green.

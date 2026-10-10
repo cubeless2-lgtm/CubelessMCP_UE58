@@ -1,0 +1,223 @@
+# Tutorial01 NinjaLive2 외부 출력 학습
+
+현재 상태는 원본 캡처 기반 계약 분석이다. 원본 에셋 변경이나 신규 사례 완료 주장이 아니다.
+
+## 대상과 소유권
+
+`cube_fluid_ninja_t01_external_output_contract.py`는 원본 Tutorial01의 완전한 캡처에서
+컴포넌트 설정과 실제 actor tags를 교차검사한다. 에셋을 복제하거나 변경하지 않는다.
+
+| 설정 | 태그 | 대상 |
+|---|---|---|
+| Apply2ndOutMatToActorsWithTag | VolumeTest566 | VolumeSmokeContainer3 / SmokeVolume_C |
+| Apply3rdOutMatToActorsWithTag | MeshTest703 | Plane14_4 / StaticMeshActor |
+| DriveNiagaraComponentInTaggedActors | ParticleTest25 | NS_2Dflow_BasicGridDemo2 / NiagaraActor |
+
+Niagara 대상의 원본 시스템은 OutputNiagara/LegacySimDrivenSystems/NS_Demo_BasicGrid다.
+Plane14_4는 SM_plane_200x200을 사용하고 저장 OverrideMaterials는 (None)이다.
+따라서 에디터의 저장 재질만으로 실제 실행 중 재질을 판정하면 안 된다.
+VolumeSmokeContainer3은 SmokeVolumeComponent와 DepthSlicer를 포함한다.
+
+ParticleTest25에는 NinjaLive2뿐 아니라 NinjaLive2_0도 writer로 등록돼 있다.
+이 사실을 자동 테스트로 고정했다. 실행 시 어느 writer가 언제 texture/position을
+갱신하는지는 아직 확인하지 않았다. 임의로 두 번째 연결을 제거하거나 복제된
+대상에 각각 분리하는 방식은 원본 계약 변경이므로 적용하지 않는다.
+
+## 원본 그래프에서 확인한 전달 API
+
+NinjaLiveComponent의 CreateOuputMaterialAndSetItOnTargets 캡처에는
+GetAllActorsWithTag, MID 생성, SetMaterial과 Niagara SetTextureObject/SetVariableTexture,
+SetVariablePosition/SetVariableMaterial이 존재한다. 다음 이름들이 관측된다:
+
+- NinjaVelocityDensityBuffer, NinjaPaintBuffer, NinjaPressureDivergenceBuffer
+- User.NinjaVelocityDensityBufferRaw, User.NinjaPressureDivergenceBufferRaw
+- TraceMeshPos, TraceMeshPosDouble, TraceMeshSize
+- User.VisualizationMeshMaterial, MeshMaterial, FVOLMaterial, HVOLMaterial
+
+이 목록은 그래프 전체의 API 목록이다. 모든 항목이 NinjaLive2의 활성 분기에
+도달한다고 아직 주장하지 않는다. OutputMaterialUpdate에는 position/size 및
+WorldOffsetX/Y 갱신도 있으므로 초기 MID 생성만 구현하면 불충분할 수 있다.
+
+## 다음 구현 조건
+
+1. 원본 선택 분기를 따라 각 대상의 실제 전달 파라미터와 실행 시점을 확정한다.
+2. LOD-ReduceSamplingFPS=True의 거리 단계/FPS/tick 동작을 독립 구현한다.
+3. 자체 Study 재질·Niagara·볼륨 호스트를 연결하고 아트만 독립 로컬 경로를 사용한다.
+4. 두 writer의 동시/순차 활성화와 재진입에서 외부 출력 소유권을 검증한다.
+5. 정식 배치 후 의존성·MCP-disabled·최종 전체 기술 gate를 적용한다.
+
+원본 Niagara 모듈/스크래치 그래프를 복사해 이 단계를 대체하지 않는다.
+
+## 활성 LOD 계산 계약
+
+`cube_fluid_ninja_t01_lod.py`에 독립 계산 모델을 추가했다. 아직 Blueprint에 연결된
+런타임 구현은 아니다. 원본 LOD-DistaceStepsPrecalc와 LOD 그래프를 따라 다음을 확인했다.
+
+- StepRange=(max(Far,Near)-Near)/(Steps-1). NinjaLive2는 1250이다.
+- StepsArray는 각 Near+index×StepRange를 FTrunc한 값이다.
+  이 사례는 [5000,6250,7500,8750,10000].
+- 거리<Near이면 level5, 거리>Far이면 level1이다.
+- 나머지는 distance>threshold AND distance<=threshold+range인 구간에서
+  level=Steps-(index+1)을 적용한다.
+- 따라서 거리 정확히5000은 어떤 구간에도 들지 않아 이전 상태를 유지한다.
+  이 경계 동작을 임의로 <=Near로 바꾸지 않았다.
+- rate=max(MinSamplingFPS,level/Steps×MaxSamplingFPS).
+  SamplingFPS=trunc(rate)이지만 TickRateCustom=1/rate다. 정수 FPS의 역수가 아니다.
+- 이 사례에서 level5/4/3/2/1은 FPS60/48/36/30/30으로 대응한다.
+
+경계 안팎·이전 상태 유지·비활성 no-op·비정수 rate의 역수와 원본 tick 입력 연결
+회귀 테스트 3개가 통과했다. 현재 구현은 Python 계산 모델이며, Unreal의 float
+정밀도와 실제 camera-manager 거리/tick 적용은 런타임 연결 후 검증해야 한다.
+원본 SetActorTickInterval 노드는 exec 입력이 연결되지 않았고 실제 tick 변경은
+SetComponentTickInterval 경로다. Actor tick을 함께 낮추는 구현을 추가하지 않는다.
+
+## NinjaLive2 solver 후보
+
+자체 작성한 Study NinjaLive1 solver를 별도 임시 후보로 분리하고 Painter export의
+write enable 두 곳만 False로 변경했다. 내부 Painter grid와 RawPainterRT는 Fluid
+입력에 필요하므로 유지한다. 원본 설정은 EnableOutputPainterElevation=False,
+EnableHeightField=False, SimplePainterMode=False라서 출력 OR 조건이 False다.
+기존 모듈의 export 식별 지점이 정확히 한 개씩 존재하는지 확인하고 변경 후 HLSL을
+다시 읽어 일치를 검증했다. 원본 모듈/스크래치는 복제하지 않았다.
+
+에셋: `/Game/_MCP_Temp/NiagaraGenerated/CFNLT01ExternalV001/NS_CFNL_NinjaLive2`.
+증거: `t01_external_solver_author_v001/report.json`.
+SHA256: `f18dac0171f2cb505efcc14742e4c4254be41071325d0a5c5da7cd958a6fa533`.
+컴파일 error0/warning0, GPU NCS_UpToDate, outstanding=False, unknown_count2.
+기존 Study 에셋/맵과 원본 맵의 해시는 불변이다.
+원본 컴포넌트 차이14개를 테스트로 고정했고 output/LOD/routing 관련 테스트6개가 PASS했다.
+
+이 후보는 runtime_verified=False/level_complete=False다. 실제 출력 비활성,
+Fluid 출력 정상 동작, 활성 LOD, 외부 대상/호스트 및 공유 writer 순서 검증이 남아 있다.
+cached InstanceParameterOverrides를 런타임 정답으로 삼지 않으며, 독립 설정 번역과
+현재 컴포넌트 속성이 기준이다.
+
+## 임시 호스트와 출력 분리 실행 검사
+
+`build_cube_fluid_ninja_t01_external_host.py`는 자체 NinjaLive1 Study 호스트에서
+별도 임시 호스트를 작성했다. 새 solver 및 기존 독립 MI_CFNL_DensityBuffer_Red,
+OutputTextureIsPainter=False, ActivationHalfExtents(2500,3500,5000)를 적용했다.
+컴파일·저장 PASS, 기존 Study/원본 해시 불변이다.
+경로 `/Game/_MCP_Temp/CFNLT01ExternalHostV001/BP_CFNL_T01Fluid_NinjaLive2`,
+SHA256 `9ad17dcaa2d85db32542f5eb67316dacd4b0567c7f4d56dc08d1cb76a93c1c85`.
+증거는 `t01_external_host_author_v001/report.json`이다.
+
+공통 runtime verifier의 --external/run-version7로 start/spawn/read/replay/
+read_replay/stop/audit가 모두 PASS했다. 실제 RT 크기368/184와 픽셀 유한성을
+확인하고, PainterRT 중앙 RGB가0이며 FluidSurfaceRT는 nonzero임을 확인했다.
+MID의 VelocityDensityBuffer가 FluidSurfaceRT와 일치한다. 재실행 뒤에도 동일하다.
+이 검사는 RT 중앙 샘플/리소스 연결의 증거이며 전체 영상 또는 모든 픽셀의 동등성은 아니다.
+검증용 actor는 transient, 직접 Replay 경로이며 기존 에셋은 변경하지 않았다.
+
+활성 LOD, 외부 대상 MID/Niagara 구동, TraceMeshInactiveBehaviour 및 그 런타임
+검증은 명시적으로 미구현 상태다. 이 호스트를 사례 완료로 처리하지 않는다.
+
+## Native Blueprint LOD 계산 함수
+
+`build_cube_fluid_ninja_t01_lod_library.py`로 새 BlueprintFunctionLibrary와
+CFNL_EvaluateLOD 함수를 작성했다. 엔진의 비교/SelectInt/산술 노드만 사용하고
+원본 노드 그래프를 복제하지 않았다. 이 함수는 NinjaLive2의 고정 설정
+Near5000/Far10000/Steps5/MinFPS30/MaxFPS60만 지원하며 작성 전 원본 값을 검사한다.
+입력은 Distance/PreviousLevel/Enabled, 출력은 Level/SamplingFPS/TickInterval/Updated다.
+정확히5000과 비활성일 때 Updated=False이며 호출자는 tick 변경을 생략해야 한다.
+
+임시 에셋 `/Game/_MCP_Temp/CFNLT01LODV001/BFL_CFNL_T01LOD`,
+SHA256 `d3c3b9a31720760fdd6a543758f36badd54269963f575d1c4a41181a45c49fd3`.
+작성 증거 `t01_lod_library_author_v001/report.json`은 컴파일·저장·보호해시 PASS다.
+첫 Python 호출에서는 자동 WorldContext 인자를 생략해 TypeError가 났고,
+함수 본문 실행 전 오류임을 확인한 뒤 editor world를 명시해 호출했다.
+
+`t01_lod_library_runtime_v001/report.json`에서 실제 Blueprint 함수를 72개 조건으로
+호출하고 독립 계산 모델과 비교해 PASS했다. 거리 경계 안팎12개 × 이전 level3개 ×
+enabled2개이며, 적용 가능한 경우 FPS/tick 간격까지 비교했다. 에셋 해시는 불변이다.
+이 검증은 Blueprint 계산 함수의 실행 증거다. camera-manager 거리 갱신,
+0.5초 검사 주기, Niagara component tick 적용 및 host 연결은 아직 남아 있다.
+
+## 호스트 LOD 적용 함수 작성
+
+원본 GetDistanceTo의 self는 NinjaLiveComponent의 GetOwner, OtherActor는
+PlayerCameraManager다. SetComponentTickInterval의 self는 컴포넌트 자신이다.
+SetParams에는 SetForceSolo(True)도 확인된다. Actor tick을 낮추는 것으로 대체하지 않는다.
+
+`build_cube_fluid_ninja_t01_lod_host.py`가 별도 자체 임시 호스트에 CFNL_ApplyLOD를
+작성했다. Distance 입력과 기존 LODLevel/LODEnabled로 계산 함수를 호출하고,
+Updated=True일 때만 LODLevel/SamplingFPS/LODTickInterval을 저장한 다음 Solver의
+SetForceSolo(True), SetComponentTickInterval을 호출한다. False 분기에서는 변경하지 않는다.
+엔진 기본 노드와 자체 계산 라이브러리만 참조한다.
+
+경로 `/Game/_MCP_Temp/CFNLT01LODHostV001/BP_CFNL_T01Fluid_NinjaLive2`,
+SHA256 `2439279be53824b463b66d1e989c5e6a563a899fd19d22afb17c23c1def43e18`.
+`t01_lod_host_author_v001/report.json` 작성·컴파일·저장 PASS, 기존 보호 에셋 불변.
+아직 scheduled=False/runtime_verified=False다. 카메라 거리와 검사 주기를 연결하기
+전에 이 함수가 실제 Solver tick과 상태값에 적용되는지 별도로 검증해야 한다.
+
+## LOD 호스트 적용 실행 검사
+
+runtime v009 --lod-host의 apply_lod는 실제 PIE 호스트에서 72개 조건을 검사해 PASS했다.
+거리/이전 level/enable 조합별 LODLevel·SamplingFPS·LODTickInterval 및 Solver의
+get_component_tick_interval을 비교했다. Updated=False이면 초기값41FPS와1/41초를
+유지해야 하며 Actor tick 간격은 모든 조건에서 불변이어야 한다.
+후속 read에서 solver 활성·ReplayCount1 및 RT 출력도 유지됐다. stop/audit PASS.
+
+v008의 첫 검사는 실패했다. 테스트에서 일반 set_editor_property로 상태를 바꾼 뒤
+tick0 및 ReplayCount0/비활성 상태가 관측됐다. 속성 알림에 따른 재구성 가능성이 있어
+v009는 notify_mode=NEVER로 런타임 상태만 바꾸고, 원본 SetParams 조건에 맞게
+검사 시작 시 ForceSolo=True를 명시했다. 이 두 fixture 변경을 개별 분리 검증한 것은
+아니므로 v008 원인을 하나로 단정하지 않는다. 실패 자료는 그대로 보존했다.
+
+증거: `t01_painter368_host_runtime_apply_lod_v009/report.json` 및 v009 read/stop/audit.
+이 결과는 직접 거리 입력에 따른 적용 함수 검증이다. 자동 카메라 거리 갱신·0.5초
+스케줄 연결, 초기 ForceSolo 설정, 외부 출력 연결 및 정식 사례 완료는 여전히 남아 있다.
+
+## 자동 거리 갱신 후보
+
+`build_cube_fluid_ninja_t01_lod_schedule.py`가 별도 호스트에 CFNL_PollLOD를 작성했다.
+GetPlayerCameraManager(0)의 유효성을 확인하고 Actor.GetDistanceTo 결과를 자체
+CFNL_ApplyLOD에 전달한다. 기존 BeginPlay 초기화 체인 끝에 ForceSolo=True,
+초기 Poll1회, K2_SetTimer(0.5초/loop)를 연결했다. 기존 초기화 연결은 보존했다.
+Actor 전체 tick을 변경하지 않는다.
+
+경로 `/Game/_MCP_Temp/CFNLT01LODScheduledV001/BP_CFNL_T01Fluid_NinjaLive2`,
+SHA256 `34a53d351072d4a6a18e450332577e5abfa3d48b852d817089c75b5b5d3e120b`.
+작성 보고서 `t01_lod_schedule_author_v001/report.json` PASS. 해당 최초 보고서의
+scheduled=False는 공통 작성기의 고정 메타데이터였으며 실행 노드가 없는 뜻은 아니다.
+후속 작성기에는 SCHEDULED를 분리했다. 과거 보고서는 수정하지 않았다.
+
+runtime v010은 일반 PIE에서 실제 player camera manager를 사용했다. 직접 LOD 함수를
+호출하지 않고 호스트를 카메라에서 6000→9000→4000 거리로 이동하여 자동 갱신을 관측했다.
+각각 level4/FPS48/1÷48초, level1/FPS30/1÷30초, level5/FPS60/1÷60초가 PASS했다.
+증거는 `t01_painter368_host_runtime_read_lod_v010[_observationN]/report.json`.
+stop/audit PASS 및 보호 에셋 해시 불변. 이 검사는 주기적 자동 갱신의 기능 증거이며,
+정확한 프레임 지연·비활성 중 원본 호출 조건·외부 출력과 결합된 최종 fidelity는 별도다.
+
+## 원본 LOD 실행 진입 조건 재확인
+
+읽기 전용 EventGraph 캡처 `023__EventGraph__0F731ACE4944B7DB56DE5CAB41152635.json`의
+실행 링크를 역추적했다. LOD 진입은 Blocker1 → Blocker2 → InitDone=True →
+Set Timers → 유효한 GameInstance → Sequence 경로 뒤에 있다.
+Blocker1은 EditorModeEnabled이면 통과하며, 런타임에서는
+`!ComponentActivatedByPawnProximity || PawnInsideActivationBounds`일 때 통과한다.
+Blocker2는 PauseSimWhenNotVisible=False이면 통과하고, True이면 최근 렌더 여부를 검사한다.
+
+LOD 내부는 독립적인 무한 Delay 루프가 아니다. 활성 플래그가 True일 때 Sequence가
+Delay(LOD-CheckFrequency)와 DoOnce를 각각 실행한다. DoOnce는 최초 즉시 계산을 허용하고,
+Delay 완료는 계산 경로로 들어가지만 다음 Delay로 되돌아가는 실행 링크는 없다.
+따라서 이후 검사 예약에는 외부 실행 경로의 재진입이 필요하다. 이미 예약된 Delay가
+근접 범위 이탈 후 완료하는 경우까지 단순한 active 조건 타이머와 같다고 단정할 수 없다.
+
+현재 scheduled 후보의 무조건 BeginPlay 반복 타이머는 이 호출 조건과 같지 않다.
+v010의 거리별 자동 갱신 PASS는 유지하지만 원본 lifecycle 동등성의 증거로 사용하지 않는다.
+다음 구현은 최초 유효 진입, 반복 요청의 latent Delay 중복 억제, 비활성 전환 직전 예약의
+완료 여부를 분리해 맞추고 테스트해야 한다. 원본 및 Study 에셋은 이 분석에서 변경하지 않았다.
+
+`cube_fluid_ninja_t01_lod_lifecycle.py`에 별도 요청/완료 기준 모델을 추가했다.
+UE 5.6 KismetSystemLibrary.cpp의 Delay는 동일 CallbackTarget/UUID의 기존 action이
+없을 때만 추가한다. 이를 따라 대기 중 요청은 완료 시각을 연장하지 않도록 모델링했다.
+원본은 예약 완료 경로에서 LODlevel을 먼저 바꾸고 활성 플래그로 FPS/tick 적용을
+다시 차단하므로, 대기 중 LOD를 끄는 경우 level만 바뀔 수 있다는 점도 반영했다.
+기존 CFNL_ApplyLOD 후보는 이 특수 경로를 아직 재현하지 않는다.
+
+직접 검사 9개(기존 산술 3개 + lifecycle 6개), core profile 5/5 PASS.
+lifecycle 검사는 최초 gate, 즉시 1회, 중복 요청, 이탈 뒤 예약 완료, 재진입,
+대기 중 disable, 정확한 near 경계 및 원본 그래프의 feedback/reset 부재를 다룬다.
+이는 오프라인 기준 모델이며 실제 Blueprint 호스트 수정·실행 검증 완료가 아니다.

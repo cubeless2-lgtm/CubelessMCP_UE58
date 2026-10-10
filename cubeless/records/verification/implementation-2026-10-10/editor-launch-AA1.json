@@ -1,0 +1,12 @@
+{
+  "schema": "cubeless_editor_launch_v1",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+  "process_id": 52176,
+  "stopped_owned_pid": 18616,
+  "arguments": [
+    "\"C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject\" -nullrhi -unattended -NoSplash -NoSound -ModelContextProtocolStartServer -ModelContextProtocolPort=8000 -LogCmds=\"LogAutomationTest Log\" -abslog=\"C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\editor-state-transfer-AA1.log\""
+  ],
+  "dll_sha256": "3B81A7D7A56DF9BB1D2B19C3B9210FA4ED63D10298D0CF8CF3F2DB33EC4500EE",
+  "launched_utc": "2026-10-10T15:59:26.4809608Z",
+  "build": "build-state-transfer-AA1.log"
+}

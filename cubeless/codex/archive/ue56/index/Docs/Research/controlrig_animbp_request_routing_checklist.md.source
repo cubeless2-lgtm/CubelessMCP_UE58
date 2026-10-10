@@ -1,0 +1,327 @@
+# ControlRig And AnimBP Request Routing Checklist
+
+Use this checklist when a user asks for ControlRig, Animation Blueprint,
+AnimGraph, state-machine, BlendSpace, Post Process AnimBP, skeletal pose, or
+animation metadata work in UnrealMCP.
+
+This is a general routing sheet. It is not tied to StackOBot assets.
+
+Before chaining authoring commands, read
+`Docs/Research/controlrig_animbp_api_authority_matrix.md` and pick one writer
+authority for the current target and operation. Validators and inspectors are
+not writers, and runtime probes do not author assets.
+
+## Compiler Output
+
+Fill this before Tivret touches editor state or assets:
+
+```text
+request:
+target_asset_or_actor:
+target_body_or_system:
+runtime_layer:
+route_token:
+safe_scope:
+first_read_command:
+first_authoring_command:
+verification_command:
+expected_evidence:
+existing_command_status:
+cxx_api_status:
+approval_required:
+reason:
+```
+
+Use `approval_required=true` when the route would mutate original assets, add
+C++/API, write runtime/gameplay code, save/delete/rename/overwrite assets, or
+probe protected metadata outside existing safe commands.
+
+## Route Tokens
+
+| Route token | Use when | First command | Verification |
+| --- | --- | --- | --- |
+| `static_anim_graph_read` | Need nodes, pins, pose links, or settings | `inspect_anim_graph_protected_topology` or `inspect_anim_graph_node_settings` | none beyond returned topology/settings |
+| `state_machine_read` | Need states, transitions, rule graphs, or blend settings | `inspect_anim_state_machine_transitions` | optional `inspect_anim_instance_runtime_state` |
+| `state_machine_runtime_probe` | Need to prove runtime driver variables affect state response | `inspect_anim_state_machine_transitions` | `sample_anim_state_machine_runtime_response` |
+| `controlrig_direct_probe` | Need to prove ControlRig properties/curves affect rig hierarchy | `controlrig_direct_gate_probe` | `sample_controlrig_pre_post_runtime_pose` |
+| `controlrig_rigvm_static_read` | Need ControlRig RigVM graph nodes, pins, links, event names, script struct evidence, proposed link feasibility, or pin-default feasibility | `inspect_controlrig_rigvm_topology`; for proposed links, follow with `validate_controlrig_rigvm_links`; for proposed/default pins, follow with `validate_controlrig_rigvm_pin_defaults`; use `/ControlRigModules/Modules/AddControl.AddControl` when a UE 5.6.1 positive read-only link/default fixture is needed | none beyond returned topology/link/default feasibility/dirty guards |
+| `controlrig_rigvm_sample_writer` | Need to add reviewed RigVM links or set reviewed RigVM pin defaults on a sample/temp ControlRig Blueprint | validate first with `validate_controlrig_rigvm_links` or `validate_controlrig_rigvm_pin_defaults`; then use `add_controlrig_rigvm_links` or `set_controlrig_rigvm_pin_defaults` | inspect/validate readback after the writer; cleanup temp assets when used |
+| `controlrig_animbp_node_proof` | Need proof that a ControlRig node affects compiled AnimGraph output | `inspect_anim_graph_protected_topology` | `sample_anim_node_pre_post_runtime_pose(mode=pose_watch_capture)` |
+| `anim_node_attribution` | Need proof that one AnimGraph node changed a pose | `sample_anim_node_pre_post_runtime_pose(dry_run=true)` | `sample_anim_node_pre_post_runtime_pose(mode=pose_watch_capture)` |
+| `skeletal_live_pose_read` | Need current live bone/socket transforms | actor/component selection, then `sample_skeletal_bones_in_sie` | repeat after controlled tick/probe if needed |
+| `blendspace_runtime_probe` | Need proof of pose response across BlendSpace input points | `sample_blendspace_runtime_pose_grid` | inspect per-sample deltas |
+| `blendspace_sample_variant` | Need safe sample/temp BlendSpace axis/sample edits | `ensure_blendspace_sample_variant` | `sample_blendspace_runtime_pose_grid` |
+| `postprocess_modify_bone_sample` | Need late sample bone offset after main pose | `ensure_postprocess_anim_demo_variant` or `ensure_anim_graph_modify_bone_demo` | `sample_anim_node_pre_post_runtime_pose(anim_instance_source=post_process)` |
+| `trail_or_rigidbody_sample` | Need animation-side secondary motion sample | `ensure_anim_graph_trail_demo` or `set_anim_graph_rigidbody_settings` | `sample_anim_node_pre_post_runtime_pose` |
+| `controlrig_forced_driver_sample` | Need to force ControlRig gate curves/inputs in a sample AnimBP | `ensure_controlrig_forced_driver_animbp` | `sample_anim_node_pre_post_runtime_pose(mode=pose_watch_capture)` |
+| `skeletal_component_anim_defaults` | Need to set component mesh/AnimBP defaults | `set_skeletal_mesh_component_anim_defaults` | compile/validate/readback result |
+| `protected_animation_metadata` | Need notifies, curves, sync markers, Montage sections, slots, branch points | `inspect_animation_asset_metadata_guarded` | read-only inventory; pair with runtime probe only when runtime behavior proof is needed |
+| `state_machine_sample_authoring` | Need regular sample states, SequencePlayer/BlendSpacePlayer state players, bounded BlendSpacePlayer input bindings, entry link, basic transitions, or bounded bool/float/enum variable transition rules | `ensure_anim_state_machine_sample_variant` | `inspect_anim_state_machine_transitions` readback; runtime response probe only after a controlled sample actor exists |
+| `anim_bp_locomotion_event_graph_driver` | Need sample AnimBP `Speed`, `Direction`, `IsInAir`, `Acceleration`, or `IsAccelerating` updated from owning pawn data for BlendSpacePlayer inputs or transition rules | `ensure_anim_bp_event_graph_locomotion_driver` | `inspect_blueprint_graph_call_topology` readback; runtime response probe only after a controlled sample actor exists |
+| `anim_bp_locomotion_sample_pipeline` | Need an automatic sample locomotion AnimBP with pawn-driven EventGraph variables plus a bounded sample state machine on the same sample/temp target | planner/job contract composes `ensure_anim_bp_event_graph_locomotion_driver` then `ensure_anim_state_machine_sample_variant` | `inspect_blueprint_graph_call_topology` and `inspect_anim_state_machine_transitions` readback |
+| `project_specific_locomotion_state_review` | Need gait, turn-in-place, aim offset, stride/orientation warping, or project-specific locomotion policy | no generic writer by default | Ieta review required before adding variables, enums, or state-machine policy |
+| `state_machine_authoring_gap` | Need conduit, alias, nested state machine, custom transition graph, arbitrary rule graph beyond bounded bool/float/enum variable rules, or replacing/deleting an existing machine | no safe general command yet | Ieta review required before extending `ensure_anim_state_machine_sample_variant` |
+| `controlrig_asset_authoring_gap` | Need new ControlRig asset, preview hierarchy seed, direct curves, local/global transform nulls, scalar controls, transform controls, direct control shape metadata, named direct parents, or allowlisted single-instance ControlRig event unit nodes | `ensure_controlrig_sample_asset` for empty/preview/imported-preview-hierarchy/direct-curve/direct-null/scalar-control/transform-control/direct-control-shape-metadata/named-parent/null-transform/event-unit samples; use separate writer commands for reviewed sample/temp RigVM links/defaults | Ieta review required before arbitrary script structs, variables, functions, comments, reroutes, dispatch nodes, exposed pins, graph replacement, units beyond the approved event-unit allowlist, or non-sample mutation |
+| `controlrig_animbp_node_sample` | Need a new ControlRig AnimGraph node in a safe sample AnimBP | `ensure_anim_graph_controlrig_node_sample` | follow with `set_anim_graph_controlrig_input_defaults` or `ensure_controlrig_forced_driver_animbp` if needed |
+| `controlrig_recipe_animbp_binding_sample` | Need one recipe-driven sample/temp ControlRig build plus sample AnimBP ControlRig-node pin/default binding | `build_controlrig_recipe_with_animbp_binding` | returned stage reports for recipe validation, ControlRig build, AnimBP node creation, input pin/default handling, and post-change compile |
+| `controlrig_animbp_node_authoring_gap` | Need arbitrary ControlRig node insertion before/after selected nodes or broad graph rewrites | no safe general command yet | Ieta review required before extending `ensure_anim_graph_controlrig_node_sample` |
+| `physics_asset_constraints_read` | Need PhysicsAsset bodies, constraints, limits, drives, or profiles | `inspect_physics_asset_constraints_guarded` | read-only inventory; pair with RigidBody node settings or runtime proof only when needed |
+| `anim_bp_sample_creation` | Need a new sample AnimBP from a Skeleton or SkeletalMesh | `create_anim_blueprint_sample` | compile/readback result; feed target into sample authoring commands |
+| `linked_anim_graph_sample_authoring` | Need a sample Linked Anim Graph node targeting an existing compatible AnimBP class | planner/job contract or `ensure_linked_anim_graph_sample_variant` | compile/readback result plus `inspect_anim_graph_protected_topology`; runtime proof only when behavior evidence is required |
+| `linked_anim_graph_layer_authoring_gap` | Need Linked Anim Layer, Anim Layer Interface creation, or Sub Anim Instance compatibility-wrapper authoring | no safe general command yet | read design doc; Ieta review required |
+| `unsupported_node_mapping_gap` | Existing node resolver/PoseWatch cannot map requested node class after checking `mapping_support` | current resolver first | candidate `extend_anim_node_runtime_mapping` fallback expansion; read design doc; Ieta review required |
+
+## Signal Map
+
+| User wording signal | Likely route token |
+| --- | --- |
+| "what is connected", "which node", "pins", "links", "settings" | `static_anim_graph_read` |
+| "state", "transition", "idle/run/jump", "when does it switch" | `state_machine_read` or `state_machine_runtime_probe` |
+| "prove this variable changes the state" | `state_machine_runtime_probe` |
+| "IK", "foot", "hand reach", "interaction point", "ControlRig gate" | `controlrig_direct_probe`, then `controlrig_animbp_node_proof` if graph proof matters |
+| "ControlRig graph", "RigVM nodes", "RigVM pins", "RigVM links", "unit script struct", "can these RigVM pins link", "can this RigVM pin default be set" | `controlrig_rigvm_static_read` |
+| "add these RigVM links to my sample ControlRig", "set these RigVM pin defaults on temp ControlRig" | `controlrig_rigvm_sample_writer` |
+| "before and after this node", "which node caused it" | `anim_node_attribution` |
+| "PoseWatch failed", "mapping failed", "no input pose link" | `anim_node_attribution` first; use `unsupported_node_mapping_gap` only after `mapping_support` shows a real fallback gap |
+| "current bone/socket transform" | `skeletal_live_pose_read` |
+| "lean", "speed axis", "BlendSpace sample" | `blendspace_runtime_probe` or `blendspace_sample_variant` |
+| "head/neck/finger late tweak after animation" | `postprocess_modify_bone_sample` |
+| "antenna/tail/follow-through/secondary motion" | `trail_or_rigidbody_sample` |
+| "force ControlRig input/default/curve" | `controlrig_forced_driver_sample` |
+| "assign AnimBP to mesh component" | `skeletal_component_anim_defaults` |
+| "notify", "curve metadata", "sync marker", "Montage section" | `protected_animation_metadata` |
+| "add a regular sample state/transition/basic rule", "Speed > threshold transition", "bind speed to BlendSpace X/Y", "bool variable controls transition", "enum state/mode controls transition" | `state_machine_sample_authoring` |
+| "update Speed every tick", "drive Speed from pawn velocity", "Direction variable for BlendSpace", "IsInAir transition variable", "Acceleration variable", "IsAccelerating transition variable", "AnimBP EventGraph locomotion", "Speed variable for BlendSpace" | `anim_bp_locomotion_event_graph_driver` |
+| "automatic sample locomotion AnimBP", "locomotion pipeline", "sample AnimBP locomotion state machine with Speed driver" | `anim_bp_locomotion_sample_pipeline` |
+| "gait", "turn-in-place", "aim offset", "stride warping", "orientation warping" | `project_specific_locomotion_state_review` |
+| "add conduit/alias/custom rule graph/nested state machine" | `state_machine_authoring_gap` |
+| "create a new ControlRig or event-unit sample" | `controlrig_asset_authoring_gap` |
+| "create a RigVM link, custom unit graph, or arbitrary ControlRig unit" | `controlrig_asset_authoring_gap` with Ieta review before extending commands |
+| "add ControlRig node", "insert ControlRig in sample AnimBP", "sample AnimBP needs ControlRig" | `controlrig_animbp_node_sample` |
+| "build this ControlRig recipe and bind it to a sample AnimBP", "recipe includes animbp_binding" | `controlrig_recipe_animbp_binding_sample` |
+| "PhysicsAsset", "constraint limits", "ragdoll constraints", "physical animation profile" | `physics_asset_constraints_read_gap` |
+| "create sample AnimBP", "make AnimBP from skeleton", "make AnimBP from mesh" | `anim_bp_sample_creation` |
+| "sample Linked Anim Graph", "modular AnimBP with existing linked AnimBP class" | `linked_anim_graph_sample_authoring` |
+| "Linked Anim Layer", "Anim Layer Interface", "Sub Anim Instance" | `linked_anim_graph_layer_authoring_gap` |
+
+## Safe Scope Values
+
+Use one of these in `safe_scope`:
+
+- `read_only`
+- `runtime_probe_only`
+- `sample_only`
+- `temp_only`
+- `original_asset_mutation_requested`
+- `new_cxx_api_candidate`
+- `runtime_gameplay_code_requested`
+
+Default to `read_only`, `runtime_probe_only`, `sample_only`, or `temp_only`.
+Anything else requires explicit review.
+
+## Evidence Rules
+
+| Claim | Minimum evidence |
+| --- | --- |
+| "This graph contains the node/link" | `inspect_anim_graph_protected_topology` |
+| "This node has these settings" | `inspect_anim_graph_node_settings` |
+| "This state-machine transition exists" | `inspect_anim_state_machine_transitions` |
+| "This runtime variable drives the state-machine" | `sample_anim_state_machine_runtime_response` |
+| "This ControlRig gate changes hierarchy transforms" | `controlrig_direct_gate_probe` or `sample_controlrig_pre_post_runtime_pose` |
+| "This ControlRig RigVM graph contains these nodes/pins/links" | `inspect_controlrig_rigvm_topology` |
+| "This proposed ControlRig RigVM link is feasible" | `validate_controlrig_rigvm_links` |
+| "This proposed ControlRig RigVM pin default is feasible" | `validate_controlrig_rigvm_pin_defaults` |
+| "This sample ControlRig RigVM link/default was written" | `add_controlrig_rigvm_links` or `set_controlrig_rigvm_pin_defaults`, followed by `validate_controlrig_rigvm_links` or `validate_controlrig_rigvm_pin_defaults` readback |
+| "This ControlRig node changes compiled AnimBP output" | `sample_anim_node_pre_post_runtime_pose(mode=pose_watch_capture)` |
+| "This AnimGraph node caused this pose delta" | same-instance PoseWatch pre/post with `mapping_support.evidence_tier=same_instance_pose_watch`, or clearly labeled isolated/temp comparison |
+| "This BlendSpace edit changes pose response" | `sample_blendspace_runtime_pose_grid` against source and variant inputs |
+| "This sample authoring succeeded" | compile/save/readback result plus route-specific proof |
+
+Do not upgrade the claim beyond the evidence. Direct ControlRig evidence is not
+compiled AnimGraph evidence. Final component tick delta is not node attribution.
+
+## Stop Conditions
+
+Stop for Ieta review before Tivret proceeds when:
+
+- `safe_scope` is `original_asset_mutation_requested`;
+- `safe_scope` is `new_cxx_api_candidate`;
+- the request needs runtime/gameplay code;
+- no existing command covers the route token;
+- a protected metadata route would require ad hoc Python probing;
+- the user asks to save, delete, rename, overwrite, or modify non-sample assets;
+- same-instance proof is required but the target node class cannot be mapped.
+
+## Existing Command Status Values
+
+Use one of:
+
+- `covered`
+- `covered_with_limits`
+- `sample_authoring_route`
+- `partial`
+- `gap_candidate`
+- `blocked_pending_user_approval`
+
+Examples:
+
+- `static_anim_graph_read`: `covered`
+- `controlrig_rigvm_static_read`: `covered`
+- `anim_node_attribution` for a known PoseWatch-supported node: `covered`
+- `anim_node_attribution` for an unmapped node class: `covered_with_limits`
+- `state_machine_sample_authoring`: `sample_authoring_route`
+- `anim_bp_sample_creation`: `sample_authoring_route`
+- `controlrig_animbp_node_sample`: `sample_authoring_route`
+- `linked_anim_graph_sample_authoring`: `sample_authoring_route`
+- `state_machine_authoring_gap`: `gap_candidate`
+- original asset mutation: `blocked_pending_user_approval`
+
+## C++/API Decision Values
+
+Use one of:
+
+- `not_needed`
+- `not_needed_for_read_or_probe`
+- `candidate_not_now`
+- `candidate_requires_ieta_review`
+- `blocked_until_user_approval`
+
+Default to `not_needed` or `not_needed_for_read_or_probe`.
+
+## Filled Examples
+
+### Example 1: Read ControlRig Node Settings
+
+```text
+request: "Tell me how this AnimBP's ControlRig node is wired."
+target_asset_or_actor: user-named AnimBP
+target_body_or_system: ControlRig node
+runtime_layer: AnimGraph
+route_token: static_anim_graph_read
+safe_scope: read_only
+first_read_command: inspect_anim_graph_protected_topology(node_type="ControlRig", include_settings=true)
+first_authoring_command: none
+verification_command: none
+expected_evidence: node metadata, pose links, input pins, reflected settings
+existing_command_status: covered
+cxx_api_status: not_needed
+approval_required: false
+reason: read-only topology/settings route exists
+```
+
+### Example 2: Prove A Runtime State Driver
+
+```text
+request: "Prove speed changes this AnimBP from idle to run."
+target_asset_or_actor: live actor/component or sample actor
+target_body_or_system: locomotion state machine
+runtime_layer: live AnimInstance
+route_token: state_machine_runtime_probe
+safe_scope: runtime_probe_only
+first_read_command: inspect_anim_state_machine_transitions
+first_authoring_command: none
+verification_command: sample_anim_state_machine_runtime_response
+expected_evidence: baseline plus speed cases with state names, weights, transition progress
+existing_command_status: covered
+cxx_api_status: not_needed_for_read_or_probe
+approval_required: false
+reason: runtime-only property writer and state response sampler exist
+```
+
+### Example 3: Add A New State
+
+```text
+request: "Add a new jump recovery state and transition rule."
+target_asset_or_actor: user-named AnimBP
+target_body_or_system: state machine
+runtime_layer: AnimGraph state machine
+route_token: state_machine_sample_authoring
+safe_scope: sample_only
+first_read_command: inspect_anim_state_machine_transitions
+first_authoring_command: ensure_anim_state_machine_sample_variant
+verification_command: inspect_anim_state_machine_transitions readback; runtime response only after controlled sample actor setup
+expected_evidence: new sample state/transition topology plus compile/save result
+existing_command_status: sample_authoring_route
+cxx_api_status: implemented_sample_only
+approval_required: false for sample target; true for original asset mutation or unsupported advanced state-machine features
+reason: source AnimBP remains read-only and target must be under /Game/_MCP_Sample or /Game/_MCP_Temp
+design_doc: Docs/Research/ensure_anim_state_machine_sample_variant_design.md
+```
+
+### Example 4: AnimBP Locomotion EventGraph Driver
+
+```text
+target_asset_or_actor: user-named AnimBP
+target_body_or_system: EventGraph locomotion variable driver
+runtime_layer: AnimBP EventGraph
+route_token: anim_bp_locomotion_event_graph_driver
+safe_scope: sample_only
+first_read_command: inspect_blueprint_graph_call_topology
+first_authoring_command: ensure_anim_bp_event_graph_locomotion_driver
+verification_command: inspect_blueprint_graph_call_topology readback; runtime response only after controlled sample actor setup
+expected_evidence: UpdateAnimation -> TryGetPawnOwner -> IsValid -> GetVelocity -> VSizeXY -> Set Speed topology, optional CalculateDirection/IsFalling/GetCurrentAcceleration setter topology, plus compile/save result
+existing_command_status: sample_authoring_route
+cxx_api_status: implemented_sample_only
+approval_required: false for sample target; true for original asset mutation or EventGraph behavior beyond bounded locomotion variable driving
+reason: source AnimBP remains read-only and target must be under /Game/_MCP_Sample or /Game/_MCP_Temp
+design_doc: Docs/Research/ensure_anim_bp_event_graph_locomotion_driver_design.md
+```
+
+### Example 5: Automatic Sample Locomotion Pipeline
+
+```text
+request: "Create an automatic sample locomotion AnimBP."
+target_asset_or_actor: sample/temp AnimBP target
+target_body_or_system: EventGraph locomotion driver plus sample state machine
+runtime_layer: AnimBP EventGraph and AnimGraph state machine
+route_token: anim_bp_locomotion_sample_pipeline
+safe_scope: sample_only
+first_read_command: inspect_blueprint_graph_call_topology and inspect_anim_state_machine_transitions after authoring
+first_authoring_command: ensure_anim_bp_event_graph_locomotion_driver, then ensure_anim_state_machine_sample_variant
+verification_command: EventGraph topology readback and state-machine topology readback
+expected_evidence: pawn-driven Speed/Direction/IsInAir/Acceleration/IsAccelerating setters, Idle/Move states, Move BlendSpacePlayer X linked to Speed, and bounded Speed transition rules
+existing_command_status: sample_authoring_route
+cxx_api_status: not_needed
+approval_required: false for sample target; true for gait, turn-in-place, aim-offset, warping, or original asset mutation
+reason: existing commands compose safely on one sample/temp target without adding a new C++ bridge command
+design_doc: Docs/Research/ensure_anim_bp_event_graph_locomotion_driver_design.md
+```
+
+### Example 6: Animation Metadata
+
+```text
+request: "Read notify timing and sync markers from this montage."
+target_asset_or_actor: user-named animation asset or montage
+target_body_or_system: animation metadata
+runtime_layer: source animation asset metadata
+route_token: protected_animation_metadata
+safe_scope: new_cxx_api_candidate
+first_read_command: safe inventory only
+first_authoring_command: none
+verification_command: structured readback after guarded inspector exists
+expected_evidence: notifies, sync markers, montage sections, slots, branch points
+existing_command_status: gap_candidate
+cxx_api_status: candidate_requires_ieta_review
+approval_required: true
+reason: avoid broad ad hoc Python probing of protected/version-sensitive metadata
+design_doc: Docs/Research/inspect_animation_asset_metadata_guarded_design.md
+```
+
+## Review Handoff Template
+
+Use this when the checklist produces a gap candidate:
+
+```text
+Ieta review:
+request:
+route_token:
+existing routes checked:
+why existing read/probe/sample route is insufficient:
+asset mutation boundary:
+proposed command:
+default safety guard:
+expected schema:
+verification command:
+evidence level:
+approval needed before Tivret implementation:
+```

@@ -1,0 +1,1097 @@
+{
+  "date_kst": "2026-10-10",
+  "status": "static_read_only_scope_measurement_not_migration_or_unique_feature_count",
+  "source_root": "C:\\Git\\UnrealMCP5_6_1",
+  "python_tools": {
+    "files": 31,
+    "lines": 34985,
+    "nonblank_lines": 32165,
+    "records": [
+      {
+        "path": "Python/tools/ai_tools.py",
+        "bytes": 94488,
+        "lines": 2416,
+        "nonblank_lines": 2249,
+        "sha256": "d5a16faaf1510ca7b0fe2ab4e8f6b6b369c1879fb5819e0a259fc268e0ca3c30"
+      },
+      {
+        "path": "Python/tools/audio_tools.py",
+        "bytes": 6073,
+        "lines": 154,
+        "nonblank_lines": 139,
+        "sha256": "c727a83f629fd723c31cea257aac2f598d0117ba20298a45fc20aa89f769ff4a"
+      },
+      {
+        "path": "Python/tools/batch_tools.py",
+        "bytes": 5089,
+        "lines": 122,
+        "nonblank_lines": 103,
+        "sha256": "0f26c494455d82177342be6b540aea3a5126da40b53996213f2d265acdea35db"
+      },
+      {
+        "path": "Python/tools/blueprint_tools.py",
+        "bytes": 41332,
+        "lines": 1011,
+        "nonblank_lines": 862,
+        "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+      },
+      {
+        "path": "Python/tools/chaos_tools.py",
+        "bytes": 55608,
+        "lines": 1250,
+        "nonblank_lines": 1202,
+        "sha256": "7f22f67e8293896e09bd971757ec72dca700e4b4fc7e99675b2f19d6c6becff2"
+      },
+      {
+        "path": "Python/tools/controlrig_authoring_tools.py",
+        "bytes": 61375,
+        "lines": 1498,
+        "nonblank_lines": 1334,
+        "sha256": "0ebb0dee3ae3bd7526b2815b92283ff529eea904268532f56ec4840db3326377"
+      },
+      {
+        "path": "Python/tools/data_tools.py",
+        "bytes": 9561,
+        "lines": 274,
+        "nonblank_lines": 242,
+        "sha256": "f0138cc49eb86e915657f99590c18da4d53b7ac918cc83fd15faa51bc499eae9"
+      },
+      {
+        "path": "Python/tools/dependency_guard.py",
+        "bytes": 1923,
+        "lines": 59,
+        "nonblank_lines": 44,
+        "sha256": "1dccbf7b7552b96c9628dae7e15391f0296a05123ea3c9675a23016091dfbc1f"
+      },
+      {
+        "path": "Python/tools/editor_tools.py",
+        "bytes": 92367,
+        "lines": 1979,
+        "nonblank_lines": 1738,
+        "sha256": "302ebb7f76b26c2433b9a2525d17663b55643506eb0a48b2de1fd4cd900563c8"
+      },
+      {
+        "path": "Python/tools/exact_json_arguments.py",
+        "bytes": 1224,
+        "lines": 38,
+        "nonblank_lines": 28,
+        "sha256": "af42527244d355c7ccb122b060b445465845bd5ff2a32853b96c554df038de03"
+      },
+      {
+        "path": "Python/tools/gas_tools.py",
+        "bytes": 9962,
+        "lines": 246,
+        "nonblank_lines": 216,
+        "sha256": "e7249bbf151c199b6eb40f6b225883968fd3fe6f8c36c8fa77a0b39b3e3ac24e"
+      },
+      {
+        "path": "Python/tools/ieta_tools.py",
+        "bytes": 3405,
+        "lines": 97,
+        "nonblank_lines": 80,
+        "sha256": "d00d026de6f2850bae4586c2231c1117761ab45d508842a8b635be1d4a81a1c3"
+      },
+      {
+        "path": "Python/tools/landscape_tools.py",
+        "bytes": 9736,
+        "lines": 230,
+        "nonblank_lines": 203,
+        "sha256": "21cad26520115adf7b66831f5cad6b13424a128efa17522e5518303662e518e1"
+      },
+      {
+        "path": "Python/tools/management_tools.py",
+        "bytes": 40170,
+        "lines": 990,
+        "nonblank_lines": 893,
+        "sha256": "312e329bb508386b4f8ff2c7dffe0a39862b67e07d2150e6d5ad2cf677ea0c6d"
+      },
+      {
+        "path": "Python/tools/material_tools.py",
+        "bytes": 29179,
+        "lines": 744,
+        "nonblank_lines": 684,
+        "sha256": "d98acd22711815ca799df5f28a8e6dc2cb2e5bceadfc5f1b5dc11a32b4d4b0ed"
+      },
+      {
+        "path": "Python/tools/mutation_result_contract.py",
+        "bytes": 40535,
+        "lines": 1113,
+        "nonblank_lines": 1020,
+        "sha256": "703846e5a05b4e0817920723173c9c52273e79763370768c749a36aac001c02e"
+      },
+      {
+        "path": "Python/tools/networking_tools.py",
+        "bytes": 4496,
+        "lines": 120,
+        "nonblank_lines": 103,
+        "sha256": "8fe55daf63b6d16809edd5a8497a698a433a2773e0f69fb466982c54b36ad5d8"
+      },
+      {
+        "path": "Python/tools/niagara_planning_tools.py",
+        "bytes": 12397,
+        "lines": 297,
+        "nonblank_lines": 271,
+        "sha256": "c1389a6646028d94373fd556c395b6d7d771baca43fa0cb2f10b7194ff44bdff"
+      },
+      {
+        "path": "Python/tools/niagara_tools.py",
+        "bytes": 406110,
+        "lines": 8798,
+        "nonblank_lines": 8346,
+        "sha256": "7df98be04dc4b73acb5a4ac6ded695463d398800a06805f26b41329361b103a9"
+      },
+      {
+        "path": "Python/tools/node_tools.py",
+        "bytes": 251967,
+        "lines": 5783,
+        "nonblank_lines": 5349,
+        "sha256": "97542378c2ff1380048f6f1a9af7c5c6d82924306612e854336b3c0c796e6ca5"
+      },
+      {
+        "path": "Python/tools/pcg_tools.py",
+        "bytes": 133682,
+        "lines": 3368,
+        "nonblank_lines": 3133,
+        "sha256": "3a95662411803d37b6fc44f8b009000b7c8f7c241d93fda1fc6a1982197158fa"
+      },
+      {
+        "path": "Python/tools/project_tools.py",
+        "bytes": 29489,
+        "lines": 687,
+        "nonblank_lines": 621,
+        "sha256": "8d73c0dcd02e365facedcbd1a3451bda8d3f7e72a268f0049d93f0f0ef3b5026"
+      },
+      {
+        "path": "Python/tools/python_tools.py",
+        "bytes": 5169,
+        "lines": 114,
+        "nonblank_lines": 96,
+        "sha256": "825aa0e56a585083df0a127a93af1b3406a2f825f6c954f1de1537359877b91a"
+      },
+      {
+        "path": "Python/tools/response_schema.py",
+        "bytes": 1327,
+        "lines": 50,
+        "nonblank_lines": 41,
+        "sha256": "aff7578341b1b473ec8b08840838da2147960f3f0f633a74b530a5e76c269fb4"
+      },
+      {
+        "path": "Python/tools/sequencer_tools.py",
+        "bytes": 13298,
+        "lines": 351,
+        "nonblank_lines": 315,
+        "sha256": "64cc47dfc7f5ad73ecdeac0302caf98af4a76142151dc300c4ba59a5eb006c4a"
+      },
+      {
+        "path": "Python/tools/skeletal_tools.py",
+        "bytes": 17379,
+        "lines": 414,
+        "nonblank_lines": 382,
+        "sha256": "293889b578ea13a7953f76460b78eb4d737fce02a685ff4d45409039f5567f43"
+      },
+      {
+        "path": "Python/tools/state_tree_tools.py",
+        "bytes": 5436,
+        "lines": 144,
+        "nonblank_lines": 128,
+        "sha256": "c23598e126293dbfb3bef237e8577d612db7f3b3785d7f120340c5db4225bfaa"
+      },
+      {
+        "path": "Python/tools/texture_generation.py",
+        "bytes": 35736,
+        "lines": 909,
+        "nonblank_lines": 820,
+        "sha256": "10a9b11f7fe338c066fe7db875e8d281add3e49b98f50250d460d6a3b341febd"
+      },
+      {
+        "path": "Python/tools/tool_discovery.py",
+        "bytes": 31209,
+        "lines": 806,
+        "nonblank_lines": 707,
+        "sha256": "50c176a9f41ba62f44d1a4282e723f1f601f9f5116eb29e8dd98a857052c63ec"
+      },
+      {
+        "path": "Python/tools/tool_policy.py",
+        "bytes": 20233,
+        "lines": 517,
+        "nonblank_lines": 487,
+        "sha256": "d8ee0930e89c203e0ef47e58c496e0ab537a2a73b39bb882f778a39b105fbb76"
+      },
+      {
+        "path": "Python/tools/umg_tools.py",
+        "bytes": 14657,
+        "lines": 406,
+        "nonblank_lines": 329,
+        "sha256": "e6505a46491e3f3e0dfa16998e9938ee28dd00b66116ef6dab99f595b46fb7b0"
+      }
+    ]
+  },
+  "native_mcp_sources": {
+    "files": 111,
+    "lines": 164104,
+    "nonblank_lines": 150420,
+    "records": [
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPAICommands.cpp",
+        "bytes": 131384,
+        "lines": 3030,
+        "nonblank_lines": 2832,
+        "sha256": "2b52e9820268107d702620fcbc44290d9d5bec1da494a807407833afed7e4786"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPAudioCommands.cpp",
+        "bytes": 31659,
+        "lines": 840,
+        "nonblank_lines": 786,
+        "sha256": "4c190067872f5f477bc748f0e0d9bfc5d2306726c5688fc38bcef3818adcd4d0"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintCommands.cpp",
+        "bytes": 139841,
+        "lines": 3250,
+        "nonblank_lines": 2904,
+        "sha256": "fa72cb0d37cfbc2377f6cbf5926f82352b5e07ea570aced4125eec732b32446f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintCommands_Physics.cpp",
+        "bytes": 43471,
+        "lines": 930,
+        "nonblank_lines": 872,
+        "sha256": "e79ef64388581a0bdadb0b76a4382823f79ae1d08e189e0a0653967c7a954aac"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part1.cpp",
+        "bytes": 170909,
+        "lines": 3879,
+        "nonblank_lines": 3467,
+        "sha256": "5eab87d22258206e7ece29ea9dc2efd94c44054458ae5a3e57318908aa2bf113"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part2.cpp",
+        "bytes": 165451,
+        "lines": 3551,
+        "nonblank_lines": 3177,
+        "sha256": "2963edde6b487265ad10edc113cded82644664e979c0dcf6c95a3d065211dd8b"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part3.cpp",
+        "bytes": 197578,
+        "lines": 3937,
+        "nonblank_lines": 3586,
+        "sha256": "440c4183449167fa7fc79b930488e30c8942834c1c9fee1e44e77b125c650b6f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part4.cpp",
+        "bytes": 167812,
+        "lines": 3690,
+        "nonblank_lines": 3351,
+        "sha256": "1241254cc51cf1a3731d2056ebb6f167f7cd1ed0f2762b173caf490bc3c8bb8f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part5.cpp",
+        "bytes": 184231,
+        "lines": 3581,
+        "nonblank_lines": 3257,
+        "sha256": "6940f27a4ae2544bf42bbbb64ae801ff0b9959a5789ec8a3f0473a4a5328b28f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part6.cpp",
+        "bytes": 59722,
+        "lines": 1447,
+        "nonblank_lines": 1259,
+        "sha256": "cf4369958a58ed6e8ca451e6abf57ee42349f0148ea00dd0e3cd8579935be45d"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part7.cpp",
+        "bytes": 14905,
+        "lines": 412,
+        "nonblank_lines": 360,
+        "sha256": "17400a0222422d0ea13605ac3b1e0159ca4fb5318c6712988f47ab3bbce74041"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part8.cpp",
+        "bytes": 37710,
+        "lines": 838,
+        "nonblank_lines": 764,
+        "sha256": "fcc40e26626cf2cb06575d2ce88d45530a85790d6dd624cdff4038ffcd43dc37"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommands_Part9.cpp",
+        "bytes": 60884,
+        "lines": 1229,
+        "nonblank_lines": 1151,
+        "sha256": "c5ab632db9e1bc7ac375b2bd5163c03aeacf41acb37d3ae91574bb3663bfa0cf"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPBlueprintNodeCommandsShared.h",
+        "bytes": 563240,
+        "lines": 14127,
+        "nonblank_lines": 12712,
+        "sha256": "8c2be1947fa76417bf4cc5ce0a3a6db2bb5e3fdc4c446c21c37162d6c47a452e"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPChaosCinematicCommands.cpp",
+        "bytes": 347058,
+        "lines": 6438,
+        "nonblank_lines": 6317,
+        "sha256": "4d374df98e1312b4b5ce257158e23b3b7a1585fdc7b791dc5d3f818d0572d29f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPChaosCommands.cpp",
+        "bytes": 408448,
+        "lines": 7694,
+        "nonblank_lines": 7463,
+        "sha256": "99628d191386bd7acc1c9bad9e178666359ad63aa3075c6cab1bf16ed3dee991"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPChaosTuningCommands.cpp",
+        "bytes": 381296,
+        "lines": 9066,
+        "nonblank_lines": 8690,
+        "sha256": "bcf49baa7cc60e1d17334f0209c3fba61ca5e0db49adc0ab11e04d9955daab41"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPCommonUtils.cpp",
+        "bytes": 77472,
+        "lines": 2085,
+        "nonblank_lines": 1865,
+        "sha256": "f64c79ce1b4a326746b1882e6f9f7c04ac24fbf825f5ddf4c547f8905d6fc365"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPDataCommands.cpp",
+        "bytes": 42514,
+        "lines": 1058,
+        "nonblank_lines": 957,
+        "sha256": "31c4c92d5f7e8c11105534ec9ce03e664bbdddae32c6ec1f5ce5eb05b783a5c8"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPEditorCommands.cpp",
+        "bytes": 372521,
+        "lines": 7699,
+        "nonblank_lines": 6938,
+        "sha256": "8928ef3d62bf369d47863360f1636a2434c7e6b6dcf061e7e518f4df42f34152"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPGASCommands.cpp",
+        "bytes": 54940,
+        "lines": 1371,
+        "nonblank_lines": 1296,
+        "sha256": "2ba3cd1ba8fb01da31aa023bbb34c3b989ae9cb818cd55a14bda08d54d5d4f7b"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPLandscapeCommands.cpp",
+        "bytes": 30688,
+        "lines": 782,
+        "nonblank_lines": 692,
+        "sha256": "a324ebdee8d130f62eb16f3481b66fc3320289757bee75df37ec23ac2b09ab40"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPMaterialCommands.cpp",
+        "bytes": 265241,
+        "lines": 6588,
+        "nonblank_lines": 5869,
+        "sha256": "8c41e028d0f6b27e0d5c2d85cad37216bab8d2234e61189c812e6a463b0d5a91"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNetworkingCommands.cpp",
+        "bytes": 30092,
+        "lines": 739,
+        "nonblank_lines": 692,
+        "sha256": "df086ca5282e4bd057418da5a53b3c10303981bdb6774b1ab88edb165237ca13"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part1.cpp",
+        "bytes": 178267,
+        "lines": 3593,
+        "nonblank_lines": 3301,
+        "sha256": "0241332761ccaeca9ea3df5ed9fccd25b983ceba107068b51d3b86a74a0095d9"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part2.cpp",
+        "bytes": 281686,
+        "lines": 6003,
+        "nonblank_lines": 5465,
+        "sha256": "49a96f32abf4779d96edd6be7f85ce5af9e9af6f1bc8a5d9139beaee0d00342a"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part3.cpp",
+        "bytes": 170110,
+        "lines": 3508,
+        "nonblank_lines": 3181,
+        "sha256": "96c82af11097e4a8b16ee6709160a09f058b33e533c7316e3662f0289f9b4da5"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part4.cpp",
+        "bytes": 168309,
+        "lines": 3477,
+        "nonblank_lines": 3192,
+        "sha256": "106febab1cbfcc9bd36a11913974d10c274a374c5a4506d3285c7b3f5e9bac17"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part5.cpp",
+        "bytes": 317320,
+        "lines": 6760,
+        "nonblank_lines": 6242,
+        "sha256": "b0d967960f702850cdcd42e8da65b606930c2b02e844f3070ae11f3b211343bb"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part6.cpp",
+        "bytes": 61369,
+        "lines": 1183,
+        "nonblank_lines": 1143,
+        "sha256": "363e89c36a46a8a5745785009e88935aac2455791a17c816ba2a08fb11981bfa"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part7.cpp",
+        "bytes": 141142,
+        "lines": 2983,
+        "nonblank_lines": 2816,
+        "sha256": "108f8a161f58a097a274cb1b915c1cb4c29101b9740c360332b5f07ab60f69a1"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part8.cpp",
+        "bytes": 48883,
+        "lines": 1066,
+        "nonblank_lines": 989,
+        "sha256": "47134f97c5baca21ea3b271ceaec00cd736684b115359b10a746b457c881af4f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommandsShared.h",
+        "bytes": 235086,
+        "lines": 5826,
+        "nonblank_lines": 5308,
+        "sha256": "8a116d7a5c7857ee1496ca4b581812f3b9519d9b63305a0c9cbab0d46e004d5c"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPPCGCommands.cpp",
+        "bytes": 97926,
+        "lines": 2624,
+        "nonblank_lines": 2289,
+        "sha256": "ab989f953d65dac5c459a125b029980c834b2541e266501808b0127ee38fb34f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPProjectCommands.cpp",
+        "bytes": 466103,
+        "lines": 11352,
+        "nonblank_lines": 10216,
+        "sha256": "fc6c5f893adf80793a90473caf36e5e335cc10e9389487125a467dc340f45d24"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPSequencerCommands.cpp",
+        "bytes": 49642,
+        "lines": 1185,
+        "nonblank_lines": 1069,
+        "sha256": "8149ffb7ab2d8a9675bd9ab4587ac57132386cbc076bd8cd1c32f5749b38b613"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPSkeletalCommands.cpp",
+        "bytes": 94560,
+        "lines": 2104,
+        "nonblank_lines": 1950,
+        "sha256": "76d4cecca221f2a921ac39c8edd92c9c5d9f9960f80bcfad289596ae2075b327"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPUMGCommands.cpp",
+        "bytes": 41246,
+        "lines": 1168,
+        "nonblank_lines": 1050,
+        "sha256": "925a76de6b46db3631cd7dbdedbe778946dbb25f1984a47eca77894b67fcc386"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPServerRunnable.cpp",
+        "bytes": 54020,
+        "lines": 1389,
+        "nonblank_lines": 1289,
+        "sha256": "58316f3e265298f04e01e3474bcf58eacb55a55a74f4f40cbfbfaac45dbd43bd"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportTelemetry.cpp",
+        "bytes": 32038,
+        "lines": 814,
+        "nonblank_lines": 737,
+        "sha256": "c1800f11aa021ce5a2a2994219a65311ba9ce2f8bc9e5f8b622e91c4690b1bc0"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportWakeState.cpp",
+        "bytes": 11176,
+        "lines": 422,
+        "nonblank_lines": 385,
+        "sha256": "f85f9be1d50bd765e0b06824a7a12975d1915f79dde93b5c430448b1bafa1627"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/MCPTransportWakeState.h",
+        "bytes": 4182,
+        "lines": 127,
+        "nonblank_lines": 106,
+        "sha256": "4240f2f60e3a0c6267037fe1bbaa4423d387afe571720db7a4c50fc47459012f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorCamera.h",
+        "bytes": 1149,
+        "lines": 25,
+        "nonblank_lines": 23,
+        "sha256": "38798689b5f9c47bedf956193969edd0debb084ecacd4b5698a3ff95ac519e34"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorController.cpp",
+        "bytes": 63885,
+        "lines": 1829,
+        "nonblank_lines": 1682,
+        "sha256": "b65537eca77d605b4770a95e964546cd805c136b6d92e7e9ab07cc4167cf030a"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorController.h",
+        "bytes": 4488,
+        "lines": 116,
+        "nonblank_lines": 107,
+        "sha256": "8f30ffb7ac9361e64ac0ebe3d5bb2bf41a69f9d9949ee098e77b2e424e368e7e"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorEngineAccess.cpp",
+        "bytes": 5529,
+        "lines": 158,
+        "nonblank_lines": 149,
+        "sha256": "4b334594945cc428b80522f18c33b6650126ffea5aab9e96012a4e0c4f82459d"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorEngineAccess.h",
+        "bytes": 1331,
+        "lines": 37,
+        "nonblank_lines": 31,
+        "sha256": "6f65c6f058a7e83e4699714d9154a6972ca6d0a6e39d3335037ef30585460bde"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorPreview.cpp",
+        "bytes": 13452,
+        "lines": 389,
+        "nonblank_lines": 362,
+        "sha256": "f08a8e02834d727df5656e8662d27813ba0cb6cefd7c95ca9f9c693713618740"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorPreview.h",
+        "bytes": 1892,
+        "lines": 58,
+        "nonblank_lines": 49,
+        "sha256": "f15d3cfdb629e8de27c5f49010e6a18872f68cd19f0e050fcbfbd194a929fdad"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorScanner.cpp",
+        "bytes": 22126,
+        "lines": 673,
+        "nonblank_lines": 614,
+        "sha256": "4e2d3854ea3882773067a5a2830f924581afbaafc8cd62f2c46fbfcdb1323fa4"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorScanner.h",
+        "bytes": 788,
+        "lines": 29,
+        "nonblank_lines": 25,
+        "sha256": "aaa7ff0e79453be182d5cf902e4f8a945b216b3da8e54fc8035ef429080c2665"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorTypes.h",
+        "bytes": 1339,
+        "lines": 54,
+        "nonblank_lines": 47,
+        "sha256": "6dd0fa7bc109ecb8e6b6a857b9a5c5b352ece1f61f648acf929ec8e190a54279"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorWindow.cpp",
+        "bytes": 19740,
+        "lines": 1,
+        "nonblank_lines": 1,
+        "sha256": "96b9f972e6aaa55a696d8e797b6b7f2f9ccbafc0af13174aeaca84b348a5bb43"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/PlayAssetInspectorWindow.h",
+        "bytes": 781,
+        "lines": 30,
+        "nonblank_lines": 24,
+        "sha256": "efe610a7de2defe7ae2e7ad24a44646314f765ebf727afd52415273f5307de98"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/SPlayAssetInspectorHostPreview.cpp",
+        "bytes": 20587,
+        "lines": 562,
+        "nonblank_lines": 533,
+        "sha256": "85a1e20379cd86dc118a6bab047f9ef54d3fd146cc17bd298b94dafaf9c7fd51"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/PlayAssetInspector/SPlayAssetInspectorHostPreview.h",
+        "bytes": 2982,
+        "lines": 76,
+        "nonblank_lines": 71,
+        "sha256": "dba9c1b9f912ab5d884f070c664ab43c2d8d1c2cdb15da0d7fa6251dbcc7a5bd"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/PlayAssetInspectorCameraTests.cpp",
+        "bytes": 12207,
+        "lines": 204,
+        "nonblank_lines": 199,
+        "sha256": "0d75cc1f4cbbd08904c37ffdfa4a5f784a845db3a059b07d698ad575a11d310d"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/PlayAssetInspectorEngineAccessTests.cpp",
+        "bytes": 7612,
+        "lines": 1,
+        "nonblank_lines": 1,
+        "sha256": "a817b88c21067d7b1c21270f0c20c16322eae52b50532950817ed2d9a4ec7e39"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/PlayAssetInspectorHostPreviewTests.cpp",
+        "bytes": 4639,
+        "lines": 118,
+        "nonblank_lines": 115,
+        "sha256": "fafe7fdbb0c1cb0ee3945d29d6709c3e554a72afcd9a6df4e862034c7c2c87a5"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/PlayAssetInspectorScannerTests.cpp",
+        "bytes": 3875,
+        "lines": 82,
+        "nonblank_lines": 76,
+        "sha256": "dc3fcd74c225abc7f1f59368f363a3a624f018ff9bfd390ef35d1896f8418589"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/PlayAssetInspectorWindowTests.cpp",
+        "bytes": 2027,
+        "lines": 42,
+        "nonblank_lines": 39,
+        "sha256": "b78ac3c067798c40bbb62169806390286928fa7162e31288e3628e46fb1d82b9"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/UnrealMCPChaosTuningCommandsTests.cpp",
+        "bytes": 66533,
+        "lines": 1385,
+        "nonblank_lines": 1312,
+        "sha256": "2d233cc16c156964b91d41359fe110cc2776d49478361aafd13a77123f06f767"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Tests/UnrealMCPPythonTransactionTests.cpp",
+        "bytes": 1736,
+        "lines": 31,
+        "nonblank_lines": 29,
+        "sha256": "9d67b40e09a37b0983c13d6925f856c2454cae7f19931061877d3822eb851ab4"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UI/IetaMCPStatusWindow.cpp",
+        "bytes": 11588,
+        "lines": 364,
+        "nonblank_lines": 316,
+        "sha256": "d7b753e830a1fde937c6614af1dff1ce1790d7c4c022702b14c1aa38b5238192"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UI/IetaMCPStatusWindow.h",
+        "bytes": 1834,
+        "lines": 43,
+        "nonblank_lines": 37,
+        "sha256": "71c7bc240a8f9372e895d310bdb3aa08be532e90f9a184fa21ad2cf93806f4e1"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UI/NiagaraPreviewPlayerWindow.cpp",
+        "bytes": 65470,
+        "lines": 1694,
+        "nonblank_lines": 1498,
+        "sha256": "8cd1a0b32e2ebc35702576971453655f0be5e912b185b55b138f2ae765e20554"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UI/NiagaraPreviewPlayerWindow.h",
+        "bytes": 1630,
+        "lines": 43,
+        "nonblank_lines": 37,
+        "sha256": "142e0ada70f87202a743bdc8eab85a04dfd18c1e6c7424fa56203a55030f5970"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UI/TACaptureWindow.cpp",
+        "bytes": 8368,
+        "lines": 324,
+        "nonblank_lines": 282,
+        "sha256": "e7f4661ca6534ecac0cf931fcef8cc2502dc39b25b2286e77062d3f6765b062f"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UI/TACaptureWindow.h",
+        "bytes": 278,
+        "lines": 16,
+        "nonblank_lines": 12,
+        "sha256": "abf49c415735d687bcb1a212bc9ff7d0e01ffa108d620c8a2484d9d34745fd80"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp",
+        "bytes": 79623,
+        "lines": 1628,
+        "nonblank_lines": 1507,
+        "sha256": "55582e46ecf971e6e753e1077ce69c3914daa1213889df97842816a0a1b1b4b6"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPCommandRegistry.cpp",
+        "bytes": 10859,
+        "lines": 303,
+        "nonblank_lines": 276,
+        "sha256": "4616605650cd502bbed3bc301d41bb4158874d249d46b1a941536633944a31ea"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPModule.cpp",
+        "bytes": 10155,
+        "lines": 344,
+        "nonblank_lines": 299,
+        "sha256": "de91a624c31892503120bd06763f74ca9418f46b09453549d1f1083e1be8b585"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPSkeletalMeshEditorSubsystem.cpp",
+        "bytes": 7829,
+        "lines": 185,
+        "nonblank_lines": 178,
+        "sha256": "8d627e1eccdf9e00d0ac6154411edf7a12d2315ffd0e5ae69c6ccbe9cdef2d1c"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPAICommands.h",
+        "bytes": 1762,
+        "lines": 33,
+        "nonblank_lines": 29,
+        "sha256": "a3e8d9f7d7b1e0a6386d514461090b22173805b0858993133ab734da6600c30a"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPAudioCommands.h",
+        "bytes": 942,
+        "lines": 27,
+        "nonblank_lines": 24,
+        "sha256": "a20d14226fa653a1959a1800bd722247919585d27f58a52cd1c71453b54c12a1"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPBlueprintCommands.h",
+        "bytes": 3005,
+        "lines": 47,
+        "nonblank_lines": 41,
+        "sha256": "a5585f410db8569c7fd462fd0109ce72dec474b9a9f9d29b278b533bf3d5f34e"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPBlueprintNodeCommands.h",
+        "bytes": 11694,
+        "lines": 128,
+        "nonblank_lines": 123,
+        "sha256": "348e2c371aa9085ec9fb9923fe55e2cf14ff113a972582313d07b72d24da76f4"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPChaosCinematicCommands.h",
+        "bytes": 577,
+        "lines": 19,
+        "nonblank_lines": 17,
+        "sha256": "5ee2a0a0207944860808bc4c047920fe41e550d52fe7fcfdd08f49b92b4da7c2"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPChaosCommands.h",
+        "bytes": 1210,
+        "lines": 27,
+        "nonblank_lines": 23,
+        "sha256": "95301adbe30f6825411dc648a16ad8767b27cbd07978bcb537ca0d5f583d27ea"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPChaosTuningCommands.h",
+        "bytes": 1864,
+        "lines": 42,
+        "nonblank_lines": 35,
+        "sha256": "4188f32f43712759a04f7137d77afed5ad73ad2a19283bb2b7cfee4b637753bd"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPCommonUtils.h",
+        "bytes": 5277,
+        "lines": 106,
+        "nonblank_lines": 97,
+        "sha256": "416dddd72467c717d10243d2a401de30ce5def8d2b7e0600979945eec79863d1"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPDataCommands.h",
+        "bytes": 1857,
+        "lines": 41,
+        "nonblank_lines": 33,
+        "sha256": "01a5fd55c05630dcdd76f0c024c5450834763de2bc5cfaa401539744d37b15b9"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPEditorCommands.h",
+        "bytes": 4387,
+        "lines": 66,
+        "nonblank_lines": 57,
+        "sha256": "298b774b79ee2fea0be9ac6bf0bc4f0ff881e51bde85afb9871d212c6d796da7"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPGASCommands.h",
+        "bytes": 1275,
+        "lines": 31,
+        "nonblank_lines": 27,
+        "sha256": "e47f26bdc590c8f9d9fac626420d0061e709a39b9a10f6a5a919c703265725f0"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPLandscapeCommands.h",
+        "bytes": 1532,
+        "lines": 34,
+        "nonblank_lines": 27,
+        "sha256": "5b50c97e0e7e693085322c40dfc23b5e4d933f5ee0020653e5d74f092d3e892c"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPMaterialCommands.h",
+        "bytes": 2774,
+        "lines": 42,
+        "nonblank_lines": 37,
+        "sha256": "a2fd741fb5d0b906e05a7d574af482a12fca6ed5d2e264eec756caff0ddc93a5"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPNetworkingCommands.h",
+        "bytes": 738,
+        "lines": 24,
+        "nonblank_lines": 21,
+        "sha256": "daaf398a23e05f95b254dd87440e8f2152fef2887e93803da46517614c366dca"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPNiagaraCommands.h",
+        "bytes": 9624,
+        "lines": 113,
+        "nonblank_lines": 106,
+        "sha256": "5322bfec76c7f2d7babfbe1c7ae6b00ca8b27c23d203a772b7c248b8695d2147"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPPCGCommands.h",
+        "bytes": 1667,
+        "lines": 32,
+        "nonblank_lines": 27,
+        "sha256": "02e869564f31dfef35b8d7bf0023f3a8ed1575b6694e3953e89d62fb4d400a77"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPProjectCommands.h",
+        "bytes": 1948,
+        "lines": 35,
+        "nonblank_lines": 30,
+        "sha256": "faf21a1758f9c46b34a1f9175e2feb74f0080ac82ada8140730d7237891fa5c1"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPSequencerCommands.h",
+        "bytes": 2079,
+        "lines": 42,
+        "nonblank_lines": 34,
+        "sha256": "fdb24855b203b337eeeec1d2c28803437623c082c143d4b9e603932feefa0033"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPSkeletalCommands.h",
+        "bytes": 1861,
+        "lines": 36,
+        "nonblank_lines": 29,
+        "sha256": "53fd56655f39811d13a76b7134e6e57e25aba6b601e723a00a3ac18923ec0026"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/Commands/UnrealMCPUMGCommands.h",
+        "bytes": 4310,
+        "lines": 99,
+        "nonblank_lines": 87,
+        "sha256": "89584cddf80d0311a9bc79a6cdbae662f18ffc356360add3fa10aa002093f699"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/MCPServerRunnable.h",
+        "bytes": 2580,
+        "lines": 84,
+        "nonblank_lines": 75,
+        "sha256": "b373fb3036369394abe32f44949d4acae070231f0aabde15022b06a29ed4f3e0"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/MCPTransportTelemetry.h",
+        "bytes": 4658,
+        "lines": 155,
+        "nonblank_lines": 138,
+        "sha256": "0c5245359a5e6be8d77b367200e6633e50f6736d0a27cc8442be5e3b61a98753"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/UnrealMCPBridge.h",
+        "bytes": 7201,
+        "lines": 184,
+        "nonblank_lines": 162,
+        "sha256": "bb343b1346cf1224da631b9de5b68d9b6a62ce0dc5353fc1317f68ec7d6d6173"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/UnrealMCPCommandRegistry.h",
+        "bytes": 2184,
+        "lines": 71,
+        "nonblank_lines": 58,
+        "sha256": "dfc155b892e96057ab28b3da6743f4d19f55d7a1e00637ed80d4599b0bdb6062"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/UnrealMCPModule.h",
+        "bytes": 1124,
+        "lines": 40,
+        "nonblank_lines": 32,
+        "sha256": "0bb4129a6df0324099b9bccad5e76f2f94e3f94acd799bdd45909b855123d3ed"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Public/UnrealMCPSkeletalMeshEditorSubsystem.h",
+        "bytes": 1084,
+        "lines": 24,
+        "nonblank_lines": 20,
+        "sha256": "092b5a744315b9db37fd02045ff7778904131dbda9b96f38736c96fa515907f6"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/UnrealMCP.Build.cs",
+        "bytes": 3265,
+        "lines": 134,
+        "nonblank_lines": 125,
+        "sha256": "58ff52f8f7f7055a59bdbbdcec0b15e1a4053b4ba3770db6f02151c841ad8152"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor/Private/UnrealMCPControlRigAuthoringSubsystem.cpp",
+        "bytes": 181602,
+        "lines": 4850,
+        "nonblank_lines": 4432,
+        "sha256": "e459d34f7e039d6f408c359a5ef2337a204455f8aa011057a92c57cb24aca122"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor/Private/UnrealMCPControlRigToolsEditorModule.cpp",
+        "bytes": 207,
+        "lines": 7,
+        "nonblank_lines": 5,
+        "sha256": "0eb95a8fb5a1324468738f7a6f1e360e63e330559c7d53afd74b713917f825bf"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor/Public/UnrealMCPControlRigAuthoringSubsystem.h",
+        "bytes": 1910,
+        "lines": 47,
+        "nonblank_lines": 35,
+        "sha256": "45d544bf0c3b62912003a65df25970c1b40449ae877374dd3d903ed6eab5ae28"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor/Public/UnrealMCPControlRigAuthoringTypes.h",
+        "bytes": 14831,
+        "lines": 447,
+        "nonblank_lines": 317,
+        "sha256": "a4697fc71199f513c6bd700428de051bb6a6f72251a291d5fd6c59adefe82464"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor/UnrealMCPControlRigToolsEditor.Build.cs",
+        "bytes": 685,
+        "lines": 36,
+        "nonblank_lines": 33,
+        "sha256": "e977aa174654c41dcc6f84824b21ed8328ffec9334e082d6465b83e578dc5832"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCPMetaSound/Source/UnrealMCPMetaSound/Private/UnrealMCPMetaSoundModule.cpp",
+        "bytes": 38948,
+        "lines": 980,
+        "nonblank_lines": 921,
+        "sha256": "26c7ea4c7c8b4c0cbe7fa0eddb41f75b962721fe963b223d419583ccf173f722"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCPMetaSound/Source/UnrealMCPMetaSound/UnrealMCPMetaSound.Build.cs",
+        "bytes": 642,
+        "lines": 34,
+        "nonblank_lines": 31,
+        "sha256": "b9e500e4c4a61759971ed920d01616abffe0043cfca385e557ecaf8b30179f68"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCPStateTree/Source/UnrealMCPStateTree/Private/Commands/UnrealMCPStateTreeCommands.cpp",
+        "bytes": 45322,
+        "lines": 1183,
+        "nonblank_lines": 1115,
+        "sha256": "2a206c7691af899377f6dd01b1bed3aae520825a4a71bd12ecf38b5c09c0ad5d"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCPStateTree/Source/UnrealMCPStateTree/Private/Commands/UnrealMCPStateTreeCommands.h",
+        "bytes": 901,
+        "lines": 23,
+        "nonblank_lines": 20,
+        "sha256": "7c8e522fccc497b3daa18a3e7db40835794eed9b534700ef0e8f7616c8dab308"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCPStateTree/Source/UnrealMCPStateTree/Private/UnrealMCPStateTreeModule.cpp",
+        "bytes": 1655,
+        "lines": 57,
+        "nonblank_lines": 49,
+        "sha256": "fe3e79cdb75b9b4b04078b55ace15dafe8cb69f6d3699d9935005381e44ac546"
+      },
+      {
+        "path": "MCPGameProject/Plugins/UnrealMCPStateTree/Source/UnrealMCPStateTree/UnrealMCPStateTree.Build.cs",
+        "bytes": 659,
+        "lines": 35,
+        "nonblank_lines": 32,
+        "sha256": "4ee2a9146306255876f62d332e2f90ab00c1a02dce14a320a711ba5d8867a996"
+      }
+    ]
+  },
+  "python_services": {
+    "files": 9,
+    "lines": 4933,
+    "nonblank_lines": 4562,
+    "records": [
+      {
+        "path": "Python/services/__init__.py",
+        "bytes": 44,
+        "lines": 1,
+        "nonblank_lines": 1,
+        "sha256": "57d1d386d6019bbaabb55cdc93259b5eebd4bd1ca77dcbf3359319170bfe1c6c"
+      },
+      {
+        "path": "Python/services/niagara_effect_planning.py",
+        "bytes": 66452,
+        "lines": 1581,
+        "nonblank_lines": 1484,
+        "sha256": "c5bd8db73861dcc25361abebc1d85bd6b678bc78435586b991073b302ac38846"
+      },
+      {
+        "path": "Python/services/niagara_refinement_ledger.py",
+        "bytes": 28945,
+        "lines": 726,
+        "nonblank_lines": 659,
+        "sha256": "c0ea5470bb2d20ae054750d4db075aa17bc1018010564a218cd9d727675a3c94"
+      },
+      {
+        "path": "Python/services/niagara_visual_critic.py",
+        "bytes": 22995,
+        "lines": 607,
+        "nonblank_lines": 566,
+        "sha256": "52412344c4ad2988174b21ca6d1ae77afab01d65d22922cbeaab9cb2969d9b13"
+      },
+      {
+        "path": "Python/services/openai_image_service.py",
+        "bytes": 2016,
+        "lines": 54,
+        "nonblank_lines": 45,
+        "sha256": "aa7c80c77323a8facd16d67c240eab27a931cb5636bd7758a29962509dab01ad"
+      },
+      {
+        "path": "Python/services/pivot_paint_client.py",
+        "bytes": 1655,
+        "lines": 34,
+        "nonblank_lines": 30,
+        "sha256": "010b56f4f22dd5a16da42ab6454781d73412b3968fd8b33d09c6c37df448e2d7"
+      },
+      {
+        "path": "Python/services/speedtree_import_client.py",
+        "bytes": 1760,
+        "lines": 34,
+        "nonblank_lines": 31,
+        "sha256": "dc21c15372e8518a4080b0e029187646cbcaa47e89d4501b614c21228883dab1"
+      },
+      {
+        "path": "Python/services/unreal_bridge_connection.py",
+        "bytes": 35313,
+        "lines": 865,
+        "nonblank_lines": 795,
+        "sha256": "d2dd610aa90fb6b0a192de435d2de2c3453936de22882cd939d65f011851ba84"
+      },
+      {
+        "path": "Python/services/unreal_texture_importer.py",
+        "bytes": 42596,
+        "lines": 1031,
+        "nonblank_lines": 951,
+        "sha256": "0432292c12096cd6d983e44ed09e112d747bbefc4f339e7d289acb4231aa02dc"
+      }
+    ]
+  },
+  "operations_inventory_script_subset": {
+    "files": 3518,
+    "byte_unique": 3515,
+    "bytes": 44336263,
+    "extensions": {
+      ".py": 3504,
+      ".ps1": 14
+    },
+    "scope_difference": "Includes scripts under Docs; does not equal the narrower six-root 3382 path scan. Remaining ignored/untracked/plugin sources still need full audit."
+  },
+  "markdown_subset": {
+    "files": 784,
+    "bytes": 12332275
+  }
+}

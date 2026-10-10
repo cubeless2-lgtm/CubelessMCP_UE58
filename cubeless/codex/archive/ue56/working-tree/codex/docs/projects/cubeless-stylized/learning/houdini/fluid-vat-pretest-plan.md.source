@@ -1,0 +1,381 @@
+# Fluid VAT 사전 테스트 계획
+
+> - 상태: 테스트 실행 전 / 계획 확정
+> - 최초 작성·최종 갱신: 2026-07-14
+> - 대상 환경: Unreal Engine 5.6.1, Houdini Labs VAT 3.0
+> - 분류: Houdini / Fluid VAT
+> - 다음 시작점: §12 `다음 세션 재개 체크리스트`의 Phase 0
+> - 현재 범위: 조사와 계획만 완료. 플러그인 설치, Unreal 자산 생성, Houdini 출력 및 성능 측정은 아직 수행하지 않았다.
+
+## 1. 문서 목적
+
+Houdini FLIP Fluid에서 베이크한 동적 토폴로지 메시를 Unreal의 Niagara Mesh Renderer에서 재생하고, 물방울이 떨어져 분리된 뒤 원래 형태로 다시 붙는 효과를 검증한다.
+
+이 문서는 다음 세션에서 대화 기록을 다시 해석하지 않고 곧바로 테스트를 시작할 수 있도록 현재 합의, 자산 계약, 출력·임포트 절차, 검증 단계, 중단 조건과 재개 지점을 고정한다.
+
+## 2. 현재 확정 결정
+
+1. 메인 액체 변형은 일반 Morph Target이 아니라 **Houdini VAT 3.0 Dynamic Remeshing (Fluid)** 로 처리한다.
+2. Houdini 시뮬레이션은 실시간으로 실행하지 않고 최종 메시를 베이크한다.
+3. 낙하·분리는 VAT를 정방향으로, 재결합은 같은 VAT 프레임을 역방향으로 재생한다.
+4. 최종 런타임 구성은 SideFX 생성 Actor나 Blueprint가 아니라 **Static Mesh + 프로젝트 소유 Material/Material Instance + VAT 데이터 텍스처**다.
+5. Niagara Mesh Renderer에서 약 3개의 액체/물방울 메시 변형을 섞어 반복감을 줄인다.
+6. 작은 비말과 미스트는 메인 Fluid VAT에서 분리하고 Niagara Sprite 또는 더 단순한 Static Mesh 파티클로 처리한다.
+7. 최종 프로젝트 자산은 가능하면 SideFX Labs와 Houdini Engine 런타임 의존성을 갖지 않는다.
+8. 테스트 단계에서는 Alembic Geometry Cache를 기준 영상으로 먼저 확인하고, 같은 클립을 VAT로 변환해 품질과 비용을 비교한다.
+
+## 3. 목표와 비목표
+
+### 목표
+
+- 프레임마다 버텍스 수와 토폴로지가 달라지는 FLIP 표면을 Unreal에서 안정적으로 재생한다.
+- 정방향, 정지, 스크럽, 역방향 재생을 하나의 `EffectPhase` 값으로 제어한다.
+- 동일한 머티리얼 계약을 사용하는 메시 변형 3종을 Niagara에서 선택하거나 혼합한다.
+- 최종 자산이 프로젝트 내부 콘텐츠만으로 로드·Cook·Package되는 경로를 만든다.
+- 원본 대비 허용 가능한 형상, 노멀, 시간 보간 품질을 유지하면서 삼각형 수와 VAT 텍스처 메모리를 줄인다.
+- 다음 구현 단계에서 비교 가능한 캡처와 성능 수치를 남긴다.
+
+### 비목표
+
+- Unreal 런타임에서 Houdini 또는 FLIP 시뮬레이션을 실행하지 않는다.
+- VAT 메시의 프레임별 물리 충돌을 만들지 않는다. 충돌이 필요하면 단순 Proxy를 별도로 사용한다.
+- SideFX Labs의 생성 VAT Actor를 최종 게임플레이 Actor로 사용하지 않는다.
+- 첫 테스트에서 프로젝트 C++을 추가하지 않는다.
+- 첫 테스트에서 범용 Fluid 프레임워크나 임의의 모든 VAT 출력 형식을 지원하지 않는다.
+
+## 4. 최종 산출물 계약
+
+대화에서 말한 “메시와 머티리얼만 사용”은 Blueprint/Actor/런타임 시뮬레이터를 사용하지 않는다는 뜻이다. VAT 애니메이션 데이터는 텍스처에 들어 있으므로 실제 최소 자산은 다음과 같다.
+
+```text
+SM_FluidVAT_A
+SM_FluidVAT_B
+SM_FluidVAT_C
+
+MF_FluidVATDecode             # 프로젝트 소유 디코더
+M_FluidVAT_Master
+MI_FluidVAT_A/B/C
+
+T_FluidVAT_<Variant>_Position
+T_FluidVAT_<Variant>_Lookup
+T_FluidVAT_<Variant>_Rotation # 고품질 노멀 사용 시
+T_FluidVAT_<Variant>_Color    # foam/mask/Cd가 필요할 때만
+```
+
+제안하는 최종 프로젝트 경로:
+
+```text
+/Game/FX/Houdini/FluidVAT/
+  Meshes/
+  Materials/
+  Textures/
+  Niagara/
+  Tests/
+```
+
+`BP_HoudiniVatActor`, Houdini Engine 컴포넌트, `/SideFX_Labs` 머티리얼 참조는 최종 산출물 계약에 포함하지 않는다.
+
+## 5. 방식 선택 근거
+
+| 방식 | FLIP 동적 토폴로지 | 장점 | 이번 계획에서의 역할 |
+| --- | --- | --- | --- |
+| Morph Target | 부적합 | 설정과 제어가 단순함 | 사용하지 않음. 프레임 간 동일 토폴로지·버텍스 대응이 필요함 |
+| 일반 Vertex Animation | 조건부 | 단순한 고정 토폴로지 변형에 효율적 | Fluid 본체에는 사용하지 않음 |
+| Alembic Geometry Cache | 적합 | 원본 형상 확인, 스크럽·역재생이 쉬움 | 기준 품질과 타이밍 검증 |
+| VAT Dynamic Remeshing | 적합 | GPU 기반 재생, CPU Solver 불필요, 반복 배치에 유리 | 최종 인게임 후보 |
+
+Geometry Cache는 가장 빠른 기준선이고, VAT는 최종 최적화 후보다. VAT가 항상 더 작은 것은 아니므로 최종 판단은 삼각형 수, 프레임 수, Position/Lookup/Rotation 텍스처 메모리와 실제 GPU 캡처를 함께 비교한다.
+
+## 6. 목표 런타임 구조
+
+```text
+NS_FluidVAT_DropRejoin
+├─ Main Fluid Mesh Particles
+│  ├─ SM_FluidVAT_A: 넓고 얇은 물막/방울
+│  ├─ SM_FluidVAT_B: 둥근 Blob
+│  └─ SM_FluidVAT_C: 길게 늘어난 Droplet
+├─ Fine Spray / Mist
+│  └─ Niagara Sprite 또는 저비용 Mesh
+└─ Shared Controls
+   ├─ User.EffectPhase     0..1
+   ├─ User.PlayDirection  1 또는 -1
+   ├─ User.PlayRate
+   └─ User.VariantWeights
+```
+
+메시 3종의 첫 구현은 다음 두 구성을 A/B 비교한다.
+
+- **한 Mesh Renderer에 Mesh Entry 3개:** 같은 머티리얼 계약과 렌더 상태를 공유할 때 우선 후보.
+- **Mesh Renderer 3개:** 변형마다 독립적인 활성화, 머티리얼 또는 타이밍이 반드시 필요할 때 사용.
+
+동일한 결과라면 Renderer 수와 Draw Call이 적은 구성을 채택한다. “3개를 섞는다”는 시각 목표는 유지하되, Renderer 3개 자체를 고정 요구로 보지는 않는다.
+
+## 7. Houdini 출력 계약
+
+### 7.1 Fluid Surface 준비
+
+```text
+FLIP Cache
+→ Particle Fluid Surface 또는 VDB Surface
+→ Convert VDB to Polygons
+→ Clean / Smooth
+→ 작은 분리 방울 제거 또는 별도 출력
+→ PolyReduce
+→ Normal 및 선택 속성 준비
+→ 정수 프레임 .bgeo.sc 캐시
+```
+
+준비 규칙:
+
+- VAT ROP에는 라이브 시뮬레이션이 아니라 정수 프레임으로 캐시된 최종 메시를 입력한다.
+- 화면 기여도가 낮은 미세 방울은 제거해 Lookup과 Position 텍스처 크기를 먼저 줄인다.
+- `P`, `N`은 기본으로 준비하고 `v`, `Cd`, foam/mask는 실제 머티리얼 요구가 있을 때만 유지한다.
+- 동적 토폴로지의 Surface UV는 프레임마다 다시 만들어야 하므로, 첫 테스트의 물 표면 디테일은 World Space/Triplanar 방식을 우선한다.
+- 원점에서 지나치게 멀거나 이동 범위가 큰 하나의 VAT보다 로컬 범위의 짧은 VAT 클립을 선호한다.
+
+### 7.2 VAT 3.0 ROP
+
+```text
+Mode          = Dynamic Remeshing (Fluid)
+Target Engine = Unreal Engine
+Frame Range   = 실제 효과 구간만
+Input         = 캐시된 최종 Fluid Mesh
+```
+
+Fluid VAT는 두 번 출력한다.
+
+```text
+First Pass
+  FBX Static Mesh
+  Lookup Texture
+  선택적으로 Legacy JSON
+
+Second Pass
+  Position Texture
+  Rotation Texture     # 선택
+  Color Texture        # 선택
+```
+
+두 Pass 사이에 출력 설정을 변경하지 않는다. 기본 테스트에서는 `Include Hidden Debug Plane`을 켜고, 데이터 텍스처는 Power of Two Padding과 Mip 생성을 사용하지 않는다.
+
+노멀 품질은 두 프로파일로 비교한다.
+
+- **Performance:** Position Alpha 압축 노멀, Rotation Texture 생략.
+- **Hero:** Rotation Texture 출력, 더 안정적인 노멀과 표면 노멀맵 조합 검증.
+
+Niagara Mesh Renderer에서 VAT 메시를 사용할 것이므로 Houdini 출력에서 다음 Legacy/Instancing 데이터도 준비한다.
+
+```text
+Support Real-Time Instancing = On
+Allow Exporting Real-Time Data JSON File (Legacy) = On
+```
+
+Legacy JSON은 Bounds 대신 Material Instance 파라미터를 채우기 위한 authoring 입력이다. 필요한 값이 프로젝트 자산에 저장된 뒤에는 JSON 원본 자체를 런타임 산출물로 취급하지 않는다.
+
+## 8. Unreal 임포트와 플러그인 독립화
+
+### 8.1 현재 로컬 준비 상태
+
+- `MCPGameProject`는 Niagara가 활성화되어 있다.
+- UE 5.6의 내장 Alembic Importer와 Geometry Cache를 사용할 수 있어 Geometry Cache 기준 테스트는 바로 시작할 수 있다.
+- 현재 프로젝트에는 SideFX Labs VAT 플러그인이 설치되어 있지 않다.
+- 신형 UE 5.6 SideFX Labs 플러그인은 Editor와 Runtime C++ 모듈을 포함한다. 현재 작업에는 프로젝트 C++ 승인 토큰 `c++1218`이 없으므로 이 플러그인의 프로젝트 설치나 소스 변경은 실행하지 않는다.
+
+### 8.2 첫 테스트의 기본 경로
+
+1. `.abc`를 `Geometry Cache`로 임포트해 크기, 방향, 프레임 범위, 노멀과 역재생을 확인한다.
+2. VAT는 다음 중 프로젝트 C++을 만들지 않는 경로로 임포트한다.
+   - SideFX Labs의 `Legacy/SideFX_Labs` 콘텐츠 전용 플러그인을 사용한 수동 임포트.
+   - 별도 임포트 프로젝트에서 신형 `Create New VAT`로 자산을 만든 뒤, 필요한 콘텐츠만 현재 프로젝트에 이전.
+   - 공식 머티리얼 함수를 참고해 프로젝트 소유 `MF_FluidVATDecode`를 직접 구성.
+3. 최종 머티리얼에서 `/SideFX_Labs` 참조를 프로젝트 소유 함수로 교체한다.
+4. Niagara Mesh Particle/Instancing 경로에서는 Legacy JSON 값을 Material Instance에 적용하고 `Support Legacy Parameters and Instancing`에 해당하는 파라미터 계약을 유지한다.
+5. Reference Viewer와 패키징 감사로 `/SideFX_Labs`, `/Script/SidefxLabsRuntime`, `/UnrealMCP` 참조가 남지 않았는지 확인한다.
+
+신형 자동 임포터를 현재 프로젝트에 직접 설치하는 경로를 선택하려면 그 시점에 사용자가 프로젝트 C++ 승인 문구 `프로젝트 C++ 승인 c++1218`을 명시해야 한다.
+
+### 8.3 데이터 텍스처 설정
+
+Position, Lookup, Rotation, Color 텍스처는 색상 이미지가 아니라 데이터다.
+
+```text
+sRGB              = Off
+Mip Gen Settings  = NoMipmaps
+Filter            = Nearest
+Compression       = HDR/16-bit Data 또는 VAT 출력 형식에 맞는 Data 설정
+```
+
+Fluid Static Mesh는 Import Normals and Tangents, Remove Degenerates Off, Generate Lightmap UVs Off를 기준으로 시작한다. 찢김이나 작은 구멍이 보이면 Full Precision UVs와 UE4 Compatible UVs를 순서대로 검증한다.
+
+최종 머티리얼은 `Used with Niagara Mesh Particles`를 확인한다. 같은 자산을 ISM/HISM에도 사용할 경우 `Used with Instanced Static Meshes`까지 별도로 검증한다.
+
+## 9. 프로젝트 소유 머티리얼과 재생 계약
+
+### 9.1 머티리얼 구조
+
+`MF_FluidVATDecode`가 다음 값을 출력하고, `M_FluidVAT_Master`가 물 셰이딩을 담당한다.
+
+```text
+MF_FluidVATDecode
+├─ World Position Offset
+├─ World Space Normal
+├─ Customized UV 1..3
+├─ Optional Color / Foam Mask
+└─ Debug outputs
+
+M_FluidVAT_Master
+├─ VAT WPO
+├─ VAT World Normal
+├─ Fresnel / Absorption / Roughness / Specular
+├─ World Space 또는 Triplanar Surface Detail
+└─ Optional Foam
+```
+
+VAT가 출력한 WPO와 World Space Normal 연결은 유지한다. `Tangent Space Normal`은 끄고, 일반 노멀맵을 섞는 경우에는 좌표 공간 변환을 명시적으로 검증한다.
+
+SideFX Fluid VAT 함수가 사용하는 `Customized UV 1..3` 연결과 `Num Customized UVs = 4` 설정도 프로젝트 소유 머티리얼에 보존한다. 이 연결을 생략한 채 WPO만 복사하는 것은 독립화 완료로 판정하지 않는다.
+
+VAT 3.0은 기본 경로에서 전체 애니메이션 Bounds에 디코딩 값을 저장할 수 있다. Actor/Component Transform은 테스트할 수 있지만 Static Mesh의 Positive/Negative Bounds Extension이나 Bounds Scale을 임의로 수정하지 않는다. Niagara/Instancing 최종 경로는 Legacy JSON 파라미터를 사용해 이 Bounds 의존을 제거했는지 검증한다.
+
+물 셰이딩은 다음 두 가지를 A/B 비교한다.
+
+- Opaque 기반 `Single Layer Water`: 외형이 허용하면 우선 성능 후보.
+- Translucent Water: 필요한 경우만 사용하고 물방울 중첩 Overdraw를 측정.
+
+### 9.2 정방향·역방향 재생
+
+자동 시간 재생 대신 정규화된 단일 값으로 프레임을 지정한다.
+
+```text
+EffectPhase = 0..1
+DisplayFrame = Lerp(1, FrameCount, EffectPhase)
+
+낙하·분리  : EffectPhase 0 → 1
+재결합     : EffectPhase 1 → 0
+일시정지   : 현재 EffectPhase 유지
+스크럽     : EffectPhase 직접 지정
+```
+
+전체 파티클이 동시에 재생하면 `User.EffectPhase` 하나로 동기화한다. 파티클마다 시작 시점이 달라야 하면 Niagara Renderer Material Parameter Binding 또는 Per-Particle Custom Data 경로를 별도 스파이크로 검증한다. 정확한 바인딩 방식은 UE 5.6 실측 후 이 문서에 확정한다.
+
+역재생이 기술적으로 가능하더라도 물방울이 비자연스럽게 빨려 들어가는 인상이 날 수 있다. Houdini 원본 클립을 역방향으로 미리 리뷰하고, 필요한 경우 재결합 구간만 별도 아트 디렉션한 VAT로 분리한다.
+
+## 10. 단계별 테스트 계획
+
+### Phase 0 — 입력과 임포트 경로 고정
+
+- Houdini 원본 HIP 또는 첫 `.bgeo.sc` 캐시 위치 확인.
+- 테스트 클립의 Start/End Frame과 FPS 확인.
+- 목표 플랫폼, 최대 동시 인스턴스 수와 카메라 거리 확인.
+- Legacy 콘텐츠 전용 수동 임포트와 별도 자동 임포트 프로젝트 중 첫 경로 선택.
+- 기준 자산 이름과 `/Game/FX/Houdini/FluidVAT/Tests` 경로 확정.
+
+**통과 조건:** C++ 변경 없이 첫 Geometry Cache와 VAT 자산을 만들 수 있는 입력·경로가 확정됨.
+
+### Phase 1 — Alembic 기준선
+
+- Houdini에서 Ogawa `.abc` 한 개 출력.
+- Unreal에서 `Import Type = Geometry Cache`, `Sampling = Per Frame`으로 임포트.
+- 동적 토폴로지 최적화는 끄고 Alembic Velocity를 Motion Vector로 임포트.
+- 정방향, 역방향, 스크럽 영상을 캡처.
+- 삼각형 수, 프레임 수, 자산 크기와 화면 품질 기록.
+
+**통과 조건:** 스케일, 축, 프레임 범위, 노멀과 효과 실루엣이 원본 의도와 일치함.
+
+### Phase 2 — 단일 Fluid VAT
+
+- 동일한 클립을 Dynamic Remeshing Fluid 2-Pass로 출력.
+- Performance/Hero 노멀 프로파일을 각각 임포트.
+- 프로젝트 소유 머티리얼에서 정방향·역방향 `EffectPhase` 재생 구현.
+- Geometry Cache와 동일 카메라에서 비교 캡처.
+- 찢김, Lookup 오류, Bounds Culling, 보간과 Motion 품질 확인.
+
+**통과 조건:** 눈에 띄는 삼각형 분해나 프레임 누락 없이 전체 구간과 역재생이 완료됨.
+
+### Phase 3 — Niagara 메시 변형 3종
+
+- 메시 변형 A/B/C를 준비하고 동일한 머티리얼 파라미터 계약 적용.
+- 한 Mesh Renderer/3 Mesh Entry와 Mesh Renderer 3개 구성을 비교.
+- 동기 재생과 Per-Particle Offset 재생을 각각 확인.
+- 작은 방울과 미스트를 별도 저비용 Emitter로 분리.
+- Renderer 수, Draw Call, Translucency Overdraw와 가시적 반복감을 비교.
+
+**통과 조건:** 변형 3종이 깨지지 않고 선택되며, 채택 구성이 가장 낮은 비용으로 요구한 다양성을 제공함.
+
+### Phase 4 — 독립성·패키징·성능
+
+- `/SideFX_Labs`, `/Script/SidefxLabsRuntime`, UnrealMCP 참조 감사.
+- SideFX Labs와 UnrealMCP가 비활성 또는 부재한 격리 실행에서 자산 로드 확인.
+- Development 패키징 또는 Cook 검증.
+- Geometry Cache와 VAT의 자산 크기, 메모리, CPU/GPU 시간을 같은 조건에서 기록.
+- 효과 종료 시 Niagara Component 비활성화와 메모리 상주 정책 확인.
+
+**통과 조건:** 최종 자산이 외부 authoring 플러그인 없이 로드·Cook·Package되고, 목표 플랫폼 예산 안에서 재생됨.
+
+## 11. Go / No-Go 기준과 주요 리스크
+
+### Go 기준
+
+- 전체 클립에서 메시 찢김, Lookup 오염, 비정상 Bounds Culling이 없다.
+- `EffectPhase` 하나로 정방향·정지·역방향 재생이 반복 가능하다.
+- 메시 변형 3종이 Niagara에서 안정적으로 선택되고 머티리얼이 일치한다.
+- Geometry Cache 기준과 비교해 형상 및 노멀 손실이 아트 허용 범위다.
+- 최종 자산에 SideFX Labs/Houdini Engine/UnrealMCP 런타임 참조가 없다.
+- Cook·패키징 검증과 성능 캡처가 완료된다.
+
+### No-Go 및 탈출구
+
+| 문제 | 우선 조치 | 탈출구 |
+| --- | --- | --- |
+| 삼각형이 흩어지거나 구멍 발생 | 2-Pass·텍스처 설정·Full Precision UV 확인 | 해당 클립은 Geometry Cache 유지 |
+| Lookup/Position 텍스처가 과도하게 큼 | 작은 방울 제거, 프레임/FPS/삼각형 수 축소 | 클립을 여러 로컬 VAT로 분할 |
+| 노멀 깜빡임 | Rotation Texture Hero 프로파일, PolyReduce 보정 | 월드 스페이스 표면 디테일로 완화 |
+| Niagara 인스턴싱에서 VAT가 깨짐 | Legacy JSON과 Instancing 파라미터 재확인 | VAT 본체는 StaticMeshComponent, 작은 방울만 Niagara |
+| Bounds 조정 후 디코딩이 깨짐 | Static Mesh Bounds 수정 복구, Legacy 파라미터 확인 | Bounds가 아닌 별도 Culling/Proxy 구조 사용 |
+| 역재생이 부자연스러움 | Houdini에서 역재생 기준 아트 리뷰 | 재결합 전용 클립 별도 제작 |
+| 반투명 비용 과다 | Single Layer Water/불투명 착시, 중첩 감소 | 히어로 본체만 반투명, 보조 방울 단순화 |
+| 애니메이션 충돌 필요 | 단순 Proxy/이벤트 볼륨 사용 | 시각 VAT와 게임플레이 충돌 완전 분리 |
+| 플러그인 독립화 실패 | Reference Viewer로 잔여 함수·클래스 추적 | 콘텐츠 전용 Legacy 의존을 명시적으로 유지할지 재결정 |
+
+목표 플랫폼과 동시 인스턴스 수가 아직 정해지지 않았으므로 절대 성능 수치는 Phase 0에서 확정한다. 그 전에는 “최적화 완료”로 판정하지 않는다.
+
+## 12. 다음 세션 재개 체크리스트
+
+다음 작업자는 이 문서를 읽고 아래 순서로 재개한다.
+
+1. 이 문서 상단 상태가 여전히 `테스트 실행 전`인지 확인한다.
+2. `git status`와 최근 커밋을 확인하고 다른 에이전트의 작업을 건드리지 않는다.
+3. 사용자에게서 Houdini 샘플 클립 또는 출력 파일 위치, FPS, 목표 플랫폼을 확인한다.
+4. 프로젝트 C++ 승인 없이 진행한다. 신형 SideFX Labs 프로젝트 플러그인이 꼭 필요할 때만 `프로젝트 C++ 승인 c++1218`을 별도로 받는다.
+5. Phase 1 Geometry Cache 기준 캡처부터 만든다.
+6. 같은 프레임 범위로 VAT First/Second Pass를 출력하고 Phase 2를 수행한다.
+7. 각 Phase가 끝날 때 이 문서의 체크 상태와 실제 자산 경로, 설정, 캡처 및 성능 결과를 갱신한다.
+8. 검증된 반복 절차가 생기면 별도의 repository-wide workflow로 승격하고, 구현된 시스템은 `systems/fluid-vat.md`에 기록한다.
+
+## 13. 진행 상태
+
+- [x] 기술 경로 조사
+- [x] Geometry Cache와 Fluid VAT 역할 분리
+- [x] 메시+머티리얼 중심 최종 자산 계약 정의
+- [x] SideFX Labs 런타임 독립화 방향 정의
+- [x] Niagara 메시 변형 3종 A/B 구조 정의
+- [ ] Phase 0 — 입력과 임포트 경로 고정
+- [ ] Phase 1 — Alembic Geometry Cache 기준선
+- [ ] Phase 2 — 단일 Fluid VAT
+- [ ] Phase 3 — Niagara 메시 변형 3종
+- [ ] Phase 4 — 독립성·패키징·성능
+
+## 14. 공식 참고 자료
+
+- [SideFX Labs VAT 3.0 ROP](https://www.sidefx.com/docs/houdini/nodes/out/labs--vertex_animation_textures-3.0.html)
+- [SideFX Labs UE 5.6 VAT Import Settings Guide](https://github.com/sideeffects/SideFXLabs/blob/Development/unreal/5.6/VAT%20Import%20Settings%20Guide.txt)
+- [SideFX Labs UE 5.6 Plugin Installation Guide](https://github.com/sideeffects/SideFXLabs/blob/Development/unreal/5.6/Plugin%20Installation%20Guide.txt)
+- [SideFX Labs UE 5.6 Plugin Descriptor](https://github.com/sideeffects/SideFXLabs/blob/Development/unreal/5.6/Win64/SideFX_Labs/SideFX_Labs.uplugin)
+- [SideFX Labs UE 5.6 VAT Importer Source](https://github.com/sideeffects/SideFXLabs/blob/Development/unreal/5.6/Win64/SideFX_Labs/Source/SidefxLabsEditor/Private/VatImporter/HoudiniVatImporter.cpp)
+- [SideFX Alembic ROP](https://www.sidefx.com/docs/houdini/nodes/out/alembic.html)
+- [Epic UE 5.6 Alembic File Importer](https://dev.epicgames.com/documentation/en-us/unreal-engine/alembic-file-importer-in-unreal-engine?application_version=5.6)
+- [Epic UE 5.6 GeometryCacheComponent API](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/GeometryCacheComponent?application_version=5.6)
+
+## 15. 변경 이력
+
+- 2026-07-14: 대화에서 합의한 Houdini Fluid VAT, 정·역재생, Niagara 메시 변형 3종, 메시·머티리얼 중심 산출물과 SideFX Labs 독립화 방향을 최초 계획서로 정리했다.

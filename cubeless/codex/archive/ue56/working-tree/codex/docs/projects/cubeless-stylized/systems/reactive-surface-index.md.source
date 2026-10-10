@@ -1,0 +1,95 @@
+# Reactive Surface Document Index
+
+> Scope semantics: `hash lock`, `hash-locked`, and `non-mutation control` in any report or evidence file mean a round-local regression comparison only. They are historical proof that an out-of-scope asset did not change in that run, never a permanent edit prohibition. The newest explicit user request defines the current editable scope.
+>
+> Current state: there is no permanent channel edit ban on Ground, Snow, Water, or Grass.
+
+이 인덱스가 Reactive Surface 시스템 문서 묶음의 진입점이다. 모든 durable 문서와 재현 러너는 이 `UnrealMCP5_6_1` 체크아웃 하위에 둔다. 외부 `CubelessOps`나 다른 sibling repo는 canonical 위치가 아니다.
+
+## Primary Plan
+
+- `reactive-surface-implementation-plan-2026-07-05.md` - Implementation work plan in Claude token-saving review format. Section 0 is the default review surface.
+- `reactive-surface-plan-delta-2026-07-05.md` - Validation-plan additive delta table. Claude can read this instead of the full validation-plan.
+
+- `reactive-surface-final-implementation-lock-2026-07-05.md` - Latest implementation lock. Excludes the 2026-07-05 three-RT / 50-slot always-active future smoke from the first Reactive Surface plan.
+
+- `reactive-surface-system-validation-plan.md` - 확정 구현 검증 계획과 최신 Go/No-Go 기준.
+- `interaction-field-system.md` - 실측 근거 대조용 InteractionField 문서.
+
+## Ghost Test Reports
+
+- `reactive-surface-snow-footprint-tuning-report-2026-07-26.md` - Snow 복원 기본값 120초, 5cm held-contact 재스탬프, Left/Right 마스크 게이트 수정, 2cm SDF 소프트 에지, ChildActor 단일 owner 복구, 생산 Piper 10.5cm 및 4방향 리센터 검증 보고서.
+- `reactive-surface-controller-channel-functionization-2026-07-20.md` - Controller EventGraph의 Ground/Grass/Water 안전 페이즈 8개 함수화, 조건부 소스 루프 보존 사유, 의미 해시·컴파일·Ground 런타임 회귀 결과.
+- `reactive-surface-render-target-cleanup-report-2026-07-18.md` - 비활성 Water Material/RT Driver 액터와 HeightA/B ping-pong 자산 제거, 약 8 MiB 레거시 RT 메모리 절감, 활성 Water 해시 불변 및 Blueprint/Niagara/룩 회귀 검증 보고서.
+- `reactive-surface-variable-category-cleanup-report-2026-07-18.md` - Controller/BPC/Registry 변수 카테고리·노출·한국어 툴팁 정리, 위험한 통합 보류, `debug.reactive` C++ 디버거 제거, 동적 BPC Registry 수렴과 룩 보존 검증 보고서.
+- `reactive-surface-per-component-radius-report-2026-07-17.md` - BPC별 Grass/Ground/Water 월드 반경 분리, 플레이어 우선 최대 4 BPC 수집, Water 단일-pulse round-robin, 레벨 마이그레이션, 20cm 기본값 및 12/70cm PIE A/B 검증 보고서.
+- `reactive-surface-phase0-phase1-implementation-report-2026-07-05.md` - Phase 0 production shell and Phase 1 controller/ReactivePoint skeleton implementation report. Phase 2 not started.
+- `reactive-surface-grass-rebound-report-2026-07-12.md` - Grass-only PP1 rigid-tilt damped rebound implementation, research basis, grounded runtime matrix, and visual QA evidence.
+
+- `reactive-surface-system-ghost-test-report-2026-07-04.md` - G1~G7 1차 고스트 테스트 리포트.
+- `reactive-surface-system-residual-ghost-test-report-v1-v6-2026-07-04.md` - V1~V6 잔여 검증 리포트.
+- `reactive-surface-residual-smoke-report-s1-s6-2026-07-04.md` - S1~S6 잔여 스모크 리포트.
+- `reactive-surface-system-ghost-test-round2-t7-t11-2026-07-04.md` - T7~T11 2차 고스트 테스트 라운드 기록.
+- `reactive-surface-t7-t11-execution-report-2026-07-04.md` - T7~T11 실행 리포트.
+- `reactive-surface-smoke-1-4-report-2026-07-04.md` - T8/V1/V3/V4 smoke 1~4 실행 리포트.
+- `reactive-surface-s3-s4-followup-report-2026-07-04.md` - Niagara runtime Array DI와 Texture2D mask sample 후속 실측 리포트.
+- `reactive-surface-array-di-gpu-pass-report-2026-07-04.md` - d229527c 기준 Niagara runtime Array DI GPU visibility PASS 반증 리포트.
+- `reactive-surface-array-di-pass-followup-report-2026-07-04.md` - Codex 후속 반영/cleanup/잔여 스모크 상태 리포트.
+- `reactive-surface-v4-reprojection-smoke-report-2026-07-04.md` - V4 reprojection smoke: movement partial pass, entering-edge zero-fill fail; scalar gate failure is scoped to that V4 wiring/harness, not a UE 5.6.1 general no-go.
+- `reactive-surface-v4b-array-reprojection-smoke-report-2026-07-05.md` - V4b Array DI control reprojection smoke PASS: `green_dx_10=10.0`, `red_dx_10=10.0`, `left_after10_count=0`.
+- `reactive-surface-v4c-reprojection-confirmation-report-2026-07-05.md` - V4c reprojection confirmation PASS: direction sweep, 64/128px recenter, runtime Grid2D divisor 512, decay+reproject, scalar 3-chain gate.
+- `reactive-surface-50-character-profile-report-2026-07-05.md` - 50 real temp characters -> tagged component collection -> nearest 20 -> Array DI -> RT/Profile smoke. Single Ground channel PASS; three independent RT systems still FAIL.
+- `reactive-surface-implementation-smoke-sequence-report-2026-07-05.md` - Requested smoke sequence `1 -> 2 -> 3 -> 4 -> 6 -> 5` PASS: material path, single-active channels, BP BoxComponent collection, attached component probes, empty-RT lifecycle, Texture2D footprint mask.
+- `reactive-surface-3rt-50slot-future-smoke-report-2026-07-05.md` - Future-only 1~7 smoke for three always-active RT Array-DI systems with 50 candidates / 20 slots: single channels PASS, three simultaneous Array-DI RT writers FAIL with Water-only output.
+
+## Handoff And Claude Prompts
+
+- `reactive-surface-claude-final-lock-share-prompt-2026-07-05.md` - Copy/paste prompt for sharing the final implementation lock with Claude.
+
+- `reactive-surface-claude-review-protocol.md` - Claude 교차 검토용 최신 프로토콜.
+- `reactive-surface-system-claude-ghost-test-review-prompt-2026-07-04.md` - G1~G7 검수 프롬프트.
+- `reactive-surface-system-claude-residual-v1-v6-review-prompt-2026-07-04.md` - V1~V6 검수 프롬프트.
+- `reactive-surface-system-claude-ghost-round2-t7-t11-prompt-2026-07-04.md` - T7~T11 검수/공유 프롬프트.
+- `reactive-surface-t7-t11-handoff-2026-07-04.md` - T7~T11 테스트 자산 인수인계 문서.
+
+## Reproduction Runners
+
+- `../../../../scripts/reactive_surface/reactive_surface_snow_footprint_tuning_runner.py` - Controller의 120초 복원/5cm 드래그 기본값, 발 마스크 이동 재스탬프 그래프 연결, Ground Niagara 2cm SDF 소프트 에지를 guarded apply/audit하는 runner.
+- `../../../../scripts/reactive_surface/reactive_surface_channel_functionization_runner.py` - 네이티브 Collapse dry-run, 비실행 출력 경계 0, 내부 핀 의미 해시, 컴파일·레이아웃 검증을 거쳐 Controller 안전 페이즈를 함수화하는 runner.
+- `../../../../scripts/reactive_surface/reactive_surface_variable_category_cleanup_runner.py` - Controller/BPC/Registry 변수 metadata, declaration, 노출, category sorting과 Controller topology를 guarded audit/apply하는 runner.
+- `../../../../scripts/reactive_surface/reactive_surface_variable_category_save_checkpoint.py` - BPC→Registry→Controller→Piper→L_RS_Demo 순서의 guarded 저장 checkpoint.
+- `../../../../scripts/reactive_surface/reactive_surface_cleanup_regression_runner.py` - 동적 BPC live 값/Registry 수렴과 Ground/Grass/Water RT를 검사하며, 정확한 SIE frame 수가 없는 Water-only cross-process 차이는 명시적으로 BLOCKED 처리하는 runner.
+- `../../../../scripts/reactive_surface/reactive_surface_per_component_radius_runner.py` - BPC 채널별 반경 schema/metadata, player-first component collection, Grass/Water XY trail, Ground max-4 처리, Water per-source HLSL 및 active-pulse authoring runner.
+- `../../../../scripts/reactive_surface/reactive_surface_phase0_phase1_builder.py` - Production Phase 0/1 builder for `/Game/ReactiveSurface`; creates Controller and ReactivePoint shell assets and runs dependency audit.
+- `../../../../scripts/reactive_surface/reactive_surface_grass_rebound_material_runner.py` - Grass material temp/production runner with numeric rebound QA, hashed visual evidence, grounded/airborne/landing RT matrix, and a round-local non-Grass regression comparison.
+
+- `../../../../scripts/reactive_surface/reactive_surface_t7_t11_handoff_runner.py`
+- `../../../../scripts/reactive_surface/reactive_surface_remaining_smoke_runner.py`
+- `../../../../scripts/reactive_surface/reactive_surface_smoke_1_4_runner.py`
+- `../../../../scripts/reactive_surface/array_di_crosscheck_runner.py` - Claude cross-check runner for the Niagara runtime Array DI GPU-visibility claim.
+- `../../../../scripts/reactive_surface/reactive_surface_v4_reprojection_runner.py` - V4 reprojection follow-up smoke runner.
+- `../../../../scripts/reactive_surface/reactive_surface_v4b_array_reprojection_runner.py` - V4b Array DI control reprojection smoke runner.
+- `../../../../scripts/reactive_surface/reactive_surface_v4c_reprojection_runner.py` - V4c reprojection confirmation runner with C++ RT stats readback and runtime Grid2D inspect.
+- `../../../../scripts/reactive_surface/reactive_surface_50_agent_insights_runner.py` - 50-candidate/20-slot Insights runner; supports real-character fixture mode with `REACTIVE_50_LOAD_SPAWN_CHARACTERS=1`.
+
+## Current Decision Snapshot
+
+- Final implementation lock is `reactive-surface-final-implementation-lock-2026-07-05.md`. The 2026-07-05 three-RT / 50-slot always-active smoke is future-only and excluded from the first implementation plan.
+
+- Custom HLSL은 사용 가능하다. BP-only 제약은 Niagara Custom HLSL 금지가 아니다.
+- Texture2D mask sample은 GPU Simulation Stage에서 RT stamp 경로로 PASS.
+- BP/Python runtime Array DI는 d229527c에서 3단 체인(`User parameter -> Module input -> HLSL input`)으로 GPU Simulation Stage visibility PASS. CPU getter count 3, RT full scan `nonzero=71`, channel sums `R=2836 / G=2491 / B=2735`.
+- Hidden `User.*` 직결은 실패 경로다. `user_parameter_inputs` 단독 배선으로 Array DI를 최종 판정하지 않는다.
+- V4 scalar gate 실패는 현재 V4 graph wiring + SIE/advance harness의 관측 실패로만 기록한다. UE 5.6.1 runtime scalar User parameter 일반 기각은 아니며, V4c에서 3단 체인 scalar gate는 PASS했다.
+- V4b Array DI control reprojection은 PASS다. 재투영 구현은 scalar gate가 아니라 3단 체인 Array DI control path를 1차 기준으로 삼는다.
+- V4c reprojection confirmation은 PASS다. 1차 기술 경로는 Array DI 3단 체인 hold+reproject이며, scalar gate도 3단 체인 경로만 허용한다. Divisor는 runtime Grid2D NumCells + 1-cell self-check로 도출하고, V4b `/256`은 hardcode하지 않는다.
+- 1차 구현은 고정 User parameter 기반 소수 source로 진행하고, 20명/64 slot compact source list는 Phase 3 경로로 확정한다.
+
+## Manual Array DI Cross-check Contract
+
+Array DI 최종 반증 라운드는 Claude cross-check로 PASS 처리됐다. 이전 수동 운영 계약은 실패 경로를 반증하기 전의 임시 절차였고, 이후 자동화 기준은 3단 체인이다.
+
+1. `insert_niagara_scratch_pad_custom_hlsl_for_pin`으로 HLSL 입력을 생성한다.
+2. `rewire_niagara_custom_hlsl_input_to_module_parameter`로 HLSL 입력을 `Module.*` ParameterMapGet에 재배선한다.
+3. `set_niagara_module_input_linked_parameter`로 `Module.*` 입력을 `User.*` 파라미터에 링크한다.
+4. `array_di_crosscheck_runner.py`로 GPU visibility를 재검증한다.

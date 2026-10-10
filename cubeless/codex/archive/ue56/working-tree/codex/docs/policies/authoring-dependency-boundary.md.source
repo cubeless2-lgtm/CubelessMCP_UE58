@@ -1,0 +1,27 @@
+# Authoring Dependency Boundary
+
+## Absolute Outcome
+
+- MCP and UnrealMCP are authoring and automation tools, not default runtime or packaging dependencies.
+- Any generated or modified Blueprint, asset, level, material, Niagara system, PCG graph, component, helper API, or other finished project content must load, compile, cook, package, and run when UnrealMCP is disabled or absent unless the user explicitly approves that exact dependency for the current task.
+- By default, finished content must not persist `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal`, or another MCP-only class, function, component, module, graph, or object reference.
+
+## Authoring Hooks
+
+- Before mutation, choose engine, project, or explicitly approved project-plugin APIs for serialized nodes, variables, components, parent classes, interfaces, enums, structs, graph classes, and pin defaults.
+- During authoring, use UnrealMCP only to perform the operation; do not make it part of the saved result by convenience.
+- Before promotion, packaging, or final handoff, audit the affected content for MCP-only references and verify independence in proportion to the change.
+- If the user explicitly approves a dependency, record the exact affected content and dependency scope. Do not extend that approval to unrelated assets or later tasks.
+
+## Code And Module Boundary
+
+- Project C++, Blueprint APIs, runtime/editor modules, `.Build.cs`, `.uplugin`, and `.uproject` files must not depend on UnrealMCP or MCP-only modules unless the user explicitly approves that exact dependency for the current task.
+- Keep UnrealMCP C++ extensions editor/tooling-oriented by default. Do not move gameplay APIs, final Blueprint helper APIs, or runtime dependencies into UnrealMCP merely to make authoring easier.
+- The separate project C++ approval token and the UnrealMCP plugin exception are defined in `project-cpp-approval-gate.md`; neither rule permits a finished-content dependency by itself.
+
+## Promotion Checklist
+
+1. Inspect affected saved assets, generated code, module descriptors, and project descriptors for MCP-only references.
+2. Confirm serialized calls and types resolve to engine, project, or explicitly approved project-plugin APIs.
+3. Run the relevant dependency audit, compile, cook, package, or plugin-disabled check when the change can affect those paths.
+4. Report any explicitly approved exception and its exact scope in the handoff.

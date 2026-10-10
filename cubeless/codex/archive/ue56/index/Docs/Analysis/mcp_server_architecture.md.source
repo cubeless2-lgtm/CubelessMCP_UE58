@@ -1,0 +1,42 @@
+# MCP Python Server Architecture
+
+The Python MCP host is split into four conservative layers. This separation is
+about maintenance and regression isolation; it does not add an Unreal runtime
+dependency or change the native bridge protocol.
+
+1. `unreal_mcp_server.py` owns process configuration, logging, shared bridge
+   lifecycle, FastMCP startup, tool-group registration, and compatibility
+   exports.
+2. `services/unreal_bridge_connection.py` owns TCP connection setup, JSON
+   framing, one-command-per-socket behavior, response normalization, and
+   transport telemetry hooks.
+3. `tools/management_tools.py` owns the complete 429-tool registry, runtime
+   enablement, telemetry storage, and bridge-target guards.
+4. `tools/tool_discovery.py` owns the compact public catalog, pagination, and
+   guarded dispatch while retaining FastMCP's original validated wrappers.
+
+## Compatibility Boundary
+
+Existing tools and scripts continue importing `UnrealConnection`,
+`get_unreal_connection`, `UNREAL_HOST`, and `UNREAL_PORT` from
+`unreal_mcp_server`. The exported `UnrealConnection` is a thin configured
+subclass of the extracted transport. It reads the server module's current
+host and port at construction time, preserving scripts that override those
+globals before creating a connection.
+
+The stdio MCP transport and the Unreal TCP protocol on port 55561 are unchanged.
+The complete catalog remains available in either exposure mode; only its
+default public exposure is compact. `UNREAL_MCP_TOOL_EXPOSURE=eager` remains
+the direct compatibility fallback.
+
+## Offline Verification
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_unreal_bridge_connection.py
+uv --directory .\Python run python scripts\analysis\test_tool_discovery_contract.py
+uv --directory .\Python run python scripts\smoke_tool_registration.py
+```
+
+The bridge test covers chunked/nested JSON framing, rejection of incomplete
+timeout payloads, structured error normalization, telemetry completion,
+runtime guard blocking, and the legacy server-module host/port override path.

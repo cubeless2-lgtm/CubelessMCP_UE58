@@ -1,0 +1,89 @@
+# KI0 범위 밖 가중치 보정 — 승인 및 현재 검증 상태
+
+최신: 샘플 오차 분리 관측 후 KI0 native2회 반복41/41 및 gradient 연결41/41 PASS.
+아래 최초 실패 기록은 보존한다. 최종 전체 Solver/레벨 완성이 아니다.
+
+2026-09-06 사용자가 원본 작업자의 실수로 판단하고 제안한 보정 진행을 승인했다.
+원본은 변경하지 않는다. 재구현본 KI0/offset0에서 원본의 마지막 범위 밖 tap의
+기여를 0으로 정의한다. 구현은 유효15tap만 계산하여 범위 밖 배열 접근과
+불필요한 마지막 샘플 자체를 하지 않는다. 원본 undefined 결과와 동일하다고 주장하지 않는다.
+이 승인은 다른 커널 offset의 범위 보정이나 가중치 재정규화를 포함하지 않는다.
+
+## 구현
+
+`CFNLPressureK0GuardV001/NS_PressureK0Guard` temp SHA
+`2d045aa89d34d6da67519a6350e648c9f3c96b945802bee98b0dbb970c384e3b`.
+거리0~7 대칭 계수 분기로 재작성, 원본 6×15 행렬/graph/module 복사 없음.
+Gaussian 합 .99984, Custom 합1.75063을 그대로 유지한다. 임의 합1 보정 없음.
+start는 중심-7texel, 원본 direction*(tap-direction), clamp→frac 순서 보존.
+native 단일 stage2회 반복 후 선택 셀 read 단계. compile0error/0warning/GPUUpToDate.
+
+authoring_v001의 scope는 공용 builder의 KI5 기본 문구가 남은 메타데이터 오류다.
+실제 HLSL 및 별도 runtime scope가 KI0 보정을 명시한다. 기존 증거는 덮어쓰지 않는다.
+
+## 미통과 사항
+
+runtime `20260906_pressure_k0_guard_runtime_v001.json`은 30번째 사례에서 FAIL.
+입력 impulse(63,63), query(0,0), ClampArea0, pressure1/divergence.25.
+WeightedP 예측 .02575102741697021, 관측 .0257110595703125,
+기존 2단계 오차 허용치 .000034857368469238284를 초과했다.
+앞선29사례는 통과했지만 전체 KI0 검증 완료로 계산하지 않는다.
+마지막 실행 입력은 이 실패 사례였으며 이후 별도 단일 단계 후보로 preview를 전환했다.
+
+## 분리 진단
+
+`CFNLPressureK0SingleV001/NS_PressureK0Single` temp SHA
+`28ea59720b8b1ccd7eae49abedb203d5f18b820a5ba588d6d813c5efb5ac1d09`.
+첫 단계만 실행한 selected-cell5건은 기존 출력 half1ULP 허용치로 PASS.
+source hash/dependency/dirty audit PASS, 기본값 복원. 현재 preview 소유자.
+첫 단계 impulse63,63→query0,63 Pressure.x=.1602783203125를 관측했다.
+여기에 두 번째 축의 이상적인 가중 보간을 적용하면 .025732934761047363인데,
+2회 반복의 WeightedP 관측값은 더 작다. 중간 샘플 정밀도/반복 버퍼 경로를
+분리 확인해야 한다. 샘플러의 특정 반올림 동작을 원인으로 확정하지 않는다.
+허용치를 임의로 늘리거나 성공 보고서를 만들지 않았다.
+
+다음: 두 번째 단계 샘플 값과 누적값을 구분하는 진단, 실패 사례 재검증,
+보정 KI0 전체 사례와 gradient 연결, cold-load/frozen gate.
+원본/Study/프로젝트 C++ 변경 없음. 영구 ledger22, 최종 레벨0/59 유지.
+
+## 샘플 오차 분리 관측 및 해결
+
+신규 observation-only 후보 CFNLPressureK0SamplingV001/NS_PressureK0Sampling,
+SHA `836a51acc0bdc2ea15f7c85cf84067e960098e3a9efc5a1eedae39599340ab80`.
+첫 pressure stage 후 integer read로 저장값을 읽고, 다음 sampleUV에서 샘플한다.
+출력에 쓰기 전에 `(sampled-ideal)*1024`를 계산하여 단순 출력 저장 오차와 분리했다.
+
+- stored=.1602783203125, 이상적 bilinear=stored*63/64.
+- sampled=.15771484375, 증폭 residual=-.060546875.
+- 가중치 .1631을 곱한 증폭 residual=-.0098724365234375.
+- 샘플에 .1631을 곱해 저장한 값=.0257110595703125로 최초 실패 관측과 일치.
+
+이는 이 환경/사례에서 샘플 단계의 정밀도 손실이 있음을 관측한 것이다.
+모든 GPU의 반올림 방식이나 내부 하드웨어 구현을 확정한 것이 아니다.
+기존 oracle가 이상적 보간만 고려하여 샘플 오차를 누락했다.
+
+보완: 두 번째 필터 각 tap에서 `abs(ideal_sample)+propagated_input_error` 크기의
+half1ULP를 sample error로 두고 가중 합산한다. 첫 stage storage error, sample error,
+최종 storage error를 구분한다. 둘 다0이면 sample error0. 계수 재정규화/전역 고정
+tolerance 확대 없음. 이 입력군의 첫 stage는 half로 표현 가능한 impulse 보간값을 사용한다.
+임의 velocity/texture 입력 전체에 이 오차 모델이 검증된 것으로 확대 해석하지 않는다.
+
+guard runtime_v002: 기본/모서리/wrap/negative divergence/feedback0/edge/default복원
+41사례 PASS. 같은 기존 GuardV001 자산, source/saved hash 불변, dependency/dirty PASS.
+unit5 PASS: 합계 유지, 상수장, zero bound, 관측 residual, input bound 단조성.
+runtime observation_v001의 success는 수치 합격이 아니라 관측 수집 성공만 뜻한다.
+
+## KI0 pressure → gradient
+
+CFNLPressureK0GradientV001/NS_PressureK0Gradient SHA
+`0474ccb1727726a3e1ce8cf8efa1c8a82c7354189b96ee32634768e25f15abc2`.
+native2회 pressure 다음 selected-cell gradient stage, GPU41/41 PASS.
+이 diagnostic 자산의 WeightedP/D 이름은 GradientX/Y이며 최종 데이터 계약이 아니다.
+현재 preview는 이 후보의 기본값 복원 상태. 기존 실패/진단 자산은 temp에 보존.
+공용 authoring report의 KI5 scope 기본 문구는 이 후보에도 적용되지 않는다.
+runtime scope와 HLSL/이 문서가 실제 KI0 범위를 명시한다.
+
+Guard+Gradient cold-load2/2 PASS, run `CFNL_K0Guard_20260906_v001`.
+NullRHI load/class/금지 참조 증거이며 GPU cook/package 증거 아님.
+compile error/warning0, GPUUpToDate, unknown2/outstanding false.
+후속 full offline42/42 PASS, exit0. 다음 구현은 실제 divergence/advection 공급과 host 통합.

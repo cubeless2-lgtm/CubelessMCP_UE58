@@ -1,0 +1,63 @@
+Running AutomationTool...
+Using bundled DotNet SDK version: 10.0 win-x64
+Starting AutomationTool...
+Parsing command line: BuildPlugin -Plugin=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\PluginSource-20261010-L\CubelessMCP_UE58.uplugin -Package=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L -HostPlatforms=Win64 -TargetPlatforms=Win64 -NoP4 -UTF8Output
+Initializing script modules...
+Total script module initialization time: 0.28 s.
+Using C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe
+Executing commands...
+Copying 79 file(s) using max 64 thread(s)
+Reading plugin from C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L\HostProject\Plugins\CubelessMCP_UE58\CubelessMCP_UE58.uplugin...
+Building plugin for host platforms: Win64
+Running: C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\ThirdParty\DotNet\10.0\win-x64\dotnet.exe "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" UnrealEditor Win64 Development -Project="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L\HostProject\HostProject.uproject" -plugin="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L\HostProject\Plugins\CubelessMCP_UE58\CubelessMCP_UE58.uplugin" -noubtmakefiles -manifest="C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L\HostProject\Saved\Manifest-UnrealEditor-Win64-Development.xml" -nohotreload -log="C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\UBA-UnrealEditor-Win64-Development.txt"
+Log file: C:\Users\Lenovo\AppData\Roaming\Unreal Engine\AutomationTool\Logs\C+Program+Files+Epic+Games+UE_5.8\UBA-UnrealEditor-Win64-Development.txt
+Determining max actions to execute in parallel (14 physical cores, 20 logical cores)
+  Executing up to 14 processes, one per physical core
+  Requested 1.5 GB memory per action, 9.52 GB available: limiting max parallel actions to 6
+UbaServer - Listening on 0.0.0.0:1345
+Creating makefile for UnrealEditor (no existing makefile)
+UHT compiled-in object format Default
+Writing manifest to C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L\HostProject\Saved\Manifest-UnrealEditor-Win64-Development.xml
+Building UnrealEditor...
+===== Toolchain Information =====
+Using ISPC compiler (C:\Program Files\Epic Games\UE_5.8\Engine\Source\ThirdParty\Intel\ISPC\bin\Windows\ispc.exe)
+  Intel(r) Implicit SPMD Program Compiler (Intel(r) ISPC), 1.24.0 (build commit  @ 20250404, LLVM 18.1.2)
+Using Visual Studio 14.44.35228 toolchain (C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207) and Windows 10.0.22621.0 SDK (C:\Program Files (x86)\Windows Kits\10).
+[Adaptive Build] Excluded from CubelessMCPUE58Editor unity file: CubelessMCPUE58EditorModule.cpp, CubelessCompilerDiagnostics.cpp, CubelessEditorApi.cpp, CubelessMaterialApi.cpp, CubelessMaterialArrayConverter.cpp, CubelessInspectionOperations.cpp, CubelessMaterialOperations.cpp, CubelessJsonConverters.cpp, CubelessMaterialLibrary.cpp, CubelessNativeToolset.cpp, CubelessRegistrationLibrary.cpp
+=================================
+Using Unreal Build Accelerator local executor to run 17 action(s)
+  CPU 14 physical cores, 20 logical cores
+  Memory 31.73 GB physical, 31.89 GB/33.73 GB committed
+  UBA Storage capacity 40 GB
+[1/17] Compile [x64] SharedPCH.UnrealEd.Cpp20.cpp
+[2/17] Compile [x64] CubelessCompilerDiagnostics.cpp
+[3/17] Compile [x64] CubelessEditorApi.cpp
+[4/17] Compile [x64] CubelessInspectionOperations.cpp
+[5/17] Compile [x64] CubelessJsonConverters.cpp
+[6/17] Compile [x64] CubelessMCPUE58EditorModule.cpp
+[7/17] Compile [x64] CubelessMaterialApi.cpp
+[8/17] Compile [x64] CubelessMaterialArrayConverter.cpp
+[9/17] Compile [x64] CubelessMaterialLibrary.cpp
+[10/17] Compile [x64] CubelessMaterialOperations.cpp
+[11/17] Compile [x64] CubelessNativeToolset.cpp
+[12/17] Compile [x64] CubelessRegistrationLibrary.cpp
+[13/17] Compile [x64] Module.CubelessMCPUE58Editor.cpp
+[14/17] Link [x64] UnrealEditor-CubelessMCPUE58Editor.lib
+   C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/build/Distribution-20261010-L/HostProject/Plugins/CubelessMCP_UE58/Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.lib ���̺귯�� �� C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/build/Distribution-20261010-L/HostProject/Plugins/CubelessMCP_UE58/Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.exp ��ü�� �����ϰ� �ֽ��ϴ�.
+[15/17] Compile Resource [x64] Default.rc2
+[16/17] Link [x64] UnrealEditor-CubelessMCPUE58Editor.dll
+[17/17] WriteMetadata UnrealEditor.target [NoUba]
+
+Total time in Unreal Build Accelerator local executor: 68.99 seconds
+Output binary: C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe
+
+Result: Succeeded
+Total execution time: 80.54 seconds
+Trace written to file C:\Users\Lenovo\AppData\Local\UnrealBuildTool\Trace.uba with size 14.6kb
+Took 80.97s to run dotnet.exe, ExitCode=0
+Building plugin for target platforms: Win64
+Reading filter rules from C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Distribution-20261010-L\HostProject\Plugins\CubelessMCP_UE58\Config\FilterPlugin.ini
+Loading FilterPluginWin64.ini
+BUILD SUCCESSFUL
+AutomationTool executed for 0h 1m 22s
+AutomationTool exiting with ExitCode=0 (Success)

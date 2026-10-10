@@ -1,0 +1,128 @@
+# Water Wave Solver Rebuild Spec — 2026-07-06
+
+Author: Claude (root-cause diagnosis + solver design). Build/validate: Codex.
+
+## Root cause (hard evidence)
+
+`/Game/ReactiveSurface/Water/NS_RS_Water` has **no wave equation**. Signature scan of the
+Niagara module inputs:
+
+- `SamplePrevious` (prev-frame wave read): 0
+- laplacian / neighbour sum: 0
+- `2*cur - prev` wave form: 0
+- curl / noise (advection): 8
+- `AdvectionAmount`: 2
+- modules reading `RS_Water_WaveSpeed`: 0
+- modules reading `RS_Water_Damping`: 0
+
+It is the `RenderTargetTexturePainter` template's **curl-noise advection** pipeline. The
+`RS_Water_WaveSpeed / Damping / CFL / SpongeWidth` User params exist but are **orphan**
+(no module reads them). Visual proof: recorded PIE shows directional smears that do not
+propagate as concentric rings.
+
+**Phase 5 "Water solver PASS" was a false pass** — its monotonic-decay check measured
+advection-field decay, not wave propagation. Correct this in the Phase 5 record.
+
+## System structure (confirmed)
+
+- Emitter `PaintGrid`, GPUComputeSim, Vector4 grid.
+- Stages: `PaintToGrid`(RenderCircleToGrid, on) → `BlurGrid`(off) → `AdvectGrid`(curl advection, on) → `RenderGridToRenderTarget`(on, DirectSet/TwoD).
+- Grid functions available: `SamplePreviousGridVector4Value(UV)` (bilinear prev-frame read), `ExecToUnit` (cell UV), `ExecToIndex`.
+- Scratch writes the grid via **StackContext.RGBA** output (InteractionField accumulator pattern).
+- Params present: `RS_Water_WaveSpeed`(now 0.50), `RS_Water_CFL`(0.25), `RS_Water_Damping`(0.930), `RS_Water_ImpulseRadiusPixels`(5), `RS_Water_CellSize`(1/512), `RS_Water_SourcePositionWS`, `RS_Water_SourceActive`, `RS_Water_DefaultRadius/Strength`, `RS_Water_WindowOriginWS`([-2000,-2000,0]), `RS_Water_WindowSizeWS`(4000), plus `RS_Water_Positions` (Position Array).
+- Controller pushes `RS_Water_WaveSpeed` and `RS_Water_ImpulseRadiusPixels` from BP vars (CDO now 0.50 / 5.0); does NOT push CFL/Damping (those ride asset defaults, now set).
+
+## The fix: replace AdvectGrid with a wave stage
+
+Two-level history in one Vector4 grid: **R = height(t-1 final), G = height(t-2)**.
+Self-contained impulse from source params (no dependence on paint-stage ordering).
+
+### Wave HLSL (targets AdvectGrid StackContext.RGBA output)
+
+Inputs to wire: `Grid` (Grid2D DI, reuse AdvectGrid's existing binding = `Emitter.Grid2D Collection`),
+`Unit`(float2, from ExecToUnit), and via 3-step chain (`Custom HLSL -> Module.* -> User.*`):
+`WaveSpeed, Damping, CellSize, SourceUV(float2), SourceActive, SourceRadiusUV, SourceStrength`.
+
+```hlsl
+float4 P, pL, pR, pU, pD;
+Grid.SamplePreviousGridVector4Value(Unit, P);
+Grid.SamplePreviousGridVector4Value(Unit + float2(-CellSize, 0), pL);
+Grid.SamplePreviousGridVector4Value(Unit + float2( CellSize, 0), pR);
+Grid.SamplePreviousGridVector4Value(Unit + float2(0, -CellSize), pU);
+Grid.SamplePreviousGridVector4Value(Unit + float2(0,  CellSize), pD);
+float lap = pL.r + pR.r + pU.r + pD.r - 4.0 * P.r;
+float c2  = WaveSpeed * WaveSpeed;                 // == CFL, keep <= 0.5 for stability
+float h   = (2.0 * P.r - P.g + c2 * lap) * Damping;
+float d   = length(Unit - SourceUV);
+if (SourceActive > 0.5 && d < SourceRadiusUV)
+    h += SourceStrength * cos((d / SourceRadiusUV) * 1.5707963);
+// absorbing boundary
+if (Unit.x < CellSize || Unit.x > 1.0 - CellSize ||
+    Unit.y < CellSize || Unit.y > 1.0 - CellSize) h = 0.0;
+Out = float4(h, P.r, 0.0, 1.0);                    // shift history: new prev = old cur
+```
+
+`SourceUV = (RS_Water_SourcePositionWS.xy - RS_Water_WindowOriginWS.xy) / RS_Water_WindowSizeWS`
+(compute in Controller BP and push, or in HLSL). `SourceRadiusUV = ImpulseRadiusPixels / GridRes`.
+Multi-source: later swap the single SourceUV for the `RS_Water_Positions` array loop (3-step chain
+already proven for arrays; see array-di-gpu-pass report).
+
+### Build steps
+
+1. Work in temp `/Game/_MCP_Temp/NiagaraGenerated/WaterWave/NS_Water_WaveTmp2` (already duplicated).
+2. Disable `RenderCircleToGrid` grid write (impulse now folded into wave stage) OR keep it and read its
+   paint as an additive term — the self-contained source-impulse form above avoids paint ordering.
+3. Replace AdvectGrid scratch HLSL with the wave HLSL (`insert_niagara_scratch_pad_custom_hlsl_for_pin`
+   on StackContext.RGBA, `replace_existing_custom=True`, `custom_hlsl_script_usage="Function"`).
+4. Wire scalar/source inputs via `set_niagara_module_input_user_parameter`; grid via existing binding.
+5. Compile 0/0.
+6. **Validate the ring (this is the whole point):** SIE, single impulse at centre (SourceActive=1 one
+   frame then 0), advance ~30 frames with real-frame waits, C++ `sample_render_target2d_region_stats`
+   full scan. PASS = a **ring of nonzero that expands outward** frame over frame (centre goes to ~0 as
+   the ring travels), not a static blob. Measure ring radius at frame 10 vs 25 — must increase.
+7. Iterate HLSL (expect 2-4 cycles: `SamplePreviousGridVector4Value` signature, history channel
+   semantics, boundary) until the ring expands and damps without divergence (max monotonic after
+   impulse stops).
+8. Promote temp → `/Game/ReactiveSurface/Water/NS_RS_Water` (atomic; never leave production half-built).
+9. Re-verify in `L_RS_Demo` PIE; update Phase 5 record to correct the false pass.
+
+## §5 trap to add
+
+- Niagara Grid2D wave solver: 2nd-order-in-time needs TWO history levels; one double-buffer gives one.
+  Store `prev` in a second grid channel (G) and shift each frame. A "monotonic decay" readback does
+  NOT prove propagation — validate an **expanding ring** (radius increases frame-over-frame).
+
+## Status
+
+- Controller CDO + asset defaults already aligned to screenshot values (WaveSpeed 0.50, CFL 0.25,
+  Damping 0.930, ImpulseRadiusPixels 5). These become correct once the wave stage reads them.
+- Temp system duplicated and structure mapped. Build loop remains (steps 3-8).
+
+## Empirical authoring findings (Claude live attempt, 2026-07-06)
+
+Attempted in-place surgery on `NS_Water_WaveTmp2` AdvectGrid. Confirmed mechanics + wall:
+
+- `insert_niagara_scratch_pad_custom_hlsl_for_pin` with `scratch_pad_name="AdvectGrid"`,
+  `target_pin_name="StackContext.RGBA"`, `rebuild_existing_custom=False`, no
+  `preserve_existing_link_as` → insert **succeeds** (this is the working invocation shape;
+  `rebuild=True` fails with "does not expose exactly one 'BaseValue' input link").
+- BUT after replacing AdvectGrid's advection custom node, **even a trivial constant
+  `WaveOut=float4(...)` fails to compile**: `SimulationStage_0` + `GPUComputeScript` = NCS_Error,
+  even with `delete_unlinked_custom_nodes` + `delete_unlinked_custom_input_source_nodes`.
+- Conclusion: replacing the whole StackContext.RGBA custom node breaks the stage's grid-write
+  chain. The advection value fed StackContext.RGBA through a structure that a full-node replace
+  does not reconstruct. **Do not replace the node — build the wave as a NEW dedicated sim stage,
+  or use `wrap_niagara_scratch_pad_output_with_stack_context` to preserve the write chain and add
+  the wave update on top, rather than `replace_existing_custom`.**
+- DI-in-custom-HLSL is supported (RenderGrid's custom HLSL takes `Grid2DCollection` + `GridUnit`
+  and calls grid functions — copy THAT node's input wiring for the 5-sample laplacian).
+- Grid DI source: MapGet output pin `Module.Grid2D Collection` (guids in AdvectGrid scratch:
+  `4F5BF7D7-...` and `B47EA575-...`). `Exec to Unit` provides `Unit`.
+
+Recommended build path (revised): add a **new grid-processing sim stage** between paint and
+render whose scratch is a fresh custom HLSL (Grid2DCollection + Unit inputs, 5 SamplePrevious
+samples, wave update, StackContext.RGBA output), rather than editing AdvectGrid in place.
+This avoids the template's fragile advection write-chain entirely.
+
+Temp build artifact left at `/Game/_MCP_Temp/NiagaraGenerated/WaterWave/NS_Water_WaveTmp2`
+(AdvectGrid currently holds a constant-value custom node; discard or rebuild).

@@ -1,0 +1,328 @@
+{
+  "source": "C:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Plugins\\UnrealMCP\\Source\\UnrealMCP\\Private\\Commands\\UnrealMCPMaterialCommands.cpp",
+  "source_sha256": "8c41e028d0f6b27e0d5c2d85cad37216bab8d2234e61189c812e6a463b0d5a91",
+  "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\Plugins\\CubelessMCP_UE58\\Source\\CubelessMCPUE58Editor\\Private\\Compatibility\\UE58\\CubelessMaterialLegacy.inc",
+  "symbols": [
+    {
+      "symbol": "FMaterialGraphTarget",
+      "source_line": 103,
+      "source_end_line": 177
+    },
+    {
+      "symbol": "NormalizeObjectPathForLoad",
+      "source_line": 177,
+      "source_end_line": 191
+    },
+    {
+      "symbol": "NormalizeMaterialGraphType",
+      "source_line": 191,
+      "source_end_line": 205
+    },
+    {
+      "symbol": "LoadMaterialGraphByObjectPath",
+      "source_line": 205,
+      "source_end_line": 240
+    },
+    {
+      "symbol": "AppendAssetCandidatesForClass",
+      "source_line": 240,
+      "source_end_line": 270
+    },
+    {
+      "symbol": "FindMaterialGraphAssetPaths",
+      "source_line": 270,
+      "source_end_line": 295
+    },
+    {
+      "symbol": "ResolveMaterialGraph",
+      "source_line": 295,
+      "source_end_line": 331
+    },
+    {
+      "symbol": "FindPropertyByNameLoose",
+      "source_line": 331,
+      "source_end_line": 355
+    },
+    {
+      "symbol": "LoadObjectValue",
+      "source_line": 476,
+      "source_end_line": 481
+    },
+    {
+      "symbol": "GetExpressionKey",
+      "source_line": 1111,
+      "source_end_line": 1121
+    },
+    {
+      "symbol": "GetExpressionLegacyId",
+      "source_line": 1121,
+      "source_end_line": 1136
+    },
+    {
+      "symbol": "GetExpressionId",
+      "source_line": 1136,
+      "source_end_line": 1141
+    },
+    {
+      "symbol": "GetExpressionGuidString",
+      "source_line": 1141,
+      "source_end_line": 1146
+    },
+    {
+      "symbol": "GetExpressionGuidDuplicateCount",
+      "source_line": 1146,
+      "source_end_line": 1167
+    },
+    {
+      "symbol": "GetExpressionGuidCollisionMembers",
+      "source_line": 1167,
+      "source_end_line": 1195
+    },
+    {
+      "symbol": "AddExpressionReferenceFields",
+      "source_line": 1195,
+      "source_end_line": 1210
+    },
+    {
+      "symbol": "GetFallbackOutputName",
+      "source_line": 1210,
+      "source_end_line": 1235
+    },
+    {
+      "symbol": "GetMaterialExpressionInputNamesSafe",
+      "source_line": 1235,
+      "source_end_line": 1255
+    },
+    {
+      "symbol": "GetMaterialExpressionOutputNames",
+      "source_line": 1255,
+      "source_end_line": 1271
+    },
+    {
+      "symbol": "FindOutputIndexByName",
+      "source_line": 1271,
+      "source_end_line": 1294
+    },
+    {
+      "symbol": "ResolveOutputConnectName",
+      "source_line": 1294,
+      "source_end_line": 1312
+    },
+    {
+      "symbol": "HasInputName",
+      "source_line": 1312,
+      "source_end_line": 1335
+    },
+    {
+      "symbol": "ResolveInputConnectName",
+      "source_line": 1335,
+      "source_end_line": 1353
+    },
+    {
+      "symbol": "FindExpressionById",
+      "source_line": 1353,
+      "source_end_line": 1426
+    },
+    {
+      "symbol": "ExpressionInputToJson",
+      "source_line": 1426,
+      "source_end_line": 1459
+    },
+    {
+      "symbol": "ExpressionOutputToJson",
+      "source_line": 1459,
+      "source_end_line": 1505
+    },
+    {
+      "symbol": "ObjectPathOrEmpty",
+      "source_line": 1505,
+      "source_end_line": 1510
+    },
+    {
+      "symbol": "EnumNameOrValue",
+      "source_line": 1510,
+      "source_end_line": 1521
+    },
+    {
+      "symbol": "FunctionCallToJson",
+      "source_line": 1521,
+      "source_end_line": 1582
+    },
+    {
+      "symbol": "RerouteToJson",
+      "source_line": 1582,
+      "source_end_line": 1651
+    },
+    {
+      "symbol": "ExportStringProperty",
+      "source_line": 1651,
+      "source_end_line": 1670
+    },
+    {
+      "symbol": "CustomHlslToJson",
+      "source_line": 1670,
+      "source_end_line": 1688
+    },
+    {
+      "symbol": "StaticSwitchToJson",
+      "source_line": 1688,
+      "source_end_line": 1711
+    },
+    {
+      "symbol": "ExpressionToJson",
+      "source_line": 1711,
+      "source_end_line": 1781
+    },
+    {
+      "symbol": "MaterialPropertyConnectionToJson",
+      "source_line": 1781,
+      "source_end_line": 1811
+    },
+    {
+      "symbol": "MaterialPropertyFromString",
+      "source_line": 1811,
+      "source_end_line": 1879
+    },
+    {
+      "symbol": "LinearColorToJson",
+      "source_line": 1879,
+      "source_end_line": 1889
+    },
+    {
+      "symbol": "Vector4dToJson",
+      "source_line": 1889,
+      "source_end_line": 1899
+    },
+    {
+      "symbol": "ParameterInfoToJson",
+      "source_line": 1899,
+      "source_end_line": 1910
+    },
+    {
+      "symbol": "ShadingModelsToJson",
+      "source_line": 1910,
+      "source_end_line": 1930
+    },
+    {
+      "symbol": "MaterialSettingsToJson",
+      "source_line": 1930,
+      "source_end_line": 1959
+    },
+    {
+      "symbol": "HasShadingModel",
+      "source_line": 1959,
+      "source_end_line": 1964
+    },
+    {
+      "symbol": "ResolveMaterialPropertySemantic",
+      "source_line": 1964,
+      "source_end_line": 2125
+    },
+    {
+      "symbol": "SemanticPropertiesToJson",
+      "source_line": 2125,
+      "source_end_line": 2176
+    },
+    {
+      "symbol": "CostHintsToJson",
+      "source_line": 2176,
+      "source_end_line": 2274
+    },
+    {
+      "symbol": "UsageHintsToJson",
+      "source_line": 2274,
+      "source_end_line": 2315
+    },
+    {
+      "symbol": "MaterialInstanceToJson",
+      "source_line": 2315,
+      "source_end_line": 2440
+    },
+    {
+      "symbol": "GraphSummaryToJson",
+      "source_line": 2440,
+      "source_end_line": 2515
+    },
+    {
+      "symbol": "GetEditorOrPIEWorld",
+      "source_line": 2585,
+      "source_end_line": 2603
+    },
+    {
+      "symbol": "GetWorldTypeName",
+      "source_line": 2603,
+      "source_end_line": 2629
+    },
+    {
+      "symbol": "ShouldIncludeNamedParameter",
+      "source_line": 2629,
+      "source_end_line": 2634
+    },
+    {
+      "symbol": "GetOptionalParameterNameFilter",
+      "source_line": 2634,
+      "source_end_line": 2660
+    },
+    {
+      "symbol": "HandleResolveMaterialGraph",
+      "source_line": 3801,
+      "source_end_line": 3838
+    },
+    {
+      "symbol": "HandleListMaterialNodes",
+      "source_line": 3840,
+      "source_end_line": 3919
+    },
+    {
+      "symbol": "HandleAnalyzeMaterialGraph",
+      "source_line": 3921,
+      "source_end_line": 4034
+    },
+    {
+      "symbol": "HandleListMaterialCollectionParameterNodes",
+      "source_line": 4036,
+      "source_end_line": 4137
+    },
+    {
+      "symbol": "HandleConnectMaterialNodes",
+      "source_line": 5385,
+      "source_end_line": 5466
+    },
+    {
+      "symbol": "HandleConnectMaterialProperty",
+      "source_line": 5468,
+      "source_end_line": 5539
+    },
+    {
+      "symbol": "HandleDeleteMaterialNode",
+      "source_line": 5541,
+      "source_end_line": 5587
+    },
+    {
+      "symbol": "HandleLayoutMaterialNodes",
+      "source_line": 5589,
+      "source_end_line": 5623
+    },
+    {
+      "symbol": "HandleGetMaterialParameterCollectionValues",
+      "source_line": 6092,
+      "source_end_line": 6198
+    }
+  ],
+  "excluded_handlers": [
+    "HandleCommand",
+    "HandleCommandInternal",
+    "HandleMirrorMaterialParameterCollection",
+    "HandleReplaceMaterialCollectionReferences",
+    "HandleReplaceMaterialCollectionParameters",
+    "HandleReplaceMaterialTextureReferences",
+    "HandleAddMaterialNode",
+    "HandleAddCustomMaterialNode",
+    "HandleSetMaterialNodeProperty",
+    "HandleCompileAndSaveMaterial",
+    "HandleRefreshMaterialCachedExpressionData",
+    "HandleExpandMaterialFunctionCalls",
+    "HandleSetMaterialParameterCollectionValues",
+    "HandleSetMaterialParameterCollectionSync"
+  ]
+}

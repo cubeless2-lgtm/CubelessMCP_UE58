@@ -1,0 +1,21 @@
+# Reactive Surface Water HTML Similarity Report - 2026-07-06
+
+## Scope
+
+- Compares `/Game/ReactiveSurface/Water/RT_RS_Water` normal output against `wave_ripple_no_rain.html` formula.
+- Uses deterministic mousedown/drag/settle input and the Material/RT water path.
+- The Unreal step material reads height RTs with integer `Texture2D.Load` samples to match the HTML cell-grid solver.
+- Source positions are snapped to the RT cell grid to match the HTML `Math.round()` mouse coordinate contract.
+- Height ping-pong RTs use `RTF_RGBA32F`; the public normal RT remains `RTF_RGBA16F`.
+- Runtime default `RS_Water_HeightEncodeScale` is `0.10`; this improves RT feedback precision without changing the wave equation.
+
+## Result
+
+- Verdict: `PASS`
+- PASS threshold: active correlation `>= 0.995` and active RMSE `<= 1.0`.
+- Best orientation: `direct`
+- Active RMSE: `0.22568315793384547`
+- Active correlation: `0.9999930364797908`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterHTMLSimilarity\html_similarity_contact_sheet.png`
+- Contact sheet columns: HTML reference, Unreal output, amplified diff.
+- Evidence JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-html-similarity-results-2026-07-06.json`

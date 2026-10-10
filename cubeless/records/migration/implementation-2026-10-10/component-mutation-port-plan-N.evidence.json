@@ -1,0 +1,57 @@
+{
+  "schema": "cubeless_source_research_evidence_v1",
+  "date": "2026-10-10",
+  "scope": "local SCS add_component_to_blueprint and set_component_property; proposal only",
+  "implementation_status": "not_implemented",
+  "engine_execution": "none",
+  "files": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_6_1\\Python\\tools\\blueprint_tools.py",
+      "sha256": "a3905dea7c882660f6d40d75150f1abd72fe4e0bf68184e38890fb7515590f43"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Plugins\\UnrealMCP\\Source\\UnrealMCP\\Private\\Commands\\UnrealMCPBlueprintCommands.cpp",
+      "sha256": "fa72cb0d37cfbc2377f6cbf5926f82352b5e07ea570aced4125eec732b32446f"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Runtime\\Engine\\Private\\SimpleConstructionScript.cpp",
+      "sha256": "9f1bfac6218f96ee1f3f62c8905b58c08bfa40ce95cef09fd0e9e76966feb9d7"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Runtime\\Engine\\Private\\Components\\SceneComponent.cpp",
+      "sha256": "58c6337430d41c3fb9acd8060221a8b46696e0f372c2cc590bc2b865ed89b757"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Runtime\\Engine\\Private\\SCS_Node.cpp",
+      "sha256": "5ff3677425dab820aae9103443316367f6c8b5d1a1b2c96207327f243e60527e"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Runtime\\CoreUObject\\Private\\UObject\\PropertyAccessUtil.cpp",
+      "sha256": "0936055dbf24d17e85ba7f60c990f302c8581b352786ec8af12e444a9d7e1c43"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\UnrealEd\\Private\\Kismet2\\BlueprintEditorUtils.cpp",
+      "sha256": "fbc50ec574fce4f0298ffbd2f1b4cfe01298f20e10d291b6dfc74ab6fcd114d1"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\UnrealEd\\Public\\Kismet2\\KismetEditorUtilities.h",
+      "sha256": "ddd711babdd05034fcedb650d21514d8016f6b45f996921eef8a2ba1e66d7b7f"
+    },
+    {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\UnrealEd\\Private\\Kismet2\\Kismet2.cpp",
+      "sha256": "1024da2cd1652bcdf558c9431cc2f2e2d08707012e8645d574309f25bd2f64ca"
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\migration\\implementation-2026-10-10\\component-mutation-port-plan-N.md",
+      "sha256": "e6962fc61dfdc1b603356f6c014b75335a66ea60ab8eb6cbb6d5a23912a13604"
+    }
+  ],
+  "findings": [
+    "Legacy component_properties is forwarded by Python and ignored by the native add handler.",
+    "CreateNode can rename an orphan template occupying its generated-class slot.",
+    "Public Generic_SetEditorProperty can propagate template values into archetype instances.",
+    "AttachSocketName requires template plus SCS AttachToName handling.",
+    "Standalone add full compile must preserve a validation boundary with SkipSave.",
+    "No public CreateBlueprint overload accepts compiler options; initial factory compile has no SkipSave."
+  ]
+}

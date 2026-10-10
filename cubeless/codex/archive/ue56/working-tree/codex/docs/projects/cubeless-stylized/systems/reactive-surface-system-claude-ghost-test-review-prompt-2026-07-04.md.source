@@ -1,0 +1,141 @@
+# Claude Review Prompt - Reactive Surface Ghost Test Follow-up
+
+아래 프롬프트를 Claude에게 그대로 전달한다.
+
+```text
+리액티브 서피스 시스템 확정본의 UE 5.6.1 고스트 테스트 결과를 검수해줘.
+
+역할:
+- 교차 검증자
+- 반박자(devil's advocate)
+- 구현 전 리스크 감사자
+
+이번 요청의 목적:
+- 문서 재반박 5라운드를 새로 시작하는 것이 아니다.
+- Codex가 UE 5.6.1 에디터에서 실행한 고스트 테스트 결과가 설계 문서에 어떤 의미를 갖는지 검수한다.
+- 특히 PASS/BLOCKED 판정이 과장되었거나, BLOCKED를 FAIL로 봐야 하는 지점이 있는지 공격적으로 확인한다.
+
+주 검토 파일:
+- codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-ghost-test-report-2026-07-04.md
+
+기준 설계 문서:
+- codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-validation-plan.md
+
+참고 문서:
+- codex/docs/projects/cubeless-stylized/systems/interaction-field-system.md
+
+검수 전제:
+- 엔진은 Unreal Engine 5.6.1이다.
+- 리액티브 서피스 시스템은 아직 production 구현 전이다.
+- 테스트 자산은 /Game/_MCP_Temp/ReactiveGhost/ 아래에서만 생성되었고, 테스트 후 삭제되었다.
+- /Game/ReactiveSurface/* production 경로는 사용하지 않았다.
+- 이번 프로젝트 방향은 BP-only 우선이며, 멀티플레이는 현재 범위 밖이다.
+- 실제 플레이어 캐릭터에만 테스트/구현용 Reactive child actor를 붙이는 방향이다.
+- 눈/모래는 발 위치 + footprint texture 기반 stamp를 사용한다.
+- 퍼들/물 파장/foliage는 위치와 속도 중심의 경량 입력을 사용한다.
+- Water Plugin은 사용하지 않는다.
+
+Codex 고스트 테스트 요약:
+
+G1. Grid2D -> RT export
+- PASS
+- UE 5.6.1에서 RGBA16F + supports_uav RT, DirectSet / TwoD / NumThreads [512,512,1] 경로가 SIE에서 RT에 기록됨.
+- 17x17 샘플 289/289 nonzero, ratio 1.0.
+- center RGBA [1.0, 1.0, 0.0, 1.0].
+
+G2. Set Niagara Array Vector/Float push
+- BLOCKED
+- UE 5.6.1에 SetNiagaraArrayVector/Float BP 함수는 있음.
+- 하지만 선언되지 않은 User Array DI에 set하면 get length 0.
+- 결론: BP Set Niagara Array는 undeclared User Array DI를 생성하지 않음.
+
+G3. 1-cell reprojection smoke
+- BLOCKED
+- 사용 가능한 템플릿 AdvectGrid는 curl-noise advection이다.
+- 문서의 deterministic 1-cell offset + edge zero-fill 검증용 stage가 아니다.
+
+G4. Sim-stage footprint mask texture sample
+- BLOCKED
+- 엔진에는 UNiagaraDataInterfaceTexture / SampleTexture2D가 있음.
+- 현재 MCP에는 Texture2D DI binder와 rotated mask scratchpad authoring 경로가 없음.
+
+G5. Socket/tick group premise
+- BLOCKED
+- Piper에는 foot_l, foot_fix_l, foot_r, foot_fix_r bone이 있음.
+- socket_count 0. foot_l/foot_r socket은 없음.
+- BP CDO tick group은 TG_PostUpdateWork로 설정 가능.
+- live animated character fixture가 없어 PrePhysics vs PostUpdateWork 위치 차이는 미측정.
+
+G6. PhysMat premise
+- BLOCKED
+- temp preview map ground-like component 0.
+- transient PhysMat override는 가능.
+- UE 5.6.1 Python trace는 bReturnPhysicalMaterial 노출이 없고 HitResult physmat 필드 접근도 불가.
+
+G7. Grid2D previous-frame read
+- PASS
+- SamplePreviousGridVector4Value가 Niagara graph에 존재하고 compile error/warning 0.
+- G1 readback과 함께 previous-grid read path가 callable/compilable/executable인 것은 확인.
+- 단, full water solver 안정성 증명은 아님.
+
+집중 검수 대상:
+
+1. G1 PASS가 Phase 0~2 착수 근거로 충분한가?
+   - 특히 SIE game-world spawn에서만 증명된 것을 production tick 환경에 일반화해도 되는가?
+
+2. G2 BLOCKED 판정이 적절한가?
+   - undeclared User Array DI length 0이면 "도구 부족"인지, "설계 전제 실패"인지 판단해줘.
+   - 설계 문서에서 source registry/array payload 관련 섹션을 어떻게 낮춰 써야 하는지 제안해줘.
+
+3. G3 BLOCKED가 sliding-window 설계에 미치는 영향
+   - deterministic reprojection stage가 없으면 문서의 window move 보존 요구를 어느 수준까지 보류해야 하는가?
+   - clear-on-recenter fallback을 production 1차로 삼아도 되는지 검토해줘.
+
+4. G4 BLOCKED가 눈/모래 footprint texture 방식에 미치는 영향
+   - Texture DI가 엔진에 있다고 해서 footprint texture 방식을 확정해도 되는가?
+   - BP-only 우선 조건에서 어떤 최소 검증이 더 필요한가?
+
+5. G5에서 socket이 없고 bone만 있는 것의 영향
+   - foot_l/foot_r bone 기반으로 가는 것이 충분한가?
+   - 애님노티파이를 쓰지 않는 조건에서 틱 그룹/포즈 신선도 리스크가 얼마나 큰가?
+
+6. G6 PhysMat 검증 실패의 영향
+   - PhysMat gate를 문서 확정사항으로 유지해도 되는가?
+   - native trace MCP command 또는 BP fixture 없이는 어떤 문구로 낮춰야 하는가?
+
+7. G7 PASS의 범위
+   - SamplePreviousGridVector4Value 확인만으로 Water option ①을 "확정"이라고 써도 되는가?
+   - 아니면 "first attempt path"로만 써야 하는가?
+
+8. Codex가 제안한 MCP/API/C++ 보강 리스트 중 빠진 것이 있는가?
+   - 특히 Niagara User Array DI creation/upsert
+   - Texture2D DI binder
+   - deterministic Grid2D reprojection test command
+   - native PhysMat trace command
+   - SIE lifecycle/readback harness
+
+출력 형식:
+
+1. "판정 정정" 섹션
+   - Codex의 PASS/BLOCKED 중 바꿔야 할 판정이 있으면 항목별로 제시.
+   - 바꿀 것이 없으면 "정정 없음"이라고만 쓰지 말고, 왜 유지 가능한지 한 줄 근거를 붙여줘.
+
+2. "문서 수정 지시" 섹션
+   - reactive-surface-system-validation-plan.md의 어느 섹션을 어떻게 수정해야 하는지 구체 문장으로 제시.
+
+3. "착수 순서 재판정" 섹션
+   - Phase 0~2 conditional go/no-go를 다시 판정.
+   - 시작 순서를 5~8개 단계로 재정렬.
+
+4. "추가 리스크 행" 섹션
+   - 문서 리스크 표에 추가해야 할 항목이 있으면 표로 작성.
+
+5. "최종 결론" 섹션
+   - production 구현 전 반드시 끝내야 하는 최소 검증 3개만 골라줘.
+
+주의:
+- 동의 요약은 필요 없다.
+- 스타일 지적은 하지 않는다.
+- 문서에 없는 새 구현 아이디어를 장황하게 제안하지 않는다.
+- "가능해 보인다" 수준의 추측은 금지하고, PASS/BLOCKED 증거가 설계에 주는 영향만 판단한다.
+```

@@ -1,0 +1,14 @@
+{
+  "status": "pass",
+  "scope": "Explicit Pak-only test packaging after successful BC no-plugin author/cold; original engine config and descriptor unchanged",
+  "added_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\Config\\DefaultGame.ini",
+  "sha256": "715ca6e9ee2bd1d20ea211f161a0efe90113ad2545d893d8436a4150e941cdba",
+  "settings": "[/Script/UnrealEd.ProjectPackagingSettings]\nbUsePakFile=True\nbUseIoStore=False\nbCookAll=False\nbSkipEditorContent=True\nbGenerateChunks=False\n+MapsToCook=(FilePath=\"/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof\")\nbUseZenStore=False\n",
+  "unchanged_author_configuration": {
+    "project_sha256": "df44c9063edb57169cd33c4a3404ed88779323c65b2bca03f2d374b49fb6ef4f",
+    "default_engine_sha256": "55f824e063d32bf0fb5ec820ebafb3de338f030c240403e65b5a3f7d7df3549f"
+  },
+  "prior_iostore_audit": "current-package-static-C.json",
+  "prior_iostore_status": "incomplete_unsupported_contents",
+  "asset_mutations": false
+}

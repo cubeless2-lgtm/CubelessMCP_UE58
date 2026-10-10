@@ -1,0 +1,54 @@
+{
+  "toolset": "editor_toolset.toolsets.blueprint.BlueprintTools",
+  "tool": {
+    "description": "Returns the Class Default Object (CDO) for a Blueprint's.\n\n        ObjectTools list/set/get property will get the CDO automatically, so this\n        should primarily be used before calling tools that want to operate on the\n        object inside the blueprint (like ActorTools).\n\n        Note: The Blueprint must be compiled for the CDO to reflect the latest state.\n\n        Args:\n            blueprint: The Blueprint whose CDO to retrieve.\n\n        Returns:\n            The Class Default Object for the Blueprint's generated class.",
+    "name": "editor_toolset.toolsets.blueprint.BlueprintTools.get_default_object",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "blueprint": {
+          "type": "object",
+          "title": "/Script/Engine.Blueprint",
+          "description": "UObject 또는 UClass에 대한 레퍼런스를 나타냅니다.",
+          "properties": {
+            "refPath": {
+              "type": "string",
+              "description": "소프트 경로 스트링으로 저장된 레퍼런스입니다."
+            }
+          },
+          "required": [
+            "refPath"
+          ]
+        }
+      },
+      "required": [
+        "blueprint"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "returnValue": {
+          "type": "object",
+          "title": "/Script/CoreUObject.Object",
+          "description": "UObject 또는 UClass에 대한 레퍼런스를 나타냅니다.",
+          "properties": {
+            "refPath": {
+              "type": "string",
+              "description": "소프트 경로 스트링으로 저장된 레퍼런스입니다."
+            }
+          },
+          "required": [
+            "refPath"
+          ]
+        }
+      },
+      "required": [
+        "returnValue"
+      ]
+    }
+  },
+  "source": "actual official MCP describe_toolset",
+  "engine": "5.8.3-58210709",
+  "mutation_performed": false
+}

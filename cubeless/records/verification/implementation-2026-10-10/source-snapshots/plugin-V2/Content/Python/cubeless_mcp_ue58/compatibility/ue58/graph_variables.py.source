@@ -1,0 +1,23 @@
+"""UE58 own-member node spawners and the public C++ preflight/readback bridge."""
+
+import unreal
+
+from . import graph
+from cubeless_mcp_ue58.operations.state import OperationError
+
+
+def member_plan(editor, variable_name, setter):
+    value = graph._native_read("read_member_variable_plan", editor.get_graph().get_path_name(), variable_name, setter)
+    if (not value.get("variable_name") or not value.get("property_path") or value.get("setter") is not setter
+            or value.get("dirty_before") != value.get("dirty_after")):
+        raise OperationError("graph_member_preflight_invalid", "Native member preflight did not preserve the observed read-only state")
+    return value
+
+
+def add_member(editor, variable_name, setter, x, y):
+    spawn = editor.add_set_member_variable_node if setter else editor.add_get_member_variable_node
+    node = spawn(unreal.Name(variable_name), "")
+    if node is None:
+        raise OperationError("graph_member_spawn_failed", "Official BlueprintGraphEditor returned no member node; inspect the graph before issuing another operation")
+    node.set_node_pos(unreal.IntPoint(x, y))
+    return node

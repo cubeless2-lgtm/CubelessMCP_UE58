@@ -1,0 +1,84 @@
+# MCP Tool Parity Audit
+
+`Python/scripts/analysis/mcp_tool_parity_audit.py` is the first conservative
+gate for the MCP upgrade work. It compares FastMCP tools exposed from
+`Python/tools/*.py` with native C++ routes dispatched by
+`MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp`
+and the command-handler files made reachable by its UE 5.6 domain prefixes or
+handler-owned `SupportsCommand` routing.
+
+The audit is read-only. It does not launch the MCP server, connect to Unreal
+Editor, or change `.mcp.json`, the FastMCP stdio entry point, the existing TCP
+bridge, or this UE 5.6.1 fork's default port `55561`.
+
+## Why This Comes First
+
+The planned upgrade path keeps the current server stable while adding checks
+around it:
+
+1. Audit TypeScript/Python-facing tool exposure against C++ handler routes.
+2. Add a tool registry facade that can later support category-level
+   enable/disable without moving handlers.
+3. Add transport hardening around the current path: capability token,
+   loopback-only default, rate limit, heartbeat, and request queue telemetry.
+4. Add an opt-in native Streamable HTTP/SSE endpoint only after the registry
+   and telemetry gates can compare old and new behavior.
+
+This script owns step 1. A mismatch should be treated as a planning signal
+before changing transport or dynamic tool-management behavior.
+
+## Usage
+
+Run from the repository root with the project Python environment:
+
+```powershell
+uv --directory Python run python scripts\analysis\mcp_tool_parity_audit.py
+```
+
+For automation or CI-style collection:
+
+```powershell
+uv --directory Python run python scripts\analysis\mcp_tool_parity_audit.py --json
+uv --directory Python run python scripts\analysis\mcp_tool_parity_audit.py --output Saved\MCP\mcp_tool_parity_audit.json
+```
+
+By default, the command exits with status `1` when it finds parity issues,
+duplicate Python tools, duplicate C++ routes, or discovery errors. Use
+`--fail-on never` for exploratory reporting.
+
+## Report Fields
+
+- `missing_in_cpp`: FastMCP tools that are not mapped to a native C++ route.
+- `missing_in_python`: native C++ routes that are not exposed as FastMCP tools.
+- `duplicate_python_tools`: duplicate FastMCP tool names.
+- `duplicate_cpp_routes`: duplicate native dispatch route names.
+- `python_only_tools`: documented host-side tools that intentionally do not
+  have a one-to-one C++ route, such as `manage_tools` and texture helpers.
+- `cpp_only_routes`: documented native routes that intentionally are not
+  exposed as FastMCP tools.
+- `route_aliases`: documented Python tool names that intentionally dispatch to
+  differently named native routes.
+
+New intentional exceptions should be added to the script with a reason. That
+keeps `manage_tools`, transport hardening, and future HTTP/SSE promotion from
+inheriting undocumented routing drift.
+
+The compact exposure layer's `list_toolsets`, `describe_toolset`, and
+`call_tool` are host-only by design. The eight Niagara planning/refinement
+tools are also mutation-free host services. Conversely,
+`add_niagara_scratch_pad_di_function_call` remains a low-level native helper,
+and the legacy `add_checkbox_to_widget` route is explicitly deferred rather
+than expanding the current public catalog. These documented
+exceptions remain visible in `python_only_tools` and `cpp_only_routes` instead
+of being treated as silent parity drift.
+
+The current 429-tool scope includes six one-to-one native Chaos routes:
+`inspect_chaos_solver_settings`, `configure_chaos_solver_settings`,
+`inspect_chaos_cloth_asset`, `inspect_chaos_cloth_component`,
+`configure_chaos_cloth_component`, and
+`configure_chaos_cloth_dataflow_node`. Their Python names must exactly match
+the bridge routes; no parity alias or exception is permitted. The three
+inspectors are read-only. The three configurators are high-risk writes with a
+dry-run default and strict independent readback. `validate_chaos_cache` is
+also classified as a write because its validation session changes cache
+playback and component physics state.

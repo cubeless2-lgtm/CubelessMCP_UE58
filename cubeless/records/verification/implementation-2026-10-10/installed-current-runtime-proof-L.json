@@ -1,0 +1,975 @@
+{
+  "schema": "cubeless_installed_current_runtime_proof_v1",
+  "success_within_scope": true,
+  "scope": "Distribution L installed for Editor only, exact D fixture bytes, actual Shipping cook/Pak exclusion and fresh game marker",
+  "full_migration_complete": false,
+  "actor_M_included": false,
+  "shader_completion_verified": false,
+  "rendering_quality": "not_verified",
+  "engine_execution_performed_by_this_verifier": false,
+  "artifacts": {
+    "preparation": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-runtime-project-preparation-L.json",
+      "sha256": "acdf4b59b3ee896f95c6ff543fce3213aca1392896333da0e01f24733ba8fcc6",
+      "bytes": 30703
+    },
+    "build_log": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\build-installed-current-runtime-shipping-L.log",
+      "sha256": "d763bab91d122b70057d2923ae6c8028e2e1542a327da008af876abcd6a9eebb",
+      "bytes": 68279
+    },
+    "package": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-package-static-L.json",
+      "sha256": "991fa14ac8b5c0eae86df3304ab3c9b2471d4aaf5a375bfb2d2b9611d2489ec4",
+      "bytes": 3286
+    },
+    "baseline": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-runtime-marker-baseline-L.json",
+      "sha256": "d46e2b60d8f5061950a4996850bf0f6a2f2d64607cdb7ed0a7998abe84554f9a",
+      "bytes": 1114
+    },
+    "launch": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-runtime-launch-L.json",
+      "sha256": "f70fc5f64dcce6a07eda694c8413c00e384caa19fb97f5f900f0a3319576683b",
+      "bytes": 1267
+    },
+    "marker": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-runtime-marker-verification-L.json",
+      "sha256": "61181a06fb3288bdf0ada56ac57485a507a9dc7756159b2e73e42c70fb20f5ad",
+      "bytes": 4751
+    },
+    "prior_D": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\current-runtime-proof-D.json",
+      "sha256": "c0c50460f99f63606c8cff1122679bdf567a21eece80fb5c5784d1c1898dbe38",
+      "bytes": 39899
+    }
+  },
+  "prior_D_independent": {
+    "schema": "cubeless_current_runtime_proof_independent_v1",
+    "passed": true,
+    "errors": [],
+    "scope": "Exact saved fixture cohort B/C editor readback plus D Pak-only Shipping inclusion and fresh BeginPlay marker",
+    "shader_completion_verified": false,
+    "rendering_quality": "not_verified",
+    "full_migration_complete": false
+  },
+  "preparation": {
+    "status": "pass",
+    "descriptor": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58InstalledCurrentRuntimeProof\\CubelessCurrentRuntimeProof.uproject",
+      "sha256": "a69a8ea299d6f8c9300dce4011d09817ba636642aacb8fe54d496ec4aa7ccdd3",
+      "bytes": 641
+    },
+    "plugin_descriptor": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58InstalledCurrentRuntimeProof\\Plugins\\CubelessMCP_UE58\\CubelessMCP_UE58.uplugin",
+      "sha256": "ffea2a2b0bcba0312fcaebdba27a2f3bfb9d8efe9ae2914098dded5e55f3979a",
+      "bytes": 1093
+    },
+    "configs": {
+      "DefaultEngine.ini": {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58InstalledCurrentRuntimeProof\\Config\\DefaultEngine.ini",
+        "sha256": "55f824e063d32bf0fb5ec820ebafb3de338f030c240403e65b5a3f7d7df3549f",
+        "bytes": 562
+      },
+      "DefaultGame.ini": {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58InstalledCurrentRuntimeProof\\Config\\DefaultGame.ini",
+        "sha256": "715ca6e9ee2bd1d20ea211f161a0efe90113ad2545d893d8436a4150e941cdba",
+        "bytes": 279
+      }
+    },
+    "assets": [
+      {
+        "relative": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.uasset",
+        "sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.uasset",
+        "sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.umap",
+        "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.uasset",
+        "sha256": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges.uasset",
+        "sha256": "bcef7cdb2bfa15adaf07450e7819161879c5490d07eafc1294252fb342589c63"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base.uasset",
+        "sha256": "106e1518012c4994a80686fb0d5f31cee398d219d522b1586b38685937838f3e"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid.uasset",
+        "sha256": "af2dc8fed5b692eae0fee751b26f538d2bb975af2ab0f0976f7adbe88b8a7f46"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf.uasset",
+        "sha256": "5073a7541d1553fcd03259436baf1281db9621b84f0142476b6ec7b74ae96409"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance.uasset",
+        "sha256": "8fdceac033aa7b2037b9eeabcfe0accf15fa402586729fdefbaead218208e7e9"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch.uasset",
+        "sha256": "5b34389add77b9f453d1e08f48536ce64f422b7470338e36dc88a04eded6aeb3"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone.uasset",
+        "sha256": "0711a0e7c94e78763499f75b0749a19db4b834724092095de25499a4a04a58fe"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue.uasset",
+        "sha256": "8522baf23a1263848a31e7c371ea82c1f4ceb566738f96c84dcca9bf96c132f8"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse.uasset",
+        "sha256": "a7d223f4075620b56597dd75cb21997c242f2b4aead0b91494ba1c22be216ed0"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.uasset",
+        "sha256": "5818c8e42aefcd865109639dc9c19b8d83e547c5fe4f75ad8d84ce70065bbd6f"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom.uasset",
+        "sha256": "78b0486febe97141a429401997bc0e20d2b4bff5ac12bb07a21e51c3d7f714dc"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract.uasset",
+        "sha256": "96bf1fe94fc256078b5206f43cbb42e56c6781ff177ea0118016f9490085755d"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract.uasset",
+        "sha256": "0127e633430f0a3834ebb8d4ea3692e41c48d6036cbd4a8fadcaa2cbeea51e14"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract.uasset",
+        "sha256": "5b8d8adcc6156ac75f2e17e8b2451972a5ee9b796930ece78a19da4607c25537"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract.uasset",
+        "sha256": "4a616583fcc75c6243aee8106c509fe5cdf9e096a145073005b275eba1c44dd5"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof.umap",
+        "sha256": "2ecebbdeb3048bae1ad7e691adab401c0b6021a14047482e6bd7041947a81abd"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC.uasset",
+        "sha256": "09ad6c555f672fcc8e8286349c525147a10de26073fe1f4d6e6e16d24a266960"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC.uasset",
+        "sha256": "686b9831f1acbe837714e18fc4f48b8843b5c76fd55ac58b3079ac5893a5c9ae"
+      },
+      {
+        "relative": "Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC.uasset",
+        "sha256": "64e32beab058ca6cdc4d2f0da8cdd4b7836fc0058941d3aa122747675dcadcc2"
+      }
+    ],
+    "protected_plugin_files": {
+      "Content/Python/cubeless_mcp_ue58/__init__.py": "279a8c7118d8a7f2e73d71e7f7fd1d46356d98d90ccc490977717a224caf49d3",
+      "Content/Python/cubeless_mcp_ue58/compatibility/__init__.py": "d075c4ebe059fd6e4ce28df5c3718a035ce4545496d32ca68f5b92e5bb9aa021",
+      "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__init__.py": "33d33333bcf4f482b5f65ba519ef331c6d1e17dd8a0d4d1748e141d945bb443d",
+      "Content/Python/cubeless_mcp_ue58/compatibility/ue58/batch.py": "456d133ebf21e43ffc643c9ac5c748bfba1803d6216b84a23c60f14b679690eb",
+      "Content/Python/cubeless_mcp_ue58/compatibility/ue58/blueprint.py": "81591257e6858c5827a500ea3ccc33633e044d88690b7821fb1a40b74ac5cf3f",
+      "Content/Python/cubeless_mcp_ue58/compatibility/ue58/graph.py": "421ef7805c7f4dc8e56c9f943a5f09ab2399fc7247a1dad0a0dd6cab348ea74a",
+      "Content/Python/cubeless_mcp_ue58/compatibility/ue58/material.py": "cabbf7401067e0d526652e8695277ec087b3d77551c918312c0d6da8bf45515b",
+      "Content/Python/cubeless_mcp_ue58/operations/__init__.py": "c02abd0fdca7d6f75f1d78196d9fd2573e1b0277d10c4064ee9562d7c5ec645b",
+      "Content/Python/cubeless_mcp_ue58/operations/batch.py": "a061ec73f3bc0a42cb5147f80b91e539c249abab020afc8238b861dd81461dc4",
+      "Content/Python/cubeless_mcp_ue58/operations/blueprint.py": "6c961db09b438b84d9ff680d9dffd6cc05016b88d56222a9520820968b8ffb1e",
+      "Content/Python/cubeless_mcp_ue58/operations/graph.py": "935bc6bbe2959f7a25a7f3e5900da9436c07247f91e0eab411e5bae2dfa014b5",
+      "Content/Python/cubeless_mcp_ue58/operations/material.py": "6efe7c01f509cf333a1da4184811cdb6c922c8080dec1237ff2997d6928e1f72",
+      "Content/Python/cubeless_mcp_ue58/operations/state.py": "d9d63886ecd6348922aa95692d362500b04d149950bd5020c87357f6dabdca06",
+      "Content/Python/cubeless_mcp_ue58/pipelines/__init__.py": "2d97fd2f0f9ed42b6f09376cb68f32b882ab1373ba20c15f8100f8e427d49b54",
+      "Content/Python/cubeless_mcp_ue58/registration/__init__.py": "5a5e74e2f2ce4dd2fd92ced3dfc2e7c197bcc7119382869bed66abf07d811aeb",
+      "Content/Python/cubeless_mcp_ue58/registration/batch_toolset.py": "4fa58fdd60a6eb1a15679da18eb7504acbf97bec4e54b7bb684d082d06ecc81e",
+      "Content/Python/cubeless_mcp_ue58/registration/graph_toolset.py": "6c25edfcabd3cd863412cd169bed21ef0874a0a28a5795a5bd8bd6a25fe8e238",
+      "Content/Python/cubeless_mcp_ue58/registration/material_toolset.py": "2b58f33aec187ca75f356b311e896a3e91ebb5267e8274709842026451c9211e",
+      "Content/Python/cubeless_mcp_ue58/registration/results.py": "b354baae85db86cf8823dafd91c2711ec1e5cea93ba0c7cf673a4bab4fcb2edf",
+      "Content/Python/cubeless_mcp_ue58/registration/toolsets.py": "100de89eb00086cd49232bde557ea07857d009e6c439ba3b63a9cdfc80d25923",
+      "Content/Python/cubeless_mcp_ue58/validators/__init__.py": "d65dbfb765fdc6054ef547868b931a0f86e4dedaa7abf887c854f569c79b4d6b",
+      "Content/Python/cubeless_mcp_ue58/validators/dependencies.py": "1a06611d799b4ad80a59c09ce6745b829642a3beb1ac9ce778f6c8107666d89a",
+      "Content/Python/init_unreal.py": "9dceea0c7afa3ac8c06b8104b7bf6e968d0d71beb5198a7b159813a34607f752",
+      "Content/Python/tests/test_batch_contract.py": "1653830cbda2396d8b67069ea22453567bb1f87d03f562897e6ec9f1dec3bb88",
+      "Content/Python/tests/test_graph_failure_evidence.py": "e0bdc0448717cbbdac8d693ebbfb13d197a3c288473d6deddf9f3e027962567d",
+      "Content/Python/tests/test_operation_journal.py": "ccf582eec6e26b4d1d09d5adc6708888d6f3d73ebdab3aadc6e8b32c887193ac",
+      "Content/Python/tests/test_registration_boundary.py": "a130d6513645e4bca0bf12759d9175a4ae61a6c0c21c0dd49c81f410becd1454",
+      "CubelessMCP_UE58.uplugin": "ffea2a2b0bcba0312fcaebdba27a2f3bfb9d8efe9ae2914098dded5e55f3979a",
+      "Source/CubelessMCPUE58Editor/CubelessMCPUE58Editor.Build.cs": "7005f515b4de9251c6b535d8fdc3b033cd7ed95b0af6aa5a3e6a8ab8103d642e",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessCompilerDiagnostics.cpp": "8a6ff2db076c00c607e6ccfb6be20e14ba73fb7e535a2be4b22035ac6abc9937",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessCompilerDiagnostics.h": "2fef766dd6f4b716e048208e5bd48a9f92b8211d9892ffb7485bb9b2e12d30f4",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessEditorApi.cpp": "1eef6ab65f52a61c58be49cd99e65becbb07449724c7052297cdf2a9b83251da",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessEditorApi.h": "cf8d9f03d5ef85474854a4d1451763398842a05ed398e34ef80040f781284cbc",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialApi.cpp": "b42642c24eff500501258f6c7fcc8b84c0512cc85210faf0dfaf0cc55fdd8395",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialApi.h": "9f43377fa333e00d0636f49b92f0824904af359bb13ed75418fe4f7bb058c337",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialArrayConverter.cpp": "f43b30a569fa763c6137de92a73caf92e8119e6bfb0615cee63b9629e3cd02b4",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialArrayConverter.h": "aaf7a10ac218d6b4514895b62fd1bcb216e72f7f553a9c0daaa322f01b528589",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCollectionRead.inc": "d17fdf9e4845420b8cc08e31d83850e62552caf249424a1bbf8a55ef6984290a",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCustom.inc": "5902d7e5795f1ca08e47e67ea52c2a1fde348288bf136e77a832dfaa7414f338",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCustomGuards.inc": "7021e5626ee6a0868c69da31c605ca11584c8ea53891421e86385c0a995bb4ce",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCustomLegacy.inc": "10f975f90eea66485c0004588b2ca69e13614ad5377a7bb9e8297dad8f7563b7",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialLegacy.inc": "8818c81e542249e519fbe5451b03a9b2043e652740d95bd9321dd24016a5c3f1",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialMutation.inc": "4fa537d563f690565ec73b5f1dd2eaad53a139ad8d0259569b5dd481d3186cd1",
+      "Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialMutationLegacy.inc": "e7ed7ce84421b676ec85f9dad8a7e4b4fd98f5a019b0c40d11c2dca479a35349",
+      "Source/CubelessMCPUE58Editor/Private/CubelessMCPUE58EditorModule.cpp": "c5666597df86501f20d494fd300d1e6cc8177c879cdb33770f53b386f88b7b1f",
+      "Source/CubelessMCPUE58Editor/Private/Operations/CubelessInspectionOperations.cpp": "b566dde349564199a9a1c8fd27e6e4208c5c3e6d68277f20bef346d4d6f1931a",
+      "Source/CubelessMCPUE58Editor/Private/Operations/CubelessInspectionOperations.h": "7096815cde074f2f7ad6847ea5905e489b7e290d985345291593c153c920150d",
+      "Source/CubelessMCPUE58Editor/Private/Operations/CubelessMaterialOperations.cpp": "09857fd87fbac2d096c8fb6fdb7cd8ea928a185155d0b50a6018850706cdde47",
+      "Source/CubelessMCPUE58Editor/Private/Operations/CubelessMaterialOperations.h": "b2987c2be442e83056483200ba6c7e8bb2293fd3a7ca3b9e40d3f9c6bf796464",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessJsonConverters.cpp": "861175f25e6464d8789278f17f6b208294b40d9211cca19d6e6751275ed9ca83",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessJsonConverters.h": "6505b392ee68a3c96caa860d5672fdf333468390a6d65d11f02669e058fc2d3c",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessMaterialLibrary.cpp": "627323cee301484a5d455553ed36ac380d6b95705668fd5f48b3ce050a496384",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessMaterialLibrary.h": "b155025bc01e282f685517414f22e7f2a76d67e180535647f5b5285ff9e451ae",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessNativeToolset.cpp": "b0c5697cecba0da1709159c0c9dbc14b973ed31cac330656cffaab792550b3ec",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessNativeToolset.h": "bc376195b71059b0a105c5ced75e117bb8276435a574c0078d6b63b0758c634d",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessRegistrationLibrary.cpp": "4b6046523ed181c11d459411a8e8321e2a2b774f56ceb6230dda28c137adcd06",
+      "Source/CubelessMCPUE58Editor/Private/Registration/CubelessRegistrationLibrary.h": "d5805777ec7984f971c9c39a42efbb2bc12dc7f77a84a6f5d74a37b961c372d7"
+    },
+    "protected_count": 57,
+    "initial_plugin_file_count": 90,
+    "generated_files": [
+      {
+        "relative": "Binaries/Win64/UnrealEditor-CubelessMCPUE58Editor.dll",
+        "sha256_before": "5ff845eb5c11a7368dd6edfdb6eb48e856cac66c0af70739a51c601f5fda6fc0",
+        "sha256_after": "8723b13b1e8d8a7c3d99c1d8db0b859bf6fadfc29f2905db2f1b4fbcafa3255e"
+      },
+      {
+        "relative": "Binaries/Win64/UnrealEditor-CubelessMCPUE58Editor.pdb",
+        "sha256_before": "e17b9223b23fe4c8751ac84c2ca420b09efee2258abb51cfc9bd5a3e6434e76e",
+        "sha256_after": "835c830f4d124184c096bdf6d9865a6c195b20f381d7e47ed96ea6d26171c4b4"
+      },
+      {
+        "relative": "Binaries/Win64/UnrealEditor.modules",
+        "sha256_before": "6c28a52d22a490f8414e6e55d28f18248ab35284eea5d311d185fd0659ce038f",
+        "sha256_after": "6c28a52d22a490f8414e6e55d28f18248ab35284eea5d311d185fd0659ce038f"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/__pycache__/__init__.cpython-311.pyc",
+        "sha256_before": "40c64137a9f53b5eb1271c89030a271ed052db9995c3945e404157a603847137",
+        "sha256_after": "40c64137a9f53b5eb1271c89030a271ed052db9995c3945e404157a603847137"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/compatibility/__pycache__/__init__.cpython-311.pyc",
+        "sha256_before": "6c4e8857a590624f99684fc614d2707d3d404733e49584ff7f40d4bbc9b0d66f",
+        "sha256_after": "6c4e8857a590624f99684fc614d2707d3d404733e49584ff7f40d4bbc9b0d66f"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__pycache__/__init__.cpython-311.pyc",
+        "sha256_before": "d1f00e6fbf7a37bbbdc5daa3e6b30a4f439447df6fb73f15d6c30bd5a0133a9c",
+        "sha256_after": "d1f00e6fbf7a37bbbdc5daa3e6b30a4f439447df6fb73f15d6c30bd5a0133a9c"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__pycache__/batch.cpython-311.pyc",
+        "sha256_before": "4234197a303ded35898c1f22ccd36aa2cc2cc78937aae1aa923922b0fc27820b",
+        "sha256_after": "4234197a303ded35898c1f22ccd36aa2cc2cc78937aae1aa923922b0fc27820b"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__pycache__/blueprint.cpython-311.pyc",
+        "sha256_before": "fb9af1ff21e8ce3e2c43674c73a084d23167421ac98ac5e1803f8e06959ca51a",
+        "sha256_after": "fb9af1ff21e8ce3e2c43674c73a084d23167421ac98ac5e1803f8e06959ca51a"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__pycache__/graph.cpython-311.pyc",
+        "sha256_before": "e7afe28b4385359563be4b340f645009e8137bc36d5beca613c62d7510d0d711",
+        "sha256_after": "e7afe28b4385359563be4b340f645009e8137bc36d5beca613c62d7510d0d711"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/compatibility/ue58/__pycache__/material.cpython-311.pyc",
+        "sha256_before": "e2deb1b1e89d447a7a90c4712724684008f739903fc32696f9161ce2793b9ea0",
+        "sha256_after": "e2deb1b1e89d447a7a90c4712724684008f739903fc32696f9161ce2793b9ea0"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/operations/__pycache__/__init__.cpython-311.pyc",
+        "sha256_before": "d6075d35c2c4b6a33863b5747740e78c8608aa9bc224eaf926069927123cbac2",
+        "sha256_after": "d6075d35c2c4b6a33863b5747740e78c8608aa9bc224eaf926069927123cbac2"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/operations/__pycache__/batch.cpython-311.pyc",
+        "sha256_before": "c2b017a558181ce00910ac48cda9b6c27b0f779b3617a246dc8d66055fe1b7e5",
+        "sha256_after": "c2b017a558181ce00910ac48cda9b6c27b0f779b3617a246dc8d66055fe1b7e5"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/operations/__pycache__/blueprint.cpython-311.pyc",
+        "sha256_before": "4c854e7726922bea465e88ec98d1710db863917bf59b0fbe848e0361ecd06f55",
+        "sha256_after": "4c854e7726922bea465e88ec98d1710db863917bf59b0fbe848e0361ecd06f55"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/operations/__pycache__/graph.cpython-311.pyc",
+        "sha256_before": "1f2eccebf3d7e1ccc2d831a14cafdd89335b619e38f224446113227f55655972",
+        "sha256_after": "1f2eccebf3d7e1ccc2d831a14cafdd89335b619e38f224446113227f55655972"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/operations/__pycache__/material.cpython-311.pyc",
+        "sha256_before": "9c9145fe49fd678b56ec926b5783da21f18fbd8387e38c31aaa06cfe9adca4aa",
+        "sha256_after": "9c9145fe49fd678b56ec926b5783da21f18fbd8387e38c31aaa06cfe9adca4aa"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/operations/__pycache__/state.cpython-311.pyc",
+        "sha256_before": "fb5891fdec587e1caf004c7ffbde7d9fcda2c493b7fde71c7d9df173c99a4d64",
+        "sha256_after": "fb5891fdec587e1caf004c7ffbde7d9fcda2c493b7fde71c7d9df173c99a4d64"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/registration/__pycache__/__init__.cpython-311.pyc",
+        "sha256_before": "2cfdce2b4c0fa1a7a52ebd4bff00f58202bd248a56ca9cfaec740023cae224c8",
+        "sha256_after": "2cfdce2b4c0fa1a7a52ebd4bff00f58202bd248a56ca9cfaec740023cae224c8"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/registration/__pycache__/batch_toolset.cpython-311.pyc",
+        "sha256_before": "ca4225ec3955d155ee2c0f917460affa2da84cf20786fc0fcb6868caa40e63e1",
+        "sha256_after": "ca4225ec3955d155ee2c0f917460affa2da84cf20786fc0fcb6868caa40e63e1"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/registration/__pycache__/graph_toolset.cpython-311.pyc",
+        "sha256_before": "4eddbecdddebdcb8391de48d26ed6da4201fdedfe6ca6a932f4c7c5b18afa40f",
+        "sha256_after": "4eddbecdddebdcb8391de48d26ed6da4201fdedfe6ca6a932f4c7c5b18afa40f"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/registration/__pycache__/material_toolset.cpython-311.pyc",
+        "sha256_before": "94a97c9db98f601bde88aea06b1cdf60bc69a0a3440f0d51d9509ca1bf118dd2",
+        "sha256_after": "94a97c9db98f601bde88aea06b1cdf60bc69a0a3440f0d51d9509ca1bf118dd2"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/registration/__pycache__/results.cpython-311.pyc",
+        "sha256_before": "fa78ce3ee8ee0e3ec563d878dc33e27ffd625976d27e340d35c60bbb960877fa",
+        "sha256_after": "fa78ce3ee8ee0e3ec563d878dc33e27ffd625976d27e340d35c60bbb960877fa"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/registration/__pycache__/toolsets.cpython-311.pyc",
+        "sha256_before": "c9d616775b657d95bb441ed55e01b51acf54afa04c05a9afafd11b9792722985",
+        "sha256_after": "c9d616775b657d95bb441ed55e01b51acf54afa04c05a9afafd11b9792722985"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/validators/__pycache__/__init__.cpython-311.pyc",
+        "sha256_before": "419a4c7b1117f21f1b2de87936e3db0723f5d91b0b45c51b4d3f9363ba7dbcaf",
+        "sha256_after": "419a4c7b1117f21f1b2de87936e3db0723f5d91b0b45c51b4d3f9363ba7dbcaf"
+      },
+      {
+        "relative": "Content/Python/cubeless_mcp_ue58/validators/__pycache__/dependencies.cpython-311.pyc",
+        "sha256_before": "45a2920733ab0c98f3e05718db60add1de8bbedd3d8960e9cca5bceb4238c7e8",
+        "sha256_after": "45a2920733ab0c98f3e05718db60add1de8bbedd3d8960e9cca5bceb4238c7e8"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMCPUE58Editor.init.gen.cpp",
+        "sha256_before": "2fa592c6d710c1fd0591387ef25c247eeaf2201f74545362a85b45cb26a461d7",
+        "sha256_after": "1181c05372f646b4459c39cd4707b0bc194ca23be63314b881153b105384fc33"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMCPUE58EditorClasses.h",
+        "sha256_before": "1270d67f056d111136d87fed9076cb3f77df8b680fe4464c38514e021940c54e",
+        "sha256_after": "1270d67f056d111136d87fed9076cb3f77df8b680fe4464c38514e021940c54e"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMaterialLibrary.gen.cpp",
+        "sha256_before": "c12deb3d0ef7c4451365bd45cd4317c4361d51fd137e71f70fa91274c7836ef4",
+        "sha256_after": "45182ed1dd5313e66f9116148a439f56013ac5f8867908a2a8619189ef46fd77"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMaterialLibrary.generated.h",
+        "sha256_before": "955d187e24a3d8d519f296ce7bde20ea16b3086a697396e62f74babee7a3b383",
+        "sha256_after": "7a175881fa7b7bcd784958348a78bf0e6a8ea14b3565beb49e21902d446b3aa6"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessNativeToolset.gen.cpp",
+        "sha256_before": "e7a9f6396c92f9a9c276506acbdb94e340007b46d23c139434785304f01aba14",
+        "sha256_after": "2b791a7b5df46989824290e94c7a2b4bf7d12a95c91f37a2d4f6a68037f31db2"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessNativeToolset.generated.h",
+        "sha256_before": "de5aa394bb41b00cd6334e77a2d39c357c62805ad6ecdd22cd472ff236e176ae",
+        "sha256_after": "448c2dad79dcef9571c26926012cf921a189e4d6b26f28bb72338f8874574280"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessRegistrationLibrary.gen.cpp",
+        "sha256_before": "424bbd1aab184e23e626cc863f65ba6e27f02f1a551e713091d7857daf061e39",
+        "sha256_after": "4e09b6bc14a09a5167c7c5914093ee36a66f5fef0655123c8b3a9155897aacaa"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessRegistrationLibrary.generated.h",
+        "sha256_before": "5717d2d749cb2e7331a27db7ced3289e1abdbfb6f65666c0897cd48b85bd77aa",
+        "sha256_after": "c4efa847dd432f624188b5f21116d9d908603035e3a5f8b777eb529a5904e523"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "21ad3bcd85d10992ea45a20fab2f92732df00221e4511a954d8d8f87be463950"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "4f3f1e24b9b712d13cea05dc8ad35c21449913bf8b4f59cae6a2b63341b8e2fe"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "06c0a1ad5d9356a78aa52ab867d2f30c7c0958c8314c4f7416c17eeae89ba8bb"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "beeea4bb553d4bc7e3deffaabd9e4744d79357eab7a3416d8b5064adda13b177"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "a423c982981142c8d3def80da2b65a7cbf385c861e6801be539f3b01154b4550"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "38b1a5fa8f10fed4606dc9e5328f91a9ea18a08ef1f0fa6c28619d6e50b974b4"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "348955f98976406adaf0f06762d62a501b9187c63674b4d45b12b41221c3c485"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "c4ab47e13df72cf23a601f3a11b4d402c174df05323c9d9b6e9c14cf52134b4d"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "74812b44283c5c84fbb2437de2feaa82e77d3d158a9648931804f8f55ae90afa"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "0b7acb8be0f75227a9633cd5c62a75fc32997e4cfa6992d953a3533869e750b8"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "249c387d06f6212cc41dd39b3acbb08b8e74ed76c15b50df664641cc86b93255"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "970d435fa2f94433fda6f5c18d4d9140589e34046b3bb56e53ecc1d456c0c324"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58Editor.Shared.rsp",
+        "sha256_before": null,
+        "sha256_after": "7ef8b16207f1d9f1084b4bb73d8893e3b0d0fb94a5162a869089d980b5a5b3e0"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "b2fe7ec61362060e825cb7b0016e02a5f6a3b8f4519128f927772cec1c3c58a3"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "2d360e9671c0fd93306572a7d36e0f91acfd94448fa75b02c45533d6a815d5e3"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "f8001b98a85ada9e2bb3cecdec89f341b2c947a2997d82d23fa870d9ea510a55"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "8983a0667738bc9f94faf463ee2190eb3b41f03178bb4faceb20afbc6720fa30"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "5feefe45d57b7e7c1ba073dc0c9355b5f96dedd3fd78ac36ca954e0ddb234568"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "5671bcce69b0a284f8bd018ba3dfc85a851a7bb0cd5748073613cbd29a33e536"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "20efc597c5790e6517bd0410a020240ba0f9369565a3eaf5475f74120ba5239f"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "c1eedba3f178e64588b6500a73256b0b3a903e62b00139c9b499ee9fc0c88a4e"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "2c5dd3c3a2213507f4a0cf1c675d531cb86dd56927d1e84308753fbbb80b666e"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "c9c24676c5e07d510cc18c7d9f7e359c0a3a6328257956f0c04810d732fbe09d"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "ae3c1e0fe2d0bf9510d7a37c50b585c8673bf0ebfefd7c5e9d1b8a83cff7d07d"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "fbbb4f8d72f8aa4725f3d19183edd369f3a43a8364cc09350252933a2ae283f8"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "1d4bc8ea19c889f127e012469aff6215c128dc1b4897a3d5bf974aa1ec35405c"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "89254c43c9166dd9acefa37afff8f6407811259b5bbc6df969a519d36cdf8a4a"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "00a98f48537f16679bbdd1121c9335f23c67f835c90438a5147245082a42dd6e"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "091eda18958887898c7fe715904ec42a930cec5a5cedd3d2bd496e9f07f71126"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "39ec4e3be09ef1c736b2f1fb623e7b381f2b0351d5d8c924a756001d429973f7"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "871c0c7c19c91de6686e5e1d3c1dbb6ccad0feac921e9b3eec48e3b61d5b9239"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "43347ce013fc295d87209e3b3fa3536c9262836d8782f7f568450ab2949d7ef1"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "2046f673a44a59202008a6c62e5c4e44543301d5eee825dd5852efaf58a58569"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "5dcd543da0877c7b02bfa08c9795204e7114e27138a45172e230155f31f03e83"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Default.rc2.res",
+        "sha256_before": null,
+        "sha256_after": "6f13bbd8ee1b01c41532edc8a543d560037e301cd2f5f20b2374d1d49e46645c"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Default.rc2.res.rsp",
+        "sha256_before": null,
+        "sha256_after": "cba52a68ac814f4250433e347184fa40fd6a2a329d4bf7b27eb7f2971cefefc0"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Definitions.CubelessMCPUE58Editor.h",
+        "sha256_before": null,
+        "sha256_after": "1d6125eb3437bee40f33a5f7b7aa5f08f1a9f437c92f13a43546e6c0d2635c32"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/LiveCodingInfo.json",
+        "sha256_before": null,
+        "sha256_after": "7e081647d9f68c46925f66c42838d3954ed21f4edc1442278efabc3a238d0d5e"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp",
+        "sha256_before": null,
+        "sha256_after": "37efbfabd3c1621bad85e953db9cb34f0018a8219888814a48ebf07bc76fd244"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.dep.json",
+        "sha256_before": null,
+        "sha256_after": "34bf9d589715c45a00b216988c54258b1edee74ba7af16a248ca6e129ebddb20"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.obj",
+        "sha256_before": null,
+        "sha256_after": "96732ac8bdd8d5472d953e4eec7a2255b865fda2fee59937f2f741b377752b11"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.obj.rsp",
+        "sha256_before": null,
+        "sha256_after": "ec0fe80e60acd633ed7c14cda6849b8940bdcc5e96b58b4e9d988b98f236196d"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.sarif",
+        "sha256_before": null,
+        "sha256_after": "82fa5f5e0e126cfbc7227f1ad9b23a4a6cb22136e9ed3895cf7a161496f0f9db"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/PerModuleInline.gen.cpp",
+        "sha256_before": null,
+        "sha256_after": "23d538867742c8ee05f9af47c5f98a172e00203b7865f83af22e5e93b10ce4c8"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.dll.rsp",
+        "sha256_before": null,
+        "sha256_after": "e5cad27252260122534925ead1912b77d88cb627d77ffddac0030966aa6eb100"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.exp",
+        "sha256_before": null,
+        "sha256_after": "258bea8f0487926f1b9afa6e0265b1082734887bbc45e3f38486c79b50a8a736"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.lib",
+        "sha256_before": "099ea7af4c50753e4e39fb01c7f8aceb60474fe099a06a5db866bfb9316b5b5d",
+        "sha256_after": "099ea7af4c50753e4e39fb01c7f8aceb60474fe099a06a5db866bfb9316b5b5d"
+      },
+      {
+        "relative": "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.lib.rsp",
+        "sha256_before": null,
+        "sha256_after": "5e366a1ee9e08db2d6e59a8af7597dd97170b7fd57c31211147b0f34fc4fd643"
+      }
+    ],
+    "generated_changes": [
+      "Binaries/Win64/UnrealEditor-CubelessMCPUE58Editor.dll",
+      "Binaries/Win64/UnrealEditor-CubelessMCPUE58Editor.pdb",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMCPUE58Editor.init.gen.cpp",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMaterialLibrary.gen.cpp",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessMaterialLibrary.generated.h",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessNativeToolset.gen.cpp",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessNativeToolset.generated.h",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessRegistrationLibrary.gen.cpp",
+      "Intermediate/Build/Win64/UnrealEditor/Inc/CubelessMCPUE58Editor/UHT/CubelessRegistrationLibrary.generated.h",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessCompilerDiagnostics.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessEditorApi.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessInspectionOperations.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessJsonConverters.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58Editor.Shared.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMCPUE58EditorModule.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialApi.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialArrayConverter.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialLibrary.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessMaterialOperations.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessNativeToolset.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/CubelessRegistrationLibrary.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Default.rc2.res",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Default.rc2.res.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Definitions.CubelessMCPUE58Editor.h",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/LiveCodingInfo.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.dep.json",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.obj",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.obj.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/Module.CubelessMCPUE58Editor.cpp.sarif",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/PerModuleInline.gen.cpp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.dll.rsp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.exp",
+      "Intermediate/Build/Win64/x64/UnrealEditor/Development/CubelessMCPUE58Editor/UnrealEditor-CubelessMCPUE58Editor.lib.rsp"
+    ],
+    "removed_generated_files": [],
+    "scope": "23 exact immutable source/copy assets, exact Editor-only descriptors and config; protected plugin source/Python text unchanged. UAT-generated Binaries/Intermediate/pycache differences including removed initial files are observed, not required unchanged."
+  },
+  "build": {
+    "log": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\build-installed-current-runtime-shipping-L.log",
+      "sha256": "d763bab91d122b70057d2923ae6c8028e2e1542a327da008af876abcd6a9eebb",
+      "bytes": 68279
+    },
+    "build_cook_run_seconds": 97.6,
+    "warnings": [
+      {
+        "line": 223,
+        "text": "LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimBoneCompressionSettings'을(를) 찾지 못했습니다."
+      },
+      {
+        "line": 224,
+        "text": "LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimBoneCompressionSettings'"
+      },
+      {
+        "line": 225,
+        "text": "LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimCurveCompressionSettings'을(를) 찾지 못했습니다."
+      },
+      {
+        "line": 226,
+        "text": "LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimCurveCompressionSettings'"
+      },
+      {
+        "line": 607,
+        "text": "LogInit: Display: LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimBoneCompressionSettings'을(를) 찾지 못했습니다."
+      },
+      {
+        "line": 608,
+        "text": "LogInit: Display: LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimBoneCompressionSettings'"
+      },
+      {
+        "line": 609,
+        "text": "LogInit: Display: LogUObjectGlobals: Warning: 오브젝트 'Object /ACLPlugin/ACLAnimCurveCompressionSettings'을(를) 찾지 못했습니다."
+      },
+      {
+        "line": 610,
+        "text": "LogInit: Display: LogAnimationCompression: Warning: Couldn't load default compression settings asset with path '/ACLPlugin/ACLAnimCurveCompressionSettings'"
+      }
+    ],
+    "errors": [],
+    "shader_diagnostics": [],
+    "shader_autogen_cleanup_observations": [
+      {
+        "line": 199,
+        "text": "LogShaderCompilers: Display: Failed to delete old shader autogen file: ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58InstalledCurrentRuntimeProof/Intermediate/ShaderAutogen/PCD3D_SM6/AutogenShaderHeaders.ush"
+      },
+      {
+        "line": 217,
+        "text": "LogShaderCompilers: Display: Failed to delete old shader autogen file: ../../../../../../Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58InstalledCurrentRuntimeProof/Intermediate/ShaderAutogen/PCD3D_SM5/AutogenShaderHeaders.ush"
+      }
+    ],
+    "cleanup_primary_source": {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Runtime\\Engine\\Private\\ShaderCompiler\\ShaderGenerationUtil.cpp",
+      "sha256": "664805c255373b1f48daa0843c131598e4cd27148ae8b9fbec71258bf581a629",
+      "bytes": 82846
+    },
+    "cleanup_source_lines": [
+      2225,
+      2232
+    ],
+    "cleanup_interpretation": "Exact Display-level deletion observations for this project's SM5/SM6 autogen path, immediately followed by the same-path written message. Source allows DeleteFile failure when absent; the actual deletion failure reason is not inferred. Save/rename/compile failures and Warning/Error remain blocking.",
+    "editor_plugin_build_observations": [
+      {
+        "line": 59,
+        "text": "[16/33] Compile [x64] CubelessMCPUE58EditorModule.cpp"
+      },
+      {
+        "line": 66,
+        "text": "[23/33] Compile [x64] Module.CubelessMCPUE58Editor.cpp"
+      },
+      {
+        "line": 67,
+        "text": "[24/33] Link [x64] UnrealEditor-CubelessMCPUE58Editor.lib"
+      },
+      {
+        "line": 79,
+        "text": "[32/33] Link [x64] UnrealEditor-CubelessMCPUE58Editor.dll"
+      }
+    ],
+    "scope": "Actual Win64 Shipping BuildCookRun includes Editor plugin compilation for cook, then staged Game proof; not a timing comparison with differently cached D",
+    "shader_completion_verified": false
+  },
+  "package": {
+    "status": "pass",
+    "stage": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\InstalledCurrentRuntimeShipping-20261010-L\\Windows",
+    "file_count": 23,
+    "pak_entry_count": 1818,
+    "paks": [
+      {
+        "pak": {
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\InstalledCurrentRuntimeShipping-20261010-L\\Windows\\CubelessCurrentRuntimeProof\\Content\\Paks\\CubelessCurrentRuntimeProof-Windows.pak",
+          "sha256": "c8dc16256ee297d89cfde9e37169a315667bf39b9c7ced20ed8901a79f3e8d8d",
+          "bytes": 28512921
+        },
+        "listing": {
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-package-static-L-pak-listings\\0-CubelessCurrentRuntimeProof-Windows-c8dc16256ee2.log",
+          "sha256": "70560ba43ba8805889555c5b9984282e2d4d97eb51b86fc2f9a317703c4e6b7d",
+          "bytes": 337694
+        },
+        "entry_count": 1818
+      }
+    ],
+    "receipts": [
+      {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58InstalledCurrentRuntimeProof\\Binaries\\Win64\\CubelessCurrentRuntimeProof-Win64-Shipping.target",
+        "sha256": "1166bcdd60e93d5b8475ed7c223efccbd368a494e632df2afcd24761ab3f5d5e",
+        "bytes": 86203
+      }
+    ],
+    "membership": {
+      "required_package_count": 22,
+      "exact_entries": {
+        "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch.uasset",
+        "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone.uasset",
+        "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse.uasset",
+        "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue.uasset",
+        "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.uasset",
+        "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_Inherited_MPC.uasset",
+        "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_0_MPC.uasset",
+        "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/M_material_1_MPC.uasset",
+        "/Game/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/CurrentRuntime_91e6bcc6986944a99783cbbcba54d2ff/Map_CurrentRuntimeProof.umap",
+        "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom.uasset",
+        "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base.uasset",
+        "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf.uasset",
+        "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid.uasset",
+        "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance.uasset",
+        "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges.uasset",
+        "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract.uasset",
+        "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract.uasset",
+        "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract.uasset",
+        "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract.uasset",
+        "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.uasset",
+        "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.uasset",
+        "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof.uasset"
+      },
+      "excluded_old_map_entry": "CubelessCurrentRuntimeProof/Content/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof.umap",
+      "old_map_absent": true
+    },
+    "receipt_binding_scope": "Target/configuration/hash and executable basename, not cryptographic build-to-receipt linkage"
+  },
+  "runtime": {
+    "status": "pass",
+    "pid": 46260,
+    "exit_code": 0,
+    "seconds": 1.6579377,
+    "marker": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\InstalledCurrentRuntimeUser-L\\Saved\\SaveGames\\Cubeless_ShippingProofB20261010.sav",
+      "size": 1423,
+      "mtime_ns": 1791629161597427400,
+      "sha256": "0ef2c1cd07e343d5f33ee78f34dd9728ad711d61f92d3186066908d3e761d7b6"
+    },
+    "header": {
+      "file_version": 3,
+      "package_file_ue4": 522,
+      "package_file_ue5": 1018,
+      "engine_version": "5.8.3",
+      "changelist": 58210709,
+      "engine_branch": "++UE5+Release-5.8",
+      "custom_version_count": 63,
+      "save_game_class": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.BP_MarkerData_C",
+      "header_bytes": 1409,
+      "payload_bytes": 14,
+      "payload_deserialization": "not_performed"
+    },
+    "executable": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\InstalledCurrentRuntimeShipping-20261010-L\\Windows\\CubelessCurrentRuntimeProof\\Binaries\\Win64\\CubelessCurrentRuntimeProof-Win64-Shipping.exe",
+      "sha256": "70fd28c9ccb9edce87bfe111456d21c7b3ee952376908ef18ba523d2daf61d58",
+      "bytes": 100619264
+    },
+    "console": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\installed-current-runtime-launch-L.console.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "same_game_executable_as_D": true,
+    "scope": "Exact installed-L staged Shipping executable, no map override, fresh authored BeginPlay marker; nullrhi rendering unverified"
+  },
+  "sources": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\installed_current_runtime_proof.py",
+      "sha256": "d6d4c519437209ec1a6a44e20d534f1f4714319b1b3871afcd0c1b322b316b7e",
+      "bytes": 26636
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\current_runtime_proof.py",
+      "sha256": "5f433a1a166d7f8f2bfe4241bbe1d5b7956d5bb9ce3091bbe530f5994739f467",
+      "bytes": 26909
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_runtime_marker.py",
+      "sha256": "cb564df11de832b8fbd701405bed03d9b23bfb8730ccc20b545c9d392746ddd4",
+      "bytes": 13726
+    },
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\check_package_independence.py",
+      "sha256": "43a9d5852987a8d13adb7f99cdb8908ffd12de3b8e18366ce664ee1f592bc4ec",
+      "bytes": 16505
+    }
+  ],
+  "limitations": [
+    "Distribution L only; Actor M implementation and all untested legacy tools/pipelines are excluded.",
+    "Installed source/Python text/descriptor hashes are preserved; Editor DLL/PDB/module files, Intermediate outputs and Python bytecode can be rebuilt by UAT.",
+    "The 23 saved inputs are the exact D cohort. 22 packages including the new map must be cooked; the old source map remains excluded.",
+    "Editor compilation/load during UAT does not prove every MCP tool invocation. Dedicated official-MCP evidence is separate.",
+    "Pak names, receipt and fresh runtime marker jointly support this fixture; dynamic string loads and native binary import analysis remain outside the audit.",
+    "Identical D/L Shipping executable hashes are an observation, not a universal binary reproducibility or full dependency proof.",
+    "Build timings differ in cache state and Editor-plugin build workload; no performance-speedup claim.",
+    "Shader completion, rendered quality, every Blueprint code path and complete migration are not verified."
+  ]
+}

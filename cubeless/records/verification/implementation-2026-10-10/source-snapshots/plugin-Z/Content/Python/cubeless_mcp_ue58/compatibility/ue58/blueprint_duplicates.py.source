@@ -1,0 +1,253 @@
+"""UE58 public duplicate API and bounded, independently observed clone content.
+
+EditorAssetSubsystem supplies an unattended duplicate guard. Blueprint PostDuplicate
+still performs implicit compilation; AssetTools can also save through source control.
+The policy checks below prevent those *known* implicit save paths without changing
+editor preferences. They are not a proof about arbitrary engine callbacks.
+"""
+
+import hashlib
+import json
+from pathlib import Path
+import re
+import uuid
+import unreal
+
+from . import blueprint, graph, variables
+from cubeless_mcp_ue58.operations.state import OperationError
+from cubeless_mcp_ue58.validators.dependencies import reject_tool_reference
+
+
+def package_path(value, field, *, simple_name=False):
+    if type(value) is not str or not value.strip():
+        raise OperationError("duplicate_path_invalid", field + " must be a nonempty package/object path")
+    path = value.strip().replace("\\", "/")
+    # Match the legacy convenient object/export-text/.uasset spellings while
+    # validating the completed object path before any FName or load call.
+    if "'" in path:
+        first = path.find("'")
+        if not path.endswith("'") or "'" in path[first + 1:-1]:
+            raise OperationError("duplicate_path_invalid", field + " has malformed export-text quoting")
+        path = path[first + 1:-1]
+    path = path.strip('"').rstrip("/")
+    if path.endswith(".uasset"):
+        path = path[:-7]
+    if not path.startswith("/") and simple_name:
+        path = "/Game/Blueprints/" + path
+    if "." in path:
+        package, name = path.split(".", 1)
+        if name != package.rsplit("/", 1)[-1]:
+            raise OperationError("duplicate_path_invalid", field + " object name must match its package asset name")
+        path = package
+    directory, _, name = path.rpartition("/")
+    try:
+        canonical = blueprint.new_asset_path(name, directory)
+    except (OperationError, UnicodeError) as error:
+        raise OperationError("duplicate_path_invalid", field + ": " + str(error)) from error
+    if (canonical != path or not path.startswith("/Game/")
+            or any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in path)):
+        raise OperationError("duplicate_path_invalid", field + " must be a bounded /Game asset path without controls")
+    return path
+
+
+def file_state(package):
+    content = Path(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir())).resolve()
+    path = content.joinpath(*package[len("/Game/"):].split("/")).with_suffix(".uasset").resolve()
+    if not path.is_relative_to(content):
+        raise OperationError("duplicate_path_invalid", "Resolved asset file escapes project Content")
+    digest = None
+    if path.is_file():
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+    return {"path": str(path), "exists": path.is_file(), "sha256": digest}
+
+
+def target_state(package):
+    subsystem = blueprint.asset_subsystem()
+    object_path = package + "." + package.rsplit("/", 1)[-1]
+    disk = file_state(package)
+    return {"asset_registered": bool(subsystem.does_asset_exist(package)),
+            "directory_exists": bool(subsystem.does_directory_exist(package)),
+            "loaded_package_or_object": unreal.find_object(None, package) is not None or unreal.find_object(None, object_path) is not None,
+            "file": disk}
+
+
+def require_target_absent(package):
+    value = target_state(package)
+    if value["asset_registered"] or value["directory_exists"] or value["loaded_package_or_object"] or value["file"]["exists"]:
+        raise OperationError("duplicate_target_exists", "Target exists in the registry, loaded objects or disk; nothing was deleted")
+    return value
+
+
+def policy():
+    current = blueprint.creation_policy()
+    # USourceControlHelpers declares ScriptName="SourceControl" in UE58.
+    # The C++ class spelling is deliberately not a Python fallback.
+    is_enabled = getattr(getattr(unreal, "SourceControl", None), "is_enabled", None)
+    if not callable(is_enabled):
+        raise OperationError("duplicate_source_control_api_unavailable", "Required public unreal.SourceControl.is_enabled is unavailable; duplicate was not called")
+    enabled = is_enabled()
+    if type(enabled) is not bool:
+        raise OperationError("duplicate_source_control_api_unavailable", "SourceControl.is_enabled did not return a boolean; duplicate was not called")
+    if enabled:
+        raise OperationError("duplicate_source_control_unsupported", "AssetTools duplication may save via enabled source control; disable it explicitly before this operation. No setting was changed")
+    return {"save_on_compile": current["save_on_compile"], "source_control_enabled": False,
+            "postduplicate_implicit_compile": True, "public_duplicate_skip_save_option": False,
+            "settings_changed": False, "scope": "sampled known engine auto-save paths; arbitrary callbacks are not audited"}
+
+
+def dependency_audit(package):
+    native = getattr(unreal, "CubelessNativeToolset", None)
+    if native is None:
+        raise OperationError("duplicate_dependency_guard_unavailable", "Native saved-package dependency audit is unavailable")
+    value = json.loads(native.audit_package_dependencies([package], True, 4096))
+    if value.get("success") is not True or value.get("passed") is not True:
+        raise OperationError("duplicate_dependency_audit_failed", "Saved package dependency audit is incomplete or contains tool dependencies: " + json.dumps(value, ensure_ascii=False))
+    for edge in value.get("edges", []):
+        # /Game/CubelessMCPTests is a user package, not the Cubeless plugin.
+        # The native audit handles plugin mount/module prefixes precisely.
+        if edge["to"].startswith(("/Script/", "/Engine/PythonTypes")):
+            reject_tool_reference(edge["to"])
+    return value
+
+
+def capture(asset):
+    basic = blueprint.snapshot(asset)
+    if len(basic["graph_names"]) > 64:
+        raise OperationError("duplicate_observation_unsupported", "Clone observation supports at most 64 graphs")
+    graphs = []
+    for name in basic["graph_names"]:
+        editor = graph.graph_editor(basic["asset_path"], name)
+        info = graph.graph_info(editor)
+        # Public BlueprintGraphPin.GetPinType + StructBase.export_text retains
+        # native category/subcategory/reference/container fields, unlike the
+        # UI display label or lossy JSON-schema "number" category.
+        types = {}
+        for node in editor.list_all_nodes():
+            for pin in node.list_all_pins():
+                direction = "output" if pin.get_pin_direction() == unreal.EdGraphPinDirection.EGPD_OUTPUT else "input"
+                key = (node.get_path_name(), str(pin.get_pin_name()), direction)
+                if key in types:
+                    raise OperationError("duplicate_observation_unsupported", "Duplicate pin names/directions cannot be independently matched")
+                exported = pin.get_pin_type().export_text()
+                if not exported or "PinCategory=" not in exported:
+                    raise OperationError("duplicate_observation_failed", "Native pin type export lacks its category")
+                types[key] = exported
+        for node in info["nodes"]:
+            for pin in node["pins"]:
+                pin["native_type_export"] = types.pop((node["node_id"], pin["name"], pin["direction"]))
+        if types:
+            raise OperationError("duplicate_observation_failed", "Pin identities changed during native type observation")
+        graphs.append(info)
+    if sum(row["total_node_count"] for row in graphs) > 4096:
+        raise OperationError("duplicate_observation_unsupported", "Clone observation supports at most 4096 total graph nodes")
+    read = variables.inspect_blueprint_variables(basic["asset_path"])
+    if not read["success"] or read["changed"] is not False or read["mutation_attempted"]:
+        raise OperationError("duplicate_observation_failed", "Variable observation failed or reported state changes")
+    variable_state = read["data"]["before"]
+    seen = set()
+    for row in variable_state["new_variables"]:
+        try:
+            guid = uuid.UUID(row["guid"])
+            if not guid.int or guid.hex in seen:
+                raise ValueError("invalid or repeated variable GUID")
+            seen.add(guid.hex)
+        except (KeyError, ValueError, TypeError) as error:
+            raise OperationError("duplicate_observation_failed", "Declared variable identity is invalid") from error
+        if not row["default_value_available"] or not row["default_value_current_compile"]:
+            raise OperationError("duplicate_observation_unsupported", "Every declared variable needs a readable current generated CDO value in this clone slice")
+    observation = {"blueprint": basic, "asset_class": asset.get_class().get_path_name(),
+            "compiled": asset.get_editor_property("status") in (unreal.BlueprintStatus.BS_UP_TO_DATE, unreal.BlueprintStatus.BS_UP_TO_DATE_WITH_WARNINGS),
+            "graphs": graphs, "variables": variable_state, "file": file_state(basic["path"])}
+    if basic["parent_class"].startswith("/Game/"):
+        observation["generated_parent"] = blueprint.generated_parent_observation(unreal.BlueprintEditorLibrary.get_blueprint_parent_class(asset))
+    return observation
+
+
+def require_source(asset, observation, allow_dirty_source):
+    basic = observation["blueprint"]
+    if (observation["asset_class"] != "/Script/Engine.Blueprint"
+            or not basic["parent_class"].startswith("/Script/") and not observation.get("generated_parent")):
+        raise OperationError("duplicate_source_type_unsupported", "This slice supports ordinary UBlueprint assets with a native runtime parent or an independently inspected saved clean Actor Blueprint parent chain")
+    if basic["dirty"]:
+        code = "duplicate_dirty_source_unsupported" if allow_dirty_source else "duplicate_source_dirty"
+        raise OperationError(code, "Source has unsaved changes; dirty-source duplication is not implemented and source was not saved")
+    if not observation["file"]["exists"] or not basic["generated_class"]:
+        raise OperationError("duplicate_source_not_saved", "Source requires an existing .uasset and generated class")
+    if not observation["compiled"]:
+        raise OperationError("duplicate_source_not_compiled", "Source must already be compiled and saved; no source compile is performed")
+
+
+def _relative_reference(value, basic):
+    """Only call on actual identity/reference fields, never arbitrary user text."""
+    name = basic["name"]
+    package = basic["path"]
+    for object_name, marker in ((name, "$ASSET"), (name + "_C", "$CLASS"),
+                                ("SKEL_" + name + "_C", "$SKELETON"), ("Default__" + name + "_C", "$CDO")):
+        prefix = package + "." + object_name
+        if value == prefix or value.startswith(prefix + ":"):
+            return marker + value[len(prefix):]
+    return "$PACKAGE" if value == package else value
+
+
+def _relative_type_text(value, basic):
+    # ExportText object references are quoted. Normalize only complete quoted
+    # references, not occurrences inside unrelated names or user string values.
+    return re.sub(r'([\'\"])(/[^\'\"]+)\1',
+                  lambda match: match[1] + _relative_reference(match[2], basic) + match[1], value)
+
+
+def semantic_content(observation):
+    """GUIDs are regenerated by PostDuplicate; compare contents/topology instead."""
+    basic = observation["blueprint"]
+    graphs = []
+    for value in observation["graphs"]:
+        nodes = []
+        for node in value["nodes"]:
+            row = {key: item for key, item in node.items() if key not in ("node_guid", "title")}
+            for key in ("node_id", "variable_property_path", "event_member_parent_path", "function_path", "function_owner_path"):
+                if key in row:
+                    row[key] = _relative_reference(row[key], basic)
+            pins = []
+            for pin in node["pins"]:
+                item = {key: value for key, value in pin.items() if key != "type_display"}
+                item["native_type_export"] = _relative_type_text(pin["native_type_export"], basic)
+                item["links"] = sorted((dict(link, node_id=_relative_reference(link["node_id"], basic))
+                                        for link in pin["links"]), key=lambda x: (x["node_id"], x["pin_name"]))
+                pins.append(item)
+            row["pins"] = sorted(pins, key=lambda x: (x["name"], x["direction"]))
+            nodes.append(row)
+        graphs.append({"graph_name": value["graph_name"], "node_count": value["node_count"],
+                       "total_node_count": value["total_node_count"], "nodes": sorted(nodes, key=lambda x: x["node_id"])})
+    variables_by_scope = {}
+    for scope in ("new_variables", "generated_variables"):
+        rows = []
+        for row in observation["variables"][scope]:
+            item = {key: value for key, value in row.items() if key != "guid"}
+            pin_type = dict(item["pin_type"])
+            if type(pin_type.get("type_object")) is str:
+                pin_type["type_object"] = _relative_reference(pin_type["type_object"], basic)
+            item["pin_type"] = pin_type
+            # String/name/text defaults are compared literally. Complex nested
+            # self references are not guessed and can fail this bounded check.
+            if pin_type.get("category") in ("object", "class") and type(item.get("default_value")) is str:
+                item["default_value"] = _relative_reference(item["default_value"], basic)
+            rows.append(item)
+        variables_by_scope[scope] = rows
+    return {"asset_class": observation["asset_class"], "parent_class": basic["parent_class"],
+        "parent_chain": basic["parent_chain"], "graphs": sorted(graphs, key=lambda x: x["graph_name"]),
+        "variables": variables_by_scope, "category_sorting": observation["variables"]["category_sorting"]}
+
+
+def duplicate(source, destination, before_dispatch, after_return):
+    blueprint.ensure_editor_idle()
+    policy()
+    require_target_absent(destination)
+    before_dispatch()
+    value = blueprint.asset_subsystem().duplicate_loaded_asset(source, destination)
+    after_return(value)
+    return value
+
+
+def save(asset):
+    return bool(blueprint.asset_subsystem().save_loaded_asset(asset, False))

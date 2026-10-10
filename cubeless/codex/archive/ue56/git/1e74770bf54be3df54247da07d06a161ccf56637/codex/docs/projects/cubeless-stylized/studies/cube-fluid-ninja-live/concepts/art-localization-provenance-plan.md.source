@@ -1,0 +1,660 @@
+# Cube Fluid Ninja Live: dependency-free art localization provenance plan
+
+## 상태와 결론
+
+- 기준일: 2026-09-01.
+- 범위: 동결된 Asset Registry 인벤토리, 59개 level manifest, material v2
+  전수 캡처, animation/skeletal 캡처, support 캡처와 원본 package의 읽기 전용
+  문자열 감사.
+- 이 문서를 만들 때 Unreal Editor, bridge, `/Game/FluidNinjaLive`,
+  `/Game/Study/CubeFluidNinjaLive`, C++를 변경하지 않았다.
+- 지역화 실행 상태: material-visible 167 + VolumeTexture backing-only 5,
+  합계 172개는 `complete`; 후속 closure 128개는 `pending`.
+- 후속 128개의 exact package 행, 9개 결정적 batch, batch별 manifest hash와
+  실행 선행 조건은 `remaining-art-localization-batches.md`에 고정했다.
+- 이 문서는 복사 허가 목록이 아니라 **payload만 허용하고 논리는 차단하는
+  dry-run 계획**이다.
+
+현재 증거로 바로 실행 대상으로 삼을 수 있는 최소 폐쇄 집합은 300개,
+307,999,572 bytes다. 구성은 Texture2D 200, VolumeTexture 6, StaticMesh 56,
+SkeletalMesh 2, Skeleton 2, PhysicsAsset 2, AnimSequence 28, SoundWave 1,
+GeometryCollection 3이다. 이 합계는 source inventory의 `disk_size_bytes`
+합이며 VRAM, cooked size 또는 bulk-data resident size가 아니다.
+
+그중 1차 texture/volume batch 172개, 150,696,364 bytes는 이미
+`/Game/Study/CubeFluidNinjaLive/Art`에 생성·저장 172/172, 실패 0으로
+지역화됐다. 이 문서의 나머지 128개는 그 결과를 반복하지 않는 후속 계획이다.
+
+이 300개는 “그대로 복제”할 집합이 아니다. immutable pixel/voxel, vertex,
+skin-weight, bone-motion, audio sample, fracture topology 같은 아트 payload만
+target-local로 가져오고 다음 source 논리 참조는 제거·교체해야 한다.
+
+- Material/MI 7개.
+- animation modifier Blueprint 5개.
+- ControlRigBlueprint 1개.
+- AnimCurveCompressionSettings 1개.
+- Dataflow 1개.
+
+이 15개를 closure에 더하는 방식은 금지한다. 각각 target Material 재저작,
+baked animation 결과 보존 후 user-data 제거, target ControlRig 재저작 또는
+post-process 해제, target-local compression recipe, target Dataflow 재저작
+또는 authoring-only reference 제거로 닫는다.
+
+## 정본 증거와 재현 계약
+
+| Evidence | 관찰값 | 용도 |
+| --- | --- | --- |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference_inventory.json` | 1,796 asset, 59 level, 695,773,968 bytes; SHA-256 `45b554df454a788f9dfbea012812b356b0b092fc48f256b61b0b091d8e0f9759` | source class/path/bytes와 59개 World direct dependency |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference_source_hashes.json` | 1,796 file, `source_mutation_performed=false` | package별 source SHA-256 |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/levels` | 59/59 complete, truncation 0, mutation 0 | actor/component 직렬화 사용 |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/materials` | 963 catalog + 999 page, digest `f2d623032d8decdefaaaffc8cb755c7559655705748542ecf2611ee18d8c10df` | 167 texture/volume owner reach |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/animation` | 62 catalog, 68 inspector output, error/truncation/mutation 0 | 53 motion 분류와 skeletal/physics 관계 |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/support` | BlendSpace, GeometryCollection 등 bounded support inspection | recipe 또는 explicit localization exception |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/art/20260901_material_textures_localize_v001/art_localization_report.json` | 172/172 created/saved, verification/dependency independence PASS | 1차 실제 지역화 정본 |
+| `MCPGameProject/Saved/MCP/CubeFluidNinjaLive_content_root_audit_report.json` | Study 173 asset, forbidden/redirector/dirty 0 | 172 art + NiagaraSystem 1 post-root audit |
+| `concepts/material-semantic-map.md` | 167 art candidate, direct 32/319 occurrence | material-side texture closure |
+| `concepts/animation-skeletal-observation.md` | runtime motion 28, legacy 6, unproven 19 | animation execution closure |
+
+문서의 offline string audit는 각 허용 class `.uasset`에서
+`/Game/FluidNinjaLive/...` package string을 추출하고 inventory package에 exact
+join했다. 이는 숨은 source reference의 보수적 위험 탐지다. Asset Registry의
+hard/soft/searchable/manage dependency 판정은 아니므로 지역화 실행 때 native
+dependency dry-run과 save/reload 후 감사를 반드시 다시 수행한다.
+
+## 허용 class 전체 434개
+
+사용자가 허용한 아트 class와 GeometryCollection 명시 예외의 전체 source
+universe는 434개, 412,486,501 bytes다. 전부를 선제적으로 가져오지는 않는다.
+
+| Class | 전체 count | 전체 bytes | 59-level direct unique | direct bytes | direct occurrence |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Texture2D | 253 | 238,676,961 | 66 | 74,881,978 | 442 |
+| VolumeTexture | 6 | 11,530,085 | 0 | 0 | 0 |
+| StaticMesh | 104 | 74,866,207 | 51 | 40,551,266 | 382 |
+| SkeletalMesh | 3 | 21,053,644 | 1 | 15,828,821 | 6 |
+| Skeleton | 3 | 224,466 | 0 | 0 | 0 |
+| PhysicsAsset | 3 | 454,975 | 0 | 0 | 0 |
+| AnimSequence | 53 | 30,741,772 | 5 | 1,445,748 | 9 |
+| BlendSpace | 1 | 65,512 | 0 | 0 | 0 |
+| BlendSpace1D | 1 | 101,319 | 0 | 0 | 0 |
+| SoundWave | 1 | 5,682,080 | 1 | 5,682,080 | 1 |
+| GeometryCollection | 6 | 29,089,480 | 3 | 12,132,296 | 16 |
+| **합계** | **434** | **412,486,501** | **127** | **150,522,189** | **856** |
+
+위 합계의 direct unique는 class별 합계이며 AnimSequence direct 5개 중
+`Legacy_ThirdPersonWalk`, `Legacy_ThirdPersonRun`은 active playback이 아니라
+AnimBP mode component에 남은 비활성 `AnimationData`다. 이 둘은 runtime
+closure에 넣지 않고 target level에서 stale reference를 제거한다.
+
+## 정확한 target package mapping
+
+`R`은 source package에서 `/Game/FluidNinjaLive/`를 제거한 상대 package다.
+지역화 전에 case-insensitive package collision을 검사한다.
+
+| Source class | Target mapping | 방법 |
+| --- | --- | --- |
+| Texture2D | `/Game/Study/CubeFluidNinjaLive/Art/R` | 1차에서 실제 사용한 preserve-relative mapping; descriptor 검증 |
+| VolumeTexture | `/Game/Study/CubeFluidNinjaLive/Art/R` | voxel payload; backing texture도 같은 target root |
+| StaticMesh | `/Game/Study/CubeFluidNinjaLive/Art/R` | geometry/LOD/collision payload만 지역화; 모든 material slot 재연결 |
+| SkeletalMesh/Skeleton/PhysicsAsset | `/Game/Study/CubeFluidNinjaLive/Art/R` | family를 같은 batch로 처리하고 target-local 상호 참조로 재결선 |
+| AnimSequence | `/Game/Study/CubeFluidNinjaLive/Art/R` | motion/curve/marker/root-motion payload; source modifier user data 제거 |
+| SoundWave | `/Game/Study/CubeFluidNinjaLive/Art/R` | PCM/compressed payload와 loop/compression descriptor 보존 |
+| GeometryCollection | `/Game/Study/CubeFluidNinjaLive/Art/R` | exact fracture topology 예외 지역화; Material/Dataflow/static-mesh source ref 제거 |
+| BlendSpace | `/Game/Study/CubeFluidNinjaLive/Animations/BlendSpaces/BS_CFNL_NinjaLocomotion` | **복사하지 않고** 관찰된 axis/sample recipe로 새 저작 |
+| BlendSpace1D | `/Game/Study/CubeFluidNinjaLive/Animations/BlendSpaces/BS_CFNL_LegacyLocomotion` | 필요할 때만 새 저작 |
+
+위 mapping의 `R`은 source 폴더 구조를 그대로 dependency로 삼는다는 뜻이
+아니다. 1차 실행의 `mapping_mode=preserve_paths_relative_to_source_root`와 같은
+provenance/충돌 회피 규칙이다. 예를 들어 source
+`/Game/FluidNinjaLive/Textures/Volumetric/VolumeNoise2`는 target
+`/Game/Study/CubeFluidNinjaLive/Art/Textures/Volumetric/VolumeNoise2`다.
+
+## 절대 no-copy 논리 경계
+
+다음은 아트의 transitive dependency로 발견돼도 지역화하지 않는다.
+
+- Blueprint, WidgetBlueprint, AnimBlueprint, ControlRigBlueprint와 graph/default.
+- Material, Material Function, Material Layer, MI와 parameter recipe.
+- Niagara System/Emitter/Script/module/Scratch Pad/Simulation Stage/Data Channel.
+- BlendSpace/BlendSpace1D의 axis/sample graph; sample AnimSequence payload만 허용.
+- Dataflow graph, RuntimeVirtualTexture, RenderTarget, MPC, preset/data schema.
+- source AnimModifier Blueprint와 LevelSequence link user data.
+
+최종 target에서 `/Game/FluidNinjaLive`, `/Game/_MCP_Temp`,
+`/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, `mcp_unreal`
+hit는 hard/soft/searchable/manage와 serialized UTF-8/UTF-16 모두 0이어야 한다.
+아트 payload를 지역화했다는 사실은 이 gate를 완화하지 않는다.
+
+## 실행 후보 폐쇄 집합 300개
+
+### 합계
+
+| Class | Count | Bytes | 포함 근거 |
+| --- | ---: | ---: | --- |
+| Texture2D | 200 | 201,774,417 | material 161 + level-direct-only 34 + VolumeTexture backing-only 5 |
+| VolumeTexture | 6 | 11,530,085 | material owner 167 안의 전수 |
+| StaticMesh | 56 | 41,019,068 | level direct 51 + collision/GC support 5 |
+| SkeletalMesh | 2 | 15,854,477 | current mannequin + vehicle runtime host |
+| Skeleton | 2 | 201,366 | current mannequin + vehicle |
+| PhysicsAsset | 2 | 313,746 | current mannequin + vehicle |
+| AnimSequence | 28 | 19,492,037 | current ABP 25 + active single-node 3 |
+| SoundWave | 1 | 5,682,080 | `Water_Dense_Sea` direct |
+| GeometryCollection | 3 | 12,132,296 | 59-level direct 3; explicit topology exception |
+| **합계** | **300** | **307,999,572** | closure fixed point |
+
+300개를 package ordinal로 정렬해
+`class<TAB>bytes<TAB>package<LF>`로 직렬화한 manifest는 22,731 bytes,
+SHA-256 `55a4f473502d8a199d19d975215add12444d1ff337ab8fb762ef43fdc8d2ccee`다.
+완료된 report의 172 source package는 부록 A 167과 위 backing-only 5의 합집합과
+exact match한다. 아직 남은 128개, 157,303,208 bytes는 StaticMesh 56,
+Texture2D 34, AnimSequence 28, GeometryCollection 3, SkeletalMesh 2, Skeleton 2,
+PhysicsAsset 2, SoundWave 1이다. 같은 row 형식의 pending manifest는 9,963 bytes,
+SHA-256 `01fce6d198038e974bcb21fe58c767d746954794b29a5d1ab246bb1e375d40b7`다.
+
+초기 seed는 290개, 296,752,786 bytes였다. 허용-class source string edge를
+고정점까지 따라가며 다음 10개, 11,246,786 bytes가 추가됐다.
+
+| Added support | Class | Bytes | 이유 |
+| --- | --- | ---: | --- |
+| `/Game/FluidNinjaLive/Meshes/Boulder/SM_Boulder_LowresCollisionGeo` | StaticMesh | 39,374 | 두 boulder mesh complex collision support |
+| `/Game/FluidNinjaLive/Meshes/Chaos/Cube_dup1` | StaticMesh | 17,107 | 136-chunk GeometryCollection auto-instance/source geometry |
+| `/Game/FluidNinjaLive/Meshes/Chaos/Cube_dup2` | StaticMesh | 17,079 | 34-chunk GeometryCollection auto-instance/source geometry |
+| `/Game/FluidNinjaLive/Meshes/Mountain/SM_Mountain_SimplifiedCollisionMesh` | StaticMesh | 197,270 | collision-enabled mountain support |
+| `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Ship02_Collision` | StaticMesh | 196,972 | ship complex collision support |
+| `/Game/FluidNinjaLive/Textures/Volumetric/T_Caustics_Animated_01_8bitMONO` | Texture2D | 4,630,612 | VolumeTexture backing source |
+| `/Game/FluidNinjaLive/Textures/Volumetric/T_Caustics_Animated_02_8bitRGB` | Texture2D | 2,279,935 | VolumeTexture backing source |
+| `/Game/FluidNinjaLive/Textures/Volumetric/T_VolumeNoise1` | Texture2D | 589,262 | VolumeTexture backing source |
+| `/Game/FluidNinjaLive/Textures/Volumetric/T_VolumeNoise2` | Texture2D | 1,496,675 | VolumeTexture backing source |
+| `/Game/FluidNinjaLive/Textures/Volumetric/T_VolumeNoise2Inv` | Texture2D | 1,782,500 | VolumeTexture backing source |
+
+`Example_Use2DTextureAsVolume`의 backing source `T_foam_inv`는 material 167에
+이미 포함되므로 추가 10개 표에 다시 세지 않는다.
+
+## 우선순위
+
+### Texture/Volume
+
+material 167의 서로 겹치지 않는 priority는 다음과 같다.
+
+| Priority | 정확한 정의 | Count | Class | Bytes |
+| --- | --- | ---: | --- | ---: |
+| `TX-P0` | Starter direct 또는 owner-reach 상위 5 | 24 | Texture2D 22 + VolumeTexture 2 | 13,386,865 |
+| `TX-P1` | P0가 아니고 non-Starter level direct | 11 | Texture2D 11 | 2,931,869 |
+| `TX-P2` | level direct가 아니고 material owner 2개 이상 | 75 | Texture2D 71 + VolumeTexture 4 | 78,835,220 |
+| `TX-P3` | material owner 정확히 1개 | 57 | Texture2D 57 | 44,763,426 |
+| **합계** |  | **167** | **Texture2D 161 + VolumeTexture 6** | **139,917,380** |
+
+상위 5는 `VolumeNoise2` 145 owner,
+`T_Caustics_Animated_02_VolumeTexture` 95,
+`T_NoiseTemplate1` 87, `T_Circular_1frame_velocity` 81,
+`T_CrumpleMega` 76이다. P0에 source direct가 아닌 핵심 volume/flow field를
+포함하는 이유다.
+
+material capture에는 없지만 level direct인 Texture2D 34개,
+62,608,138 bytes는 해당 Starter/non-Starter level 전환 전에 지역화한다.
+여섯 VolumeTexture의 target-local backing closure 중 5개,
+10,778,984 bytes가 여기에 더해진다. 따라서 현재 texture 실행 후보는
+Texture2D 200 + VolumeTexture 6 = 206개, 213,304,502 bytes다.
+
+inventory의 남은 Texture2D 53개, 36,902,544 bytes는 material/direct/backing
+증거가 없는 `hold`다. 새 Niagara/Blueprint/runtime consumer가 증명할 때만
+승격한다. 전체 Texture2D 253에서 200+53=253으로 닫힌다.
+
+### Static/decor/destruction/audio
+
+59-level direct non-texture art 56개는 StaticMesh 51, SkeletalMesh 1,
+GeometryCollection 3, SoundWave 1이며 74,194,463 bytes, 405 occurrences다.
+`reference_inventory.json`의 59 `direct_internal_dependencies`를 asset table에
+join하고 이 네 class만 선택한 뒤 package ordinal로
+`class<TAB>bytes<TAB>level_occurrence<TAB>package<LF>` 직렬화한 manifest는
+4,312 bytes, SHA-256
+`0c5e123b4ba278781b9e7d0571af39842a2af27a3b63658897ac33373b5b54e9`다.
+
+- `ART-P0`: Starter direct. StaticMesh 26, SkeletalMesh 1,
+  GeometryCollection 1; 319 direct occurrences.
+- `ART-P1`: Starter가 아니고 level 2개 이상 direct. StaticMesh 14,
+  GeometryCollection 1; 73 occurrences.
+- `ART-P2`: non-Starter level 정확히 1개 direct. StaticMesh 11,
+  GeometryCollection 1, SoundWave 1; 13 occurrences.
+- source direct가 아닌 collision/GC support StaticMesh 5는 consumer보다 먼저
+  지역화하거나 동일 geometry/collision을 target-native로 재제작한다.
+- GeometryCollection은 세 direct asset만 explicit exception으로 허용한다.
+  나머지 3개, 16,957,184 bytes는 consumer 증거가 없으므로 hold다.
+
+### Animation/skeletal
+
+1. current mannequin art closure 31개, 35,815,036 bytes:
+   28 motion + `SKM_Manny_Simple` + `SK_Mannequin` + `PA_Mannequin`.
+2. vehicle closure 3개, 46,590 bytes:
+   `SKM_QuadDrone` + `SK_Vehicle` + `PA_Vehicle`. 12개 level, 14개 active
+   component의 runtime 증거가 있다.
+3. legacy optional closure 9개, 6,887,738 bytes:
+   legacy ABP closure motion 6 + UE4 mesh/skeleton/physics trio. 59개 level의
+   active AnimClass consumer는 0이므로 지금 지역화하지 않는다.
+4. 나머지 unproven motion 19개, 9,725,493 bytes는 hold다. 이 중
+   `Legacy_ThirdPersonJump_End`는 legacy trio를 공유한다.
+5. BlendSpace 2개는 art-localized count에 넣지 않는다. current 2D와 legacy
+   1D 모두 axis/sample recipe가 관찰됐으므로 target에서 새로 저작한다.
+
+## 정확한 logical blocker와 교체
+
+300-package offline string closure에서 발견된 source 논리 blocker는 다음 15개다.
+모두 아직 실행하지 않은 128-package closure에서 생기는 위험이며, 완료된
+172-package batch의 residual dependency가 아니다.
+
+| Blocker | Source package | 처리 |
+| --- | --- | --- |
+| MI | `/Game/FluidNinjaLive/Core/Assets/MI_DefaultMaterial_ForVisualizationMesh` | target debug material |
+| MI | `/Game/FluidNinjaLive/Meshes/Mannequin/Materials/MI_Manny_01_White` | target Manny material recipe |
+| MI | `/Game/FluidNinjaLive/Meshes/Mannequin/Materials/MI_Manny_02_White` | target Manny material recipe |
+| MI | `/Game/FluidNinjaLive/Meshes/Tree/Materials/MI_BlackAlder_Tileable` | target foliage recipe |
+| MI | `/Game/FluidNinjaLive/Meshes/Tree/Materials/MI_BlackAlder_TwoSided` | target foliage recipe |
+| MI | `/Game/FluidNinjaLive/Misc/Materials_Decor/MI_CheckerRed_NonEmissive` | target checker material |
+| MI | `/Game/FluidNinjaLive/OutputMaterials/Surface_Various/MI_Grass1_Masked` | target grass material |
+| Blueprint | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimModifiers/AM_BakePhaseCurveFromFootstepNotifies` | baked curve/marker 유지 후 modifier user data 제거 |
+| Blueprint | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimModifiers/AM_FootSpeed_L` | 동일 |
+| Blueprint | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimModifiers/AM_FootSpeed_R` | 동일 |
+| Blueprint | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimModifiers/AM_MoveData_Speed` | 동일 |
+| Blueprint | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimModifiers/AM_OrientationWarpingAlpha` | 동일 |
+| ControlRigBlueprint | `/Game/FluidNinjaLive/Meshes/Mannequin/Rigs/CR_Mannequin_Body` | `SKM_Manny_Simple` post-process/asset reference 제거; 필요 시 target rig 새 저작 |
+| AnimCurveCompressionSettings | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/AnimCurveCompressionSettings` | target-local settings를 관찰값으로 새 저작하거나 Engine default와 curve 오차 검증 |
+| Dataflow | `/Game/FluidNinjaLive/Meshes/Chaos/FracturedMesh_568chunks_Clustered_Dataflow` | source graph 복사 금지; embedded fracture 결과 보존 후 authoring ref 제거, runtime 필요 시 새 graph |
+
+허용-class 상호 참조는 blocker가 아니라 **재결선 의무**다. SkeletalMesh↔Skeleton,
+SkeletalMesh↔PhysicsAsset, PhysicsAsset preview mesh, VolumeTexture→backing
+Texture2D, mesh→collision mesh, GeometryCollection→source/static mesh가 모두
+target-local package로 바뀌어야 한다.
+
+## GeometryCollection 명시 예외
+
+support catalog 6개 모두
+`localization_required_for_exact_fracture_topology_bounded_settings_only`다.
+fracture hierarchy를 정적 관찰만으로 정확히 재생성할 수 없기 때문에
+GeometryCollection payload는 사용자의 명시적 마지막 수단 예외를 적용할 수
+있다. 이는 Dataflow/Material을 함께 복제할 허가가 아니다.
+
+| Source | Bytes | Direct level | 알려진 source ref | 판정 |
+| --- | ---: | ---: | --- | --- |
+| `Core/Assets/ChaosDummyGeoCollection_1chunk` | 21,932 | 0 | `ChaosSimpleCube` | hold; core default consumer를 recursive audit |
+| `Meshes/Chaos/FracturedMesh_1058chunks_Clustered` | 11,397,106 | 0 | `Cube_dup3` | hold |
+| `Meshes/Chaos/FracturedMesh_136chunks` | 1,328,358 | 10 | `Cube_dup1`, checker MI | localize topology; mesh/material replace |
+| `Meshes/Chaos/FracturedMesh_34chunks` | 344,462 | 1 | `Cube_dup2`, checker MI | localize topology; mesh/material replace |
+| `Meshes/Chaos/FracturedMesh_489chunks` | 5,538,146 | 0 | `Cube_dup3`, checker MI | hold |
+| `Meshes/Chaos/FracturedMesh_568chunks_Clustered` | 10,459,476 | 5 | Dataflow, checker MI | localize topology; Dataflow remove/reauthor |
+
+## 실행 순서
+
+1. 완료된 172개 batch의 report와 post-root audit를 재사용하고, 재실행하지
+   않는다. 다음 batch 전 source SHA-256을 `reference_source_hashes.json`과 비교한다.
+2. 아직 남은 Starter direct-only textures를 payload 경로로 지역화하고
+   dimensions/format/sRGB/compression/address/filter/mip/LOD를 비교한다.
+3. six VolumeTexture와 backing Texture2D를 함께 지역화하고 slice/depth,
+   Source2DTexture target path, edge behavior를 비교한다.
+4. current mannequin trio와 28 motion을 dry-run closure 단위로 처리한다.
+   source modifier/ControlRig/compression path를 제거한 뒤 curve/marker/root
+   motion/bone pose를 비교한다.
+5. Starter direct StaticMesh/GeometryCollection을 처리한다. material slot은
+   target neutral/parity material로 교체하고 collision support를 먼저 닫는다.
+6. 새 `BS_CFNL_NinjaLocomotion`, target AnimBP/ControlRig, material, Niagara가
+   art를 소비하게 한 뒤 7 Starter fixture를 통과한다.
+7. vehicle trio, `TX-P1`, `ART-P1`, non-Starter 반복 consumer를 처리한다.
+8. `TX-P2`, `ART-P2`, single-level 특수 자산을 처리한다.
+9. `TX-P3`, legacy, unproven/hold는 실제 consumer가 증명된 경우에만 처리한다.
+10. 각 batch마다 save→close→reload, recursive dependency, forbidden string,
+    cook/runtime/visual fixture를 수행한다. batch가 다음 단계로 넘어가도 source
+    package를 target consumer에 임시로 연결하지 않는다.
+
+## 지역화 후 class별 검수
+
+| Class | 반드시 비교할 항목 |
+| --- | --- |
+| Texture2D | width/height, source/pixel format, alpha, sRGB, compression, address/filter, mip count/generation, VT/streaming, channel hash |
+| VolumeTexture | width/height/depth, voxel format/hash, slice order, address XYZ, mip, target-local backing source |
+| StaticMesh | vertex/index/UV/color/tangent, LOD/section, material slot name, Nanite, collision complexity/body setup, socket, bounds |
+| SkeletalMesh | vertex/skin weight, bone map, LOD/section, morph/cloth/socket, target Skeleton/PhysicsAsset, material, post-process AnimClass |
+| Skeleton | hierarchy/ref pose, virtual bone/socket, retarget metadata, preview mesh target path |
+| PhysicsAsset | body/shape/constraint/profile/limit, preview mesh target path, deterministic impulse response |
+| AnimSequence | target Skeleton, raw/compressed pose, duration/frame rate, root motion, notify/sync marker, curve name/key/value, user data/source path |
+| SoundWave | channels/sample rate/duration, compression/quality/streaming/loop, decoded PCM hash 또는 허용 오차 |
+| GeometryCollection | transform/geometry/face/vertex count, hierarchy/cluster, material IDs, collision, damage/removal, target support refs, deterministic fracture result |
+
+## 남은 unknown
+
+- StaticMesh/SkeletalMesh의 specialized descriptor capture가 아직 없어 LOD,
+  material slot, collision, morph/cloth/socket exact 값은 localization 직전 native
+  readback으로 닫아야 한다.
+- offline package string은 실제 hard/soft dependency 종류를 구분하지 못한다.
+- `PA_Mannequin`이 두 ragdoll-labeled actor에 runtime default로 적용되는지는
+  mesh default readback과 physics fixture가 필요하다.
+- source AnimSequence의 curve key 값 전체와 modifier user-data 제거 뒤 압축
+  오차는 아직 수치 검증되지 않았다.
+- `FracturedMesh_568chunks_Clustered`의 Dataflow reference가 runtime에 필요한지,
+  embedded collection 결과만으로 충분한지 reload/fracture fixture가 필요하다.
+- Niagara renderer나 runtime MID가 정적 material capture에 없던 texture를
+  주입할 수 있다. 그런 package가 관찰되면 현재 hold 53개에서 승격한다.
+- Engine/plugin runtime allowlist, plugin-disabled cook와 final visual parity는
+  아직 수행되지 않았다.
+
+## 현재 coverage 판정
+
+| 항목 | 상태 |
+| --- | --- |
+| permitted-class universe count/bytes | `complete: 434 / 412,486,501` |
+| 59-level direct permitted-art join | `complete for Asset Registry direct dependency` |
+| material texture/volume candidates | `complete: 167 / 167` |
+| material candidate priority partition | `complete: 24 + 11 + 75 + 57 = 167` |
+| level-direct-only texture set | `complete: 34` |
+| VolumeTexture backing expansion | `complete for offline source path: +5 unique` |
+| current runtime animation motion | `complete for captured static/runtime-use evidence: 28 / 28` |
+| current+vehicle skeletal package plan | `complete: 6 package` |
+| direct StaticMesh/SoundWave/GeometryCollection source set | `complete: 55 package` |
+| executable art closure | `planned: 300 package / 307,999,572 bytes` |
+| localization mutation | `partial_complete: 172 / 300; remaining 128` |
+| native dependency class audit | `pending` |
+| target descriptor/readback/parity | `pending` |
+
+### 1차 실행 증거
+
+- run: `20260901_material_textures_localize_v001`.
+- destination: `/Game/Study/CubeFluidNinjaLive/Art`.
+- selection token: `cfnl-art-5d5f2e44331f0f530824`.
+- selection: material-visible 167 + VolumeTexture backing-only 5.
+- class: Texture2D 166 + VolumeTexture 6 = 172.
+- source bytes: 150,696,364.
+- preflight: target 172, forbidden logic 0, unsupported game asset 0,
+  residual source dependency 0, MCP-only dependency 0.
+- execution: created/saved 172/172, failed 0, partial mutation false,
+  `verification_pass=true`, `dependency_independence_pass=true`, residual source 0,
+  MCP-only 0.
+- post-root audit: target Study 173개(art 172 + NiagaraSystem 1), redirector 0,
+  dirty 0, forbidden source/temp/MCP dependency 0, expected class/count exact match.
+- 이 PASS는 tool report가 정의한 create/save/readback/class/dependency 독립성
+  통과다. pixel/voxel descriptor와 hash, cook/runtime, visual parity는 별도
+  후속 gate이며 아직 완료로 올리지 않는다.
+
+아래 부록은 material 167, runtime motion 28, direct-only texture 34의 exact
+source path를 고정한다. 전체 class universe와 level별 소비자는 위 durable
+inventory가 정본이다.
+
+## 부록 A. Material texture/volume 후보 167
+
+열 `L`은 59-level direct occurrence, `M`은 material owner count다. 이 표를
+`priority<TAB>class<TAB>bytes<TAB>L<TAB>M<TAB>package<LF>`로 순서대로
+직렬화한 manifest는 14,077 bytes, SHA-256
+`36183f07d98f79948de92531ed82141119229863c180bae1e425eecddee7dca9`다.
+
+### TX-P0 — 24
+
+| Class | Bytes | L | M | Source package |
+| --- | ---: | ---: | ---: | --- |
+| Texture2D | 256,303 | 51 | 48 | `/Game/FluidNinjaLive/Core/Assets/T_NoiseTemplate2` |
+| Texture2D | 22,455 | 51 | 22 | `/Game/FluidNinjaLive/Core/Assets/T_NoiseTemplate1_128px` |
+| Texture2D | 25,307 | 51 | 2 | `/Game/FluidNinjaLive/Core/Assets/T_Noise3_128px` |
+| Texture2D | 8,041 | 43 | 6 | `/Game/FluidNinjaLive/Core/Assets/T_maskframe_256` |
+| Texture2D | 1,035,580 | 18 | 17 | `/Game/FluidNinjaLive/Textures/T_foam2` |
+| Texture2D | 7,022,214 | 8 | 76 | `/Game/FluidNinjaLive/Textures/T_CrumpleMega` |
+| Texture2D | 9,404 | 8 | 7 | `/Game/FluidNinjaLive/Core/Assets/T_1x1_black_RGBA` |
+| Texture2D | 39,505 | 7 | 26 | `/Game/FluidNinjaLive/Textures/T_Crumple` |
+| Texture2D | 168,921 | 5 | 68 | `/Game/FluidNinjaLive/Textures/T_Crumple_MultiLevel` |
+| Texture2D | 8,938 | 4 | 7 | `/Game/FluidNinjaLive/Core/Assets/T_maskframe_thick_256` |
+| Texture2D | 26,849 | 4 | 3 | `/Game/FluidNinjaLive/Textures/T_MultilevelNoise1` |
+| Texture2D | 12,301 | 4 | 2 | `/Game/FluidNinjaLive/Textures/T_NinjaLogo` |
+| Texture2D | 389,483 | 3 | 87 | `/Game/FluidNinjaLive/Core/Assets/T_NoiseTemplate1` |
+| Texture2D | 5,249 | 3 | 8 | `/Game/FluidNinjaLive/Textures/T_White` |
+| Texture2D | 29,147 | 3 | 1 | `/Game/FluidNinjaLive/Textures/T_Noise2` |
+| Texture2D | 16,154 | 3 | 1 | `/Game/FluidNinjaLive/Textures/T_PolarCoordinates2_velocity` |
+| Texture2D | 11,747 | 2 | 2 | `/Game/FluidNinjaLive/Textures/T_CollisionMask_Test01` |
+| Texture2D | 5,289 | 1 | 5 | `/Game/FluidNinjaLive/Core/Assets/T_White` |
+| Texture2D | 31,123 | 1 | 3 | `/Game/FluidNinjaLive/Textures/T_Test_AtlasTexture_4x4subframe_density` |
+| Texture2D | 56,967 | 1 | 2 | `/Game/FluidNinjaLive/Textures/VelocityDensityCombo/T_test_RG_velo_B_density` |
+| Texture2D | 160,994 | 1 | 1 | `/Game/FluidNinjaLive/Textures/T_Smokering_1frame_velocity` |
+| VolumeTexture | 1,534,608 | 0 | 145 | `/Game/FluidNinjaLive/Textures/Volumetric/VolumeNoise2` |
+| VolumeTexture | 2,484,199 | 0 | 95 | `/Game/FluidNinjaLive/Textures/Volumetric/T_Caustics_Animated_02_VolumeTexture` |
+| Texture2D | 26,087 | 0 | 81 | `/Game/FluidNinjaLive/Textures/T_Circular_1frame_velocity` |
+
+### TX-P1 — 11
+
+| Class | Bytes | L | M | Source package |
+| --- | ---: | ---: | ---: | --- |
+| Texture2D | 826,792 | 19 | 8 | `/Game/FluidNinjaLive/Textures/T_foam` |
+| Texture2D | 168,667 | 7 | 21 | `/Game/FluidNinjaLive/Textures/T_Crumple_MultiLevel_Inv` |
+| Texture2D | 8,172 | 5 | 4 | `/Game/FluidNinjaLive/Textures/T_RadialOutwardGradient_velocity` |
+| Texture2D | 19,726 | 4 | 32 | `/Game/FluidNinjaLive/Textures/T_Noise4` |
+| Texture2D | 31,591 | 3 | 5 | `/Game/FluidNinjaLive/Textures/T_RadialOutwardStatic_velocity` |
+| Texture2D | 426,758 | 2 | 24 | `/Game/FluidNinjaLive/Textures/T_foam5` |
+| Texture2D | 13,321 | 2 | 3 | `/Game/FluidNinjaLive/Textures/T_Circle` |
+| Texture2D | 132,735 | 2 | 1 | `/Game/FluidNinjaLive/Textures/T_WindNoise` |
+| Texture2D | 7,924 | 1 | 28 | `/Game/FluidNinjaLive/Textures/T_LowResBlurredNoise_sRGB` |
+| Texture2D | 1,144,081 | 1 | 7 | `/Game/FluidNinjaLive/Textures/T_foam3` |
+| Texture2D | 152,102 | 1 | 7 | `/Game/FluidNinjaLive/Textures/T_foam_blurred2_rot` |
+
+### TX-P2 — 75
+
+| Class | Bytes | L | M | Source package |
+| --- | ---: | ---: | ---: | --- |
+| Texture2D | 39,640 | 0 | 45 | `/Game/FluidNinjaLive/Textures/T_Crumple_mod_inv` |
+| Texture2D | 62,171 | 0 | 36 | `/Game/FluidNinjaLive/Textures/T_Circular_1frame_density` |
+| Texture2D | 50,867 | 0 | 36 | `/Game/FluidNinjaLive/Textures/T_sandheight1b` |
+| Texture2D | 12,309 | 0 | 33 | `/Game/FluidNinjaLive/Core/Assets/T_maskframe_thicker_256` |
+| Texture2D | 1,374,013 | 0 | 28 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_foam2c_normal_softer` |
+| Texture2D | 50,191 | 0 | 28 | `/Game/FluidNinjaLive/Textures/T_sandheight1` |
+| VolumeTexture | 4,431,159 | 0 | 24 | `/Game/FluidNinjaLive/Textures/Volumetric/T_Caustics_Animated_01_VolumeTexture` |
+| Texture2D | 52,643 | 0 | 22 | `/Game/FluidNinjaLive/Core/Assets/T_Noise3` |
+| Texture2D | 1,954,465 | 0 | 21 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_foam2c_normal_soft` |
+| Texture2D | 786,226 | 0 | 20 | `/Game/FluidNinjaLive/Meshes/Mountain/T_MountStHelens_Cropped` |
+| Texture2D | 40,850 | 0 | 18 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection1_Velocity` |
+| Texture2D | 972,132 | 0 | 18 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_foam5_normal_combined` |
+| Texture2D | 1,628,526 | 0 | 16 | `/Game/FluidNinjaLive/Meshes/Boulder/T_Boulder_Displacement` |
+| Texture2D | 3,010,239 | 0 | 16 | `/Game/FluidNinjaLive/Meshes/Boulder/T_Boulder_Normal_LOD0` |
+| Texture2D | 71,519 | 0 | 16 | `/Game/FluidNinjaLive/Textures/T_RadialGradient_density` |
+| Texture2D | 9,133,105 | 0 | 14 | `/Game/FluidNinjaLive/Meshes/Boulder/T_Boulder_Albedo` |
+| Texture2D | 487,304 | 0 | 13 | `/Game/FluidNinjaLive/Meshes/Mountain/T_MountStHelens` |
+| Texture2D | 39,326 | 0 | 13 | `/Game/FluidNinjaLive/Textures/T_Torus` |
+| VolumeTexture | 514,124 | 0 | 13 | `/Game/FluidNinjaLive/Textures/Volumetric/VolumeNoise1` |
+| Texture2D | 2,025,758 | 0 | 12 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_foam2c_normal` |
+| Texture2D | 80,496 | 0 | 11 | `/Game/FluidNinjaLive/Textures/T_RadialGradient1mix` |
+| Texture2D | 20,494 | 0 | 10 | `/Game/FluidNinjaLive/Textures/T_Noise1Blur` |
+| Texture2D | 592,151 | 0 | 10 | `/Game/FluidNinjaLive/Textures/T_foam_blurred` |
+| Texture2D | 24,755 | 0 | 9 | `/Game/FluidNinjaLive/Textures/T_RadialGradient1exp_noise` |
+| Texture2D | 47,479 | 0 | 9 | `/Game/FluidNinjaLive/Textures/T_sandheight1_rot` |
+| Texture2D | 4,702 | 0 | 8 | `/Game/FluidNinjaLive/Core/Assets/T_Black` |
+| Texture2D | 50,269 | 0 | 8 | `/Game/FluidNinjaLive/Textures/T_sandheight1_flipped` |
+| Texture2D | 1,649,828 | 0 | 7 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_02_BN` |
+| Texture2D | 1,053,034 | 0 | 7 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_02_D` |
+| Texture2D | 1,059,664 | 0 | 7 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_02_MRA` |
+| Texture2D | 1,405,761 | 0 | 6 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_01_BN` |
+| Texture2D | 684,561 | 0 | 6 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_01_D` |
+| Texture2D | 712,699 | 0 | 6 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_01_MRA` |
+| Texture2D | 1,853,254 | 0 | 6 | `/Game/FluidNinjaLive/Meshes/Rock/T_Bedrock_displacement` |
+| Texture2D | 2,978,922 | 0 | 6 | `/Game/FluidNinjaLive/Meshes/Rock/T_Bedrock_normal` |
+| Texture2D | 60,944 | 0 | 6 | `/Game/FluidNinjaLive/Textures/T_Circular_1frame_density_inverted` |
+| Texture2D | 94,842 | 0 | 6 | `/Game/FluidNinjaLive/Textures/VelocityDensityCombo/T_Circular_1frame_velocitydensity` |
+| Texture2D | 8,345,617 | 0 | 5 | `/Game/FluidNinjaLive/Meshes/Rock/T_Bedrock_albedo` |
+| Texture2D | 4,841 | 0 | 5 | `/Game/FluidNinjaLive/OutputMaterials/Base/Functions/T_DefaultTexture` |
+| Texture2D | 244,193 | 0 | 5 | `/Game/FluidNinjaLive/Textures/T_CellNoise_sRGB` |
+| Texture2D | 71,291 | 0 | 5 | `/Game/FluidNinjaLive/Textures/T_RadialGradient_density_sRGB` |
+| Texture2D | 824,933 | 0 | 5 | `/Game/FluidNinjaLive/Textures/T_foam_inv` |
+| VolumeTexture | 1,749,475 | 0 | 5 | `/Game/FluidNinjaLive/Textures/Volumetric/VolumeNoise2inv` |
+| Texture2D | 4,794,133 | 0 | 4 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/UE4_Mannequin__normals` |
+| Texture2D | 691,670 | 0 | 4 | `/Game/FluidNinjaLive/Meshes/Tree/Textures/T_BlackAlder_TwoSided_Summer_Mask` |
+| Texture2D | 2,331,873 | 0 | 4 | `/Game/FluidNinjaLive/Meshes/Tree/Textures/T_BlackAlder_TwoSided_Summer_Normal` |
+| Texture2D | 1,166,144 | 0 | 4 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_foam2c_blurred_normal` |
+| Texture2D | 24,968 | 0 | 4 | `/Game/FluidNinjaLive/Textures/T_RadialGradient1exp_noise_sRGB_clamp` |
+| Texture2D | 4,762 | 0 | 3 | `/Game/FluidNinjaLive/Core/Assets/T_TextureTemplate1` |
+| Texture2D | 1,405,483 | 0 | 3 | `/Game/FluidNinjaLive/Meshes/Rock/T_Rock1_albedo` |
+| Texture2D | 550,688 | 0 | 3 | `/Game/FluidNinjaLive/Meshes/Rock/T_Rock1_normal` |
+| Texture2D | 1,145,229 | 0 | 3 | `/Game/FluidNinjaLive/Meshes/Tree/Textures/T_BlackAlder_TwoSided_Summer_Albedo` |
+| Texture2D | 35,411 | 0 | 3 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection1_DensityVelocity_Combo` |
+| Texture2D | 677,508 | 0 | 3 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_Flowmap` |
+| Texture2D | 2,856,399 | 0 | 3 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_Flowmap_HD` |
+| Texture2D | 26,693 | 0 | 3 | `/Game/FluidNinjaLive/Textures/T_RadialGradientExp_density_pattern` |
+| Texture2D | 1,098,037 | 0 | 3 | `/Game/FluidNinjaLive/Textures/T_foam4` |
+| Texture2D | 677,979 | 0 | 2 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_2K_Normal_LOD0` |
+| Texture2D | 5,952 | 0 | 2 | `/Game/FluidNinjaLive/Meshes/Grass/T_Grass_WPOmask` |
+| Texture2D | 239,303 | 0 | 2 | `/Game/FluidNinjaLive/Meshes/Rock/T_Rock1_displacement` |
+| Texture2D | 14,749 | 0 | 2 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection1` |
+| Texture2D | 18,509 | 0 | 2 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection2` |
+| Texture2D | 18,446 | 0 | 2 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection3` |
+| Texture2D | 25,759 | 0 | 2 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection4` |
+| Texture2D | 16,903 | 0 | 2 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection7` |
+| Texture2D | 605,285 | 0 | 2 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_Crumple_MultiLevel_NormalInv` |
+| Texture2D | 4,925,580 | 0 | 2 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_WaterFlow_01_Foam_Tiled` |
+| Texture2D | 14,838 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient_triangle_sRGB` |
+| Texture2D | 4,075,015 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_Crumple_WithVelocity` |
+| Texture2D | 96,063 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_CycloneMap` |
+| Texture2D | 9,567 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_LinearGradient_sRGB` |
+| Texture2D | 14,470 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_LinearGradient_sRGB_rot90` |
+| Texture2D | 25,624 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_RadialGradientDouble` |
+| Texture2D | 74,888 | 0 | 2 | `/Game/FluidNinjaLive/Textures/T_SquareGradient` |
+| VolumeTexture | 816,520 | 0 | 2 | `/Game/FluidNinjaLive/Textures/Volumetric/Example_Use2DTextureAsVolume` |
+
+### TX-P3 — 57
+
+| Class | Bytes | L | M | Source package |
+| --- | ---: | ---: | ---: | --- |
+| Texture2D | 16,941 | 0 | 1 | `/Game/FluidNinjaLive/Core/Assets/T_FluidNinjaLiveLogo` |
+| Texture2D | 447,366 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_2K_Albedo` |
+| Texture2D | 3,768,070 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_2K_Glow` |
+| Texture2D | 680,894 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_2K_Roughness` |
+| Texture2D | 498,783 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/uenpfeifa_2K_Albedo` |
+| Texture2D | 698,291 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/uenpfeifa_2K_Glow` |
+| Texture2D | 810,124 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/uenpfeifa_2K_Normal_LOD0` |
+| Texture2D | 185,270 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Bonfire/uenpfeifa_2K_Roughness` |
+| Texture2D | 9,137,146 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Boulder/T_Boulder_Albedo_mod` |
+| Texture2D | 129,812 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Grass/T_GrassDebris_Atlas` |
+| Texture2D | 565,826 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Grass/T_Grass_Albedo` |
+| Texture2D | 415,342 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Grass/T_Grass_Normal` |
+| Texture2D | 270,069 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Grass/T_Grass_Opacity` |
+| Texture2D | 377,415 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Materials/Legacy/T_ML_Aluminum01` |
+| Texture2D | 307,330 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Materials/Legacy/T_ML_Aluminum01_N` |
+| Texture2D | 421,672 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Materials/Legacy/T_ML_Rubber_Blue_01_D` |
+| Texture2D | 292,282 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Materials/Legacy/T_ML_Rubber_Blue_01_N` |
+| Texture2D | 26,412 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/T_Manny_LimbMask` |
+| Texture2D | 130,305 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/UE4Man_Logo_N` |
+| Texture2D | 77,103 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/UE4_LOGO_CARD` |
+| Texture2D | 224,329 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Mannequin/Textures/UE4_Mannequin_MAT_MASKA` |
+| Texture2D | 783,782 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Rock/T_Bedrock_reflection` |
+| Texture2D | 2,436,579 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Rock/T_CreekBackgro` |
+| Texture2D | 18,813 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Rock/T_CreekBackgro_Mask` |
+| Texture2D | 1,824,779 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Tree/Textures/T_BlackAlder_Tileable_Albedo` |
+| Texture2D | 32,011 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Vehicle/Textures/T_QuadDrone_color` |
+| Texture2D | 3,204,013 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Vehicle/Textures/T_QuadDrone_diffuse` |
+| Texture2D | 191,287 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Vehicle/Textures/T_QuadDrone_metallic` |
+| Texture2D | 2,718,080 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Vehicle/Textures/T_QuadDrone_normal` |
+| Texture2D | 541,559 | 0 | 1 | `/Game/FluidNinjaLive/Meshes/Vehicle/Textures/T_QuadDrone_roughness` |
+| Texture2D | 42,594 | 0 | 1 | `/Game/FluidNinjaLive/Misc/Logo/FluidNinjaLive2_logo_textonly` |
+| Texture2D | 45,021 | 0 | 1 | `/Game/FluidNinjaLive/Misc/T_avalanche_ico` |
+| Texture2D | 17,937 | 0 | 1 | `/Game/FluidNinjaLive/Misc/T_grass_ico` |
+| Texture2D | 37,772 | 0 | 1 | `/Game/FluidNinjaLive/Misc/T_vortex_ico` |
+| Texture2D | 21,100 | 0 | 1 | `/Game/FluidNinjaLive/Misc/T_waves_ico` |
+| Texture2D | 15,823 | 0 | 1 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection6` |
+| Texture2D | 14,063 | 0 | 1 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection_BottomElement1` |
+| Texture2D | 22,074 | 0 | 1 | `/Game/FluidNinjaLive/Textures/CrossSectionTextures/T_CrossSection_TopElement1` |
+| Texture2D | 618,088 | 0 | 1 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_Crumple_MultiLevel_Inv_NormalInv` |
+| Texture2D | 495,807 | 0 | 1 | `/Game/FluidNinjaLive/Textures/NormalDensityCombo/T_foam2c_blurred` |
+| Texture2D | 7,555,205 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_CrumpleMega_Inv` |
+| Texture2D | 121,675 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_LinearGradient_crumpled_rot90_clamp` |
+| Texture2D | 9,725 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_LinearGradient_density` |
+| Texture2D | 9,678 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_LinearGradient_sRGB_clamp` |
+| Texture2D | 29,554 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_NoiseSlice1` |
+| Texture2D | 15,362 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_PolarCoordinates4_velocity` |
+| Texture2D | 24,748 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_RadialGradient1exp_noise_sRGB` |
+| Texture2D | 95,389 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_RadialGradientExp_SparseDots` |
+| Texture2D | 696,449 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_RuneFloor` |
+| Texture2D | 859,534 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_RuneFloor_Cracks` |
+| Texture2D | 371,835 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_TilingSimpleCurlNoise1` |
+| Texture2D | 693,467 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_VortexMod_Density_SimBuffer_76` |
+| Texture2D | 544,583 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_VortexMod_Velocity_SimBuffer_76` |
+| Texture2D | 30,213 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_VortexMod_Velocity_SimBuffer_77` |
+| Texture2D | 694,816 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_foam_blurred_rot` |
+| Texture2D | 139,961 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_simbuffer1_density` |
+| Texture2D | 309,268 | 0 | 1 | `/Game/FluidNinjaLive/Textures/T_simbuffer1_velocity` |
+
+## 부록 B. Material capture 밖 level-direct Texture2D 34
+
+표시는 occurrence 우선이다. 같은 34개를 package ordinal로 정렬하고
+`class<TAB>bytes<TAB>level_occurrence<TAB>package<LF>`로 직렬화한 canonical
+manifest는 2,557 bytes, SHA-256
+`b5cf30b2cef62011b537d780dff4c20a68dcf5d1b3bfc0766904ebb334165c9a`다.
+
+| Bytes | Level occurrence | Source package |
+| ---: | ---: | --- |
+| 26,497 | 44 | `/Game/FluidNinjaLive/Textures/T_TurbulenceRound_velocity` |
+| 9,653 | 7 | `/Game/FluidNinjaLive/Core/Assets/T_1x1_VelocityNull_RGBA` |
+| 9,450 | 7 | `/Game/FluidNinjaLive/Core/Assets/T_1x1_white_RGBA` |
+| 1,530,302 | 7 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PaintBuffer_989` |
+| 7,407,063 | 7 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PressureDivergenceBuffer_989` |
+| 10,821,592 | 7 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_VelocityDensityBuffer_989` |
+| 31,085 | 6 | `/Game/FluidNinjaLive/Textures/T_TurbulenceOutward_velocity` |
+| 9,398 | 3 | `/Game/FluidNinjaLive/Textures/T_StreakFlipWide2` |
+| 8,199 | 3 | `/Game/FluidNinjaLive/Textures/T_VerticalDown_SideInward_velocity` |
+| 10,260 | 2 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient` |
+| 6,454 | 2 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient2` |
+| 7,309 | 2 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient4` |
+| 18,122 | 2 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient6` |
+| 15,210 | 2 | `/Game/FluidNinjaLive/Textures/T_PolarCoordinates1_velocity` |
+| 8,836 | 2 | `/Game/FluidNinjaLive/Textures/T_StreakFlip` |
+| 9,694 | 2 | `/Game/FluidNinjaLive/Textures/T_StreakFlipWide` |
+| 144,115 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_PaintBuffer_163` |
+| 1,907,266 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_PressureDivergenceBuffer_163` |
+| 7,195,884 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_VelocityDensityBuffer_163` |
+| 2,225,754 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PaintBuffer_625_Dam` |
+| 767,371 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PaintBuffer_757` |
+| 5,556,572 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PressureDivergenceBuffer_625_Dam` |
+| 7,081,813 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PressureDivergenceBuffer_757` |
+| 9,908 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_SceneCaptureHeight_725` |
+| 8,342,344 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_VelocityDensityBuffer_625_Dam` |
+| 8,909,268 | 1 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_VelocityDensityBuffer_757` |
+| 285,581 | 1 | `/Game/FluidNinjaLive/Meshes/Rock/T_Bedrock_collision_shallow` |
+| 6,536 | 1 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient3` |
+| 17,129 | 1 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient5` |
+| 4,932 | 1 | `/Game/FluidNinjaLive/Textures/T_Candle1` |
+| 15,435 | 1 | `/Game/FluidNinjaLive/Textures/T_PolarCoordinates3_velocity` |
+| 8,889 | 1 | `/Game/FluidNinjaLive/Textures/T_Streak` |
+| 29,843 | 1 | `/Game/FluidNinjaLive/Textures/T_TurbulenceUpward_velocity` |
+| 170,374 | 1 | `/Game/FluidNinjaLive/Textures/T_waves_rot90` |
+
+## 부록 C. 현재 runtime motion 28
+
+current ABP closure 25개 18,549,534 bytes와 active single-node 3개
+942,503 bytes다. 각 target basename은 source basename을 유지하고 preserve-relative
+mapping에 따라 package root를
+`/Game/Study/CubeFluidNinjaLive/Art/Meshes/Mannequin/Animations`로 바꾼다.
+
+### Current ABP — 25
+
+| Bytes | Source package |
+| ---: | --- |
+| 673,194 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_F_L_21` |
+| 673,278 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_F_R_21` |
+| 682,907 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_F1` |
+| 672,815 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_FL1` |
+| 672,797 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_FR1` |
+| 901,264 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_F_L_21` |
+| 901,204 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_F_R_21` |
+| 914,621 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_F1` |
+| 902,177 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_FL1` |
+| 902,148 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_FR1` |
+| 2,322,334 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Stand_Idle_Loop1` |
+| 1,020,550 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Walk_Loop_F1` |
+| 417,412 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Jog_Bwd_Left` |
+| 417,414 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Jog_Bwd_Right` |
+| 483,137 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Jog_Bwd` |
+| 537,640 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Bwd_Left` |
+| 537,514 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Bwd_Right` |
+| 606,691 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Bwd` |
+| 411,417 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Fwd_Left` |
+| 411,411 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Fwd_Right` |
+| 486,422 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Left` |
+| 491,804 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Right` |
+| 663,094 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MM_DashMini` |
+| 1,436,418 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MM_Idle` |
+| 409,871 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MM_Land` |
+
+### Active single-node — 3
+
+| Bytes | Source package | Active evidence |
+| ---: | --- | --- |
+| 475,653 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Fwd` | Tutorial01, 1 component, rate 0.5 |
+| 210,873 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/ThirdPersonJump_Loop` | Tutorial02/Fire/VolumeDemo_FAKE, 3 components |
+| 255,977 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/ThirdPersonWalk` | Tutorial02/Clouds, 9 components |

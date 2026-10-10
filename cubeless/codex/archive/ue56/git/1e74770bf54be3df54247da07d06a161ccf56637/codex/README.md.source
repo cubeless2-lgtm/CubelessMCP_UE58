@@ -1,0 +1,40 @@
+# Embedded Cubeless Codex Ops
+
+This directory is the embedded operating root for `UnrealMCP5_6_1`, the Cubeless Unreal MCP repository targeting Unreal Engine 5.6.1.
+
+## Bootstrap
+
+From the repository root, read in this order:
+
+1. `AGENTS.md`
+2. `codex/AGENTS.md`
+3. `codex/projects/UnrealMCP5_6_1.md`
+
+Do not use the external `../CubelessOps` repository as the active authority for this repository unless the user explicitly asks to compare or synchronize operating docs.
+
+Parent workspace agent files such as `D:\Git\AGENTS.md` are also not part of the active 5.6 MCP operating model. This folder carries its own agent, workflow, policy, and project binding rules.
+
+Sibling repositories and Git submodules are not required for routine work in this folder. The sample project and UnrealMCP plugin under `MCPGameProject/` are handled as part of this repository.
+
+## Active Facts
+
+- Repository: `UnrealMCP5_6_1`
+- Remote: `https://github.com/cubeless2-lgtm/UnrealMCP5_6_1.git`
+- Engine: Unreal Engine 5.6.1 at `C:\Program Files\Epic Games\UE_5.6`
+- Verification target: Win64 Editor
+- Android packaging: out of scope unless the user explicitly re-enables it
+- Embedded project binding: `projects/UnrealMCP5_6_1.md`
+
+## Directory Map
+
+- `agents/`: role boundaries for planning, MCP implementation, upstream sync, release verification, and Unreal C++ review.
+- `docs/policies/`: Git, approval, path, memory, permission, and cost rules.
+- `docs/workflows/`: repeatable procedures for bootstrap, orchestration, MCP updates, Unreal work, and reviews.
+- `projects/`: project bindings. `UnrealMCP5_6_1.md` is the active binding for this repository.
+- `scripts/`: local maintenance helpers.
+- `skills/`: repo-owned skill packages copied from shared Ops for reference or future installation.
+- `snapshots/`: historical instruction snapshots.
+
+## Synchronization
+
+This embedded copy was derived from `D:\Git\CubelessOps`. Changes made here stay local to `UnrealMCP5_6_1` unless the user explicitly asks to mirror them back to the external shared Ops repository.

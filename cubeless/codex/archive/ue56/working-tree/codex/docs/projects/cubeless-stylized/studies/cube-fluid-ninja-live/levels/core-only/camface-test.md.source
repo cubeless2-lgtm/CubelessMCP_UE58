@@ -1,0 +1,99 @@
+# 레벨 카드: `CamfaceTest`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/CoreOnly/CamfaceTest` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_CamfaceTest` |
+| 문서 계층 | `core-only` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `22` |
+| Direct external | `12` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+wrapper 없이 배치한 direct `NinjaLiveCore` 두 개로 external plane과
+core-owned visualization의 camera-facing/local-space 구성을 비교한다.
+
+- **Observed:** direct core instance 2개, external driver/mesh,
+  `MakeObjectsCameraFacing` component와 정적 text.
+- **Inferred:** 외부와 내부 visualization path의 camera-facing 대조 fixture.
+- **Unknown:** camera rotation 추종 축, 보간과 프레임 순서.
+- **Target fixture:** `TF_Core_CameraFacing`.
+
+## Actor
+
+native manifest는 27 actor, 55 component를 3 page로 완전 캡처했다.
+
+`TextRenderActor=7; StaticMeshActor=4; GeometryCollectionActor=2; NiagaraActor=2; PostProcessVolume=2; Brush=1; CamfaceTest_C=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1`
+
+- wrapper host는 0이고 direct core는 `NS_NinjaLiveCore1/2` 두 개다.
+- 둘 다 resolution 512², extents 7,7,7, CameraFacing=true, MDF=true,
+  painter+velocity output=true다.
+- Core1은 AutoActivate=false, visualization=false, force-local=false이며
+  세 output RT를 명시한다. Core2는 AutoActivate=true,
+  visualization=true, force-local=true,
+  `MI_DensityBuffer_Translucent` visualization material을 가진다.
+- GeometryCollectionActor 2개는 `FracturedMesh_136chunks` 계열이다.
+- driver는 Core1, `ExternalMesh` Engine Plane과 camera-facing helper를
+  연결한다.
+
+## Runtime
+
+- Level BP는 연결되지 않은 BeginPlay/Tick 2 nodes, 0 variables다.
+- `pending` — camera 이동 replay, external/internal plane transform,
+  RT와 성능 결과.
+
+## Niagara
+
+- 두 NiagaraActor의 Asset은 `NinjaLiveCore`다. 2/2에 non-empty
+  `InstanceParameterOverrides`가 있다.
+- wrapper host가 없으므로 wrapper `Preset` field는 N/A다.
+- Chaos/RigidMesh/GeometryCollection SDF data interface가 instance에
+  직렬화됐다.
+- wrapper lifecycle가 없는 standalone activation 차이는 **Observed
+  config**이며 실행 결과는 **Unknown**이다.
+
+## Material
+
+- driver의 `MaterialToBeAppliedOnMeshes`와 Core2의 visualization은
+  `MI_DensityBuffer_Translucent`를 사용한다.
+- ExternalMesh의 초기 override는 None이고 driver가 적용 책임을 가진다.
+  runtime MID/화면은 `pending`이다.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- `reference/levels/CoreOnly__CamfaceTest.json`: capture complete,
+  3 pages, 27 actors, 55 components, truncation 0, source dirty false.
+- revision `ba922b11af04cd12e3ea8394135492a1`, query
+  `2b4c03e69735c35a736b1d14f52bf507`.
+- `reference/level_blueprints/Levels__CoreOnly__CamfaceTest/**`:
+  EventGraph 2 nodes, 0 variables.
+- `concepts/starter-core-level-observation.md`,
+  `concepts/core-solver-observation.md`,
+  `concepts/blueprint-responsibility-map.md`.
+- `pending`: runtime camera replay, target implementation, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

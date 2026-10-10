@@ -1,0 +1,1144 @@
+# Cube Fluid Ninja Live: Niagara core module semantics
+
+## 문서 상태
+
+이 문서는 `/Game/FluidNinjaLive/Core`의 standalone `NiagaraScript` 캡처만을
+오프라인에서 읽어, core solver clean-room 구현에 필요한 의미 계약으로 정리한
+정적 동결본이다. 원본 Niagara asset, Content, C++, editor state는 수정하지 않았다.
+분석 중 editor/bridge/PIE도 사용하지 않았다.
+
+상위 실행 문맥과 17개 SimulationStage의 authoritative asset 순서는
+[core solver observation v3](./core-solver-observation.md), 특히
+[O-04의 17-stage manifest](./core-solver-observation.md#o-04-17개-simulationstage의-asset-순서와-설정)를
+기준으로 한다. 이 문서는 그 manifest의 stage 0, 8~16과 setup function 내부를
+standalone graph evidence로 상세화한다. 기존 문서의 U-01과 U-02 중 수식,
+attribute family, channel packing은 **정적 graph 수준**에서 상당 부분 해소하지만,
+runtime dispatch, Grid2D sampler addressing, ping-pong visibility, 최종 pixel parity를
+해소했다고 주장하지 않는다.
+
+판정 표기는 다음과 같다.
+
+- **Observed (O)**: frozen JSON의 node, pin, link, metadata, comment, Custom HLSL,
+  manifest 값에서 직접 확인했다.
+- **Inferred (I)**: 여러 observed edge와 consumer가 함께 지지하지만 capture가
+  attribute specifier나 runtime 결과를 직접 반환하지 않았다.
+- **Unknown (U)**: 정적 JSON만으로 결정할 수 없다.
+- **Target contract (T)**: 원본 graph/HLSL을 복사하지 않고 새 target이 소유해야 할
+  책임이다.
+- **Fixture (F)**: 정적 수식 oracle 또는 향후 reference/target runtime 비교 항목이다.
+
+`Observed`는 graph가 그렇게 authored됐다는 뜻이다. compile/cook/runtime parity를
+뜻하지 않는다.
+
+## Frozen evidence와 무결성
+
+### Capture root
+
+기준 root:
+
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/niagara-scripts`
+
+authoritative manifest:
+
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/niagara-scripts/manifest.json`
+
+| 항목 | 관찰값 |
+| --- | ---: |
+| standalone NiagaraScript capture | 92 / 92 |
+| JSON file, manifest 포함 | 93 |
+| capture JSON bytes, manifest 제외 | 25,773,170 |
+| manifest bytes | 91,354 |
+| 전체 bytes | 25,864,524 |
+| inventory asset / NiagaraScript | 1,796 / 92 |
+| pre/post hash scope | reference `.uasset` 1,735개 |
+| capture error / validation failure | 0 / 0 |
+| truncation / baseline mismatch | 0 / 0 |
+| source mutation / study Content write | false / false |
+| capture 시작 / 완료 UTC | 2026-08-31T22:07:06.997580+00:00 / 2026-08-31T22:07:38.101917+00:00 |
+
+manifest SHA-256:
+`3e9634938b7882c620499b309bb7f61b1f2f41297a8d57862d5df9f886228fe1`
+
+capture option은 pins, links, metadata, Custom HLSL이 모두 true다. cap은
+nodes 5,000, links 20,000, variables 5,000, Custom HLSL nodes 1,000,
+HLSL chars 200,000, versions 512다. 이 문서의 22개 파일은 모두 cap 미도달,
+`validation.passed=true`, empty truncation path, source before/after SHA 동일이다.
+
+분석 폐쇄집합은 요청된 seed 12개와 그 graph가 직접 호출하는 local function
+10개다. helper 10개에서 다른 `/Game/FluidNinjaLive/Core/Functions` 호출은 없어
+추가 재귀 항목이 없다.
+
+| 폐쇄집합 항목 | 값 |
+| --- | ---: |
+| seed script | 12 |
+| direct local helper | 10 |
+| 총 script | 22 |
+| node / link | 1,759 / 2,173 |
+| Custom HLSL node | 14 |
+| Custom HLSL chars / final-output live / dead | 8,718 / 10 / 4 |
+| capture bytes | 8,576,876 |
+| `NCS_UpToDate` / `NCS_Unknown` | 2 / 20 |
+
+`PainterSourceData`, `VelocityDirectionalNoise`만 capture에서
+`NCS_UpToDate`이고 나머지 20개는 `NCS_Unknown`이다. 22개 모두
+`compile_has_warning=false`지만, unknown을 compile PASS로 승격하지 않는다.
+17개 stage script가 live stage inspector에서 `NCS_UpToDate`였다는 별도 관찰은
+상위 문서 O-04에 있고, standalone capture status와 혼합하지 않는다.
+
+### Seed capture ledger
+
+`response SHA`는 manifest가 기록한 JSON response hash이고, `source SHA`는
+읽기 전후가 동일한 source `.uasset` hash다. `N/L/H`는 node/link/Custom HLSL
+node 수다.
+
+| Script / capture file | N/L/H | Bytes | response SHA-256 | source SHA-256 |
+| --- | ---: | ---: | --- | --- |
+| `AssignBuffersToRenderTargets` / `Core__Functions__AssignBuffersToRenderTargets.json` | 50/72/0 | 286,407 | `b18237f28cac592980eac1ca574c2ab1fbd6f33f7e50d592e1a45bf859ff5d1c` | `8d5067c044dec9162a9a5b0bef90d86b25e2731b1a9021e065dcf88e3c35413a` |
+| `Grid2D_SetResolution` / `Core__Functions__Grid2D_SetResolution.json` | 34/60/2 | 239,039 | `81d8a36ea2c851041369c0d4e9bd7a45f1685f2f32d986c83044ab68126580e4` | `f268d96f47809c5d4eeee2b857559e50951957cfff9cdca8adaeee0f2a586c7c` |
+| `NinjaInitGrids` / `Core__Functions__NinjaInitGrids.json` | 32/50/0 | 223,534 | `769b7cad11994f8d8da6e1665103a79fa694921c53d572160f886d30d4913b13` | `233468bb5a1dc0a58ce41e70250d90735e5fd98c303526aa482f3b3f73b546c9` |
+| `SetRenderTargetResolution` / `Core__Functions__SetRenderTargetResolution.json` | 7/9/0 | 45,708 | `5ad0f2d1e2b0b8b6c5c9fd3c23942e85fd7cf7b25282675a1b595cc7fdc709be` | `97ed7855f3c5055118ea3f057d0b6af3220e741b7e237cc696fb851bc2e52836` |
+| `CopyPaintBuffer` / `Core__Modules__CopyPaintBuffer.json` | 11/12/0 | 57,000 | `02d994994fbc7db5b51408b8ec2d6b44387cc1163204d3573a589a652ba53020` | `3306be57560603ee3cb3c84e7020dfd462f9760cb8472de4359c37db127e59d6` |
+| `Ninja_Advection` / `Core__Modules__Ninja_Advection.json` | 31/37/0 | 149,487 | `4d0c7e60caa38bc11fcdda8567b4a87076c2f7678adfd3f6cfbb1cd115470119` | `571ef8fefa80a4c9ecb204348c78bfe235660fc73d5f46b3166cae19555d2443` |
+| `Ninja_CompositeAndGradient` / `Core__Modules__Ninja_CompositeAndGradient.json` | 416/503/2 | 1,951,810 | `52f5e436c116fe6a3a162ffde7b4c6bbf2bc8ca03f54c4856a912adf3aca57e1` | `8fd87310d0462f60434b10ea6f806608e601ab34dd91277325d45981355c0b26` |
+| `Ninja_Divergence` / `Core__Modules__Ninja_Divergence.json` | 59/64/2 | 281,840 | `aafb4c50c07751f67dc9d9706301d49a063f96431d61e363da44e49c5649a643` | `f90afa9dfa09f9631e70ce2536be053699f95f88789fcaf85511258a95f43491` |
+| `Ninja_Painter` / `Core__Modules__Ninja_Painter.json` | 508/611/3 | 2,303,030 | `ce53ca79d2a70f4c364730bb66462a1da7e7107c6272d898d65622d3b82bd580` | `eb48a5d04ad76e088fcaf8e55b5b62da342f7ed8583b8005ac0936f2a3e8ccd6` |
+| `Ninja_Pressure` / `Core__Modules__Ninja_Pressure.json` | 80/90/2 | 376,992 | `994e9fcad955fde48f0e04f334aa67473ad34932d99397bd317d41e56df5368c` | `5044e2fa87c142c92242b1eea096c36af0f4903cee9f66faa2429adc213d7d08` |
+| `CopyGridToRenderTarget` / `Core__Modules__Output__CopyGridToRenderTarget.json` | 148/208/0 | 793,854 | `d344f61beabc7fb1ad20e0aa318fc3fe78e62295934602e75a690ea1159d3ce5` | `dae210f0e5eaeeba8255da2e3b4bde6a89ce6fec2e17321157bd3144f94921cd` |
+| `ReadCachedSimData` / `Core__Modules__ReadCachedSimData.json` | 74/106/0 | 418,393 | `cd32f2e317532f99706359808e39f3719b72060a70f0d3aa2ab33db6f2283823` | `7fba3011c6fe26ff07557d8bd915e61da3ae91c48dd95ff381ff76078bcfa6bc` |
+
+### Direct helper capture ledger
+
+| Helper / capture file | N/L/H | Bytes | response SHA-256 | source SHA-256 |
+| --- | ---: | ---: | --- | --- |
+| `EdgeMask` / `Core__Functions__EdgeMask.json` | 26/29/0 | 115,260 | `96db72486d9be000cb5f465b5bca2e497e265148e9d01a12abbe3fed9cdc10fd` | `9b15c0505ef57d06bb02640337e768d6300da26c6fb4d63b5da9c7cb45bbde1d` |
+| `InputTexture` / `Core__Functions__InputTexture.json` | 25/24/0 | 109,876 | `85a938d2b7ddc5271860876bf751605f661b77053df62249b04d5bc30049877d` | `accc75baf552c2e79a0b6df3ced5a5b3445727a14840b8350c13f11fb7c62233` |
+| `VelocityFromBrush` / `Core__Functions__VelocityFromBrush.json` | 9/10/0 | 49,233 | `3dba8bd8947e71b72ee707bbcea44163e12e1992e9561784ec5e9dce0dc0709b` | `e835c70e898e6f8777896127c72da989b96c3149853185cd69714c0191341a4c` |
+| `GetAspect` / `Core__Functions__GetAspect.json` | 7/9/0 | 38,148 | `c1e1e9c7a7fe2b047da14e890e8326397636ed621dd16a48306e5d5d4a966c98` | `07fbdfb186665eaaa3ab4ad05e1e34113f34aa81a5ce0bd18f93d70d4fa98743` |
+| `VelocityDirectionalNoise` / `Core__Functions__VelocityDirectionalNoise.json` | 34/28/3 | 134,370 | `27905972f0ec9cfed7fde2576ba94d0919d4b64cc58560a86c3ed0505563a7a9` | `e0dadb2c6e5d873b252b463df399663a934804b5bbfadcc39355a22e6f8b9baf` |
+| `VelocityAmplitudeNoise` / `Core__Functions__VelocityAmplitudeNoise.json` | 30/28/0 | 125,287 | `d8a74896525eaca651c9e34c8ef86b8fd5416330f38e1c05cb7a7d6ac86dcdbb` | `0a798cf9402bf0ba840e050c5b63d8863b57c66a8773ee7cf4c6e6c4fd8428a4` |
+| `DensityNoise` / `Core__Functions__DensityNoise.json` | 27/27/0 | 122,332 | `4648cf013d97ec35b22369bf03ca4e2ef388214be3215bbe95f91b6d8b1514fc` | `0781e4509d658d7e0107f26d8c62beb36d84e1354f277f4760c206bfe05c9fd7` |
+| `PainterSourceData` / `Core__Functions__PainterSourceData.json` | 112/155/0 | 577,372 | `88950dea666ada38bcbac93fa3e28b4745621be9f507e39ae5886c00a576b674` | `79a2eab07268a44e45bdf6c073fa65d67df96963e36b60cfe202696967132c69` |
+| `TranslucentBlend` / `Core__Functions__TranslucentBlend.json` | 17/19/0 | 79,563 | `5450386738876e59b0a8ed4a92c9616d23932ae1710c5b60a2f30527d8312a70` | `c8ec19e4efb2411f6c6bfd2e5edaa01474f5dc60e8cf8dc3aa6617381c0000cb` |
+| `BitmapDefinedDensity` / `Core__Functions__BitmapDefinedDensity.json` | 22/22/0 | 98,341 | `121d4b85a251605db5c32f61c27ddaaa62d7198c613cead1e84b8825589454b8` | `53157bb82fa17437fc6e8f7c8c84294e36de6d362dcfb2fa94bcf2033ba0e9b0` |
+
+manifest의 `response_sha256`와 on-disk wrapper JSON hash는 같은 개념이 아니다.
+재현 가능한 파일 자체의 SHA-256도 별도로 계산해 다음처럼 고정했다. 모든 경로는
+위 capture root 기준이다.
+
+| Capture file | On-disk JSON SHA-256 |
+| --- | --- |
+| `Core__Functions__AssignBuffersToRenderTargets.json` | `ce4a2aa706686366857ca09a65352b17fe0d2ee3a449f2435fcd4efedf48e289` |
+| `Core__Functions__Grid2D_SetResolution.json` | `131d706bc5ba8f70ce4b13a283c442c95d02098c158fa2a3a8a60d38af890609` |
+| `Core__Functions__NinjaInitGrids.json` | `92f58e721be3b7400fb7ed7b23c502af9d43dcc2c3ed56857e7cf006205269d5` |
+| `Core__Functions__SetRenderTargetResolution.json` | `ab73351cfbaf9e1e618c878dc78bb56f10d43af55e365eb552d14239d6ddf2c1` |
+| `Core__Modules__CopyPaintBuffer.json` | `d4c14c3f60a3b0947e69debca82968bc684e2f0be8a237140b6d48b642faf4b9` |
+| `Core__Modules__Ninja_Advection.json` | `1319d079bdd53034322528582d7ed192f0931b2ec7f9877406bff3f64d63719a` |
+| `Core__Modules__Ninja_CompositeAndGradient.json` | `4c23442af013f535900c86f2476737639ed1e14cdf81e0b164332e93533d0488` |
+| `Core__Modules__Ninja_Divergence.json` | `3102c0805e9a8717441531dd3e92456c739c5ab010b64aaf4d8952c518108b27` |
+| `Core__Modules__Ninja_Painter.json` | `9d8d249059b258945792039b970d737af7a211dad27e43df7d44e5e32dfe460d` |
+| `Core__Modules__Ninja_Pressure.json` | `f16a2e079569569797c0dc57200a512c97f2fd556ab24f24fcd190db7144a0fc` |
+| `Core__Modules__Output__CopyGridToRenderTarget.json` | `c737d96fda4045241d99d7e26993050d4c3af5424f4a9406640bbcf9838e0378` |
+| `Core__Modules__ReadCachedSimData.json` | `f30fcbff569e626e989bf52da0962633536d013c331e6b9e2474bfa1f4d43ab5` |
+| `Core__Functions__EdgeMask.json` | `f4a7f5e8f3aee613415ee16639262d125a79fe634a443437ad247427398d060a` |
+| `Core__Functions__InputTexture.json` | `5f6d9da05bc39aebfc290b7ba57044a74ddd2b6d98162f84c270b160ab2d0e41` |
+| `Core__Functions__VelocityFromBrush.json` | `8df3b0a8f67dd1b57ad878d6f4a1e47e5f9971bc0267587fb66187b274ee93e1` |
+| `Core__Functions__GetAspect.json` | `930e5460f180afd53f22ca1bd69630ec6fa7d174c37cd9e8c24baf88cdcc5907` |
+| `Core__Functions__VelocityDirectionalNoise.json` | `dc372906b621c5435c8ca66490cd99e163386942875724cd89d0c00249b81e20` |
+| `Core__Functions__VelocityAmplitudeNoise.json` | `eb43e70dcb55dd70d1ed63a9de630bf6ed643c2a198156184450bac5582abd8e` |
+| `Core__Functions__DensityNoise.json` | `bb1219c3bf1d13b144c2d4ba3ae637dced81761576124868e678adb564507f59` |
+| `Core__Functions__PainterSourceData.json` | `0bc2624afb4446afa03d11ee4f915064e3c6d8adeb1696177778fcf5a424c647` |
+| `Core__Functions__TranslucentBlend.json` | `41842fe203acb1672c6598f4a2bf5eb2f395bf5a271ee55dbc1ffd716ed324e9` |
+| `Core__Functions__BitmapDefinedDensity.json` | `019554ca785f2859cbd47e6352a96ce5a4d69e587b5cb3b11acaa16327e5d2b4` |
+
+직접 local call edge도 폐쇄집합 판정에 함께 동결했다.
+
+| Caller | Direct local calls |
+| --- | --- |
+| `Ninja_Painter` | `BitmapDefinedDensity`, `EdgeMask`, `GetAspect`, `PainterSourceData`, `TranslucentBlend` ×2 |
+| `Ninja_CompositeAndGradient` | `DensityNoise`, `EdgeMask` ×4, `GetAspect`, `InputTexture`, `VelocityAmplitudeNoise`, `VelocityDirectionalNoise`, `VelocityFromBrush` |
+| `Ninja_Pressure` | `EdgeMask` |
+| `CopyGridToRenderTarget` | `EdgeMask` ×5 |
+
+나머지 seed에는 `/Game/FluidNinjaLive/Core/Functions` direct call이 없고, 위 helper
+10개도 같은 local-function root를 추가 호출하지 않는다.
+
+## 17-stage 문맥과 core state flow
+
+상위 manifest의 configured stage 순서는 다음 책임 흐름을 고정한다. 아래 순서는
+runtime marker trace가 아니라 asset stage array 순서다.
+
+| Stage | Configured responsibility | Iteration domain / gate |
+| ---: | --- | --- |
+| 0 | `ReadCachedSimData` | `AdvectionGrid`; `EnableCacheReader` |
+| 1 | DataChannel world→unit | direct count |
+| 2~3 | two-pass point hash | direct count, `NeighborGrid2` |
+| 4~7 | SDF/GC, Landscape, RVT, Spline field capture | `FieldCaptureGrid`; source gates |
+| 8 | `Ninja_Painter` | `PainterGrid` |
+| 9 | `Ninja_CompositeAndGradient` | `CompositeGrid`; fluid-sim gate |
+| 10 | `Ninja_Advection` | `AdvectionGrid`; fluid-sim gate |
+| 11 | `Ninja_Divergence` | `PressureGrid`; fluid-sim gate |
+| 12 | `Ninja_Pressure` | `PressureGrid`; pressure iteration binding |
+| 13 | painter export, selected buffer 0 | `RT_Painter`; output gate |
+| 14 | `CopyPaintBuffer` | `RT_Painter`; copy gate |
+| 15 | composite export, selected buffer 1 | `RT_Composite`; output gate |
+| 16 | pressure export, selected buffer 2 | `RT_Pressure`; output gate |
+
+정적 dataflow를 의미 단위로 줄이면 다음과 같다.
+
+```text
+optional cache decode
+  -> Painter / FieldCapture / Composite+Wet / Advection / Pressure
+
+point and field adapters
+  -> Painter(RG velocity, B density, A field)
+  -> Composite(previous advection - pressure gradient + sources/masks)
+  -> Advection(backtrace Composite)
+  -> Divergence(preserve pressure R, replace divergence G)
+  -> Pressure(iterated separable diffusion/subtraction)
+  -> three RT codecs
+```
+
+Stage 9가 stage 12보다 앞인데 pressure gradient를 읽는 것은 previous-grid access와
+temporal feedback을 전제로 한다. 어느 physical ping-pong surface가 어느 frame의
+값인지는 standalone graph가 반환하지 않으므로 **U**다.
+
+## State schema와 namespace
+
+### Internal grid attribute contract
+
+| Grid | Static write/read shape | 의미 | 판정 |
+| --- | --- | --- | --- |
+| `PainterGrid` | Vector4 `Painter`; Vector3 `PainterTexture` branch | `Painter.RG=velocity`, `B=density`, `A=SDF/elevation/field`; `PainterTexture.RG=bitmap velocity`, `B=bitmap density` | channel 의미 O; cache Set attribute 이름은 I |
+| `FieldCaptureGrid` | float field plus broader field-reader data | cache 경로의 decoded elevation/height와 SDF/RVT/spline reader output | cache float O; 전체 schema U |
+| `CompositeGrid` | Vector3 `Composite`, float `WetMask` | `Composite.RG=velocity`, `B=density`; wet history 별도 | O/I |
+| `AdvectionGrid` | Vector3 `Advection` | transported `RG velocity + B density` | O/I |
+| `PressureGrid` | Vector2 `Pressure` | `R=pressure`, `G=divergence` | O |
+
+`StackContext.Painter`, `StackContext.PainterTexture`,
+`StackContext.Composite`, `StackContext.WetMask`,
+`StackContext.Advection`, `StackContext.Pressure` write는 직접 보인다.
+cache module의 Grid2D `Set*Value` node는 target grid와 vector shape는 보이지만
+attribute-name specifier를 JSON pin으로 반환하지 않는다. 그 경우 동일 grid의
+consumer와 later `StackContext` writer를 이용한 attribute 이름은 **Inferred**로
+남긴다.
+
+### External render-target packing
+
+`CopyGridToRenderTarget`의 authored comments와 연결된 arithmetic이 channel order를
+직접 고정한다. 이는 기존 core 문서 U-02의 static 부분을 갱신한다.
+
+| SelectedBuffer | Target | Packing | Static post-process |
+| ---: | --- | --- | --- |
+| 0 | `RT_Painter` | `R,G=velocity`, `B=painter density`, `A=SDF/elevation/height` | painter edge mask, optional density invert, B floor 0.001, height scale/offset/clamp |
+| 1 | `RT_Composite` | `R,G=velocity`, `B=fluid density`, `A=wet mask` 또는 inverted density | velocity edge mask, density contrast/invert/edge-fill, alpha floor 0.01 |
+| 2 | `RT_Pressure` | `R=pressure`, `G=divergence` | pressure-resolution scale sampling; B default 0, A authored 1 but RG16f consumer ignores BA |
+
+상위 문서 O-06에서 user RT format은 Painter/Composite `RGBA16f`, Pressure
+`RG16f`로 관찰됐다. format과 위 channel semantics를 함께 target contract로
+동결한다. 실제 runtime RT property/resize 결과는 아직 **U**다.
+
+### Parameter-map namespace responsibilities
+
+| Script | Main input namespace | Output/side effect namespace |
+| --- | --- | --- |
+| `NinjaInitGrids` | `Module.*` Grid DI, resolution/downscale | `Emitter.{Painter,Composite,Advection,Pressure,FieldCapture}Grid`; DI resize |
+| `Grid2D_SetResolution` | `Module.*` | `Emitter.Module.{NumCellsX,NumCellsY,WorldGridExtents,WorldCellSize}`; DI resize |
+| `AssignBuffersToRenderTargets` | `Emitter.*` grids/output gates, `Module.*` RTs/mode | `Emitter.RT_*`, `Emitter.RT_PressureResolutionScaleDownFactor`; RT resize |
+| `ReadCachedSimData` | `Module.*` grids/textures/scales | Grid2D attribute writes; `Local.Module.Unit` |
+| `Ninja_Painter` | `Module.*`, `Emitter.Age` | `Transient.*` source record, `StackContext.Painter`, `StackContext.PainterTexture` |
+| `Ninja_CompositeAndGradient` | `Module.*`, `Emitter.GridCellSizeInUnitSpace`, `Emitter.SimSpeedCoefficient` | `Local.Module.*`, `StackContext.Composite`, `StackContext.WetMask` |
+| `Ninja_Advection` | same emitter scale family + two grids | `StackContext.Advection` |
+| `Ninja_Divergence`, `Ninja_Pressure` | pressure controls and grids | `StackContext.Pressure` |
+| copy/export modules | grids/RTs in `Module.*`, pressure scale in `Emitter.*` | RT DI writes |
+
+## Data Interface call inventory
+
+아래는 engine/library helper를 제외하고 state access를 이해하는 데 필요한 DI call
+surface다. 이름 뒤 숫자는 동일 call의 node instance suffix일 뿐 별도 API가 아니다.
+
+| Script | Observed DI operations |
+| --- | --- |
+| `NinjaInitGrids` | Grid2D `SetNumCells` ×5 |
+| `Grid2D_SetResolution` | Grid2D `SetNumCells`, `GetNumCells`; VolumeTexture `TextureDimensions3D` |
+| `AssignBuffersToRenderTargets` | Grid2D `GetNumCells` ×4; RT2D `SetRenderTargetSize` ×3 |
+| `SetRenderTargetResolution` | Grid2D `GetNumCells`; RT2D `SetRenderTargetSize` |
+| `ReadCachedSimData` | grid execution/index conversion, texture sample mip 0 ×3, Grid2D `SetVector4/Vector3/Vector2/Float` |
+| `Ninja_Painter` | Grid2D previous get/sample, NeighborGrid count, ParticleAttributeReader counts, texture samples, unit/index conversion |
+| `PainterSourceData` | NeighborGrid neighbor lookup/index conversion; array get; Array/Chaos particle attribute reads |
+| `Ninja_CompositeAndGradient` | Grid2D previous get/sample, texture dimensions/sample, execution/unit/index conversion |
+| `Ninja_Advection` | Grid2D previous sample/get, execution→unit, unit→index |
+| `Ninja_Divergence` | Grid2D previous samples/gets, execution→unit/index |
+| `Ninja_Pressure` | Grid2D previous samples inside HLSL, execution→unit/index, SimulationStage iteration info |
+| `CopyPaintBuffer` | RT `ExecToIndex`, `LoadRenderTargetValue(mip 0)`, `SetRenderTargetValue` |
+| `CopyGridToRenderTarget` | RT `ExecToIndex/ExecToUnit/SetRenderTargetValue`; Grid2D previous get and index/unit conversion |
+
+Previous/current selection이 중요한 곳은 함수 이름 그대로 기록했다. 그러나
+Niagara가 그 call을 어느 backing buffer로 compile하는지는 runtime/compiler
+evidence가 필요하다.
+
+## Setup과 allocation semantics
+
+### `NinjaInitGrids`
+
+**O — object binding과 실행 순서**
+
+먼저 다섯 `Module.*Grid` DI를 같은 이름의 `Emitter.*Grid`에 bind한 뒤,
+parameter-map exec chain에서 다음 순서로 `SetNumCells`를 호출한다.
+
+1. Advection: `(Nx, Ny)`
+2. Composite: `(Nx, Ny)`
+3. Pressure: `(Nx, Ny)`
+4. Painter: `(Nx / PaintDownscale, Ny / PaintDownscale)`
+5. FieldCapture: `(Nx / FieldDownscale, Ny / FieldDownscale)`
+
+division 결과는 int input으로 들어간다. rounding/truncation은 UE Niagara numeric
+conversion semantics에 맡겨지며 별도 round node나 guard가 없다.
+
+standalone graph가 실제로 읽는 값은 `Module.NumCellsX/Y`이고 metadata default는
+0이다. 같은 script에 `Emitter.FluidNinja.NumCellsX/Y=64` metadata가 존재하지만
+이 graph의 resolution edge에 직접 연결되지 않는다. core instance의 256×256과
+paint 2, field 4 override는 상위 문서 O-05/O-07에서 별도로 확인됐다.
+
+**T — target contract**
+
+- 다섯 grid handle을 한 owner가 만들고 full-resolution 세 grid와 downscaled 두
+  grid의 dimensions를 명시적으로 기록한다.
+- downscale `<=0`, 결과 dimension `<1`, 비정수 division 정책을 activation 전에
+  validate한다.
+- resize/reset 시 모든 attribute surface의 clear/preserve 정책을 별도 manifest에
+  둔다. 원본의 암묵적 DI behavior를 추측하지 않는다.
+
+### `Grid2D_SetResolution`
+
+static enum branch는 다섯 mode다.
+
+| Mode | Base dimensions | Base extents |
+| --- | --- | --- |
+| Independent | supplied `(Nx,Ny)` | supplied `E=(Ex,Ey)` |
+| Max Axis | longest extent uses `NumCellsMaxAxis`; shorter axis is floor then conditional +1 | cell-aligned extent |
+| World Cell Size | each axis uses supplied scalar cell size; shorter axis is floor then conditional +1 | cell-aligned extent |
+| Other Grid | `OtherGrid.GetNumCells()` | supplied `E` |
+| VolumeTexture | texture dimensions X/Y | supplied `E`; Z ignored |
+
+Max Axis에서
+
+```text
+c = max(Ex, Ey) / NumCellsMaxAxis
+nx = floor(Ex / c)
+ny = floor(Ey / c)
+```
+
+이고, 더 짧은 축만 `abs(c*n-shortExtent)>1e-8`이면 1 증가한다.
+World Cell Size도 같은 shorter-axis conditional을 사용하되 `c`가 input이다.
+두 mode 모두 최종 `E'=(nx*c, ny*c)`를 만든다. extents가 정확히 같은데 cell로
+나누어떨어지지 않는 경우 어느 축도 “shorter”가 아니므로 두 floor가 그대로
+남는 점도 authored semantics다.
+
+branch가 고른 `(nx,ny)`에 `Resolution Mult`를 곱한 값이 실제 `SetNumCells`
+입력이다. extents는 multiplier로 다시 키우지 않는다. 출력 namespace는
+
+```text
+Emitter.Module.NumCellsX/Y      = final dimensions
+Emitter.Module.WorldGridExtents = selected/aligned extents
+Emitter.Module.WorldCellSize    = extents / final float2(dimensions)
+```
+
+이다.
+
+**U/Risk**: zero max-axis, zero/negative cell size, zero dimension, non-integral
+resolution multiplier, float→int conversion, very large texture dimension에 guard가
+없다.
+
+### `AssignBuffersToRenderTargets`
+
+**O — size and binding**
+
+- Painter output enabled: `RT_Painter = PainterGrid size`; disabled: `1×1`.
+- Velocity/density output enabled: `RT_Composite = CompositeGrid size`.
+- 위 output이 disabled지만 SimplePainter mode가 true면
+  `RT_Composite = PainterGrid size`; 둘 다 아니면 `1×1`.
+- Pressure의 scale `s`는 `PressureGrid.NumCellsX < 400`이면 1, 아니면
+  `Module.RT_PressureResolutionDownScaleFactor`다. Y는 threshold 판정에 쓰지 않는다.
+- Pressure output enabled: `RT_Pressure=(Nx/s,Ny/s)`; disabled: `1×1`.
+- 선택된 `s`는 `Emitter.RT_PressureResolutionScaleDownFactor`에 저장된다.
+- 각 module RT DI는 resize 뒤 `Emitter.RT_Painter/Composite/Pressure`에 bind된다.
+
+**T**: target allocator는 output gate와 SimplePainter fallback, X-only 400 threshold를
+fixture로 분리한다. invalid `s`를 조용히 division에 넘기지 않는다. validation을
+넣었을 때 reference invalid-input behavior와 달라질 수 있으므로 정상 domain parity와
+invalid-input safety policy를 별도 판정한다.
+
+### `SetRenderTargetResolution`
+
+`Module.Grid2D.GetNumCells(X,Y)`를 그대로
+`Module.RT_HeightBuffer.SetRenderTargetSize(X,Y)`에 전달한다. 이름은 height지만
+graph 책임은 generic Grid2D→RT size copy다.
+
+### `CopyPaintBuffer`
+
+RT_Painter iteration index `(x,y)`에서 mip 0 value를 load하고 같은 `(x,y)`에
+`RT_Composite.SetRenderTargetValue(..., Enabled=true)`한다. 산술, swizzle,
+색 변환은 없다. AssignBuffers가 SimplePainter fallback에서 Composite RT를 Painter
+크기로 만든 이유와 맞물린다. 독립 bounds check는 없다.
+
+## Cache bootstrap: `ReadCachedSimData`
+
+### Codec
+
+signed decode helper를 다음처럼 정의한다.
+
+```text
+S(x) = 2 * (x - 0.5)
+```
+
+세 texture를 동일 unit coordinate에서 mip 0 sample한다.
+
+| Cache texture | Destination | Decoded value |
+| --- | --- | --- |
+| PainterCache | PainterGrid Vector4 | `(S(R), S(G), B, S(A)/LandscapeScaleHeight)` |
+| PainterCache | FieldCaptureGrid float | `S(A)/LandscapeScaleHeight` |
+| VelocityDensityCache | CompositeGrid Vector3 | `(S(R), S(G), B)` |
+| VelocityDensityCache | CompositeGrid WetMask float | `S(A)` |
+| VelocityDensityCache | AdvectionGrid Vector3 | same decoded RGB |
+| PressureDivergenceCache | PressureGrid Vector2 | `(S(R), S(G))` |
+
+상위 문서 O-10의 `M_RenderBufferSaver`는 RG/A를 `(x+1)*0.5`, B를 identity로
+저장한다. 두 정적 수식은 codec inverse pair를 강하게 지지한다. 실제 save→load
+호출 방향과 quantization error는 runtime fixture 전까지 **I/U**다.
+
+### Execution/index mapping
+
+**O**
+
+- `Local.Module.Unit`는 `CompositeGrid.ExecutionIndexToUnit`으로 설정된다.
+- Painter write는 `PainterGrid.ExecutionIndexToUnit`, `1/PaintDownscale` multiply,
+  다시 `PainterGrid.UnitToIndex`를 거친다.
+- Field write도 `FieldCaptureGrid.ExecutionIndexToUnit`, `1/FieldDownscale`,
+  `FieldCaptureGrid.UnitToIndex`를 거친다.
+- Composite/Wet은 Composite execution index를 직접 쓴다.
+- Advection destination grid에 쓰되 index는 CompositeGrid의
+  `ExecutionIndexToGridIndex`에서 온다.
+- Pressure destination grid에 쓰되 index도 CompositeGrid execution index에서 온다.
+- `PressureBufferDownscaleFactor`는 `1/factor` divide까지 연결되지만 divide output이
+  pressure UV에 연결되지 않는다. pressure sample UV는 `Local.Module.Unit*1`이다.
+- write side-effect chain은 Painter → Field → Composite → Wet → Advection → Pressure다.
+
+Stage 0 iteration source는 상위 manifest에서 `AdvectionGrid`다. full-resolution
+Composite/Advection/Pressure가 같은 dimensions라는 정상 구성에서는 index family가
+정렬되지만, Painter/Field의 추가 reciprocal downscale와 destination grid 변환이
+의도한 좌표를 만드는지는 runtime marker가 필요하다. 이를 “정리”해서 다른 mapping으로
+바꾸면 static fidelity를 잃는다.
+
+**Risk**
+
+- zero downscale와 zero `LandscapeScaleHeight` guard가 없다.
+- cache texture size, filtering, address mode와 grid size mismatch behavior는 **U**다.
+- Pressure downscale input의 dead arithmetic은 구현에서 제거할 수 있지만,
+  parameter compatibility와 fixture 기록에는 남겨야 한다.
+
+## Painter stage: `Ninja_Painter`
+
+### Source iteration contract
+
+static `UseNeighborGrid`의 captured switch default는 1이다.
+
+- neighbor branch: 현재 PainterGrid cell을 NeighborGrid cell로 바꾸고
+  `GetParticleNeighborCount`를 iteration count로 사용한다.
+- non-neighbor branch: ArrayReader particle count + DataChannel position array length +
+  ChaosReader particle count를 합산한다.
+- grid cell당 Map For loop가 0/1/N source record를 누적한다.
+
+직접 helper `PainterSourceData`는 하나의 global source index space를 만든다.
+
+```text
+[0, arrayCount)                              -> ArrayReader
+[arrayCount, arrayCount + dataCount)         -> DataChannel arrays
+[arrayCount + dataCount, totalSourceCount)   -> ChaosReader
+```
+
+neighbor branch에서는 NeighborGrid가 돌려준 global ID를 쓰고, non-neighbor에서는
+loop index를 쓴다. helper가 parameter map에 쓰는 공통 record는 다음과 같다.
+
+```text
+Transient.Pos
+Transient.PosZ
+Transient.LastPos
+Transient.Velo
+Transient.TrackedObjectSize
+Transient.SelectivelyKillDensity
+```
+
+selective-kill code는 comment와 selector graph에서 0 none, 1 Array,
+2 DataChannel, 3 Chaos, 4 Array+Chaos, 5 all로 확인된다. DataChannel local index는
+Array count를 빼고, Chaos local index는 Array+DataChannel count를 뺀다.
+
+### Coordinate and brush construction
+
+**O**
+
+- `UnitCoords=PainterGrid.ExecutionIndexToUnit`, grid aspect는 `GetAspect`다.
+- system-local velocity 선택 branch의 selector는 literal false다. active path는
+  owner velocity에 0.0005를 곱하고 inverse `SystemRotation`으로 local 회전한다.
+- brush footprint에는 current/previous position, tracked object size, base brush size,
+  hardness, puncture/Z velocity, Z fade, age warm-up, velocity length/power/clamp,
+  density/velocity noise가 들어간다.
+- radial falloff는 captured smoothstep helper를 사용한다.
+- source가 없는 cell의 current-frame filler comment는 `(0,0,0,1)`이다.
+- previous-frame feedback branch는 `(1-InputFeedback)^3` topology를 가진다.
+
+collapsed single equation을 만들면 여러 select의 branch 조건을 숨기므로 target은
+다음 순서의 pure records로 분해한다.
+
+```text
+source record
+ -> unit-space displacement and radial footprint
+ -> density contribution and signed velocity contribution
+ -> selective-kill / puncture / Z / startup masks
+ -> per-source blend into accumulator
+ -> previous-frame blend
+ -> SDF/field merge
+ -> edge mask
+```
+
+### Blend equations
+
+Painter의 세 Custom HLSL 책임은 graph 전체를 붙여 넣지 않고 다음 수식으로
+동결할 수 있다.
+
+```text
+BlenderVelocity = Source.xy * Source.z + Dest.xy * (1 - Source.z)
+
+Additive.xyz = Source.xyz + Dest.xyz
+Additive.a   = max(Source.a, Dest.a)
+
+SmoothStepValue = smoothstep(Min, Max, Alpha)
+```
+
+pre-accumulator는
+
+```text
+SimplePainter OR !SelectivelyKillDensity OR ForceAdditiveStrokeBlending
+```
+
+일 때 additive를, 그 외에는 `TranslucentBlend`를 선택한다.
+`TranslucentBlend`의 수식은 helper 절에 있다. function graph는 BlendingPow default를
+1로 공급하지만 Painter call pin 자체는 unlinked/blank로 capture됐으므로 최종
+compiled default는 fixture에서 확인한다.
+
+post-accumulator는 fluid mode에서 previous Painter와 translucent blend,
+SimplePainter mode에서 accumulator alpha의 `0.25` power와 previous의
+`1-alpha` weight를 쓰는 explicit blend branch다. 정확한 channel별 response는
+0/1/N source fixture로 동결한다.
+
+### Output channels
+
+**O/I**
+
+- final `StackContext.Painter`는 RG velocity, B density, A field/elevation family다.
+- SDF를 velocity source로 쓸지, density source로 쓸지는 각각 독립 bool이다.
+- final A는 FieldCapture previous value와 연결된다.
+- Painter edge mask가 최종 state에 적용된다.
+- bitmap branch는 `StackContext.PainterTexture` Vector3를 만든다.
+- bitmap texture가 1×1이면 “not defined”로 취급한다.
+- 기본 bitmap mode는 RG를 `[0,1]→[-1,1]` velocity로 decode하고 R을 density source로
+  쓴다. density-only/RT mode에서는 B가 density source이며 RG velocity가 꺼진다.
+- PainterTexture B에는 0.5 계수와 `DensityTxtMult`가 적용되고 paint-removal mask가
+  곱해진다.
+
+brush의 모든 select를 한 번에 재현하려 하지 말고 source adapter, footprint,
+accumulator, temporal blend, SDF merge, bitmap branch를 각자 unit-test 가능한 target
+module로 둔다.
+
+## Composite and pressure-gradient stage
+
+### Initial locals
+
+`Ninja_CompositeAndGradient`는 먼저 다음 local 값을 만든다.
+
+```text
+VelocityFromBrush = Painter.RG * (20 * VeloFromBrushMotion)
+DensityFromBrush  = Painter.B
+UnfilteredRVTdata = FieldCapture float
+OptionalSDFdata   = 1 - selected Painter.A
+UnitCoords        = CompositeGrid.ExecutionIndexToUnit
+GridAspect        = (Nx/max(Nx,Ny), Ny/max(Nx,Ny))
+```
+
+SDF selection은 `UseSDFAsCollisionMask && EnableMeshDistaceFieldReader` family,
+RVT/spline selection은 height-field, landscape clamp, spline flags의 authored
+combination을 따른다. 이름의 `Distace` typo도 compatibility vocabulary에 보존한다.
+
+### Pressure correction
+
+`u=UnitCoords`, `delta=WorldOffsetDelta.RG`,
+`h=Emitter.GridCellSizeInUnitSpace*Emitter.SimSpeedCoefficient`로 두면 active path는
+다음이다.
+
+```text
+v_adv = PreviousAdvection.RG(u + delta)
+
+gradP.x = 0.5 * (P.r(u+delta+(h.x,0)) - P.r(u+delta-(h.x,0)))
+gradP.y = 0.5 * (P.r(u+delta+(0,h.y)) - P.r(u+delta-(0,h.y)))
+
+v_sim = v_adv - gradP
+```
+
+pressure gradient Custom HLSL의 output은 live velocity path에 도달한다.
+
+### Velocity/density composition
+
+graph comments와 live edges가 고정하는 composition 책임은 다음과 같다.
+
+```text
+velocity add 1 = preset input/field + brush + landscape/spline gradient
+velocity add 2 = v_sim + velocity add 1 + directional noise
+velocity       = component clamp(velocity add 2, -VelocityClamp, +VelocityClamp)
+velocity out   = velocity * collision/edge velocity mask
+
+density add    = input + density noise + previous advection density + brush/eraser
+density out    = density add * collision/edge density mask, then optional edge fill
+```
+
+velocity input은 `InputTexture` output을 rotate/strength 처리하고 simulation-area motion,
+world/local offset, amplitude-noise modulation을 결합한다. directional noise는
+sim-velocity magnitude로 mask할 수 있다. density는 `SimulationFeedback`, brush,
+eraser, preset input, noise, landscape peak-avoidance와 edge-fill branch를 가진다.
+
+SDF와 RVT/spline collision mask가 켜지면 velocity/density mask가 각각 결합되고,
+`WeakenCollisionMask`가 clamp minimum 역할을 한다. authored graph가 크고 branch가
+많으므로 위는 **Observed functional composition**이지 모든 select를 제거한 단일
+대수식이 아니다. target은 같은 intermediate를 노출해 differential fixture로
+branch별 값을 맞춘다.
+
+### WetMask
+
+final collision/edge-masked density를 `rho`라 두면 live graph는 다음 temporal form을
+가진다.
+
+```text
+wetPrevious = PreviousWetMask(u + delta)
+wet = WetEdgeMask(u) * (0.982 * wetPrevious + (1 - WetMapFeedback) * rho)
+```
+
+이는 export A에 쓰이는 “누적·평균 density history”라는 authored comment와
+일치한다.
+
+### Boundary anomaly
+
+pressure-gradient HLSL은 clamp false를 검사하는 부분에 비교가 아닌 대입 형태가 있고,
+네 `frac` 호출의 반환값도 UV에 다시 저장하지 않는다. 따라서 그 block이 UV를
+명시적으로 wrap한다고 해석할 수 없다. 실제 out-of-range sample은 Grid2D sampler의
+address behavior와 compiler 결과에 의존한다. clean-room 코드에서 곧바로
+“올바른 wrap”으로 고치면 parity evidence를 잃는다.
+
+## Advection stage
+
+`u=AdvectionGrid.ExecutionIndexToUnit`,
+`v=PreviousComposite.RG(u)`,
+`h=GridCellSizeInUnitSpace*SimSpeedCoefficient`로 두면 live output은 정확히 다음
+책임을 가진다.
+
+```text
+uBackRaw = u - v * h
+uBack    = SimAreaClamp ? uBackRaw : frac(uBackRaw)
+Advection = PreviousComposite.RGB(uBack) * VelocityFeedback
+```
+
+default `VelocityFeedback=0.99`다. 이는 velocity가 만든 backward characteristic을
+따르는 semi-Lagrangian transport로 해석할 수 있다(**I**). RGB 전체에 동일 feedback을
+곱하므로 density도 함께 감쇠한다(**O**).
+
+별도 exact-index previous Vector2 lookup branch가 있지만 output까지 이어지지 않는다.
+target은 dead branch를 구현하지 않는다. `SimAreaClamp=true`는 UV를 직접 clamp하지
+않고 raw UV를 sampler에 넘기며, false만 explicit `frac` wrap을 한다. interpolation과
+true branch의 address mode는 **U**다.
+
+## Divergence stage
+
+`u=AdvectionGrid.ExecutionIndexToUnit`, `h=GridCellSize*SimSpeedCoefficient`로 두면
+active Custom HLSL은 previous Advection을 네 곳에서 sample한다.
+
+```text
+D = (Vx(u+(h.x,0)) - Vx(u-(h.x,0)))
+  + (Vy(u+(0,h.y)) - Vy(u-(0,h.y)))
+```
+
+commented half factor와 달리 active output에는 `/2`가 없다.
+
+```text
+m = CrudePressureSolverEnabled
+      ? min(0.5, DivergenceMult)
+      : DivergenceMult
+
+brushTerm = 0.01 * BrushPuncture * PreviousPainter.B
+G = clamp(m * (D + brushTerm), -2, 2)
+```
+
+old pressure는
+
+```text
+oldP = PreviousPressure.R(uPressure + WorldOffsetDelta.RG)
+StackContext.Pressure = (oldP, G)
+```
+
+로 보존된다. `IsFistFrame`은 authored typo가 있는 input이지만 live output edge가
+없다. direct-index divergence Custom HLSL도 output link 0인 dead legacy branch다.
+
+gradient HLSL과 같은 assignment/unused-`frac` boundary anomaly가 있다. 따라서
+`SimAreaClamp`가 active HLSL의 UV를 바꾼다고 정적으로 주장하지 않는다.
+
+## Pressure stage
+
+### Kernel selection
+
+```text
+K  = clamp(15 * KernelMult, 5, 15)
+KI = ceil((15 - K) / 2)
+```
+
+정상 range에서 `KI=0..5`, nominal sample count는
+`[15,13,11,9,7,5]`다. Gaussian row와 divergence/custom row는 각각 6×15 static
+weight table이고 모두 대칭이다. captured row sums는 다음과 같다.
+
+| KI | Nominal samples | Gaussian sum | Custom/divergence sum |
+| ---: | ---: | ---: | ---: |
+| 0 | 15 | 0.999840 | 1.750630 |
+| 1 | 13 | 0.998560 | 1.708780 |
+| 2 | 11 | 0.999680 | 1.698024 |
+| 3 | 9 | 0.999980 | 1.427960 |
+| 4 | 7 | 0.999600 | 1.189730 |
+| 5 | 5 | 1.000000 | 0.976380 |
+
+Gaussian은 거의 normalized지만 custom kernel은 대부분 1보다 크다. 따라서 이
+stage를 normalized blur나 classical Jacobi로 부르면 안 된다.
+
+graph가 `KernelIndexOffset`에 구성한 min/max clamp는 input offset 자신을 항상
+포함하는 bounds를 만들기 때문에 결과가 다시 원래 offset이다. 즉 static algebra상
+effective clamp가 아니다. HLSL의 Gaussian row는 `KI+offset`, custom row는 `KI`를
+쓴다. valid row 범위를 target input validation/fixture로 관리해야 한다.
+
+### Separable step and output
+
+Custom HLSL은 `StepIndex=0`이면 X, 1이면 Y 방향의 separable sampling을 한다.
+weighted output을 `(wg,wc)`라 두면 step 선택은 다음이다.
+
+```text
+step = EnableOneStepPressureSolver
+         ? int(SimStepOddEven)
+         : SimulationStageIterationInfo.IterationIndex
+
+selected = bool(step) ? (wg - wc, wc) : (wg, wc)
+
+PressureOut = 0.999
+            * selected
+            * optionalPressureEdgeMask
+            * (PressureFeedback, DivergenceFeedback)
+```
+
+즉 bool(step)이 true인 separable pass만 filtered divergence를 pressure에서 뺀다.
+static evidence가 지지하는 의미는 “separable blur/diffusion + one-pass divergence
+subtraction”이며 classical four-neighbor Jacobi는 아니다.
+
+### Authored HLSL risks
+
+- loop condition은 nominal sample count를 포함하는 `<=`다. KI 1~5의 추가 끝
+  weight는 zero slot이지만 KI 0은 index 15에 접근할 가능성이 있다.
+- sample offset 산술은 단순 `Direction*ix`가 아니라 authored
+  `Direction*(ix-Direction)` 형태다. texel-size squared bias 가능성을 runtime impulse로
+  확인해야 한다.
+- clamp path는 UV를 `[Clamp-1, 2-Clamp]` 유사 범위로 제한한 뒤 `frac`한다.
+  Clamp=1에서 정확한 upper edge 1이 0으로 접힐 수 있다.
+- `StepIndex`가 0/1 외 값이면 axis lerp도 extrapolate한다.
+- 두 번째 direct-index Custom HLSL output pin은 reroute까지 한 번 연결되지만 최종
+  `StackContext.Pressure`로 도달하지 않는다. target live path에서 제외한다.
+
+이 위험은 source를 그대로 붙여 넣어 보존할 이유가 아니라, reference 결과를 먼저
+impulse fixture로 측정해야 할 이유다. 정상-input visual parity와 invalid/OOB safety를
+별도 contract로 둔다.
+
+## Export stage: `CopyGridToRenderTarget`
+
+공통으로 RT execution index/unit을 구하고 selected branch의 previous grid 값을
+`SetRenderTargetValue(Enabled=true)`에 전달한다.
+
+### SelectedBuffer 0 — Painter
+
+**O**
+
+- base는 previous Painter Vector4다.
+- SimplePainter이면 PainterTexture Vector3에 `(1,1,5)`를 곱해 base RGB에 더한다.
+- RG는 velocity다.
+- B는 painter edge mask를 적용하고, `InvertPaintbuffer`이면 inverted branch를
+  선택하며, 최종 `max(value,0.001)` floor가 있다.
+- A는 FieldCapture/height data, SDF, landscape relative/lower clamp,
+  `ScaleHeight`, `OffsetHeight`, `ClampHeightLowerValues`, edge handling을 결합한다.
+- `DisableLandscapeEdgeFade`는 cache save 시 host가 관리한다는 authored comment가
+  있다.
+- height를 RT write 전에 scale-down하고 read 시 복원한다는 comment가 있다.
+
+A의 모든 landscape/SDF select를 하나의 수식으로 축약하지 않는다. target은
+`heightSource -> relative/clamp -> scale/offset -> edge policy` intermediate를
+각각 기록한다.
+
+### SelectedBuffer 1 — Composite
+
+**O**
+
+- RG = previous Composite velocity × velocity edge mask.
+- base density = `pow(Composite.B, FluidDensityBufferContrast)`.
+- optional invert와 landscape infinite-plane edge-fill branch를 거쳐 B가 된다.
+- landscape clamp enabled이면서 `SimulationFeedback>1`일 때 white edge-fill을
+  선택할 수 있다.
+- A는 `CopyInvertedDensityToAlpha`가 true면 inverted contrasted density,
+  아니면 previous WetMask에 wet/composite edge mask를 적용한 값이다.
+- alpha에는 `max(value,0.01)` floor가 있다.
+
+### SelectedBuffer 2 — Pressure
+
+RT index를 PressureGrid unit으로 바꾸고
+`Emitter.RT_PressureResolutionScaleDownFactor`를 곱한 뒤 다시 PressureGrid index로
+변환해 previous Pressure Vector2를 읽는다. output은 `(R=pressure,G=divergence,
+B=0,A=1)` 형태다. 이 coordinate mapping은 downsampled RT pixel `i`가 full grid의
+`i*s` 근방을 읽도록 구성된 static evidence다.
+
+## Direct local helper semantics
+
+### `EdgeMask`
+
+`u=(ux,uy)`, `w=max(EdgeMaskWidth,0.001)`, `q=max(EdgeMaskPow,0.01)`로 두면
+
+```text
+inv  = 1 / w
+d    = max(abs(2*ux*inv - inv), abs(2*uy*inv - inv))
+base = saturate(inv - 0.01 - d)
+soft = pow(base, q)
+binary = !(base < 1)
+output = 1BitOutput ? float(binary) : soft
+```
+
+이다. width/pow lower guard는 있지만 UV range guard는 없다.
+
+### `GetAspect`
+
+```text
+m = max(NumCellsX, NumCellsY)
+Aspect = (NumCellsX/m, NumCellsY/m)
+```
+
+두 dimension이 모두 0인 경우 guard가 없다.
+
+### `VelocityFromBrush`
+
+PainterGrid를 supplied TexCoord에서 previous Vector4 sample하고 RG, B, A를 그대로
+분리한다.
+
+### `InputTexture`
+
+```text
+uvSample = (1 + VeloInputTile) * (TexCoord + WorldOffset)
+         + Time * VeloInputOffsetSpeed
+         + Randomize
+```
+
+texture가 1×1이면 sampled RG 대신 `(0.5,0.5)`를 쓰고, 출력은 항상
+`2*RG-1`이다. 따라서 undefined 1×1 texture의 velocity output은 `(0,0)`이다.
+
+### `VelocityDirectionalNoise`
+
+active GPU path의 3D position은
+
+```text
+Pos.xy = (64 / VeloDirNoiseSize)
+       * (WorldOffset + TextureAspect * TexCoord)
+Pos.z  = Time * VeloDirNoiseSpeed
+```
+
+이다. material vector-noise quality 1, tiling true, tile size 300, function index
+0..3 clamp를 사용하고 `NoiseOutput.xy*0.005`를 반환한다. GPU simulation이 아니면
+초기값 0이 남는다. 같은 helper의 CellNoise와 simplex Custom HLSL 두 node는 output
+link 0인 dead alternatives다. noise size zero guard가 없다.
+
+### `VelocityAmplitudeNoise`
+
+동일 이름 `VeloAmpNoiseSize` input node가 캡처에 두 번 있고 각각 base UV와
+WorldOffset scale에 연결된다. clean target interface는 한 값으로 명시적으로
+정규화하되 compatibility alias를 기록한다.
+
+```text
+uvSample = size * (Randomize + TexCoord + WorldOffset)
+         + Time * (0.1*Randomize + speed*(0.5,0.2))
+
+output = saturate(sample.R + (1 - amount))
+```
+
+### `DensityNoise`
+
+```text
+uvSample = (1 + tile) * (TextureAspect*UV + WorldOffset)
+         + Randomize
+         + Time*speed*(0.5,1)
+
+output = 1 + amount*(sample.R - 0.5)
+```
+
+output은 multiplicative density modulation 성격이다.
+
+### `BitmapDefinedDensity`
+
+```text
+uvSample = (1 + scale)*(TexCoord + WorldOffset)
+         + Time*(offsetX,offsetY)
+         + randomOffset
+```
+
+에서 texture RGBA를 mip 0 sample해 그대로 반환한다. scalar randomOffset은 vector
+add에 broadcast된다.
+
+### `TranslucentBlend`
+
+source `S`, destination `D`, exponent `p`에 대해
+
+```text
+rgb = S.rgb*S.a + D.rgb*(1 - pow(S.a,p))
+a   = max(S.a,D.a)
+```
+
+이다. helper graph default provider는 `p=1`이다.
+
+### `PainterSourceData`
+
+이 helper는 색 수식이 아니라 source adapter다. 입력은 parameter map,
+iteration/global ID, NeighborGrid3D, UnitCoords, Array/Chaos readers, 세 DataChannel
+array, selective-kill code, Array/Particle brush velocity coefficients다. 출력은
+parameter map의 여섯 `Transient.*` record다. source별 position, previous position,
+velocity/size와 selective kill을 같은 schema로 정규화하는 것이 target 책임이다.
+
+## Custom HLSL meaning and reachability audit
+
+14개 node 모두 `hlsl_truncated=false`다. 아래 표는 전체 source를 복사하지 않고
+semantic responsibility와 output reachability만 기록한다.
+
+| Owner | GUID / length | 의미 | Live output reachability |
+| --- | --- | --- | --- |
+| Grid resolution | `6A86525D…` / 510 | max-axis cell alignment | live |
+| Grid resolution | `B037FE29…` / 462 | world-cell-size alignment | live |
+| Directional noise | `8D6BCCDB…` / 281 | tiled material vector noise | live |
+| Directional noise | `2192E0ED…` / 240 | alternate cell noise | dead, output link 0 |
+| Directional noise | `A9CB2A9F…` / 84 | alternate simplex noise | dead, output link 0 |
+| Composite | `7E1C4823…` / 745 | central pressure gradient | live |
+| Composite | `F6B019A8…` / 36 | smoothstep | live |
+| Divergence | `745529AB…` / 749 | sampled central divergence | live |
+| Divergence | `B741186A…` / 531 | direct-index divergence alternative | dead, output link 0 |
+| Painter | `2B44C77B…` / 167 | density-weighted velocity blend | live |
+| Painter | `7433CA12…` / 149 | additive RGB/max-alpha blend | live |
+| Painter | `59D2890A…` / 36 | smoothstep | live, two consumers |
+| Pressure | `5A526369…` / 2,523 | sampled separable multi-kernel pass | live |
+| Pressure | `7B65ABD3…` / 2,205 | direct-index alternative | terminal reroute only; final output dead |
+
+dead HLSL을 clean-room target에 옮기지 않는다. 향후 다른 system에서 실제 call이
+발견되면 별도 responsibility로 다시 평가한다.
+
+## Numerical fixtures
+
+이 절의 expected 값은 **static algebra oracle**이다. 아직 reference runtime PASS가
+아니다. runtime fixture는 동일 UE 5.6.1, fixed seed, fixed texture/filter/address,
+frame key와 parameter snapshot을 함께 저장한다.
+
+### F-GRID-01 — resolution
+
+| Case | Input | Static expected |
+| --- | --- | --- |
+| Independent | `N=(128,64), E=(2,1), mult=1` | final `128×64`, cell `(0.015625,0.015625)` |
+| Max Axis | `E=(5,3), max=128` | `c=0.0390625`, `N=(128,77)`, aligned `E=(5,3.0078125)` |
+| World Cell | `E=(5,3), c=0.5` | `N=(10,6)`, aligned `E=(5,3)` |
+| Multiplier | prior `N=(128,64), E=(2,1), mult=2` | final `256×128`, output cell `(0.0078125,0.0078125)` |
+| Init downscale | core `256×256`, paint 2, field 4 | full grids `256²`, Painter `128²`, Field `64²` |
+
+zero/negative and non-integral cases는 expected를 임의로 정하지 않고 safety test로
+분리한다.
+
+### F-HELPER-01 — pure functions
+
+| Helper case | Static expected |
+| --- | --- |
+| `GetAspect(256,128)` | `(1,0.5)` |
+| `EdgeMask`, `w=.25,p=1,u=(.5,.5)` | `1` |
+| same, `u=(0,.5)` | `0` |
+| same, `u=(.125,.5)` | `0.99` |
+| `InputTexture`, dimensions 1×1 | `(0,0)` regardless stored pixel |
+| `DensityNoise`, sample R=.25, amount=.4 | `0.9` |
+| `VelocityAmplitudeNoise`, sample R=.2, amount=.3 | `0.9` |
+| `TranslucentBlend`, S=(1,0,0,.5), D=(0,0,1,.8), p=1 | `(.5,0,.5,.8)` |
+| Painter Blender, Source.xy=(1,0), Source.z=.25, Dest.xy=(0,1) | `(.25,.75)` |
+
+### F-CACHE-01 — signed codec
+
+`x ∈ {-1,-0.25,0,0.5,1}`에 대해 save-side
+`E(x)=0.5*x+0.5`, load-side `S(E(x))=x`를 channel별 검사한다.
+
+| x | E(x) | S(E(x)) |
+| ---: | ---: | ---: |
+| -1 | 0 | -1 |
+| -0.25 | 0.375 | -0.25 |
+| 0 | 0.5 | 0 |
+| 0.5 | 0.75 | 0.5 |
+| 1 | 1 | 1 |
+
+B density는 identity여야 한다. Painter A/Field는 추가로
+`decodedA/LandscapeScaleHeight`를 검사한다. paint/field downscale marker는 각
+quadrant에 다른 숫자를 넣어 index mapping을 식별한다.
+
+### F-ADVECT-01 — backtrace and boundary
+
+8×8 grid, `h=(0.125,0.125)`, speed coefficient 포함 결과 1,
+uniform `v=(1,0)`, current unit `(0.5625,0.5625)`이면
+`uBack=(0.4375,0.5625)`다. sampled RGB에 feedback 0.99가 곱해져야 한다.
+
+`u=(0.0625,0.5)`, 같은 v에서 raw backtrace X는 `-0.0625`다.
+
+- `SimAreaClamp=false`: explicit `frac` 결과 X=`0.9375`.
+- `SimAreaClamp=true`: raw `-0.0625`가 sampler에 전달된다. clamp 결과를 static
+  expected로 쓰지 않고 sampler address fixture로 측정한다.
+
+### F-DIV-01 — stencil scale
+
+8×8 interior에서 `h=(1/8,1/8)`, `V(u)=(u.x,u.y)`이면 두 중앙 차가 각각
+0.25이므로 `D=0.5`다. `/2`가 없음을 검증한다.
+
+- `DivergenceMult=1`, crude off, brush 0 → G=0.5.
+- `V=(u.x,-u.y)` → D=0.
+- V=0, Painter.B=1, BrushPuncture=.5, mult=1 → G=0.005.
+- 첫 case에서 crude on → multiplier `min(.5,1)=.5`, G=0.25.
+
+edge/corner는 clamp flag별 네 neighbor marker를 저장해 anomalous HLSL과 sampler
+behavior를 분리한다.
+
+### F-PRESSURE-01 — constant and impulse kernels
+
+edge mask off, feedback `(1,1)`, offset 0, constant field에서 KI 1~5의 추가 loop
+sample은 zero weight slot이므로 static sum oracle을 쓸 수 있다.
+
+| KI | P=1,D=0 pass output P | P=0,D=1, subtracting pass output `(P,D)` |
+| ---: | ---: | --- |
+| 1 | 0.997561 | `(-1.707071, 1.707071)` |
+| 2 | 0.998680 | `(-1.696326, 1.696326)` |
+| 3 | 0.998980 | `(-1.426532, 1.426532)` |
+| 4 | 0.998600 | `(-1.188540, 1.188540)` |
+| 5 | 0.999000 | `(-0.975404, 0.975404)` |
+
+KI 0은 nominal sums를 기록하되 inclusive loop의 row-end OOB 가능성 때문에 static
+PASS oracle로 사용하지 않는다. 중앙 impulse, left/right impulse, upper-edge impulse를
+StepIndex 0/1, Clamp 0/1, iteration 1/2로 캡처해 actual weights와 offset bias를
+동결한다.
+
+### F-PAINT-01 — source and blending
+
+0/1/N source를 Array, DataChannel, Chaos 각각과 mixed global index로 실행한다.
+
+- source record의 current/previous/velocity/size와 selective-kill 0..5.
+- NeighborGrid on/off에서 동일 source set의 footprint centroid와 integral.
+- stationary/moving, positive/negative puncture, hard/soft, Z fade, startup age.
+- additive와 translucent, fluid와 SimplePainter temporal branch.
+- bitmap undefined 1×1, red-density default, RGB velocity/blue-density mode.
+
+각 intermediate `sourceContribution`, `accumulator`, `previousBlend`, `SDFMerge`,
+`edgeOutput`을 별도 RT/debug buffer로 기록해야 branch 오차를 찾을 수 있다.
+
+### F-EXPORT-01 — packing and copy
+
+- `CopyPaintBuffer` 2×2에 서로 다른 RGBA marker를 넣고 exact identity를 확인한다.
+- Painter velocity-X/Y-only, density-only, field-A-only marker로 RGBA packing과
+  B floor 0.001을 확인한다.
+- Composite velocity, density, wet marker로 RG/B/A와 contrast/invert/alpha-copy를
+  한 flag씩 sweep한다.
+- Pressure `(P,D)=(0.25,-0.5)` marker가 RT RG에 같은 sign으로 나오는지 확인한다.
+- pressure resolution scale 1/2/4에서 sampled full-grid index를 ramp texture로
+  확인한다.
+- output gate off의 1×1 allocation과 SimplePainter Composite fallback size를 함께
+  기록한다.
+
+## Clean-room target contracts
+
+target Niagara asset은 source graph node layout이나 HLSL text를 복제하지 않고 다음
+semantic interface를 소유한다.
+
+| Contract | Required inputs | Observable outputs |
+| --- | --- | --- |
+| Grid domain | resolution mode, extents, cell size, multiplier, downscales | five grid dimensions, extents, unit cell |
+| RT allocator | grid dimensions, output gates, SimplePainter, pressure downscale | RT sizes, three bound handles, pressure scale |
+| Cache decoder | three textures, scales/downscales, grid handles | six restored state attributes + mapping trace |
+| Painter source adapter | Array/DataChannel/Chaos/Neighbor inputs | normalized source record and source kind/index |
+| Painter accumulator | source records, brush controls, previous Painter/Field | Painter Vector4, PainterTexture Vector3, intermediates |
+| Composite | previous state, field/brush/input/noise/mask controls | Composite Vector3, Wet float, intermediate masks |
+| Advection | previous Composite, cell/speed, feedback, boundary mode | Advection Vector3 and sampled UV trace |
+| Divergence | previous Advection/Painter/Pressure, controls | Pressure Vector2 `(oldP,newD)` |
+| Pressure iteration | previous Pressure, kernels, step/edge/feedback | next Pressure Vector2 and iteration trace |
+| Export codec | selected state, flags, RT, pressure scale | exact RT packing and dimensions |
+| Parity recorder | fixture ID, parameter/frame/stage state | readbacks, checksums, finite stats, screenshots, timing |
+
+finished target asset에는 `/Game/FluidNinjaLive`, `/Script/UnrealMCP`,
+`/UnrealMCP` runtime reference가 없어야 한다. authoring 도구로 만든 Niagara/Blueprint는
+UnrealMCP plugin disabled/absent에서도 load, compile, cook, package, run해야 한다.
+
+## Recommended implementation order
+
+1. 이 문서의 schemas, status labels, numerical fixture IDs를 target manifest로 먼저
+   고정한다.
+2. pure helper부터 새로 만든다: EdgeMask, GetAspect, texture UV/codec, noise wrapper,
+   blend functions. F-HELPER를 통과시킨다.
+3. grid-domain owner와 RT allocator를 만들고 F-GRID 및 disabled/1×1 cases를
+   검증한다.
+4. cache decoder를 독립 stage로 만들고 channel codec과 index trace를 검증한다.
+5. source adapter와 Painter를 0/1/N source 순으로 구현한다. neighbor optimization은
+   brute-force semantic path가 맞은 뒤 추가한다.
+6. Composite를 pressure correction, input/brush/field addition, density, collision masks,
+   WetMask의 작은 책임으로 나눈다.
+7. Advection을 구현하고 interior/backtrace/boundary fixture를 고정한다.
+8. Divergence를 구현하고 stencil scale, brush puncture, crude branch를 고정한다.
+9. Pressure를 KI 1~5 safe fixture부터 구현한다. KI 0/OOB와 clamp edge는 reference
+   runtime 측정 뒤 compatibility 또는 safe policy를 선택한다.
+10. CopyPaintBuffer와 세 export codec을 만들고 per-channel marker를 고정한다.
+11. 상위 문서의 17-stage configured order/gate/iteration manifest에 target 책임을
+    연결한다.
+12. runtime marker, RT readback, deterministic repeats, dependency audit, cook/package를
+    모두 통과한 뒤에만 parity 판정을 내린다.
+
+현재 static evidence는 project runtime C++ 필요성을 만들지 않는다. C++가 나중에
+필요하더라도 별도 approval gate를 거쳐야 하고 UnrealMCP authoring/runtime dependency를
+추가하면 안 된다.
+
+## Unresolved risks and required runtime evidence
+
+| ID | Risk / unknown | Required evidence |
+| --- | --- | --- |
+| NCM-U01 | 20/22 standalone compile status가 `NCS_Unknown` | target/reference compile diagnostics; live stage status와 분리 |
+| NCM-U02 | Grid2D previous/current physical surface와 frame visibility | per-stage unique marker, pressure odd/even N iteration trace |
+| NCM-U03 | SamplePrevious interpolation/filter/address semantics | sub-texel impulse와 clamp/wrap edge sweep |
+| NCM-U04 | gradient/divergence assignment + unused-frac authored anomaly | edge/corner runtime readback; compiler-generated behavior |
+| NCM-U05 | pressure inclusive loop, KI 0 OOB, unusual sample offset | GPU validation/debug layer, constant and impulse response |
+| NCM-U06 | `KernelIndexOffset` out-of-range behavior | offset negative/positive guarded sweep |
+| NCM-U07 | cache Painter/Field reciprocal-downscale coordinate intent | quadrant/ramp cache marker at multiple resolutions |
+| NCM-U08 | cache pressure downscale dead branch와 mismatched grid dimensions | scale 1/2/4 runtime bootstrap, dimensions intentionally unequal case |
+| NCM-U09 | zero/negative division, nonintegral resolution multiplier | invalid-input safety suite; 정상 parity와 별도 판정 |
+| NCM-U10 | Painter의 full radial/select branch와 call-site blend default | intermediate buffer probe, 0/1/N source differential |
+| NCM-U11 | large Composite collision/edge/peak branch의 exact runtime response | one-flag-at-a-time source/mask fixture |
+| NCM-U12 | export previous-grid alias와 RT resize timing | actual dispatch markers, RT object property/frame identity |
+| NCM-U13 | material save/load 전체 방향과 precision | save→load round trip, signed markers, error histogram |
+| NCM-U14 | nondeterminism envelope와 visual threshold | repeated fixed-seed reference runs before threshold freeze |
+
+## Static conclusion
+
+22개 standalone capture는 core solver의 clean-room 책임을 구현하기에 충분한 정적
+수식과 channel contract를 제공한다. 특히 다음은 이제 static Observed다.
+
+- 다섯 Grid2D의 size 관계와 세 RT allocator branch.
+- Painter/Composite/Advection/Pressure state channel family.
+- cache signed decode와 material-side encode의 inverse 관계.
+- semi-Lagrangian backtrace, central divergence, pressure-gradient subtraction.
+- pressure stage가 normalized Jacobi가 아니라 separable dual-kernel response라는 점.
+- Painter/Composite/Pressure RT의 channel packing.
+- local helper UV, noise, edge, blend 공식과 dead HLSL alternatives.
+
+그러나 source runtime을 실행한 결과가 없으므로 이 문서는 **runtime parity PASS가
+아니다**. NCM-U01~U14와 F-GRID/HELPER/CACHE/ADVECT/DIV/PRESSURE/PAINT/EXPORT를
+reference와 target에서 같은 조건으로 통과한 뒤에만 “원본과 같다”고 판정한다.

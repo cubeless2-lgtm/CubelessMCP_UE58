@@ -1,0 +1,205 @@
+{
+  "schema": "cubeless_mcp_free_editor_fixture_v1",
+  "success": false,
+  "stage": "cold_map_load",
+  "process_id": 34156,
+  "started_ns": 1791621244185988400,
+  "script_sha256": "3caab36cd7b309a072fd8aea74327683ad55bd5bb5a59703fb8c66bdfccf000f",
+  "changes": [
+    {
+      "kind": "load_level_in_editor",
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+      "attempted": true
+    }
+  ],
+  "compile": {},
+  "save": {
+    "requested": false,
+    "attempted": false
+  },
+  "automatic_retry": false,
+  "atomic_rollback": false,
+  "validation": {
+    "packaging": "not_run",
+    "shipping_execution": "not_run",
+    "runtime_marker": "not_run",
+    "tracked_disk_bytes_unchanged": true
+  },
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\CubelessRuntimeProof.uproject",
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "project_descriptor_sha256": "410c8597f4826d26c1036a2b7ac8ef722aea5d59961665bd74ca5afa08bb381b",
+  "plugins_before": {
+    "names": [
+      "ContentBrowserFileDataSource",
+      "EditorScriptingUtilities",
+      "PythonScriptPlugin"
+    ],
+    "forbidden_enabled": [],
+    "passed": true
+  },
+  "fixture_report": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+  "fixture_report_sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a",
+  "run_id": "ShippingProofB20261010",
+  "asset_files": {
+    "save_game": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_MarkerData.uasset",
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+      "sha256_before": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+      "expected_author_sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+      "sha256_after": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+      "disk_bytes_unchanged": true
+    },
+    "actor": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_RuntimeProof.uasset",
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+      "sha256_before": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+      "expected_author_sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+      "sha256_after": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+      "disk_bytes_unchanged": true
+    },
+    "map": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+      "sha256_before": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+      "expected_author_sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+      "sha256_after": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+      "disk_bytes_unchanged": true
+    },
+    "pipeline": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\Run_e46446c2ea9449a5b889e7558eae6dde\\BP_MutationContract.uasset",
+      "package": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+      "sha256_before": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "expected_author_sha256": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "sha256_after": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "disk_bytes_unchanged": true
+    }
+  },
+  "engine_source_sha256": {
+    "Source/Runtime/Engine/Public/PluginBlueprintLibrary.h": "ecc5c13681921ccdca6a6288b6b4f6e7f8f633d077b0ecf6524bea385b17912c",
+    "Source/Runtime/AssetRegistry/Public/AssetRegistry/IAssetRegistry.h": "3ea171eaf6a071caf8e1a93393fbab4b3a643224cff70ce87628cb3841885e08",
+    "Source/Runtime/AssetRegistry/Private/AssetRegistry.cpp": "0200285704dd44d2a43e4143d9cb78c5918c9a8f5381bc8dc946aca1534aeafe",
+    "Source/Editor/BlueprintEditorLibrary/Private/BlueprintEditorLibrary.cpp": "1518b86ff04790cf2b629e3c08c82be9f637afec11b8923ad498c3d18cd22273"
+  },
+  "dependency_audit": {
+    "scope": "AssetRegistry disk package references and currently available management references",
+    "root_packages": [
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+      "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+      "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract"
+    ],
+    "max_packages": 2048,
+    "max_depth": 64,
+    "max_edges": 16384,
+    "packages": [
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "depth": 0,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_MarkerData.uasset",
+        "sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+        "registry_asset_count": 2
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "depth": 0,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\BP_RuntimeProof.uasset",
+        "sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+        "registry_asset_count": 2
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "depth": 0,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\RuntimeProof\\ShippingProofB20261010\\Map_RuntimeProof.umap",
+        "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+        "registry_asset_count": 1
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+        "depth": 0,
+        "file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\Run_e46446c2ea9449a5b889e7558eae6dde\\BP_MutationContract.uasset",
+        "sha256": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+        "registry_asset_count": 2
+      }
+    ],
+    "edges": [
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "category": "hard_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "category": "soft_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Script/NavigationSystem",
+        "category": "hard_package"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+        "category": "hard_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "category": "hard_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Script/NavigationSystem",
+        "category": "hard_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+        "category": "soft_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "category": "soft_management"
+      },
+      {
+        "from": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "to": "/Script/NavigationSystem",
+        "category": "soft_management"
+      }
+    ],
+    "native_script_terminals": [
+      "/Script/NavigationSystem"
+    ],
+    "forbidden_references": [],
+    "query_none_observations": [],
+    "complete": true,
+    "limitations": [
+      "Native /Script packages are terminals; native module binary dependencies are not traversed.",
+      "Searchable-name references and dynamic string-based loads are outside this audit.",
+      "AssetManager management rules are not generated or refreshed; management queries describe only the current registry.",
+      "Editor-only package references are included. This is not a cooked package or Shipping executable audit.",
+      "None from a category query can mean no registry entry/dependencies; these observations are retained."
+    ],
+    "visited_count": 5,
+    "passed_within_declared_scope": true
+  },
+  "error": "'NoneType' object has no attribute 'load_level'",
+  "traceback": "Traceback (most recent call last):\n  File \"C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/tools/verification/validate_fixture_without_mcp.py\", line 198, in main\n    require(unreal.get_editor_subsystem(unreal.LevelEditorSubsystem).load_level(assets[\"map\"]), \"Map could not load without MCP\")\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'NoneType' object has no attribute 'load_level'\n",
+  "finished_ns": 1791621244229504100
+}

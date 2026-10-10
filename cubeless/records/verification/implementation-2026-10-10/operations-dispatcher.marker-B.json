@@ -1,0 +1,306 @@
+{
+  "schema": "cubeless_verification_dispatch_report_v1",
+  "run_id": "5ac153900ba844019e99977112a93c63",
+  "started_ns": 1791622207357914900,
+  "status": "passed_limited_scope",
+  "exit_code": 0,
+  "plan": {
+    "schema": "cubeless_verification_dispatch_plan_v1",
+    "profile": "runtime-marker-evidence",
+    "profile_kind": "current_limited_scope",
+    "project_root": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3",
+    "legacy_manifest_source": {
+      "script_id": "script:Python/scripts/analysis/run_verification.py",
+      "path": "Python/scripts/analysis/run_verification.py",
+      "sha256": "2568476fee409ea43f774035bf673f2a513d6de39cca3f7fc4d254783c3549c9",
+      "static_evidence_ref": "rows[id=script:Python/scripts/analysis/run_verification.py]"
+    },
+    "legacy_gate_count": 42,
+    "legacy_profile_count": 9,
+    "fail_fast": true,
+    "automatic_retries": 0,
+    "engine_launch": false,
+    "asset_mutation": false,
+    "full_migration_complete": false,
+    "gate_count": 1,
+    "gates": [
+      {
+        "key": "runtime_marker_audit",
+        "kind": "subprocess",
+        "mapping_status": "current_scope_only",
+        "argv": [
+          "C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "-B",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_runtime_marker.py",
+          "verify",
+          "--fixture-report",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+          "--baseline",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-marker-baseline-B.json",
+          "--launch-report",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-launch-B.json",
+          "--output",
+          "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children\\runtime_marker_audit.json"
+        ],
+        "required_inputs": [
+          {
+            "option": "verifier",
+            "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_runtime_marker.py",
+            "type": "file"
+          },
+          {
+            "option": "--fixture-report",
+            "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+            "type": "file"
+          },
+          {
+            "option": "--baseline",
+            "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-marker-baseline-B.json",
+            "type": "file"
+          },
+          {
+            "option": "--launch-report",
+            "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-launch-B.json",
+            "type": "file"
+          }
+        ],
+        "missing_inputs": [],
+        "cwd": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3",
+        "result_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children\\runtime_marker_audit.json",
+        "scope": "Fresh SaveGame header, fixture/baseline/executable hashes and supplied launch evidence; no plugin exclusion proof",
+        "expected_schema": "cubeless_runtime_marker_verification_v1",
+        "expected_boolean": "success"
+      }
+    ],
+    "report_path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B.json",
+    "child_directory": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children"
+  },
+  "full_migration_complete": false,
+  "legacy_gates_closed": [],
+  "packaging_independence_proven": false,
+  "engine_launched": false,
+  "mutations_performed": false,
+  "automatic_retries": 0,
+  "dispatcher_sha256": "85f01dde810f83140666251ec0fbe33c0bfbab0acdc80374c416c2b9745d9ba1",
+  "python_executable": "C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+  "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "gates": [
+    {
+      "key": "runtime_marker_audit",
+      "status": "passed",
+      "started_ns": 1791622207361524200,
+      "scope": "Fresh SaveGame header, fixture/baseline/executable hashes and supplied launch evidence; no plugin exclusion proof",
+      "inputs_before": [
+        {
+          "option": "verifier",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_runtime_marker.py",
+          "type": "file",
+          "sha256": "cb564df11de832b8fbd701405bed03d9b23bfb8730ccc20b545c9d392746ddd4"
+        },
+        {
+          "option": "--fixture-report",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+          "type": "file",
+          "sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a"
+        },
+        {
+          "option": "--baseline",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-marker-baseline-B.json",
+          "type": "file",
+          "sha256": "07060e7dfe0b27e088d45cff95307990d4e0ceeebadd756982f2404a581bbc87"
+        },
+        {
+          "option": "--launch-report",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-launch-B.json",
+          "type": "file",
+          "sha256": "236b59bc934bca36b1908967de2aebe0b097908bcb02ce03f95794bfe8ff12c9"
+        }
+      ],
+      "argv": [
+        "C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "-B",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_runtime_marker.py",
+        "verify",
+        "--fixture-report",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+        "--baseline",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-marker-baseline-B.json",
+        "--launch-report",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-launch-B.json",
+        "--output",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children\\runtime_marker_audit.json"
+      ],
+      "cwd": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3",
+      "stdout": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children\\runtime_marker_audit.stdout.txt",
+      "stderr": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children\\runtime_marker_audit.stderr.txt",
+      "child_exit_code": 0,
+      "stdout_sha256": "d69633beaeeddaa2cf031dbf150a46e11e44cd4c81a8efc5e7a82f2eec03d843",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "independent_result": {
+        "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-dispatcher.marker-B-children\\runtime_marker_audit.json",
+        "sha256": "d69633beaeeddaa2cf031dbf150a46e11e44cd4c81a8efc5e7a82f2eec03d843",
+        "result": {
+          "schema": "cubeless_runtime_marker_verification_v1",
+          "success": true,
+          "checks": [
+            {
+              "name": "baseline_schema",
+              "passed": true,
+              "reason": "Require a successful pre-launch marker baseline"
+            },
+            {
+              "name": "fixture_author_passed",
+              "passed": true,
+              "reason": "Require successful fixture authoring"
+            },
+            {
+              "name": "fixture_fingerprint",
+              "passed": true,
+              "reason": "Fixture report must match the pre-launch fingerprint"
+            },
+            {
+              "name": "verifier_fingerprint",
+              "passed": true,
+              "reason": "Verifier must match the pre-launch version"
+            },
+            {
+              "name": "marker_absent_before_launch",
+              "passed": true,
+              "reason": "Marker must be absent in the baseline"
+            },
+            {
+              "name": "run_id",
+              "passed": true,
+              "reason": "Runtime and fixture run IDs must agree"
+            },
+            {
+              "name": "executable_identity",
+              "passed": true,
+              "reason": "Launch must identify the baseline executable"
+            },
+            {
+              "name": "executable_fingerprint",
+              "passed": true,
+              "reason": "Packaged executable bytes must match the launch and baseline"
+            },
+            {
+              "name": "process_evidence",
+              "passed": true,
+              "reason": "Require a positive PID and an observed launch/end after the baseline"
+            },
+            {
+              "name": "normal_exit",
+              "passed": true,
+              "reason": "Packaged runtime must exit successfully"
+            },
+            {
+              "name": "isolated_runtime_directory",
+              "passed": true,
+              "reason": "Launch must use exactly the baseline -UserDir"
+            },
+            {
+              "name": "marker_identity",
+              "passed": true,
+              "reason": "The exact expected marker must exist after launch"
+            },
+            {
+              "name": "marker_time",
+              "passed": true,
+              "reason": "Marker mtime must be inside the observed runtime window (stated tolerance)"
+            },
+            {
+              "name": "marker_size",
+              "passed": true,
+              "reason": "Marker must be a bounded, nonempty SaveGame"
+            },
+            {
+              "name": "exact_save_game_class",
+              "passed": true,
+              "reason": "Parsed header class must equal the authored run-specific SaveGame class"
+            }
+          ],
+          "scope": "fresh packaged-game Blueprint BeginPlay SaveGame marker",
+          "complete_game_functionality": "not_verified",
+          "plugin_exclusion": "requires_separate_package_receipt_and_staged_file_audit",
+          "verifier_sha256": "cb564df11de832b8fbd701405bed03d9b23bfb8730ccc20b545c9d392746ddd4",
+          "timestamp_tolerance_ns": 2000000000,
+          "header": {
+            "file_version": 3,
+            "package_file_ue4": 522,
+            "package_file_ue5": 1018,
+            "engine_version": "5.8.3",
+            "changelist": 58210709,
+            "engine_branch": "++UE5+Release-5.8",
+            "custom_version_count": 63,
+            "save_game_class": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData.BP_MarkerData_C",
+            "header_bytes": 1409,
+            "payload_bytes": 14,
+            "payload_deserialization": "not_performed"
+          },
+          "marker": {
+            "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\ShippingRuntimeUser-B\\Saved\\SaveGames\\Cubeless_ShippingProofB20261010.sav",
+            "size": 1423,
+            "mtime_ns": 1791622151809365500,
+            "sha256": "0ef2c1cd07e343d5f33ee78f34dd9728ad711d61f92d3186066908d3e761d7b6"
+          },
+          "runtime_process": {
+            "schema": "cubeless_runtime_launch_v1",
+            "success": true,
+            "baseline": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-marker-baseline-B.json",
+            "baseline_sha256": "07060e7dfe0b27e088d45cff95307990d4e0ceeebadd756982f2404a581bbc87",
+            "executable": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\RuntimeShipping-20261010-B\\Windows\\CubelessRuntimeProof\\Binaries\\Win64\\CubelessRuntimeProof-Win64-Shipping.exe",
+            "executable_sha256": "05ec611a069b0aefda870b5a55b648e73d14ab9c01538f50ccf077cea24634e9",
+            "arguments": [
+              "-nullrhi",
+              "-unattended",
+              "-NoSplash",
+              "-NoSound",
+              "-UserDir=C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\ShippingRuntimeUser-B"
+            ],
+            "automatic_retry": false,
+            "stage": "exited",
+            "exit_code": 0,
+            "launcher_sha256": "6e3c0836a8f215211b4bf51cbc22ddd7170c23db60cab308792a2fb895baa0ad",
+            "console_log": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-launch-B.console.log",
+            "started_ns": 1791622151246532700,
+            "pid": 38384,
+            "ended_ns": 1791622152926863600
+          },
+          "verified_ns": 1791622207546132000
+        }
+      },
+      "inputs_after": [
+        {
+          "option": "verifier",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\validate_runtime_marker.py",
+          "type": "file",
+          "sha256": "cb564df11de832b8fbd701405bed03d9b23bfb8730ccc20b545c9d392746ddd4"
+        },
+        {
+          "option": "--fixture-report",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-fixture-B.json",
+          "type": "file",
+          "sha256": "a0a60c983c6cd292ae2a0838a0a02d294d12f695acfca5f5fea4a841a9d06c2a"
+        },
+        {
+          "option": "--baseline",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-marker-baseline-B.json",
+          "type": "file",
+          "sha256": "07060e7dfe0b27e088d45cff95307990d4e0ceeebadd756982f2404a581bbc87"
+        },
+        {
+          "option": "--launch-report",
+          "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\runtime-launch-B.json",
+          "type": "file",
+          "sha256": "236b59bc934bca36b1908967de2aebe0b097908bcb02ce03f95794bfe8ff12c9"
+        }
+      ],
+      "exit_code": 0,
+      "ended_ns": 1791622207562995000,
+      "elapsed_seconds": 0.2014708
+    }
+  ],
+  "first_failed_gate": null,
+  "ended_ns": 1791622207562995000,
+  "elapsed_seconds": 0.2050801
+}

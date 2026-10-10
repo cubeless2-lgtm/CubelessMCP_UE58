@@ -1,0 +1,265 @@
+# MCP RPC Phase 1 실무형 카나리 완료 보고서
+
+## 최종 판정
+
+- **전체 결합 판정: GO**
+- 실무형 live gate: PASS
+- Legacy rollback: PASS
+- Phase 0 안전 계약 및 오프라인 회귀: PASS
+- Unreal Engine 5.6.1 `MCPGameProjectEditor Win64 Development` 빌드: PASS
+- 성공 실행 ID: `20260823T143254499412Z`
+- 실행 기준 커밋: `39cdd5befde834b4bb2f4259a76498d592d69404`
+- 격리 linked worktree, 소유 포트 `55670`, Unreal Engine `5.6.1`
+
+오케스트레이터 단독 결과의 `recommendation`은
+`CONDITIONAL_GO_OFFLINE_AND_BUILD_GATES_MUST_BE_COMBINED`이다. 이 보고서는 같은
+HEAD에서 Phase 0 전체 오프라인 게이트와 UE 5.6.1 빌드까지 결합해 최종 `GO`로
+판정한다. 단, 각 구성당 관측은 한 번이므로 통계적 성능 개선이나 release/torture
+완료를 주장하지 않는다.
+
+결합 gate 증거:
+
+| 범위 | 결과 | 증거 | SHA-256 |
+| --- | --- | --- | --- |
+| L→E→R live practical | `PASS`, 3,273,529 bytes | `MCPGameProject/Saved/MCP/TransportVerification/phase1-practical/20260823T143254499412Z/report.json` | `3D90BB14DF6E0FA0320F95CC780EB303D4FDD4242B430986DD6987E2C1FF6EB8` |
+| Phase 0 offline | 30개 gate command 모두 exit `0`, `status=PASS` | `MCPGameProject/Saved/MCP/TransportVerification/phase1-practical-completion/39cdd5be/phase0-offline-gates-pass.log` | `CA8418DFCB5063121BA5E18BDD5F1A1D8E47CB36504BEBA1CD2CF424FB4ACAD8` |
+| UE 5.6.1 build | `MCPGameProjectEditor Win64 Development`, exit `0`, `Result: Succeeded` | `MCPGameProject/Saved/MCP/TransportVerification/phase1-practical-completion/39cdd5be/ue-5.6.1-build.log` | `3EFE877DEBA356B6280D65DD13AE1404C233A8DEE6C52EABF3E01B5BB48057C2` |
+
+세 증거 모두 `39cdd5befde834b4bb2f4259a76498d592d69404`를 기준으로
+2026-08-23 UTC에 생성됐다. offline 로그에는 py_compile/import/F821, 403개 등록·정책·검색
+계약, mutation/timeout/event-wake/telemetry 정적 계약, bridge/loopback, practical runner와
+orchestrator, Niagara 17개 offline gate, response schema 109개 shape, 프로젝트 C++ 승인
+경계가 포함된다.
+
+## 실행 구성과 lifecycle
+
+| 구성 | scheduler | 카나리/프로브 | 결과 | cleanup | Editor 종료 | plugin runnable stop |
+| --- | --- | --- | --- | --- | ---: | ---: |
+| Legacy `L` | `legacy_poll` | PCG, Niagara, Blueprint, AnimBP | PASS | 11회, 전부 검증 | 2.454 s | 0.084 s |
+| event-wake `E` | `event_wake` | PCG, Niagara, Blueprint, AnimBP | PASS | 11회, 전부 검증 | 3.750 s | 0.212 s |
+| rollback `R` | `legacy_poll` | ping, read-only level smoke, temp-root absence | PASS | mutation cleanup 없음 | 3.157 s | 0.087 s |
+
+세 구성은 동일 포트 `55670`을 순서대로 재사용했다. 각 Editor는 return code `0`,
+정상 `LogExit`, PID 소멸, 포트 해제, 강제 kill 없음으로 종료됐다. plugin stop은 모두
+2초 gate 이내였고 Editor 종료는 30초 hard gate 이내였다.
+
+## 카나리별 결과
+
+### PCG
+
+- 생성 경로:
+  - `.../<L|E>/PCG/PCG_Practical_<L|E>`
+  - 소유 preview map의 transient `PCGVolume`
+- 사용 도구:
+  - `pcg/create_pcg_graph_from_spec`
+  - `pcg/audit_pcg_graph_contract`
+  - `pcg/list_pcg_graph_nodes`
+  - `pcg/refresh_pcg_components`
+  - `pcg/inspect_pcg_component_outputs`
+  - `python/execute_unreal_python`
+  - `editor/delete_actor`
+- 검증:
+  - authored node 4개, edge 4개
+  - 기본 Input/Output node 2개와 authored settings class 정확 일치
+  - Engine Cube dependency 및 MCP-only dependency 없음
+  - 실제 생성 point 9개, generated output/resource 존재
+- cleanup:
+  - Actor 삭제 후 부재 확인
+  - Graph asset 및 정확한 config directory 삭제
+  - L/E 모두 `cleanup_verified=true`
+
+### Niagara
+
+- 생성 경로:
+  - `.../<L|E>/Niagara/NS_Practical_<L|E>`
+  - 소유 preview map의 transient Niagara Actor/Component
+- 사용 도구:
+  - `niagara/create_basic_sprite_niagara_system`
+  - `niagara/inspect_niagara_renderers`
+  - `niagara/upsert_niagara_user_parameters`
+  - `niagara/inspect_niagara_user_parameters`
+  - `niagara/add_niagara_scratch_pad_assignment_module_to_stack`
+  - `niagara/inspect_niagara_compile_status`
+  - `niagara/inspect_niagara_graph`
+  - `niagara/inspect_niagara_stack`
+  - `editor/inspect_niagara_component_parameter_store`
+  - `python/execute_unreal_python`
+  - `editor/delete_actor`
+- 검증:
+  - Sprite renderer 존재
+  - `User.CanaryScalar` 기본값 `1.25`
+  - component override `2.5`를 native parameter store에서 독립 readback
+  - `Particles.SpriteSize` assignment가 emitter 0 `ParticleUpdateScript`에 연결
+  - 컴파일 timeout 없음, compilable script 4개 `NCS_UpToDate`, error 0
+  - non-compilable emitter lifecycle script 2개만 허용된 `NCS_Unknown`
+  - MCP-only dependency 없음
+- cleanup:
+  - Actor 삭제 및 asset/directory 부재 확인
+  - L/E 모두 `cleanup_verified=true`
+
+### Blueprint
+
+- 생성 경로:
+  - `.../<L|E>/Blueprint/BP_Practical_<L|E>`
+  - 소유 preview map의 transient Blueprint Actor
+- 사용 도구:
+  - `blueprint/create_blueprint`
+  - `blueprint/add_component_to_blueprint`
+  - `blueprint/set_static_mesh_properties`
+  - `blueprint/set_component_property`
+  - `blueprint/get_component_property`
+  - `blueprint/list_blueprint_components`
+  - `blueprint_node/add_blueprint_variable`
+  - `blueprint_node/inspect_blueprint_variables`
+  - `blueprint_node/resolve_blueprint_graph`
+  - `blueprint_node/add_blueprint_variable_get_node`
+  - `blueprint_node/add_blueprint_get_self_component_reference`
+  - `blueprint_node/list_blueprint_nodes`
+  - `blueprint_node/add_blueprint_call_function_node`
+  - `blueprint_node/connect_blueprint_graph_pins`
+  - `blueprint_node/inspect_blueprint_graph_call_topology`
+  - `blueprint/compile_and_validate_blueprint`
+  - `python/execute_unreal_python`
+  - `editor/delete_actor`
+- 검증:
+  - `SceneRoot`, Cube `Mesh`, `PointLight` exact component topology
+  - template `Intensity=2500` setter/getter exact readback
+  - `bLightEnabled` 및 `LightIntensity` instance-editable 변수와 raw flags 검증
+  - Construction Script의 `SetVisibility`/`SetIntensity`와 6개 link 검증
+  - transient Actor를 exact loaded object path로 재식별
+  - instance 값 `false`/`777`, component visible `false`, intensity `777`
+  - compile error 0, MCP-only dependency 없음
+- cleanup:
+  - Actor native delete postcondition 확인
+  - Blueprint asset/directory 부재 확인
+  - L/E 모두 `cleanup_verified=true`
+
+### Animation Blueprint
+
+- 생성 경로:
+  - `.../<L|E>/AnimationBlueprint/ABP_Base`
+  - `.../<L|E>/AnimationBlueprint/ABP_Locomotion`
+  - `.../<L|E>/AnimationBlueprint/BP_AnimHost`
+- 읽기 전용 source:
+  - `/Engine/Tutorial/SubEditors/TutorialAssets/Character/TutorialTPP`
+  - `TutorialTPP_Skeleton`, `Tutorial_Idle`, `Tutorial_Walk_Fwd`
+- 사용 도구:
+  - `skeletal/list_skeleton_bones`
+  - `blueprint_node/inspect_animation_asset_metadata_guarded`
+  - `blueprint_node/create_anim_blueprint_sample`
+  - `blueprint_node/ensure_anim_state_machine_sample_variant`
+  - `blueprint_node/ensure_anim_bp_event_graph_locomotion_driver`
+  - `blueprint_node/inspect_blueprint_variables`
+  - `blueprint_node/inspect_anim_state_machine_transitions`
+  - `blueprint_node/inspect_anim_graph_protected_topology`
+  - `blueprint_node/inspect_anim_instance_runtime_state`
+  - `blueprint/create_blueprint`
+  - `blueprint/add_component_to_blueprint`
+  - `blueprint/set_skeletal_mesh_component_anim_defaults`
+  - `blueprint/compile_and_validate_blueprint`
+  - `python/execute_unreal_python`
+  - `editor/delete_actor`
+- 검증:
+  - `Idle`/`Move` 2상태와 `Speed > 10`/`<= 10` transition
+  - `Speed` float, `bIsInAir` bool 변수 및 EventGraph driver
+  - `MCP_Locomotion` state machine에서 Output Pose로 exact pose link
+  - host component와 runtime AnimInstance의 exact generated AnimClass
+  - source asset/package dirty before/after 모두 false
+  - compile error 0, MCP-only dependency 없음
+- cleanup:
+  - host Actor 삭제
+  - host/locomotion/base asset 역의존 순서 삭제 및 부재 확인
+  - L/E 모두 `cleanup_verified=true`
+
+## Legacy/event-wake 원시 시간 비교
+
+| 카나리 | Legacy | event-wake | E/L | 변화 |
+| --- | ---: | ---: | ---: | ---: |
+| PCG | 3.708 s | 2.091 s | 0.564 | -43.6% |
+| Niagara | 6.830 s | 4.866 s | 0.712 | -28.8% |
+| Blueprint | 12.988 s | 7.474 s | 0.575 | -42.5% |
+| Animation Blueprint | 13.020 s | 7.941 s | 0.610 | -39.0% |
+
+모든 카나리에서 `E/L < 1.15`이므로 15% regression hold는 발생하지 않았다. 네
+관측 모두 event-wake가 빨랐지만 구성당 1회 raw observation이므로 통계적 개선을
+주장하지 않는다.
+
+## 병목과 실무 영향
+
+카나리별 native telemetry 원자료는 다음과 같다. 단위는 ms이며 괄호는 L 대비 E의
+변화율이다.
+
+| 카나리 | queue L→E | execute L→E | response L→E |
+| --- | ---: | ---: | ---: |
+| PCG | 39.500→29.387 (-25.6%) | 373.639→644.318 (+72.4%) | 73.564→2.364 (-96.8%) |
+| Niagara | 60.303→42.136 (-30.1%) | 2,049.243→2,421.127 (+18.1%) | 97.497→4.953 (-94.9%) |
+| Blueprint | 156.182→100.267 (-35.8%) | 1,220.775→757.128 (-38.0%) | 274.165→5.740 (-97.9%) |
+| AnimBP | 107.351→133.901 (+24.7%) | 2,983.758→2,149.640 (-28.0%) | 151.545→6.806 (-95.5%) |
+
+- Legacy의 response 단계 합계는 PCG/Niagara/Blueprint/AnimBP에서 각각
+  `73.6/97.5/274.2/151.5 ms`였고 event-wake에서는
+  `2.4/5.0/5.7/6.8 ms`였다. 다수 MCP 호출을 연결하는 Blueprint/AnimBP 작업에서
+  고정 idle wake 비용이 누적될 수 있다는 기존 관측과 일치한다.
+- 이번 단일 E 관측에서는 transport response보다 실제 handler 실행이 total 시간의 더
+  큰 비중을 차지했다. 특히 Niagara compile/graph mutation과 AnimBP authoring/compile의
+  execute 시간이 컸다.
+- PCG와 Niagara는 event-wake run의 domain execute 시간이 오히려 더 길었지만 전체
+  workflow 시간은 줄었다. 한 번의 관측으로 compile/cache 변동과 scheduler 효과를
+  분리할 수 없으므로 handler 자체 최적화 주장은 보류한다.
+- 이번 관측 범위에서는 Blueprint 34개, AnimBP 24개 tool step을 연결하는 카나리의
+  response 대기 감소가 Editor 상호작용 대기감 완화 가능성을 시사한다. 반복 표본 전에는
+  이를 일반화하거나 인과적 개선으로 주장하지 않는다.
+
+## 안전·정합성 결과
+
+L/E/R 전체에서 다음 값은 모두 0이다.
+
+- request loss
+- duplicate response
+- response misroute
+- timeout
+- canonical unknown mutation
+- crash / fatal / assert / ensure
+- 새 crash artifact
+
+L/E는 각각 cleanup request 11회가 모두 검증됐고 temp asset/actor는 0이다. 성공
+run의 registry root와 disk root가 모두 사라졌으며 authoring manifest before/after hash가
+같다. R은 legacy scheduler 복귀, bridge ping, read-only level smoke, 동일 포트 재사용,
+run root 부재를 모두 확인했다.
+
+이전 UNKNOWN/known-FAIL/crash run의 보존 에셋과 crash manifest는 성공 run의
+before/after manifest에서 unchanged로 확인됐고, 별도 sibling artifact root도 남아 있다.
+이번 성공 run의 고유 asset/disk root 잔존물만 0이다.
+
+## 실행 중 발견하고 폐쇄한 주요 blocker
+
+- Asset Registry dependency `None`을 빈 목록으로 오인하던 false-GO
+- PCG native `list_pcg_graph_nodes` 응답의 존재하지 않는 `node_count` 가정
+- transient Actor 배치 시 owned preview map dirty를 실패로 보던 false-NO-GO
+- public tool domain kwarg와 registry wrapper 인자 이름 충돌
+- Niagara user parameter short display-name, compile-status, component getter API 오가정
+- Blueprint numeric/enum property storage pointer 오용으로 발생한 실제 memory corruption
+- Blueprint exposed-variable flag와 sparse node response schema 불일치
+- UE 5.6 `GetAllLevelActors`의 transient filter 및 Python root getter 오가정
+
+모든 변경은 기존 도구 계약 또는 UnrealMCP authoring bridge/runner 내부에 한정했다.
+생성된 최종 콘텐츠에 UnrealMCP runtime dependency를 추가하지 않았다.
+
+## 연기한 release/torture 검증
+
+- 100회 Editor restart
+- 64개 incomplete socket
+- 4 MiB unread/slow reader
+- 전체 구성 3회 반복
+- 장시간 soak 및 극단적 saturation
+
+위 항목은 release/nightly 단계로 연기한다. 기존 deterministic loopback,
+fragmentation, large-response, timeout/unknown, registration/schema 회귀는 Phase 0
+오프라인 게이트로 계속 유지한다.
+
+## 결론
+
+Phase 1은 요청된 **실무형 PCG·Niagara·Blueprint·Animation Blueprint 카나리 기준으로
+완료**됐다. event-wake는 이 범위에서 regression 없이 legacy rollback까지 증명됐으므로
+Phase 1 practical acceptance는 `GO`다. release/torture와 통계적 성능 주장은 별도
+후속 범위다.

@@ -1,0 +1,20 @@
+# Reactive Surface Grass/Ground Trail Repair Report
+
+- Date: `2026-07-11`
+- Verdict: `PASS`
+- Scope: Grass/Ground only. Water solver and Water assets were not mutated.
+
+| Check | Result |
+| --- | --- |
+| Temp Grass world-stable trail | PASS |
+| Temp Ground world-stable footprint | PASS |
+| Production Grass PIE | PASS |
+| Production Ground PIE | PASS |
+| Water regression | BLOCKED |
+
+## Fix
+
+- Connected every runtime Grass/Ground Persistence setter to the Controller variables instead of the implicit `0.0` defaults.
+- Added a Grass `AdvectGrid` reproject route matching the validated Ground V4c sign contract.
+- Controller now computes `(previous_origin - current_origin) / window_size` once per frame for each channel and pushes it through the channel-specific DeltaControls array.
+- Defaults: Grass Persistence `0.985`, Ground Persistence `0.995`.

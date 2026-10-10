@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unreal Material Decomposition"
+  short_description: "Material analysis and rebuild gates"
+  default_prompt: "Use $unreal-material-decomposition to analyze and rebuild an Unreal material safely."

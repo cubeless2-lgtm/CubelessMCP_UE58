@@ -1,0 +1,51 @@
+# 구름 그림자 샘플 2차 최적화 — 2026-09-14
+
+**Shadow View Sample Count Scale을 2 → 1로 변경해 저장했습니다.** 현재 1214×748 에디터 시점에서 구름 GPU 중앙값은 **39.09ms → 23.93ms**, 약 **38.8% 감소**했습니다. 큰 구름의 실루엣과 명암은 유지하며, 배치·크기·원본·개별 밀도와 기존 광학 값은 변경하지 않았습니다.
+
+## GPU 비교
+
+같은 일반 에디터 뷰포트, 같은 카메라·FOV 100, Mode 0·View 4·최대 384 샘플을 유지했습니다. 비교 중 그림자 배율만 바꿨습니다. UE 5.6.1의 기본 그림자 ray 샘플은 10개이며, 현재 상한 80 아래에서 배율 2와 1은 각각 최대 20·10개로 계산됩니다. 근거는 엔진 `VolumetricCloudComponent.h`의 `BaseShadowRaySampleCount`와 `VolumetricCloudRendering.cpp`의 `ShadowSampleCountMax` 계산입니다.
+
+| 항목 | Shadow 2 | Shadow 1 |
+| --- | ---: | ---: |
+| 구름 GPU 중앙값 | 39.0868ms | **23.9341ms** |
+| 구름 GPU p95 | 40.1006ms | **24.6212ms** |
+| 그래픽스 GPU 이벤트 합 중앙값 | 40.1758ms | 24.9591ms |
+| 엔진 `GPUTime` 중앙값 | 40.2323ms | 24.9917ms |
+| 유효 구름 샘플 수 | 95 | 96 |
+
+GPU CSV 수집 중에는 스크린샷을 요청하지 않았습니다. 장면 렌더링이 없는 tick과 최초 3개 구름 샘플을 제외했습니다. 이벤트 합은 그래픽스 큐의 exclusive busy+wait이며, 엔진 GPUTime은 별도의 보고 지연과 에디터 UI 프레임이 포함될 수 있습니다. **위 수치는 에디터 측정이며 실제 게임 해상도·게임 FPS를 뜻하지 않습니다.**
+
+[Shadow 2 측정](Shadow2_Editor_gpu.json), [Shadow 1 측정](Shadow1_Editor_gpu.json), [Shadow 2 CSV](Profiles/Shadow2_Editor.csv), [Shadow 1 CSV](Profiles/Shadow1_Editor.csv)
+
+## 명암과 이동 검수
+
+| Shadow 2 | Shadow 1 |
+| --- | --- |
+| ![기준](Images/Shadow2_Hero.png) | ![선택](Images/Shadow1_Hero.png) |
+
+대표 구름의 큰 덩어리와 하부 명암 차이가 작아 Shadow 1을 선택했습니다. 그림자 샘플 감소에 따른 미세 변화는 있으며, 얇은 구름의 기존 점상 무늬는 남아 있습니다. 이 변경은 그 무늬를 제거하는 작업은 아닙니다.
+
+[사용자 시점](Images/Shadow1_Editor.png), [하부 시점](Images/Shadow1_Lower.png), [단계별 카메라 이동](Shadow1_motion.json)
+
+좌우 2°를 0.5°씩 이동한 9개 시점, 원래 구도 복원과 정지 이미지 3장을 확인했습니다. 촬영 구간에서 큰 형태의 소실은 보이지 않았습니다. 연속 영상이나 빠른 카메라 이동의 잔상이 없다는 최종 판정은 아닙니다.
+
+## 실제 플레이 측정 — 대기
+
+게임의 저장 해상도는 **1920×1200**, 별도 PIE 창 기본값은 **1280×720**이었습니다. 이번 측정을 위해 새 PIE 창 크기를 1920×1200으로 준비하고 사용자에게 `Play ▼ → New Editor Window (PIE)` 실행을 요청했습니다. 플레이 시작·종료는 기존 작업 원칙에 따라 사용자가 수행합니다.
+
+아직 실제 게임 뷰포트 크기·GPUTime·이동 잔상을 측정한 결과는 없습니다. 플레이 실행 후 실제 viewport 크기를 확인하고, 같은 정지 카메라에서 Shadow 2와 1을 비교할 예정입니다. 준비한 측정은 PIE의 네이티브 컴포넌트 배율만 잠시 변경하고 원래 값으로 복원하며, 에디터 배치나 저장 파일을 수정하지 않습니다.
+
+## 저장과 검증
+
+- [배치 보존](preservation.json): 70개 액터의 Transform 변화 0, 부모·개별 Density·EdgeCut·아이콘 유지. [28개 SourceVolume 보존](source_preservation.json).
+- [최종 값](Final_values.json), [저장 결과](saved.json): Study 03 맵만 저장했습니다. 마스터 머티리얼·MIC·DefaultEngine.ini는 시작 파일과 동일합니다. GameMode·PlayerStart 유지.
+- [의존성 감사](dependency_audit.json): MCP·Python 도구 의존성 0. 기존 UE 네이티브 컴포넌트 속성만 변경했으며 C++를 추가하지 않았습니다.
+- **전체 오프라인 42/42 통과**: 같은 저장소의 분리된 후보에서 6,947개 입력의 전후 변경 0개. [결과](Verification/summary.json), [로그](Verification/full.log), [입력 해시](Verification/inputs.json), [현재 구현 10개 파일 동등성](Verification/final_equivalence.json). 다른 작업의 미완료 변경은 제외했습니다. 대기 중인 PIE 측정의 실행 결과를 대신하는 검사는 아닙니다.
+- **UnrealMCP 비활성 재로드 통과**: 별도 UE 5.6.1 NullRHI 프로세스에서 28개 슬롯 초기화, Shadow 1과 기존 아트·품질 값을 확인했습니다. [결과](cold_result.json), [로그](Verification/cold.log).
+- **DX12/SM6 지정 맵 cook 통과**: 115개 패키지, 오류 0개, 기존 Lumen 우선순위 경고 2개. 머티리얼 fallback과 UnrealMCP 로드 없음. [결과](cook_result.json), [로그](Verification/cook_sm6.log). 실행 파일 패키징·DX11/SM5 호환은 별도 범위입니다.
+- [측정 종료 상태](runtime_ready.json): 에디터 카메라와 백그라운드 CPU 제한 복원, GPU CSV 종료. 사용자 PIE 실행을 기다리며 새 창 1920×1200을 준비한 상태입니다. 과거 창 크기는 [1280×720](play_window_before.json)입니다.
+
+백업: `MCPGameProject/Saved/CubelessClouds/ShadowPass_20260914/Before_*`. [비교 스크립트](../../../scripts/optimize_cloud_shadows_ue.py).
+
+기록은 이 MD와 연결된 이미지·측정 파일에 남깁니다. Obsidian 미러·Polar UV·베이크·비행 기능은 추가하지 않았습니다.

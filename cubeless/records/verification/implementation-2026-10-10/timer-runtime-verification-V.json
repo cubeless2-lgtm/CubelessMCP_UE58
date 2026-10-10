@@ -1,0 +1,25 @@
+{
+  "schema": "cubeless_timer_runtime_reconciliation_v1",
+  "status": "pass",
+  "checks": {
+    "runtime_report_pass": true,
+    "launched_pid_matches": true,
+    "project_matches": true,
+    "three_accumulations_verified": true,
+    "cdo_and_dirty_preserved": true,
+    "no_mcp_or_toolset_plugins": true,
+    "source_bytes_mtime_preserved": true,
+    "copy_bytes_preserved": true,
+    "no_explicit_compile_save": true
+  },
+  "runtime_report": "timer-runtime-V.json",
+  "author_report": "blueprint-component-timer-V.json",
+  "launch_report": "editor-launch-timer-runtime-V.json",
+  "copy_report": "timer-runtime-copy-V.json",
+  "elapsed_seconds": 0.054618,
+  "scope": "Three direct pure timer calls on a freshly constructed ownerless ActorComponent, no-MCP editor. Separate external author pipeline and editor-internal execution proof.",
+  "packaging_verified": false,
+  "shipping_execution": "not_run",
+  "caller_gate_verified": false,
+  "press_release_reset": "not_run"
+}

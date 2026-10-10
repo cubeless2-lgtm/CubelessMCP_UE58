@@ -1,0 +1,148 @@
+{
+  "schema": "cubeless_current_runtime_fixture_v1",
+  "success": false,
+  "stage": "source_readback",
+  "process_id": 56148,
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\CubelessCurrentRuntimeProof.uproject",
+  "manifest": {
+    "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\operations-current-runtime-manifest-A.json",
+    "sha256": "5050a15d3e6a27708130b5435d3d4cb9891109c2a1f1dbb404fba80a582f28f1"
+  },
+  "started_ns": 1791628381703879600,
+  "changes": [],
+  "save": {
+    "clone_calls": 0,
+    "map_calls": 0
+  },
+  "compile": [],
+  "shader_completion_verified": false,
+  "automatic_retry": false,
+  "atomic_rollback": false,
+  "runtime_marker_created": false,
+  "packaging": "not_run",
+  "configuration": {
+    "project_sha256": "df44c9063edb57169cd33c4a3404ed88779323c65b2bca03f2d374b49fb6ef4f",
+    "default_engine_sha256": "55f824e063d32bf0fb5ec820ebafb3de338f030c240403e65b5a3f7d7df3549f"
+  },
+  "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+  "plugins_before": {
+    "names": [
+      "ContentBrowserFileDataSource",
+      "EditorScriptingUtilities",
+      "PythonScriptPlugin"
+    ],
+    "forbidden_enabled": [],
+    "passed": true
+  },
+  "dirty_before": [],
+  "engine_api_sources": {
+    "Source/Editor/UnrealEd/Public/FileHelpers.h": "e94e824796d608def25021b339a3796438379f80d0885ac96607b549b38c964b",
+    "Source/Editor/UnrealEd/Public/Subsystems/EditorAssetSubsystem.h": "dd312842f330126160d5398fe6c0b565ac1abd9c70cf85fa14b53517c3131f56",
+    "Source/Editor/UnrealEd/Public/Subsystems/EditorActorSubsystem.h": "3d5b1c76f7061444cdcedccb4a756cbdc2f25f18785fe536538ab2797c41a7f0",
+    "Source/Editor/MaterialEditor/Public/MaterialEditingLibrary.h": "5201a2be4ed754246bca79d115626dd3b59471989366f87cd7110a206047375f",
+    "Source/Runtime/Engine/Public/Materials/MaterialExpressionCustom.h": "31db809a8bb1a9090eb509dbc80f229ae15bd716692592d564ec3d42dde45069"
+  },
+  "error": "Blueprint: Failed to find property 'parent_class' for attribute 'parent_class' on 'Blueprint'",
+  "traceback": "Traceback (most recent call last):\n  File \"C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/tools/verification/create_current_runtime_fixture.py\", line 152, in main\n    stage(\"source_readback\"); report[\"source_readback\"] = validate_source_assets(manifest, assets)\n                                                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/tools/verification/create_current_runtime_fixture.py\", line 107, in validate_source_assets\n    require(isinstance(blueprint, unreal.Blueprint) and path(blueprint.generated_class()) == row[\"class_path\"] and path(field(blueprint, \"parent_class\")) == \"/Script/Engine.Actor\", \"Runtime Blueprint generated class/parent differs\")\n                                                                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/tools/verification/create_current_runtime_fixture.py\", line 21, in field\n    def field(value, key): return value.get_editor_property(key)\n                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nException: Blueprint: Failed to find property 'parent_class' for attribute 'parent_class' on 'Blueprint'\n",
+  "preservation": {
+    "files": [
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      },
+      {
+        "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract",
+        "source_unchanged": true,
+        "copy_unchanged": true
+      }
+    ],
+    "passed": true
+  },
+  "finished_ns": 1791628382004432600
+}

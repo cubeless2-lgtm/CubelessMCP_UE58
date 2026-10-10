@@ -1,0 +1,16 @@
+# Reference Flat Planes v30
+
+Status: unapproved concept for user review. Built-in image generation. Not imported into Unreal; approved EdgeColor_v29 remains unchanged. This is shading/layout artwork, not an independent opacity mask or packed engine texture.
+
+Reference: user-provided cloud style screenshot, codex-clipboard-9a3ac92f-1470-4382-a4b1-665fd36d1866.png. Layout reference: Rejected/RadialDetail_v13/Concept_Original.png.
+
+## Generation prompt
+
+Use case: stylized-concept.
+Create a square grayscale polar UV cloud artwork for a game sky, on pure black empty sky. Image 1 is the PRIMARY CLOUD PAINTING STYLE reference only: extract its calm hand-painted animation background clouds, broad flat connected light and shadow planes, restrained natural details, soft interior tonal transitions, rounded irregular silhouettes. Ignore all text, logos, house, characters, landscape and colors. Image 2 is a POLAR LAYOUT GUIDE ONLY, NOT a rendering style reference. Keep its general large left-to-bottom crescent bank, separate upper-right bank, wide empty center and irregular elongated distant perimeter banks. Radically simplify its over-detailed cauliflower rendering to the planar painted cloud language of image 1.
+Crucial polar geometry: center is zenith and light radiates FROM CENTER OUTWARD. ALL crowns face center. Upper-right bank has clear bright crown on SOUTHWEST edge and subdued fading underside on NORTHEAST edge. At 12 o'clock crowns face DOWN. At bottom crowns face UP. Left crowns face RIGHT. Right crowns face LEFT. No global top-lit orientation.
+Broad pale gray-to-white light surfaces, quiet medium gray shade masses, subtle little density variation only. Brightness fills surfaces, never thin white rim outlines. No honeycomb, repeated brush stamps, distorted streaks, scalloped embossed contour lines or doubled edges. Inward crowns mostly crisp with small gentle unevenness and low serration depth. Hero outward undersides retain several broad unequal forms before fading into black, not a uniform blurry shelf. Distant outer clouds are long thick irregular groups, with readable lower forms and narrower fade, not equally spaced little fragments. Calm asymmetrical layout, ample sky holes. Keep every cloud inside canvas with black margin. Output ONLY one clean square grayscale cloud atlas concept, no labels, diagrams, text, watermarks, borders, stars, sun or moon. This is a shading/layout concept, not an alpha mask.
+
+## Review notes
+
+Center-facing crowns and broad central opening retained. Grayscale planar painting variant. Interior repeated small shapes and outward brush-like ends remain visible; these are review points, not approved final coverage. Separate aligned opacity production follows layout approval.

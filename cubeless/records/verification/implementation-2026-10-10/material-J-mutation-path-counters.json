@@ -1,0 +1,70 @@
+{
+  "status": "pass",
+  "source_sha256": "615e5e2e27c3e0d7e9cf072a09fb82d15cee69808291790c9d6b12dc7147757f",
+  "checks": [
+    {
+      "stage": "cubeless_add",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    },
+    {
+      "stage": "cubeless_set",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    },
+    {
+      "stage": "connect_A",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    },
+    {
+      "stage": "connect_B",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    },
+    {
+      "stage": "connect_property",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    },
+    {
+      "stage": "layout",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    },
+    {
+      "stage": "delete",
+      "counts": {
+        "capture_state_calls": 2,
+        "execute_dispatch_calls": 1,
+        "graph_summary_capture_calls": 2
+      },
+      "read_data_source": "execute"
+    }
+  ],
+  "scope": "J mutation calls retain Execute and two independent captures; no read-payload reuse"
+}

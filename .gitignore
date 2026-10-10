@@ -1,0 +1,24 @@
+# This repository distributes the editor extension and its operating material.
+# The existing host game's content and configuration are not distribution files.
+/*
+!/.gitignore
+!/.gitattributes
+!/AGENTS.md
+!/README.md
+!/Plugins/
+!/cubeless/
+/Plugins/*
+!/Plugins/CubelessMCP_UE58/
+
+**/Binaries/
+**/Intermediate/
+**/DerivedDataCache/
+**/Saved/
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/.vs/
+/cubeless/workspaces/
+/cubeless/build/
+**/*.pdb
+**/*.obj

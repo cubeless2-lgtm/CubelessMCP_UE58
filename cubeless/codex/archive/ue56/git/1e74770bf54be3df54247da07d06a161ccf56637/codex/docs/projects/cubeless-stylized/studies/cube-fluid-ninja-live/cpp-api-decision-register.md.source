@@ -1,0 +1,91 @@
+# CubeFluidNinjaLive C++ And API Decision Register
+
+## 현재 승인 상태
+
+프로젝트 C++ 승인: `not approved`.
+
+현재 대화에는 유효한 형식의 `c++1218` 또는
+`프로젝트 C++ 승인 c++1218`이 없다. 따라서 다음 경로는 수정하지 않는다.
+
+- `MCPGameProject/Source/**`
+- 비-UnrealMCP 프로젝트 플러그인의 C++와 build metadata
+
+`MCPGameProject/Plugins/UnrealMCP/**`는 프로젝트 C++ 토큰 예외지만, 새
+helper가 편리하다는 이유로 바로 수정하지 않는다. 정확한 기능 공백이
+증명되고 최종 결과가 UnrealMCP에 의존하지 않을 때만 좁게 변경할 수 있다.
+
+## 결정 절차
+
+1. 현재 Blueprint, Unreal Python, editor scripting, UnrealMCP tool 조합을
+   열거한다.
+2. 기존 조합으로 최소 재현을 실행한다.
+3. 실패한 API, property, lifecycle 또는 readback 지점을 정확히 기록한다.
+4. UE 5.6.1 header/source와 공식 API에서 지원 경로를 확인한다.
+5. 비-C++ 재시도를 최소 1회 수행한다.
+6. 공백이 남을 때만 editor/tooling 범위의 최소 UnrealMCP helper를 설계한다.
+7. UE 5.6 build, tool registration/schema, focused offline gate, live smoke를
+   통과한다.
+8. 생성 asset의 Blueprint/Material/Niagara/package에서 UnrealMCP 참조가
+   0건임을 검사한다.
+
+## 결정 상태
+
+| 값 | 의미 |
+| --- | --- |
+| `candidate` | 도구 공백 가능성을 조사 중 |
+| `not-needed` | 기존 도구 조합으로 해결 |
+| `approved-unrealmcp-helper` | 증명된 공백에 좁은 plugin helper를 선택 |
+| `blocked-project-cpp` | 프로젝트 C++이 필요하지만 유효 승인 없음 |
+| `complete` | helper와 독립성 검증까지 완료 |
+
+## 현재 register
+
+| ID | 요구 기능 | 기존 경로 | 공백 증거 | 결정 | 구현 | 상태 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `CFNL-CPP-000` | reference Asset Registry inventory | 기존 read-only inventory 경로 | 공백 없음; 1,796개와 59개 캡처 성공 | C++ 불필요 | 없음 | `not-needed` |
+| `CFNL-CPP-001` | Blueprint/SCS/K2 심층 저작 | 기존 Blueprint/node 도구부터 사용 | 아직 최소 재현 없음 | 미정 | 없음 | `pending` |
+| `CFNL-CPP-002` | Niagara module/Scratch Pad/stage 새 저작 | 기존 UnrealMCP Niagara editor-authoring 도구 | 빈 target-owned Scratch Pad + Grid2D simulation-stage ghost를 v001~v003으로 최소 재현 | project C++ 불필요; 기존 editor helper 조합 채택 | `build_cube_fluid_ninja_core_ghost.py`, promotion/readback scripts | `foundation_complete` |
+| `CFNL-CPP-003` | runtime RT/Data Channel/Grid readback | 기존 inspect/sample 도구부터 사용 | 아직 최소 재현 없음 | 미정 | 없음 | `pending` |
+| `CFNL-CPP-004` | deep dependency와 serialized reference 감사 | Asset Registry root/promotion audit + isolated plugin-disabled load | 현재 Study 173개, Grid probe와 localized art closure 검증 성공 | C++ 추가 불필요 | 기존 audit와 `verify_unreal_asset_plugin_independence.py` | `complete for current assets` |
+| `CFNL-CPP-005` | project runtime helper | 프로젝트 C++ 금지 | 유효 승인 없음 | 사용하지 않음 | 없음 | `blocked-project-cpp` only if later proven necessary; currently `pending` |
+| `CFNL-CPP-006` | map 전환 뒤 59개 actor/component/default/override 안전 캡처 | native open/status 뒤 Unreal Python UObject walk | 첫 post-transition walk가 `python311`/`PythonScriptPlugin` callstack으로 editor crash | `approved-unrealmcp-helper` | `inspect_editor_level_manifest`, actor/component revision paging | `complete`; 59/59, actor 7,276, truncation/error/dirty 0 |
+| `CFNL-CPP-007` | 963개 Material/Function/Instance의 revision-bound graph·override 전수 캡처 | 기존 summary/list 도구 | paging, explicit override, Custom HLSL 전체성과 dirty contract가 한 응답 계약에 없었음 | `approved-unrealmcp-helper` | `inspect_material_asset` | `complete`; 963/963, error 0 |
+| `CFNL-CPP-008` | allowlisted support asset의 bounded class-specific 읽기 | generic Python reflection | map 전환 crash 경로를 bulk reference walk에 재사용하지 않으며 class별 truncation/dirty 계약 필요 | `approved-unrealmcp-helper` | `inspect_reference_asset_mcp` | `complete for captured support classes` |
+| `CFNL-CPP-009` | art-only package의 exact dependency-remapped localization | export/import와 generic duplicate | VolumeTexture backing Texture closure와 source-reference readback을 fail-closed로 보장할 전용 계약 필요 | `approved-unrealmcp-helper` | `localize_art_assets_mcp` | `complete for 172-asset texture closure` |
+| `CFNL-CPP-010` | standalone NiagaraScript 내부 graph/version/metadata/Custom HLSL 읽기 | System inspector는 call site만 제공하고 embedded Scratch Pad inspector는 standalone asset을 거부 | 92개 standalone module 내부 수식을 source mutation 없이 얻을 전용 bounded surface 부재 | `approved-unrealmcp-helper` | `inspect_niagara_script_asset` in `UnrealMCPNiagaraCommands_Part9.cpp` | `build/schema/live complete`; 92-asset bulk capture in progress |
+| `CFNL-CPP-011` | Blueprint generated class와 CDO의 parent/default 읽기 | Unreal Python reflection | `NinjaLiveComponent` parent가 object-level `/Script/Niagara.NiagaraComponent`인지와 CDO defaults를 bounded/native 응답으로 고정할 필요 | `approved-unrealmcp-helper` | `inspect_blueprint_class_defaults` | `build/schema/live complete`; source 변경 0, Component parent/default capture complete |
+| `CFNL-CPP-012` | 새 `TextureRenderTarget2D`의 `bForceLinearGamma=true` 보장 | UE 5.6 blank factory + native read-only inspection | Unreal Python에 writable `force_linear_gamma`가 노출되지 않지만 UE 5.6 `UTextureRenderTarget2D` constructor가 true로 초기화하며 pre-save native readback도 true | C++ 추가 불필요; constructor default를 검증 후 사용 | `build_cube_fluid_ninja_render_buffer_support.py` | `not-needed`; hot/cold/plugin-disabled exact complete |
+| `CFNL-CPP-013` | 3-node Unlit solid-color Material과 exact black MI fresh 저작 | 기존 Unreal Python MaterialEditingLibrary + native material inspector | blank Material/MI 생성, 연결, 저장 전후 exact readback과 일반 RHI compile/save가 모두 기존 표면으로 가능 | C++ 추가 불필요; NullRHI는 최종 셰이더 compile gate에 사용하지 않음 | `build_cube_fluid_ninja_solid_color_black.py` | `not-needed`; hot/cold/plugin-disabled exact complete |
+| `CFNL-CPP-014` | A13 one-chunk GeometryCollection의 `RootProxyData` 보존·치환과 fresh-process exact readback | 기존 localizer의 Materials/AutoInstance snapshot + 일반 reflected-property 비교 | execute v001이 `RootProxyData` object identity 치환에서 fail-closed; UE 5.6 header에서 proxy mesh/transform이 persistent runtime data임을 확인. 저장된 v002는 같은 프로세스 unload가 불가했고 기존 pair inspector도 remap-aware RootProxy 비교가 없었음 | `approved-unrealmcp-helper`; project/runtime C++ 없이 editor-only 검사에 proxy mesh path와 transform float-bit exact gate 추가 | `UnrealMCPProjectCommands_ArtLocalization.cpp`, `UnrealMCPProjectCommands_ReferenceInspection.cpp`, `verify_cube_fluid_ninja_a13_geometry_collection.py` | `complete for A13`; UE 5.6 UBT, fresh pair, Art 321 audit, plugin-disabled load 통과. internal unload 실패는 재시도하지 않고 별도 프로세스 경계로 검수 |
+
+`CFNL-CPP-005`는 현재 실제 blocker를 뜻하지 않는다. 프로젝트 runtime C++
+필요성이 증명되지 않았으므로 전체 작업은 비-C++ 경로로 계속 진행한다.
+
+## helper 기록 필수 항목
+
+- 요구 behavior와 사용자 가치.
+- 최소 재현 asset/path.
+- 호출한 기존 tool과 정확한 응답/error.
+- UE 5.6.1 공식 API/header 근거.
+- 변경한 UnrealMCP 파일과 command/schema.
+- transaction, dirty, save, undo, editor lifecycle 영향.
+- build와 focused/full verification 결과.
+- 생성 asset의 MCP dependency audit 결과.
+- helper 제거 후에도 완성 콘텐츠가 동작하는 소비 검증.
+
+## 금지 설계
+
+- 최종 Blueprint parent/component를 UnrealMCP class로 만드는 것.
+- final K2 graph가 UnrealMCP UFUNCTION을 호출하는 것.
+- final Niagara/Material이 UnrealMCP object나 module을 참조하는 것.
+- UnrealMCP runtime module을 `.uproject`, `.uplugin`, `.Build.cs`에 추가하는 것.
+- UE 5.7 이상 API를 조건부 또는 dormant code로 들여오는 것.
+
+## 현재 결론
+
+프로젝트 runtime C++은 여전히 만들거나 수정하지 않았다. 증명된
+inspection/localization 공백만 UnrealMCP editor tooling에 좁게 보완했고, 각
+helper는 save/compile/mutation 경계와 UE 5.6 build/live smoke를 통과했다.
+Grid2D target 자산과 art closure는 UnrealMCP 직렬화 참조 0이며 plugin-disabled
+소비 검증도 현재 범위에서 통과했다. 이후 project C++ 후보도 같은 절차와 정확한
+승인 토큰 없이는 진행하지 않는다.

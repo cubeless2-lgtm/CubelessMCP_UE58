@@ -1,0 +1,66 @@
+Using bundled DotNet SDK version: 10.0 win-x64
+Running UnrealBuildTool: dotnet "..\..\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll" UnrealEditor Win64 Development -Project=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\HostProject.uproject -Plugin=C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\Plugins\CubelessMCP_UE58\CubelessMCP_UE58.uplugin -NoHotReload -NoLiveCoding -NoUBTMakefiles -MaxParallelActions=2
+Log file: C:\Users\Lenovo\AppData\Local\UnrealBuildTool\Log.txt
+Executing up to 2 actions based on MaxProcessorCount override
+UbaServer - Listening on 0.0.0.0:1345
+Invalidating makefile for UnrealEditor (source file added)
+UHT compiled-in object format Default
+Building UnrealEditor...
+===== Toolchain Information =====
+Using ISPC compiler (C:\Program Files\Epic Games\UE_5.8\Engine\Source\ThirdParty\Intel\ISPC\bin\Windows\ispc.exe)
+  Intel(r) Implicit SPMD Program Compiler (Intel(r) ISPC), 1.24.0 (build commit  @ 20250404, LLVM 18.1.2) 
+Using Visual Studio 14.44.35228 toolchain (C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207) and Windows 10.0.22621.0 SDK (C:\Program Files (x86)\Windows Kits\10).
+[Adaptive Build] Excluded from CubelessMCPUE58Editor unity file: CubelessMCPUE58EditorModule.cpp, CubelessActorApi.cpp, CubelessCompilerDiagnostics.cpp, CubelessComponentApi.cpp, CubelessEditorApi.cpp, CubelessMaterialApi.cpp, CubelessMaterialArrayConverter.cpp, CubelessActorOperations.cpp, CubelessComponentOperations.cpp, CubelessInspectionOperations.cpp, CubelessMaterialOperations.cpp, CubelessActorLibrary.cpp, CubelessComponentLibrary.cpp, CubelessJsonConverters.cpp, CubelessMaterialLibrary.cpp, CubelessNativeToolset.cpp, CubelessRegistrationLibrary.cpp
+=================================
+Using Unreal Build Accelerator local executor to run 7 action(s)
+  CPU 14 physical cores, 20 logical cores
+  Memory 31.73 GB physical, 31.62 GB/33.73 GB committed
+  UBA Storage capacity 40 GB
+[1/7] Compile [x64] CubelessComponentApi.cpp
+[2/7] Compile [x64] CubelessComponentLibrary.cpp
+[3/7] Compile [x64] CubelessComponentOperations.cpp
+C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\Plugins\CubelessMCP_UE58\Source\CubelessMCPUE58Editor\Private\Operations\CubelessComponentOperations.cpp(58,39): error C2039: 'ToSharedRef': 'TSharedRef<FJsonObject,ESPMode::ThreadSafe>'의 멤버가 아닙니다.
+    FJsonSerializer::Serialize(Result.ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+                                      ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Core\Public\Templates\SharedPointer.h(153,7): note: 'TSharedRef<FJsonObject,ESPMode::ThreadSafe>' 선언을 참조하십시오.
+class TSharedRef
+      ^
+C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\Plugins\CubelessMCP_UE58\Source\CubelessMCPUE58Editor\Private\Operations\CubelessComponentOperations.cpp(58,22): error C2672: 'TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize': 일치하는 오버로드된 함수가 없습니다.
+    FJsonSerializer::Serialize(Result.ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+                     ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(620,14): note: 'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const TSharedRef<FJsonSerializerPolicy_JsonObject::FElement,ESPMode::ThreadSafe> &,TJsonWriter<CharType,PrintPolicy> &,bool)'일 수 있습니다.
+	static bool Serialize(const TSharedRef<typename Policy::FElement>& StartingElement, TJsonWriter<CharType, PrintPolicy>& Writer, bool bCloseWriter)
+	            ^
+C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\Plugins\CubelessMCP_UE58\Source\CubelessMCPUE58Editor\Private\Operations\CubelessComponentOperations.cpp(58,22): note: 'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const TSharedRef<FJsonSerializerPolicy_JsonObject::FElement,ESPMode::ThreadSafe> &,TJsonWriter<CharType,PrintPolicy> &,bool)': 3개의 인수가 필요합니다. 2개가 제공되었습니다.
+    FJsonSerializer::Serialize(Result.ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+                     ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(487,14): note: 또는       'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FMapOfValues &,TJsonWriter<CharType,PrintPolicy> &,bool)'
+	static bool Serialize(const typename Policy::FMapOfValues& Object, TJsonWriter<CharType, PrintPolicy>& Writer, bool bCloseWriter = true)
+	            ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(467,14): note: 또는       'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FMapOfValues &,const TSharedRef<TJsonWriter<CharType,PrintPolicy>,ESPMode::ThreadSafe> &,bool)'
+	static bool Serialize(const typename Policy::FMapOfValues& Object, const TSharedRef<TJsonWriter<CharType, PrintPolicy>>& Writer, bool bCloseWriter = true )
+	            ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(446,14): note: 또는       'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FArrayOfValues &,TJsonWriter<CharType,PrintPolicy> &,bool)'
+	static bool Serialize(const typename Policy::FArrayOfValues& Array, TJsonWriter<CharType, PrintPolicy>& Writer, bool bCloseWriter = true )
+	            ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(426,14): note: 또는       'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FArrayOfValues &,const TSharedRef<TJsonWriter<CharType,PrintPolicy>,ESPMode::ThreadSafe> &,bool)'
+	static bool Serialize(const typename Policy::FArrayOfValues& Array, const TSharedRef<TJsonWriter<CharType, PrintPolicy>>& Writer, bool bCloseWriter = true)
+	            ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(405,14): note: 또는       'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FValue &,const FString &,TJsonWriter<CharType,PrintPolicy> &,bool)'
+	static bool Serialize(const typename Policy::FValue& Value, const FString& Identifier, TJsonWriter<CharType, PrintPolicy>& Writer, bool bCloseWriter = true)
+	            ^
+C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\Plugins\CubelessMCP_UE58\Source\CubelessMCPUE58Editor\Private\Operations\CubelessComponentOperations.cpp(58,22): note: 'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FValue &,const FString &,TJsonWriter<CharType,PrintPolicy> &,bool)': 4개의 인수가 필요합니다. 2개가 제공되었습니다.
+    FJsonSerializer::Serialize(Result.ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+                     ^
+C:\Program Files\Epic Games\UE_5.8\Engine\Source\Runtime\Json\Public\Serialization\JsonSerializer.h(377,14): note: 또는       'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FValue &,const FString &,const TSharedRef<TJsonWriter<CharType,PrintPolicy>,ESPMode::ThreadSafe> &,bool)'
+	static bool Serialize(const typename Policy::FValue& Value, const FString& Identifier, const TSharedRef<TJsonWriter<CharType, PrintPolicy>>& Writer, bool bCloseWriter = true)
+	            ^
+C:\Git\UnrealMCP5_8_3\UnrealMCP5_8_3\cubeless\build\Bootstrap-20261010-A\HostProject\Plugins\CubelessMCP_UE58\Source\CubelessMCPUE58Editor\Private\Operations\CubelessComponentOperations.cpp(58,22): note: 'bool TJsonSerializer<FJsonSerializerPolicy_JsonObject>::Serialize(const FJsonSerializerPolicy_JsonObject::FValue &,const FString &,const TSharedRef<TJsonWriter<CharType,PrintPolicy>,ESPMode::ThreadSafe> &,bool)': 4개의 인수가 필요합니다. 2개가 제공되었습니다.
+    FJsonSerializer::Serialize(Result.ToSharedRef(), TJsonWriterFactory<>::Create(&Json));
+                     ^
+[4/7] Compile [x64] Module.CubelessMCPUE58Editor.cpp
+Total time in Unreal Build Accelerator local executor: 7.80 seconds
+
+Result: Failed (OtherCompilationError)
+Total execution time: 12.71 seconds
+Trace written to file C:\Users\Lenovo\AppData\Local\UnrealBuildTool\Trace.uba with size 12.4kb

@@ -1,0 +1,73 @@
+# 레벨 카드: `Water_Sparse_Sea_Stormy`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Water_Sparse_Sea_Stormy` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Sparse_Sea_Stormy` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `74` |
+| Direct external | `11` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+Sparse 방식의 폭풍우 치는 바다 표현을 다루는 레벨이다. 이 설명은 레벨 이름과 원본 계층에서 확실히 읽히는 범위를 넘지 않는다.
+
+### 정적 판정
+
+- **Observed:** stormy area water, LocalJet/local sand, triggers와 legacy grass spawner 5가 가장 큰 sea BP와 결합된다.
+- **Inferred:** 폭풍 환경과 local exclusion/interaction을 함께 검증하는 variant다.
+- **Unknown:** wave timing, floor snap replacement, cloud/fog runtime quality.
+- **Target fixture:** `TF_WaterSparse_SeaStormy` 제안.
+
+## Actor
+
+- manifest 합계 `116 actors / 218 components / 12 pages`.
+- exact class histogram: `StaticMeshActor=51; TextRenderActor=24; MovingBall1_C=12; MeshSpawnerCPU_LEGACY_C=5; NiagaraActor=3; NinjaLive_C=3; PostProcessVolume=3; TriggerVolume=2; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; MovingBall1_NinjaComponentAdded_C=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; SpotLight=1; ThirdPersonCharacter_C=1; VolumetricCloud=1; Water_Sparse_Sea_Stormy_C=1`.
+- Landscape 19, coast Composite3; TriggerVolume 2, driver 1, embedded LocalJet 1, sequence actor 0.
+
+## Runtime
+
+- Level BP `292 nodes / 4 variables`: Windy 계열 환경 제어 + pawn jump, sand excluder, local interaction. comment는 old logic가 `BP_FloorSnapperUtility`로 대체됐다고 기록한다.
+- 실행 결과와 대체 utility 동작은 `pending`.
+
+## Niagara
+
+- host 4(3+embedded), 전부 NinjaLiveCore/preset=None/overrides non-empty; resolution `2048²×2,1024²,256²`; extents `20/20/2,60/60/1,8/8/1,80/80/2`; Simple=1, SVOL=2; PVD=`FTF,FTT,TFF,TTT` 각 1; input=`height×2,default,MDF+height`.
+- standalone: `SurfaceAlignedMeshes`, passive plankton(false), passive rain(false). 내부 topology/runtime `pending`.
+
+## Material
+
+- AreaSand coast family; AreaWater `MI_Water_Stormy2` + `MI_Water_Stormy_Caustics_NoiseTile`; jet `MI_JetMaterial8`; local sand SVOL Sand2.
+- runtime output selection과 시각 parity `pending`.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- native manifest revision `1e34a8a874688bcb55cca655aba9b5f3`, query `2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- Level BP EventGraph 1, 292/4, error 0. [family observation](../../concepts/root-water-surface-media-observation.md).
+- `pending`: PIE/SIE, implementation, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

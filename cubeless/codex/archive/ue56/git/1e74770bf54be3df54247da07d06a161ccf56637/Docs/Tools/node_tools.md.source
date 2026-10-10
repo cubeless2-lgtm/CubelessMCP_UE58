@@ -1,0 +1,3674 @@
+# Unreal MCP Node Tools
+
+This document provides detailed information about the Blueprint node tools available in the Unreal MCP integration.
+
+## Overview
+
+Node tools allow you to manipulate Blueprint graph nodes and connections programmatically, including adding event nodes, function nodes, variables, and creating connections between nodes.
+
+## Graph Authoring
+
+Most node authoring commands accept optional graph selector fields:
+
+- `graph_id` (string, optional) - Graph GUID from `list_blueprint_graphs` or `resolve_blueprint_graph`
+- `graph_name` (string, optional) - Graph name
+- `graph_type` (string, optional) - `event`, `function`, `macro`, `delegate`, or `any`
+- `create_graph_if_missing` (boolean, optional) - For node creation commands, create a missing function graph when `graph_type` is `function`
+
+When no graph selector is supplied, commands keep the legacy behavior and target the Blueprint event graph.
+
+### ensure_anim_graph_input_pose_passthrough
+
+Ensure an Animation Blueprint `AnimGraph` passes the incoming input pose through to the root output. This is intended for safe Post Process AnimBP setup and learning fixtures.
+
+The command creates or reuses an `AnimGraphNode_LinkedInputPose` node and connects its `Pose` output to the root node's `Result` input. If the root result pin is already linked to another node, the command fails unless `replace_existing` is `true`.
+
+By default the command refuses to modify Animation Blueprints outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for deliberate non-sample edits.
+
+**Parameters:**
+- `blueprint_name` (string) - Anim Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`, because Unreal reports AnimGraph through the Blueprint function graph list
+- `replace_existing` (boolean, optional) - Replace an existing root pose link
+- `input_node_position` (array, optional) - `[X, Y]` editor position for a newly created input pose node
+- `allow_non_sample` (boolean, optional) - Allow editing non-sample AnimBPs
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_graph_input_pose_passthrough",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_PostProcess_Study.ABP_Bot_PostProcess_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "replace_existing": false
+  }
+}
+```
+
+### ensure_anim_graph_modify_bone_demo
+
+Ensure an Animation Blueprint `AnimGraph` contains a simple component-space Modify Bone demo chain. This is intended for Post Process AnimBP learning fixtures where the incoming pose should pass through a visible, reversible bone offset.
+
+The command creates or reuses this chain:
+
+`LinkedInputPose -> LocalToComponentSpace -> Transform (Modify) Bone -> ComponentToLocalSpace -> Root`
+
+The Modify Bone node is configured to ignore translation and scale, use additive rotation in bone space, and write the requested rotation both to the runtime node settings and the exposed `Rotation` input pin default.
+
+By default the command refuses to modify Animation Blueprints outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for deliberate non-sample edits.
+
+**Parameters:**
+- `blueprint_name` (string) - Anim Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `bone_name` (string, optional) - Target skeleton bone; defaults to `head`
+- `rotation` (array, optional) - `[Pitch, Yaw, Roll]` additive rotation in degrees; defaults to `[0, 0, 6]`
+- `replace_existing` (boolean, optional) - Replace existing pose links needed to install the demo chain
+- `allow_non_sample` (boolean, optional) - Allow editing non-sample AnimBPs
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_graph_modify_bone_demo",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_PostProcess_Study.ABP_Bot_PostProcess_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "bone_name": "head",
+    "rotation": [0, 0, 4],
+    "replace_existing": true
+  }
+}
+```
+
+### ensure_postprocess_anim_demo_variant
+
+Create or reuse a sample Post Process AnimBP demo variant and assign it to a duplicated SkeletalMesh. The command is intended for animation learning fixtures where the original character assets should remain untouched.
+
+The command performs this sequence:
+
+`source AnimBP + source SkeletalMesh -> target sample AnimBP + target sample SkeletalMesh -> Modify Bone demo chain -> compile AnimBP -> assign SkeletalMesh PostProcessAnimBlueprint -> save`
+
+By default the target AnimBP and target SkeletalMesh must be under `/Game/_MCP_Sample/`. Source assets may be normal project assets because they are loaded and duplicated, not modified.
+
+**Parameters:**
+- `source_blueprint_name` (string) - Source Anim Blueprint name or path to duplicate
+- `source_skeletal_mesh` (string) - Source SkeletalMesh package/object path to duplicate
+- `variant_name` (string, optional) - Name segment used for default target paths; defaults to `Variant`
+- `target_root` (string, optional) - Target content folder; defaults to `/Game/_MCP_Sample/AnimStudy`
+- `target_blueprint_name` (string, optional) - Explicit target AnimBP package path
+- `target_skeletal_mesh` (string, optional) - Explicit target SkeletalMesh package path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `bone_name` (string, optional) - Bone modified by the Post Process demo; defaults to `head`
+- `rotation` (array, optional) - `[Pitch, Yaw, Roll]` additive rotation in bone space; defaults to `[0, 0, 6]`
+- `replace_existing` (boolean, optional) - Replace existing pose links needed to install the Modify Bone chain; defaults to `true`
+- `overwrite_existing` (boolean, optional) - Delete and recreate existing target assets instead of reusing them
+- `compile` (boolean, optional) - Compile the target AnimBP before assignment; defaults to `true`
+- `save` (boolean, optional) - Save target AnimBP and SkeletalMesh; defaults to `true`
+- `dry_run` (boolean, optional) - Validate and report paths without editing assets
+- `allow_non_sample` (boolean, optional) - Allow target paths outside `/Game/_MCP_Sample/`
+
+**Example:**
+```json
+{
+  "command": "ensure_postprocess_anim_demo_variant",
+  "params": {
+    "source_blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_PostProcess_Study.ABP_Bot_PostProcess_Study",
+    "source_skeletal_mesh": "/Game/StackOBot/Characters/Bot/Mesh/SKM_Bot.SKM_Bot",
+    "variant_name": "HeadPitch",
+    "target_blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_PostProcess_Study_HeadPitch",
+    "target_skeletal_mesh": "/Game/_MCP_Sample/AnimStudy/SKM_Bot_PostProcess_Study_HeadPitch",
+    "bone_name": "head",
+    "rotation": [6, 0, 0],
+    "replace_existing": true,
+    "overwrite_existing": false
+  }
+}
+```
+
+### ensure_anim_graph_modify_curve_demo
+
+Ensure an Animation Blueprint `AnimGraph` contains a simple Modify Curve demo chain. This is intended for sample-only animation learning fixtures where the incoming pose should pass through forced curve values, especially ControlRig gate experiments.
+
+The command creates or reuses this chain:
+
+`LinkedInputPose -> ModifyCurve -> Root`
+
+By default the command refuses to modify AnimBPs outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for intentional non-sample edits.
+
+The default curve values are tuned for the StackOBot ControlRig gate study:
+
+- `IK_blend_interact=1.0`
+- `IKBlend_l=1.0`
+
+**Parameters:**
+- `blueprint_name` (string) - Anim Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `curve_values` (object or array, optional) - Curve values as `{ "CurveName": 1.0 }` or `[{"name":"CurveName","value":1.0}]`
+- `alpha` (number, optional) - Modify Curve alpha; defaults to `1.0`
+- `apply_mode` (string, optional) - `Add`, `Scale`, `Blend`, `WeightedMovingAverage`, or `RemapCurve`; defaults to `Add`
+- `replace_existing` (boolean, optional) - Replace existing pose links needed to install the demo chain
+- `allow_non_sample` (boolean, optional) - Allow non-`/Game/_MCP_Sample/` AnimBP edits
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_graph_modify_curve_demo",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_ControlRig_ForcedCurve_Study.ABP_Bot_ControlRig_ForcedCurve_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "curve_values": {
+      "IK_blend_interact": 1.0,
+      "IKBlend_l": 1.0
+    },
+    "apply_mode": "Add",
+    "replace_existing": true
+  }
+}
+```
+
+### set_anim_graph_controlrig_input_defaults
+
+Expose ControlRig AnimGraph input pins and optionally set their default values. This is intended for sample-only animation learning fixtures that need to force or surface ControlRig driver inputs without hand-editing protected AnimGraph internals.
+
+By default the command refuses to modify AnimBPs outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for intentional non-sample edits.
+
+When neither `input_defaults` nor `expose_input_pins` is supplied, the default input values are tuned for the StackOBot ControlRig forced-driver study:
+
+- `ShouldDoIKTrace=true`
+- `InteractionWorldLocation=[80, -40, 80]`
+
+**C++ API note:** this command exists because ControlRig AnimGraph custom input pins are backed by protected editor-node optional-pin state. Python cannot safely expose and rebuild those pins directly on UE 5.7.
+
+**Parameters:**
+- `blueprint_name` (string) - Anim Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `input_defaults` (object or array, optional) - Input defaults as `{ "InputName": value }` or `[{"name":"InputName","value":value}]`
+- `expose_input_pins` (array, optional) - Input/control names to expose without assigning defaults; limited to 32 names
+- `node_id` (string, optional) - ControlRig node GUID or object-name filter
+- `node_name` (string, optional) - ControlRig node object-name filter
+- `title_contains` (string, optional) - ControlRig node title substring filter
+- `control_rig_class` (string, optional) - ControlRig generated class path or substring filter
+- `disconnect_existing_links` (boolean, optional) - Disconnect existing links on target pins so defaults drive the sample; defaults to `false`
+- `allow_non_sample` (boolean, optional) - Allow non-`/Game/_MCP_Sample/` AnimBP edits
+
+**Example:**
+```json
+{
+  "command": "set_anim_graph_controlrig_input_defaults",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_ControlRig_InputDefaults_Study.ABP_Bot_ControlRig_InputDefaults_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "control_rig_class": "CR_Bot_Correction",
+    "expose_input_pins": ["ShouldDoIKTrace", "InteractionWorldLocation"],
+    "input_defaults": {
+      "ShouldDoIKTrace": true,
+      "InteractionWorldLocation": [80, -40, 80]
+    },
+    "disconnect_existing_links": true
+  }
+}
+```
+
+Expose-only example:
+
+```json
+{
+  "command": "set_anim_graph_controlrig_input_defaults",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_ControlRig_PinSurface.ABP_ControlRig_PinSurface",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "control_rig_class": "CR_PinSurface",
+    "expose_input_pins": ["Driver_Float"]
+  }
+}
+```
+
+### ensure_controlrig_forced_driver_animbp
+
+Ensure a sample Animation Blueprint has a forced ControlRig driver path. The command inserts or reuses a `ModifyCurve` node directly before the selected ControlRig node, preserves the existing upstream source pose, forces curve values, exposes ControlRig input pins, and can disconnect existing input links so the requested defaults drive the sample.
+
+By default the command refuses to modify AnimBPs outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for intentional non-sample edits.
+
+The default forced-driver values are tuned for the StackOBot ControlRig study:
+
+- Curves: `IK_blend_interact=1.0`, `IKBlend_l=1.0`
+- ControlRig inputs: `ShouldDoIKTrace=true`, `InteractionWorldLocation=[80, -40, 80]`
+
+**C++ API note:** this command is required because a safe forced-driver sample must rewire protected AnimGraph pose links around a ControlRig node and expose ControlRig custom input pins. Plain Python reflection should not hand-edit that graph state on UE 5.7.
+
+**Parameters:**
+- `blueprint_name` (string) - Anim Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `curve_values` (object or array, optional) - Forced curve values as `{ "CurveName": 1.0 }` or `[{"name":"CurveName","value":1.0}]`
+- `input_defaults` (object or array, optional) - ControlRig input defaults as `{ "InputName": value }` or `[{"name":"InputName","value":value}]`
+- `alpha` (number, optional) - Modify Curve alpha; defaults to `1.0`
+- `apply_mode` (string, optional) - `Add`, `Scale`, `Blend`, `WeightedMovingAverage`, or `RemapCurve`; defaults to `Add`
+- `node_id` (string, optional) - ControlRig node GUID or object-name filter
+- `node_name` (string, optional) - ControlRig node object-name filter
+- `title_contains` (string, optional) - ControlRig node title substring filter
+- `control_rig_class` (string, optional) - ControlRig generated class path or substring filter
+- `replace_existing` (boolean, optional) - Replace pose links needed to insert ModifyCurve before ControlRig; defaults to `true`
+- `disconnect_existing_links` (boolean, optional) - Disconnect existing ControlRig input links so defaults drive the sample; defaults to `true`
+- `allow_non_sample` (boolean, optional) - Allow non-`/Game/_MCP_Sample/` AnimBP edits
+
+**Example:**
+```json
+{
+  "command": "ensure_controlrig_forced_driver_animbp",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_ControlRig_ForcedDriver_Study.ABP_Bot_ControlRig_ForcedDriver_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "control_rig_class": "CR_Bot_Correction",
+    "curve_values": {
+      "IK_blend_interact": 1.0,
+      "IKBlend_l": 1.0
+    },
+    "input_defaults": {
+      "ShouldDoIKTrace": true,
+      "InteractionWorldLocation": [80, -40, 80]
+    },
+    "replace_existing": true,
+    "disconnect_existing_links": true
+  }
+}
+```
+
+### ensure_anim_graph_trail_demo
+
+Ensure an Animation Blueprint `AnimGraph` contains a Trail Controller demo chain. This is intended for sample-only animation learning fixtures where the incoming pose should pass through an active component-space `Trail` node without modifying original project assets.
+
+The command creates or reuses this chain:
+
+`LinkedInputPose -> LocalToComponentSpace -> Trail -> ComponentToLocalSpace -> Root`
+
+By default the command refuses to modify AnimBPs outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for intentional non-sample edits.
+
+**Parameters:**
+- `blueprint_name` (string) - Anim Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `trail_bone` (string, optional) - Active trail bone; defaults to `VB VBHead`
+- `base_joint` (string, optional) - Base joint for velocity; defaults to `head`
+- `chain_length` (number, optional) - Trail chain length; minimum `2`
+- `chain_bone_axis` (string, optional) - `X`, `Y`, or `Z`; defaults to `X`
+- `alpha` (number, optional) - Trail node alpha; defaults to `1.0`
+- `fake_velocity` (array, optional) - `[X, Y, Z]` fake velocity for static preview tests; defaults to `[0, 0, 0]`
+- `replace_existing` (boolean, optional) - Replace existing pose links needed to install the demo chain
+- `allow_non_sample` (boolean, optional) - Allow non-`/Game/_MCP_Sample/` AnimBP edits
+- `invert_chain_bone_axis` (boolean, optional) - Invert the selected chain bone axis
+- `reorient_parent_to_child` (boolean, optional) - Reorient parent bones toward children; defaults to `true`
+- `actor_space_fake_velocity` (boolean, optional) - Apply fake velocity in actor space instead of world space
+- `relaxation_speed_scale` (number, optional) - Trail relaxation scale; defaults to `1.0`
+- `limit_stretch` (boolean, optional) - Enable stretch limiting
+- `stretch_limit` (number, optional) - Stretch limit when enabled
+- `max_delta_time` (number, optional) - Optional timestep clamp
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_graph_trail_demo",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_Trail_Study.ABP_Bot_Trail_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "trail_bone": "VB VBHead",
+    "base_joint": "head",
+    "chain_length": 2,
+    "chain_bone_axis": "X",
+    "fake_velocity": [0, 0, 0],
+    "replace_existing": true
+  }
+}
+```
+
+### ensure_anim_graph_secondary_motion_chain
+
+Author a complete secondary-motion chain in a regular Animation Blueprint:
+
+`LocalRefPose -> LocalToComponentSpace -> AnimDynamics or KawaiiPhysics -> ComponentToLocalSpace -> Root`
+
+`dynamics_type="anim_dynamics"` creates a typed engine AnimDynamics chain with
+the root and end bones validated against the target Skeleton, locked linear
+constraints, a configurable angular cone, world-space gravity, and solver
+damping. `dynamics_type="kawaii_physics"` loads the optional
+`KawaiiPhysicsEd` node class dynamically and configures its runtime node through
+validated reflection. UnrealMCP therefore remains loadable when KawaiiPhysics
+is absent; the generated Kawaii AnimBP intentionally depends on the installed
+Kawaii runtime plugin.
+
+**Parameters:**
+
+- `blueprint_name` (string) - Animation Blueprint name or path
+- `dynamics_type` (string) - `anim_dynamics` or `kawaii_physics`
+- `root_bone` (string) - Anchored/top bone
+- `chain_end_bone` (string) - Descendant end bone and topology guard
+- `alpha` (number, optional) - Skeletal-control alpha, defaults to `1`
+- `gravity` (array, optional) - World acceleration, defaults to `[0, 0, -980]`
+- `angular_limit_degrees` (number, optional) - Cone/rotation limit, defaults to `60`
+- `body_extents` (array, optional) - AnimDynamics body extents, defaults to `[5, 5, 30]`
+- `linear_damping`, `angular_damping` (number, optional) - AnimDynamics overrides; values are clamped to its effective minimum `0.7`
+- `kawaii_damping`, `kawaii_stiffness` (number, optional) - Kawaii simulation settings
+- `graph_name`, `graph_id`, `graph_type` - Standard graph selectors
+- `replace_existing` (boolean, optional) - Replace conflicting pose links; defaults to `true`
+- `allow_non_sample` (boolean, optional) - Explicitly allow intentional project-content edits outside `_MCP_Sample`/`_MCP_Temp`
+- `compile`, `save` (boolean, optional) - Compile and save only after successful topology mutation
+
+**Example:**
+
+```json
+{
+  "command": "ensure_anim_graph_secondary_motion_chain",
+  "params": {
+    "blueprint_name": "/Game/Study/ChaosSkeletalMesh/Animations/ABP_ChaosLantern_Kawaii",
+    "dynamics_type": "kawaii_physics",
+    "root_bone": "Cable_01",
+    "chain_end_bone": "Lantern",
+    "gravity": [0, 0, -980],
+    "angular_limit_degrees": 60,
+    "allow_non_sample": true,
+    "replace_existing": true,
+    "compile": true,
+    "save": true
+  }
+}
+```
+
+The response returns node/link topology, reflected settings, optional-plugin
+availability, compile/save readback, and
+`serialized_unrealmcp_dependency=false`. A perfectly vertical rest pose has no
+initial torque; tilt the placed component or actor roughly 20-30 degrees when
+a visible gravity-driven pendulum start is required.
+
+### list_blueprint_graphs
+
+List graphs in a Blueprint and return stable graph IDs.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `graph_type` (string, optional) - Filter by graph type
+
+`blueprint_name` may also be a World asset path such as `/Game/Maps/MyMap`; in that case the command resolves the map's Level Blueprint.
+
+### inspect_blueprint_graph_call_topology
+
+Read static Blueprint graph call/reference/link topology. The command is read-only and does not compile, save, or modify the Blueprint.
+
+Use this when a study pass needs to prove which Blueprint nodes reference functions, variables, events, input actions, casts, delegates, components, or asset/class paths. The response is static graph structure only; combine it with PIE/SIE runtime probes when you need proof that a branch actually fired.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `graph_name` (string, optional) - Exact graph name selector
+- `graph_id` (string, optional) - Graph GUID selector
+- `graph_type` (string, optional) - `event`, `function`, `macro`, `delegate`, or `any`
+- `graph_name_contains` (string, optional) - Graph name substring filter
+- `node_type` (string, optional) - Node class/title substring filter
+- `title_contains` (string, optional) - Node title substring filter
+- `reference_contains` (string, optional) - Substring filter across function, variable, event, pin, and reference text
+- `include_pins` (boolean, optional) - Include full per-node pin metadata; defaults to `false`
+- `include_links` (boolean, optional) - Include normalized pin links; defaults to `true`
+- `include_references` (boolean, optional) - Include per-node `reference_paths`; defaults to `true`
+- `max_graphs` (number, optional) - Max graphs, `-1` for unlimited
+- `max_nodes_per_graph` (number, optional) - Max matching nodes per graph, `-1` for unlimited
+- `max_links_per_graph` (number, optional) - Max links per graph, `-1` for unlimited
+- `max_references_per_node` (number, optional) - Max reference paths per node, `-1` for unlimited
+
+Returned graph entries include `nodes` and `links`. Node entries include `node_kind` values such as `call_function`, `variable_get`, `variable_set`, `event`, `input_action`, `enhanced_input_action`, `input_axis`, `dynamic_cast`, `delegate_bind`, `delegate_call`, `custom_event`, and `macro_instance`, plus available member-reference fields.
+
+**Example:**
+```json
+{
+  "command": "inspect_blueprint_graph_call_topology",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Blueprints/BP_Bot.BP_Bot",
+    "graph_type": "event",
+    "reference_contains": "Interact",
+    "include_links": true,
+    "max_nodes_per_graph": 128
+  }
+}
+```
+
+### inspect_anim_graph_node_settings
+
+Read reflected runtime settings from AnimGraph nodes. This is useful for learning or validating nodes such as `RigidBody`, `Trail`, `ControlRig`, `Transform (Modify) Bone`, and other editor nodes that wrap an internal `FAnimNode_*` struct.
+
+The command is read-only. It returns normal node metadata plus a `settings` object containing the wrapped anim-node struct type and UPROPERTY values.
+
+**Parameters:**
+- `blueprint_name` (string) - Animation Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `node_id` (string, optional) - Node GUID filter
+- `node_type` (string, optional) - Node class or title substring filter, such as `RigidBody`
+- `title_contains` (string, optional) - Node title substring filter
+- `include_pins` (boolean, optional) - Include pin metadata and links
+- `max_depth` (number, optional) - Nested struct/array dump depth, clamped from `1` to `8`
+
+**Example:**
+```json
+{
+  "command": "inspect_anim_graph_node_settings",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Blobling/Anim/ABP_Baddy.ABP_Baddy",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_type": "RigidBody",
+    "max_depth": 5
+  }
+}
+```
+
+### inspect_anim_graph_protected_topology
+
+Read protected AnimGraph editor topology in a stable read-only format. Use this when Python reflection can find an AnimGraph but cannot safely read its protected `Nodes` or pin/link arrays.
+
+The command does not compile, save, or modify assets. It reports static editor topology only; combine it with PIE/SIE runtime probes when you need proof that a node evaluated at runtime.
+
+**Parameters:**
+- `blueprint_name` (string) - Animation Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `node_id` (string, optional) - Node GUID filter
+- `node_type` (string, optional) - Node class or title substring filter, such as `ControlRig`, `Trail`, or `RigidBody`
+- `title_contains` (string, optional) - Node title substring filter
+- `include_pins` (boolean, optional) - Include full per-node pin metadata; defaults to `true`
+- `include_pose_pins` (boolean, optional) - Include pose-pin summaries and preferred input/output pose pins; defaults to `true`
+- `include_links` (boolean, optional) - Include normalized graph links; defaults to `true`
+- `include_non_pose_links` (boolean, optional) - Include non-pose data links in addition to pose/component-pose links; defaults to `false`
+- `include_settings` (boolean, optional) - Include reflected `FAnimNode_*` settings; defaults to `false`
+- `max_depth` (number, optional) - Nested settings depth when `include_settings=true`, clamped from `1` to `8`
+- `max_nodes` (number, optional) - Max matching nodes to include, `-1` for unlimited
+- `max_links` (number, optional) - Max links to include, `-1` for unlimited
+
+Returned node entries include `node_kind`, `is_anim_graph_node`, optional `pins`, and `pose_pins`. Link entries include `link_kind`, `is_pose_link`, and `is_component_pose_link`.
+
+**Example:**
+```json
+{
+  "command": "inspect_anim_graph_protected_topology",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Bot/ABP_Bot.ABP_Bot",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_type": "ControlRig",
+    "include_settings": true,
+    "max_depth": 3
+  }
+}
+```
+
+### inspect_anim_state_machine_transitions
+
+Read Animation Blueprint state-machine transition topology. The command is read-only and does not compile, save, or modify the Blueprint.
+
+The response includes state-machine nodes, optional state summaries, transition source/target states, transition blend/priority settings, the bound transition rule graph, and optional rule graph nodes/pins.
+
+**Parameters:**
+- `blueprint_name` (string) - Animation Blueprint name or path
+- `state_machine_name` (string, optional) - State machine name/title substring filter
+- `include_pins` (boolean, optional) - Include pin metadata and links on returned graph nodes
+- `include_rule_graph_nodes` (boolean, optional) - Include nodes inside each transition rule graph
+- `include_state_nodes` (boolean, optional) - Include state node summaries for each state machine
+- `max_rule_graph_nodes` (number, optional) - Max rule graph nodes per transition, `-1` for unlimited
+
+**Example:**
+```json
+{
+  "command": "inspect_anim_state_machine_transitions",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Bot/ABP_Bot.ABP_Bot",
+    "state_machine_name": "AirLocomotion",
+    "include_pins": true,
+    "include_rule_graph_nodes": true,
+    "max_rule_graph_nodes": 64
+  }
+}
+```
+
+### inspect_animation_asset_metadata_guarded
+
+Read source animation asset metadata in a bounded, read-only format. Use this
+for `UAnimSequenceBase`, `UAnimSequence`, and `UAnimMontage` assets when you
+need notifies, curves, authored sync markers, Montage sections, slots, or
+segments without using broad Python reflection on version-sensitive internals.
+
+The command does not tick worlds, call Notify handlers, sort/rebuild animation
+caches, compile, save, or mark assets dirty. Unsupported classes return
+`unsupported_class=true` by default; set `require_supported_class=true` if the
+caller wants unsupported assets to be treated as errors.
+
+**Parameters:**
+- `asset_path` (string) - Animation asset package path or object path
+- `include_notifies` (boolean, optional) - Include notify and notify-state summaries; defaults to `true`
+- `include_notify_details` (boolean, optional) - Include notify class, filter, chance, and branching fields; defaults to `true`
+- `include_curves` (boolean, optional) - Include curve names, types, flags, and counts; defaults to `true`
+- `include_curve_keys` (boolean, optional) - Include bounded key data; defaults to `false`
+- `include_sync_markers` (boolean, optional) - Include authored sync markers; defaults to `true`
+- `include_montage_sections` (boolean, optional) - Include Montage sections; defaults to `true`
+- `include_montage_slots` (boolean, optional) - Include Montage slots and segments; defaults to `true`
+- `include_metadata` (boolean, optional) - Include asset metadata and user-data class summaries; defaults to `false`
+- `max_notifies` (number, optional) - Max notifies, clamped to `1024`
+- `max_curves` (number, optional) - Max curves, clamped to `1024`
+- `max_curve_keys_per_curve` (number, optional) - Max keys per curve when `include_curve_keys=true`, clamped to `256`
+- `max_markers` (number, optional) - Max sync markers, clamped to `1024`
+- `max_sections` (number, optional) - Max Montage sections, clamped to `256`
+- `max_slots` (number, optional) - Max Montage slots, clamped to `128`
+- `max_segments_per_slot` (number, optional) - Max segments per slot, clamped to `512`
+- `require_supported_class` (boolean, optional) - Return an error for unsupported classes; defaults to `false`
+
+Returned fields include `read_only`, `asset_modified`, `saves_assets`,
+`unsupported_class`, `asset`, `sequence`, `montage`, `notifies`, `curves`,
+`sync_markers`, `metadata`, `limits`, `truncated`, `counts`, `warnings`,
+`errors`, and `unavailable_fields`.
+
+**Example:**
+```json
+{
+  "command": "inspect_animation_asset_metadata_guarded",
+  "params": {
+    "asset_path": "/Game/StackOBot/Characters/Bot/Anim/AM_Attack.AM_Attack",
+    "include_curve_keys": false,
+    "max_notifies": 128,
+    "max_curves": 128,
+    "max_markers": 128
+  }
+}
+```
+
+### inspect_physics_asset_constraints_guarded
+
+Read a PhysicsAsset's static bodies, constraints, profiles, collision summaries,
+and RBAN solver settings in a bounded, read-only format. Provide either
+`physics_asset_path` or `skeletal_mesh_path`; when a SkeletalMesh is supplied,
+the command resolves its assigned PhysicsAsset without mutating the mesh.
+
+The command does not simulate physics, apply profiles, cook collision, compile,
+save, or mark assets dirty. Use it with `inspect_anim_graph_node_settings` when
+you need to explain a RigidBody AnimGraph node's PhysicsAsset inputs.
+
+**Parameters:**
+- `physics_asset_path` (string, optional) - Explicit PhysicsAsset package path or object path
+- `skeletal_mesh_path` (string, optional) - SkeletalMesh path used to resolve its PhysicsAsset
+- `include_bodies` (boolean, optional) - Include bounded body setup summaries; defaults to `true`
+- `include_constraints` (boolean, optional) - Include bounded constraint summaries; defaults to `true`
+- `include_profiles` (boolean, optional) - Include asset, body, and constraint profile summaries; defaults to `true`
+- `include_solver_settings` (boolean, optional) - Include RBAN solver settings; defaults to `true`
+- `include_collision_summary` (boolean, optional) - Include shape counts and bounded shape summaries; defaults to `true`
+- `max_bodies` (number, optional) - Max body setups to include
+- `max_constraints` (number, optional) - Max constraint templates to include
+- `max_profiles_per_item` (number, optional) - Max profiles per body or constraint
+- `max_shapes_per_body` (number, optional) - Max shape summaries per body
+- `require_supported_class` (boolean, optional) - Return an error for unsupported classes; defaults to `false`
+
+Returned fields include `read_only`, `asset_modified`, `saves_assets`,
+`unsupported_class`, `asset`, `solver_settings`, `profiles`, `bodies`,
+`constraints`, `limits`, `truncated`, `counts`, `warnings`, `errors`, and
+`unavailable_fields`.
+
+**Example:**
+```json
+{
+  "command": "inspect_physics_asset_constraints_guarded",
+  "params": {
+    "skeletal_mesh_path": "/Game/StackOBot/Characters/Bot/SK_Bot.SK_Bot",
+    "max_bodies": 64,
+    "max_constraints": 64,
+    "max_shapes_per_body": 16
+  }
+}
+```
+
+### controlrig_direct_gate_probe
+
+Run a transient direct ControlRig gate probe without modifying or saving assets. The command creates a runtime ControlRig instance per case, applies requested UPROPERTY values and hierarchy curve values, executes ControlRig events, samples hierarchy transforms, and reports deltas from the first successful case.
+
+The default case set is tuned for the StackOBot Control Rig learning pass:
+
+- `ShouldDoIKTrace`
+- `InteractionWorldLocation`
+- `IKBlend_l`
+- `IK_blend_interact`
+- sampled elements such as `foot_l`, `foot_r`, `IK_foot_L`, and `IK_foot_R`
+
+**Parameters:**
+- `control_rig_path` (string, optional) - ControlRig Blueprint asset path
+- `control_rig_class` (string, optional) - Generated ControlRig class path; use this instead of `control_rig_path` when probing a native/generated class directly
+- `cases` (array, optional) - Case objects. Each case may include `name`, `properties`, `control_values`, shorthand `should_trace`, shorthand `loc` or `interaction_world_location`, and `curves`
+- `sample_elements` (array, optional) - Hierarchy element names or objects such as `{"type":"Control","name":"IK_foot_L"}`
+- `control_values` (object, optional) - Transient hierarchy control values for supported `Float` or `EulerTransform` controls; this never writes the asset
+- `execute_events` (array, optional) - ControlRig event names; defaults to `Construction`, `Forwards Solve`, and `Post Forwards Solve`
+- `should_trace_property` (string, optional) - Property used by shorthand `should_trace`; defaults to `ShouldDoIKTrace`
+- `interaction_location_property` (string, optional) - Property used by shorthand `loc`; defaults to `InteractionWorldLocation`
+
+Top-level `control_values` are applied to every case. A case-level `control_values`
+entry overrides a top-level value with the same control name. When the event list
+contains `Construction`, validated control and curve inputs are reapplied afterward
+so later solve events observe the requested values. Control echoes are hierarchy
+readbacks after limit application, not copies of the request payload. The command
+mutates only a disposable runtime instance and reports `read_only=true`,
+`asset_modified=false`, and `saves_assets=false` for the source asset.
+
+**Example:**
+```json
+{
+  "command": "controlrig_direct_gate_probe",
+  "params": {
+    "control_rig_path": "/Game/StackOBot/Characters/Bot/Rig/CR_Bot_Correction.CR_Bot_Correction",
+    "sample_elements": ["foot_l", "foot_r", "Control:IK_foot_L", "Control:IK_foot_R"],
+    "cases": [
+      {
+        "name": "baseline",
+        "should_trace": false,
+        "loc": [0, 0, 0],
+        "curves": {"IKBlend_l": 0, "IK_blend_interact": 0}
+      },
+      {
+        "name": "interact_side",
+        "should_trace": true,
+        "loc": [80, -40, 80],
+        "curves": {"IKBlend_l": 1, "IK_blend_interact": 1}
+      }
+    ]
+  }
+}
+```
+
+### sample_controlrig_pre_post_runtime_pose
+
+Sample ControlRig hierarchy transforms before and after execute events without modifying or saving assets. The default case is tuned for the StackOBot forced-driver study: `ShouldDoIKTrace=true`, `InteractionWorldLocation=[80, -40, 80]`, `IKBlend_l=1.0`, and `IK_blend_interact=1.0`.
+
+**Important scope note:** this command currently samples a transient ControlRig instance directly. It reports `runtime_source=direct_transient_controlrig` and `runtime_graph_prepost=false`; it does not instrument the compiled AnimGraph node stack or capture the actual upstream AnimBP pose inside a running SkeletalMeshComponent.
+
+Use this command when you need a stable same-instance pre/post ControlRig solve measurement before building deeper runtime AnimGraph instrumentation.
+
+**Parameters:**
+- `control_rig_path` (string, optional) - ControlRig Blueprint asset path
+- `control_rig_class` (string, optional) - Generated ControlRig class path; use this instead of `control_rig_path` when probing a native/generated class directly
+- `input_defaults` (object, optional) - ControlRig property defaults; defaults to `ShouldDoIKTrace=true` and `InteractionWorldLocation=[80, -40, 80]`
+- `curve_values` (object, optional) - Hierarchy curve values; defaults to `IKBlend_l=1.0` and `IK_blend_interact=1.0`
+- `cases` (array, optional) - Case objects. If provided, each case may include `name`, `properties`, `control_values`, shorthand `should_trace`, shorthand `loc` or `interaction_world_location`, and `curves`
+- `sample_elements` (array, optional) - Hierarchy element names or objects such as `{"type":"Control","name":"IK_foot_L"}`
+- `control_values` (object, optional) - Transient hierarchy control values for supported `Float` or `EulerTransform` controls; this never writes the asset
+- `execute_events` (array, optional) - ControlRig event names to execute between pre/post samples; defaults to `Forwards Solve`
+- `should_trace_property` (string, optional) - Property used by shorthand `should_trace`; defaults to `ShouldDoIKTrace`
+- `interaction_location_property` (string, optional) - Property used by shorthand `loc`; defaults to `InteractionWorldLocation`
+
+Top-level `control_values` are applied to every case. A case-level `control_values`
+entry overrides a top-level value with the same control name. When the event list
+contains `Construction`, validated control and curve inputs are reapplied afterward
+so later solve events observe the requested values. Control echoes are hierarchy
+readbacks after limit application, not copies of the request payload. The command
+mutates only a disposable runtime instance and does not modify or save the source
+asset.
+
+**Returns:**
+- `pre_pose` and `post_pose` hierarchy transform samples per case
+- `deltas` with translation distance, rotation delta in degrees, and scale delta
+- property/control/curve inputs and actual hierarchy readback echoes
+- execute result list and warning/error arrays
+
+**Example:**
+```json
+{
+  "command": "sample_controlrig_pre_post_runtime_pose",
+  "params": {
+    "control_rig_path": "/Game/StackOBot/Characters/Bot/Rig/CR_Bot_Correction.CR_Bot_Correction",
+    "sample_elements": ["foot_l", "foot_r", "Control:IK_foot_L", "Control:IK_foot_R"],
+    "input_defaults": {
+      "ShouldDoIKTrace": true,
+      "InteractionWorldLocation": [80, -40, 80]
+    },
+    "curve_values": {
+      "IKBlend_l": 1.0,
+      "IK_blend_interact": 1.0
+    }
+  }
+}
+```
+
+### sample_anim_node_pre_post_runtime_pose
+
+Resolve a target AnimGraph node or run a limited runtime pose/mapping probe.
+
+**Important scope note:** `dry_run=true` is a read-only target resolver. `dry_run=false` supports `mode=compiled_graph_mapping`, `mode=pose_watch_capture`, `mode=active_component_tick_delta`, and `mode=isolated_temp_components`. Compiled graph mapping resolves the selected editor AnimGraph node GUID to the compiled/live `FAnimNode_*` instance on a matched `AnimInstance`, reads that node's runtime `FPoseLink` / `FComponentSpacePoseLink` link IDs, and reports `mapping_support`; this is a same-instance instrumentation preflight, not a pose sample. PoseWatch capture temporarily sets the AnimBP debug object, registers transient debug-data PoseWatch entries for the selected compiled node output and selected runtime input pose link(s), samples them during the same forced tick, then removes only the transient entries. Active tick-delta samples final `SkeletalMeshComponent` pose before and after forced ticks on a matched live component. Isolated temp mode duplicates the AnimBP under `_MCP_Temp`, bypasses the selected node in a source copy, and compares it against a selected-node copy on separate transient components. Runtime modes sample the component's main AnimInstance by default; set `anim_instance_source=post_process` when the selected node lives in the component's Post Process AnimBP. Only `pose_watch_capture` is intended to report `runtime_graph_prepost=true` / `same_instance_prepost=true` when all watched links evaluate successfully.
+
+Use this command before implementing or running deeper AnimGraph node instrumentation so ambiguous node selectors are caught early.
+
+Optional bridge smoke for the read-only mapping diagnostic:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\smoke_anim_node_mapping_support_bridge.py --json
+```
+
+This requires a running Unreal Editor bridge and verifies that the engine Tutorial AnimBP root node reports `mapping_support.support_class=unsupported_for_prepost` with `evidence_tier=static_topology` instead of overstating PoseWatch support.
+
+To launch the UE 5.6.1 project editor automatically when no bridge is already listening, use:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_node_mapping_support_smoke.ps1 -Json
+```
+
+**Parameters:**
+- `blueprint_name` or `anim_blueprint` (string) - Animation Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Exact graph GUID
+- `graph_type` (string, optional) - Defaults to `function` for AnimGraph
+- `node_id` (string, optional) - Exact target node GUID. Required when filters are ambiguous.
+- `node_type` (string, optional) - Node class/title filter, such as `AnimGraphNode_RigidBody`, `AnimGraphNode_Trail`, or `AnimGraphNode_ControlRig`
+- `title_contains` (string, optional) - Node title substring filter
+- `sample_bones` (array, optional) - Bone list to echo in dry-run or sample in runtime mode. Runtime default is a compact StackOBot/Baddy study set.
+- `sample_sockets` (array, optional) - Socket list to echo in dry-run or sample in runtime mode
+- `mode` (string, optional) - Runtime mode for `dry_run=false`: `compiled_graph_mapping`, `pose_watch_capture`, `active_component_tick_delta`, or `isolated_temp_components`.
+- `skeletal_mesh` (string, optional) - SkeletalMesh path required by `isolated_temp_components`
+- `temp_root` (string, optional) - Temp asset root for isolated mode. Defaults to `/Game/_MCP_Temp/AnimNodePrePost`.
+- `cleanup` (boolean, optional) - Delete transient actors/temp assets after isolated sampling. Defaults to `true`.
+- `overwrite_existing_temp_assets` (boolean, optional) - Replace colliding temp assets. Defaults to `true`.
+- `run_id` (string, optional) - Stable suffix for generated temp asset/actor names
+- `actor_label`, `actor_name`, `actor_path` (string, optional) - Live actor selector for runtime mode
+- `component_name` (string, optional) - Live `SkeletalMeshComponent` selector for runtime mode
+- `anim_instance_source` (string, optional) - Live AnimInstance source on the sampled component. Defaults to `main`; use `post_process` for Post Process AnimBP nodes.
+- `prefer_pie_world` (boolean, optional) - Prefer PIE/SIE/play worlds over editor world. Defaults to `true`.
+- `require_pie_world` (boolean, optional) - Refuse editor-world fallback. Defaults to `false`.
+- `tick_count` (number, optional) - Forced tick count between pre/post samples, clamped `0..240`. Defaults to `1`.
+- `tick_delta_time` (number, optional) - Forced tick delta time, clamped `0..1`. Defaults to `1/30`.
+- `settle_tick_count` (number, optional) - Forced ticks before the pre sample, clamped `0..240`. Defaults to `0`.
+- `refresh_bone_transforms` (boolean, optional) - Refresh bone transforms after forced ticks. Defaults to `true`.
+- `allow_missing_bones` (boolean, optional) - Return partial samples instead of failing on missing bones/sockets. Defaults to `false`.
+- `pose_link_max_depth` (number, optional) - Max struct recursion depth for `compiled_graph_mapping` and `pose_watch_capture` runtime pose-link inventory. Defaults to `4`, clamped `0..8`.
+- `input_pose_mode` (string, optional) - PoseWatch input selection mode for `mode=pose_watch_capture`: `first` or `all`. Defaults to `first`.
+- `input_pose_field_path` (string, optional) - Exact runtime pose-link `field_path` to capture, overriding `input_pose_mode`.
+- `input_pose_index` (number, optional) - Zero-based valid runtime pose-link index to capture, overriding `input_pose_mode` when `input_pose_field_path` is not set.
+- `include_pins` (boolean, optional) - Include full selected-node pin data. Defaults to `true`.
+- `max_depth` (number, optional) - Reflected settings depth. Defaults to `3`.
+- `dry_run` (boolean, optional) - Resolve only when true; run `active_component_tick_delta` when false. Defaults to `true`.
+
+**Returns:**
+- `target_node` with node metadata, reflected settings, preferred input/output pose pins, upstream/downstream pose links, `mvp_kind`, `isolated_sampler_mvp_supported`, and `mapping_support`
+- `target_node.compiled_node_mapping` with the dry-run compiled property mapping for the selected editor node
+- `mapping_support` on compiled mapping and PoseWatch responses with `support_class`, `pose_watch_supported`, `recommended_mode`, `recommended_input_pose_mode`, `known_good_field_paths`, `unsupported_reason`, `evidence_tier`, `valid_runtime_pose_link_count`, and same-instance mapping booleans. Current `support_class` values include `static_only`, `compiled_mapping_only`, `output_only_source_node`, `single_input_pose_node`, `multi_input_pose_node`, `component_space_pose_node`, and `unsupported_for_prepost`.
+- `requested_anim_instance_source` and `anim_instance_source` on runtime responses
+- `mode=dry_run_target_resolver` for dry-run
+- `mode=compiled_graph_mapping`, `comparison_kind=compiled_graph_node_mapping`, `runtime_node_mapping`, `runtime_pose_links`, and `same_anim_instance_node_mapping=true` when live same-instance node mapping succeeds
+- `runtime_pose_links.pose_links[]` with `field_path`, `link_id`, `source_link_id`, linked compiled property, linked visual node, cached linked-node pointer, and `linked_pointer_match` when a runtime pose link is present
+- `mode=pose_watch_capture`, `comparison_kind=runtime_pose_watch_prepost`, `pre_pose`, `pre_input_poses`, `post_pose`, `deltas`, `deltas_by_input`, `post_node_link_id`, `pre_input_link_id`, `pre_input_pose_links`, `transient_pose_watches=true`, and `debug_object_restored=true` when same-instance PoseWatch capture is requested
+- `mode=active_component_tick_delta` and `comparison_kind=active_component_tick_delta` for runtime tick-delta sampling
+- `mode=isolated_temp_components` and `comparison_kind=isolated_temp_components` for temp source-vs-output sampling
+- `runtime_graph_prepost` and `same_instance_prepost`; currently these are true only for a successful `pose_watch_capture`
+- `mapping_support.evidence_tier=same_instance_pose_watch` only when same-instance PoseWatch pre/post capture succeeds; lower tiers such as `static_topology`, `compiled_node_mapping`, and `runtime_pose_link_inventory` must not be treated as selected-node pre/post proof
+- `pre_tick_pose`, `post_tick_pose`, and `deltas` for active tick-delta mode
+- `source_pose`, `post_pose`, `deltas`, `prepare_temp_assets`, and `cleanup_results` for isolated temp mode
+- `available_runtime_modes` and `next_implementation_mode=pose_watch_capture` for dry-run
+- warning/error details when the selector matches no node or multiple nodes
+
+**Dry-run example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Blobling/Anim/ABP_Baddy.ABP_Baddy",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_type": "AnimGraphNode_RigidBody",
+    "sample_bones": ["Head_02", "TailEnd", "R_Stalk_04", "L_Stalk_04"]
+  }
+}
+```
+
+**Compiled graph mapping example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Blobling/Anim/ABP_Baddy.ABP_Baddy",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_id": "81E779C34D36CC52F0125F91BF52BAF3",
+    "actor_label": "MCP_AnimNodeProbe_Baddy",
+    "mode": "compiled_graph_mapping",
+    "dry_run": false,
+    "require_pie_world": true
+  }
+}
+```
+
+**PoseWatch same-instance pre/post example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Blobling/Anim/ABP_Baddy.ABP_Baddy",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_id": "81E779C34D36CC52F0125F91BF52BAF3",
+    "actor_label": "MCP_AnimNodeProbe_Baddy",
+    "mode": "pose_watch_capture",
+    "dry_run": false,
+    "require_pie_world": true,
+    "settle_tick_count": 2,
+    "tick_count": 1,
+    "sample_bones": ["Head_02", "TailEnd", "R_Stalk_04", "L_Stalk_04"]
+  }
+}
+```
+
+**PoseWatch all-input example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Bot/ABP_Bot.ABP_Bot",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_type": "AnimGraphNode_LayeredBoneBlend",
+    "actor_label": "MCP_AnimNodeProbe_Bot",
+    "mode": "pose_watch_capture",
+    "input_pose_mode": "all",
+    "dry_run": false,
+    "require_pie_world": true,
+    "settle_tick_count": 2,
+    "tick_count": 1,
+    "sample_bones": ["pelvis", "spine_03", "head", "foot_l", "foot_r"]
+  }
+}
+```
+
+**PoseWatch Post Process AnimBP example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_Trail_Study.ABP_Bot_Trail_Study",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_id": "E6CA339B47B4B75F5CCCB19B09796556",
+    "actor_label": "MCP_PoseWatch_Trail_Smoke_Bot",
+    "mode": "pose_watch_capture",
+    "anim_instance_source": "post_process",
+    "dry_run": false,
+    "require_pie_world": true,
+    "settle_tick_count": 2,
+    "tick_count": 1,
+    "sample_bones": ["head", "antenna_02_l", "antenna_03_l", "antenna_04_l"]
+  }
+}
+```
+
+**Active component tick-delta example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Blobling/Anim/ABP_Baddy.ABP_Baddy",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_id": "81E779C34D36CC52F0125F91BF52BAF3",
+    "actor_label": "MCP_AnimNodeProbe_Baddy",
+    "mode": "active_component_tick_delta",
+    "dry_run": false,
+    "settle_tick_count": 3,
+    "tick_count": 5,
+    "tick_delta_time": 0.033333,
+    "sample_bones": ["Head_02", "TailEnd", "R_Stalk_04", "L_Stalk_04"]
+  }
+}
+```
+
+**Isolated temp source-vs-output example:**
+```json
+{
+  "command": "sample_anim_node_pre_post_runtime_pose",
+  "params": {
+    "blueprint_name": "/Game/StackOBot/Characters/Blobling/Anim/ABP_Baddy.ABP_Baddy",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "node_id": "81E779C34D36CC52F0125F91BF52BAF3",
+    "skeletal_mesh": "/Game/StackOBot/Characters/Blobling/SKM_Baddy.SKM_Baddy",
+    "mode": "isolated_temp_components",
+    "dry_run": false,
+    "cleanup": true,
+    "settle_tick_count": 3,
+    "tick_count": 5,
+    "tick_delta_time": 0.033333,
+    "sample_bones": ["Head_02", "TailEnd", "R_Stalk_04", "L_Stalk_04"]
+  }
+}
+```
+
+### sample_skeletal_bones_in_sie
+
+Sample bone and socket world/component transforms from a live `SkeletalMeshComponent` without modifying or saving assets.
+
+**Important scope note:** this command is an immediate read-only sampler. It prefers an active PIE/SIE/play world, falls back to the editor world, and reports `sampled_world_type` plus `is_play_session_active`. It does not start SIE, spawn actors, or tick frames by itself. Use Python/editor automation to create or advance the runtime pose first, then call this command to capture the current pose.
+
+**Parameters:**
+- `actor_label` (string, optional) - Actor label filter, case-insensitive exact match
+- `actor_name` (string, optional) - Actor object name filter, case-insensitive exact match
+- `actor_path` (string, optional) - Actor path filter, exact or path suffix match
+- `component_name` (string, optional) - SkeletalMeshComponent object name. If omitted, the first skeletal component on the matched actor is sampled.
+- `bones` (array, optional) - Bone names to sample. Defaults to `root`, `pelvis`, `spine_03`, `head`, `foot_l`, and `foot_r`.
+- `sockets` (array, optional) - Socket names to sample
+- `prefer_pie_world` (boolean, optional) - Prefer active PIE/SIE/play world before editor world. Defaults to `true`.
+- `require_pie_world` (boolean, optional) - Fail instead of falling back to the editor world when no PIE/SIE/play world matches. Defaults to `false`.
+
+**Returns:**
+- `actor` and `component` metadata for the sampled target
+- `sampled_world_type`, `sampled_world_name`, and `is_play_session_active`
+- `bone_samples` and `socket_samples` with `world` and `component` transforms
+- warning/error arrays for missing bones, ambiguous matches, or missing sockets
+
+**Example:**
+```json
+{
+  "command": "sample_skeletal_bones_in_sie",
+  "params": {
+    "actor_label": "MCP_BlendSpace_SIE_Bot",
+    "component_name": "SkeletalMeshComponent0",
+    "bones": ["root", "pelvis", "spine_03", "head", "foot_l", "foot_r"],
+    "sockets": ["head"],
+    "prefer_pie_world": true
+  }
+}
+```
+
+### sample_blendspace_runtime_pose_grid
+
+Evaluate BlendSpace inputs on a transient runtime `SkeletalMeshActor` and return sampled bone/socket pose deltas.
+
+**Important scope note:** this command does not start SIE/PIE or switch maps. By default it requires an active PIE/SIE/play world, spawns one transient `SkeletalMeshActor`, configures `AnimationSingleNode` BlendSpace playback through `UAnimSingleNodeInstance`, applies each requested input, forces narrow component ticks, samples requested bones/sockets, and destroys the actor when `cleanup=true`. It does not save assets. Set `require_pie_world=false` only when an editor-world fallback is acceptable for a diagnostic gap probe.
+
+**Parameters:**
+- `skeletal_mesh` (string, required) - SkeletalMesh asset path used by the transient probe actor
+- `blendspace_path` or `blendspace` (string, optional) - Single BlendSpace asset path
+- `blendspaces` (array, optional) - BlendSpace path strings or objects with `path`/`blendspace_path`, optional `name`, and optional `samples`
+- `samples` (array, optional) - Single-BlendSpace input list. Each sample object may include `label` plus either `input`/`position` as `[x,y,z]` or object form, or separate `x`, `y`, and `z` fields.
+- `sample_bones` or `bones` (array, optional) - Bone names to sample. Defaults to `root`, `pelvis`, `spine_03`, `head`, `foot_l`, and `foot_r`.
+- `sample_sockets` or `sockets` (array, optional) - Socket names to sample
+- `sample_time` (number, optional) - Single-node playback time before sampling. Defaults to `0.25`.
+- `settle_tick_count` (number, optional) - Forced component ticks after setting each input. Defaults to `2`.
+- `tick_count` (number, optional) - Forced component ticks immediately before sampling. Defaults to `1`.
+- `tick_delta_time` (number, optional) - Delta time for forced ticks. Defaults to `1/30`.
+- `include_axis_extremes` (boolean, optional) - When no `samples` are supplied, add min/center/max axis probes after asset sample coordinates. Defaults to `false`.
+- `allow_missing_bones` (boolean, optional) - Return partial samples instead of failing on missing bones/sockets. Defaults to `false`.
+- `cleanup` (boolean, optional) - Destroy the transient actor before returning. Defaults to `true`.
+- `prefer_pie_world` (boolean, optional) - Prefer active PIE/SIE/play world before editor world. Defaults to `true`.
+- `require_pie_world` (boolean, optional) - Fail instead of falling back to editor world. Defaults to `true`.
+
+**Returns:**
+- `sampled_world_type`, `sampled_world_name`, and `is_play_session_active`
+- `probe_actor` and `probe_component` metadata
+- `blendspaces[]` entries with axes, asset sample coordinates, requested samples, per-sample poses, weighted source samples, and deltas from the first valid sample in that BlendSpace
+- per-BlendSpace `summary.max_location_delta_from_first`, `input_changed_pose`, and `top_location_deltas`
+- `cleanup_results`, `errors`, and `warnings`
+
+**Example:**
+```json
+{
+  "command": "sample_blendspace_runtime_pose_grid",
+  "params": {
+    "skeletal_mesh": "/Game/StackOBot/Characters/Bot/Mesh/SKM_Bot.SKM_Bot",
+    "blendspaces": [
+      {
+        "path": "/Game/StackOBot/Characters/Bot/Animations/BS_Bot_WalkRunLean.BS_Bot_WalkRunLean",
+        "samples": [
+          {"label": "walk_authored", "x": 0.0, "y": 96.978, "z": 0.0},
+          {"label": "run_authored", "x": 0.0, "y": 500.0, "z": 0.0},
+          {"label": "lean_left_authored", "x": 1.0, "y": 258.546, "z": 0.0},
+          {"label": "lean_right_authored", "x": -1.0, "y": 259.420, "z": 0.0}
+        ]
+      }
+    ],
+    "sample_bones": ["pelvis", "foot_l", "foot_r", "head"],
+    "require_pie_world": true,
+    "cleanup": true
+  }
+}
+```
+
+### ensure_blendspace_sample_variant
+
+Create or reuse a sample/temp BlendSpace variant and apply explicit axis/sample edits.
+
+**Important scope note:** by default this command refuses target paths outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It duplicates the source BlendSpace to a sample/temp path, applies requested axis edits and sample-coordinate edits, validates/resamples the target BlendSpace, and saves only the target asset. It does not modify the source BlendSpace. For a deliberate in-place runtime-data rebuild, pass the same source/target path with both `allow_non_sample=true` and `force_resample=true`. Run `sample_blendspace_runtime_pose_grid` afterwards to prove runtime pose impact.
+
+**Parameters:**
+- `source_blendspace` or `source_blendspace_path` (string, required) - Source BlendSpace asset path.
+- `variant_name` (string, optional) - Name segment for the default target path. Defaults to `Variant`.
+- `target_root` (string, optional) - Sample/temp output folder. Defaults to `/Game/_MCP_Sample/AnimStudy`.
+- `target_blendspace` or `target_blendspace_path` (string, optional) - Explicit target BlendSpace package path.
+- `axis_edits` (array, optional) - Axis edits. Each entry accepts `index`/`axis_index` or `axis` (`x`, `y`, `z`, or display name), plus optional `display_name`, `min`, `max`, `grid_num`, `snap_to_grid`, and `wrap_input`.
+- `sample_edits` (array, optional) - Existing sample edits. Select a sample by `index`/`sample_index`, `animation`, or `animation_name`; set an absolute `input`/`position`/`sample_value`, component fields `x`/`y`/`z`, an `offset`/`delta`, or `replacement_animation`.
+- `add_samples` (array, optional) - Samples to add. Each entry requires `animation` and `input`/`position`/`sample_value` or `x`/`y`/`z`. Animation-less add is intentionally unsupported because Unreal asserts on asset BlendSpaces.
+- `overwrite_existing` (boolean, optional) - Delete and recreate the target asset before editing. Defaults to `false`.
+- `save` (boolean, optional) - Save the target BlendSpace after edits. Defaults to `true`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate paths and request shape without duplicating, editing, or saving assets.
+- `allow_non_sample` (boolean, optional) - Allow target paths outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`. Defaults to `false`.
+- `force_resample` or `resample` (boolean, optional) - Rebuild runtime sampling data with `ValidateSampleData()` and `ResampleData()` even when no axis/sample value changed. Required, with `allow_non_sample=true`, for in-place source/target resampling.
+
+**Returns:**
+- `source_blendspace`, `target_blendspace`, source/target class and skeleton metadata
+- `source_axes`, `source_samples`, `target_axes`, and `target_samples`
+- `axis_edit_results`, `sample_edit_results`, and `add_sample_results`
+- `target_blendspace_created`, `target_blendspace_reused`, `changed`, `resampled`, `save`, `original_assets_modified`, `errors`, and `warnings`
+
+**Example:**
+```json
+{
+  "command": "ensure_blendspace_sample_variant",
+  "params": {
+    "source_blendspace": "/Game/StackOBot/Characters/Bot/Animations/BS_Bot_WalkRunLean.BS_Bot_WalkRunLean",
+    "variant_name": "LeanWideStudy",
+    "sample_edits": [
+      {"animation_name": "A_Bot_Run_LeanLeft", "x": 1.25},
+      {"animation_name": "A_Bot_Run_LeanRight", "x": -1.25}
+    ],
+    "save": true,
+    "allow_non_sample": false
+  }
+}
+```
+
+## ControlRig/AnimBP Sample Writer Authority
+
+When ControlRig or AnimBP sample authoring commands overlap, use
+`Docs/Research/controlrig_animbp_api_authority_matrix.md` before chaining them.
+For one target and one operation, choose one writer authority for the current
+step: high-level `ensure_*` commands own only their documented sample topology,
+while low-level `add_*` and `set_*` commands own reviewed sample/temp
+post-processing edits only. Inspectors and validators are not writers, and
+runtime probes do not author assets.
+
+Stop and inspect the target before continuing when a writer returns
+`success=false`, `partial_target_modified=true`, `compile_succeeded=false`, or
+`save_succeeded=false`.
+
+### create_anim_blueprint_sample
+
+Create a sample-only Animation Blueprint from a Skeleton or SkeletalMesh.
+
+**Important scope note:** this command refuses target paths outside
+`/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It validates a Skeleton or derives
+one from a SkeletalMesh, creates an empty/default AnimBP through
+`UAnimBlueprintFactory`, sets an optional preview mesh, compiles, optionally
+saves, and returns readback evidence. It does not author state machines,
+ControlRig nodes, graph demos, component assignments, or runtime/gameplay code.
+
+**Parameters:**
+- `target_anim_bp_path` (string, required) - Target sample AnimBP package path.
+- `skeleton_path` (string, optional) - Explicit Skeleton path. Required when no SkeletalMesh is supplied.
+- `skeletal_mesh_path` (string, optional) - SkeletalMesh used to derive Skeleton and default preview mesh.
+- `preview_skeletal_mesh_path` (string, optional) - Preview mesh override. Must use the same Skeleton.
+- `parent_class_path` (string, optional) - `UAnimInstance` subclass. Defaults to `/Script/Engine.AnimInstance`.
+- `overwrite_existing` (boolean, optional) - Delete and recreate an existing target sample AnimBP. Defaults to `false`.
+- `compile` (boolean, optional) - Compile after creation. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save after creation. Defaults to `false`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate request shape without creating, compiling, or saving.
+
+**Returns:**
+- `target_anim_bp_path`, `created_asset_path`, and `generated_class_path`
+- `skeleton_path`, `skeletal_mesh_path`, preview mesh path, and readback fields
+- `created`, `overwrote_existing`, `target_asset_saved`, and `compile_result`
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile or save fails
+- source dirty-state fields plus `source_modified=false`
+
+**Example:**
+```json
+{
+  "command": "create_anim_blueprint_sample",
+  "params": {
+    "target_anim_bp_path": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_StateMachineStudy",
+    "skeletal_mesh_path": "/Game/StackOBot/Characters/Bot/Mesh/SKM_Bot.SKM_Bot",
+    "compile": true,
+    "save_asset": true
+  }
+}
+```
+
+### ensure_anim_graph_controlrig_node_sample
+
+Create or reuse a sample-only AnimBP variant and add a narrow ControlRig
+AnimGraph node chain.
+
+**Important scope note:** this command refuses target paths outside
+`/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It treats the source AnimBP and
+ControlRig asset/class as read-only, duplicates or reuses only the target sample
+AnimBP, adds/reuses a `LinkedInputPose -> ControlRig -> Result` chain, binds the
+ControlRig class, compiles, optionally saves, and reads back topology. V1 does
+not apply `input_defaults` directly; run `set_anim_graph_controlrig_input_defaults`
+on the target sample after this command when exposed pins/defaults are needed.
+
+**Parameters:**
+- `source_anim_bp_path` (string, required) - Source AnimBP used as the read-only template.
+- `control_rig_asset_path` or `control_rig_path` (string, optional) - ControlRig Blueprint asset path.
+- `control_rig_class_path` or `control_rig_class` (string, optional) - Generated or native concrete `UControlRig` class path. Required when no asset path is supplied. Abstract base classes such as `/Script/ControlRig.ControlRig` are rejected before instantiation.
+- `target_anim_bp_path` (string, optional) - Explicit target sample AnimBP package path.
+- `target_root` (string, optional) - Default target folder. Defaults to `/Game/_MCP_Sample/AnimStudy`.
+- `variant_name` (string, optional) - Name segment for generated target path. Defaults to `ControlRigNodeSample`.
+- `allow_existing_target_reuse` (boolean, optional) - Reuse an existing sample target AnimBP. Defaults to `true`.
+- `overwrite_existing` (boolean, optional) - Delete and recreate the target sample AnimBP. Defaults to `false`.
+- `replace_existing_links` (boolean, optional) - Replace pose links required for the sample chain. Defaults to `true`.
+- `compile` (boolean, optional) - Compile the target sample AnimBP after edits. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save the target sample AnimBP after edits. Defaults to `false`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate request shape without duplicating, editing, compiling, or saving.
+
+**Returns:**
+- `source_modified=false`, `sample_only=true`, target create/reuse flags
+- `created_node_id`, `control_rig_node`, `input_pose_node`, `root_node`
+- `created_links` for input-to-ControlRig and ControlRig-to-root pose links
+- `compile_result`, `target_asset_saved`, and `readback` topology
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile or save fails
+- error responses after target preparation include `partial_target_modified`,
+  target create/reuse flags, and `target_dirty_after`
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_graph_controlrig_node_sample",
+  "params": {
+    "source_anim_bp_path": "/Game/Characters/Bot/ABP_Bot.ABP_Bot",
+    "control_rig_asset_path": "/Game/Characters/Bot/Rig/CR_Bot_Correction.CR_Bot_Correction",
+    "variant_name": "ControlRigStudy",
+    "compile": true,
+    "save_asset": true
+  }
+}
+```
+
+**UE 5.6.1 smoke fixture:**
+
+For engine-only validation, this repository has verified
+`/ControlRig/Modules/Root.Root` as a concrete ControlRig Blueprint asset. It
+resolves to `/ControlRig/Modules/Root.Root_C` and can compile into a sample
+AnimBP created from
+`/Engine/Tutorial/SubEditors/TutorialAssets/Character/TutorialTPP_AnimBlueprint.TutorialTPP_AnimBlueprint`
+under `/Game/_MCP_Temp/AnimControlRigSmoke`.
+
+### ensure_linked_anim_graph_sample_variant
+
+Create or reuse a sample-only AnimBP variant and add a narrow Linked Anim Graph
+node chain.
+
+**Important scope note:** this command refuses target paths outside
+`/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It treats the source AnimBP and the
+linked AnimBP as read-only, requires both to use the same `TargetSkeleton`, sets
+the Linked Anim Graph node to the linked AnimBP generated class, compiles,
+optionally saves, and reads back topology. MVP does not create Anim Layer
+Interfaces, Linked Anim Layer nodes, Sub Anim Instance compatibility wrappers,
+or arbitrary graph rewrites.
+
+When reusing an existing target sample AnimBP, the target must also use the same
+`TargetSkeleton` as the source; otherwise the command fails before graph edits.
+
+When the linked AnimBP exposes a linked input pose, the command connects
+`LinkedInputPose -> LinkedAnimGraph -> Result`. If the linked class exposes no
+pose input pin, the command still authors `LinkedAnimGraph -> Result` unless
+`require_input_pose_pin=true`.
+
+**Parameters:**
+- `source_anim_bp_path` (string, required) - Source AnimBP used as the read-only template.
+- `linked_anim_bp_path` (string, required) - Existing AnimBP whose generated class becomes the linked instance class.
+- `target_anim_bp_path` (string, optional) - Explicit target sample AnimBP package path.
+- `target_root` (string, optional) - Default target folder. Defaults to `/Game/_MCP_Sample/AnimStudy`.
+- `variant_name` (string, optional) - Name segment for generated target path. Defaults to `LinkedAnimGraphSample`.
+- `insert_mode` (string, optional) - Must be `input_pose_to_linked_graph_to_root`.
+- `allow_existing_target_reuse` (boolean, optional) - Reuse an existing sample target AnimBP. Defaults to `true`.
+- `overwrite_existing` (boolean, optional) - Delete and recreate the target sample AnimBP. Defaults to `false`.
+- `replace_existing_links` (boolean, optional) - Replace pose links required for the sample chain. Defaults to `true`.
+- `require_input_pose_pin` (boolean, optional) - Fail if the linked class exposes no input pose pin. Defaults to `false`.
+- `compile` (boolean, optional) - Compile the target sample AnimBP after edits. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save the target sample AnimBP after edits. Defaults to `false`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate request shape without duplicating, editing, compiling, or saving.
+
+**Returns:**
+- `source_modified=false`, `linked_source_modified=false`, `sample_only=true`
+- `linked_instance_class`, skeleton compatibility fields, target create/reuse flags
+- `created_node_id`, `linked_anim_graph_node`, optional `input_pose_node`, `root_node`
+- `created_links` and `linked_input_pose_summary`
+- `compile_result`, `target_asset_saved`, and `readback` topology
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile or save fails
+- error responses after target preparation include `partial_target_modified`,
+  target create/reuse flags, and `target_dirty_after`
+
+**Example:**
+```json
+{
+  "command": "ensure_linked_anim_graph_sample_variant",
+  "params": {
+    "source_anim_bp_path": "/Game/Characters/Bot/ABP_Bot.ABP_Bot",
+    "linked_anim_bp_path": "/Game/Characters/Bot/ABP_Bot_Linked.ABP_Bot_Linked",
+    "target_anim_bp_path": "/Game/_MCP_Temp/AnimStudy/ABP_LinkedGraphStudy",
+    "compile": true,
+    "save_asset": false
+  }
+}
+```
+
+For automatic sample linked-graph requests, the planner/job-contract route can
+emit this command and follow it with `inspect_anim_graph_protected_topology`
+readback:
+
+```powershell
+uv --directory .\Python run python scripts\analysis\planner_driven_bp_authoring_smoke.py --request "Create a sample Animation Blueprint linked anim graph using an existing compatible linked AnimBP." --run-live --require-live --no-write
+```
+
+### inspect_controlrig_rigvm_topology
+
+Read a ControlRig Blueprint's default RigVM graph topology.
+
+**Important scope note:** this command is read-only. It loads a ControlRig
+Blueprint asset or generated ControlRig class, resolves the owning
+`UControlRigBlueprint`, reads its default RigVM model, and returns bounded
+node/pin/link topology. It does not mutate, compile, save, execute, or solve
+the ControlRig. Use this as the evidence gate before considering any future
+RigVM link or pin-default authoring pass.
+
+**Parameters:**
+- `control_rig_path`, `control_rig_asset_path`, or `control_rig` (string, optional) - ControlRig Blueprint asset path or generated class path.
+- `control_rig_class_path` or `control_rig_class` (string, optional) - Generated ControlRig class path. Native-only classes without a ControlRig Blueprint graph are rejected.
+- `include_pins` (boolean, optional) - Include per-node pin metadata. Defaults to `true`.
+- `include_sub_pins` (boolean, optional) - Include bounded recursive sub-pin metadata. Defaults to `true`.
+- `include_links` (boolean, optional) - Include graph-level RigVM links. Defaults to `true`.
+- `include_pin_links` (boolean, optional) - Include per-pin link path summaries. Defaults to `false`.
+- `max_nodes` (integer, optional) - Maximum graph nodes to include. Defaults to `256`, clamped to `2048`.
+- `max_pins_per_node` (integer, optional) - Maximum top-level pins per node. Defaults to `64`, clamped to `512`.
+- `max_sub_pins_per_pin` (integer, optional) - Maximum sub-pins per pin at each recursion level. Defaults to `32`, clamped to `256`.
+- `max_links` (integer, optional) - Maximum graph links to include. Defaults to `512`, clamped to `4096`.
+
+**Returns:**
+- `read_only=true`, `source_modified=false`, asset dirty-state guards
+- resolved ControlRig asset/class path, graph name/path/depth
+- bounded `nodes` with node class, title, position, event metadata, unit script struct, and pin metadata
+- bounded `links` with source/target pin paths and source/target node names
+- `event_names`, `node_count`, `link_count`, truncation flags, and request bounds
+
+**Example:**
+```json
+{
+  "command": "inspect_controlrig_rigvm_topology",
+  "params": {
+    "control_rig_path": "/Game/_MCP_Temp/AnimControlRigSmoke/CR_MCP_Sample",
+    "include_pins": true,
+    "include_links": true,
+    "max_nodes": 128
+  }
+}
+```
+
+**UE 5.6.1 smoke fixture:**
+
+This repository has verified read-only topology inspection under
+`/Game/_MCP_Temp/ControlRigRigVMTopologySmoke/CR_MCP_Topology` after creating
+six allowlisted event units with `ensure_controlrig_sample_asset`. The inspector
+returned `read_only=true`, `source_modified=false`, `resolution_kind=asset`,
+`node_count=6`, `link_count=0`, event names `Construction`,
+`PostConstruction`, `Pre Forwards Solve`, `Forwards Solve`,
+`Post Forwards Solve`, and `Backwards Solve`, and script structs
+`RigUnit_PrepareForExecution`, `RigUnit_PostPrepareForExecution`,
+`RigUnit_PreBeginExecution`, `RigUnit_BeginExecution`,
+`RigUnit_PostBeginExecution`, and `RigUnit_InverseExecution`. The same graph was
+resolved from generated class
+`/Game/_MCP_Temp/ControlRigRigVMTopologySmoke/CR_MCP_Topology.CR_MCP_Topology_C`
+with `resolution_kind=generated_class`. Native base class
+`/Script/ControlRig.ControlRig` and missing target parameters were rejected.
+Cleanup deleted the temp folder and left no dirty content or map packages.
+
+### validate_controlrig_rigvm_links
+
+Validate proposed ControlRig RigVM links without mutating the graph.
+
+**Important scope note:** this command is read-only. It resolves a ControlRig
+Blueprint asset or generated ControlRig class, finds the requested source and
+target pins in the default RigVM model, checks existing-link state, and calls
+Unreal's RigVM `CanLink` path for each bounded link spec. It does not call
+`URigVMController::AddLink`, mutate the graph, compile, save, execute, or solve
+the ControlRig. Use this after `inspect_controlrig_rigvm_topology` and before
+any future RigVM link writer review.
+
+**Parameters:**
+- `control_rig_path`, `control_rig_asset_path`, or `control_rig` (string, optional) - ControlRig Blueprint asset path or generated class path.
+- `control_rig_class_path` or `control_rig_class` (string, optional) - Generated ControlRig class path. Native-only classes without a ControlRig Blueprint graph are rejected.
+- `links` (array, optional) - Link specs to validate. Each entry may be an object with `source_pin_path`/`from` and `target_pin_path`/`to`, or a string in `Source -> Target` form.
+- `unit_links` (array, optional) - Alias for `links`, intended for validating previously rejected `unit_links` specs without authoring them.
+- `allow_type_casting` or `enable_type_casting` (boolean, optional) - Allow RigVM type casting during `CanLink`. Defaults to `true`.
+- `max_links` (integer, optional) - Maximum link specs to validate. Defaults to `64`, clamped to `256`.
+
+**Returns:**
+- `read_only=true`, `saves_assets=false`, asset dirty-state guards
+- resolved ControlRig asset/class path and default RigVM graph path
+- `results` with source/target pin found flags, pin directions, CPP types, execute-context flags, already-linked state, `can_link`, and `failure_reason`
+- aggregate counts for requested/validated links, missing pins, already-linked specs, and `can_link`/`cannot_link`
+
+**Example:**
+```json
+{
+  "command": "validate_controlrig_rigvm_links",
+  "params": {
+    "control_rig_path": "/Game/_MCP_Temp/AnimControlRigSmoke/CR_MCP_Sample",
+    "links": [
+      {
+        "name": "begin_to_inverse",
+        "from": "MCP_Begin.ExecuteContext",
+        "to": "MCP_Inverse.ExecuteContext"
+      }
+    ]
+  }
+}
+```
+
+**UE 5.6.1 smoke fixture:**
+
+This repository has verified read-only link feasibility validation under
+`/Game/_MCP_Temp/ControlRigRigVMLinkValidateSmoke/CR_MCP_LinkValidate` after
+creating two allowlisted event units with `ensure_controlrig_sample_asset`.
+`inspect_controlrig_rigvm_topology` returned two execute pins,
+`MCP_BeginExecution.ExecutePin` and `MCP_InverseExecution.ExecutePin`, with
+`link_count=0`. `validate_controlrig_rigvm_links` returned `read_only=true`,
+`source_modified=false`, `asset_dirty_unchanged=true`, two validation results,
+and one missing-pin guard. The event-to-event probe resolved both pins and
+returned `can_link=false` with failure reason `Target pin is not an input.`
+The same validation resolved from generated class
+`/Game/_MCP_Temp/ControlRigRigVMLinkValidateSmoke/CR_MCP_LinkValidate.CR_MCP_LinkValidate_C`
+with `resolution_kind=generated_class` and `link_specs_field=unit_links`.
+Native base class `/Script/ControlRig.ControlRig` and missing target parameters
+were rejected. Cleanup deleted the temp folder and left no dirty content or map
+packages.
+
+**UE 5.6.1 engine positive fixture:**
+
+`/ControlRigModules/Modules/AddControl.AddControl` has been verified as a
+read-only positive fixture for proposed RigVM link feasibility. The proposed
+non-execute bool link `VariableNode.Value ->
+ParentConstraint_1.bMaintainOffset` returned `read_only=true`,
+`source_modified=false`, `asset_dirty_unchanged=true`, `already_linked=false`,
+and `can_link=true` with no failure reason. `/ControlRig/Modules/Root.Root` and
+`/ControlRig/Modules/Modules56/Root.Root` remain useful existing-link fixtures:
+their `RigUnit_BeginExecution.ExecutePin -> FWD Root.ExecuteContext` link is
+reported as `already_linked=true` and `can_link=false` because the pins are
+already connected.
+
+### validate_controlrig_rigvm_pin_defaults
+
+Validate ControlRig RigVM pin default feasibility without writing values.
+
+**Important scope note:** this command is read-only. It resolves a ControlRig
+Blueprint asset or generated ControlRig class, finds requested pins in the
+default RigVM model, reports current default-value metadata, and validates any
+proposed default string with Unreal's RigVM pin default-value checks. It does
+not call `URigVMController::SetPinDefaultValue`, resize arrays, propagate values
+to linked pins, mutate the graph, compile, save, execute, or solve the
+ControlRig. Use this after `inspect_controlrig_rigvm_topology` and before any
+future RigVM pin-default writer review.
+
+**Parameters:**
+- `control_rig_path`, `control_rig_asset_path`, or `control_rig` (string, optional) - ControlRig Blueprint asset path or generated class path.
+- `control_rig_class_path` or `control_rig_class` (string, optional) - Generated ControlRig class path. Native-only classes without a ControlRig Blueprint graph are rejected.
+- `pin_defaults` (array, optional) - Pin specs to validate. Each entry may be a pin-path string or an object with `pin_path`/`pin`/`path` and optional `default_value`/`value`/`default`.
+- `defaults` or `pins` (array, optional) - Aliases for `pin_defaults`.
+- `max_pins` (integer, optional) - Maximum pin specs to validate. Defaults to `64`, clamped to `512`.
+
+**Returns:**
+- `read_only=true`, `saves_assets=false`, `actual_default_writes_supported=false`, asset dirty-state guards
+- resolved ControlRig asset/class path and default RigVM graph path
+- `results` with pin found flags, direction, CPP type, current/original/UI default values, default-value type, bound-variable flags, link count, `can_provide_default_value`, proposed default validity, and metadata-clamped value
+- aggregate counts for requested/validated pins, missing pins, default-capable pins, proposed defaults, valid/invalid proposed defaults, and writer-candidate-for-review pins
+- per-result `proposed_default_is_valid` plus compatibility alias `proposed_default_valid`
+
+**Example:**
+```json
+{
+  "command": "validate_controlrig_rigvm_pin_defaults",
+  "params": {
+    "control_rig_path": "/Game/_MCP_Temp/AnimControlRigSmoke/CR_MCP_Sample",
+    "pin_defaults": [
+      {
+        "pin_path": "MCP_Begin.ExecutePin"
+      },
+      {
+        "pin_path": "SomeNode.FloatInput",
+        "value": 1.0
+      }
+    ]
+  }
+}
+```
+
+**UE 5.6.1 smoke fixture:**
+
+This repository has verified read-only pin default feasibility validation under
+`/Game/_MCP_Temp/ControlRigRigVMPinDefaultValidateSmoke/CR_MCP_PinDefaultValidate`
+after creating two allowlisted event units with `ensure_controlrig_sample_asset`.
+`inspect_controlrig_rigvm_topology` returned execute pin
+`MCP_BeginExecution.ExecutePin`. `validate_controlrig_rigvm_pin_defaults`
+returned `read_only=true`, `source_modified=false`,
+`asset_dirty_unchanged=true`, `actual_default_writes_supported=false`,
+`pin_found_count=2`, `missing_pin_count=1`, `cannot_provide_default_count=3`,
+`proposed_default_provided_count=2`, and
+`default_write_candidate_for_review_count=0`. The execute pin resolved from
+both asset path and generated class
+`/Game/_MCP_Temp/ControlRigRigVMPinDefaultValidateSmoke/CR_MCP_PinDefaultValidate.CR_MCP_PinDefaultValidate_C`.
+Native base class `/Script/ControlRig.ControlRig`, missing target parameters,
+and missing pin spec arrays were rejected. Cleanup deleted the temp folder and
+left no dirty content or map packages.
+
+**UE 5.6.1 engine positive fixture:**
+
+`/ControlRigModules/Modules/AddControl.AddControl` has been verified as a
+read-only positive fixture for RigVM default feasibility.
+`DISPATCH_RigVMDispatch_ArrayIterator_2.Array` (`TArray<FRigElementKey>`, value
+`()`) and `ParentConstraint_1.bMaintainOffset` (`bool`, value `False`) returned
+`read_only=true`, `source_modified=false`, `asset_dirty_unchanged=true`,
+`can_provide_default_value=true`, `proposed_default_is_valid=true`,
+`proposed_default_valid=true`, `proposed_default_valid_count=2`,
+`proposed_default_invalid_count=0`, `default_write_candidate_for_review_count=2`,
+and `actual_default_writes_supported=false`.
+
+### add_controlrig_rigvm_links
+
+Add reviewed ControlRig RigVM links on a sample/temp ControlRig Blueprint.
+
+**Important scope note:** this command is a guarded writer. It refuses targets
+outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`, validates every requested
+link before mutation, treats already-linked specs as idempotent success, and
+only then calls `URigVMController::AddLink`. It does not create cast nodes,
+modify original/engine ControlRig assets, execute, solve, or write runtime code.
+Use `validate_controlrig_rigvm_links` first when planning links for non-temp
+assets.
+
+**Parameters:**
+- `control_rig_path`, `control_rig_asset_path`, or `control_rig` (string, optional) - Sample/temp ControlRig Blueprint asset path or generated class path.
+- `control_rig_class_path` or `control_rig_class` (string, optional) - Generated ControlRig class path. The owning asset must still be under sample/temp roots.
+- `links` (array, optional) - Link specs with `source_pin_path`/`from` and `target_pin_path`/`to`, or strings in `Source -> Target` form.
+- `unit_links` (array, optional) - Alias for `links`, intended for reviewed unit-link specs.
+- `allow_type_casting` or `enable_type_casting` (boolean, optional) - Allow type casting during feasibility checks. Defaults to `false`; cast-node creation is still disabled.
+- `dry_run` or `validate_only` (boolean, optional) - Validate and report `will_add_link` without mutation.
+- `compile` (boolean, optional) - Compile/reinitialize after successful mutation. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save only the target sample/temp ControlRig asset. Defaults to `false`.
+- `max_links` (integer, optional) - Maximum link specs to process. Defaults to `64`, clamped to `256`.
+
+**Returns:**
+- `sample_only=true`, target path, dirty-state guards, `target_modified`, compile/save result
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile/save fails or any requested link
+  cannot be applied
+- `partial_target_modified=true` when one or more links were applied before a
+  later link failed
+- per-link validation plus `will_add_link`, `writer_candidate`, and `applied`
+- aggregate `would_add_count`, `links_added_count`, missing/already-linked/can-link counts, and graph link counts before/after
+
+**Example:**
+```json
+{
+  "command": "add_controlrig_rigvm_links",
+  "params": {
+    "control_rig_path": "/Game/_MCP_Temp/ControlRigWriterSmoke/CR_AddControlCopy",
+    "links": [
+      {
+        "from": "VariableNode.Value",
+        "to": "ParentConstraint_1.bMaintainOffset"
+      }
+    ],
+    "dry_run": true
+  }
+}
+```
+
+### set_controlrig_rigvm_pin_defaults
+
+Set reviewed ControlRig RigVM pin defaults on a sample/temp ControlRig
+Blueprint.
+
+**Important scope note:** this command is a guarded writer. It refuses targets
+outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`, requires every pin spec to
+include a proposed value, validates every requested default before mutation, and
+only then calls `URigVMController::SetPinDefaultValue`. By default it does not
+resize arrays or propagate values to linked pins. It does not modify
+original/engine ControlRig assets, execute, solve, or write runtime code. Use
+`validate_controlrig_rigvm_pin_defaults` first when planning defaults for
+non-temp assets.
+
+**Parameters:**
+- `control_rig_path`, `control_rig_asset_path`, or `control_rig` (string, optional) - Sample/temp ControlRig Blueprint asset path or generated class path.
+- `control_rig_class_path` or `control_rig_class` (string, optional) - Generated ControlRig class path. The owning asset must still be under sample/temp roots.
+- `pin_defaults` (array, optional) - Pin specs with `pin_path`/`pin`/`path` and `default_value`/`value`/`default`.
+- `defaults` (array, optional) - Alias for `pin_defaults`.
+- `resize_arrays` (boolean, optional) - Permit RigVM array resize while setting defaults. Defaults to `false`.
+- `set_value_on_linked_pins` (boolean, optional) - Propagate to linked pins. Defaults to `false`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate and report `will_set_default` without mutation.
+- `compile` (boolean, optional) - Compile/reinitialize after successful mutation. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save only the target sample/temp ControlRig asset. Defaults to `false`.
+- `max_pins` (integer, optional) - Maximum pin specs to process. Defaults to `64`, clamped to `512`.
+
+**Returns:**
+- `sample_only=true`, target path, dirty-state guards, `target_modified`, compile/save result
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile/save fails or any requested default
+  cannot be applied
+- `partial_target_modified=true` when one or more defaults were set before a
+  later default failed
+- per-pin validation plus `already_matching`, `will_set_default`, `writer_candidate`, `applied`, and default readback after mutation
+- aggregate `would_set_count`, `defaults_set_count`, missing/default-capable/proposed-valid counts, and idempotent already-matching count
+
+**Example:**
+```json
+{
+  "command": "set_controlrig_rigvm_pin_defaults",
+  "params": {
+    "control_rig_path": "/Game/_MCP_Temp/ControlRigWriterSmoke/CR_AddControlCopy",
+    "pin_defaults": [
+      {
+        "pin_path": "ParentConstraint_1.bMaintainOffset",
+        "value": "False"
+      }
+    ],
+    "dry_run": true
+  }
+}
+```
+
+### ensure_controlrig_sample_asset
+
+Create or reuse a sample-only ControlRig Blueprint asset.
+
+**Important scope note:** this command refuses target paths outside
+`/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It creates a ControlRig Blueprint,
+optionally assigns a preview SkeletalMesh, optionally imports a bounded preview
+hierarchy from a read-only SkeletalMesh/Skeleton, optionally adds bounded
+direct hierarchy curves, local/global transform nulls, or direct
+float/bool/euler transform controls, or bounded allowlisted single-instance
+ControlRig event RigVM unit node evidence, compiles or initializes the target, optionally saves only the target,
+and reads back the generated class, preview mesh, hierarchy import evidence,
+direct curve evidence, direct null evidence, direct control evidence, and
+bounded RigVM unit-node evidence. Direct
+null/control objects may include `parent` or `parent_name` as a string resolved
+to an existing/imported or earlier direct Bone/Null/Control hierarchy key. It
+also supports `transform`, `global_transform`, or `local_transform` on direct
+null objects. Direct control objects may include `shape_name`, `shape_color`, or
+`shape_transform` metadata. Direct transform controls use
+`control_type="transform"` or `control_type="euler_transform"` and accept
+transform defaults only through `value`, `default_value`, `initial_value`, or
+`default`. `unit_nodes` accepts only `begin_execution`,
+`pre_begin_execution`, `post_begin_execution`, `prepare_for_execution`,
+`post_prepare_for_execution`, and `inverse_execution` event units with optional
+`name`/`node_name` and `position`/`graph_position`; UE 5.6.1 public headers do
+not expose `FRigUnit_EndExecution`, so this command does not synthesize an
+unavailable end unit or create links. It does not directly author control transform fields,
+proxy/channel controls, animation channels, arbitrary RigVM script structs,
+unit links, variables, functions, comments, reroutes, dispatch nodes, exposed
+pins, or graph replacement.
+
+**Parameters:**
+- `target_control_rig_path` (string, required) - Target sample ControlRig package path.
+- `skeletal_mesh_path` (string, optional) - Read-only SkeletalMesh used as preview input when no explicit preview mesh is supplied.
+- `skeleton_path` (string, optional) - Read-only Skeleton used only for validation.
+- `preview_skeletal_mesh_path` (string, optional) - Explicit preview mesh override.
+- `setup_mode` (string, optional) - `empty`, `empty_with_preview`, or `import_preview_hierarchy`. Defaults to `empty_with_preview`.
+- `curves` (array, optional) - Direct sample hierarchy curves as strings or objects with `name` and optional `value`.
+- `nulls` (array, optional) - Direct sample nulls as strings or objects with `name`, optional string `parent`/`parent_name`, and optional `transform`, `global_transform`, or `local_transform` object. Parents resolve only to existing/imported or earlier direct Bone/Null/Control keys.
+- `controls` (array, optional) - Direct sample controls as strings or objects with `name`, optional `control_type` (`float`, `bool`, `transform`, or `euler_transform`), optional `value`/`default_value`/`initial_value`/`default`, optional string `parent`/`parent_name`, and optional `shape_name`, `shape_color`, or `shape_transform`. Strings become float controls with default `0.0`. Transform controls use UE `ERigControlType::EulerTransform`; their value fields must be transform objects with `translation`/`location`, `rotation`, or `scale`/`scale3d`. Parents resolve only to existing/imported or earlier direct Bone/Null/Control keys. `shape_color` accepts `[r,g,b,a?]` or `{r,g,b,a}` with components in `0..1` or `0..255`; `shape_transform` accepts a transform object.
+- `unit_nodes` (array, optional) - Bounded RigVM unit nodes as strings or objects. Only single-instance public ControlRig event units are accepted: `begin_execution`, `pre_begin_execution`, `post_begin_execution`, `prepare_for_execution`, `post_prepare_for_execution`, and `inverse_execution`; aliases such as `Forwards Solve`, `Pre Forwards Solve`, `Post Forwards Solve`, `Construction`, `PostConstruction`, and `Backwards Solve` are accepted. Object fields are limited to `type`/`unit_type`/`unit`/`kind`, optional `name`/`node_name`, and optional `position`/`graph_position` as `[x, y]` or `{x, y}`.
+- `max_direct_curves` (integer, optional) - Maximum direct curve entries accepted. Defaults to `32`, clamped to `128`.
+- `max_direct_nulls` (integer, optional) - Maximum direct null entries accepted. Defaults to `32`, clamped to `128`.
+- `max_direct_controls` (integer, optional) - Maximum direct control entries accepted. Defaults to `32`, clamped to `128`.
+- `max_unit_nodes` (integer, optional) - Maximum RigVM unit node entries accepted. Defaults to `6`, clamped to `6`.
+- `allow_existing_target_reuse` (boolean, optional) - Reuse an existing sample ControlRig. Defaults to `true`.
+- `overwrite_existing` (boolean, optional) - Delete and recreate the target sample ControlRig. Defaults to `false`.
+- `modular_rig` (boolean, optional) - Create a modular rig instead of a standard ControlRig. Defaults to `false`.
+- `compile` (boolean, optional) - Compile/initialize after creation or preview assignment. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save the target sample ControlRig. Defaults to `false`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate without creating, editing, compiling, or saving.
+
+**Returns:**
+- `source_modified=false`, `sample_only=true`, target create/reuse flags
+- `control_rig_class_path`, `preview_skeletal_mesh_readback`
+- `hierarchy_import` with source type, bounded bone/curve key readback, counts, and truncation flag when `setup_mode=import_preview_hierarchy`
+- `direct_curves` with requested curve specs, added curve keys, counts, and truncation flag when `curves` is supplied
+- `direct_nulls` with requested null specs, added null keys, parent key and transform readback when applicable, counts, identity/root-level flags, and truncation flag when `nulls` is supplied
+- `direct_controls` with requested control specs, added control keys, parent key readback, transform value readback when applicable, shape metadata readback when applicable, counts, root-level/scalar/transform/shape customization flags, and truncation flag when `controls` is supplied
+- `rigvm_summary` with requested unit specs, allowed-unit scope, node add/reuse counts, node title/event/script struct readback, pin readback, and explicit unsupported link/arbitrary-struct flags when `unit_nodes` is supplied
+- `can_create_transient_control_rig`, `compile_result`, `target_asset_saved`
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile or save fails
+- error responses after target preparation include `partial_target_modified`,
+  target create/reuse flags, and `target_dirty_after`
+- dirty-state guards for source Skeleton/SkeletalMesh/preview mesh inputs
+
+**Example:**
+```json
+{
+  "command": "ensure_controlrig_sample_asset",
+  "params": {
+    "target_control_rig_path": "/Game/_MCP_Temp/AnimControlRigSmoke/CR_MCP_Sample",
+    "skeletal_mesh_path": "/Game/Characters/Bot/SKM_Bot.SKM_Bot",
+    "setup_mode": "import_preview_hierarchy",
+    "curves": [{"name": "MCP_TestGate", "value": 1.0}],
+    "nulls": [
+      {"name": "MCP_RootNull", "global_transform": {"translation": [0, 0, 50]}},
+      {"name": "MCP_AimNull", "parent": "MCP_RootNull", "local_transform": {"translation": [25, 0, 0]}}
+    ],
+    "controls": [
+      {
+        "name": "MCP_FKAlpha",
+        "control_type": "float",
+        "value": 0.5,
+        "parent": "MCP_AimNull",
+        "shape_name": "Circle",
+        "shape_color": [0.2, 0.6, 1.0, 1.0],
+        "shape_transform": {"translation": [0, 0, 5], "scale": [1.5, 1.5, 1.5]}
+      },
+      {
+        "name": "MCP_WorldControl",
+        "control_type": "transform",
+        "value": {"translation": [10, 20, 30], "rotation": [0, 45, 0], "scale": [1, 1, 1]},
+        "parent": "MCP_AimNull",
+        "shape_name": "Box"
+      }
+    ],
+    "unit_nodes": [
+      {"type": "prepare_for_execution", "name": "MCP_Construction", "position": [-360, -160]},
+      {"type": "begin_execution", "name": "MCP_BeginExecution", "position": [-280, 0]}
+    ],
+    "compile": true,
+    "save_asset": false
+  }
+}
+```
+
+**UE 5.6.1 smoke fixture:**
+
+This repository has verified creation under
+`/Game/_MCP_Temp/AnimControlRigSmoke/CR_MCP_Sample` with preview mesh
+`/Engine/Tutorial/SubEditors/TutorialAssets/Character/TutorialTPP.TutorialTPP`.
+The command produced
+`/Game/_MCP_Temp/AnimControlRigSmoke/CR_MCP_Sample.CR_MCP_Sample_C`, compiled
+successfully, created a transient ControlRig instance, and cleaned up with no
+dirty source packages.
+
+The same command has also been verified as an upstream step for
+`ensure_anim_graph_controlrig_node_sample`: a generated sample ControlRig class
+from `/Game/_MCP_Temp/AnimControlRigE2E/CR_MCP_E2E` compiled successfully when
+bound into `/Game/_MCP_Temp/AnimControlRigE2E/ABP_MCP_ControlRigE2E`, then both
+temp assets were deleted with no dirty packages left.
+
+**UE 5.6.1 import hierarchy smoke fixture:**
+
+`setup_mode=import_preview_hierarchy` has been verified under
+`/Game/_MCP_Temp/AnimControlRigImportSmoke/CR_MCP_Import` with
+`/Engine/Tutorial/SubEditors/TutorialAssets/Character/TutorialTPP.TutorialTPP`.
+The command imported 68 bone keys, returned the first 64 with
+`keys_truncated=true`, compiled successfully, created a transient ControlRig
+instance, and kept source Skeleton/SkeletalMesh/preview mesh packages clean.
+Re-running the same import target without `overwrite_existing=true` correctly
+returned `requires_overwrite_existing=true`. The generated ControlRig class was
+then accepted by `ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigImportSmoke/ABP_MCP_ImportControlRig` with two
+pose links. Cleanup deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 direct curve smoke fixture:**
+
+Direct `curves` have been verified under
+`/Game/_MCP_Temp/AnimControlRigCurveSmoke/CR_MCP_Curves` with two requested
+curves: `MCP_TestGate=1.0` and `MCP_Weight=0.25`. Dry-run returned the planned
+`direct_curves` without mutation. Creation added two hierarchy keys,
+`Curve(MCP_TestGate)` and `Curve(MCP_Weight)`, compiled successfully, and
+created a transient ControlRig instance. Re-running the same curve request on
+the existing target without `overwrite_existing=true` correctly returned
+`requires_overwrite_existing=true`. The generated class was then accepted by
+`ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigCurveSmoke/ABP_MCP_CurveControlRig` with two
+pose links. Cleanup deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 direct null smoke fixture:**
+
+Direct root-level identity `nulls` have been verified under
+`/Game/_MCP_Temp/AnimControlRigNullSmoke/CR_MCP_Nulls` with two requested
+nulls: `MCP_RootNull` and `MCP_AimNull`. Dry-run returned the planned
+`direct_nulls` without mutation. Creation added two hierarchy keys,
+`Null(MCP_RootNull)` and `Null(MCP_AimNull)`, compiled successfully, and
+created a transient ControlRig instance. Re-running the same null request on
+the existing target without `overwrite_existing=true` correctly returned
+`requires_overwrite_existing=true`. Null `parent_key` and `initial_transform`
+input remained rejected. The
+generated class was then accepted by
+`ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigNullSmoke/ABP_MCP_NullControlRig` with two pose
+links. Cleanup deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 direct control smoke fixture:**
+
+Direct root-level scalar `controls` have been verified under
+`/Game/_MCP_Temp/AnimControlRigControlSmoke/CR_MCP_Controls` with three
+requested controls: float `MCP_FKAlpha=0.5`, bool `MCP_EnableIK=true`, and
+default float `MCP_DefaultFloat=0.0`. Dry-run returned the planned
+`direct_controls` without mutation. Creation added three hierarchy keys,
+`Control(MCP_FKAlpha)`, `Control(MCP_EnableIK)`, and
+`Control(MCP_DefaultFloat)`, compiled successfully, and created a transient
+ControlRig instance. Re-running the same control request on the existing target
+without `overwrite_existing=true` correctly returned
+`requires_overwrite_existing=true`. Direct control `parent_key`, direct control
+transform fields, and RigVM fields inside direct controls were rejected. The generated class was then
+accepted by `ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigControlSmoke/ABP_MCP_ControlRigControls` with
+two pose links. Cleanup deleted the temp folder and left no dirty content
+packages.
+
+**UE 5.6.1 direct parent smoke fixture:**
+
+Named direct parents have been verified under
+`/Game/_MCP_Temp/AnimControlRigParentSmoke/CR_MCP_Parented` with nulls
+`MCP_RootNull` and `MCP_ChildNull(parent=MCP_RootNull)` plus scalar controls
+`MCP_FKAlpha=0.5(parent=MCP_ChildNull)` and
+`MCP_EnableIK=true(parent=MCP_ChildNull)`. Dry-run returned planned parent
+specs without mutation. Creation added two nulls and two controls, returned
+`parent_key` readback for the child null and both controls, compiled
+successfully, and created a transient ControlRig instance. Re-running the same
+direct null/control request on the existing target without
+`overwrite_existing=true` correctly returned `requires_overwrite_existing=true`.
+Missing and forward parent names were rejected before direct additions;
+unsupported control transform fields remained rejected. The generated class was then accepted by
+`ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigParentSmoke/ABP_MCP_ParentedControlRig`.
+Cleanup deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 direct null transform smoke fixture:**
+
+Direct null local/global transforms have been verified under
+`/Game/_MCP_Temp/AnimControlRigTransformSmoke/CR_MCP_NullTransforms` with
+`MCP_RootNull(global_transform.translation=[100,0,50])`,
+`MCP_ChildNull(parent=MCP_RootNull, local_transform.translation=[10,0,0])`,
+and an identity `MCP_DefaultNull`. Dry-run returned planned transform specs
+without mutation. Creation added three nulls, returned `requested_transform`,
+`local_transform`, and `global_transform` readback, compiled successfully, and
+created a transient ControlRig instance. Re-running the same request on the
+existing target without `overwrite_existing=true` correctly returned
+`requires_overwrite_existing=true`. `initial_transform`, multiple transform
+fields on one null, and transform fields on controls remained rejected. The generated class was then accepted by
+`ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigTransformSmoke/ABP_MCP_NullTransformControlRig`.
+Cleanup deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 direct control shape smoke fixture:**
+
+Direct scalar control shape metadata has been verified under
+`/Game/_MCP_Temp/AnimControlRigShapeSmoke/CR_MCP_ShapedControls` with
+`MCP_RootNull`, float control
+`MCP_FKAlpha=0.75(parent=MCP_RootNull, shape_name=Circle)`, and bool control
+`MCP_EnableIK=true(shape_name=Box)`. Creation returned
+`shape_customization_supported=true`, `shape_customization_requested=true`,
+requested/readback `shape_name`, normalized `shape_color`, and
+`shape_transform` readback for the float control. UE reports visible shape
+support only for the float control; bool control shape metadata is retained but
+`shape_visible=false` because UE `FRigControlSettings::SupportsShape()` excludes
+bool controls. Invalid `shape_color`, control transform fields,
+and `offset_transform` remained rejected with `source_modified=false`. The generated class was then
+accepted by `ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigShapeSmoke/ABP_MCP_ShapeControls`. Cleanup
+deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 direct transform control smoke fixture:**
+
+Direct transform controls have been verified under
+`/Game/_MCP_Temp/AnimControlRigTransformControlSmoke/CR_MCP_TransformControls`
+with `MCP_RootNull`, transform control
+`MCP_WorldControl(parent=MCP_RootNull, control_type=transform,
+translation=[10,20,30], rotation=[0,45,0], scale=[1.25,1,0.75],
+shape_name=Box)`, and float control
+`MCP_FKAlpha=0.5(parent=MCP_WorldControl)`. Creation returned
+`transform_controls_supported=true`, `transform_controls_requested=true`,
+mapped the requested type to `euler_transform`, and returned
+`readback_current_value` translation `[10,20,30]`, scale `[1.25,1,0.75]`,
+shape readback, and parent key readback. Direct control `transform`,
+`local_transform`, `offset_transform`, and unsupported `transform_no_scale`
+remained rejected with `source_modified=false`. The
+generated class was then accepted by `ensure_anim_graph_controlrig_node_sample`,
+which compiled
+`/Game/_MCP_Temp/AnimControlRigTransformControlSmoke/ABP_MCP_TransformControls`.
+Cleanup deleted the temp folder and left no dirty content packages.
+
+**UE 5.6.1 allowlisted event-unit smoke fixture:**
+
+Allowlisted single-instance ControlRig event RigVM unit authoring has been
+verified under
+`/Game/_MCP_Temp/AnimControlRigEventUnitsSmoke/CR_MCP_EventUnits` with
+`prepare_for_execution`, `post_prepare_for_execution`, `pre_begin_execution`,
+`begin_execution`, `post_begin_execution`, and `inverse_execution` unit nodes.
+Creation returned `rigvm_summary.performed=true`, `unit_node_count=6`,
+`nodes_added=6`, `unit_links_supported=false`, script structs
+`RigUnit_PrepareForExecution`, `RigUnit_PostPrepareForExecution`,
+`RigUnit_PreBeginExecution`, `RigUnit_BeginExecution`,
+`RigUnit_PostBeginExecution`, and `RigUnit_InverseExecution`, event names
+`Construction`, `PostConstruction`, `Pre Forwards Solve`, `Forwards Solve`,
+`Post Forwards Solve`, and `Backwards Solve`, `can_only_exist_once=true` for
+each node, and execute-pin readback. `interaction_execution`, deprecated
+`sequence_execution`, duplicate event types, `max_unit_nodes` overflow,
+arbitrary `script_struct_path`, unknown unit types, and `unit_links` were
+rejected. The generated class was accepted by
+`ensure_anim_graph_controlrig_node_sample`, which compiled
+`/Game/_MCP_Temp/AnimControlRigEventUnitsSmoke/ABP_MCP_EventUnits`. Cleanup
+deleted the temp folder and left no dirty content or map packages.
+
+### ensure_anim_state_machine_sample_variant
+
+Create or reuse a sample-only Animation Blueprint variant and author a narrow
+state-machine demo through Unreal editor graph schemas.
+
+**Important scope note:** this command refuses target paths outside
+`/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It treats the source AnimBP and all
+animation assets as read-only, duplicates or reuses only the target sample
+AnimBP, adds regular states with one Sequence/BlendSpace asset player per state,
+optionally binds BlendSpacePlayer float inputs such as `X`/`Y` to sample AnimBP
+variables or numeric defaults,
+connects entry and transitions through Unreal schemas, compiles, optionally
+saves, and reads back topology with `inspect_anim_state_machine_transitions`.
+It does not generate arbitrary Blueprint transition logic or mutate original
+project assets.
+
+**Parameters:**
+- `source_anim_bp_path` (string, required) - Source Animation Blueprint path or name.
+- `target_anim_bp_path` (string, optional) - Explicit target sample AnimBP package path.
+- `target_root` (string, optional) - Default target folder. Defaults to `/Game/_MCP_Sample/AnimStudy`.
+- `variant_name` (string, optional) - Name segment for generated target path. Defaults to `StateMachineSample`.
+- `state_machine_name` (string, optional) - State-machine node/graph name. Defaults to `MCP_StateMachine`.
+- `states` (array, optional) - State specs with `name`, `animation_asset_path`, optional `position`, `always_reset_on_entry`, and optional `player_inputs`.
+- `animation_asset_path` (string, optional) - Top-level shorthand for a single-state request when `states` is omitted.
+- `entry_state` (string, optional) - Entry state name. Defaults to the first state.
+- `transitions` (array, optional) - Transition specs with `from_state`, `to_state`, optional `rule_mode`, `priority_order`, `crossfade_duration`, `blend_mode`, `bidirectional`, `automatic_rule_trigger_time`, and bounded variable-rule fields.
+- `connect_demo_machine_to_output` (boolean, optional) - Connect the state-machine output to the AnimGraph Result. Defaults to `true`.
+- `replace_existing_root_link` (boolean, optional) - Replace an existing target root pose link when connecting. Defaults to `true`.
+- `replace_existing_entry_link` (boolean, optional) - Replace an existing state-machine entry link. Defaults to `true`.
+- `allow_existing_target_reuse` (boolean, optional) - Reuse an existing sample target AnimBP. Defaults to `true`.
+- `overwrite_existing` (boolean, optional) - Delete and recreate the target sample AnimBP. Defaults to `false`.
+- `compile` (boolean, optional) - Compile the target sample AnimBP after edits. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save the target sample AnimBP after edits. Defaults to `true`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate request shape without duplicating, editing, compiling, or saving.
+- `max_states` (number, optional) - Max state specs, clamped to 64. Defaults to `16`.
+- `max_transitions` (number, optional) - Max transition specs, clamped to 128. Defaults to `32`.
+
+Supported transition `rule_mode` values are:
+
+- `always_true` and `always_false` - Set the transition result directly.
+- `automatic_remaining_time` - Enables Unreal's automatic rule based on the source state's asset-player remaining time.
+- `bool_variable` - Connects a target AnimBP bool variable to `bCanEnterTransition`; pass `expected_value=false` to insert a boolean NOT node.
+- `float_compare` - Connects a target AnimBP float variable through a Kismet compare node; pass `compare` (`greater`, `>=`, `less`, `<=`, `equal`, `not_equal`) and `compare_value` or `threshold`.
+- `enum_compare` - Connects a target AnimBP enum variable through an enum equality/inequality node; pass `enum_type`, `enum_value`, and optional `compare` (`equal` or `not_equal`).
+
+For variable rules, pass `rule_variable` or `variable_name`. Existing target
+variables are reused when their type matches. Pass
+`create_rule_variable_if_missing=true` to create the bool/float/enum variable
+on the sample target AnimBP. V1 still returns an error instead of
+deleting/replacing an existing state machine, creating conduits, state aliases,
+nested machines, custom transition graphs, multi-node state chains, or
+arbitrary rule graphs.
+
+For BlendSpace states, pass `player_inputs`, `asset_player_inputs`, or
+`blendspace_inputs` to bind exposed float pins such as `X` and `Y`. Object form
+can use numeric defaults (`{"X": 0.0}`), variable shorthand (`{"X": "Speed"}`),
+or full specs (`{"X": {"variable": "Speed", "create_variable_if_missing": true,
+"default_value": 0.0}}`). Array form accepts entries with `pin`/`axis`,
+`variable`, `value`/`default_value`, and `create_variable_if_missing`.
+
+Optional bridge smoke for the bounded variable-rule and BlendSpacePlayer input
+binding path:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_state_machine_variable_rule_smoke.ps1 -Json
+uv --directory .\Python run python scripts\analysis\smoke_anim_state_machine_variable_rule_bridge.py --json
+uv --directory .\Python run python scripts\analysis\smoke_anim_state_machine_variable_rule_bridge.py --rule-mode enum_compare --json
+```
+
+**Returns:**
+- `source_asset_modified=false`, `original_assets_modified=false`, `sample_only=true`
+- `target_anim_bp_path`, target create/reuse flags, compile and save results
+- `state_machine`, `states`, `transitions`, `rule_variables`, and `state_input_variables` authoring summaries
+- per-transition `rule_graph_authoring` summaries for bounded variable-rule nodes and links
+- per-state `player_input_authoring` summaries for BlendSpacePlayer input default or variable links
+- `readback` topology from `inspect_anim_state_machine_transitions`
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile or save fails
+- error responses after target preparation include `partial_target_modified`,
+  target create/reuse flags, and `target_dirty_after`
+- `errors` and `warnings`
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_state_machine_sample_variant",
+  "params": {
+    "source_anim_bp_path": "/Game/Characters/Bot/ABP_Bot.ABP_Bot",
+    "variant_name": "LocomotionStudy",
+    "state_machine_name": "MCP_LocomotionStudy",
+    "states": [
+      {
+        "name": "Idle",
+        "animation_asset_path": "/Game/Characters/Bot/Animations/A_Bot_Idle.A_Bot_Idle",
+        "position": [0, 0]
+      },
+      {
+        "name": "Run",
+        "animation_asset_path": "/Game/Characters/Bot/Animations/BS_Bot_Locomotion.BS_Bot_Locomotion",
+        "position": [320, 0],
+        "player_inputs": {
+          "X": {
+            "variable": "Speed",
+            "create_variable_if_missing": true,
+            "default_value": 0.0
+          }
+        }
+      }
+    ],
+    "entry_state": "Idle",
+    "transitions": [
+      {
+        "from_state": "Idle",
+        "to_state": "Run",
+        "rule_mode": "float_compare",
+        "rule_variable": "Speed",
+        "compare": "greater",
+        "compare_value": 150.0,
+        "create_rule_variable_if_missing": true,
+        "crossfade_duration": 0.2
+      }
+    ],
+    "save_asset": true
+  }
+}
+```
+
+### ensure_anim_bp_event_graph_locomotion_driver
+
+Create or reuse a sample-only Animation Blueprint variant and author a narrow
+EventGraph locomotion variable driver through standard Blueprint nodes.
+
+**Important scope note:** this command refuses target paths outside
+`/Game/_MCP_Sample` and `/Game/_MCP_Temp`. It treats the source AnimBP as
+read-only, duplicates or reuses only the target sample AnimBP, ensures a float
+`Speed` variable by default, can optionally ensure float `Direction`, bool
+`IsInAir`, float `Acceleration`, and bool `IsAccelerating`, authors
+`Event Blueprint Update Animation -> TryGetPawnOwner -> IsValid Branch ->
+GetVelocity -> VSizeXY -> Set Speed` plus optional `CalculateDirection`,
+`IsFalling`, and CharacterMovement acceleration setter chains, compiles,
+optionally saves, and reads back EventGraph topology with
+`inspect_blueprint_graph_call_topology`. It does not add UnrealMCP runtime
+dependencies to the finished AnimBP.
+
+Use this with `ensure_anim_state_machine_sample_variant` when BlendSpacePlayer
+pins or transition rules read variables such as `Speed`, `Direction`,
+`IsInAir`, `Acceleration`, or `IsAccelerating`. The state-machine command binds the variables to
+AnimGraph/state-machine inputs; this command updates them from the owning pawn
+at runtime.
+
+For automatic sample locomotion requests, prefer the planner/job-contract
+`anim_bp_locomotion_sample_pipeline` route. It composes this command with
+`ensure_anim_state_machine_sample_variant` on the same sample/temp target,
+then reads back both EventGraph and state-machine topology. Keep gait,
+turn-in-place, aim offset, and warping requests in Ieta review because those
+are project-specific locomotion policy, not generic sample driver behavior.
+
+If Unreal creates `TryGetPawnOwner` or `GetVelocity` as pure nodes, the command
+keeps those data links and connects the UpdateAnimation exec flow directly to
+the branch or setter chain.
+
+**Parameters:**
+- `source_anim_bp_path` (string, required) - Source Animation Blueprint path or name.
+- `target_anim_bp_path` (string, optional) - Explicit target sample AnimBP package path.
+- `target_root` (string, optional) - Default target folder. Defaults to `/Game/_MCP_Sample/AnimStudy`.
+- `variant_name` (string, optional) - Name segment for generated target path. Defaults to `LocomotionEventGraph`.
+- `speed_variable` (string, optional) - Float variable updated from XY pawn velocity length. Defaults to `Speed`.
+- `create_variable_if_missing` (boolean, optional) - Create `speed_variable` on the target sample AnimBP. Defaults to `true`.
+- `include_direction` (boolean, optional) - Also update `direction_variable` from `CalculateDirection(GetVelocity(PawnOwner), GetActorRotation(PawnOwner))`. Defaults to `false`.
+- `direction_variable` (string, optional) - Float variable updated when `include_direction=true`. Defaults to `Direction`.
+- `create_direction_variable_if_missing` (boolean, optional) - Create `direction_variable` when missing. Defaults to `true`.
+- `include_is_in_air` (boolean, optional) - Also update `is_in_air_variable` from `GetMovementComponent(PawnOwner).IsFalling()`. Defaults to `false`.
+- `is_in_air_variable` (string, optional) - Bool variable updated when `include_is_in_air=true`. Defaults to `IsInAir`.
+- `create_is_in_air_variable_if_missing` (boolean, optional) - Create `is_in_air_variable` when missing. Defaults to `true`.
+- `include_acceleration` (boolean, optional) - Also update `acceleration_variable` from `VSizeXY(CharacterMovement.GetCurrentAcceleration())`. Defaults to `false`.
+- `acceleration_variable` (string, optional) - Float variable updated when `include_acceleration=true`. Defaults to `Acceleration`.
+- `create_acceleration_variable_if_missing` (boolean, optional) - Create `acceleration_variable` when missing. Defaults to `true`.
+- `include_is_accelerating` (boolean, optional) - Also update `is_accelerating_variable` from `Acceleration > is_accelerating_threshold`. Defaults to `false`.
+- `is_accelerating_variable` (string, optional) - Bool variable updated when `include_is_accelerating=true`. Defaults to `IsAccelerating`.
+- `create_is_accelerating_variable_if_missing` (boolean, optional) - Create `is_accelerating_variable` when missing. Defaults to `true`.
+- `is_accelerating_threshold` (number, optional) - Acceleration magnitude threshold for `IsAccelerating`. Defaults to `3.0`.
+- `guard_pawn_owner` (boolean, optional) - Gate the setter behind `IsValid(TryGetPawnOwner())`. Defaults to `true`.
+- `replace_existing_links` (boolean, optional) - Replace conflicting links in the sample target EventGraph. Defaults to `false`; enable it for deliberate rewrites of an existing sample target.
+- `allow_existing_target_reuse` (boolean, optional) - Reuse an existing sample target AnimBP. Defaults to `true`.
+- `overwrite_existing` (boolean, optional) - Delete and recreate the target sample AnimBP. Defaults to `false`.
+- `compile` (boolean, optional) - Compile the target sample AnimBP after edits. Defaults to `true`.
+- `save_asset` or `save` (boolean, optional) - Save the target sample AnimBP after edits. Defaults to `true`.
+- `dry_run` or `validate_only` (boolean, optional) - Validate request shape without duplicating, editing, compiling, or saving.
+
+**Returns:**
+- `source_asset_modified=false`, `original_assets_modified=false`, `sample_only=true`
+- `target_anim_bp_path`, target create/reuse flags, compile and save results
+- `variables`, `nodes`, `created_nodes`, and `links` authoring summaries
+- `readback` EventGraph topology from `inspect_blueprint_graph_call_topology`
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when requested compile or save fails
+- error responses after target preparation include `partial_target_modified`,
+  target create/reuse flags, and `target_dirty_after`
+
+Optional bridge smoke:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_bp_event_graph_locomotion_driver_smoke.ps1 -Json
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_bp_event_graph_locomotion_driver_smoke.ps1 -IncludeDirection -IncludeIsInAir -Json
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_bp_event_graph_locomotion_driver_smoke.ps1 -IncludeDirection -IncludeIsInAir -IncludeAcceleration -IncludeIsAccelerating -Json
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_anim_bp_locomotion_pipeline_smoke.ps1
+uv --directory .\Python run python scripts\analysis\smoke_anim_bp_event_graph_locomotion_driver_bridge.py --json
+uv --directory .\Python run python scripts\analysis\smoke_anim_bp_event_graph_locomotion_driver_bridge.py --include-direction --include-is-in-air --json
+uv --directory .\Python run python scripts\analysis\smoke_anim_bp_event_graph_locomotion_driver_bridge.py --include-direction --include-is-in-air --include-acceleration --include-is-accelerating --json
+uv --directory .\Python run python scripts\analysis\smoke_anim_bp_locomotion_pipeline_bridge.py --json
+uv --directory .\Python run python scripts\analysis\planner_driven_bp_authoring_smoke.py --request "Create an automatic sample Animation Blueprint locomotion pipeline with Speed EventGraph driving and a sample state machine." --run-live --require-live --no-write
+```
+
+**Example:**
+```json
+{
+  "command": "ensure_anim_bp_event_graph_locomotion_driver",
+  "params": {
+    "source_anim_bp_path": "/Game/Characters/Bot/ABP_Bot.ABP_Bot",
+    "target_anim_bp_path": "/Game/_MCP_Sample/AnimStudy/ABP_Bot_LocomotionDriver",
+    "speed_variable": "Speed",
+    "include_direction": true,
+    "direction_variable": "Direction",
+    "include_is_in_air": true,
+    "is_in_air_variable": "IsInAir",
+    "include_acceleration": true,
+    "acceleration_variable": "Acceleration",
+    "include_is_accelerating": true,
+    "is_accelerating_variable": "IsAccelerating",
+    "is_accelerating_threshold": 3.0,
+    "guard_pawn_owner": true,
+    "replace_existing_links": true,
+    "save_asset": true
+  }
+}
+```
+
+### inspect_anim_instance_runtime_state
+
+Inspect runtime `AnimInstance` state from a matched live `SkeletalMeshComponent` without modifying or saving assets.
+
+**Important scope note:** this command is an immediate read-only inspector. It prefers an active PIE/SIE/play world, falls back to the editor world, and reports `sampled_world_type` plus `is_play_session_active`. It does not start SIE, spawn actors, or tick frames by itself. Use Python/editor automation to create or advance the runtime state first, then call this command to read the current AnimInstance state.
+
+**Parameters:**
+- `actor_label` (string, optional) - Actor label filter, case-insensitive exact match
+- `actor_name` (string, optional) - Actor object name filter, case-insensitive exact match
+- `actor_path` (string, optional) - Actor path filter, exact or path suffix match
+- `component_name` (string, optional) - SkeletalMeshComponent object name. If omitted, the first skeletal component on the matched actor is inspected.
+- `state_machine_name` (string, optional) - State-machine name substring filter
+- `include_states` (boolean, optional) - Include per-state metadata. Defaults to `true`.
+- `include_state_weights` (boolean, optional) - Include runtime machine/state weights. Defaults to `true`.
+- `include_relevant_anim_times` (boolean, optional) - Include relevant asset-player time, fraction, remaining time, and length per state. Defaults to `false`.
+- `include_transition_progress` (boolean, optional) - Include active transition crossfade duration, elapsed time, and elapsed fraction. Defaults to `true`.
+- `include_inactive_transition_progress` (boolean, optional) - Include inactive transitions with zero progress entries. Defaults to `false`.
+- `include_montages` (boolean, optional) - Include the current active montage summary. Defaults to `true`.
+- `include_curves` (boolean, optional) - Include curve values. Defaults to `false`.
+- `curve_names` (array, optional) - Specific curve names to sample when `include_curves=true`
+- `max_state_machines` (number, optional) - Maximum state machines to include. Defaults to `32`.
+- `max_state_machine_instances_to_probe` (number, optional) - Maximum runtime AnimNode indexes to probe for state-machine instances. Defaults to `256`.
+- `max_states_per_machine` (number, optional) - Maximum states per state machine. Defaults to `64`.
+- `max_transitions_per_machine` (number, optional) - Maximum transitions per state machine for runtime transition progress. Defaults to `128`.
+- `max_curves` (number, optional) - Maximum curves to include. Defaults to `128`.
+- `prefer_pie_world` (boolean, optional) - Prefer active PIE/SIE/play world before editor world. Defaults to `true`.
+- `require_pie_world` (boolean, optional) - Fail instead of falling back to the editor world when no PIE/SIE/play world matches. Defaults to `false`.
+
+**Returns:**
+- `actor`, `component`, and `anim_instance` metadata
+- `sampled_world_type`, `sampled_world_name`, and `is_play_session_active`
+- `state_machines` with current state name/index, elapsed time, runtime/class machine indexes, optional per-state metadata, state weights, relevant animation timing, and transition progress
+- optional `active_montage`
+- optional `curves`
+- warning/error arrays for ambiguous matches, missing state machines, or missing curves
+
+The state-machine reader uses live `FAnimNode_StateMachine` instances and maps them back to baked class data with `StateMachineIndexInClass`. Runtime getter calls use the discovered `machine_instance_index`, not the baked class index, so helper calls do not hit the known index mismatch.
+
+**Example:**
+```json
+{
+  "command": "inspect_anim_instance_runtime_state",
+  "params": {
+    "actor_label": "MCP_AnimState_Smoke",
+    "state_machine_name": "Locomotion",
+    "include_states": true,
+    "include_state_weights": true,
+    "include_transition_progress": true,
+    "include_curves": true,
+    "curve_names": ["GroundSpeed", "IK_blend_interact"],
+    "prefer_pie_world": true
+  }
+}
+```
+
+### set_anim_instance_runtime_property_for_probe
+
+Set properties on the matched live `AnimInstance` object for runtime probing.
+
+**Important scope note:** this command modifies only the current runtime `AnimInstance`; it does not modify or save the Animation Blueprint asset. The response reports `read_only=false`, `runtime_only=true`, `asset_modified=false`, and `saves_assets=false`.
+
+Supported value types follow the shared runtime property writer: booleans, numbers, strings/names, `Vector`, `Rotator`, and `Transform`.
+
+**Parameters:**
+- `actor_label` (string, optional) - Actor label filter, case-insensitive exact match
+- `actor_name` (string, optional) - Actor object name filter, case-insensitive exact match
+- `actor_path` (string, optional) - Actor path filter, exact or path suffix match
+- `component_name` (string, optional) - SkeletalMeshComponent object name
+- `properties` (object or array, optional) - Property assignments, either `{ "GroundSpeed": 250.0 }` or `[{"name":"GroundSpeed","value":250.0}]`
+- `property_name` + `value` (optional) - Single-property assignment alternative
+- `tick_after_set` (boolean, optional) - Force component animation ticks after assignment. Defaults to `false`.
+- `tick_count` (number, optional) - Forced `USkeletalMeshComponent::TickAnimation` count when `tick_after_set=true`. Defaults to `1`.
+- `tick_delta_time` (number, optional) - Delta time per forced tick. Defaults to `1/30`.
+- `refresh_bone_transforms` (boolean, optional) - Refresh bone transforms during/after forced ticks when `tick_after_set=true` and `tick_count > 0`. Defaults to `true`.
+- `include_snapshot_after` (boolean, optional) - Include state-machine/montage/curve snapshot after assignment. Defaults to `true`.
+- `include_previous_values` (boolean, optional) - Include previous property values in the assignment result. Defaults to `true`.
+- Snapshot filters from `inspect_anim_instance_runtime_state`, such as `state_machine_name`, `include_states`, `include_state_weights`, `include_relevant_anim_times`, `include_transition_progress`, `include_curves`, and `curve_names`.
+- Target/world selection options from `inspect_anim_instance_runtime_state`, such as `prefer_pie_world` and `require_pie_world`.
+
+**Example:**
+```json
+{
+  "command": "set_anim_instance_runtime_property_for_probe",
+  "params": {
+    "actor_label": "MCP_AnimState_Smoke",
+    "properties": {
+      "GroundSpeed": 250.0
+    },
+    "tick_after_set": true,
+    "tick_count": 2,
+    "prefer_pie_world": true
+  }
+}
+```
+
+### sample_anim_state_machine_runtime_response
+
+Apply runtime `AnimInstance` property cases, force a narrow component animation tick, and sample state-machine response.
+
+**Important scope note:** this is a controlled runtime probe. It does not start SIE/PIE, spawn actors, or save assets. By default each successful property change is restored after the case so repeated cases can start from the current pre-probe value.
+
+**Parameters:**
+- `actor_label`, `actor_name`, `actor_path`, `component_name` - Same target filters as `inspect_anim_instance_runtime_state`
+- `cases` (array, optional) - Case objects. Each case may include `name`, `properties`, `tick_count`, `tick_delta_time`, and `restore_after_case`.
+- `properties` (object, optional) - Single-case property assignments when `cases` is omitted
+- `name` (string, optional) - Single-case name when `cases` is omitted
+- `tick_count` (number, optional) - Default forced tick count per case. Defaults to `1`.
+- `tick_delta_time` (number, optional) - Default delta time per forced tick. Defaults to `1/30`.
+- `refresh_bone_transforms` (boolean, optional) - Refresh bone transforms during/after forced ticks when `tick_count > 0`. Defaults to `true`.
+- `restore_after_case` (boolean, optional) - Restore successful property changes after each case. Defaults to `true`.
+- `include_baseline` (boolean, optional) - Capture state before applying cases. Defaults to `true`.
+- Snapshot filters from `inspect_anim_instance_runtime_state`, such as `state_machine_name`, `include_states`, `include_state_weights`, `include_relevant_anim_times`, `include_transition_progress`, `include_curves`, `curve_names`, and state-machine limits.
+- Target/world selection options from `inspect_anim_instance_runtime_state`, such as `prefer_pie_world` and `require_pie_world`.
+
+**Returns:**
+- Target actor/component/AnimInstance metadata
+- Optional `baseline`
+- `cases` array, each with applied property echo, tick result, state-machine snapshot, restore result, warnings, and errors
+- `asset_modified=false` and `saves_assets=false`
+
+**Example:**
+```json
+{
+  "command": "sample_anim_state_machine_runtime_response",
+  "params": {
+    "actor_label": "MCP_AnimState_Smoke",
+    "cases": [
+      {
+        "name": "speed_0",
+        "properties": {"GroundSpeed": 0.0},
+        "tick_count": 2
+      },
+      {
+        "name": "speed_500",
+        "properties": {"GroundSpeed": 500.0},
+        "tick_count": 4
+      }
+    ],
+    "restore_after_case": true,
+    "prefer_pie_world": true
+  }
+}
+```
+
+### set_anim_graph_rigidbody_settings
+
+Set a narrow group of `RigidBody` AnimGraph node settings. This is intended for sample Animation Blueprint experiments, especially under `/Game/_MCP_Sample/`.
+
+By default the command refuses to modify Animation Blueprints outside `/Game/_MCP_Sample/`. Pass `allow_non_sample=true` only for deliberate non-sample edits.
+
+Supported settings:
+
+- `alpha`
+- `external_force`
+- `simulation_space`: `ComponentSpace`, `WorldSpace`, or `BaseBoneSpace`
+- `enable_world_geometry`
+
+The command updates both runtime node fields and exposed input pin defaults for `Alpha` and `ExternalForce`.
+
+**Parameters:**
+- `blueprint_name` (string) - Animation Blueprint name or path
+- `graph_name` (string, optional) - Defaults to `AnimGraph`
+- `graph_id` (string, optional) - Target graph GUID
+- `graph_type` (string, optional) - Defaults to `function`
+- `node_id` (string, optional) - RigidBody node GUID filter
+- `alpha` (number, optional) - RigidBody alpha
+- `external_force` (array, optional) - `[X, Y, Z]` external force
+- `simulation_space` (string, optional) - `ComponentSpace`, `WorldSpace`, or `BaseBoneSpace`
+- `enable_world_geometry` (boolean, optional) - Enable world geometry collision
+- `allow_non_sample` (boolean, optional) - Allow editing non-sample assets
+
+**Example:**
+```json
+{
+  "command": "set_anim_graph_rigidbody_settings",
+  "params": {
+    "blueprint_name": "/Game/_MCP_Sample/AnimStudy/ABP_Baddy_RigidBody_Study_ForceZ",
+    "graph_name": "AnimGraph",
+    "graph_type": "function",
+    "alpha": 1.0,
+    "external_force": [0, 0, 350],
+    "simulation_space": "ComponentSpace"
+  }
+}
+```
+
+### resolve_blueprint_graph
+
+Resolve or create a Blueprint graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `graph_name` (string, optional) - Graph name
+- `graph_id` (string, optional) - Graph GUID
+- `graph_type` (string, optional) - Graph type
+- `create_if_missing` (boolean, optional) - Create a missing function graph
+
+**Example:**
+```json
+{
+  "command": "resolve_blueprint_graph",
+  "params": {
+    "blueprint_name": "MyActor",
+    "graph_name": "ConvertedFunction",
+    "graph_type": "function",
+    "create_if_missing": true
+  }
+}
+```
+
+### add_blueprint_branch_node
+
+Add a Branch node to the selected graph.
+
+### add_blueprint_sequence_node
+
+Add a Sequence node to the selected graph.
+
+**Parameters:**
+- `output_count` (integer, optional) - Number of exec output pins, minimum 2
+
+### add_blueprint_return_node
+
+Add or resolve a Return node in a function graph.
+
+### add_blueprint_dynamic_cast_node
+
+Add a Dynamic Cast node to the selected graph.
+
+**Parameters:**
+- `target_class` (string) - UObject class name or path
+- `pure` (boolean, optional) - Create a pure cast node
+
+### Loop & Collection Authoring
+
+#### add_blueprint_loop_node
+
+Add a supported standard Blueprint loop macro node.
+
+**Parameters:**
+- `loop_type` (string, optional) - `for_loop`; this is the only stable loop type currently supported
+- `first_index` (integer, optional) - Default value for the For Loop `FirstIndex` pin
+- `last_index` (integer, optional) - Default value for the For Loop `LastIndex` pin
+
+The command creates a `UK2Node_MacroInstance` backed by Unreal's standard `ForLoop` macro and returns full pin metadata for `execute`, `FirstIndex`, `LastIndex`, `LoopBody`, `Index`, and `Completed` where exposed by the engine version.
+
+`ForEachLoop`, `ForEachLoopWithBreak`, and `WhileLoop` are intentionally unsupported in this stable pass. `ForEachLoop` depends on array wildcard inference, and `WhileLoop` needs explicit guard policy before it is safe for automatic C++ conversion.
+
+#### add_blueprint_array_function_node
+
+Add a typed Blueprint array function node.
+
+**Parameters:**
+- `operation` (string) - `length`, `get`, `set`, `add`, `add_unique`, `insert`, `contains`, `remove`, or `clear`
+- `element_type` (string) - Element type descriptor, for example `int`, `bool`, `double`, `vector`, `object`, `class`, or `enum`
+- `type_object` (string, optional) - Class path/name for object or class element types
+- `enum_type` (string, optional) - Enum object path for enum element types
+- `param_defaults` (object, optional) - Defaults for non-array input pins such as `Index`, `Item`, `NewItem`, or `bSizeToFit`
+
+This command uses `UK2Node_CallArrayFunction` and explicitly pins the array element type before returning node metadata. The `TargetArray` pin must be connected from a typed array variable or array-producing node; defaults for `TargetArray` are rejected.
+
+Generic `KismetArrayLibrary` passthrough remains blocked by `add_blueprint_call_function_node` unless a later section implements a wider wildcard policy.
+
+`insert` creates the standard typed `Array_Insert` node. Connect the same `Index` value to parallel arrays when their element ordering must remain aligned.
+
+`contains` creates the standard typed `Array_Contains` node and returns whether the array already contains the supplied item. It is useful for idempotent runtime graph authoring where repeated samples must not consume additional array slots.
+
+#### add_blueprint_make_array_node
+
+Add a typed Blueprint `Make Array` node for collection literals.
+
+**Parameters:**
+- `element_type` (string) - Element type descriptor, for example `int`, `bool`, `double`, `string`, `name`, `text`, `vector`, `object`, `class`, or `enum`
+- `input_count` (integer, optional) - Number of element input pins to create, from 0 to 128. If omitted, defaults to the number of `values` entries when `values` is provided, otherwise 1
+- `values` (array, optional) - Element defaults applied to `[0]`, `[1]`, and later pins through K2 schema validation
+- `type_object` (string, optional) - Class path/name for object or class element types
+- `enum_type` (string, optional) - Enum object path for enum element types
+
+The command creates `UK2Node_MakeArray`, explicitly types the output `Array` pin as an array and each input pin as a single element value, then applies defaults through the same validation path as `set_blueprint_pin_default`.
+
+Stable scope is intentionally limited to 1D arrays. Nested arrays, maps, sets, wildcard inference, and direct use of `Make Array` output as the by-reference target for mutating array functions are deferred.
+
+### Expression Node Authoring
+
+These commands add pure Kismet expression nodes that are useful when translating C++ expressions into Blueprint graphs. They support the same graph selector fields listed above.
+
+#### add_blueprint_compare_node
+
+Add a typed comparison node.
+
+**Parameters:**
+- `operation` (string) - `less`, `greater`, `less_equal`, `greater_equal`, `equal`, `not_equal`, or aliases such as `<`, `>`, `<=`, `>=`, `==`, `!=`
+- `value_type` (string, optional) - `int`, `int64`, `double`, `bool`, `object`, `class`, or `name`; default `double`
+
+Relational operations are supported for numeric types. Equality and inequality are also supported for `bool`, `object`, `class`, and `name`.
+
+#### add_blueprint_boolean_node
+
+Add a boolean operator node.
+
+**Parameters:**
+- `operation` (string) - `not`, `and`, `nand`, `or`, `xor`, `nor`, `equal`, `not_equal`, or aliases such as `!`, `&&`, `||`, `==`, `!=`
+
+#### add_blueprint_select_node
+
+Add a typed Select node.
+
+**Parameters:**
+- `value_type` (string, optional) - `string`, `text`, `name`, `int`, `double`, `vector`, `rotator`, `color`, `transform`, `object`, or `class`; default `int`
+
+#### add_blueprint_literal_node
+
+Add a typed literal node.
+
+**Parameters:**
+- `literal_type` (string) - `int`, `int64`, `float`, `double`, `bool`, `name`, `byte`, `string`, or `text`
+- `value` (any, optional) - Default literal value to apply to the node's `Value` pin
+
+#### add_blueprint_enum_literal_node
+
+Add a typed enum literal node.
+
+**Parameters:**
+- `enum_type` (string) - Enum object path. Prefer fully qualified native paths such as `/Script/Engine.ECollisionEnabled`
+- `value` (string or integer, optional) - Enum entry name, scoped enum entry name, or integer enum value. When omitted, the first visible enum value is used
+
+The node uses Unreal's enum pin representation: `PC_Byte` with the loaded `UEnum` as the subcategory object. Hidden and spacer enum entries are rejected as defaults.
+
+#### add_blueprint_is_valid_node
+
+Add an `Is Valid` expression node.
+
+**Parameters:**
+- `value_type` (string, optional) - `object` or `class`; default `object`
+
+### Typed Control & Struct Authoring
+
+These commands cover typed helpers that are safer to author directly than generic K2 wildcard nodes.
+
+#### add_blueprint_make_struct_node
+
+Add a native Make helper node.
+
+**Parameters:**
+- `struct_type` (string) - `vector`, `rotator`, or `transform`
+
+This uses native `UKismetMathLibrary` functions such as `MakeVector`, `MakeRotator`, and `MakeTransform`.
+
+#### add_blueprint_break_struct_node
+
+Add a native Break helper node.
+
+**Parameters:**
+- `struct_type` (string) - `vector`, `rotator`, or `transform`
+
+This uses native `UKismetMathLibrary` functions such as `BreakVector`, `BreakRotator`, and `BreakTransform`.
+
+Generic make/break struct authoring is intentionally deferred until struct type loading and `CanBeMade`/`CanBeBroken` validation are implemented.
+
+#### add_blueprint_switch_int_node
+
+Add a `Switch on Int` node with contiguous case pins.
+
+**Parameters:**
+- `start_index` (integer, optional) - First case value, default `0`
+- `case_count` (integer, optional) - Number of contiguous case pins, default `2`, maximum `128`
+- `case_values` (array of integer, optional) - Ascending contiguous case values. When supplied, this overrides `start_index` and `case_count`
+- `has_default_pin` (boolean, optional) - Include a `Default` exec pin, default `true`
+
+Sparse switch cases are rejected by this command. Convert sparse cases with compare/branch fallback until sparse switch authoring is explicitly supported.
+
+### Enum & Advanced Control Flow Authoring
+
+#### add_blueprint_switch_enum_node
+
+Add a `Switch on Enum` node.
+
+**Parameters:**
+- `enum_type` (string) - Enum object path. Prefer fully qualified native paths such as `/Script/Engine.ECollisionEnabled`
+- `has_default_pin` (boolean, optional) - Include a `Default` exec pin, default `false`
+
+The command creates case exec pins for the enum entries Unreal exposes on `UK2Node_SwitchEnum`. Arbitrary enum case subsets are intentionally unsupported.
+
+Type descriptors for variables, function parameters, and local variables now support:
+
+- `enum` or `byte_enum` with `type_object`, `enum_type`, or `enum_path`
+- `is_array=true` for enum arrays, without array default serialization
+
+Sparse int fallback authoring remains intentionally left for later graph-authoring passes. Sparse switch fallback should be built as compare/branch chains rather than by mutating `UK2Node_SwitchInteger` into unsupported sparse cases. Loop authoring currently supports the stable `ForLoop` macro path; ForEach and While variants remain deferred.
+
+### Graph Validation Flow
+
+After creating or modifying a Blueprint graph, call `compile_and_validate_blueprint`. Treat `validation_pass=false` or `compile_error_count > 0` as a failed authoring step.
+
+Before running graph authoring smoke tests after C++ changes, fully close Unreal Editor and Live Coding, run a normal Development Editor UBT build, then reopen the editor. If Live Coding is still active, UBT will reject the build and MCP runtime smoke results can be stale or blocked by an older in-editor module.
+
+For the strict mutation result contract, run the live temp-only smoke below with
+the rebuilt editor bridge listening on port `55561`:
+
+```powershell
+uv --directory .\Python run python scripts\smoke_blueprint_mutation_contract_live.py
+```
+
+It exercises `connect_blueprint_graph_pins`, `set_blueprint_node_positions`,
+and `delete_blueprint_node`, requires independent graph readback in each
+`mutation_result_v1` response, then removes its fixture under
+`/Game/_MCP_Temp/MutationContractLiveSmoke`.
+
+Recommended smoke order after bridge or Blueprint authoring C++ changes:
+
+1. `python Python/scripts/node/test_mcp_bridge_dispatch.py`
+2. `python Python/scripts/node/test_bp_graph_authoring_validation.py`
+3. `python Python/scripts/node/test_bp_control_flow_expression_authoring.py`
+4. `python Python/scripts/node/test_bp_typed_control_struct_authoring.py`
+5. `python Python/scripts/node/test_bp_enum_advanced_control_authoring.py`
+6. `python Python/scripts/node/test_bp_object_call_semantics_authoring.py`
+7. `python Python/scripts/node/test_bp_loop_collection_authoring.py`
+8. `python Python/scripts/node/test_bp_collection_literal_authoring.py`
+9. `python Python/scripts/node/test_bp_data_function_authoring.py`
+
+## Data & Function Authoring
+
+Section 2 commands add Blueprint data declarations that are needed when converting C++ members and function signatures into Blueprint assets.
+
+Supported type descriptors:
+
+- `bool`, `int`, `int64`, `float`, `double`, `string`, `name`, `text`
+- `vector`, `rotator`, `transform`
+- `object` or `class` with `type_object`, for example `Actor` or `/Script/Engine.Actor`
+- `enum` or `byte_enum` with `type_object`, `enum_type`, or `enum_path`, for example `/Script/Engine.ECollisionEnabled`
+- `is_array=true` for array variables or pins
+
+In UE 5.7, `float` and `double` are authored as `PC_Real` pins with `PC_Float` or `PC_Double` subcategories.
+
+Default values are serialized through the K2 schema where possible. Vector defaults accept `[x, y, z]` or `{ "x": 1, "y": 2, "z": 3 }`; rotator defaults accept `[pitch, yaw, roll]` or matching object keys; transform defaults accept `location` or `translation`, `rotation`, and `scale` or `scale3d`.
+
+### add_blueprint_function_parameter
+
+Add an input or output pin to a Blueprint function graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `parameter_name` (string) - Parameter pin name
+- `parameter_type` (string) - Type descriptor
+- `direction` (string, optional) - `input` or `output`, default `input`
+- `default_value` (any, optional) - Default value for the user-defined pin
+- `type_object` (string, optional) - Class path/name for `object` or `class`
+- `is_array` (boolean, optional) - Create an array pin
+- graph selector fields - Function graph target, usually `graph_name`/`graph_id` plus `graph_type="function"`
+
+### add_blueprint_local_variable
+
+Add a function-scoped local variable declaration.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `variable_name` (string) - Local variable name
+- `variable_type` (string) - Type descriptor
+- `default_value` (any, optional) - Local variable default value
+- `category` (string, optional) - Variable category
+- `tooltip` (string, optional) - Variable tooltip metadata
+- `type_object` (string, optional) - Class path/name for `object` or `class`
+- `is_array` (boolean, optional) - Create an array local variable
+- graph selector fields - Must resolve to a function graph
+
+After declaring a local variable, `add_blueprint_variable_get_node` and `add_blueprint_variable_set_node` can target that same function graph and resolve the local variable by name when no member variable with that name exists.
+
+### add_blueprint_variable_get_node
+
+Add a variable getter node to a Blueprint graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `variable_name` (string) - Variable or component member name
+- `node_position` (array or string, optional) - `[X, Y]` position in the graph. String forms such as `"120, 240"` are accepted by the Unreal bridge.
+- `target_class` (string, optional) - Class path/name for an external object member variable, for example a component Blueprint generated class. When omitted, the command resolves member or local variables on `blueprint_name`.
+- graph selector fields - Optional target graph selector
+
+**External member example:**
+```json
+{
+  "command": "add_blueprint_variable_get_node",
+  "params": {
+    "blueprint_name": "/Game/Field/BP_Field",
+    "variable_name": "Radius",
+    "target_class": "/Game/Field/BPC_InteractionSource.BPC_InteractionSource_C",
+    "node_position": [600, 240]
+  }
+}
+```
+
+### remove_blueprint_variable
+
+Remove one member variable declared directly on a Blueprint.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `variable_name` (string) - Member variable name to remove
+
+**Returns:**
+- Success metadata for the removed variable. Any graph nodes that reference the variable are removed by Unreal's Blueprint editor utility layer.
+
+## Node Tools
+
+### add_blueprint_event_node
+
+Add an event node to a Blueprint's event graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `event_type` (string) - Type of event (BeginPlay, Tick, etc.)
+- `node_position` (array, optional) - [X, Y] position in the graph (default: [0, 0])
+
+**Returns:**
+- Response containing the node ID and success status
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "event_type": "BeginPlay",
+    "node_position": [100, 100]
+  }
+}
+```
+
+### add_blueprint_input_action_node
+
+Add an input action event node to a Blueprint's event graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `action_name` (string) - Name of the input action to respond to
+- `node_position` (array, optional) - [X, Y] position in the graph (default: [0, 0])
+
+**Returns:**
+- Response containing the node ID and success status
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_input_action_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "action_name": "Jump",
+    "node_position": [200, 200]
+  }
+}
+```
+
+### add_blueprint_input_key_node
+
+Add a literal keyboard or button event node without modifying project input mappings.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `key` (string) - Unreal input key name, for example `P` or `LeftMouseButton`
+- `node_position` (array, optional) - [X, Y] graph position
+- `control`, `alt`, `shift`, `command` (boolean, optional) - Modifier requirements
+- `consume_input` (boolean, optional) - Consume the input event (default: true)
+- `execute_when_paused` (boolean, optional) - Receive the event while paused (default: false)
+- `override_parent_binding` (boolean, optional) - Override the parent binding (default: false)
+- Standard graph selector fields are also supported.
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_input_key_node",
+  "params": {
+    "blueprint_name": "/Game/Study/BP_ChaosPillar",
+    "key": "P",
+    "node_position": [200, 200]
+  }
+}
+```
+
+### add_blueprint_function_node
+
+Add a function call node to a Blueprint's event graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `target` (string) - Target object for the function (component name or self)
+- `function_name` (string) - Name of the function to call
+- `params` (object, optional) - Parameters to set on the function node
+- `node_position` (array, optional) - [X, Y] position in the graph (default: [0, 0])
+
+**Returns:**
+- Response containing the node ID and success status
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_function_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "target": "Mesh",
+    "function_name": "SetRelativeLocation",
+    "params": {
+      "NewLocation": [0, 0, 100]
+    },
+    "node_position": [300, 300]
+  }
+}
+```
+
+### add_blueprint_comment_box
+
+Add a comment box to a Blueprint graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `comment_text` (string) - Text shown in the comment box
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `size` (array, optional) - [Width, Height] box size
+- `comment_color` (array, optional) - [R, G, B, A] linear color
+- `font_size` (integer, optional) - Comment text font size
+- `move_mode` (string, optional) - `group` or `no_group`
+- `node_ids` (array, optional) - Existing graph node IDs grouped under the comment
+
+**Returns:**
+- Response containing the comment node ID, size, color, graph, and grouped nodes
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_comment_box",
+  "params": {
+    "blueprint_name": "MyActor",
+    "graph_name": "EventGraph",
+    "comment_text": "Editor preview update",
+    "node_position": [-400, -240],
+    "size": [720, 300],
+    "comment_color": [0.1, 0.16, 0.22, 1.0],
+    "font_size": 18
+  }
+}
+```
+
+### set_blueprint_node_comment
+
+Set the visible comment bubble text for one Blueprint graph node.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `node_id` (string) - Graph node GUID returned by node inspection or creation tools
+- `node_comment` (string) - Comment text to store on the node
+- `comment_bubble_visible` (boolean, optional) - Show the comment bubble, default `true`
+- `comment_bubble_pinned` (boolean, optional) - Keep the bubble pinned, default `false`
+
+**Returns:**
+- Response containing the updated node metadata
+
+**Example:**
+```json
+{
+  "command": "set_blueprint_node_comment",
+  "params": {
+    "blueprint_name": "MyActor",
+    "graph_name": "EventGraph",
+    "node_id": "ABCD1234...",
+    "node_comment": "Runs editor preview updates while not in PIE"
+  }
+}
+```
+
+### set_blueprint_node_positions
+
+Guardedly move existing nodes in one explicitly selected Blueprint graph. This
+is a layout-only command: it changes only `NodePosX` and `NodePosY`. It does not
+reconstruct nodes, refresh graphs, change links or pins, add comment boxes, or
+mark the Blueprint as structurally modified.
+
+The command defaults to a dry run and validates the entire batch before any
+node is modified. If one GUID is missing or duplicated, one expected class or
+title differs, or one expected position is stale, the complete batch is
+rejected with `mutation_applied=false`. PIE/SIE execution is always blocked.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `graph_name` (string) - Explicit target graph name; alternatively the native command accepts an explicit `graph_id`
+- `updates` (array) - One to 2048 guarded position updates
+  - `node_id` (string) - Existing node GUID
+  - `position` (array) - Target integer `[X, Y]`
+  - `expected_position` (array) - Required current integer `[X, Y]` guard
+  - `expected_class` (string) - Required exact class name or class path guard
+  - `expected_title` (string) - Required exact full node title guard
+- `graph_id` (string, optional) - Additional exact graph GUID selector
+- `graph_type` (string, optional) - Additional graph type selector
+- `dry_run` (boolean, optional) - Validate and report only; default `true`
+- `compile` (boolean, optional) - Compile after a real edit; default `false`
+- `save` (boolean, optional) - Save after a real edit; default `false`
+
+**Returns:**
+- `all_guards_passed`, `dry_run`, and `mutation_applied`
+- `requested_update_count`, `would_change_count`, and `changed_count`
+- Per-node original/target positions and mutation flags
+- Compile, save, dirty-package, and graph status
+- `compile_succeeded`, `save_succeeded`, and `completion_errors`; top-level
+  `success` is false when a requested real compile or save fails
+- `partial_target_modified=true` when positions changed before a requested
+  compile or save failed. A failed compile skips the requested save.
+
+**Example:**
+```json
+{
+  "command": "set_blueprint_node_positions",
+  "params": {
+    "blueprint_name": "/Game/ReactiveSurface/Core/BP_ReactiveSurfaceControllerActor.BP_ReactiveSurfaceControllerActor",
+    "graph_name": "EventGraph",
+    "dry_run": true,
+    "compile": false,
+    "save": false,
+    "updates": [
+      {
+        "node_id": "0123456789ABCDEF0123456789ABCDEF",
+        "position": [640, 160],
+        "expected_position": [320, 160],
+        "expected_class": "K2Node_CallFunction",
+        "expected_title": "Set Niagara Variable (Float)"
+      }
+    ]
+  }
+}
+```
+
+### set_blueprint_function_description
+
+Set the Details panel description/tooltip for a Blueprint function graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `description` (string) - Function description/tooltip text
+- `graph_name` (string, optional) - Target function graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Defaults to `function`
+
+**Returns:**
+- Response containing the function entry node, graph metadata, and stored description
+
+**Example:**
+```json
+{
+  "command": "set_blueprint_function_description",
+  "params": {
+    "blueprint_name": "MyActor",
+    "graph_name": "EditorPreviewTick",
+    "description": "에디터 프리뷰에서 카메라 위치 기준으로 날씨 FX를 갱신합니다."
+  }
+}
+```
+
+### add_blueprint_call_function_node
+
+Add a validated Blueprint function call node. Prefer this command when converting C++ calls into Blueprint graphs.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `function_class` (string) - Owner class path/name. Prefer fully qualified native paths such as `/Script/Engine.Actor`
+- `function_name` (string) - UFunction name to call
+- `param_defaults` (object, optional) - Input pin defaults validated through the K2 schema
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `allow_latent` (boolean, optional) - Allow latent functions, default `false`
+- `allow_editor_only` (boolean, optional) - Allow editor-only functions, default `false`
+- `allow_wildcard` (boolean, optional) - Allow wildcard/custom thunk functions, default `false`
+- `allow_deprecated` (boolean, optional) - Allow deprecated functions, default `false`
+- `allow_internal` (boolean, optional) - Allow Blueprint-internal functions, default `false`
+
+This command rejects non-Blueprint callable/pure functions, latent functions, editor-only functions, deprecated functions, internal-use functions, and wildcard/custom thunk functions by default. It returns full node and pin metadata, so callers can connect explicit object/self/component target pins with `connect_blueprint_nodes`.
+
+Function parameter defaults are applied with the same K2 schema validation path used by `set_blueprint_pin_default`; invalid defaults fail before compile validation and remove the newly created call node.
+
+Current stable scope:
+- Static Blueprint function library calls, including class/object defaults where K2 accepts them
+- Self/object/component member calls through an explicit target pin connection after node creation
+- Pure and impure non-latent calls
+
+Deferred:
+- Automatic `UK2Node_CallFunctionOnMember` component call expansion
+- `UK2Node_CallArrayFunction` and wildcard container inference
+- Latent function graph-policy authoring
+
+### add_blueprint_get_editor_subsystem_node
+
+Add a `Get Editor Subsystem` K2 node to an editor-capable Blueprint graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `subsystem_class` (string) - Editor subsystem class path/name, for example `/Script/UnrealEd.UnrealEditorSubsystem`
+- `node_position` (array, optional) - [X, Y] position in the graph
+- graph selector fields - Optional target graph selector
+
+**Returns:**
+- Created node metadata and pins. The command is an editor authoring helper only; generated assets reference the requested Unreal subsystem class, not UnrealMCP.
+
+### add_blueprint_get_subsystem_from_pc_node
+
+Add a `Get Subsystem From Player Controller` K2 node for a `ULocalPlayerSubsystem` class.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `subsystem_class` (string) - LocalPlayerSubsystem class path/name
+- `node_position` (array, optional) - [X, Y] position in the graph
+- graph selector fields - Optional target graph selector
+
+**Returns:**
+- Created node metadata and pins, including the resolved `subsystem_class`. The command rejects UnrealMCP class paths so generated Blueprints do not persist MCP dependencies.
+
+### add_blueprint_construct_object_node
+
+Add a `Construct Object` node with its class pin set and reconstructed.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `object_class` (string) - UObject-derived class path/name to construct
+- `node_position` (array, optional) - [X, Y] position in the graph
+- graph selector fields - Optional target graph selector
+
+**Returns:**
+- Created node metadata and pins, including the resolved `object_class`. The command rejects UnrealMCP class paths so generated Blueprints do not persist MCP dependencies.
+
+### connect_blueprint_nodes
+
+Connect two nodes in a Blueprint's event graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `source_node_id` (string) - ID of the source node
+- `source_pin` (string) - Name of the output pin on the source node
+- `target_node_id` (string) - ID of the target node
+- `target_pin` (string) - Name of the input pin on the target node
+
+**Returns:**
+- Response indicating success or failure
+
+### connect_blueprint_graph_pins
+
+Connect two Blueprint graph pins through the graph schema. This is the lower-level variant used when a graph has been resolved explicitly.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `source_node_id` (string) - GUID of the source node
+- `source_pin` (string) - Source output pin name
+- `target_node_id` (string) - GUID of the target node
+- `target_pin` (string) - Target input pin name
+- `graph_name` / `graph_id` / `graph_type` (optional) - Target graph selector
+- `allow_pin_link_replacement` (boolean, optional) - Allow schema-safe replacement responses
+- `compile` (boolean, optional) - Compile after connecting
+- `save_asset` or `save` (boolean, optional) - Save after connecting
+
+**Returns:**
+- Connection result, schema response, graph metadata, compile/save status, and dirty state.
+
+### import_blueprint_graph_nodes_from_text
+
+Import copied Blueprint graph node text into a target graph. Mutation is blocked during PIE/SIE. By default, non-sample targets require `allow_non_sample=true`.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `text` (string, optional) - Blueprint copied-node text
+- `text_file_path` (string, optional) - File path containing copied-node text
+- `graph_name` / `graph_id` / `graph_type` (optional) - Target graph selector
+- `clear_graph` (boolean, optional) - Remove existing nodes before import
+- `keep_root_node` (boolean, optional) - Preserve graph root/entry/result nodes during clear
+- `allow_non_sample` (boolean, optional) - Allow targets outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`
+- `validate_only` or `dry_run` (boolean, optional) - Validate import text without modifying the graph
+- `compile` (boolean, optional) - Compile after import
+- `save_asset` or `save` (boolean, optional) - Save after import
+
+**Returns:**
+- Import validation, imported node list, removed node count, compile/save status, and dirty state.
+
+### repair_blueprint_pin_links
+
+Repair malformed Blueprint pin link arrays after graph text import. The command removes null, duplicate, self, external, and schema-disallowed links, then restores missing reciprocal links only when the graph schema does not disallow the connection.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or path of the target Blueprint
+- `allow_non_sample` (boolean, optional) - Allow targets outside `/Game/_MCP_Sample` and `/Game/_MCP_Temp`
+- `validate_only` or `dry_run` (boolean, optional) - Report changes without modifying the graph
+- `compile` (boolean, optional) - Compile after repair
+- `save_asset` or `save` (boolean, optional) - Save after repair
+
+**Returns:**
+- Per-graph counts, removed link counts, reciprocal repair counts, compile/save status, and dirty state.
+
+**Example:**
+```json
+{
+  "command": "connect_blueprint_nodes",
+  "params": {
+    "blueprint_name": "MyActor",
+    "source_node_id": "node_1",
+    "source_pin": "exec",
+    "target_node_id": "node_2",
+    "target_pin": "exec"
+  }
+}
+```
+
+### delete_blueprint_node
+
+Delete one Blueprint graph node by GUID with explicit safety guards.
+
+**Parameters:**
+- `blueprint_name` (string) - Name or asset path of the target Blueprint
+- `node_id` (string) - Node GUID to delete
+- `graph_name` / `graph_id` / `graph_type` (optional) - Target graph selector
+- `expected_node_name` (string, optional) - Exact node object name guard
+- `expected_node_class` (string, optional) - Node class guard, for example `K2Node_VariableSet`
+- `expected_title_contains` (string, optional) - Node title substring guard
+- `allow_non_exec_linked_delete` (boolean, optional) - Allow deletion when data pins are linked
+- `allow_exec_linked_delete` (boolean, optional) - Allow deletion when execution pins are linked
+- `allow_any_linked_delete` (boolean, optional) - Bypass link-type guards
+- `allow_orphaned_event_delete` (boolean, optional) - Allow deletion of a completely unlinked Event node only when exact node name, class, and title guards are also supplied
+
+By default the command refuses any linked node. Structural Entry/Return nodes are always refused. Event nodes are also refused unless `allow_orphaned_event_delete=true`, all three expected-node guards are supplied, and the event has no links. For cleanup of an unexecuted data-linked ordinary node, pass `allow_non_exec_linked_delete=true` and keep an `expected_node_class` or title guard.
+
+### create_user_defined_enum
+
+Create a standard Engine `UserDefinedEnum` asset without adding an UnrealMCP runtime dependency. The native command never overwrites an existing asset and defaults to a non-mutating dry run.
+
+**Parameters:**
+- `asset_path` (string) - New enum package path under `/Game`, including the asset name
+- `display_names` (array of strings) - Ordered, case-insensitively unique entry labels; 1 to 32 entries
+- `tooltips` (array of strings, optional) - Per-entry tooltips; when supplied, the length must match `display_names`
+- `dry_run` (boolean, optional) - Validate and return planned entries without creation; default `true`
+- `save` (boolean, optional) - Save the newly created package; default `false`
+- `skip_if_exists` (boolean, optional) - Return structured readback when the path already contains a `UserDefinedEnum`; wrong-class collisions still fail
+
+The response includes `entry_count` and ordered `entries`. Created/existing asset readback contains `internal_name`, `full_name`, `value`, `display_name`, and `tooltip`. Use the returned `object_path` as `type_object`/`enum_type` when adding Blueprint enum variables or enum nodes.
+
+```json
+{
+  "command": "create_user_defined_enum",
+  "params": {
+    "asset_path": "/Game/Blueprints/E_FootprintMode",
+    "display_names": ["UseLegacyIndex", "LeftFoot", "RightFoot"],
+    "tooltips": ["기존 인덱스를 사용합니다.", "왼발입니다.", "오른발입니다."],
+    "dry_run": true,
+    "save": false
+  }
+}
+```
+
+### add_blueprint_variable
+
+Add a variable to a Blueprint.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `variable_name` (string) - Name of the variable
+- `variable_type` (string) - Type of the variable (Boolean, Integer, Float, Vector, etc.)
+- `default_value` (any, optional) - Default value for the variable
+- `is_exposed` (boolean, optional) - Whether to expose the variable to the editor (default: false)
+- `category` (string, optional) - Variable category
+- `tooltip` (string, optional) - Variable tooltip metadata
+- `friendly_name` (string, optional) - Editor display name
+- `type_object` (string, optional) - Class path/name for `object` or `class`
+- `is_array` (boolean, optional) - Create an array variable
+- `metadata` (object, optional) - String/number/bool metadata values
+
+**Returns:**
+- Response indicating success or failure
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_variable",
+  "params": {
+    "blueprint_name": "MyActor",
+    "variable_name": "Health",
+    "variable_type": "Float",
+    "default_value": 100.0,
+    "is_exposed": true
+  }
+}
+```
+
+### inspect_blueprint_variables
+
+Inspect Blueprint member variables and category sorting metadata without mutating the Blueprint.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or asset path
+
+**Returns:**
+- `new_variables` and `generated_variables` with variable names, pin types, metadata, category, flags, and stable order indices
+- `category_sorting`, `new_variable_count`, and `generated_variable_count`
+
+**Example:**
+```json
+{
+  "command": "inspect_blueprint_variables",
+  "params": {
+    "blueprint_name": "/Game/Field/BP_Field"
+  }
+}
+```
+
+### inspect_blueprint_variable_metadata
+
+Read the exact `FBPVariableDescription::MetaDataArray` entries stored on one Blueprint member variable. This command is read-only: it does not open a transaction, compile, save, dirty, or otherwise modify the Blueprint.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or asset path
+- `variable_name` (string) - Exact member-variable name
+
+**Returns:**
+- `read_only=true`, Blueprint asset path, variable name/scope/index/GUID
+- ordered `metadata_entries` with original indices and exact key/value strings
+- convenience `metadata` object (`metadata_entries` remains the lossless authority)
+- package dirty state before/after and `dirty_state_unchanged`
+
+```json
+{
+  "command": "inspect_blueprint_variable_metadata",
+  "params": {
+    "blueprint_name": "/Game/Field/BP_Field",
+    "variable_name": "Radius"
+  }
+}
+```
+
+### set_blueprint_variable_default
+
+Set the persisted default value of an existing Blueprint member variable without removing or recreating it. The command writes `FBPVariableDescription::DefaultValue`, optionally compiles the Blueprint, and returns generated-class CDO readback for verification. It refuses mutation while PIE/SIE is active.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or asset path
+- `variable_name` (string) - Existing variable declared in `Blueprint->NewVariables`
+- `default_value` (any) - New value, validated against the variable pin type
+- `compile` (boolean, optional) - Compile after the update (default: false at bridge level; Python wrapper default: true)
+- `save` (boolean, optional) - Save after a successful update/compile (default: false at bridge level; Python wrapper default: true)
+- `dry_run` (boolean, optional) - Validate and report without mutation
+
+**Returns:**
+- Stored default before/requested/after
+- `changed`, `compiled`, `compile_status`, and `saved`
+- `verified_variable`, including generated CDO `default_value`
+
+```json
+{
+  "command": "set_blueprint_variable_default",
+  "params": {
+    "blueprint_name": "/Game/Blueprints/BP_Example",
+    "variable_name": "WaveSpeed",
+    "default_value": 0.34,
+    "compile": true,
+    "save": true
+  }
+}
+```
+
+### set_blueprint_variable_order
+
+Reorder Blueprint member variables in `Blueprint->NewVariables`. This is an editor-authoring command; keep `compile=false` and `save=false` for dry readback-style planning passes.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or asset path
+- `variable_order` (array) - Ordered variable names to move to the front
+- `strict` (boolean, optional) - Fail when any requested variable is missing
+- `compile` (boolean, optional) - Compile after changing the order
+- `save` (boolean, optional) - Save after changing the order
+
+Variables not listed in `variable_order` keep their relative order after the requested names.
+
+**Example:**
+```json
+{
+  "command": "set_blueprint_variable_order",
+  "params": {
+    "blueprint_name": "/Game/Field/BP_Field",
+    "variable_order": ["FollowTarget", "Radius", "Strength"],
+    "strict": true,
+    "compile": false,
+    "save": false
+  }
+}
+```
+
+### set_blueprint_variable_metadata
+
+Set metadata or editor exposure flags on an existing Blueprint member variable.
+
+**Parameters:**
+- `blueprint_name` (string) - Blueprint name or path
+- `variable_name` (string) - Existing Blueprint member variable name
+- `metadata` (object, optional) - String/number/bool metadata values
+- `is_editable` (boolean, optional) - Alias for making the variable editable on instances
+- `instance_editable` (boolean, optional) - Explicit Instance Editable flag. `true` sets `CPF_Edit` and clears `CPF_DisableEditOnInstance`
+- `expose_on_spawn` (boolean, optional) - Set or clear Expose on Spawn metadata and property flag
+
+At least one of `metadata`, `is_editable`, `instance_editable`, or `expose_on_spawn` must be provided. This command is useful when a Blueprint variable already exists but needs to become editable on placed actors or component templates.
+
+**Example:**
+```json
+{
+  "command": "set_blueprint_variable_metadata",
+  "params": {
+    "blueprint_name": "/Game/Field/BP_Field",
+    "variable_name": "FollowTarget",
+    "instance_editable": true
+  }
+}
+```
+
+### add_blueprint_event_dispatcher
+
+Add an Event Dispatcher declaration to a Blueprint. This creates the multicast delegate variable and its delegate signature graph. Use `add_blueprint_event_dispatcher_call_node` to broadcast the dispatcher, `add_blueprint_event_dispatcher_bind_node` with `add_blueprint_custom_event_node` to bind it, and the unbind, clear, or assign node tools to manage its lifecycle.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `dispatcher_name` (string) - Name of the Event Dispatcher
+- `inputs` (array, optional) - Signature inputs; each item accepts `name` or `parameter_name`, plus `type` or `parameter_type`
+- `category` (string, optional) - Event Dispatcher category
+- `tooltip` (string, optional) - Tooltip metadata
+- `friendly_name` (string, optional) - Editor display name
+
+**Returns:**
+- Response containing the dispatcher name, multicast delegate pin type, signature graph metadata, and created inputs
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_dispatcher",
+  "params": {
+    "blueprint_name": "MyActor",
+    "dispatcher_name": "OnScoreChanged",
+    "inputs": [
+      {"name": "Score", "type": "int"}
+    ],
+    "category": "Gameplay"
+  }
+}
+```
+
+### add_blueprint_event_dispatcher_call_node
+
+Add a call node for an existing Blueprint Event Dispatcher. This broadcasts the dispatcher in an event or function graph. Use `set_blueprint_pin_default` or `connect_blueprint_nodes` to provide signature inputs.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `dispatcher_name` (string) - Name of the Event Dispatcher to call
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event` or `function`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, dispatcher name, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_dispatcher_call_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "dispatcher_name": "OnScoreChanged",
+    "node_position": [600, 0],
+    "graph_type": "event"
+  }
+}
+```
+
+### add_blueprint_custom_event_node
+
+Add a custom event node to a Blueprint event graph. When `signature_source_dispatcher_name` is provided, the custom event copies the Event Dispatcher signature and exposes an `OutputDelegate` pin that can be connected into a bind node's `Delegate` pin. When `signature_source_class` and `signature_source_delegate_name` are provided, the custom event copies a native BlueprintAssignable delegate signature, such as an editor subsystem delegate.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `custom_event_name` (string) - Name of the custom event
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `signature_source_dispatcher_name` (string, optional) - Event Dispatcher whose signature should be copied
+- `signature_source_class` (string, optional) - Native class path/name that owns the delegate property
+- `signature_source_delegate_name` (string, optional) - Native BlueprintAssignable delegate property name whose signature should be copied
+- `native_delegate_name` (string, optional) - Alias for `signature_source_delegate_name`
+- `call_in_editor` (boolean, optional) - Set the custom event's Call In Editor flag. Existing custom events are reused only when no signature source is requested, and this flag is updated only when provided.
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Must resolve to an event graph for custom event nodes
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, custom event name, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_custom_event_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "custom_event_name": "HandleScoreChanged",
+    "signature_source_dispatcher_name": "OnScoreChanged",
+    "call_in_editor": true,
+    "node_position": [600, 300],
+    "graph_type": "event"
+  }
+}
+```
+
+Native delegate signature example:
+```json
+{
+  "command": "add_blueprint_custom_event_node",
+  "params": {
+    "blueprint_name": "/Game/Tools/BP_EditorUtility",
+    "custom_event_name": "HandleEditorCameraMoved",
+    "signature_source_class": "/Script/LevelEditor.LevelEditorSubsystem",
+    "signature_source_delegate_name": "OnEditorCameraMoved",
+    "node_position": [600, 300],
+    "graph_type": "event"
+  }
+}
+```
+
+### add_blueprint_event_dispatcher_bind_node
+
+Add a bind node for an existing Blueprint Event Dispatcher. Connect a compatible custom event's `OutputDelegate` pin to this node's `Delegate` pin with `connect_blueprint_nodes`.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `dispatcher_name` (string) - Name of the Event Dispatcher to bind
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event` or `function`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, dispatcher name, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_dispatcher_bind_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "dispatcher_name": "OnScoreChanged",
+    "node_position": [360, 0],
+    "graph_type": "event"
+  }
+}
+```
+
+### add_blueprint_native_delegate_bind_node
+
+Add a bind node for a native BlueprintAssignable multicast delegate. Connect a compatible custom event's `OutputDelegate` pin to this node's `Delegate` pin with `connect_blueprint_nodes`.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `delegate_owner_class` (string) - Native class path/name that owns the delegate property
+- `delegate_name` (string) - Native BlueprintAssignable delegate property name
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event` or `function`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, delegate name, delegate owner class, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_native_delegate_bind_node",
+  "params": {
+    "blueprint_name": "/Game/Tools/BP_EditorUtility",
+    "delegate_owner_class": "/Script/LevelEditor.LevelEditorSubsystem",
+    "delegate_name": "OnEditorCameraMoved",
+    "node_position": [360, 0],
+    "graph_type": "event"
+  }
+}
+```
+
+### add_blueprint_interface_message_node
+
+Add a Blueprint interface message call node and connect its target object pin. Use this for calls such as an editor utility handler interface where the target object is created in the same graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `interface_class` (string) - Interface class path/name. Blueprint interface generated classes such as `/Game/Tools/BPI_Handler.BPI_Handler_C` are supported.
+- `function_name` (string) - Interface function name to call
+- `target_node_id` (string) - Node id that supplies the message target object
+- `target_pin_name` (string, optional) - Output pin on `target_node_id`; defaults to `ReturnValue`
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event`, `function`, or `construction`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, interface class, function path, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_interface_message_node",
+  "params": {
+    "blueprint_name": "/Game/Weather/BP_Manager",
+    "interface_class": "/Game/Weather/Editor/BPI_EditorTickHandler.BPI_EditorTickHandler_C",
+    "function_name": "ConstructedHandler",
+    "target_node_id": "930C7E284F196A5F4F1D9793077ECE32",
+    "target_pin_name": "ReturnValue",
+    "node_position": [1160, 140],
+    "graph_type": "construction"
+  }
+}
+```
+
+### add_blueprint_create_delegate_node
+
+Add a Create Event delegate node, bind it to a function on an object instance, and connect it to an existing delegate input pin. The command connects the delegate output before selecting the function so Unreal can infer the delegate signature.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `function_name` (string) - Function/event name to bind on the supplied object
+- `object_node_id` (string) - Node id that supplies the object instance
+- `object_pin_name` (string, optional) - Output pin on `object_node_id`; defaults to `ReturnValue`
+- `delegate_target_node_id` (string) - Node id that owns the delegate input pin
+- `delegate_target_pin_name` (string, optional) - Delegate input pin name; defaults to `Delegate`
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event`, `function`, or `construction`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, selected function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_create_delegate_node",
+  "params": {
+    "blueprint_name": "/Game/Weather/BP_Manager",
+    "function_name": "Run",
+    "object_node_id": "930C7E284F196A5F4F1D9793077ECE32",
+    "object_pin_name": "ReturnValue",
+    "delegate_target_node_id": "D71EE8B84EB97B2A6A745587222AF52B",
+    "delegate_target_pin_name": "Delegate",
+    "node_position": [1100, 300],
+    "graph_type": "construction"
+  }
+}
+```
+
+### add_blueprint_event_dispatcher_unbind_node
+
+Add an unbind node for an existing Blueprint Event Dispatcher. Connect the same compatible custom event `OutputDelegate` pin used for binding to this node's `Delegate` pin.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `dispatcher_name` (string) - Name of the Event Dispatcher to unbind
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event` or `function`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, dispatcher name, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_dispatcher_unbind_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "dispatcher_name": "OnScoreChanged",
+    "node_position": [820, 0],
+    "graph_type": "event"
+  }
+}
+```
+
+### add_blueprint_event_dispatcher_clear_node
+
+Add a clear node for an existing Blueprint Event Dispatcher. This removes all events bound to the dispatcher for the target context and does not need a `Delegate` pin connection.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `dispatcher_name` (string) - Name of the Event Dispatcher to clear
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Target graph type such as `event` or `function`
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, dispatcher name, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_dispatcher_clear_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "dispatcher_name": "OnScoreChanged",
+    "node_position": [1060, 0],
+    "graph_type": "event"
+  }
+}
+```
+
+### add_blueprint_event_dispatcher_assign_node
+
+Add an assign node for an existing Blueprint Event Dispatcher. Assign nodes require an event graph and automatically create a signature-compatible custom event wired into the node's `Delegate` pin.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `dispatcher_name` (string) - Name of the Event Dispatcher to assign
+- `node_position` (array, optional) - [X, Y] position in the graph
+- `graph_name` (string, optional) - Target graph name
+- `graph_id` (string, optional) - Target graph id
+- `graph_type` (string, optional) - Must resolve to an event graph
+- `create_graph_if_missing` (boolean, optional) - Create the target graph when supported
+
+**Returns:**
+- Response containing the node id, pins, dispatcher name, signature function, and graph metadata
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_event_dispatcher_assign_node",
+  "params": {
+    "blueprint_name": "MyActor",
+    "dispatcher_name": "OnScoreChanged",
+    "node_position": [360, 220],
+    "graph_type": "event"
+  }
+}
+```
+
+### create_input_mapping
+
+Create an input mapping for the project.
+
+**Parameters:**
+- `action_name` (string) - Name of the input action
+- `key` (string) - Key to bind (SpaceBar, LeftMouseButton, etc.)
+- `input_type` (string, optional) - Type of input mapping (Action or Axis, default: "Action")
+
+**Returns:**
+- Response indicating success or failure
+
+**Example:**
+```json
+{
+  "command": "create_input_mapping",
+  "params": {
+    "action_name": "Jump",
+    "key": "SpaceBar",
+    "input_type": "Action"
+  }
+}
+```
+
+### add_blueprint_get_self_component_reference
+
+Add a node that gets a reference to a component owned by the current Blueprint.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `component_name` (string) - Name of the component to get a reference to
+- `node_position` (array, optional) - [X, Y] position in the graph (default: [0, 0])
+
+**Returns:**
+- Response containing the node ID and success status
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_get_self_component_reference",
+  "params": {
+    "blueprint_name": "MyActor",
+    "component_name": "Mesh",
+    "node_position": [400, 400]
+  }
+}
+```
+
+### add_blueprint_self_reference
+
+Add a 'Get Self' node to a Blueprint's event graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `node_position` (array, optional) - [X, Y] position in the graph (default: [0, 0])
+
+**Returns:**
+- Response containing the node ID and success status
+
+**Example:**
+```json
+{
+  "command": "add_blueprint_self_reference",
+  "params": {
+    "blueprint_name": "MyActor",
+    "node_position": [500, 500]
+  }
+}
+```
+
+### find_blueprint_nodes
+
+Find nodes in a Blueprint's event graph.
+
+**Parameters:**
+- `blueprint_name` (string) - Name of the target Blueprint
+- `node_type` (string, optional) - Type of node to find (Event, Function, Variable, etc.)
+- `event_type` (string, optional) - Specific event type to find (BeginPlay, Tick, etc.)
+
+**Returns:**
+- Response containing array of found node IDs and success status
+
+**Example:**
+```json
+{
+  "command": "find_blueprint_nodes",
+  "params": {
+    "blueprint_name": "MyActor",
+    "node_type": "Event",
+    "event_type": "BeginPlay"
+  }
+}
+```
+
+## Error Handling
+
+All command responses include a "success" field indicating whether the operation succeeded, and an optional "message" field with details in case of failure.
+
+```json
+{
+  "success": false,
+  "message": "Blueprint 'MyActor' not found in the project",
+  "command": "add_blueprint_event_node"
+}
+```
+
+## Type Reference
+
+### Node Types
+
+Common node types for the `find_blueprint_nodes` command:
+
+- `Event` - Event nodes (BeginPlay, Tick, etc.)
+- `Function` - Function call nodes
+- `Variable` - Variable nodes
+- `Component` - Component reference nodes
+- `Self` - Self reference nodes
+
+### Variable Types
+
+Common variable types for the `add_blueprint_variable` command:
+
+- `Boolean` - True/false values
+- `Integer` - Whole numbers
+- `Float` - Decimal numbers
+- `Vector` - 3D vector values
+- `String` - Text values
+- `Object Reference` - References to other objects
+- `Actor Reference` - References to actors
+- `Component Reference` - References to components

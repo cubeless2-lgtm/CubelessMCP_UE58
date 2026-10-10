@@ -1,0 +1,379 @@
+"""Named bounded local-SCS reads and journaled component mutations.
+
+Reads request no mutation lease, journal, compile, save or editing. Mutations use
+the shared lease and durable intent; standalone and batch paths share one core.
+Engine asset loading can perform implicit PostLoad work. Path resolution is pure
+text so it does not hide loading from native. No operation here requests saving.
+"""
+
+import copy
+import json
+import math
+import re
+
+from cubeless_mcp_ue58.compatibility.ue58 import component as api
+from . import state
+from .state import OperationError, fail, mutate, new_result
+
+_COMPONENT_TYPES = ("SceneComponent", "StaticMeshComponent", "CameraComponent", "SpringArmComponent",
+                    "SphereComponent", "BoxComponent", "CapsuleComponent")
+
+
+def _selector(value, field, *, empty=False):
+    if (type(value) is not str or (not value and not empty)
+            or any(ord(c) < 32 or ord(c) == 127 or 0xD800 <= ord(c) <= 0xDFFF for c in value)
+            or len(value.encode("utf-16-le")) // 2 > 1023):
+        raise OperationError("component_selector_invalid", field + " must be " + ("a" if empty else "a nonempty") + " string of at most 1023 UTF-16 units without controls or unpaired surrogates")
+    return value
+
+
+def _blueprint_path(blueprint_name):
+    value = _selector(blueprint_name, "blueprint_name").strip()
+    if not value:
+        raise OperationError("blueprint_path_invalid", "blueprint_name cannot contain only whitespace")
+    if not value.startswith("/"):
+        if any(c in value for c in "/.\\:'\""):
+            raise OperationError("blueprint_path_invalid", "Use a simple name under /Game/Blueprints or an exact absolute Blueprint package/object path; export/generated/level aliases are unsupported")
+        value = "/Game/Blueprints/" + value
+    # The native public FPackageName validator owns exact path validity and
+    # object-suffix expansion. Do not load an asset or search the registry here.
+    return _selector(value, "resolved_blueprint_path")
+
+
+def _budget(value, field, minimum, maximum):
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise OperationError("component_budget_invalid", field + " must be an integer from " + str(minimum) + " to " + str(maximum) + "; booleans are not accepted")
+    return value
+
+
+def _read(identity, blueprint_name, component_name, property_name, max_components, max_value_chars):
+    result = new_result()
+    result["data"].update(operation=identity, journaled=False,
+        inspection_scope="reachable nodes of this Blueprint's local SCS only",
+        full_legacy_component_parity=False, loading_side_effects_verified=False)
+    result["retry"]["policy"] = "No automatic retry. Inspect loading and dirty/status observations before repeating a failed read. The returned operation_id identifies this result; no mutation journal was created."
+    try:
+        path = _blueprint_path(blueprint_name)
+        selected = _selector("" if component_name is None and identity == "list_blueprint_components" else component_name,
+            "component_name", empty=identity == "list_blueprint_components")
+        maximum = _budget(max_components, "max_components", 1, 10000)
+        prop = _selector(property_name, "property_name") if identity == "get_component_property" else ""
+        chars = _budget(max_value_chars, "max_value_chars", 64, 65536)
+        result["data"].update(blueprint_name=blueprint_name, resolved_blueprint_path=path,
+            path_resolution="pure_text_legacy_directory_or_exact_path", adapter_preloaded_asset=False)
+        result["stage"] = "native_read"
+        result["data"]["native_dispatched"] = True
+        result["changes"] = [{"kind": "component_read_observation", "explicit_mutation_requested": False,
+            "change_state_known": False, "changed": None, "outcome": "native_read_outcome_unknown"}]
+        if identity == "list_blueprint_components":
+            native = api.list_blueprint_components(path, selected, maximum)
+        else:
+            native = api.get_component_property(path, selected, prop, maximum, chars)
+        result["data"].update(copy.deepcopy(native["data"]))
+        result["data"]["blueprint_name"] = blueprint_name
+        result["data"]["native_outcome"] = {key: copy.deepcopy(value) for key, value in native.items() if key != "data"}
+        result["stage"] = native.get("stage", "native_read")
+        known = native["change_state_known"] is True
+        changed = native.get("changed")
+        result["changes"] = [] if known and changed is False else [{"kind": "component_read_observation",
+            "explicit_mutation_requested": False, "change_state_known": known, "changed": changed if known else None,
+            "dirty_before": native.get("dirty_before"), "dirty_after": native.get("dirty_after"),
+            "blueprint_status_before": native.get("blueprint_status_before"), "blueprint_status_after": native.get("blueprint_status_after"),
+            "outcome": "scoped_native_observation" if known else "native_read_outcome_unknown"}]
+        result["validation"].update(status="bounded_local_scs_observation", native_postcondition_passed=native["postcondition_passed"],
+            native_verification_scope=native.get("verification_scope", ""), independent_value_check="not_run",
+            inherited_effective_defaults="not_verified", native_cdo_components="not_included")
+        result["retry"]["native_auto_retry_safe_within_scope"] = native["auto_retry_safe"]
+        if native["loaded_during_read"]:
+            result["retry"]["duplicate_risk"] = "implicit_loading_effects_not_audited"
+        if any(native[key] for key in ("mutation_attempted", "compile_requested", "save_requested", "saved")):
+            # Preserve contradictory observations; do not turn them into a
+            # successful read or claim compile/save was actually unrequested.
+            result["compile"].update(requested=native["compile_requested"], attempted=None, status="unexpected_native_report")
+            result["save"].update(requested=native["save_requested"], attempted=None, saved=native["saved"], status="unexpected_native_report")
+            result["changes"].append({"kind": "unexpected_native_write_report", "explicit_mutation_requested": False,
+                "mutation_reported": native["mutation_attempted"], "changed": None, "change_state_known": False,
+                "outcome": "read_contract_violated_inspect_native_outcome"})
+            result["stage"] = "validate_native_read"
+            raise OperationError("unexpected_component_read_mutation", "Native read reported explicit mutation/compile/save; inspect native_outcome")
+        if native["success"] is not True:
+            raise OperationError(native.get("error_code") or "native_component_read_failed", native.get("error") or "Native local-SCS read failed; inspect its retained observations")
+        if not known or changed is not False or native["postcondition_passed"] is not True:
+            result["stage"] = "validate_native_read"
+            raise OperationError("component_read_unverified", "Successful native flag lacks stable dirty/status observations; no independent property or persistence verification is claimed")
+        result["success"] = True
+        result["stage"] = "complete"
+    except Exception as error:
+        if getattr(error, "code", "") == "native_component_api_unavailable":
+            result["data"]["native_dispatched"] = False
+            result["changes"] = []
+        fail(result, error)
+    return result
+
+
+def list_blueprint_components(blueprint_name, component_name=None, max_components=10000):
+    return _read("list_blueprint_components", blueprint_name, component_name, None, max_components, 65536)
+
+
+def get_component_property(blueprint_name, component_name, property_name, max_components=10000, max_value_chars=65536):
+    return _read("get_component_property", blueprint_name, component_name, property_name, max_components, max_value_chars)
+
+
+def _batch_read(result, observation):
+    operation_id = result["operation_id"]
+    result.update(observation)
+    result["operation_id"] = operation_id
+    result["data"].update(journaled=True, journal_scope="enclosing_batch",
+        mutation_state_unknown=any(change.get("change_state_known") is not True for change in result["changes"]))
+    result["retry"]["policy"] = "The enclosing batch owns the journal; the same batch ID replays historical reads without rerunning. No automatic retry."
+
+
+def list_blueprint_components_action(result, blueprint_name, component_name=None, max_components=10000, checkpoint_callback=None):
+    _batch_read(result, list_blueprint_components(blueprint_name, component_name, max_components))
+
+
+def get_component_property_action(result, blueprint_name, component_name, property_name, max_components=10000, max_value_chars=65536, checkpoint_callback=None):
+    _batch_read(result, get_component_property(blueprint_name, component_name, property_name, max_components, max_value_chars))
+
+
+def _json_input(text, field):
+    if type(text) is not str or len(text.encode("utf-16-le", errors="surrogatepass")) // 2 > 65536:
+        raise OperationError("component_json_invalid", field + " must be a JSON string of at most 65536 UTF-16 units")
+
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise OperationError("component_json_invalid", field + " contains duplicate key: " + key)
+            value[key] = item
+        return value
+
+    def constant(value):
+        raise OperationError("component_json_invalid", field + " contains a non-finite constant: " + value)
+
+    try:
+        value = json.loads(text, object_pairs_hook=unique, parse_constant=constant)
+        count = 0
+
+        def visit(item, depth):
+            nonlocal count
+            count += 1
+            if depth > 8 or count > 1024:
+                raise ValueError("maximum JSON depth 8 or value count 1024 exceeded")
+            if type(item) is dict:
+                for key, child in item.items():
+                    _selector(key, "JSON property name")
+                    visit(child, depth + 1)
+            elif type(item) is list:
+                for child in item:
+                    visit(child, depth + 1)
+            elif type(item) is str:
+                if "\x00" in item or any(0xD800 <= ord(c) <= 0xDFFF for c in item):
+                    raise ValueError("JSON strings cannot contain NUL or unpaired surrogates")
+            elif type(item) is int and abs(item) > 2**53 - 1:
+                raise ValueError("integers must remain exactly representable by native JSON numbers (2^53-1)")
+            elif type(item) is float and (not math.isfinite(item) or abs(item) > 2**53 - 1):
+                raise ValueError("numeric values must be finite with magnitude at most 2^53-1")
+
+        visit(value, 0)
+        return value
+    except (ValueError, RecursionError) as error:
+        raise OperationError("component_json_invalid", field + ": " + str(error)) from error
+
+
+def _json_text(value):
+    return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":"))
+
+
+def _mutation_path(blueprint_name):
+    path = _blueprint_path(blueprint_name)
+    if not path.startswith("/Game/"):
+        raise OperationError("blueprint_path_invalid", "Component mutations require a /Game Blueprint; read-only Engine/plugin paths remain supported by inspection")
+    return path
+
+
+def _add_arguments(blueprint_name, component_type, component_name, location_json, rotation_json, scale_json, parent_component, component_properties_json, compile_blueprint):
+    path = _mutation_path(blueprint_name)
+    kind = _selector(component_type, "component_type")
+    kind = next((name for name in _COMPONENT_TYPES
+        if kind in (name, "U" + name, "/Script/Engine." + name, name.removesuffix("Component"))), None)
+    if kind is None:
+        raise OperationError("component_type_unsupported", "Supported exact native Engine classes: " + ", ".join(_COMPONENT_TYPES))
+    name = _selector(component_name, "component_name")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,99}", name) is None or name.lower() == "none":
+        raise OperationError("component_name_invalid", "New local component names must be ASCII identifiers of 1..100 characters and cannot be None")
+    if type(compile_blueprint) is not bool:
+        raise OperationError("component_compile_invalid", "compile_blueprint must be a boolean")
+    transform = {}
+    for key, text in (("location", location_json), ("rotation", rotation_json), ("scale", scale_json)):
+        value = _json_input(text, key + "_json")
+        if (type(value) is not list or len(value) != 3
+                or any(type(item) not in (int, float) or abs(item) > 1.0e12 for item in value)):
+            raise OperationError("component_transform_invalid", key + "_json must contain exactly three finite numbers with magnitude at most 1e12; booleans are not numbers")
+        transform[key] = value
+    properties = _json_input(component_properties_json, "component_properties_json")
+    if type(properties) is not dict or len(properties) > 64:
+        raise OperationError("component_properties_invalid", "component_properties_json must be an object with at most 64 properties")
+    return {"blueprint_path": path, "component_type": kind, "component_name": name,
+        "transform_json": _json_text(transform), "parent_component": _selector("" if parent_component is None else parent_component, "parent_component", empty=True),
+        "component_properties_json": _json_text(properties), "compile_blueprint": compile_blueprint}
+
+
+def _set_arguments(blueprint_name, component_name, property_name, property_value_json):
+    return {"blueprint_path": _mutation_path(blueprint_name), "component_name": _selector(component_name, "component_name"),
+        "property_name": _selector(property_name, "property_name"), "property_value_json": _json_text(_json_input(property_value_json, "property_value_json"))}
+
+
+def _static_mesh_arguments(blueprint_name, component_name, static_mesh, material=None):
+    material_path = None
+    if material is not None:
+        material_path = _selector(material, "material")
+        if material_path != material_path.strip() or not material_path.startswith(("/Game/", "/Engine/")):
+            raise OperationError("component_material_reference_invalid", "material must be a nonempty /Game or /Engine material package/object path; null means leave slot 0 unchanged, not clear")
+        if "." not in material_path:
+            material_path += "." + material_path.rsplit("/", 1)[-1]
+        material_path = _selector(material_path, "material_object_path")
+    mesh = _selector(static_mesh, "static_mesh", empty=material_path is not None)
+    if mesh:
+        if mesh != mesh.strip() or not mesh.startswith(("/Game/", "/Engine/")):
+            raise OperationError("component_mesh_reference_invalid", "static_mesh must be a /Game or /Engine StaticMesh path; an explicit empty string is allowed only with a material assignment")
+        if "." not in mesh:
+            mesh += "." + mesh.rsplit("/", 1)[-1]
+    arguments = {"blueprint_path": _mutation_path(blueprint_name), "component_name": _selector(component_name, "component_name"),
+        "static_mesh": _selector(mesh, "static_mesh_object_path", empty=material_path is not None)}
+    # Preserve successful pre-R operation fingerprints and historical replay.
+    # A new optional field must not change old mesh-only normalized arguments.
+    if material_path is not None:
+        arguments["material"] = material_path
+    return arguments
+
+
+def _physics_arguments(blueprint_name, component_name, simulate_physics, gravity_enabled, mass, linear_damping, angular_damping):
+    arguments = {"blueprint_path": _mutation_path(blueprint_name), "component_name": _selector(component_name, "component_name")}
+    for key, value in (("simulate_physics", simulate_physics), ("gravity_enabled", gravity_enabled)):
+        if type(value) is not bool:
+            raise OperationError("component_physics_value_invalid", key + " must be a boolean")
+        arguments[key] = value
+    for key, value, minimum in (("mass", mass, 0.001), ("linear_damping", linear_damping, 0.0), ("angular_damping", angular_damping, 0.0)):
+        if type(value) not in (int, float) or not minimum <= value <= 1.0e12:
+            raise OperationError("component_physics_value_invalid", key + " must be a finite number from " + str(minimum) + " to 1e12; booleans are not numbers")
+        # Canonicalize int/float inputs for replay; retain the requested double.
+        # Native reports independently observed float32 storage values.
+        arguments[key] = float(value)
+    return arguments
+
+
+def _mutation_action(result, identity, arguments, checkpoint_callback=None):
+    requested_compile = arguments.get("compile_blueprint", False)
+    result["data"].update(operation=identity, journaled=True, full_legacy_component_parity=False,
+        resolved_blueprint_path=arguments["blueprint_path"], adapter_preloaded_asset=False,
+        inspection_scope="reachable local SCS; native propagation/class/type guards apply")
+    result["compile"].update(requested=requested_compile, attempted=False, compiled=None,
+        scope="requested full compilation; implicit structural/notification work is reported separately by native",
+        status="not_dispatched" if requested_compile else "not_requested")
+    result["stage"] = "before_mutation_checkpoint"
+    result["data"]["pending_mutation"] = {"operation": identity, **arguments,
+        "dispatch_state_at_checkpoint": "not_yet_dispatched", "interrupted_outcome": "unknown_inspect_asset_and_journal"}
+    (checkpoint_callback or state.checkpoint)(result)
+    result["stage"] = "native_mutation"
+    result["data"].update(native_dispatched=True, mutation_state_unknown=True)
+    result["changes"] = [{"kind": identity, "asset_path": arguments["blueprint_path"],
+        "component_name": arguments["component_name"], "attempted": True,
+        "changed": None, "change_state_known": False, "outcome": "unknown_until_native_result"}]
+    if requested_compile:
+        result["compile"].update(attempted=None, status="unknown_until_native_result")
+    try:
+        native = getattr(api, identity)(**arguments)
+    except Exception as error:
+        if getattr(error, "code", "") == "native_component_api_unavailable":
+            result["data"].update(native_dispatched=False, native_mutation_attempted=False,
+                mutation_state_unknown=False, mutation_performed=False)
+            result["changes"] = []
+            result["compile"].update(attempted=False, status="not_dispatched" if requested_compile else "not_requested")
+        raise
+    result["data"].update(copy.deepcopy(native["data"]))
+    result["data"].update(operation=identity,
+        native_outcome={key: copy.deepcopy(value) for key, value in native.items() if key != "data"},
+        native_mutation_attempted=native["mutation_attempted"], mutation_state_unknown=not native["change_state_known"],
+        mutation_performed=native.get("changed") if native["change_state_known"] else None)
+    result["stage"] = native.get("stage", "native_mutation")
+    result["compile"].update(requested=native["compile_requested"], attempted=native["compile_attempted"], compiled=native.get("compiled"),
+        status=native.get("compile_status", "compiled" if native.get("compiled") is True else "failed" if native["compile_attempted"] else "not_attempted" if native["compile_requested"] else "not_requested"))
+    for key in ("compile_error_count", "compile_warning_count", "compile_errors", "compile_warnings", "diagnostics", "implicit_structural_compile"):
+        if key in native:
+            result["compile"][key] = copy.deepcopy(native[key])
+    compiler = native["data"].get("compile")
+    if type(compiler) is dict:
+        # The native shared compiler response remains intact in data.compile;
+        # expose its usual diagnostic fields in the common operation envelope.
+        for source, target in (("status", "status"), ("compile_error_count", "error_count"),
+                ("compile_warning_count", "warning_count"), ("diagnostics", "diagnostics")):
+            if source in compiler:
+                result["compile"][target] = copy.deepcopy(compiler[source])
+    result["save"].update(requested=native["save_requested"], saved=native["saved"],
+        attempted=None if native["save_requested"] or native["saved"] else False)
+    result["changes"] = [] if native["mutation_attempted"] is False and native["change_state_known"] and native.get("changed") is False else [{
+        "kind": identity, "asset_path": arguments["blueprint_path"], "component_name": arguments["component_name"],
+        "attempted": native["mutation_attempted"], "change_state_known": native["change_state_known"],
+        "changed": native.get("changed") if native["change_state_known"] else None,
+        "dirty_before": native.get("dirty_before", native["data"].get("dirty_before")),
+        "dirty_after": native.get("dirty_after", native["data"].get("dirty_after")),
+        "outcome": "scoped_native_observation" if native["change_state_known"] else "unknown_after_native_dispatch"}]
+    result["validation"].update(native_postcondition_passed=native["postcondition_passed"],
+        status="native_local_scs_postcondition" if native["postcondition_passed"] else "native_postcondition_failed",
+        disk_reload="not_run", independent_value_check="not_run")
+    if (native["save_requested"] or native["saved"] or native["compile_requested"] != requested_compile
+            or not requested_compile and native["compile_attempted"]):
+        result["data"]["mutation_state_unknown"] = True
+        raise OperationError("unexpected_component_compile_or_save", "Native result conflicts with the requested compile/save contract; inspect retained native_outcome")
+    if not native["success"]:
+        raise OperationError(native.get("error_code") or "native_component_mutation_failed", native.get("error") or "Native component mutation failed; partial observations are retained")
+    if not native["change_state_known"] or not native["postcondition_passed"] or requested_compile and native.get("compiled") is not True:
+        raise OperationError("component_mutation_unverified", "Native success lacks a known change state, verified postcondition or requested successful compile")
+    result["success"] = True
+    result["stage"] = "complete"
+    result["retry"]["duplicate_risk"] = "component_mutation_would_repeat" if native.get("changed") else "none_observed"
+
+
+def _mutate_prepared(identity, prepare, operation_id):
+    try:
+        arguments = prepare()
+    except Exception as error:
+        return fail(new_result(operation_id), error)
+    return mutate(identity, arguments, operation_id, lambda result: _mutation_action(result, identity, arguments))
+
+
+def add_component_to_blueprint(blueprint_name, component_type, component_name, location_json="[0,0,0]", rotation_json="[0,0,0]", scale_json="[1,1,1]", parent_component=None, component_properties_json="{}", compile_blueprint=True, operation_id=None):
+    return _mutate_prepared("add_component_to_blueprint", lambda: _add_arguments(blueprint_name, component_type, component_name,
+        location_json, rotation_json, scale_json, parent_component, component_properties_json, compile_blueprint), operation_id)
+
+
+def add_component_to_blueprint_action(result, blueprint_name, component_type, component_name, location_json="[0,0,0]", rotation_json="[0,0,0]", scale_json="[1,1,1]", parent_component=None, component_properties_json="{}", compile_blueprint=True, checkpoint_callback=None):
+    _mutation_action(result, "add_component_to_blueprint", _add_arguments(blueprint_name, component_type, component_name,
+        location_json, rotation_json, scale_json, parent_component, component_properties_json, compile_blueprint), checkpoint_callback)
+
+
+def set_component_property(blueprint_name, component_name, property_name, property_value_json, operation_id=None):
+    return _mutate_prepared("set_component_property", lambda: _set_arguments(blueprint_name, component_name, property_name, property_value_json), operation_id)
+
+
+def set_component_property_action(result, blueprint_name, component_name, property_name, property_value_json, checkpoint_callback=None):
+    _mutation_action(result, "set_component_property", _set_arguments(blueprint_name, component_name, property_name, property_value_json), checkpoint_callback)
+
+
+def set_static_mesh_properties(blueprint_name, component_name, static_mesh="/Engine/BasicShapes/Cube.Cube", operation_id=None, material=None):
+    return _mutate_prepared("set_static_mesh_properties", lambda: _static_mesh_arguments(blueprint_name, component_name, static_mesh, material), operation_id)
+
+
+def set_static_mesh_properties_action(result, blueprint_name, component_name, static_mesh="/Engine/BasicShapes/Cube.Cube", checkpoint_callback=None, material=None):
+    _mutation_action(result, "set_static_mesh_properties", _static_mesh_arguments(blueprint_name, component_name, static_mesh, material), checkpoint_callback)
+
+
+def set_physics_properties(blueprint_name, component_name, simulate_physics=True, gravity_enabled=True, mass=1.0, linear_damping=0.01, angular_damping=0.0, operation_id=None):
+    return _mutate_prepared("set_physics_properties", lambda: _physics_arguments(blueprint_name, component_name,
+        simulate_physics, gravity_enabled, mass, linear_damping, angular_damping), operation_id)
+
+
+def set_physics_properties_action(result, blueprint_name, component_name, simulate_physics=True, gravity_enabled=True, mass=1.0, linear_damping=0.01, angular_damping=0.0, checkpoint_callback=None):
+    _mutation_action(result, "set_physics_properties", _physics_arguments(blueprint_name, component_name,
+        simulate_physics, gravity_enabled, mass, linear_damping, angular_damping), checkpoint_callback)

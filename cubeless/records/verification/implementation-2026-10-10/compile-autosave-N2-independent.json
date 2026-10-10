@@ -1,0 +1,9 @@
+{
+  "passed": false,
+  "errors": [
+    "Duplicate stage labels"
+  ],
+  "schema": "cubeless_compile_autosave_verification_v1",
+  "report_sha256": "a5b8072822b5fad90a1032bb384b55becf1e886ecac5c2c2e0ab760605aa74fd",
+  "cold_reload": "not_run"
+}

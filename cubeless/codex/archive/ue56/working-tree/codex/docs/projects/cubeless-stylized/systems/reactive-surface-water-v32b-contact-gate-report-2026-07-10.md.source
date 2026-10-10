@@ -1,0 +1,19 @@
+# Reactive Surface Water V32-B Contact Gate Report - 2026-07-10
+
+- Verdict: `PASS`
+- Scope: always-active Water bypasses only PuddleVolume overlap while retaining movement-grounded + per-foot trace injection gates; no project C++.
+
+## Runtime
+- checks: `{'grounded_water_pulses': True, 'airborne_no_new_pulse': True, 'outside_overlap_bypassed': True, 'airborne_contact_false': True, 'outside_ground_contact_true': True, 'rt_readback_completed': True, 'readback_stable': True}`
+- pulse counts: `{'before': 0.0, 'grounded': 2.0, 'airborne': 2.0, 'outside': 4.0}`
+- Explicit source: `BP_Piper_ReactivePrototype`, not SIE GetPlayerPawn(0).
+- RT readback: C++ region stats, first read discarded, second/third compared. With production Damping=0.90 this short gate-only replay may decay to zero before readback; current stable nonzero positive-path evidence is owned by V40.
+
+## Final
+- compile pass: `True`
+- topology: `{'contact_debug_set': True, 'line_trace_count': 2, 'branch_count': 27}`
+- dirty packages: `0`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v32b-contact-gate-results-2026-07-10.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV32BContactGate\water_v32b_contact_gate_bridge_results.json`

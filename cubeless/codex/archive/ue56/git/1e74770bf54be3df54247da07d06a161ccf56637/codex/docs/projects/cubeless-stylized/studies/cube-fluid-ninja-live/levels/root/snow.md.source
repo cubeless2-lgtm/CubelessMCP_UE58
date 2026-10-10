@@ -1,0 +1,73 @@
+# 레벨 카드: `Snow`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Snow` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Snow` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `78` |
+| Direct external | `18` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+눈 표현을 다루는 대표 레벨이다. 이 설명은 레벨 이름과 원본 계층에서 확실히 읽히는 범위를 넘지 않는다.
+
+### 정적 판정
+
+- **Observed:** 5 host와 avalanche/jet/vortex, 129-component Landscape, harvester/destructible graph가 결합된다.
+- **Inferred:** Sand 구조를 snow material/output으로 비교하는 full media fixture다.
+- **Unknown:** snow accumulation, fog/sunset 반응, runtime/parity.
+- **Target fixture:** `TF_Snow_Media` 제안.
+
+## Actor
+
+- manifest 합계 `170 actors / 435 components / 17 pages`.
+- exact class histogram: `StaticMeshActor=86; TextRenderActor=41; MeshSpawnerCPU_LEGACY_C=6; NiagaraActor=5; NinjaLive_C=5; PointLight=3; Rotor1_C=3; DriveExternalSystemsWithSimData_C=2; MovingBall1_C=2; PostProcessVolume=2; ThirdPersonCharacter_C=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; GeometryCollectionActor=1; Landscape=1; LandscapeGizmoActiveActor=1; LightBeam_C=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; Snow_C=1; TriggerBox=1; Vehicle_QuadDrone_C=1`.
+- Landscape=`129=64+64+root`, `MI_Snow_Composite`; GC 136 chunks, tree spawner 6, driver 2, TriggerBox/drone 각 1, sequence actor 0.
+
+## Runtime
+
+- Level BP `185 nodes / 5 variables`: harvester follow/unfollow, writer distance-cull, avalanche/destructible, fog/sunset.
+- accumulation·cull·environment timing 및 성능 `pending`.
+
+## Niagara
+
+- host 5, NinjaLiveCore/preset=None/overrides non-empty; resolution `2048²×2,1024×512,512²,720²`; extents `-1.4³,100/100/1.4,30/30/2,50/50/2,8³`; Simple=1, HVOL=2; PVD=`FTT×2,TTF×2,TFF`; input=`MDF+height×3,default×2`.
+- standalone: Avalanche×3, JetStream, Vortex. 내부 topology/runtime `pending`.
+
+## Material
+
+- selected: `MI_JetHeat1`, snow composite, SVOL snow, gray trail HVOL, sphere flow; Landscape `MI_Snow_Composite`.
+- runtime MID/output parity `pending`.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- native manifest revision `483894c9ca4c2ffdf1a084fe8a71549d`, query `2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- Landscape 129/9 pages(64+64+1) fully resolved. Level BP EventGraph 1, 185/5, error 0. [family observation](../../concepts/root-water-surface-media-observation.md).
+- `pending`: PIE/SIE, target, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

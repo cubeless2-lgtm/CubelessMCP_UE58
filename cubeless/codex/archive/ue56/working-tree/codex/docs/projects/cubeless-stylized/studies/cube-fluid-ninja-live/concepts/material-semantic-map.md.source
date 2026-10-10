@@ -1,0 +1,1005 @@
+# Cube Fluid Ninja Live: material semantic map v1
+
+## 문서 상태와 clean-room 경계
+
+이 문서는 `/Game/FluidNinjaLive`의 머티리얼 계열 963개를 읽기 전용 evidence로
+전수 분류하고, `/Game/Study/CubeFluidNinjaLive`에 원본 graph를 복사하지 않고
+같은 결과를 새로 저작하기 위한 정본 semantic map이다.
+
+현재 판정은 다음과 같다.
+
+| 항목 | 상태 |
+| --- | --- |
+| v2 structural capture | `complete`, 963/963 |
+| semantic cluster와 recipe 우선순위 | `complete` |
+| Custom HLSL 의미 분석 | `complete for static code` |
+| target material/function/instance 저작 | `pending` |
+| runtime, cook, 59-level visual parity | `pending` |
+
+이 문서는 source material/function/instance, HLSL text, graph node 배치를 target에
+복제하라는 명세가 아니다. 수식, 입력 계약, parameter vocabulary, shader
+domain, level usage를 clean-room 계약으로 바꾼다. 원본 package는 계속
+읽기 전용이며 target은 source package, UnrealMCP authoring class, 임시 study
+asset을 runtime dependency로 가져서는 안 된다. C++는 이 material 재저작의
+필수 조건이 아니며 이 계획은 project/runtime C++를 추가하지 않는다.
+
+판정 표기는 다음과 같다.
+
+- **Observed**: v2 inspection, inventory, material setting, expression, parameter
+  array 또는 Custom code에서 직접 확인한 값이다.
+- **Inferred**: 여러 observed 신호를 묶어 target 책임이나 recipe로 해석한
+  것이다.
+- **Unknown**: runtime MID/MPC 변경, 실제 shader compiler 결과, frame output
+  또는 dependency closure 없이는 확정할 수 없다.
+- **Target test**: 원본 graph를 복사하지 않고 source와 target의 수치·화면을
+  비교해 가설을 닫는 fixture다.
+
+## 1. 증거 기준선과 963/963 coverage
+
+### 1.1 기준 파일
+
+주 evidence는 다음 두 곳이다.
+
+- `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/materials`
+- `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference_inventory.json`
+
+`reference_inventory.json`은 1,602,115 bytes이며 SHA-256은
+`45b554df454a788f9dfbea012812b356b0b092fc48f256b61b0b091d8e0f9759`다.
+59개 reference level의 direct dependency가 모두 들어 있다.
+
+v2 material evidence는 asset별 `inspection/catalog.json` 963개와 page JSON
+999개, 합계 1,962개·173,370,356 bytes다. manifest digest는 다음 방식으로
+재현한다.
+
+1. materials root 기준 forward-slash relative path를 ordinal 정렬한다.
+2. 각 path의 UTF-8 bytes, NUL 1 byte, 해당 파일 SHA-256의 32-byte binary
+   digest를 차례로 outer SHA-256에 넣는다.
+3. 모든 `inspection/catalog.json`과 page JSON을 포함한 digest는
+   `f2d623032d8decdefaaaffc8cb755c7559655705748542ecf2611ee18d8c10df`다.
+4. catalog 963개만 같은 방식으로 계산한 digest는
+   `8100461819ceba1a6877b8effeb725e7a7ff35a6e5a9b6c435caced195abcbcc`다.
+
+### 1.2 class closure
+
+| Asset class | Count | Base graph | Recipe/preset |
+| --- | ---: | ---: | ---: |
+| `Material` | 86 | 86 | 0 |
+| `MaterialFunction` | 64 | 64 | 0 |
+| `MaterialFunctionMaterialLayer` | 2 | 2 | 0 |
+| `MaterialFunctionMaterialLayerBlend` | 1 | 1 | 0 |
+| `MaterialFunctionMaterialLayerInstance` | 12 | 0 | 12 |
+| `MaterialInstanceConstant` | 798 | 0 | 798 |
+| **합계** | **963** | **153** | **810** |
+
+따라서 coverage 산술은 `86 + 64 + 2 + 1 + 12 + 798 = 963`이고,
+base graph 산술은 `86 + 64 + 2 + 1 = 153`이다. base graph expression은
+8,186개, Material Function Call은 306개, Custom expression은 21개다.
+
+모든 963 catalog는 다음 조건을 만족한다.
+
+- `inspection_version=material_asset_inspection_v2`
+- `capture_complete=true`
+- `source_mutation_performed=false`
+
+999 page도 모두 `success=true`, `read_only=true`,
+`page_content_complete=true`, source mutation/truncation 0이다. 954개 asset은
+1 page이고, 6개는 2 page, 1개는 5 page, 1개는 10 page, 1개는 18 page다.
+중간 page의 `single_response_complete=false`는 pagination 상태이지 capture
+오류가 아니다.
+
+12개 Material Layer Instance의 legacy `analysis.json`에 있는
+`not_applicable`도 오류로 세지 않는다. 이 12개는 v2 inspection에서 모두
+완전 캡처됐고 별도 graph를 가진 base asset이 아니라 parent layer의 preset이다.
+
+## 2. 전수 semantic cluster
+
+### 2.1 분류 규칙과 재현 fingerprint
+
+분류는 asset class와 package path를 사용하며 한 asset을 정확히 한 cluster에만
+넣는다. 충돌 시 우선순위는 `FAKE → CVOL → FVOL → HVOL → SVOL →
+particle → input → core/debug → water dense → water sparse →
+surface medium → material-layer host → shared base/function →
+environment/decor`다. `OutputMaterials/Base/Functions/SVOL`의 8개 function은
+shared가 아니라 SVOL로 먼저 분류한다.
+
+surface medium은 `Surface_Various`와 `CompositeExamples_SURFACE`에서
+`sand`, `snow`, `grass/foliage`, `blood/mud`, `lava` token을 순서대로
+판정하고 나머지를 `surface/various-composite`로 둔다. 이 이름 분류는
+implementation grouping이며 acronym 자체의 runtime algorithm을 단정하지 않는다.
+
+모든 row를 package ordinal 순서로
+`package<TAB>class<TAB>cluster<LF>`로 직렬화한 검증값은 다음과 같다.
+
+| Manifest | Rows | Bytes | SHA-256 |
+| --- | ---: | ---: | --- |
+| all material assets | 963 | 112,735 | `1c39aabdf5dafd15375c83cdeadedda01831b283fd758610e05caae9cdbda872` |
+| 153 base graph subset | 153 | 15,906 | `9c31042444b7065d1ee13f77da44186027a1e2510dbc3568f5aa29bd46433d15` |
+
+이 두 fingerprint와 아래 합계가 963/963 cluster coverage의 정본 증명이다.
+
+### 2.2 cluster별 class와 graph 비용
+
+`M`=Material, `MF`=MaterialFunction, `ML`=Material Layer,
+`MLB`=Material Layer Blend, `MLI`=Material Layer Instance,
+`MI`=Material Instance Constant다. node/Custom/call은 base graph만의 값이다.
+
+| Semantic cluster | Total | Base graph 구성 | MLI | MI | Node | Custom | Function call |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| core/debug | 40 | 5 M | 0 | 35 | 92 | 0 | 3 |
+| input | 42 | 19 M | 0 | 23 | 545 | 0 | 15 |
+| environment/decor | 278 | 36 M + 28 MF | 0 | 214 | 1,793 | 8 | 100 |
+| core/shared-material-library | 31 | 3 M + 28 MF | 0 | 0 | 3,929 | 4 | 107 |
+| SVOL/raymarch | 77 | 1 M + 8 MF | 0 | 68 | 665 | 8 | 47 |
+| CVOL/cloud | 42 | 2 M | 12 | 28 | 103 | 0 | 5 |
+| FVOL/fog | 31 | 2 M | 0 | 29 | 185 | 0 | 7 |
+| HVOL/heterogeneous | 67 | 1 M | 0 | 66 | 2 | 0 | 1 |
+| core/material-layer | 3 | 1 M + 1 ML + 1 MLB | 0 | 0 | 19 | 0 | 2 |
+| surface/grass | 10 | 1 M | 0 | 9 | 144 | 0 | 3 |
+| surface/blood-mud | 12 | 0 | 0 | 12 | 0 | 0 | 0 |
+| surface/sand | 22 | 0 | 0 | 22 | 0 | 0 | 0 |
+| surface/snow | 5 | 0 | 0 | 5 | 0 | 0 | 0 |
+| surface/lava | 17 | 0 | 0 | 17 | 0 | 0 | 0 |
+| surface/various-composite | 102 | 5 M + 1 ML | 0 | 96 | 151 | 0 | 13 |
+| water-dense | 49 | 0 | 0 | 49 | 0 | 0 | 0 |
+| water-sparse | 89 | 0 | 0 | 89 | 0 | 0 | 0 |
+| FAKE/decal | 13 | 1 M | 0 | 12 | 167 | 1 | 3 |
+| particle | 33 | 9 M | 0 | 24 | 391 | 0 | 2 |
+| **합계** | **963** | **153 graph** | **12** | **798** | **8,186** | **21** | **306** |
+
+### 2.3 level direct-use 교차표
+
+이 표의 level occurrence는 59개 map의 direct dependency occurrence다.
+Material Function, Layer, Blend가 map에 직접 안 보이는 것은 정상이며 parent와
+function call closure에서 다시 승격해야 한다.
+
+| Cluster | Total | Direct-used | No direct level ref | Starter unique | 59-level occurrences |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| core/debug | 40 | 31 | 9 | 27 | 203 |
+| input | 42 | 16 | 26 | 1 | 25 |
+| environment/decor | 278 | 179 | 99 | 55 | 743 |
+| core/shared-material-library | 31 | 1 | 30 | 1 | 8 |
+| SVOL/raymarch | 77 | 47 | 30 | 3 | 56 |
+| CVOL/cloud | 42 | 21 | 21 | 0 | 22 |
+| FVOL/fog | 31 | 27 | 4 | 0 | 32 |
+| HVOL/heterogeneous | 67 | 66 | 1 | 8 | 144 |
+| core/material-layer | 3 | 0 | 3 | 0 | 0 |
+| surface/grass | 10 | 5 | 5 | 0 | 8 |
+| surface/blood-mud | 12 | 9 | 3 | 2 | 12 |
+| surface/sand | 22 | 16 | 6 | 0 | 45 |
+| surface/snow | 5 | 2 | 3 | 1 | 3 |
+| surface/lava | 17 | 7 | 10 | 0 | 7 |
+| surface/various-composite | 102 | 70 | 32 | 24 | 111 |
+| water-dense | 49 | 32 | 17 | 14 | 61 |
+| water-sparse | 89 | 68 | 21 | 18 | 121 |
+| FAKE/decal | 13 | 10 | 3 | 0 | 14 |
+| particle | 33 | 3 | 30 | 1 | 14 |
+| **합계** | **963** | **610** | **353** | **155** | **1,629** |
+
+Observed direct-used corpus는 595 MI와 15 Material, 합계 610개다. particle의
+map direct-use 3개는 Niagara renderer가 간접 참조하는 material을 모두 나타내지
+못한다. 따라서 이 열은 구현 제외 근거가 아니라 level-first 우선순위 자료다.
+
+### 2.4 shader setting 분포
+
+86개 Material의 Material Domain은 Surface 69, Post Process 7, Volume 7,
+Light Function 2, Deferred Decal 1이다. Blend Mode는 Opaque 52,
+Translucent 14, Masked 10, Additive 9, Alpha Composite 1이다.
+서로 다른 domain은 하나의 master로 합칠 수 없으므로 이 분포는 target master의
+최소 하한이다.
+
+graph complexity 상위 관찰값은 다음과 같다.
+
+| Graph | Expressions |
+| --- | ---: |
+| `MF_NinjaOutput_BaseFunction_SURFACE` | 1,794 |
+| `MF_NinjaOutput_BaseFunction_VOLUME` | 901 |
+| `M_NinjaOutput_BaseMaterial_SMOKEVOLUME` | 436 |
+| `MF_WetMapFunction` | 196 |
+| legacy fog-volume material | 183 |
+| `MF_NinjaOutput_BaseFunction_WATER` | 174 |
+| `M_NinjaOutput_BaseMaterial_DECAL` | 167 |
+| underwater post-process material | 165 |
+| `M_NinjaOutput_BaseMaterial_FOLIAGE` | 144 |
+| `MF_ParallaxOcclusionMappingSimple` | 96 |
+
+node 수는 복잡도 신호일 뿐 instruction/sampler/runtime cost의 직접 측정은 아니다.
+
+## 3. 153 base graph family의 재저작 의미
+
+| Family | Observed anchor | Clean-room target responsibility |
+| --- | --- | --- |
+| input | 19개 density/velocity/height/cross-section/RVT/post-process Material | 입력 shape/field를 target RT/RVT 계약으로 쓰는 writer와 preview를 분리한다. |
+| core/debug | Null, Niagara parameter placeholder, wire box, buffer visualizer, render-buffer saver | null/debug/visualization과 signed-buffer 저장 codec을 별도 최소 material로 만든다. |
+| shared surface/volume/water | 3 Material + 28 MF, 전체 node의 48% | 좌표, field sample, normal, edge, flow, wetness, refraction, shading을 작은 semantic function으로 분해한다. |
+| water sparse/dense | 각각 89/49 MI, 별도 base graph 없음 | 같은 계열 parent 위의 switch/override recipe다. 이름만으로 solver 차이를 가정하지 않고 state texture와 pixel fixture로 구분한다. |
+| sand/snow/grass/blood-mud/lava | 대부분 surface master의 MI recipe, foliage Material 1개 | medium별 색/normal/height/roughness/opacity/flow tuple을 보존하고 graph는 공통 semantic function을 사용한다. |
+| surface various/composite | 5 Material + 1 Layer + 96 MI | wet map, composite example, generic surface 조합을 recipe로 표현한다. |
+| CVOL | current/legacy cloud Material, 28 MI, 12 layer preset | cloud rendering과 material-layer preset을 분리하고 layer stack 사용 여부를 fixture로 확정한다. |
+| FVOL | current/legacy fog Material + 29 MI | fog box/Niagara presentation을 output adapter recipe로 둔다. |
+| HVOL | Heterogeneous Volume Material + 66 MI | UE 5.6 Heterogeneous Volume domain master와 field/noise/edge recipe를 둔다. |
+| SVOL | smoke Material + 8 ray/flow/alignment MF + 68 MI | view ray setup, density shaping, Beer-Lambert, optional noise, point/directional shadow를 독립 단위로 재작성한다. |
+| FAKE/decal | Deferred Decal base + 12 MI | simulated density를 decal/fake shadow로 투영하는 adapter로 둔다. |
+| particle | 9 sprite Material + 24 MI | masked/additive/translucent/refractive, soft intersection, before/after DOF를 domain별 master로 둔다. |
+| environment/decor | 36 Material + 28 MF + 214 MI | solver 기능과 분리된 level art다. 필요한 texture/mesh는 localization하되 material graph는 새로 만든다. |
+| material layer host | host Material, generic volume Layer, max Blend | 12 CVOL layer preset의 closure를 담당한다. exact layer stack parity가 필요할 때만 최소 host/layer/blend를 새로 만든다. |
+
+특히 `MF_NinjaOutput_BaseFunction_SURFACE`와 `VOLUME`을 하나의 대형 target
+function으로 다시 만드는 것은 clean-room 목표가 아니다. 기능별 unit을 만들고
+동일한 입력에서 동일한 output을 내는지 검증한다. source MI 798개는 모두
+recipe ledger row를 갖되, override tuple과 visual output이 동일하다고 검증된
+경우에만 여러 source row가 하나의 target MI를 공유할 수 있다.
+
+## 4. 798 MI parent와 override vocabulary
+
+### 4.1 parent closure
+
+798 MI에는 direct parent 값 64종이 있다.
+
+- source 내부 parent: 794
+- Engine parent: 1
+- Niagara default parent: 2
+- 빈 parent: 1
+- parent-chain depth 2: 786
+- parent-chain depth 3: 11
+- parent-chain depth 1: 1
+
+가장 큰 parent 여섯 개는 surface 280, smoke volume 68, heterogeneous volume
+67, checker 33, fog volume 30, cloud volume 22로 정확히 500 MI를 덮는다.
+
+depth 3의 11개는 Manny 02 child 7개
+(Blue, Chrome, Flat, Tron, White, WhiteLimb, Yellow)와
+BlackAlder child 4개(Tileable, TwoSided, TwoSided_Desert,
+TwoSided_DesertDry)다. 외부/빈 parent의 exact asset은 다음과 같다.
+
+| MI | Direct parent | 처리 |
+| --- | --- | --- |
+| `MI_BasicShapeMaterial_Instance01` | `/Engine/BasicShapes/BasicShapeMaterial` | UE 5.6 Engine material을 fixture로 비교한 뒤 target decor master로 대체 |
+| `MI_SpriteMaterialSoft1` | `/Niagara/DefaultAssets/DefaultSpriteMaterial` | target particle master로 대체 |
+| `MI_SpriteMaterialSoft2` | `/Niagara/DefaultAssets/DefaultSpriteMaterial` | target particle master로 대체 |
+| `MI_Lava0_single_local_cracked_inv` | 빈 값 | parent 의미는 Unknown; visual/serialized fixture 없이 추정 금지 |
+
+64개 parent 이름을 ordinal 정렬한 canonical JSON array SHA-256은
+`8329051b4064cc419e1c35527f87ee4db78fdd07134f00e58fb00cd774aa326f`다.
+전체 798 row의 source asset, direct parent, 다섯 structured override array를
+asset 순서와 object-key 순서가 고정된 compact JSON으로 직렬화한 결과는
+7,991,086 bytes, SHA-256
+`e33019c64fa20e9d8738814031ecd9ccf9a01813922501ce7af1978cd250717f`다.
+이 fingerprint가 798/798 recipe 입력 보존의 기준선이다.
+
+### 4.2 structured override closure
+
+| Override kind | Occurrences | Unique names | Canonical name-set SHA-256 |
+| --- | ---: | ---: | --- |
+| scalar | 24,196 | 480 | `43e1fd97acc112630d61ce96c1cc05cdf1fdd3aafed7212e426422d932f27c30` |
+| vector | 1,827 | 48 | `0fb9deb0f23bff367495101608f79175873e8bad384a276b696d69e05bf4534b` |
+| double vector | 16 | 1 | `1f1d691dde8b9d114a650f78a7c88b43c3b52e81b0599d3f3f8bc21ab43d6539` |
+| texture | 1,729 | 50 | `87e62314a1b08ddb95916ec66618e77bfae2c68538963b348a4599547053f759` |
+| static switch | 9,951 | 258 | `9806322b88005e272575d869cd01c20f271bf374d1a2839d59fc9c629f53d9d2` |
+| **합계** | **37,719** | — | — |
+
+모든 structured parameter association은 `GlobalParameter`다. MI당 structured
+override 수는 최소 0, 중앙값 26, 최대 201이다. override 0인 네 asset은
+`MI_HeightMapGenerator3`, `MI_CheckerDark`,
+`MI_DensityInput_Example3`, `MI_DensityInput_MultiLevelNoise1`이다.
+
+v2의 `structured_direct_override_arrays_complete=true`는 위 다섯 타입에
+대해서만 완전하다는 뜻이다. 전체 UE 5.6 direct type 범위의
+`direct_override_arrays_complete=false`는 오류가 아니다. inspector가
+구조화하지 않은 `texture_collection`, `runtime_virtual_texture`,
+`sparse_volume_texture`, `font`, `static_component_mask`,
+`user_scene_texture`는 editable property와 target compile fixture에서 별도로
+감사한다. 이를 0개라고 단정하지 않는다.
+
+### 4.3 빈도가 높은 exact vocabulary
+
+source spelling은 migration lookup에서 그대로 보존한다. 예를 들어
+`FlowStregth`는 오타처럼 보여도 임의로 수정하지 않고 target semantic alias
+`FlowStrength`와 명시적으로 매핑한다.
+
+| Type | 빈도가 높은 parameter 이름과 occurrence |
+| --- | --- |
+| scalar | `RefractionDepthBias 794`, `ColorPow 328`, `FlowSpeed 315`, `ColorMult 265`, `Emissive 264`, `FlowMapUVTile 246`, `FlowStregth 246`, `GradientHardness 241`, `GradientRadius 241`, `FlowDensityMult 239`, `GradientOffsetH/V 238`, `NormalOffset 234`, `FlowVeloMaskedByDensity 231`, `NormalMultiplier 231`, `MaxSteps 208` |
+| vector | `Color 2 288`, `Color 1 287`, `AmbientColor 127`, `CausticsOffsetSpeed 125`, `Color 120`, `AbsorptionColor 117`, `FlowDensityColorAdd 113`, `Albedo 112`, `TraceMeshSize 80` |
+| double vector | `TraceMeshPosDouble 16` |
+| texture | `FlowMapTexture 247`, `TileMap1 162`, `RoughnessMap 159`, `TileMap2 159`, `CausticsTileComponentVolumeTexture 114`, `DensityBuffer 105`, `VelocityBuffer 91`, `VelocityDensityBuffer 86`, `Noise1Texture 71`, `NoiseVolume 65`, `HeightMap 62` |
+| switch | `EnableFlowDetailNoise 230`, `FlowDensityInvert 206`, `GenerateNormals 206`, `FlowAdditiveVsMultiply 203`, `MeshDistortion 195`, `ParallaxMapping 194`, `2ndColorAsToneMap 184`, `Raymarching 175`, `FluidSimInWorldSpace 161`, `GenerateTileMapNormals 161`, `Refraction 161`, `EnableTileMap 158` |
+
+target vocabulary는 다음 semantic namespace로 나눈다.
+
+| Namespace | Source evidence 예 | 역할 |
+| --- | --- | --- |
+| Field | Density/Velocity/VelocityDensity/Paint buffer | solver export texture와 channel codec |
+| Coordinates | world-space switch, UV tile, trace position/size, RVT volume | world/local/domain transform |
+| Flow | flow speed/strength/density mask/detail noise | 2D/3D advection distortion |
+| Shape | height, edge, gradient, extrusion, parallax | surface/volume boundary |
+| Surface | normal, roughness, specular, refraction, emissive | shading |
+| Water | caustics, absorption, depth/close/distance color | water optical recipe |
+| Volume | max steps, density power/offset, shadow density, light | raymarch recipe |
+| Presentation | color1/2, multiplier/add, tone-map switches | final appearance |
+
+이 namespace는 **Inferred** target API다. serialized source name/value 자체는
+Observed migration data이며 recipe ledger에서 둘을 모두 유지한다.
+
+## 5. 12 Material Layer Instance
+
+12개는 모두 `OutputMaterials/CVOL` 아래에 있고 direct parent는
+`/Game/FluidNinjaLive/OutputMaterials/CompositeBase_VOLUMETRIC/ML_VolumeGeneric_As_MaterialLayer`다.
+level direct dependency는 0이지만 Material Layers stack의 간접 참조 가능성이
+있으므로 unused로 폐기하지 않는다.
+
+| Layer preset | Scalar | Vector | Texture | Switch |
+| --- | ---: | ---: | ---: | ---: |
+| Cone | 45 | 2 | 7 | 26 |
+| HillClouds | 41 | 2 | 6 | 28 |
+| Mushroom | 39 | 5 | 9 | 28 |
+| MushroomToplift | 40 | 2 | 7 | 29 |
+| ValleyCircular | 54 | 4 | 7 | 33 |
+| ValleyHeavy | 48 | 2 | 7 | 31 |
+| ValleyLight | 44 | 2 | 7 | 27 |
+| VolcanoDark | 48 | 6 | 10 | 33 |
+| VolcanoLight | 48 | 6 | 10 | 33 |
+| Default | 1 | 0 | 0 | 0 |
+| HVOL Mushroom | 39 | 5 | 7 | 23 |
+| HVOL Vortex | 28 | 5 | 5 | 22 |
+| **합계** | **475** | **41** | **82** | **313** |
+
+unique vocabulary는 scalar 75, vector 6, texture 14, switch 50,
+double-vector 0이다. target에서 Material Layers를 유지하든 일반 function과
+MI로 평탄화하든, 이 12 override tuple과 최종 layer output이 각각 대응해야 한다.
+
+## 6. level-used 우선 recipe
+
+### 6.1 disjoint priority
+
+| Priority | 정의 | All assets | MI | Material | 그 외 | 59-level occurrence |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| P0 | 7개 Starter 중 하나라도 direct use | 155 | 151 | 4 | 0 | 899 |
+| P1 | P0가 아니고 non-Starter 2개 이상에서 direct use | 119 | 114 | 5 | 0 | 394 |
+| P2 | P0/P1이 아니고 non-Starter 정확히 1개에서 direct use | 336 | 330 | 6 | 0 | 336 |
+| P3 | direct level ref 없음 | 353 | 203 | 71 | 79 | 0 |
+| **합계** |  | **963** | **798** | **86** | **79** | **1,629** |
+
+P3는 삭제 목록이 아니다. 64 MF, 12 Layer Instance, 2 Layer, 1 Blend는
+원래 map에 직접 나타나지 않는다. P0 direct set의 parent chain과 internal
+function-call closure에 속한 비-MI graph는 51개(24 Material + 27 MF)다.
+구현은 **P0 graph kernel 51 → P0 recipe 151 MI → P1 → P2 → P3
+remaining closure** 순서로 진행한다.
+
+### 6.2 Starter map별 direct material recipe
+
+아래 수는 map 내부 direct material dependency이며 map 사이 중복을 포함한다.
+
+| Starter level | Direct material | Cluster breakdown | 첫 구현 목적 |
+| --- | ---: | --- | --- |
+| `_StartingGuide` | 7 | environment 7 | decor/light/camera baseline |
+| `Tutorial01_Basics` | 45 | environment 17, debug 14, various 5, sparse water 4, SVOL 3, HVOL 2 | field reader, debug, 기본 surface/volume |
+| `Tutorial02_Inputs_Interaction` | 59 | environment 21, debug 15, various 14, HVOL 4, sparse water 3, shared 1, input 1 | input writer와 MID/MPC interaction |
+| `Tutorial03_KeyConceptsForWater` | 63 | environment 24, dense 14, sparse 9, debug 8, various 4, HVOL 3, particle 1 | dense/sparse water와 particle 비교 |
+| `Tutorial04_Presets_Spawning_Caching` | 25 | environment 18, debug 2, HVOL 2, sparse 2, snow 1 | preset/cache/spawn에서 recipe 안정성 |
+| `Tutorial05_Tricks` | 29 | debug 13, environment 9, various 4, blood-mud 2, HVOL 1 | flow/debug/blood-mud trick |
+| `Tutorial06_SplineBasedRivers` | 35 | environment 18, sparse water 10, debug 6, HVOL 1 | spline/world-space river |
+
+P0의 실제 저작 순서는 다음으로 고정한다.
+
+1. signed buffer codec, null/debug/visualizer와 deterministic texture fixture.
+2. surface master의 최소 field sample, color, normal, edge, world/local transform.
+3. sparse water 18 unique Starter recipe.
+4. dense water 14 unique Starter recipe와 같은 state texture 입력 비교.
+5. surface various 24, snow 1, blood/mud 2 recipe.
+6. HVOL 8, SVOL 3 recipe와 fixed raymarch fixture.
+7. particle 1과 environment/decor 55.
+8. P0 전체 151 MI override tuple과 7개 map fixed-camera parity.
+
+direct occurrence가 많다고 shader 핵심인 것은 아니다. 반대로 map direct ref가
+없는 function도 P0 parent closure에 들어오면 먼저 구현한다.
+
+## 7. Custom HLSL 21개 / 고유 수식 12개
+
+### 7.1 전수 목록
+
+v2 full code의 SHA-1을 기준으로 21개 node는 12개 고유 code unit이다.
+hash는 source text를 target에 복사하기 위한 값이 아니라 static evidence
+identity다.
+
+| SHA-1 | Nodes | Owner / output | Inputs | Clean-room unit |
+| --- | ---: | --- | --- | --- |
+| `f624184dd0e9fdf1239f941c20eda5f7e89b1a08` | 8 | `MF_SimpleWind` 5개(3 float1, 2 float3), `MF_WindGust` 3개(float1) | `InValue` | precise scalar/vector |
+| `9b369a37640b439312b0ecb10fd26e4ea47e34b5` | 1 | POM / float4 | `Tex, UV, MaxSteps, stepsize, UVDist, InDDX, InDDY, HeightMapChannel` | POM marcher |
+| `68ddf68a184b015102b9e7632bb8960518194831` | 2 | Texture sampler / float3, float4 | `Tex, UV` | ordinary 2D sampler |
+| `19f1aedcc958efe368bc6b9d1e6aabbfff6d2517` | 1 | SVOL function library / float3 | 없음 | five semantic helpers |
+| `3a8ec5e40fbf5fd9e88c97eabf10a899fcba5bbb` | 1 | ray-box masks / float2 | `tN, tF` | ray interval mask |
+| `4721026e76eb60a7ec189b28991c9a5628b585c4` | 2 | volume function, decal / float3 | 없음 | LWC camera origin |
+| `2e981e657ba325a1de413a3f5aacaab58dcb21c4` | 1 | smoke custom 0 / float4 | 37개 | point-lit + volume-noise march |
+| `c4de8f242f1cb250a77035d720591f0c6a690947` | 1 | smoke custom 1 / float4 | 30개 | point-lit, no-noise march |
+| `eb053d94c6dcacb1ad597c2f607dc4f6524fd23e` | 1 | smoke custom 2 / float4 | 33개 | unlit + volume-noise march |
+| `2273bfc7e54cdb650c47abd4c046cc7f0e67d9d7` | 1 | smoke custom 3 / float4 | 25개 | unlit, no-noise march |
+| `25650d747aa1c90c23edc32653433260bf9f4713` | 1 | smoke custom 4 / float4 | 29개 | directional-lit, no-noise march |
+| `a1055142f9dc2ee01f60193f5c914f66db73c943` | 1 | smoke custom 5 / float4 | 36개 | directional-lit + volume-noise march |
+
+### 7.2 precise wrapper
+
+8개 node는 `COMPILER_HLSL`일 때 `MakePrecise(InValue)`, 그 외 compiler에서
+identity를 반환한다. target은 `MF_CFNL_PreciseScalar`와
+`MF_CFNL_PreciseVector3` 또는 동등한 UE 5.6-compatible unit을 새로 만든다.
+단순 identity로 없애기 전에 large-coordinate wind와 반복 frame에서 reference
+차이가 없다는 compiler fixture가 필요하다.
+
+### 7.3 POM marcher
+
+Observed 입력은 8개이며 초기 상태는 ray height/previous ray/previous texture
+height가 1, UV offset이 0이다. 최대 `MaxSteps + 2`번 다음을 수행한다.
+
+1. `h = dot(HeightMapChannel, SampleGrad(Tex, UV + offset, InDDX, InDDY))`.
+2. 현재 ray height가 `h`보다 낮아진 첫 crossing에서
+   `q=(h-ray)/((oldRay-oldTex)+(h-ray))`를 구한다.
+3. intersection height는 `oldRay*q + ray*(1-q)`이고,
+   offset에서 `q*UVDist`를 되돌린 뒤 종료한다.
+4. crossing 전에는 ray height를 `stepsize`만큼 내리고 offset에
+   `UVDist`를 더한다.
+5. 출력은 `(offset.x, offset.y, intersectionHeight, 1)`이다.
+
+crossing이 한 번도 없으면 source code에서 intersection height의 초기화가
+관찰되지 않는다. 이를 편의상 0으로 고치면 parity가 깨질 수 있으므로
+no-hit fixture로 실제 UE 5.6 결과를 먼저 고정한다. target unit은
+`MF_CFNL_ParallaxMarch`이며 dynamic loop가 필요하면 새 Custom expression을
+사용하되 source text를 복제하지 않는다.
+
+### 7.4 ordinary texture sampler
+
+두 node의 의미는 `Texture2DSample(Tex, TexSampler, UV)` 한 번이다.
+하나는 RGB, 하나는 RGBA를 반환한다. UE 5.6 Texture Object 입력과 Texture
+Sample node로 표현 가능하므로 Custom HLSL을 유지하지 않는다.
+
+### 7.5 SVOL helper library
+
+`MF_FunctionLib`의 Custom은 입력 없이 dummy value를 반환하면서 compiler
+scope에 helper function을 주입하는 형태다. target은 이 brace/code-injection
+관용구를 사용하지 않는다. 관찰된 helper 의미는 다음과 같다.
+
+- `BeerLambert(a,d) = exp(-a*d)`.
+- `LightAttenuation(p,s) = saturate(1-length(p)/s)`.
+- `PlaneExtrude(g,h,f,o) =
+  1-saturate((g-o-h+f/2)/f)`.
+- `EdgeFade(p,w) =
+  saturate((1-max(abs(2*p.x-1),abs(2*p.y-1)))*w)`.
+- `FlowMap3D`:
+  position에 scale을 곱하고 time에 speed를 곱한다. flow의 Z는 0으로
+  강제한다. `phase0=frac(t)-0.5`,
+  `phase1=frac(t+0.5)-0.5`,
+  `alpha=abs(frac(t)-0.5)*2`다.
+  `flow=-flowXY*densityWeight*strength`로 두 volume 좌표를 만들고
+  두 LOD 0 sample의 R channel을 `alpha`로 보간한다.
+
+target 단위는 `MF_CFNL_BeerLambert`, `MF_CFNL_LightAttenuation`,
+`MF_CFNL_PlaneExtrude`, `MF_CFNL_EdgeFade`,
+`MF_CFNL_FlowSample3D`다. 0 falloff/size, negative density, UV boundary,
+time seam 0/0.5/1을 수치 fixture에 포함한다.
+
+### 7.6 ray interval mask
+
+입력은 `tN, tF`이고 출력은 두 mask다.
+
+- outside mask는 기본 1이며 `tN>tF || tF>1`이면 0.
+- inside mask는 기본 0이며 `tN>tF || tN>1`이면 1.
+
+두 조건이 일반적인 inside/outside 이름 감각과 다를 수 있어도 exact truth
+table을 보존한다. `tN==tF`, `tN/tF==1`은 strict greater-than이므로 경계
+fixture가 필수다. target 단위는 `MF_CFNL_RayIntervalMask`다.
+
+### 7.7 UE 5.6 LWC camera origin
+
+volume function과 decal의 두 node는 primary view의 world camera origin을
+LWC 값에서 float3로 변환한다. target은 우선 UE 5.6 Material의 camera/world
+position node로 새로 구성하고, translated-world와 absolute-world 결과가
+reference와 다르면 작은 `MF_CFNL_CameraOriginLWC` Custom unit을 새로 쓴다.
+큰 world coordinate와 origin rebasing fixture를 통과해야 한다.
+
+### 7.8 여섯 SVOL raymarch variant의 exact inputs
+
+아래 순서는 v2 inspector의 Custom input 순서다.
+
+- **custom 0, point + noise, 37**:
+  `NoisePosition, RayOrigin, RayDirection, MaxSteps, Texture,
+  ExtrudeSoften, Extrude, Density, Color1, Color2, ColorPow, ColorMul,
+  ColorAdd, maxt, Shadow, ShadowStepSize, LightColor, LightPosition,
+  LightRadius, DensityPow, BaseDensity, DensityOffset, FadeFalloff,
+  Noise, time, FlowDisplace, FlowStrength, NoiseTiling, BaseNoise,
+  Functions, Boxsize, EdgeWidth, TraceMeshPos, HeightMap, HS, HO,
+  AlphaAsHeightSource`.
+- **custom 1, point no-noise, 30**:
+  `Functions, RayOrigin, RayDirection, MaxSteps, Texture,
+  ExtrudeSoften, Extrude, Density, Color1, Color2, ColorPow, ColorMul,
+  ColorAdd, maxt, Shadow, ShadowStepSize, LightColor, LightPosition,
+  LightRadius, DensityPow, BaseDensity, DensityOffset, FadeFalloff,
+  Boxsize, EdgeWidth, TraceMeshPos, HeightMap, HS, HO,
+  AlphaAsHeightSource`.
+- **custom 2, unlit + noise, 33**:
+  `NoisePosition, RayOrigin, RayDirection, MaxSteps, Texture,
+  ExtrudeSoften, Extrude, Density, jitter, Color1, Color2, ColorPow,
+  ColorMul, ColorAdd, maxt, DensityPow, BaseDensity, DensityOffset,
+  FadeFalloff, BaseNoise, Noise, time, FlowDisplace, FlowStrength,
+  NoiseTiling, Functions, Boxsize, EdgeWidth, TraceMeshPos, HeightMap,
+  HS, HO, AlphaAsHeightSource`.
+- **custom 3, unlit no-noise, 25**:
+  `Functions, RayOrigin, RayDirection, MaxSteps, Texture,
+  ExtrudeSoften, Extrude, Density, Color1, Color2, ColorPow, ColorMul,
+  ColorAdd, maxt, DensityPow, BaseDensity, DensityOffset, FadeFalloff,
+  Boxsize, EdgeWidth, TraceMeshPos, HeightMap, HS, HO,
+  AlphaAsHeightSource`.
+- **custom 4, directional no-noise, 29**:
+  `Functions, RayOrigin, RayDirection, DensityMap, MaxViewSteps,
+  Extrude, ExtrudeSoften, Density, MaxT, LightDirection,
+  ShadowStepSize, Shadow, Color1, Color2, ColorPow, ColorMul, ColorAdd,
+  LightColor, DensityPow, BaseDensity, DensityOffset, FadeFalloff,
+  Boxsize, EdgeWidth, TraceMeshPos, HeightMap, HS, HO,
+  AlphaAsHeightSource`.
+- **custom 5, directional + noise, 36**:
+  `NoisePosition, RayOrigin, RayDirection, DensityMap, MaxViewSteps,
+  Extrude, ExtrudeSoften, Density, MaxT, LightDirection,
+  ShadowStepSize, Shadow, Color1, Color2, ColorPow, ColorMul, ColorAdd,
+  LightColor, DensityPow, BaseDensity, DensityOffset, FadeFalloff,
+  BaseNoise, Noise, time, FlowDisplace, FlowStrength, NoiseTiling,
+  Functions, Boxsize, EdgeWidth, TraceMeshPos, HeightMap, HS, HO,
+  AlphaAsHeightSource`.
+
+### 7.9 공통 raymarch 수식
+
+view step은 `1.5 / stepCount`다. screen pixel과
+`View.StateFrameIndexMod8`으로 PCG random을 만들고 ray origin을 한
+fractional step jitter한다. 각 step에서 다음 계약을 사용한다.
+
+- `B = Boxsize*0.5-0.5`.
+- `uv(p)=(p.xy+TraceMeshPos.xy)*Boxsize.xy-B.xy`.
+- `HM=HS*SampleLevel0(HeightMap,uv).ra+HO`.
+- `height=lerp(HM.x,HM.y,AlphaAsHeightSource)`. 여기서 `HM`은 실제로
+  source의 R/A 두 component를 담은 float2다.
+- density source는 density texture의 **B channel**에 `DensityPow`를
+  적용하고 view sample에는 XY `EdgeFade`를 곱한다.
+- no-noise density는 PlaneExtrude와 vertical fade/BaseDensity의 합을
+  saturate한다.
+- noise density는 `1-FlowMap3D(...)`를 erosion 값으로 사용해 extrusion과
+  base density를 각각 감쇠한 뒤 saturate한다.
+- `Tnext=T*exp(-sample*Density*step)`,
+  `absorption=T-Tnext`.
+- color factor는
+  `lerp(Color1,Color2,
+  saturate(pow(densityTextureB,ColorPow)*ColorMul+ColorAdd))`.
+- raw Custom output은 `float4(accumulatedColor, transmittance)`다.
+
+point/directional variant는 최대 20회의 shadow ray loop를 추가한다.
+point variant는 light position/radius attenuation을 곱하고 directional
+variant는 directional step을 사용한다. shadow transmittance는
+`exp(-shadowSample*Density*Shadow*ShadowStepSize)`를 누적한다.
+view distance, transmittance 0.001, shadow visibility 0.001, volume boundary가
+각각 early-exit 조건이다.
+
+### 7.10 반드시 보존해 비교할 source quirk
+
+다음은 v2 code에서 직접 관찰된 차이다. “정리”하면서 즉시 고치지 않는다.
+
+- `Functions` pin은 code 변수로 읽히지 않고 helper injection dependency
+  carrier처럼 사용된다.
+- custom 2의 `jitter` input은 code에서 사용되지 않는다.
+- point+noise의 shadow loop는 `lflow`를 sample하지만 `FlowMap3D` 호출에는
+  view loop의 `flow`를 넣는다. directional+noise는 `lflow`를 넣는다.
+- shadow loop는 view point에서 얻은 `HM`을 그대로 사용하고 light-ray
+  위치에서 height map을 다시 sample하지 않는다.
+- point variant의 `boxdebug` 누적값은 output에 사용되지 않는다.
+- directional variant는 light ray를 `LightDirection`만큼 이동하면서
+  attenuation distance에는 별도 `ShadowStepSize`를 쓴다.
+- noise/no-noise, lit/unlit variant 사이에서 inside-bound check,
+  EdgeFade, base-density multiplier의 세부 배치가 완전히 동일하지 않다.
+
+target은 개념상 하나의 `MF_CFNL_VolumeMarchCore`와 여섯 wrapper
+permutation으로 설계하되, 위 차이를 compile-time option으로 명시한다.
+UE Material Function 사이의 Custom helper scope에 의존하지 않으며 필요한 loop
+code는 각 UE 5.6 Custom unit 안에서 self-contained하게 새로 저작한다.
+quirk를 수정한 개선 variant는 reference-parity variant 통과 후 별도 이름으로만
+추가할 수 있다.
+
+## 8. `M_RenderBufferSaver` frozen contract
+
+`core-solver-observation.md` v3의 O-10과 v2 material graph를 교차검증했다.
+이 material은 Post Process/Unlit, 10 expressions다. input texture sample을
+`T`라고 할 때 root 연결은 정확히 다음과 같다.
+
+```text
+Emissive.r = (T.r + 1) * 0.5
+Emissive.g = (T.g + 1) * 0.5
+Emissive.b =  T.b
+Opacity    = (T.a + 1) * 0.5
+```
+
+R/G/A는 Add의 미연결 `ConstB=1` 다음 Multiply의 미연결
+`ConstB=0.5`를 사용한다. B는 `ComponentMask(B)`에서 직접 Append된다.
+따라서 blue를 affine encode하면 실패다. 이 문서의 debug/buffer target도
+**RG/A affine, B identity**를 고정한다.
+
+이 transform이 전체 `SaveSimulationBuffers` 경로에서 encode인지 decode인지,
+load 쪽에 역변환이 있는지는 **Unknown**이다. signed marker
+`-1, 0, 1`과 B의 negative/>1 값을 RGBA16f readback으로 비교해 방향을 닫기
+전에는 “저장 codec 전체가 확정됐다”고 말하지 않는다.
+
+## 9. texture/art localization과 dependency 위험
+
+### 9.1 관찰된 reference 종류
+
+v2 page의 asset reference를 inventory와 교차한 결과 source package 308종이
+확인됐다.
+
+| Class | Unique source packages | 처리 |
+| --- | ---: | --- |
+| Texture2D | 161 | immutable art localization 후보 |
+| VolumeTexture | 6 | immutable voxel art localization 후보 |
+| MaterialFunction | 57 | 복사 금지, semantic function 재저작 |
+| Material | 54 | 복사 금지, master 재저작 |
+| RenderTarget2D | 17 | target-local mutable resource 재생성 |
+| MaterialInstanceConstant | 7 | recipe로 재저작 |
+| RuntimeVirtualTexture | 2 | target-local resource/layout 재생성 |
+| MaterialParameterCollection | 2 | target-local schema 재생성 |
+| Material Layer 계열 | 2 | target layer/function 재저작 |
+| **합계** | **308** |  |
+
+따라서 dependency-free art 후보는 167개(161 Texture2D + 6 VolumeTexture)다.
+그중 32개는 level direct dependency로 319회 나타나고, 135개는 graph/MI를
+통한 간접 후보다.
+
+MI texture override는 1,729 occurrence, 157 unique value다.
+
+- source path: 1,631 occurrence / 151 unique
+- Engine path: 76 / 5
+- blank: 22 / 1
+- 다른 plugin path: 0
+
+빈 값은 target default를 뜻한다고 단정하지 않고 해당 parent/default와 함께
+fixture한다. 빈도가 높은 override value는 다음과 같다.
+
+| Occurrence | Texture/resource |
+| ---: | --- |
+| 139 | `Textures/Volumetric/VolumeNoise2` |
+| 105 | `Textures/T_CrumpleMega` |
+| 95 | `Textures/Volumetric/T_Caustics_Animated_02_VolumeTexture` |
+| 89 | `Core/Assets/T_NoiseTemplate1` |
+| 75 | `Textures/T_Circular_1frame_velocity` |
+| 72 | `Textures/T_Crumple_MultiLevel` |
+| 67 | `Core/Assets/T_NoiseTemplate2` |
+| 47 | `Textures/T_sandheight1` |
+| 39 | `Textures/TempRenderTargets/RT_VelocityDensity` — art가 아님 |
+| 38 | `Textures/T_Crumple_mod_inv` |
+| 38 | `Textures/T_sandheight1b` |
+
+graph default까지 포함한 owner reach에서는 `VolumeNoise2` 145 owner,
+caustics volume 95, `NoiseTemplate1` 87, circular velocity 81,
+`T_CrumpleMega` 76이 가장 넓다. 이들은 P0 texture fixture 우선 대상이다.
+
+### 9.2 localization 규칙
+
+immutable Texture2D/VolumeTexture는 source material graph를 가져오는 것이 아니라
+pixel/voxel art를 target-local package로 export/import 또는 안전한 단일-asset
+localization한다. 각 target texture에는 source package, source file/hash,
+import 방식, license/provenance, 검증 결과를 ledger로 남긴다.
+
+반드시 비교할 descriptor는 다음과 같다.
+
+- dimensions, array/depth, pixel/source format와 alpha.
+- sRGB, compression setting, virtual texture/streaming flag.
+- address X/Y/Z, filter, LOD group, mip count와 mip generation.
+- sampler type, normal-map interpretation, channel swizzle.
+- volume texture slice/order와 edge behavior.
+
+VolumeTexture처럼 authored voxel payload를 동일하게 재생성할 원자료가 없으면
+사용자가 허용한 art-source 예외로 target-local payload를 가져올 수 있다.
+이 경우 “알고리즘을 구현할 수 없어서”가 아니라 “효과 graph가 아닌 immutable
+authored sample field이며 source data를 새로 추론하면 parity를 잃기 때문에”라는
+이유를 provenance에 기록한다.
+
+`RenderTarget2D`, `RuntimeVirtualTexture`, `MPC`는 art가 아니므로 복사하지
+않고 target 이름으로 새로 만든다. Engine stock texture는 UE 5.6.1에서 exact
+descriptor를 검증한 경우 Engine dependency로 쓸 수 있지만, strict
+self-contained fixture에서는 target-local 대체본도 비교한다.
+
+localization 후 recursive dependency gate는 다음 문자열/package를 0으로
+요구한다.
+
+- `/Game/FluidNinjaLive`
+- `/Script/UnrealMCP`, `/UnrealMCP`와 다른 MCP-only package
+- study temp/ghost package
+- 원본 material/function/layer/MI
+
+texture package 자체가 예상치 못한 Material, RVT, plugin asset을 참조하면
+localization 실패로 처리하고 raw payload export/import 경로로 전환한다.
+
+## 10. 최소 clean-room target 설계
+
+모든 target package는 `/Game/Study/CubeFluidNinjaLive/Materials` 아래에 새로
+만든다. 아래 이름은 책임 경계이며 실제 저작 전에 asset-name collision을
+검사한다.
+
+### 10.1 semantic function
+
+| Unit | 책임 | Custom 필요 가능성 |
+| --- | --- | --- |
+| `MF_CFNL_UVAspectTransform` | domain UV, aspect, scale, offset, rotation | 없음 |
+| `MF_CFNL_PolarCoordinates` | polar conversion와 seam fixture | 없음 |
+| `MF_CFNL_FieldSample2D` | density/velocity/paint/pressure channel decode | 없음 |
+| `MF_CFNL_FlowSample2D` | flow phase와 density mask | 없음 |
+| `MF_CFNL_FlowSample3D` | 두 phase volume sample | 보통 없음; UE 5.6 volume sample 확인 |
+| `MF_CFNL_EdgeMask` | linear/sinusoid/HV edge mode | 없음 |
+| `MF_CFNL_HeightNormal` | height gradient와 normal | 없음 |
+| `MF_CFNL_ParallaxMarch` | POM crossing | dynamic loop용 새 Custom |
+| `MF_CFNL_WetnessCaustics` | wet map, caustics, shoreline | 없음 |
+| `MF_CFNL_SurfaceShading` | color/normal/roughness/specular/emissive | 없음 |
+| `MF_CFNL_WaterOptics` | absorption/refraction/depth color | 없음 |
+| `MF_CFNL_CameraOriginLWC` | primary-view absolute camera origin | 필요할 때만 작은 Custom |
+| `MF_CFNL_RayBoxSetup` | view ray와 box interval | 없음 |
+| `MF_CFNL_RayIntervalMask` | observed strict truth table | 없음 |
+| `MF_CFNL_PlaneExtrude` | height-aligned volume density | 없음 |
+| `MF_CFNL_EdgeFade` | normalized box XY fade | 없음 |
+| `MF_CFNL_BeerLambert` | exponential transmittance | 없음 |
+| `MF_CFNL_VolumeMarch_*` | unlit/point/directional × noise on/off | loop용 새 self-contained Custom |
+| `MF_CFNL_ParticleSoftIntersection` | scene-depth soft particle | 없음 |
+| `MF_CFNL_BufferCodec` | debug/save channel contract | 없음 |
+
+`MF_CFNL_VolumeMarch_*`는 semantic core는 하나지만 reference parity 단계에서는
+여섯 compile-time wrapper를 유지한다. source quirk 차이가 모두 닫힌 뒤에만
+동일 code unit으로 합친다.
+
+### 10.2 domain별 master
+
+| Target master | Domain/role | Source family |
+| --- | --- | --- |
+| `M_CFNL_Null` | minimal Surface | core null |
+| `M_CFNL_DebugField` | Surface/Unlit visualization | buffer/debug |
+| `M_CFNL_BufferSaver` | Post Process/Unlit | exact RG/A affine + B identity |
+| `M_CFNL_InputSurface` | Surface writer | density/velocity/height input |
+| `M_CFNL_InputPostProcess` | Post Process writer | post-process input |
+| `M_CFNL_RVTWriter` / `Sampler` | RVT output/read | landscape/height input |
+| `M_CFNL_Surface` | Opaque/Masked/Translucent variants | generic media |
+| `M_CFNL_Water` | translucent/single-layer-water variants | sparse/dense water |
+| `M_CFNL_Foliage` | Masked/two-sided wind | grass/tree |
+| `M_CFNL_Decal` | Deferred Decal | FAKE/decal |
+| `M_CFNL_HeterogeneousVolume` | Volume | HVOL |
+| `M_CFNL_SVOL` | raymarched Surface/Volume presentation | SVOL |
+| `M_CFNL_VolumeLayerHost` | Material Layers host | CVOL layer presets |
+| `M_CFNL_ParticleMasked` | Masked sprite | particle |
+| `M_CFNL_ParticleAdditive` | Additive sprite | particle |
+| `M_CFNL_ParticleTranslucent` | Translucent/soft sprite | particle |
+| `M_CFNL_ParticleRefractive` | refractive sprite | particle |
+| `M_CFNL_LightFunction` | Light Function | environment/core |
+
+Material Domain, Blend Mode, Shading Model, two-sided, before/after DOF 같은
+compile property는 static switch로 모두 합칠 수 없는 package property다.
+따라서 위 master 수는 exact settings tuple에 따라 늘어날 수 있으며
+“최소”는 visual 기능을 삭제한다는 뜻이 아니다.
+
+### 10.3 recipe ledger
+
+798 MI와 12 Layer Instance 각각에 다음 필드를 둔다.
+
+- source package/class, source direct parent와 full parent chain.
+- semantic cluster, direct-use levels, P0/P1/P2/P3.
+- target master와 target recipe/MI package.
+- source exact scalar/vector/double-vector/texture/switch arrays.
+- target semantic alias와 source spelling migration map.
+- localized texture package와 provenance.
+- material settings/permutation key.
+- structural status, compile status, numeric fixture, visual fixture.
+- alias/dedupe 시 같은 target을 공유하는 근거와 parity evidence.
+
+한 source row도 “비슷함”만으로 빠뜨리지 않는다. 최종 ledger gate는
+`798 MI mapped + 12 layer presets mapped = 810/810`이고, base graph gate는
+`153/153 semantic owner assigned`다.
+
+## 11. fixture와 parity gate
+
+### G0 — evidence lock
+
+- v2 file manifest 1,962개와 SHA-256을 재검산한다.
+- class 합계 963, base graph 153, MI 798, Layer Instance 12를 확인한다.
+- cluster row manifest 963/963와 두 fingerprint가 일치해야 한다.
+- source mutation/dirty package delta는 0이어야 한다.
+
+### G1 — target independence
+
+- recursive dependency에서 `/Game/FluidNinjaLive`, UnrealMCP/MCP-only,
+  temp/ghost package가 0이어야 한다.
+- UnrealMCP를 비활성/제거한 consumer에서 load, compile, cook, package,
+  runtime을 통과해야 한다.
+- material 기능을 위해 project/runtime C++ 또는 외부 runtime module을
+  추가하지 않는다.
+
+### G2 — compile/property
+
+- 모든 target Material/Function/Layer/MI compile error 0.
+- domain, blend, shading, two-sided, depth/DOF, refraction, usage flags를
+  source recipe와 비교한다.
+- save → close → reload 뒤 parent, parameter, texture가 유지돼야 한다.
+- 모든 P0 static-switch tuple을 먼저 compile하고 P1/P2/P3로 확장한다.
+
+### G3 — Custom numeric
+
+고정 입력 texture와 수치 table로 다음을 독립 검증한다.
+
+- precise scalar/vector: normal/large/subnormal 값과 large-world wind.
+- POM: flat/ramp/step, hit/no-hit, 0/1/max step, derivative 변화.
+- texture sampler: sampler/addressing/mip와 RGB/RGBA output.
+- Beer-Lambert/attenuation/plane/edge/flow: 0, boundary, negative, time seam.
+- ray mask: `tN<tF`, equality, reversed, 각 값 1 경계.
+- camera: origin rebasing과 큰 좌표.
+- six raymarchers: empty/full/ramp density, height R/A select, box edge,
+  noise seam, point/directional shadow, fixed jitter frame.
+
+reference와 target shader output을 RGBA16f 또는 더 높은 정밀도로 읽고
+format quantization을 제외한 허용 오차를 fixture에 명시한다. source quirk를
+보존한 baseline과 의도적으로 수정한 variant를 같은 이름으로 섞지 않는다.
+
+### G4 — buffer codec
+
+`M_CFNL_BufferSaver`에 `T=(-1,0,1)` marker 조합을 넣어 R/G/A가
+`(T+1)*0.5`, B가 identity인지 확인한다. B에는 negative, 0, 1, >1을 넣어
+affine transform이 섞이지 않았음을 증명한다. save/load 왕복 fixture가
+전체 방향과 역변환을 닫기 전에는 통과 처리하지 않는다.
+
+### G5 — texture/art
+
+- 167 art 후보 각각 descriptor와 pixel/voxel hash 또는 허용된 perceptual
+  equivalence를 비교한다.
+- source direct 32개를 P0/P1 level 전에 먼저 localize한다.
+- 17 RT, 2 RVT, 2 MPC는 target-local schema/resource인지 확인한다.
+- sampler/address/mip/sRGB 차이를 material visual 차이와 분리해 보고한다.
+
+### G6 — recipe closure
+
+- 64 parent family와 798 structured row fingerprint를 재검산한다.
+- five structured override occurrence가 37,719인지 확인한다.
+- unstructured six type을 별도 감사한다.
+- 12 layer preset의 override 합계 475/41/82/313을 확인한다.
+- dedupe한 recipe는 source별 fixed output이 모두 같은 경우만 허용한다.
+
+### G7 — level-first visual parity
+
+동일 UE 5.6.1, RHI, scalability, resolution, camera transform, light, exposure,
+time/frame, solver state texture로 reference/target을 캡처한다.
+
+1. 7개 Starter를 P0 gate로 통과한다.
+2. P1 반복 사용 asset을 추가해 cross-level regression을 확인한다.
+3. P2 single-level 특수 recipe를 닫는다.
+4. P3 hidden dependency와 showcase variant를 닫는다.
+5. 59개 level 전체를 fixed-camera color/alpha/depth/normal/diagnostic
+   buffer와 screenshot으로 비교한다.
+
+pixel absolute/RMS/percentile error, silhouette/edge mask, SSIM 같은 threshold는
+reference 반복 capture의 noise floor를 먼저 측정해 동결한다. 단순 육안
+“비슷함”은 통과가 아니며 threshold를 결과를 본 뒤 완화하지 않는다.
+
+### G8 — performance와 permutation
+
+- sampler 수, texture/volume sample 수, shader instruction, permutation 수,
+  compile time을 source family와 비교한다.
+- SVOL view step과 fixed shadow 20-loop, early exit를 계측한다.
+- 모든 기능을 하나의 거대한 static-switch master에 넣어 permutation이
+  폭증하면 domain/family master를 분리한다.
+- 같은 화면에서 reference보다 현저히 비싼 target은 visual parity만으로
+  최종 통과하지 않는다.
+
+### G9 — final
+
+`153/153 base owner`, `798/798 MI recipe`, `12/12 layer preset`,
+`167/167 art decision`, `59/59 level`, recursive forbidden dependency 0,
+compile/cook/runtime 성공이 모두 증거와 함께 닫혀야 material parity
+`complete`다.
+
+## 12. Observed / Inferred / Unknown register
+
+| ID | 등급 | 내용 | 닫는 방법 |
+| --- | --- | --- | --- |
+| MAT-O-01 | Observed | v2 963/963, class/page/read-only/mutation closure | manifest 재검산 |
+| MAT-O-02 | Observed | 153 graph, 8,186 expressions, 21 Custom/12 hashes | catalog/page hash |
+| MAT-O-03 | Observed | 798 MI parent와 structured override 37,719 | row fingerprint |
+| MAT-O-04 | Observed | 610 direct-used와 59-level occurrence 1,629 | inventory join |
+| MAT-O-05 | Observed | 12 layer preset은 v2 complete; legacy not_applicable은 오류 아님 | v2 page check |
+| MAT-O-06 | Observed | render saver의 RG/A affine + B identity | node topology + marker |
+| MAT-I-01 | Inferred | path/parent/graph를 19 semantic cluster로 묶는 것이 최소 저작 단위에 유용 | P0 implementation regression |
+| MAT-I-02 | Inferred | dense/sparse, medium variant는 shared graph + recipe로 표현 가능 | 동일 state texture A/B |
+| MAT-I-03 | Inferred | 153 graph를 작은 semantic function/master로 분해해도 같은 결과를 낼 수 있음 | unit + level parity |
+| MAT-U-01 | Unknown | Blueprint/MID/MPC가 runtime에 바꾸는 최종 parameter 값 | deterministic PIE trace |
+| MAT-U-02 | Unknown | direct level ref가 없는 function/layer의 전체 transitive consumer | recursive target/source closure |
+| MAT-U-03 | Unknown | POM no-hit의 실제 compiler-dependent uninitialized Z | UE 5.6 numeric readback |
+| MAT-U-04 | Unknown | precise wrapper를 identity로 줄일 수 있는지 | compiler/RHI fixture |
+| MAT-U-05 | Unknown | buffer saver가 전체 save/load에서 encode인지 decode인지 | signed round-trip |
+| MAT-U-06 | Unknown | Niagara renderer를 포함한 particle material의 전체 runtime use | system renderer closure |
+| MAT-U-07 | Unknown | Custom code quirk가 화면에 의도된 것인지 우연인지 | quirk-on/off paired capture |
+| MAT-U-08 | Unknown | 12 CVOL layer preset의 exact runtime stack 소비처 | Material Layers association inspection |
+| MAT-U-09 | Unknown | source/target shader compiler backend별 exact floating-point 차이 | supported RHI matrix |
+
+Unknown은 구현 중 합리적으로 채워 넣는 빈칸이 아니다. 해당 fixture가
+관찰되기 전까지 recipe status를 `pending`으로 유지한다.
+
+## 부록 A. 64 direct parent frequency
+
+표 안의 `S`는 `/Game/FluidNinjaLive`이며 object 이름 반복은 생략했다.
+빈 parent도 하나의 observed 값으로 포함한다.
+
+| MI count | Normalized direct parent |
+| ---: | --- |
+| 280 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_SURFACE` |
+| 68 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_SMOKEVOLUME` |
+| 67 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_HETEROGENVOLUME` |
+| 33 | `S/Misc/Materials_Decor/M_CheckerBasic` |
+| 30 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_FOGVOLUME` |
+| 22 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_CLOUDVOLUME` |
+| 21 | `S/Misc/Materials_Decor/M_SolidColor` |
+| 18 | `S/Misc/Materials_PostProcess/M_UnderWaterPostProcess` |
+| 16 | `S/Meshes/Boulder/M_WorldObjectsBaseMat_v2` |
+| 15 | `S/Misc/Materials_Helper/M_SimpleMat_Unlit` |
+| 12 | `S/Meshes/Mountain/M_Mountain_BaseMaterial` |
+| 12 | `S/Misc/Logo/M_FluidNinjaLiveLogo` |
+| 12 | `S/Misc/Materials_Decor/M_FluidNinjaLiveBaseMat` |
+| 12 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_DECAL` |
+| 10 | `S/Input/Materials/HeightMapGenerators_RVT/M_RVTsampler` |
+| 10 | `S/OutputMaterials/Base/Legacy/M_NinjaOutput_BaseMaterial_BUFFERVISUALIZE` |
+| 10 | `S/OutputNiagara/Assets/ParticleMaterials/M_SpriteMaterial_Light_AfterDOF` |
+| 9 | `S/Meshes/Rock/M_WorldObjectsBaseMat` |
+| 9 | `S/Misc/Materials_Decor/M_MetallicBaseMat` |
+| 9 | `S/OutputMaterials/Base/M_NinjaOutput_BaseMaterial_FOLIAGE` |
+| 9 | `S/OutputMaterials/Surface_Various/M_WetTest` |
+| 9 | `S/OutputNiagara/Assets/ParticleMaterials/M_SpriteMaterial_Light_BeforeDOF` |
+| 6 | `S/Meshes/Mannequin/Materials/M_Mannequin` |
+| 6 | `S/Misc/Materials_Decor/M_SimpleTexture` |
+| 6 | `S/OutputMaterials/Base/Legacy/M_NinjaOutput_BaseMaterial_SIMPLEPAINTER` |
+| 6 | `S/OutputMaterials/CompositeBase_VOLUMETRIC/M_NinjaOutput_VOLUME_HostMaterial_For_MaterialLayers` |
+| 6 | `S/OutputMaterials/CompositeExamples_SURFACE/M_NinjaOutput_MatFunctionsComposite_EXAMPLE2_wetmapped` |
+| 6 | `S/OutputMaterials/CompositeExamples_SURFACE/M_NinjaOutput_MatFunctionsComposite_EXAMPLE2` |
+| 5 | `S/Misc/Materials_Decor/M_SimpleGradient` |
+| 4 | `S/Input/Materials/CrossSectionGenerators/M_CrossSectionGenerator_Mushroom` |
+| 4 | `S/Meshes/Tree/Materials/MAI_BlackAlder` |
+| 4 | `S/Misc/Materials_PostProcess/M_UnderWaterPostProcess_PreTonemap` |
+| 3 | `S/Input/Materials/HeightMapGenerators_RVT/M_RVToutput` |
+| 3 | `S/Meshes/Vehicle/Materials/M_QuadDrone` |
+| 3 | `S/Misc/Materials_Decor/M_Checker_WorldSpace` |
+| 3 | `S/Misc/Materials_Decor/M_SolidColor_Gradient` |
+| 3 | `S/Misc/Materials_Decor/M_TextMaterialEmissive` |
+| 3 | `S/Misc/Materials_Decor/M_transparent1` |
+| 2 | `S/Input/Materials/HeightMapGenerators_Simple/M_HeightMapGenerator1` |
+| 2 | `S/Meshes/Bonfire/M_BurningWoodBaseMaterial` |
+| 2 | `S/Meshes/Mannequin/Materials/Legacy/M_UE4Man_Body` |
+| 2 | `S/Meshes/Mannequin/Materials/MI_Manny_01_White` |
+| 2 | `S/Misc/Materials_Decor/M_CheckerBasic_NoSpecular` |
+| 2 | `S/Misc/Materials_Decor/M_LightFunction2` |
+| 2 | `S/OutputMaterials/CompositeExamples_SURFACE/M_NinjaOutput_MatFunctionsComposite_EXAMPLE1` |
+| 2 | `/Niagara/DefaultAssets/DefaultSpriteMaterial` |
+| 1 | **빈 parent** |
+| 1 | `/Engine/BasicShapes/BasicShapeMaterial` |
+| 1 | `S/Input/Materials/HeightMapGenerators_RVT/M_BasicLandscapeMaterial` |
+| 1 | `S/Input/Materials/HeightMapGenerators_Simple/M_HeightMapGenerator2` |
+| 1 | `S/Input/Materials/HeightMapGenerators_Simple/M_HeightMapGenerator3` |
+| 1 | `S/Input/Materials/M_DensityInput_Example3` |
+| 1 | `S/Input/Materials/M_DensityInput_MultiLevelNoise1` |
+| 1 | `S/Input/Materials/M_DensityInput_Vortex` |
+| 1 | `S/Meshes/Mannequin/Materials/MI_Manny_01_Blue` |
+| 1 | `S/Meshes/Mannequin/Materials/MI_Manny_01_Chrome` |
+| 1 | `S/Meshes/Mannequin/Materials/MI_Manny_01_Flat` |
+| 1 | `S/Meshes/Mannequin/Materials/MI_Manny_01_Tron` |
+| 1 | `S/Meshes/Mannequin/Materials/MI_Manny_01_Yellow` |
+| 1 | `S/Meshes/Tree/Materials/MA_Foliage` |
+| 1 | `S/Misc/Materials_RVTsamplingExampe/M_RVTsampler_VerySimpleExample` |
+| 1 | `S/OutputMaterials/CompositeExamples_SURFACE/M_NinjaOutput_MatFunctionsComposite_EXAMPLE3` |
+| 1 | `S/OutputNiagara/Assets/ParticleMaterials/M_SpriteMaterial_Light_AfterDOF_Lit` |
+| 1 | `S/OutputNiagara/Assets/ParticleMaterials/M_SpriteMaterialRefractive` |
+
+## 부록 B. 구현 연결
+
+- 전체 architecture:
+  [system-architecture.md](../system-architecture.md)
+- phase와 promotion gate:
+  [implementation-roadmap.md](../implementation-roadmap.md)
+- buffer codec와 solver-side 관찰:
+  [core-solver-observation.md](core-solver-observation.md)
+- RT/channel/preset contract:
+  [preset-rt-channel-lod-contract.md](preset-rt-channel-lod-contract.md)
+- source-to-target 상태:
+  [source-to-target-ledger.md](../source-to-target-ledger.md)
+
+이 문서가 완료한 것은 **정적 evidence 전수 mapping과 clean-room 재저작
+계획**이다. target asset 구현, runtime parity, 최종 promotion은 아직
+`pending`이다.

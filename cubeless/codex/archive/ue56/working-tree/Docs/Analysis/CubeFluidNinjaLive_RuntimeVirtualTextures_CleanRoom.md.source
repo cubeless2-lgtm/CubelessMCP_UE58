@@ -1,0 +1,108 @@
+# CubeFluidNinjaLive Runtime Virtual Texture clean-room 구현
+
+## 결과
+
+레벨 prerequisite로 확인된 세 Runtime Virtual Texture는 원본 패키지를 복제하지 않고
+Unreal Engine의 `RuntimeVirtualTextureFactory`로 새로 저작한다.
+
+- `/Game/Study/CubeFluidNinjaLive/Art/Input/RVT/RuntimeVirtualTextureTest1`
+- `/Game/Study/CubeFluidNinjaLive/Art/Input/RVT/RVT_LandscapeHeight`
+- `/Game/Study/CubeFluidNinjaLive/Art/Input/RVT/RVT_LandscapeNormal`
+
+저작기는
+`Python/scripts/analysis/build_cube_fluid_ninja_runtime_virtual_textures.py`이다. 기본 실행은
+read-only dry-run이고, 출력된 SHA-bound token과 `--execute`가 함께 있을 때만 세 대상이
+모두 absent인 fresh 상태에서 저작한다. 기존 target을 덮어쓰거나 source를 duplicate하는
+경로는 없다.
+
+저작 뒤에는 `--verify-existing`을 사용한다. 이 모드는 target absence를 요구하지 않고
+기존 세 자산을 읽기만 하며 동일한 property/layout/dependency/dirty gate를 반복한다.
+`--execute`와 동시에 사용할 수 없다.
+
+## 관찰과 구현 원리
+
+RVT 자산은 시뮬레이션 데이터를 담은 일반 Texture가 아니다. 페이지 테이블 크기, 타일
+크기, material payload layout을 정의하는 native Engine 설정 자산이다. 원본에서 읽은
+serialized reflected property 18개와 Engine이 계산한 specialized layout을 분리해 고정했다.
+
+공통값은 다음과 같다.
+
+- compression, clear, packed page table, private page table: enabled
+- adaptive page table, continuous update, low-quality compression: disabled
+- border raw value `2`, 실제 border `4`
+- custom priority `Lowest`, texture group `World`
+- streaming proxy 없음, remove-low-mips `0`
+
+개별 차이는 다음과 같다.
+
+| 자산 | MaterialType | raw TileCount | raw TileSize | 실제 해상도 | 레이어 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `RuntimeVirtualTextureTest1` | `WorldHeight` | 8 | 2 | 65,536 | 1 |
+| `RVT_LandscapeHeight` | `WorldHeight` | 4 | 1 | 2,048 | 1 |
+| `RVT_LandscapeNormal` | `BaseColor_Normal_Specular` | 5 | 4 | 32,768 | 2 |
+
+raw 정수는 UE가 power-of-two 실제 값으로 해석한다. 따라서 specialized readback에서 첫
+자산은 256 tiles × 256 texels, 높이 RVT는 16 × 128, normal RVT는 32 × 1,024로
+검증한다. Normal RVT의 두 레이어는 각각 PF 7이며 첫 레이어만 sRGB다.
+
+## 원본 읽기 전용 증거
+
+원본 uasset identity는 다음과 같이 고정했다.
+
+| 자산 | bytes | SHA-256 | structural revision |
+| --- | ---: | --- | --- |
+| `RuntimeVirtualTextureTest1` | 3,206 | `77161bd272f7ba3d2c6f5a1f0353155ef69a3c4ec5f177d17f00de4395eef8af` | `39daf6dc34d0546c501bb723367191e8` |
+| `RVT_LandscapeHeight` | 4,924 | `0a81afd72b44d240f5198964222b0f5becd511a3a0a975cf7cab3cf251ca5122` | `bc18775da99b9fd8455d58594b9ea0cd` |
+| `RVT_LandscapeNormal` | 3,067 | `80c5383a12a6f3ca735398b849d75f821b87d0dcdd8b84f88155e628244e30f7` | `90e89ea1f9db9af9fd8de9143fdf884c` |
+
+각 inspection은 `capture_complete=true`, `truncated=false`, dirty before/after false다.
+저작 Python에는 source 경로 자체가 포함되지 않는다. 즉 authoring 단계는 source object를
+load하거나 참조할 수 없고, 동결된 숫자·enum·bool recipe만 사용한다.
+
+## canary와 승격 gate
+
+임시 canary
+`/Game/_MCP_Temp/CubeFluidNinjaLiveRVTCanary/RVT_CFNL_Canary_20260901_A`를 먼저
+fresh-author했다. editor 재시작 뒤에도 원본 `RuntimeVirtualTextureTest1`과 18개 값 및
+specialized layout이 정확히 같았다. canary uasset은 1,581 bytes, SHA-256
+`42aeb71fa3bc25d27c29e97cf5e3bd441e67d1ca8d65dff151b3a1ab86f870e7`이다.
+dependency audit는 asset 1, class `RuntimeVirtualTexture` 1, source/MCP dependency,
+redirector, dirty package가 모두 0이었다.
+
+## 영구 실행과 cold 결과
+
+계약 SHA-256은
+`dfbd1756bc5b255f54697ecba92c8511462b5c694f8c8ceff99e6801cec94fe7`, 실행 token은
+`cfnl-rvt-dfbd1756bc5b255f5469`다. wrong-token은 editor connection과 mutation을 모두
+시도하지 않고 거부됐다. 정확한 token 실행 뒤 세 target의 hot readback, dependency audit,
+dirty audit가 통과했고 editor를 완전히 종료·재시작한 cold readback도 같은 결과였다.
+
+| target | bytes | hot/cold SHA-256 | cold structural revision |
+| --- | ---: | --- | --- |
+| `RuntimeVirtualTextureTest1` | 1,583 | `7b89c76c5cab8d23c637dcfec7a8248ff71abc9e5d5c3067b9f5e6d65593b725` | `c0310668acdb5dfd83f75e48b98e8d47` |
+| `RVT_LandscapeHeight` | 1,659 | `2cca398f04f1d96205b52a4de0fcb182d06e962c200f8142a3204954ad3c6f68` | `8c53f6ac345cc223b27d55820014c25a` |
+| `RVT_LandscapeNormal` | 1,444 | `5f590e593fab8cb1d7517f2763fa1d7921ae3772345ea7f6864a943dbbf7bcf9` | `c0edcfea5eadb9b15169c1da66cc8237` |
+
+실행 report는 31,542 bytes, SHA-256
+`c9ec798ab5cfa8907177c04d7b71013f3bdf2d706aa49434c7dba71567feeed4`이고, cold report는
+29,358 bytes, SHA-256
+`e06fa9a357ef5ab42d8baee33765a89203cb19676987763ae2a9376209f8ad7b`이다. cold audit의
+asset/class count는 `3/RuntimeVirtualTexture:3`, source/temp/MCP dependency, redirector,
+dirty package는 모두 0이다. 재시작 후 editor 모달도 0이었다.
+
+영구 승격은 아래를 모두 요구한다.
+
+1. 원본 세 uasset bytes/SHA와 structural revision exact.
+2. canary file identity와 cold readback exact.
+3. 영구 target 세 개가 disk와 Asset Registry 모두에서 absent.
+4. global dirty package 0.
+5. 정확한 confirmation token.
+6. 새 자산 저작 후 18개 serialized 값과 specialized layout exact.
+7. target root의 asset/class count exact, forbidden dependency/redirector/dirty 0.
+
+## 의존성과 C++ 경계
+
+완성 자산은 native `/Script/Engine.RuntimeVirtualTexture` 인스턴스다. UnrealMCP는 저작과
+검수에만 사용되며 자산에 `/Script/UnrealMCP` 참조가 남지 않는다. 프로젝트/runtime C++는
+생성하거나 수정하지 않는다. 이 자산은 아트 복제 예외를 사용할 필요도 없이 native
+factory와 명시적 속성 설정만으로 재현된다.

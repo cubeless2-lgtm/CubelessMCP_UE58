@@ -1,0 +1,23 @@
+{
+  "schema": "cubeless_runtime_launch_v1",
+  "success": true,
+  "baseline": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\current-runtime-marker-baseline-D.json",
+  "baseline_sha256": "4856b20adfdb73235f9cbd61c91d2ea661c9431a8fb55a489a3f166e500f3d71",
+  "executable": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\CurrentRuntimeShipping-20261010-D\\Windows\\CubelessCurrentRuntimeProof\\Binaries\\Win64\\CubelessCurrentRuntimeProof-Win64-Shipping.exe",
+  "executable_sha256": "70fd28c9ccb9edce87bfe111456d21c7b3ee952376908ef18ba523d2daf61d58",
+  "arguments": [
+    "-nullrhi",
+    "-unattended",
+    "-NoSplash",
+    "-NoSound",
+    "-UserDir=C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\CurrentRuntimeUser-D"
+  ],
+  "automatic_retry": false,
+  "stage": "exited",
+  "exit_code": 0,
+  "launcher_sha256": "6e3c0836a8f215211b4bf51cbc22ddd7170c23db60cab308792a2fb895baa0ad",
+  "console_log": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\current-runtime-launch-D.console.log",
+  "started_ns": 1791628904107525300,
+  "pid": 50164,
+  "ended_ns": 1791628905836747700
+}

@@ -1,0 +1,157 @@
+{
+  "purpose": "actual omitted operation_id and package_path schema/default test with deliberately invalid name; must reject before mutation",
+  "schema": {
+    "description": "Create a Blueprint without overwriting, explicit compile, or save. Parent must resolve; known MCP/editor-tool parent chains are rejected.\n\n        Args:\n            name: New asset name. Use a single identifier, not a path.\n            parent_class: Native class name (Actor/Pawn etc.) or full native/generated class path; empty means Actor.\n            package_path: Directory under /Game; defaults to /Game/Blueprints (explicit empty also uses that legacy default). No object suffix.\n            operation_id: Unique request ID for durable replay protection. Omitted/null generates an ID returned in the result. Reuse only with identical arguments.\n\n        Returns:\n            Structured result. data_json includes name, path, asset_path and actual parent; creation remains unsaved.",
+    "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.create_blueprint",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "parent_class": {
+          "type": "string"
+        },
+        "package_path": {
+          "type": "string",
+          "default": "/Game/Blueprints"
+        },
+        "operation_id": {
+          "default": null,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "parent_class"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "returnValue": {
+          "title": "CubelessPythonOperationResult",
+          "type": "object",
+          "properties": {
+            "data_json": {
+              "type": "string",
+              "description": "JSON object containing operation-specific output and legacy contract fields."
+            },
+            "retry_json": {
+              "type": "string",
+              "description": "JSON object describing retry policy, duplicate risk and request replay."
+            },
+            "validation_json": {
+              "type": "string",
+              "description": "JSON object describing performed checks and missing validation, including reload."
+            },
+            "save_json": {
+              "type": "string",
+              "description": "JSON object describing requested/attempted save and saved state."
+            },
+            "compile_json": {
+              "type": "string",
+              "description": "JSON object describing requested/attempted compile, status and diagnostics."
+            },
+            "changes_json": {
+              "type": "string",
+              "description": "JSON array of attempted and observed changes; no atomic rollback."
+            },
+            "error": {
+              "type": "string"
+            },
+            "error_code": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "operation_id": {
+              "type": "string"
+            },
+            "success": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "data_json",
+            "retry_json",
+            "validation_json",
+            "save_json",
+            "compile_json",
+            "changes_json",
+            "error",
+            "error_code",
+            "stage",
+            "operation_id",
+            "success"
+          ]
+        }
+      },
+      "required": [
+        "returnValue"
+      ]
+    }
+  },
+  "result": {
+    "success": false,
+    "operation_id": "44936902-7459-4642-9524-f57f1cf9fd59",
+    "stage": "preflight",
+    "error_code": "invalid_asset_name",
+    "error": "name must be a nonempty single asset identifier without path/object separators",
+    "changes": [],
+    "compile": {
+      "attempted": false,
+      "requested": false,
+      "status": "not_requested"
+    },
+    "save": {
+      "attempted": false,
+      "requested": false,
+      "saved": false
+    },
+    "validation": {
+      "complete_dependency_scan": "not_run",
+      "disk_reload": "not_run",
+      "packaged_runtime": "not_run",
+      "status": "not_run"
+    },
+    "retry": {
+      "atomic_rollback": false,
+      "automatic_retry": false,
+      "duplicate_risk": "none_observed",
+      "policy": "Inspect the recorded result before issuing another mutation.",
+      "replayed": false
+    },
+    "data": {
+      "elapsed_seconds": 0.004132
+    }
+  },
+  "pass": true,
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.015048
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 0.016514
+    },
+    {
+      "method": "tools/call",
+      "request_id": 2,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.024932
+    }
+  ]
+}

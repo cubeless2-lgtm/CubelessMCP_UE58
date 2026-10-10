@@ -1,0 +1,111 @@
+{
+  "schema": "cubeless_current_runtime_preparation_v1",
+  "status": "pass",
+  "manifest_sha256": "5050a15d3e6a27708130b5435d3d4cb9891109c2a1f1dbb404fba80a582f28f1",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58CurrentRuntimeProof\\CubelessCurrentRuntimeProof.uproject",
+  "copies": [
+    {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_MarkerData",
+      "sha256": "1cde24f948ce4411e60a70d215f3ad94bcc19ca7ca1bc0a1506cb0484f0d7f05",
+      "bytes": 5740
+    },
+    {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/BP_RuntimeProof",
+      "sha256": "738b3f4a79d1121ac66e32afa47d81769acc7d19efab3b1aa47253cde6ddf7da",
+      "bytes": 37416
+    },
+    {
+      "package": "/Game/CubelessMCPTests/RuntimeProof/ShippingProofB20261010/Map_RuntimeProof",
+      "sha256": "77d5fc4b4a79a19362eb60701dedf0b53f31275da02714f5e73147620cdaab08",
+      "bytes": 12983
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+      "sha256": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "bytes": 26621
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MaterialEdges_2d10e468172b48b08c902535f658e431/M_Edges",
+      "sha256": "bcef7cdb2bfa15adaf07450e7819161879c5490d07eafc1294252fb342589c63",
+      "bytes": 5039
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Base",
+      "sha256": "106e1518012c4994a80686fb0d5f31cee398d219d522b1586b38685937838f3e",
+      "bytes": 2074
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Mid",
+      "sha256": "af2dc8fed5b692eae0fee751b26f538d2bb975af2ab0f0976f7adbe88b8a7f46",
+      "bytes": 2197
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/MPC_Leaf",
+      "sha256": "5073a7541d1553fcd03259436baf1281db9621b84f0142476b6ec7b74ae96409",
+      "bytes": 2233
+    },
+    {
+      "package": "/Game/CubelessMCPTests/MPCInheritance_ae91a412f3a14540aa5932f295a57a2f/M_Inheritance",
+      "sha256": "8fdceac033aa7b2037b9eeabcfe0accf15fa402586729fdefbaead218208e7e9",
+      "bytes": 5515
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Batch",
+      "sha256": "5b34389add77b9f453d1e08f48536ce64f422b7470338e36dc88a04eded6aeb3",
+      "bytes": 26417
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_Standalone",
+      "sha256": "0711a0e7c94e78763499f75b0749a19db4b834724092095de25499a4a04a58fe",
+      "bytes": 24307
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopTrue",
+      "sha256": "8522baf23a1263848a31e7c371ea82c1f4ceb566738f96c84dcca9bf96c132f8",
+      "bytes": 24267
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Batch_68b5dfebb46748b28935db9134a78e8e/BP_StopFalse",
+      "sha256": "a7d223f4075620b56597dd75cb21997c242f2b4aead0b91494ba1c22be216ed0",
+      "bytes": 24291
+    },
+    {
+      "package": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+      "sha256": "5818c8e42aefcd865109639dc9c19b8d83e547c5fe4f75ad8d84ce70065bbd6f",
+      "bytes": 24511
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Custom_3e50cc90bb8143708cbf802a02504625/M_Custom",
+      "sha256": "78b0486febe97141a429401997bc0e20d2b4bff5ac12bb07a21e51c3d7f714dc",
+      "bytes": 6249
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/M_Contract",
+      "sha256": "96bf1fe94fc256078b5206f43cbb42e56c6781ff177ea0118016f9490085755d",
+      "bytes": 6785
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_b7d2f1d1914448848b75743d9952337d/MPC_Contract",
+      "sha256": "0127e633430f0a3834ebb8d4ea3692e41c48d6036cbd4a8fadcaa2cbeea51e14",
+      "bytes": 2090
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/M_Contract",
+      "sha256": "5b8d8adcc6156ac75f2e17e8b2451972a5ee9b796930ece78a19da4607c25537",
+      "bytes": 6785
+    },
+    {
+      "package": "/Game/CubelessMCPTests/Material_c8270096042348fc909b73c9de7d8711/MPC_Contract",
+      "sha256": "4a616583fcc75c6243aee8106c509fe5cdf9e096a145073005b275eba1c44dd5",
+      "bytes": 2090
+    }
+  ],
+  "started_ns": 1791628087639354500,
+  "engine_executed": false,
+  "copied_plugins": false,
+  "configuration": {
+    "project_sha256": "df44c9063edb57169cd33c4a3404ed88779323c65b2bca03f2d374b49fb6ef4f",
+    "default_engine_sha256": "55f824e063d32bf0fb5ec820ebafb3de338f030c240403e65b5a3f7d7df3549f"
+  },
+  "finished_ns": 1791628087961939600
+}

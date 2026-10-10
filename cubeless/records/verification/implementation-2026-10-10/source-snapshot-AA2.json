@@ -1,0 +1,10 @@
+{
+  "schema": "cubeless_source_snapshot_v1",
+  "status": "pass",
+  "checked": 140,
+  "binary_copy": "not_copied_hash_only",
+  "archive": "source-snapshots/plugin-AA2",
+  "source": "registered-schemas-and-diagnostics-AA2.json",
+  "isolated_snapshot_matches_registration": true,
+  "root_and_isolated_match_at_capture": true
+}

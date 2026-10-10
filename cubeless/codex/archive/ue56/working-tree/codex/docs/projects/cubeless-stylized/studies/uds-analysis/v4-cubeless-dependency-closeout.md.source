@@ -1,0 +1,96 @@
+# V4 Cubeless Sky Dependency Closeout
+
+Date: 2026-06-20
+
+## Scope
+
+- Created `/Game/Cubeless/SKY/Test_UnusedUDS_V4` from the saved V3 level.
+- Created `/Game/Cubeless/SKY/V4` from V3 content.
+- Removed V4 runtime/content dependencies on:
+  - `/Game/UltraDynamicSky`
+  - `/Game/Cubeless/SKY/V3`
+  - `/Game/_MCP_Temp`
+
+## V4 Ownership
+
+- Duplicated the UDS sky sphere mesh into `/Game/Cubeless/SKY/V4/Meshes/SM_Cubeless_Ultra_Dynamic_Sky_Sphere_V4`.
+- Duplicated all V3-referenced UDS cloud/sky/weather textures into `/Game/Cubeless/SKY/V4/Textures`.
+- Retargeted V4 material function calls, texture expressions, MPC collection parameters, material-instance parents, and material-instance texture overrides to V4 assets.
+- Retargeted VolumeTexture `Source2DTexture` links to V4 sheet textures.
+- Recreated the stale SkyDome base material and SkyDome material instances from the clean rebuilt V4 material path while preserving scalar, vector, texture, and static-switch overrides.
+- Recreated V4 material instances from their V3 counterparts where stale overrides remained:
+  - `MI_Cubeless_UDSVolumetric_SkyDome_V4` now uses the rebuilt V4 SkyDome parent, matching the V3 parent structure.
+  - `MI_Cubeless_UDSVolumetric_SkyDome_V4_Rebuilt` now has only the V3-equivalent texture overrides and SkyAtmo static override.
+  - `MI_Cubeless_UDSVolCloud_Shadows_V4` now matches the V3 override set; stale `Cloud_Profile` and `clouds_basetex` overrides were removed.
+- Removed the unreferenced experimental `M_Cubeless_UDSVolumetric_SkyDome_V4_FreshFromV3` material.
+
+## Level Repair
+
+Updated `/Game/Cubeless/SKY/Test_UnusedUDS_V4` actor/component references:
+
+- SkyDome static mesh now uses the V4 sky sphere mesh.
+- SkyDome material slot now uses `MI_Cubeless_UDSVolumetric_SkyDome_V4_Rebuilt`.
+- Volumetric Cloud component now uses `MI_Cubeless_UDSVolumetricCloud_V4_Reassembled`.
+- Sun and Moon light-function materials now use `MI_Cubeless_UDSVolCloud_Shadows_V4`.
+- PostProcess exposure curve now uses `Exposure_Compensation_Curve_V4`.
+- Weather post-process blendable now uses `M_Cubeless_UDS_Post_Process_Wind_Fog_Composite_V4`.
+- Copied actor labels were renamed from `Cubeless_V3_*` to `Cubeless_V4_*`.
+
+## Verification
+
+- V4 content-root audit:
+  - Asset count: 68
+  - Redirectors: 0
+  - Forbidden dependency hits: 0
+  - Dirty V4 packages: 0
+  - Report: `Saved/MCP/V4_content_root_audit_report.json`
+- V3/V4 material instance override comparison:
+  - Compared SkyDome, rebuilt SkyDome, volumetric cloud, and light-function shadow material instances.
+  - Normalized differences after V4-owned texture path substitution: 0
+  - Report: `Saved/MCP/UDS_V4_Cubeless/v3_v4_mi_override_summary_final.json`
+- V4 level audit:
+  - V3 dependency count: 0
+  - UDS dependency count: 0
+  - `_MCP_Temp` dependency count: 0
+  - Bad actor direct references: 0
+  - Dirty packages/maps: 0
+  - Report: `Saved/MCP/UDS_V4_Cubeless/v4_current_level_dependency_audit_after_fix.json`
+- Compiled and saved key V4 materials with `compile_error_count=0`:
+  - `M_Cubeless_UDSVolumetric_SkyDome_V4`
+  - `M_Cubeless_UDSVolumetric_SkyDome_V4_Rebuilt`
+  - `M_Cubeless_UDSVolumetricCloud_V4`
+  - `M_Cubeless_UDSVolumetricCloud_V4_Reassembled`
+  - `M_Cubeless_UDSVolCloud_Shadows_LightFunction_V4`
+  - `M_Cubeless_UDS_Post_Process_Wind_Fog_Composite_V4`
+
+## Stylized Volumetric Cloud Formation Test
+
+Date: 2026-06-21
+
+- Tested stylized volumetric cloud Formation Texture variants in
+  `/Game/Cubeless/SKY/Test_UnusedUDS_V4` using viewport bookmark 5 as the
+  comparison camera.
+- Rejected pure procedural V12 formation variants because they lost the UDS
+  visible-cloud sampling distribution and rendered mostly empty sky at the
+  bookmark.
+- Compared UDS original, prior V10/V11 candidates, UDS-blended V13 candidates,
+  and V10B shift/max V14 candidates with the SkyDome hidden so static skybox
+  clouds were not counted.
+- Selected V14B as the current stylized volumetric Formation Texture because it
+  preserves V10B's round puffy clusters while adding a small amount of coverage
+  without reintroducing the broad UDS sheet shape.
+- Final material instance:
+  `/Game/Cubeless/SKY/V4/Materials/MI_Cubeless_UDSVolumetricCloud_V4_ShapeRef10B_UDSConservativeRefCumulus`
+- Final Formation Texture:
+  `/Game/Cubeless/SKY/V4/Textures/StylizedShapeRef14_V10ShiftPuffyFormation/VT_Cubeless_V4_ShapeRef14B_V10ShiftPuffyFormation_FormationVolume`
+- UDS-owned cell/profile/turbulence replacements remain on the V4-owned
+  Cubeless assets:
+  `3D_Cells_32_V4`, `3D_Cells_64_V4`, `3DCells_128_V4`,
+  `Cloud_Profile_V4`, and `CloudsTurbulence_V4`.
+- Verification:
+  - `M_Cubeless_UDSVolumetricCloud_V4_Reassembled` compiled with
+    `compile_error_count=0`.
+  - `Cubeless_V4_SkyDome` temporary viewport hiding was restored to visible.
+  - Dirty package count after final save: `0`.
+  - Volume-only comparison sheet:
+    `Saved/MCP/UDS_V4_Cubeless/v4_bookmark5_v14_final_candidate_contact_sheet_review.png`

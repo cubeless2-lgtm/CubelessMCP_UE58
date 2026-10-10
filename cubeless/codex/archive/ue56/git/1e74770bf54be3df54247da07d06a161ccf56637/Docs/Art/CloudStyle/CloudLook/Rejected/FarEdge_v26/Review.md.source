@@ -1,0 +1,9 @@
+# FarEdge v26
+
+Base: HeroLower_v22. Correct alpha-to-shade registration in the upper polar bank region. Use a circular 18-pixel inward alpha contraction and 0.65-pixel sampling smoothing, blended continuously at the region boundary. Preserve all packed RGB values. No global material or BP parameter edits. CloudCompositeBlend remains 0.
+
+Fixed-camera before/after evidence: MCPGameProject/Saved/PaintedAltitudeV04/FarEdge_v26. The central distant crown's gray double edge is absent in the reviewed after image. Crown silhouette is slightly smaller; this is a visible tradeoff for user review. This correction is regional, not a claim that every cloud around the full sky is corrected.
+
+Current texture: /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/FarEdge_v26/T_CloudLook_FarEdge_v26
+
+Texture asset saved. Applied to the current sky actor in /Temp/Untitled_1; level remains unsaved. Original textures retained. Not catalog approval.

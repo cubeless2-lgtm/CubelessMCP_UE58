@@ -1,0 +1,46 @@
+# Niagara Scratch Pad Topology Source Notes 20260703
+
+This note records the UE 5.6.1 engine-source basis for expanding Niagara Scratch Pad graph authoring without opening arbitrary graph synthesis.
+
+## Source Files Reviewed
+
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Private\NiagaraNodeParameterMapBase.cpp`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Private\NiagaraNodeParameterMapSet.cpp`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Private\NiagaraNodeParameterMapGet.cpp`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Private\NiagaraNodeCustomHlsl.cpp`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Private\ViewModels\Stack\NiagaraStackGraphUtilities.cpp`
+
+## Findings
+
+- `UNiagaraNodeParameterMapBase::AllowNiagaraTypeForAddPin` rejects generic numeric, parameter map, and internal types. New public pin routes should stay on resolved concrete Niagara types such as `float`, `int`, `bool`, `Vector 2D`, `Vector`, and `Linear Color`.
+- `UNiagaraNodeParameterMapSet::OnNewTypedPinAdded` namespaces non-namespaced write pins into the module/local namespace and registers the variable on the owning `UNiagaraGraph`; `BuildParameterMapHistory` then records each non-map input through `HandleVariableWrite`. This supports the current reviewed `ParameterMapSet` write shapes, but each new write target still needs graph readback.
+- `UNiagaraNodeParameterMapGet::CreateDefaultPin` creates a paired, non-connectable default input pin for each output pin and serializes the default through `TryGetPinDefaultValueFromNiagaraVariable`. User-link and default-value routes must verify both the read output pin and the generated default pin behavior.
+- `UNiagaraNodeCustomHlsl::InitAsCustomHlslDynamicInput` creates an explicit `Map` input pin and a typed output pin, then marks the node as `DynamicInput`. The bool visible-toggle shape is safe only because it preserves the parameter-map context and uses a concrete output type.
+- `UNiagaraNodeCustomHlsl::OnNewTypedPinAdded` sanitizes pin names and rebuilds the signature after pin changes. Custom HLSL expansion should therefore keep a strict allowlist for input names, output names, expression text, and resolved output type.
+- `FNiagaraStackGraphUtilities::AddNewVariableToParameterMapNode` registers the variable with the graph before requesting the typed pin. Public automation should follow this graph-first pattern instead of creating arbitrary unregistered pins.
+- `FNiagaraStackGraphUtilities::AddParameterModuleToStack` creates a `UNiagaraNodeAssignment`, adds assignment targets, finalizes the node, connects it to the target output node, and updates usage bitmasks. This is the preferred engine path for future assignment-module candidates.
+- `FNiagaraStackGraphUtilities::ValidateGraphForOutput` requires a valid input-to-output stack graph. Any future topology candidate must prove the target output graph remains valid after mutation.
+
+## Current Admitted Shapes
+
+- `parameter_map_set_write_vec2_sprite_size`
+- `user_vec2_link_sprite_size`
+- `parameter_map_set_write_color_particles_color`
+- `user_color_link_particles_color`
+- `custom_hlsl_passthrough_with_map_context`
+- `custom_hlsl_bool_visible_toggle_sprite_size`
+
+## Candidate Queue
+
+1. Assignment-module route through `AddParameterModuleToStack` for one explicit target parameter.
+   - Required evidence: dry-run request contract, temp-only live proof, stack node group validation, compile 0/0, dependency scan, cleanup, and readiness reconciliation.
+2. Additional `ParameterMapSet` write target with a concrete type not already covered.
+   - Required evidence: resolved engine type, graph parameter registration, `HandleVariableWrite` readback, compile 0/0, and no overwrite.
+3. Additional `ParameterMapGet` read/default route.
+   - Required evidence: output pin plus paired default pin readback, default serialization check, User-parameter binding proof, and no linked override overwrite.
+4. Custom HLSL dynamic input with a new expression.
+   - Required evidence: explicit `Map` context, sanitized allowlisted input/output names, exact expression allowlist, token scan, compile 0/0, and preview proof when it changes visible output.
+
+## Boundary
+
+Do not open arbitrary Scratch Pad graph synthesis from this research alone. A new topology can be admitted only when it has its own source-backed contract, admission fixture, live temp proof, tool-surface default check, preflight wiring check, docs, and readiness reconciliation.

@@ -1,0 +1,197 @@
+# MCP RPC pre-Phase 2 완료 증거
+
+## 판정
+
+- **Phase 1 practical / pre-Phase 2 reduced smoke: GO**
+- **Formal release/nightly gate: NOT EVALUATED**
+- 최종 검증 코드 기준: `47cb7b9d01a16e67f27a61ab0b19da8ba6336025`
+- 최종 성공 실행 root: `phase1-release/20260823T192151Z`
+- 성공 summary: `PASS`, `prephase2_smoke_ready=true`
+- `not_release_gate=true`, `release_recommendation=NOT_EVALUATED`
+
+이 문서는 Phase 2 진입 전에 요청된 축소 실무 게이트의 완료 증거다. 정식
+release/nightly 승인을 주장하지 않으며, 3회 paired round, 100회 restart, 64개
+incomplete socket, 4 MiB slow reader, 장시간 soak는 아래에 명시한 후속 범위로
+유지한다.
+
+연결 문서:
+
+- [Phase 1 practical 완료 보고서](mcp_rpc_phase1_practical_canary_completion_20260823.md)
+- [MCP RPC verification-first workflow](../../../codex/docs/workflows/mcp-rpc-verification-first.md)
+
+## 코드 기준과 문서 기록 HEAD의 구분
+
+최종 live 증거가 직접 검증한 code basis는
+`47cb7b9d01a16e67f27a61ab0b19da8ba6336025`다. 성공 summary는 시작과 종료 모두
+이 SHA, clean Git status, unchanged HEAD/script/authoring manifest를 기록한다.
+
+이 파일은 그 실행 뒤의 별도 documentation HEAD에 기록된다. 따라서 이 문서를
+처음 포함하는 커밋은 evidence code basis가 아니며, 다음 명령으로 조회되는
+documentation-record commit이다.
+
+```powershell
+git log --diff-filter=A -1 --format=%H -- Docs/Analysis/MCPTransport/mcp_rpc_prephase2_completion_20260824.md
+```
+
+역사적 첫 reduced PASS인 `20260823T172653Z`는
+`900fef4b5ff260bdad74065c9477947443941d92`를 직접 검증했다. 그 뒤
+`4d5b6ea84552423d44d4804e79f3afb8769ddbb1`에서 cross-runner canonical
+UNKNOWN/fail-stop 처리를 보강했다. 이 커밋은 live benchmark, Phase 1B gate,
+release orchestrator, read-only smoke와 전용 회귀 테스트만 변경하며 native C++,
+축소 기준 `5/16/1 MiB`, formal 기준 `3/100/64/4 MiB`는 바꾸지 않는다. pre-write
+실패와 post-write UNKNOWN 분리, UNKNOWN 뒤 bridge RPC/QUIT 0회, exact-owned-PID
+OS terminalization, cleanup/summary-write 실패 뒤 sticky UNKNOWN 및 `rc=3` 보존을
+offline fault injection으로 검증했다.
+
+`47cb7b9d01a16e67f27a61ab0b19da8ba6336025`에서는 상대 CLI evidence 경로를
+repository root 기준 절대 경로로 정규화하고 Editor `-AbsLog`도 절대 경로로
+강제했다. 이 변경 뒤 clean HEAD에서 reduced live 전체를 새 root로 다시 실행했다.
+따라서 아래 최종 PASS는 UNKNOWN/fail-stop 보강과 path normalization을 모두 포함한
+코드를 직접 검증한다. `git diff --name-status 4d5b6ea8..47cb7b9d`는 이 문서,
+workflow 문서, release orchestrator와 전용 offline test만 포함하고 native C++는
+포함하지 않는다.
+
+## UE 5.6.1 build와 DLL
+
+검증 당시 원시 UBT log와 산출 DLL을 다시 해시해 다음을 확인했다.
+
+| 항목 | 값 |
+| --- | --- |
+| UBT command | `MCPGameProjectEditor Win64 Development -Project=C:\Git\UnrealMCP5_6_1_rpc_verification_20260823\MCPGameProject\MCPGameProject.uproject -WaitMutex` |
+| Engine | `C:\Program Files\Epic Games\UE_5.6` |
+| Result | `Succeeded`, total `9.80 seconds` |
+| 휘발성 원본 UBT log | `C:\Users\Lenovo\AppData\Local\UnrealBuildTool\Log.txt`, 7,426 bytes |
+| 성공 root 보존본 | `MCPGameProject/Saved/MCP/TransportVerification/prephase2-smoke/20260823T172653Z/ue-5.6.1-build-0bb80a54.log`, 7,426 bytes |
+| UBT log SHA-256 | `3F1F7E0FDC059A3B86EE20CE67B175422F9E8BFAE16D7DDACD49E02F3F2E39A7` |
+| DLL | `MCPGameProject/Plugins/UnrealMCP/Binaries/Win64/UnrealEditor-UnrealMCP.dll`, 11,870,208 bytes |
+| DLL SHA-256 | `66CD1554EFEB03AD3B387443D2F0552DA0C92E85582F668530AB14367FA8F9FD` |
+
+UBT는 `MCPTransportWakeState.cpp`, `MCPServerRunnable.cpp`,
+`UnrealMCPBridge.cpp`를 컴파일하고 `UnrealEditor-UnrealMCP.dll`을 링크했다. 이
+native 변경은 `0bb80a54ce6d79edfee7381f485a99d8fb864aeb`에 포함되며, 그
+커밋부터 최종 evidence code basis `47cb7b9d`까지 UnrealMCP `Source/**` 차이는
+없다. 따라서 위 DLL은 최종 성공 live run이 사용한 HEAD의 native C++를 포괄한다.
+log와 DLL은
+Git 비추적/ignore 산출물이다. 휘발성 AppData log는 성공 evidence root에
+byte-for-byte 복사했고 원본/보존본의 byte count와 SHA-256이 일치한다. 이 보고서는
+그 provenance와 hash를 영구 기록한다.
+
+## 성공 live root
+
+원시 root:
+
+```text
+MCPGameProject/Saved/MCP/TransportVerification/phase1-release/20260823T192151Z
+```
+
+핵심 파일:
+
+| 증거 | 값 |
+| --- | --- |
+| `summary.json` | 34,532 bytes, SHA-256 `D548E3AA4A110D1F4EB5A2BFE903FD7B61798F692C865890E5FB2A1FB0C48557` |
+| 실행 script SHA-256 | `8FD8312F46F8FA07DBFDA1C064A94C78F05071AF35315398E5D7F92C566C590F` |
+| `loopback.json` | `PASS`, 37,188 bytes, SHA-256 `DE4449434CD135889AB9E22416780B404FC3C8794EF3B0001CB1B6440F2F90AA` |
+| B1 `prephase2-transport.json` | `PASS`, 7,318 bytes, SHA-256 `0811DC7D74F117B839E80BEE877E49E257C3B07D00F55BB89307D361D7F51F45` |
+| 전체 artifact tree | 40 files, 11,295,775 bytes; `path/size/hash` seal `3EAD8C7FB24B1287BCB489726407A185F8359451437A15D6D3FAE17BE65198C4` |
+| summary의 authoring-manifest logical digest | before/after 둘 다 `C0A4D4EA5CCC20441622C1A50AEC038EB7430A088CBEC0EB02A149F07FA27953` |
+| authoring-manifest raw file SHA-256 | before/after 파일 둘 다 `97C0C2DFA523E1293B655DCFC968411AE0C9392DD3129937064D3E87ADB8E066` |
+
+실행 결과:
+
+- 요청/완료 restart: `5/5`; Editor start `5`, clean exit `5`, forced kill `0`.
+- 순서: `A0 legacy explicit-off → B1 default event-wake → A0 → B1 → A0`.
+- 다섯 cycle 모두 동일 포트 `55719`에서 시작 전 free, exact owned loopback
+  listener, 종료 뒤 free, owned PID gone을 확인했다.
+- 다섯 Editor는 모두 return code `0`으로 종료됐고 forced kill은 없었다. 각 로그의
+  start → QUIT → bridge shutdown → runnable stop → server stopped → `LogExit` marker는
+  정확히 한 번씩 순서대로 관측됐다. UE `Fatal error:`, `Assertion failed:`,
+  `ensure condition failed`, `Unhandled Exception`, critical crash signature와 UNKNOWN
+  outcome은 `0`건이다. 의도한 1 MiB slow-reader의 `Fatal response send error` warning은
+  정확히 한 번 발생했고, trusted `send_failure`와 후속 recovery ping `PASS`로 닫혔다.
+- 각 cycle의 `ping`과 `get_actors_in_level` read-only smoke가 `PASS`했다.
+- asset mutation은 `none_requested_and_manifest_verified`; before/after manifest가
+  동일하다.
+- top-level `transport_outcome_unknown=false`, `mutation_state_unknown=false`,
+  `no_go=[]`이며 자동 재시도는 없었다.
+
+### B1 축소 transport probe
+
+첫 B1 cycle에서만 exact reduced probe를 실행했다.
+
+| 항목 | 관측 |
+| --- | --- |
+| Incomplete sockets | `16` |
+| Slow-reader request | `1,048,576` chars (`1 MiB`) |
+| Prepared response | `1,048,762` bytes |
+| Slow-reader terminal | `send_failure`, trusted terminal evidence |
+| Connection slots | baseline `1` → held `17` → post-close `1` |
+| Active clients max | `17` |
+| Client-disconnected delta | `16` |
+| Capacity-rejected / accepted-setup-failure delta | `0 / 0` |
+| Accept reconciliation | balanced |
+| Transport outcome unknown | `false` |
+
+baseline slot `1`은 telemetry snapshot RPC 자체의 pending/in-flight slot이다. 따라서
+incomplete cohort의 정확한 retirement 증거는 raw
+`active_clients_current == 1` 가정이 아니라 strict
+`connection_slots_current(active + pending)`의 `1 → 17 → 1` 복귀와
+`client_disconnected` delta `16`이다.
+
+## 보존한 실패 root
+
+성공 증거를 덮어쓰지 않았으며 다음 실패 root도 그대로 존재한다.
+
+| Root | Code basis | Summary SHA-256 | 보존된 원인과 fail-stop |
+| --- | --- | --- | --- |
+| `prephase2-smoke/20260823T163914Z` | `0bb80a54ce6d79edfee7381f485a99d8fb864aeb` | `BD13577FA94D6ACD90F3EB7F8A76598E127C8B9E4D9DA8C5A41502AB3CFA8EC9` | post-close retirement를 raw active-client 값으로 판정해 `0`을 false failure로 처리했다. B1 child는 FAIL했고 이후 bridge RPC를 금지한 채 owned process를 종료했다. unknown/forced kill은 `0`이다. |
+| `prephase2-smoke/20260823T170558Z` | `91d431b6f1890557c7b5f02e6da12dc4629c4ccf` | `74A5DFD6EAB0A72DE3F1A230511C1564D6191CB5132F79E04C244A96DB910D5B` | `Get-NetTCPConnection` ownership subprocess가 10초 timeout을 냈다. Editor는 clean exit했고 port/PID 정리는 확인됐지만 exact completion은 FAIL로 유지됐다. unknown/forced kill은 `0`이다. |
+| `Python/MCPGameProject/Saved/MCP/TransportVerification/prephase2-smoke/20260823T190039Z` | `a583523efab4574e5a37de1c9c1f874e02bbd853` | `49ADEDF3B825FD1984C8AC6AE2C7E540980BDCF16746AE97C0B338609CE88C0A` | `uv --directory Python`의 cwd와 상대 `--artifact-root`/`-AbsLog` 해석 기준이 갈려 startup marker를 180.359초 동안 찾지 못한 harness false failure다. bridge RPC/QUIT은 `0`회였고 authoring mutation도 없었다. unconfirmed owned Editor는 OS terminate됐으며, 이 경로는 `47cb7b9d`의 ROOT 기준 절대경로 정규화와 회귀 테스트로 닫았다. |
+
+첫 두 실패 run도 summary의 authoring-manifest logical digest가 성공 run과 같은
+`C0A4D4EA5CCC20441622C1A50AEC038EB7430A088CBEC0EB02A149F07FA27953`이고,
+before/after raw file SHA-256도 모두
+`97C0C2DFA523E1293B655DCFC968411AE0C9392DD3129937064D3E87ADB8E066`이다.
+첫 문제는 slot-sum retirement 계약으로, 두 번째 문제는 bounded native
+`netstat -ano` ownership 조회로 닫았다. 세 번째 실패 root의 `cycle.json`은
+SHA-256 `EA2A1952CBB8D8471EB392F25613781477AC91F2A97ABFFD652BA61A639E9BDD`다.
+OS terminate가 만든 CrashReportClient synthetic record는 원본이 휘발성이므로 같은
+실패 root에 `CrashReportClient-20260823T190039Z.log`로 보존했다(10,170 bytes,
+SHA-256 `DDBE25B763BC513B5A4D32E494D6AE6EFA3AD45203F143833D7DB47F8D1B83B2`).
+이는 UnrealMCP crash나 live bridge RPC 진입 증거가 아니다. 이 `Saved/**` 원시는
+Git ignore 대상이므로 release handoff가 끝나기 전까지 삭제하지 않는다.
+
+## Event-wake 기본값과 rollback 계약
+
+환경 변수는 `UNREAL_MCP_TRANSPORT_EVENT_WAKE` 하나다.
+
+- unset 또는 빈 문자열: `event_wake`가 기본값이다.
+- `1`, `true`, `on`, `yes`: `event_wake`를 명시적으로 선택한다.
+- `0`, `false`, `off`, `no`: 즉시 `legacy_poll` rollback을 선택한다.
+- 그 밖의 값과 whitespace-only 값: warning을 남기고 fail-safe
+  `legacy_poll`로 복귀한다.
+
+practical L/E/R canary가 event-wake와 legacy rollback을 이미 검증했고, 이번
+5-cycle smoke는 unset default B1과 explicit-off A0를 같은 포트에서 교대 검증했다.
+
+## Formal release/nightly 후속 경계
+
+이번 run은 의도적으로 formal release gate가 아니다. summary의
+`phase1_promotion_ready=false`는 reduced mode가 formal promotion을 평가하지 않는다는
+뜻이며 practical/pre-Phase 2 실패를 뜻하지 않는다. 정식 임계값은 변경하지 않았다.
+
+- paired rounds: 최소 `3`
+- Editor restart: `100`
+- incomplete sockets: `64`
+- unread/slow-reader response: `4 MiB` (`4,194,304` chars)
+- 장시간 soak와 극단적 saturation
+
+이 항목은 release/nightly에서 별도 실행한다. 해당 run 전에는 formal release
+`GO`, 통계적 성능 개선, torture/soak 완료를 주장하지 않는다.
+
+## 결론
+
+실무형 Phase 1과 Phase 2 진입 전 축소 checklist는 최종 evidence code basis
+`47cb7b9d`에서 완료됐다. default event-wake, explicit legacy rollback, exact listener
+ownership, socket retirement, clean restart/rebind가 관측됐다. 성공 run에는 unknown이
+없었고, 보존된 known failure에서는 자동 재시도 없이 범위를 닫았다. 남은
+3/100/64/4 MiB/soak는 이 판정과 분리된 formal release/nightly 후속이다.

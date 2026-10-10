@@ -1,0 +1,46 @@
+# Cubeless Cloud_VDB 아트 소스 1차 선별
+
+Cloud_VDB의 109개 Static Sparse Volume Texture를 Unreal Engine 5.6.1 PIE에서 촬영하고 Nubis³형 모듈 역할로 분류했습니다. 촬영은 기존 Cloud Forge 예제 맵의 런타임 미리보기 액터 한 개에 SVT만 교체했으며, `/Game/Cloud_VDB` 원본 자산은 저장 변경하지 않았습니다.
+
+- 전체: 109
+- 선정: 12
+- 보류: 28
+- 탈락: 69
+- 촬영 방식: PIE / Simulate In Editor, 1024×1024, 후보별 자동 프레이밍
+- 사용 원칙: `/Game/Cloud_VDB`의 기존 선정 VDB만 조합해 완성도 높은 구름 상태를 구성.
+
+## 1차 선정 12
+
+![1차 선정 12](Images/ContactSheets/Shortlist_12_PIE.png)
+
+| 번호 | 역할 | 유형 | 소스 | 선정 이유 |
+| ---: | --- | --- | --- | --- |
+| 001 | Tower | Cumulonimbus | `AP_Cumulonimbus_Cloud_01` | 주 덩어리와 상승 돌출부가 한 실루엣으로 연결되어 메인 성장 타워 기준으로 좋음. |
+| 008 | Tower | Cumulonimbus | `Kit_02_Cumulonimbus_03` | 대각선으로 이어지는 발달 단계가 뚜렷해 방향성 있는 타워 변형에 적합. |
+| 021 | Tower | Cumulonimbus | `Kit_cumulonimbus_07` | 기둥·중간 로브·상부 캡이 분리되어 성장 단계 조립 기준으로 쓰기 좋음. |
+| 033 | Core | Cumulus | `AP_Cumulus_Cloud_09` | 밀도 높은 중심 덩어리와 여러 로브가 안정적으로 연결된 기본 코어. |
+| 037 | Lobe | Cumulus | `Kit_02_Cumulus_01` | 비대칭 돌출부가 분명하고 하부 잔가지가 있어 중간 크기 로브 변형에 유용. |
+| 040 | Connector | Cumulus | `Kit_02_Cumulus_04` | 두 덩어리 사이가 낮은 밀도로 이어져 코어 사이 연결 모듈로 적합. |
+| 042 | Lobe | Cumulus | `Kit_02_Cumulus_06` | 수직 돌출부와 낮은 받침 덩어리가 함께 있어 코어에서 타워로 넘어가는 로브에 적합. |
+| 050 | Connector | Cumulus | `Kit_02_Cumulus_14` | 수평으로 이어지는 복수 덩어리가 자연스러워 긴 구름 띠의 중간 연결부로 좋음. |
+| 054 | Edge | Cumulus | `Kit_cumulus_04` | 부드럽고 낮은 밀도의 외곽이 뚜렷해 큰 덩어리의 가장자리 완화용으로 적합. |
+| 071 | Wispy | Cirrus | `AP_Cirrus_Cloud_02` | 한 방향으로 늘어난 얇은 흐름과 소멸부가 분명해 바람 방향 표현에 좋음. |
+| 078 | Edge | Cirrus | `Kit_02_Cirrus_01` | 넓은 날개형 실루엣과 중앙 연결부가 있어 상부 캡·모루형 외곽 기준으로 유용. |
+| 096 | Wispy | Cirrus | `Kit_cirrus_03` | 겹친 두 줄의 굽은 흐름이 있어 단일 선형 소스보다 풍부한 고층 디테일을 제공. |
+
+## 파일
+
+- `Images/All`: 최종 PIE 캡처 109장
+- `Images/Shortlist`: 선정본 12장
+- `Images/ContactSheets`: 전체 연락표, 상태 연락표, 선정 연락표
+- `Images/FramingPass1`: 자동 프레이밍 전 1차 캡처 보존본
+- `catalog.md`: 109개 전체 상태·역할·판단·이미지 링크
+- `catalog.csv`: 스프레드시트용 전체 카탈로그
+- `catalog.json`: 도구 처리용 전체 카탈로그
+- `capture_manifest.json`: 최종 PIE 캡처와 후보별 카메라 설정
+
+## 다음 아트 과제
+
+첫 Wide Cumulus 조합은 완료했습니다. 이후 작업은 [Cloud VDB 아트 구성 계획](../CubelessClouds_ArtCompositionPlan_20260913.md)에 따라 Hero Growing Tower, Anvil & Wind-Swept Crown, Final Hero Cloudscape 순서로 진행합니다.
+
+상태 연락표 수: 8

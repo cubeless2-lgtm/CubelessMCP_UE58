@@ -1,0 +1,69 @@
+{
+  "schema": "cubeless_package_independence_v2",
+  "stage": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\MaterialRuntimeShipping-20261010-B\\Windows",
+  "scope": "static_staged_files_receipts_and_direct_pak_listings_with_optional_fixture_log",
+  "violations": [],
+  "incomplete_reasons": [],
+  "runtime": {
+    "status": "not_run"
+  },
+  "limitations": [
+    "Does not parse serialized UObject references or execute/cook/build a game.",
+    "Clean filenames, receipts and mounted entry names are not a complete dependency proof.",
+    "IoStore content inspection is not implemented."
+  ],
+  "file_count": 23,
+  "inventory_sha256": "9807c66b30c514bf1fa457495261c27fc68af3440e87ba32b09d1d93bb1518f7",
+  "containers": [
+    "CubelessMaterialRuntimeProof/Content/Paks/CubelessMaterialRuntimeProof-Windows.pak"
+  ],
+  "receipts": [
+    {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58MaterialRuntimeProof\\Binaries\\Win64\\CubelessMaterialRuntimeProof-Win64-Shipping.target",
+      "sha256": "5d862d96190ebeb401c3726ac3928c245ce3086e692246a1881ccea302553499",
+      "inactive_plugin_references": [],
+      "TargetName": "CubelessMaterialRuntimeProof",
+      "TargetType": "Game",
+      "Platform": "Win64",
+      "Configuration": "Shipping",
+      "staged_executable_name_matches": [
+        "$(ProjectDir)/Binaries/Win64/CubelessMaterialRuntimeProof-Win64-Shipping.exe"
+      ]
+    }
+  ],
+  "receipt_binding_scope": "target_type_platform_and_staged_executable_basename; not a cryptographic build-to-receipt binding",
+  "pak_listings": [
+    {
+      "pak": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\MaterialRuntimeShipping-20261010-B\\Windows\\CubelessMaterialRuntimeProof\\Content\\Paks\\CubelessMaterialRuntimeProof-Windows.pak",
+      "status": "pass",
+      "pak_sha256_before": "56c2712b22441f3f0f1ea2cf4d710e2d7fb368a36560de7f48f738dddda753c2",
+      "command": [
+        "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealPak.exe",
+        "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\build\\MaterialRuntimeShipping-20261010-B\\Windows\\CubelessMaterialRuntimeProof\\Content\\Paks\\CubelessMaterialRuntimeProof-Windows.pak",
+        "-List",
+        "-UTF8Output"
+      ],
+      "listing": "cubeless\\records\\verification\\implementation-2026-10-10\\material-package-static-B-pak-listings\\0-CubelessMaterialRuntimeProof-Windows-56c2712b2244.log",
+      "exit_code": 0,
+      "listing_sha256": "f155070199c8e34ddbc2f7df252f7c7d697cdc179dbaf9faafe5527356ae9e6f",
+      "pak_sha256_after": "56c2712b22441f3f0f1ea2cf4d710e2d7fb368a36560de7f48f738dddda753c2",
+      "recognized_entries": 1786,
+      "reported_entry_totals": [
+        1786
+      ]
+    }
+  ],
+  "unrealpak": {
+    "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealPak.exe",
+    "sha256": "cb72a5001f62938d1961124f43aae7613c48cd6c6ba3fc49dce1feb791fb2ed8"
+  },
+  "pak_coverage": {
+    "expected": 1,
+    "direct_listing_records": 1,
+    "complete_listings": 1
+  },
+  "static_status": "pass",
+  "status": "static_pass",
+  "packaging_independence_proven": false,
+  "full_migration_complete": false
+}

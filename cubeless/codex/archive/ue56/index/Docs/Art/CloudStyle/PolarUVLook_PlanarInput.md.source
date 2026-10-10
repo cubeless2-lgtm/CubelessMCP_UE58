@@ -1,0 +1,47 @@
+# 폴라UV룩 — 플랜 이미지 입력 전용
+
+확정 호출어: **플랜변환**. **폴라수정**은 이 절차를 적용하지 않고 기존 폴라 소스의 배치·외곽을 보존하는 수정 분기로 처리한다.
+
+## 적용 범위
+
+사용자가 **플랜 이미지·평면 구름 이미지·가로 파노라마를 원본으로 주고 폴라 UV로 제작하라고 요청할 때만** 적용한다. [폴라UV룩](PolarUVLook.md)의 별도 입력 분기이며, 기존 일반 생성 프롬프트나 기존 폴라 배치에 이 절차를 섞지 않는다. 단순 스타일 레퍼런스와 플랜 원본을 구분한다.
+
+## 원본에서 보존할 것
+
+- 구름 하나하나의 외곽, 낮은 구름층에서 큰 봉우리로 이어지는 비대칭 높이 변화, 길고 평탄한 구간, 꼬리의 길이와 두께를 읽는다.
+- 밝은 뒷구름 앞을 어두운 앞구름이 가리는 넓은 명암 면과 층의 겹침을 보존한다. 스타일만 비슷하게 새로 그리는 것으로 대체하지 않는다.
+- 원본이 담백한 경우, 긴 곡선과 평탄부를 유지하고 반복 톱니·둥근 볼·비늘·작은 붓자국을 추가하지 않는다. 불필요한 굴곡 자체를 줄이며 블러로 숨기지 않는다.
+- 원본 및 정리된 평면 마스터를 별도 보존한다. 글자·피사체에 가린 부분은 추정 여부를 명시한다. 이번 작업에서 사용자는 가려진 부분의 추정을 허용했으며, 다른 작업에서는 해당 작업의 지시 범위를 따른다.
+
+## 제작 순서
+
+1. 평면 상태에서 구름 형태와 명암 면을 먼저 정리한다. 원본과 비교해 승인된 느낌을 기준으로 삼는다.
+2. 이를 개별 구름 모듈로 취급한다. 전체 폴라 아틀라스를 매번 재생성하며 주 구름의 형태가 바뀌는 방식을 피한다.
+3. **평면 가로축은 원주 방향, 세로축은 반지름 방향**으로 대응시킨다. 윗면은 중심, 아랫면은 외곽을 향한다. 꼬리·낮은 층·그림자 경계도 모듈과 함께 휜다.
+4. 원을 채우려고 가로로 늘이거나 높이를 압축하지 않는다. 모듈 폭·높이 비율을 기준으로 배치 각도와 크기를 정하고, 남는 공간은 비워둔다. 90도나 특정 모듈 개수는 고정 규칙이 아니다.
+5. 추가 제작이 요청된 경우에만 비슷한 언어의 별도 모듈을 만든다. 주 구름의 낮고 긴 층·높은 봉우리·그림자 겹침을 그대로 유지하며, 추가 모듈의 크기와 간격은 불균등하게 둔다. 초승달 모양을 반복 배치하거나 닫힌 고리로 만들지 않는다.
+6. 잘린 모듈 끝은 국소적으로 자연스럽게 마감한다. 긴 꼬리를 일괄 삭제하지 말고 원래 비율로 원주를 따르게 한다. 전체 형태를 다시 해석하는 계기로 삼지 않는다.
+7. 폴라 배치 시안을 확인한 다음 독립 커버리지와 필요한 패킹을 제작한다. 단순 명암 시안을 완성된 머티리얼 입력으로 간주하지 않는다.
+
+## 방향 및 보존 검수
+
+- 오른쪽: 윗면 왼쪽 / 아랫면 오른쪽. 위쪽: 윗면 아래 / 아랫면 위. 왼쪽: 윗면 오른쪽 / 아랫면 왼쪽. 아래쪽: 윗면 위 / 아랫면 아래.
+- 왼쪽 위 모듈의 긴 축은 원주 접선 방향이며, 밝은 윗면은 오른쪽 아래 중심을 향한다. 화면 수평 꼬리나 중심을 찌르는 방사형 꼬리가 남지 않았는지 확인한다.
+- 모듈별 원본과 변형본을 비교해 폭·높이 관계, 봉우리 순서, 꼬리, 그림자 겹침이 유지되는지 확인한다. 이미지 생성 결과를 픽셀 보존 변형이라고 보고하지 않는다.
+- 실제 좌표 변환도 반지름별 원주 길이 차이로 국소 배율이 달라진다. 기준 반지름과 각도 범위를 기록하고, 전 영역에서 무왜곡 또는 완전한 비율 보존이라고 단정하지 않는다.
+- 모듈 사이 검은 여백, 캔버스 여백, 직선 절단면, 이중 경계, 생성 과정에서 추가된 톱니를 확인한다.
+- 임포트와 레벨 적용을 구분한다. 기존 승인 레벨·텍스처를 별도 지시 없이 교체하지 않는다.
+
+## 플랜 입력 전용 프롬프트 보존 조건
+
+```text
+Treat the supplied planar cloud artwork as source modules, not merely a style reference. Preserve each module's asymmetric low-to-high silhouette, width-to-height relationship, long low layers, tail proportions, and broad overlapping shadow planes. Bend each module's horizontal flow tangentially around the polar center; map tops inward and bases outward. Rotate and bend the tails and shadow shapes with the module. Do not stretch modules to fill the circle, replace them with repeated crescents, or add small scallops. Leave generous unequal sky gaps. Add similar separate modules only when requested. Finish cropped endpoints locally. Keep the planar master unchanged and compare each transformed module with it.
+```
+
+이 문장은 의도 명세이며 결과 검증을 대체하지 않는다. 기존 일반 생성 프롬프트에 상시 합치지 않는다.
+
+## 작업 참고
+
+- 평면 표현 기준: `CloudLook/Rejected/ReferencePlanes_v36/Planar_Master.png`.
+- 사용자가 모듈 방식과 방향을 좋게 평가한 시안: `CloudLook/Rejected/ReferenceModules_v40/Concept_Original.png`.
+- 위 참조는 이 입력 방식의 예시다. 모든 차기 작업에 같은 모듈 수·위치·배치·수치 또는 기존 아틀라스를 강제하지 않는다. 이 절차 기록은 에셋 이동이나 레벨 승인 상태 변경을 뜻하지 않는다.

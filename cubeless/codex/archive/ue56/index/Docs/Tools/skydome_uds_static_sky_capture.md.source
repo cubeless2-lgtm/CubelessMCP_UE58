@@ -1,0 +1,154 @@
+# SkyDome UDS Static Sky Capture
+
+## Scope
+
+`SkyDomeTools` provides a Python-only editor helper for opening the Ultra
+Dynamic Sky static cloud authoring tool and for capturing the current editor sky
+into a project-owned cubemap render target.
+
+The tool stays inside:
+
+```text
+MCPGameProject/Plugins/SkyDomeTools
+```
+
+It does not add C++, build dependencies, engine-version checks, or a
+`.uproject` plugin entry.
+
+## UDS Assets Found
+
+The relevant UDS assets in this project are:
+
+- `/Game/UltraDynamicSky/Blueprints/System/Editor_UI/Static_Clouds_Capture`
+  - `EditorUtilityBlueprint`
+  - Captures into the UDS static authoring target.
+- `/Game/UltraDynamicSky/Blueprints/Tools/Static_Clouds_Authoring_Tool`
+  - `EditorUtilityWidgetBlueprint`
+  - The user-facing UDS static cloud authoring widget.
+- `/Game/UltraDynamicSky/Textures/Tools/Static_Clouds_Authoring_Target`
+  - `TextureRenderTargetCube`, currently `2048`.
+- `/Game/UltraDynamicSky/Materials/Tools/Static_Clouds_Tool_Composite`
+- `/Game/UltraDynamicSky/Materials/Tools/Static_Clouds_Cubemap_Transform`
+
+`SkyDomeTools` does not modify these vendor assets during ordinary smoke tests.
+
+## Commands
+
+Inspect the UDS capture stack:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture.py --inspect --json
+```
+
+Open the UDS Static Clouds Authoring Tool:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture.py --open-uds-tool --json
+```
+
+Capture the current editor sky to a project-owned cubemap render target:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture.py `
+  --capture-cube `
+  --destination-path /Game/SkyDomeTools/UDS/Captures `
+  --asset-name RT_SkyDome_StaticSkyCube `
+  --label SkyDomeTools_UDSStaticSkyCapture `
+  --size 1024 `
+  --location 0,0,1200 `
+  --json
+```
+
+Bake a captured cubemap through the UDS cubemap transform material into a 2D
+static-cloud texture:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture.py `
+  --bake-cubemap `
+  --cubemap /Game/SkyDomeTools/UDS/Captures/RT_SkyDome_StaticSkyCube `
+  --bake-asset-name SkyDome_StaticCloudBake `
+  --bake-size 2048 `
+  --json
+```
+
+Run capture and bake in one command:
+
+```powershell
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture.py `
+  --capture-and-bake `
+  --asset-name RT_SkyDome_StaticSkyCube `
+  --bake-asset-name SkyDome_StaticCloudBake `
+  --json
+```
+
+For the polar VDB pipeline, `--capture-polar-manifest` disables UDS dynamic
+volumetric clouds during the capture scope and restores the previous CVar values
+afterward. This prevents UDS `VolumetricCloud` actors from being baked together
+with the generated VDB cloud volumes. It also hides the polar card validation
+actors by label prefix (`SkyDomeTools_PolarCloudCard*`) so the static sky pass is
+VDB-only rather than a card/VDB mix. The scoped CVar values are:
+
+```text
+r.VolumetricCloud 0
+r.HeterogeneousVolumes 1
+```
+
+Use `--keep-uds-dynamic-clouds` only for deliberate comparison captures.
+Use `--hide-actor-label-prefix` when a future card-layout actor uses a different
+prefix and must also be excluded from the VDB capture.
+
+The editor menu entry is:
+
+```text
+SkyDome Tools > UDS Static Sky Capture
+```
+
+## Interchange Import Bypass
+
+UE 5.6 can route PNG imports through Interchange. During MCP-driven Python
+imports this can trip a TaskGraph recursion assertion. The PNG import helper
+therefore disables Interchange before `AssetImportTask` import and restores the
+previous values afterward:
+
+```text
+Interchange.FeatureFlags.Import.Enable 0
+Interchange.FeatureFlags.Import.PNG 0
+```
+
+The CVar names were verified from the UE 5.6 engine source:
+
+- `Engine/Source/Runtime/Interchange/Engine/Private/InterchangeManager.cpp`
+- `Engine/Plugins/Interchange/Runtime/Source/Import/Private/Texture/InterchangeImageWrapperTranslator.cpp`
+
+The primary bake path also keeps a non-import fallback by creating a static
+Texture2D directly from the render target when needed.
+
+## Pipeline Position
+
+The current automatic path is:
+
+1. Generate or provide a cloud mesh.
+2. Convert it through Blender into OpenVDB.
+3. Import the VDB into Unreal as a Sparse Volume Texture.
+4. Spawn a Heterogeneous Volume preview actor.
+5. Use `UDS Static Sky Capture` to capture the composed editor sky into a
+   cubemap render target.
+6. Bake the cubemap through `Static_Clouds_Cubemap_Transform` into a 2D render
+   target and opaque PNG.
+7. Import the opaque PNG as a project-owned Texture2D with Interchange disabled.
+
+## Next Extension
+
+The next phase should wire the baked Texture2D into a project-owned static sky
+material instance or preset. That phase should still avoid editing UDS vendor
+assets unless the user explicitly asks for promotion into UDS content.
+
+## Verification
+
+Run:
+
+```powershell
+uv --directory .\Python run python -m py_compile ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture.py ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture_gui.py
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\test_skydome_uds_capture.py
+uv --directory .\Python run python ..\MCPGameProject\Plugins\SkyDomeTools\Scripts\skydome_uds_capture_gui.py --smoke-test
+```

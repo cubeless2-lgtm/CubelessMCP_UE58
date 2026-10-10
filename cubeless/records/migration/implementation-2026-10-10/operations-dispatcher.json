@@ -1,0 +1,893 @@
+{
+  "schema": "cubeless_dispatcher_migration_slice_v1",
+  "date": "2026-10-10",
+  "source_pipeline_id": "OPS56-VERIFY-001",
+  "source": {
+    "script_id": "script:Python/scripts/analysis/run_verification.py",
+    "path": "Python/scripts/analysis/run_verification.py",
+    "sha256": "2568476fee409ea43f774035bf673f2a513d6de39cca3f7fc4d254783c3549c9",
+    "static_evidence_ref": "rows[id=script:Python/scripts/analysis/run_verification.py]"
+  },
+  "implementation": "cubeless/tools/pipelines/verification_dispatcher.py",
+  "self_tests": "cubeless/tools/verification/test_verification_dispatcher.py",
+  "implementation_state": "control_flow_ported_current_partial_profiles_verified",
+  "full_migration_complete": false,
+  "legacy_profile_equivalence_verified": false,
+  "legacy_gate_count": 42,
+  "legacy_profile_count": 9,
+  "legacy_gates_closed": [],
+  "legacy_gate_states": [
+    {
+      "key": "py_compile_core_modules",
+      "source_script_ids": [],
+      "source_line": 51,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retarget_offline_code_gate",
+        "retain": "syntax/undefined-name checks and path discovery",
+        "target": "plugin editor Python + cubeless/tools, no Unreal import in offline process",
+        "completion_gate": "actual gate outputs; syntax pass is not engine API validation"
+      }
+    },
+    {
+      "key": "ruff_f821",
+      "source_script_ids": [],
+      "source_line": 76,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retarget_offline_code_gate",
+        "retain": "syntax/undefined-name checks and path discovery",
+        "target": "plugin editor Python + cubeless/tools, no Unreal import in offline process",
+        "completion_gate": "actual gate outputs; syntax pass is not engine API validation"
+      }
+    },
+    {
+      "key": "local_install_paths_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_local_install_paths.py"
+      ],
+      "source_line": 92,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retarget_offline_code_gate",
+        "retain": "syntax/undefined-name checks and path discovery",
+        "target": "plugin editor Python + cubeless/tools, no Unreal import in offline process",
+        "completion_gate": "actual gate outputs; syntax pass is not engine API validation"
+      }
+    },
+    {
+      "key": "tool_registration",
+      "source_script_ids": [
+        "script:Python/scripts/smoke_tool_registration.py"
+      ],
+      "source_line": 97,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "rewrite_for_official_registry",
+        "retain": "full source/runtime catalog parity and startup/error behavior",
+        "target": "static source manifest plus separately named live official list/describe/call profile",
+        "completion_gate": "do not let offline import substitute for actual registry validation"
+      }
+    },
+    {
+      "key": "tool_parity",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/mcp_tool_parity_audit.py"
+      ],
+      "source_line": 102,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "rewrite_for_official_registry",
+        "retain": "full source/runtime catalog parity and startup/error behavior",
+        "target": "static source manifest plus separately named live official list/describe/call profile",
+        "completion_gate": "do not let offline import substitute for actual registry validation"
+      }
+    },
+    {
+      "key": "management_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_management_tools.py"
+      ],
+      "source_line": 109,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "rewrite_for_official_registry",
+        "retain": "full source/runtime catalog parity and startup/error behavior",
+        "target": "static source manifest plus separately named live official list/describe/call profile",
+        "completion_gate": "do not let offline import substitute for actual registry validation"
+      }
+    },
+    {
+      "key": "chaos_pie_runtime_qa_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_chaos_pie_runtime_qa_tools.py"
+      ],
+      "source_line": 114,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "tool_policy_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_tool_policy_contract.py"
+      ],
+      "source_line": 119,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "project_cpp_approval_gate_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_project_cpp_approval_gate.py"
+      ],
+      "source_line": 124,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "rewrite_current_cpp_scope_contract",
+        "retain": "game runtime independence and allowed file scope",
+        "remove_candidate": "historical approval-token requirement for authorized editor-plugin C++",
+        "completion_gate": "descriptor/module/asset/package evidence; user prohibition remains in force"
+      }
+    },
+    {
+      "key": "verification_dispatcher_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_run_verification.py"
+      ],
+      "source_line": 129,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "port_dispatcher_self_contract",
+        "retain": "exact profile order, fail-fast first exit, subprocess isolation, plan mode side-effect freedom",
+        "completion_gate": "mocked failures, paths with spaces, missing tool, report persistence and no child execution in plan mode"
+      }
+    },
+    {
+      "key": "mutation_result_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mutation_result_contract.py"
+      ],
+      "source_line": 134,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "cpp_server_timeout_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_server_timeout_contract.py"
+      ],
+      "source_line": 139,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "cpp_phase1_transport_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_phase1_transport_safety_contract.py"
+      ],
+      "source_line": 144,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "cpp_transport_telemetry_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_phase1c_transport_telemetry_contract.py"
+      ],
+      "source_line": 149,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "cpp_event_wake_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_phase1c_event_wake_contract.py"
+      ],
+      "source_line": 154,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "mcp_focused_crash_guard_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_crash_guard_contract.py"
+      ],
+      "source_line": 159,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "unreal_texture_import_interchange_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_unreal_texture_importer_interchange_guard.py"
+      ],
+      "source_line": 164,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "cpp_blueprint_component_property_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_blueprint_component_property_safety_contract.py"
+      ],
+      "source_line": 169,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "cpp_blueprint_input_key_graph_compatibility_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_blueprint_input_key_graph_compatibility_contract.py"
+      ],
+      "source_line": 174,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "cpp_blueprint_variable_exposure_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_cpp_blueprint_variable_exposure_contract.py"
+      ],
+      "source_line": 179,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "ai_transport_marker_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_ai_transport_marker_preservation.py"
+      ],
+      "source_line": 184,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "ai_ue56_domain_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_ai_ue56_domain_contract.py"
+      ],
+      "source_line": 189,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "gas_tools_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_gas_tools_contract.py"
+      ],
+      "source_line": 194,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "optional_domain_plugin_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_optional_domain_plugin_contract.py"
+      ],
+      "source_line": 199,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "controlrig_authoring_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_controlrig_authoring_tools.py"
+      ],
+      "source_line": 204,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "niagara_assignment_transport_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_niagara_assignment_transport_safety.py"
+      ],
+      "source_line": 209,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "unreal_python_result_file_isolation",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_unreal_python_result_file_isolation.py"
+      ],
+      "source_line": 214,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "tool_discovery_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_tool_discovery_contract.py"
+      ],
+      "source_line": 219,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "rewrite_for_official_registry",
+        "retain": "full source/runtime catalog parity and startup/error behavior",
+        "target": "static source manifest plus separately named live official list/describe/call profile",
+        "completion_gate": "do not let offline import substitute for actual registry validation"
+      }
+    },
+    {
+      "key": "tool_exposure_benchmark",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/mcp_tool_exposure_benchmark.py"
+      ],
+      "source_line": 224,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "rewrite_for_official_registry",
+        "retain": "full source/runtime catalog parity and startup/error behavior",
+        "target": "static source manifest plus separately named live official list/describe/call profile",
+        "completion_gate": "do not let offline import substitute for actual registry validation"
+      }
+    },
+    {
+      "key": "unreal_bridge_connection_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_unreal_bridge_connection.py"
+      ],
+      "source_line": 230,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "unreal_bridge_loopback_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_unreal_bridge_loopback.py"
+      ],
+      "source_line": 235,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "phase1_practical_canaries_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_rpc_phase1_practical_canaries.py"
+      ],
+      "source_line": 240,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "phase1_practical_orchestrator_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_rpc_phase1_practical_orchestrator.py"
+      ],
+      "source_line": 245,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "phase1b_live_transport_gate_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_rpc_phase1b_live_transport_gate.py"
+      ],
+      "source_line": 250,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "split_transport_detail_from_behavior_contract",
+        "retain": "timeouts, unknown mutation outcomes, parse/correlation/isolation and no unintended retries where applicable",
+        "remove_candidate": "old socket framing, legacy port/bridge internal implementation assertions only",
+        "completion_gate": "inspect each assertion before final classification; HTTP session/response tests required"
+      }
+    },
+    {
+      "key": "phase1_release_orchestrator_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_rpc_phase1_release_orchestrator.py"
+      ],
+      "source_line": 255,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "write_tool_inventory_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_write_tool_inventory.py"
+      ],
+      "source_line": 260,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "write_postcondition_observer_contract",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/test_mcp_write_postcondition_observer.py"
+      ],
+      "source_line": 265,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "write_tool_inventory_check",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/mcp_write_tool_inventory.py"
+      ],
+      "source_line": 270,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "write_postcondition_observer_check",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/run_mcp_write_postcondition_observer.py"
+      ],
+      "source_line": 278,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "niagara_authoring_offline_gates",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/run_niagara_authoring_offline_gates.py"
+      ],
+      "source_line": 286,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "response_schema_golden_tests",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/run_response_schema_tests.py"
+      ],
+      "source_line": 292,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    },
+    {
+      "key": "response_schema_audit",
+      "source_script_ids": [
+        "script:Python/scripts/analysis/python_tool_response_schema_audit.py"
+      ],
+      "source_line": 297,
+      "status": "pending",
+      "reason": "Legacy assertion semantics require individual UE58/official-MCP migration and equivalence verification",
+      "proposed_mapping": {
+        "action": "retain_gate_and_inspect_domain_contract",
+        "retain": "original unique assertions, error behavior and report schema",
+        "completion_gate": "map each domain assertion to actual UE5.8 implementation before claiming equivalent"
+      }
+    }
+  ],
+  "legacy_profiles_exact": {
+    "full": [
+      "py_compile_core_modules",
+      "ruff_f821",
+      "local_install_paths_contract",
+      "tool_registration",
+      "tool_parity",
+      "management_contract",
+      "chaos_pie_runtime_qa_contract",
+      "tool_policy_contract",
+      "project_cpp_approval_gate_contract",
+      "verification_dispatcher_contract",
+      "mutation_result_contract",
+      "cpp_server_timeout_contract",
+      "cpp_phase1_transport_contract",
+      "cpp_transport_telemetry_contract",
+      "cpp_event_wake_contract",
+      "mcp_focused_crash_guard_contract",
+      "unreal_texture_import_interchange_contract",
+      "cpp_blueprint_component_property_contract",
+      "cpp_blueprint_input_key_graph_compatibility_contract",
+      "cpp_blueprint_variable_exposure_contract",
+      "ai_transport_marker_contract",
+      "ai_ue56_domain_contract",
+      "gas_tools_contract",
+      "optional_domain_plugin_contract",
+      "controlrig_authoring_contract",
+      "niagara_assignment_transport_contract",
+      "unreal_python_result_file_isolation",
+      "tool_discovery_contract",
+      "tool_exposure_benchmark",
+      "unreal_bridge_connection_contract",
+      "unreal_bridge_loopback_contract",
+      "phase1_practical_canaries_contract",
+      "phase1_practical_orchestrator_contract",
+      "phase1b_live_transport_gate_contract",
+      "phase1_release_orchestrator_contract",
+      "write_tool_inventory_contract",
+      "write_postcondition_observer_contract",
+      "write_tool_inventory_check",
+      "write_postcondition_observer_check",
+      "niagara_authoring_offline_gates",
+      "response_schema_golden_tests",
+      "response_schema_audit"
+    ],
+    "core": [
+      "py_compile_core_modules",
+      "ruff_f821",
+      "local_install_paths_contract",
+      "project_cpp_approval_gate_contract",
+      "verification_dispatcher_contract"
+    ],
+    "catalog": [
+      "tool_registration",
+      "tool_parity",
+      "management_contract",
+      "chaos_pie_runtime_qa_contract",
+      "tool_policy_contract",
+      "ai_ue56_domain_contract",
+      "gas_tools_contract",
+      "optional_domain_plugin_contract",
+      "tool_discovery_contract",
+      "tool_exposure_benchmark"
+    ],
+    "transport": [
+      "mutation_result_contract",
+      "cpp_server_timeout_contract",
+      "cpp_phase1_transport_contract",
+      "cpp_transport_telemetry_contract",
+      "cpp_event_wake_contract",
+      "mcp_focused_crash_guard_contract",
+      "unreal_texture_import_interchange_contract",
+      "cpp_blueprint_component_property_contract",
+      "cpp_blueprint_input_key_graph_compatibility_contract",
+      "cpp_blueprint_variable_exposure_contract",
+      "ai_transport_marker_contract",
+      "controlrig_authoring_contract",
+      "niagara_assignment_transport_contract",
+      "unreal_python_result_file_isolation",
+      "unreal_bridge_connection_contract",
+      "unreal_bridge_loopback_contract"
+    ],
+    "schema": [
+      "response_schema_golden_tests",
+      "response_schema_audit"
+    ],
+    "niagara": [
+      "niagara_authoring_offline_gates"
+    ],
+    "write-observer": [
+      "write_tool_inventory_contract",
+      "write_postcondition_observer_contract",
+      "write_tool_inventory_check",
+      "write_postcondition_observer_check"
+    ],
+    "release-offline": [
+      "phase1_practical_canaries_contract",
+      "phase1_practical_orchestrator_contract",
+      "phase1b_live_transport_gate_contract",
+      "phase1_release_orchestrator_contract"
+    ],
+    "windows-transport": [
+      "unreal_bridge_connection_contract",
+      "mutation_result_contract",
+      "cpp_server_timeout_contract",
+      "cpp_phase1_transport_contract",
+      "cpp_transport_telemetry_contract",
+      "cpp_event_wake_contract",
+      "cpp_blueprint_component_property_contract",
+      "cpp_blueprint_variable_exposure_contract",
+      "unreal_bridge_loopback_contract",
+      "phase1_practical_canaries_contract",
+      "phase1_practical_orchestrator_contract",
+      "phase1b_live_transport_gate_contract",
+      "phase1_release_orchestrator_contract",
+      "unreal_python_result_file_isolation"
+    ]
+  },
+  "new_profiles": {
+    "bootstrap-offline": [
+      "pipeline_contract_unit",
+      "operation_journal_unit",
+      "package_checker_unit",
+      "marker_verifier_unit",
+      "dispatcher_unit"
+    ],
+    "blueprint-author-evidence": [
+      "blueprint_author_report"
+    ],
+    "blueprint-reload-evidence": [
+      "blueprint_author_report",
+      "blueprint_reload_report",
+      "blueprint_reload_link"
+    ],
+    "blueprint-cleanup-evidence": [
+      "blueprint_author_report",
+      "blueprint_cleanup_report",
+      "blueprint_cleanup_link"
+    ],
+    "package-static-evidence": [
+      "package_static_audit"
+    ],
+    "runtime-marker-evidence": [
+      "runtime_marker_audit"
+    ]
+  },
+  "proven_scope": [
+    "exact legacy lineage/order and pending state",
+    "offline dispatcher planning/fail-fast/durable evidence/no overwrite/input race behavior",
+    "fresh independent current unit verifiers",
+    "live root-generated author-D and reload-D report contracts plus lineage checked by fresh verifier processes",
+    "known failing author-A rejected",
+    "missing package inputs refused without subprocess"
+  ],
+  "not_verified": [
+    "actual cleanup evidence through this dispatcher",
+    "actual staged package through this dispatcher",
+    "actual runtime marker through this dispatcher",
+    "all legacy gate assertions",
+    "3518 scripts migration",
+    "complete packaging independence"
+  ],
+  "evidence": [
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.tests-A.json",
+      "sha256": "4e2bdec1021a8107def575a47ca3d553c2be9461f53bb221c449405550858f3a",
+      "schema": "cubeless_dispatcher_offline_tests_v1",
+      "status": null,
+      "passed": true,
+      "exit_code": null,
+      "elapsed_seconds": null,
+      "tests_run": 20
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.bootstrap-A.json",
+      "sha256": "1d55be43c4642d22899746c9e50505b76ee1424bc8d6b24744b9b78e34dbf368",
+      "schema": "cubeless_verification_dispatch_report_v1",
+      "status": "passed_limited_scope",
+      "passed": null,
+      "exit_code": 0,
+      "elapsed_seconds": 1.8970823,
+      "tests_run": null
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.reload-D.json",
+      "sha256": "29819bd9c6eaf4b58123bd9ee298d8fe9d82c726b7f610bf3f7ed92dd4a74adc",
+      "schema": "cubeless_verification_dispatch_report_v1",
+      "status": "passed_limited_scope",
+      "passed": null,
+      "exit_code": 0,
+      "elapsed_seconds": 0.2763998,
+      "tests_run": null
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.legacy-full.json",
+      "sha256": "76f61c7be00ec4408d513b59128df0d1dae3ce86e873cd4b90fbafc272acdadf",
+      "schema": "cubeless_verification_dispatch_report_v1",
+      "status": "incomplete",
+      "passed": null,
+      "exit_code": 2,
+      "elapsed_seconds": 0.0083341,
+      "tests_run": null
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.rejected-author-A.json",
+      "sha256": "35a1b6b0082f2335faa5984546573955f26b0e0b1a8f12718d525ec4efcfb37f",
+      "schema": "cubeless_verification_dispatch_report_v1",
+      "status": "failed",
+      "passed": null,
+      "exit_code": 1,
+      "elapsed_seconds": 0.1355887,
+      "tests_run": null
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.missing-package.json",
+      "sha256": "39683c75fb77f1adaa510ba45a77100a8934b0fbdadb622d23cc1ccc2090e325",
+      "schema": "cubeless_verification_dispatch_report_v1",
+      "status": "incomplete",
+      "passed": null,
+      "exit_code": 2,
+      "elapsed_seconds": 0.0235704,
+      "tests_run": null
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.cli-status.json",
+      "sha256": "9f064cfc159c57cae5e2b5f4fcf6178a5046132cee719e25e227cba8b83dc3fd",
+      "schema": "cubeless_dispatcher_cli_checks_v1",
+      "status": null,
+      "passed": true,
+      "exit_code": null,
+      "elapsed_seconds": null,
+      "tests_run": null
+    }
+  ],
+  "inputs": [
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/blueprint-author-D.json",
+      "sha256": "c5921d922ff486ca7f32f545eb5bb6b2ec25568b21fa5016619152b563bf454c"
+    },
+    {
+      "path": "cubeless/records/verification/implementation-2026-10-10/blueprint-reload-D.json",
+      "sha256": "29e8ffe3b4c68f733fe989d1a40d6d606b926e83cfbdd07593cf7cc334b7d34e"
+    }
+  ],
+  "external_processes": "Current offline Python validators only; package profile may list explicitly supplied UnrealPak, not executed in this slice",
+  "mutations": {
+    "source_repo": false,
+    "engine": false,
+    "unreal_assets": false,
+    "editor_processes": false,
+    "git_commit_push": false
+  },
+  "performance_conditions": "Single local Windows/Python run with concurrent migration work; offline verifier wall-clock, not engine/MCP throughput",
+  "files": [
+    {
+      "path": "cubeless/tools/pipelines/verification_dispatcher.py",
+      "sha256": "85f01dde810f83140666251ec0fbe33c0bfbab0acdc80374c416c2b9745d9ba1",
+      "bytes": 51093
+    },
+    {
+      "path": "cubeless/tools/verification/test_verification_dispatcher.py",
+      "sha256": "1f4fcc5d205f66cb7c65b7d3d4d5896bee175ef0beb5c88bfa4436430e1cc147",
+      "bytes": 13405
+    },
+    {
+      "path": "cubeless/records/migration/implementation-2026-10-10/operations-dispatcher.md",
+      "sha256": "0ab212e411fa4c40d87890b521658d951777262abff8c066b1a9f9335f723e31",
+      "bytes": 9424
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# Ops References
+
+Resolve paths from this repository's `codex/` root unless explicitly overridden by a file.
+
+## Always Read
+
+- `docs/workflows/material-authoring.md`
+- `docs/workflows/unreal-asset-authoring.md`
+
+## Read When Relevant
+
+- `docs/projects/cubeless-stylized/studies/uds-analysis/README.md` for the UDS analysis index.
+- `docs/projects/cubeless-stylized/studies/uds-analysis/material-dependency-index.md` for material and function dependency mapping.
+- `docs/projects/cubeless-stylized/studies/uds-analysis/material-mpc-flow.md` for MPC and parameter-flow reasoning.
+- `docs/projects/cubeless-stylized/studies/uds-analysis/static-and-2d-clouds.md` for static cloud and 2D cloud material behavior.
+- `docs/projects/cubeless-stylized/studies/uds-analysis/volumetric-cloud-stack.md` for volumetric cloud material stack analysis.
+- `docs/projects/cubeless-stylized/learning/materials/silhouette-pom-research.md` for POM and silhouette material lessons.
+- `docs/projects/cubeless-stylized/learning/sky-vfx/cloud-plane-lightpacked-workflow.md` for packed cloud-card source and mask workflow.
+
+## Verification Tools
+
+Prefer live UnrealMCP material inspection and compile reporting when the editor bridge is available. If the bridge is unavailable, perform static graph/script review and report that live material compile verification is blocked.

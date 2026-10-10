@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unreal PCG Authoring"
+  short_description: "PCG and Blueprint authoring gates"
+  default_prompt: "Use $unreal-pcg-authoring to plan and verify an Unreal PCG Blueprint change."

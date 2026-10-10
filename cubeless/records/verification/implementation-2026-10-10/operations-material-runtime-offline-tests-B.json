@@ -1,0 +1,7 @@
+{
+  "schema": "cubeless_material_runtime_offline_tests_v1",
+  "passed": true,
+  "tests_run": 7,
+  "scope": "Synthetic cook logs, external report preservation and wrong-project guard only; no Unreal assets or engine calls",
+  "details": "test_complete_log_observation_does_not_claim_shader_completion (__main__.RuntimeFixtureTests.test_complete_log_observation_does_not_claim_shader_completion) ... ok\ntest_editor_authoring_rejects_other_project_before_unreal_access (__main__.RuntimeFixtureTests.test_editor_authoring_rejects_other_project_before_unreal_access) ... ok\ntest_missing_collection_and_missing_cook_end_remain_incomplete (__main__.RuntimeFixtureTests.test_missing_collection_and_missing_cook_end_remain_incomplete) ... ok\ntest_offline_mode_preserves_existing_output_and_does_not_import_unreal (__main__.RuntimeFixtureTests.test_offline_mode_preserves_existing_output_and_does_not_import_unreal) ... ok\ntest_shader_warnings_and_fatal_failures_are_not_ignored (__main__.RuntimeFixtureTests.test_shader_warnings_and_fatal_failures_are_not_ignored) ... ok\ntest_short_asset_names_do_not_substitute_for_package_identity (__main__.RuntimeFixtureTests.test_short_asset_names_do_not_substitute_for_package_identity) ... ok\ntest_wrong_fixture_schema_and_empty_log_are_rejected (__main__.RuntimeFixtureTests.test_wrong_fixture_schema_and_empty_log_are_rejected) ... ok\n\n----------------------------------------------------------------------\nRan 7 tests in 0.062s\n\nOK\n"
+}

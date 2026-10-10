@@ -1,0 +1,67 @@
+# Local Chaos and cloud cleanup — 2026-09-06
+
+The reviewed local cleanup starts from `25d5081b`. All 95 removed files were
+untracked; no tracked Unreal assets or source files were deleted. The local
+`MCPGameProject.Build.cs` dependency additions were restored to the existing
+main version. This commit records the cleanup rather than publishing the
+discarded experiments.
+
+## Chaos
+
+- Removed 48 untracked files: four legacy native pillar/review source files,
+  26 old Blueprint/map/geometry assets, and 18 legacy authoring, review, or
+  one-time tuning scripts.
+- Preserved all tracked assets, including `BP_ChaosPillar_BP_V02`, its FX
+  manager, projectile/review Blueprints, `NS_ChaosPillarFX_BP_V02`, and
+  `L_ChaosPillarBPReview_V02`.
+- Preserved the three local manual-authoring scripts referenced by
+  [the current QA record](ChaosPillar_BP_V02_TwoStage_QA.md):
+  `enable_chaos_pillar_bp_v02_manual_ue.py`,
+  `finalize_chaos_pillar_manual_trigger_ue.py`, and
+  `setup_chaos_pillar_bp_v02_manual_map_ue.py`. They remain untracked and are
+  not a newly published or idempotent authoring workflow.
+
+## Clouds
+
+- Removed 47 untracked files: 30 disconnected historical comparison images
+  and 17 historical review, analysis, or import scripts.
+- Preserved 149 files in the reviewed cloud scope, including source textures,
+  manifests, QA evidence, generation dependencies, and material refinements.
+- V018 remains the saved baseline. V019 remains a visual-review candidate;
+  its recorded preview did not replace the persistent map binding.
+- Old version numbers and `tune_` prefixes alone do not establish that a file
+  is disposable. V019 depends on V018 and older generation helpers, so those
+  dependencies were retained.
+
+## Review and verification
+
+- Independent reviews approved both exact removal lists and their hashes.
+- Byte scans of 2,894 project assets found no tracked-asset references to the
+  26 removed asset candidates. Independent UTF-8/UTF-16 scans found no
+  remaining code, configuration, or asset references to the Chaos removal set.
+- In an isolated UE 5.6 editor without the legacy native source or assets,
+  the current BP review map loaded. Its 106-package project dependency closure
+  contained no removal candidates or `/Script/MCPGameProject` or
+  `/Script/UnrealMCP` dependency. The four retained Blueprints use engine
+  Actor/CameraActor parents and compiled with zero errors and warnings.
+- After cleanup, all 95 removal paths were absent, all 152 explicitly retained
+  local files were present, and the project Source tree matched main.
+  The project C++ gate passed without an approval-code override.
+- The cleaned local `MCPGameProjectEditor Win64 Development` target built
+  successfully with UE 5.6. The project module and corrected UnrealMCP module
+  were rebuilt.
+- This cleanup does not assert new PIE visual approval or cook/package coverage.
+  Existing visual limitations in the QA record remain applicable.
+
+## Recovery
+
+Before removal, all 95 files and the prior local `Build.cs` were archived and
+verified by per-file SHA-256. The local deliverables are
+`cleanup-recovery-2026-09-06.zip` and `cleanup-manifest.json` in this task's
+outputs. The manifest lists every removed path, hash, and retained file.
+The archive is local recovery material and is not committed to Git. The
+[tracked manifest](Analysis/LocalCleanup/20260906_manifest.json) retains the
+exact reviewed path inventory and hashes without machine-specific paths.
+
+Unrelated `Content/Template/Empty.umap`, attachments, the nested Sites
+repository, and unfinished cloud work remain outside this cleanup.

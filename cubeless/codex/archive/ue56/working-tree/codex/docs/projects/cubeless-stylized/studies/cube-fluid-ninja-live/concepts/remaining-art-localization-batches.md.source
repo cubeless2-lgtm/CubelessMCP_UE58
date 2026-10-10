@@ -1,0 +1,436 @@
+# Cube Fluid Ninja Live: remaining art localization batches
+
+## 목적과 현재 상태
+
+- 기준일: 2026-09-01.
+- 목적: 완료된 172개 texture/volume 지역화를 반복하지 않고, 남은 128개
+  art payload의 정확한 source package, target mapping, 선행 조건, 실행 순서를
+  고정한다.
+- 이 문서를 작성하면서 Unreal Editor, bridge, source/target Unreal asset, C++를
+  변경하지 않았다. 모든 수치는 동결된 JSON, 완료 report, package 파일과 기존
+  정적 관찰 문서를 읽어 산출했다.
+- 현재 판정은 `offline-plan-complete; native-preflight/runtime/parity-pending`이다.
+  아래의 `F1`도 실행 성공을 뜻하지 않는다.
+- 후속 진행으로 A04 safe subset 25개는 이미 지역화됐고, 잔여
+  `DefaultVisualizationMesh`용 clean-room debug Material도 live compile/inspection/
+  dependency audit를 통과했다. 잔여 mesh 1개는
+  `a04-default-visualization` exact group으로 구현·offline 검증됐으며 live
+  dry-run/execute/reload만 남았다. 아래 128행 표는 최초 동결 batch baseline이다.
+- A07 safe subset 12개도 완료됐고, 잔여 Grass/Black Alder 2개는
+  `a07-residual-foliage` exact group과 세 clean-room MI replacement로 구현·offline
+  검증됐다. Material builder `execute_v003` 성공 report와 mesh live 실행은 pending이다.
+- A13 Component Chaos 2개도 완료됐다. StaticMesh prerequisite를 먼저 지역화하고,
+  one-chunk GeometryCollection은 exact managed-array payload만 허용 예외로 가져온 뒤
+  GeometrySource/import provenance를 제거했다. fresh-editor에서 RootProxyData를 포함한
+  exact pair와 Art 321개 감사를 통과했고 UnrealMCP-disabled native load도 통과했다.
+
+## 확정 사실
+
+1. 정본 inventory는 1,796 asset, 695,773,968 bytes다.
+   `reference_inventory.json`의 SHA-256은
+   `45b554df454a788f9dfbea012812b356b0b092fc48f256b61b0b091d8e0f9759`다.
+2. 완료 report
+   `target/art/20260901_material_textures_localize_v001/art_localization_report.json`
+   에 기록된 실제 source set은 Texture2D 166 + VolumeTexture 6 = 172개,
+   150,696,364 bytes다. created/saved 172/172, failure 0,
+   `dependency_independence_pass=true`다. report 파일 SHA-256은
+   `19aefa351040ddf23b33d5effc24c78299e1d7b853d08809644f33660b0e30c6`다.
+3. 실행 후보 전체 closure 300개에서 완료 report의 exact 172 package를 빼면
+   아래 128개, 157,303,208 bytes가 남는다. 단순히 1,796개 전체에서 뺀
+   차집합이 아니다.
+4. 남은 집합을 package ordinal로 정렬해
+   `class<TAB>bytes<TAB>package<LF>`로 UTF-8/BOM 없음 직렬화하면 9,963 bytes,
+   SHA-256
+   `01fce6d198038e974bcb21fe58c767d746954794b29a5d1ab246bb1e375d40b7`다.
+5. 현재 파일시스템에서 preserve-relative target 128개와 같은 `.uasset`은 0개다.
+   `/Game/Study/CubeFluidNinjaLive/Art`의 기존 172개와 충돌하지 않는다. 실행
+   직전에는 Asset Registry로 다시 확인해야 한다.
+6. `reference_source_hashes.json`의 1,796개를 현재 source package 파일과 다시
+   대조한 결과 missing 0, size mismatch 0, SHA-256 mismatch 0이다.
+
+### Class 합계
+
+| Class | Count | Source bytes |
+| --- | ---: | ---: |
+| Texture2D | 34 | 62,608,138 |
+| StaticMesh | 56 | 41,019,068 |
+| SkeletalMesh | 2 | 15,854,477 |
+| Skeleton | 2 | 201,366 |
+| PhysicsAsset | 2 | 313,746 |
+| AnimSequence | 28 | 19,492,037 |
+| GeometryCollection | 3 | 12,132,296 |
+| SoundWave | 1 | 5,682,080 |
+| **합계** | **128** | **157,303,208** |
+
+## 사실과 가정의 경계
+
+### 증거로 확정된 것
+
+- 34개 Texture2D는 59개 World의 direct internal dependency이면서 완료된
+  material-visible 172개에는 없는 집합이다.
+- 51개 StaticMesh, 3개 GeometryCollection, 1개 SoundWave는 59개 World direct
+  dependency다. StaticMesh 5개는 collision/GeometryCollection support edge를
+  닫기 위해 추가한 closure다.
+- AnimSequence 28개는 captured current AnimBP motion 25개와 active single-node
+  motion 3개다.
+- mannequin과 vehicle의 mesh/skeleton/physics trio는 캡처된 상호 참조와
+  runtime host 관찰로 선택됐다.
+- pending package의 offline string audit에서 15개 논리 blocker가 발견됐다.
+  A03에 9개, A04에 1개, A05에 2개, A07에 3개가 대응한다.
+
+### 아직 가정하거나 검증하지 않은 것
+
+- offline string hit는 hard/soft/searchable/manage dependency 종류를 구분하지
+  않는다. `localize_art_assets_mcp` native dry-run 결과가 아직 없으므로 알려진
+  blocker 15개가 완전한 dependency 목록이라고 가정하지 않는다.
+- `F1` batch는 현재 증거에서 알려진 논리 blocker가 없고 strict art route가
+  존재한다는 뜻이다. dependency-free 실행 가능성이 live preflight로 증명됐다는
+  뜻이 아니다.
+- StaticMesh/SkeletalMesh의 LOD, material slot, collision, morph, cloth, socket,
+  post-process AnimClass exact descriptor는 아직 없다.
+- AnimSequence의 전체 curve key, 압축 전후 pose 오차, modifier user-data 제거
+  결과는 아직 수치 검증하지 않았다.
+- GeometryCollection의 embedded fracture 결과가 Dataflow 없이 reload/runtime에
+  충분한지는 아직 모른다.
+- SoundWave decoded PCM hash, cook, plugin-disabled load, visual/audio parity는
+  아직 수행하지 않았다.
+
+## 지역화 가능성 등급
+
+| 등급 | 의미 | 실행 규칙 |
+| --- | --- | --- |
+| `F1-payload-preflight` | strict art class이며 현재 offline audit에 알려진 논리 blocker가 없음 | native dry-run에서 새 dependency가 나오면 즉시 `F2`로 내린다 |
+| `F2-replacement-required` | art payload는 허용되지만 target-local art family 재결선 또는 clean-room 논리 replacement/strip이 필수 | replacement가 먼저 존재하고 dry-run residual이 0일 때만 실행한다 |
+| `F3-explicit-exception` | exact topology를 정적 관찰만으로 재생성할 수 없어 사용자의 art-localization 예외가 필요한 GeometryCollection | `allow_geometry_collection=true`, 구체적 reason, Dataflow/material 제거 증거가 모두 필요하다 |
+
+이 등급은 사용자 허용 범위를 좁혀 표현한 실행 준비도다. Material, Blueprint,
+AnimBlueprint, ControlRigBlueprint, Dataflow, Niagara graph/module/Scratch Pad는 어느
+등급에서도 복제하지 않는다.
+
+## Target mapping과 공통 gate
+
+모든 행의 target은 다음 하나의 함수로 결정한다.
+
+```text
+target = /Game/Study/CubeFluidNinjaLive/Art
+       + source.remove_prefix('/Game/FluidNinjaLive')
+```
+
+예를 들어
+`/Game/FluidNinjaLive/Meshes/Chaos/Cube_dup1`은
+`/Game/Study/CubeFluidNinjaLive/Art/Meshes/Chaos/Cube_dup1`이 된다. 이름과
+상대 폴더는 provenance와 collision 방지를 위해 보존하지만 source dependency로
+간주하지 않는다.
+
+각 batch는 다음 순서로만 승격한다.
+
+1. source 1,796 hash mismatch 0과 batch manifest hash를 재확인한다.
+2. exact target가 모두 absent인지 확인하고 `reuse_existing_targets=false`를 유지한다.
+3. exact batch 전부와 필요한 support art를 같은 closure로 선택한다.
+4. clean-room Material/ControlRig/compression/Dataflow 대체가 필요한 경우 target
+   asset을 먼저 만들고 exact `dependency_replacements`를 제공한다.
+5. `allow_residual_source_dependencies=false`, `stop_on_failure=true`, `dry_run=true`로
+   native preflight를 실행한다. blocked item이 하나라도 있으면 실행하지 않는다.
+6. dry-run이 forbidden logic, unsupported game, residual source, MCP-only 0일 때만
+   그 dry-run의 고정 token으로 실행한다.
+7. created/saved count exact, partial mutation false, save-close-reload, descriptor,
+   recursive dependency와 serialized UTF-8/UTF-16 문자열을 감사한다.
+8. `/Game/FluidNinjaLive`, `/Game/_MCP_Temp`, `/Script/UnrealMCP`, `/UnrealMCP`,
+   `UnrealMCP`, `MCPUnreal`, `mcp_unreal` hit가 하나라도 있으면 batch를 완료로
+   올리지 않는다.
+
+## 결정적 batch 순서
+
+각 batch manifest도 같은 `class<TAB>bytes<TAB>package<LF>` 규칙과 package
+ordinal sort를 사용한다.
+
+| Batch | Count | Bytes | 등급 | Manifest SHA-256 | 선행 조건과 판정 |
+| --- | ---: | ---: | --- | --- | --- |
+| `A01` level-direct textures | 34 | 62,608,138 | F1 | `e3d06a7e840defe4f48c9ee3d2919c8d88c425334b29d878ff00833897606042` | 172 report 재사용; texture descriptor/hash gate |
+| `A02` static support | 5 | 467,802 | F1 | `ba080b09432203faca88edc47c753d4d10e9e9216c66a0cbc582ecc544d065c4` | consumer보다 먼저 생성; native preflight가 material을 찾으면 target material 필요 |
+| `A03` current mannequin | 31 | 35,815,036 | F2 | `0445a36b5de41de9222f070202ef9bd92a42224cd0480977c57114d1a51a37e9` | trio+28 motion을 한 closure로 재결선; 아래 9 blocker 처리 |
+| `A04` Starter static | 26 | 15,426,046 | F2 | `8d590729b34aa1d1234282b55a88f0123a0e3ec696ab49768dde13f73e5376c4` | safe 25 complete; residual 1 exact group + target debug Material ready; live localization pending |
+| `A05` direct GeometryCollection | 3 | 12,132,296 | F3 | `c9a905c19920d38021cee22d65b6673814328024a54b455c9cf8c9596f9bd017` | A02의 Cube support; explicit exception; checker/Dataflow 제거 |
+| `A06` vehicle family | 3 | 46,590 | F2 | `e3c3f4cbc94e4f6ab2620f5ad7e82c2cd80c1671112959880c0b4ff64bb194bb` | trio를 한 closure로 재결선; runtime controller는 clean-room 별도 저작 |
+| `A07` recurrent non-Starter static | 14 | 15,564,296 | F2 | `f9ad942fc9fc3336f86703b60364d53fcc0009c59048f1a84bb27981eaaa5906` | safe 12 complete; residual 2 exact group ready; Material v003/live localization pending |
+| `A08` single non-Starter static | 11 | 9,560,924 | F1 | `b22068acb8b9027a1fa24e76a862f60e59c54de27d4d1b8bf2666a7b9bc7a1fb` | A02의 mountain support; asset별 material/collision preflight |
+| `A09` sound | 1 | 5,682,080 | F1 | `462587c8332746dadc9d04ea22e2fd199f153ab5ac1bbb0af30abd94bc82d166` | channel/rate/duration/decoded PCM와 loop/compression 비교 |
+| `A10` level prerequisite residual | 5 | 16,953,803 | F2 | `9fd2fecfbf4fd526a7228e201e359bcedc4570035275239779b704737567da2f` | 59-map typed manifest와 실제 localized root 대조 뒤 발견한 static mesh 3 + legacy AnimSequence 2 exact closure |
+| `A11` level prerequisite closure | 4 | 7,381,153 | F2 | `00b6e1879dcc14794a9f13e2919d3acfde50a331f9e6abcb815af4cdfd6878cc` | A10 dry-run이 정확히 드러낸 legacy mannequin skeleton/mesh/physics trio + drone collision mesh 선행 closure |
+| `A12` Component velocity-null texture | 1 | 4,441 | F1 | `b916178e505c920ffd20acfeb04386092e8ab3ee73ebf45ecad099896e2805bd` | `NinjaLiveComponent` CDO의 별도 `T_VelocityNull` 직접 의존성; 기존 `T_1x1_VelocityNull_RGBA`와 이름·패키지가 달라 exact 단일 지역화 |
+| `A13a` Component Chaos source mesh | 1 | 17,118 | F1 | `f76e59368436ba3fe92fa33d7b6c40d88ff99a202ae7750491291ee3afdff681` | one-chunk GeometryCollection의 `GeometrySource`/AutoInstance 런타임 참조를 먼저 target-local로 치환하기 위한 exact StaticMesh 지역화 |
+| `A13b` Component Chaos collection | 1 | 21,932 | F3 | `b5491449f15d02df6a919c36d45b896a738b143b86728a26b7e5ea5cd032ec26` | bounded capture에 managed-array 파쇄 payload가 없어 독립 재구성 불가; 사용자 허용 예외로 exact payload 지역화 후 GeometrySource/import provenance만 제거. fresh pair/audit/plugin-disabled 완료 |
+| **합계** | **135** | **164,727,852** |  |  |  |
+
+### 알려진 blocker 15개의 batch 귀속
+
+| Batch | Blocker | 필수 처리 |
+| --- | --- | --- |
+| A03 | `MI_Manny_01_White`, `MI_Manny_02_White` | 관찰값으로 새 target Material/MI를 만들고 mesh slot을 replacement |
+| A03 | animation modifier Blueprint 5개 | baked curve/marker는 검증해 보존하고 modifier user data/source path는 제거 |
+| A03 | `CR_Mannequin_Body` | post-process reference를 제거하거나 target ControlRig를 clean-room 저작 |
+| A03 | `AnimCurveCompressionSettings` | target-local recipe를 새로 만들거나 Engine default 오차를 수치 검증 |
+| A04 | `MI_DefaultMaterial_ForVisualizationMesh` | target debug Material live 검수 완료; exact residual mapping 구현·offline PASS, mesh live 실행 pending |
+| A05 | `MI_CheckerRed_NonEmissive` | target checker material로 replacement |
+| A05 | `FracturedMesh_568chunks_Clustered_Dataflow` | graph 복제 금지; embedded result만으로 검증하거나 target Dataflow를 새 저작 |
+| A07 | `MI_BlackAlder_Tileable`, `MI_BlackAlder_TwoSided`, `MI_Grass1_Masked` | clean-room target MI 3개 exact replacement 구현·offline PASS; Material v003/live mesh pending |
+
+### A04 residual exact-group 계약
+
+완료된 safe subset 25개를 재선택하지 않기 위해 full `a04-starter-static`을 다시
+실행하지 않는다. localizer의 새 `a04-default-visualization` group은 아래 frozen
+row만 `exact_packages`로 고른다.
+
+| Class | Bytes | Source | Manifest SHA-256 |
+| --- | ---: | --- | --- |
+| StaticMesh | 17,155 | `/Game/FluidNinjaLive/Core/Assets/DefaultVisualizationMesh` | `7b62d82122750e6ba2b76691cf9517997d4d2131012b115d61d16e1fcc96a36a` |
+
+target은 preserve-relative 규칙에 따라
+`/Game/Study/CubeFluidNinjaLive/Art/Core/Assets/DefaultVisualizationMesh`다. 실행 요청은
+다음 exact replacement를 포함한다.
+
+```text
+/Game/FluidNinjaLive/Core/Assets/MI_DefaultMaterial_ForVisualizationMesh
+  -> /Game/Study/CubeFluidNinjaLive/Art/Core/Assets/DebugVisualizationMaterial/M_CFNL_DebugVisualization
+```
+
+localizer는 mapping을 넣기 전에 target Material `.uasset`과 성공한
+`debug_visualization_material_builder_report.json`을 모두 요구한다. report에서
+execute/mutation, compile/save, complete inspection, exact 1-Material audit,
+source/temp/MCP/dirty/redirector 0을 재검증한다. selection drift, 불완전 report,
+missing target은 Editor 연결 전에 실패한다. exact package, replacement,
+non-overwrite/zero-residual 정책 전체가 dry-run `selection_token`에 묶인다.
+
+전용 offline 회귀 검증은 다음이다.
+
+```powershell
+uv --directory .\Python run python -m unittest scripts.analysis.test_cube_fluid_ninja_art_localizer -v
+```
+
+현재 검증 결과는 9/9 PASS다. 이 수치는 live localization 성공을 뜻하지 않는다.
+다음 단계는 mutation 없는 group dry-run에서 planned `1`, unresolved/forbidden/
+residual/MCP `0`을 확인하고, 그 report token으로만 execute한 뒤 mesh slot reload와
+dependency audit를 수행하는 것이다.
+
+### A07 residual foliage exact-group 계약
+
+완료된 safe subset 12개를 재선택하지 않는다. `a07-residual-foliage`는 아래 두
+StaticMesh만 `exact_packages`로 선택한다.
+
+| Count | Bytes | Manifest SHA-256 | Source set |
+| ---: | ---: | --- | --- |
+| 2 | 7,670,893 | `4d0ea7dcc6dc7850fa1d78c36213bc09d4406e964189a1449a70617c14dfa201` | `Meshes/Grass/SM_Grass`, `Meshes/Tree/SM_BlackAlder_Forest_Simple` |
+
+명시 replacement는 Grass source MI → clean-room Grass MI, Tree tileable source MI →
+clean-room trunk MI, Tree two-sided source MI → clean-room leaves MI의 세 행이다.
+source Material parent/Function/MPC/RT는 가져오지 않는다.
+
+group은 기본 `20260901_a07_foliage_materials_verification_resume_v003` 성공 report 또는
+`--a07-material-report-path`로 명시한 report를 bridge 연결 전에 검증한다. builder
+contract SHA/token, target `.uasset` 6개, base compile 3개, 21/23/26-node inspection,
+MI parent/override 3개, exact root Material 3 + MI 3 audit와 source/temp/MCP/dirty/
+redirector 0이 모두 필요하다. report SHA와 canonical target-audit SHA는 localizer
+report의 prerequisite evidence로 남는다.
+
+focused localizer test는 현재 17/17 PASS이고 reviewed partial-recovery test는
+11/11 PASS다. 이는 exact selection/replacement/non-overwrite/token 및 기존 target
+SHA-256/size 재사용 계약의 offline 통과이며, residual mesh recovery live 성공을
+뜻하지 않는다. 자세한 수식, target 경로, 명령과
+descriptor parity gate는 `Docs/Analysis/CubeFluidNinjaLive_A07_Residual_Foliage.md`가
+정본이다.
+
+## Exact pending manifest 128
+
+아래 행은 batch 안에서도 source package ordinal 순이다. Bytes는 source
+inventory의 `disk_size_bytes`이며 cooked size나 resident memory가 아니다.
+
+| Batch | Class | Bytes | Source package |
+| --- | --- | ---: | --- |
+| A01 | Texture2D | 9,653 | `/Game/FluidNinjaLive/Core/Assets/T_1x1_VelocityNull_RGBA` |
+| A01 | Texture2D | 9,450 | `/Game/FluidNinjaLive/Core/Assets/T_1x1_white_RGBA` |
+| A01 | Texture2D | 144,115 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_PaintBuffer_163` |
+| A01 | Texture2D | 1,907,266 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_PressureDivergenceBuffer_163` |
+| A01 | Texture2D | 7,195,884 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_VelocityDensityBuffer_163` |
+| A01 | Texture2D | 2,225,754 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PaintBuffer_625_Dam` |
+| A01 | Texture2D | 767,371 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PaintBuffer_757` |
+| A01 | Texture2D | 1,530,302 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PaintBuffer_989` |
+| A01 | Texture2D | 5,556,572 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PressureDivergenceBuffer_625_Dam` |
+| A01 | Texture2D | 7,081,813 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PressureDivergenceBuffer_757` |
+| A01 | Texture2D | 7,407,063 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_PressureDivergenceBuffer_989` |
+| A01 | Texture2D | 9,908 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_SceneCaptureHeight_725` |
+| A01 | Texture2D | 8,342,344 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_VelocityDensityBuffer_625_Dam` |
+| A01 | Texture2D | 8,909,268 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_VelocityDensityBuffer_757` |
+| A01 | Texture2D | 10,821,592 | `/Game/FluidNinjaLive/Input/Cache/T_Cache_VelocityDensityBuffer_989` |
+| A01 | Texture2D | 285,581 | `/Game/FluidNinjaLive/Meshes/Rock/T_Bedrock_collision_shallow` |
+| A01 | Texture2D | 10,260 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient` |
+| A01 | Texture2D | 6,454 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient2` |
+| A01 | Texture2D | 6,536 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient3` |
+| A01 | Texture2D | 7,309 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient4` |
+| A01 | Texture2D | 17,129 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient5` |
+| A01 | Texture2D | 18,122 | `/Game/FluidNinjaLive/Textures/T_Bar_Gradient6` |
+| A01 | Texture2D | 4,932 | `/Game/FluidNinjaLive/Textures/T_Candle1` |
+| A01 | Texture2D | 15,210 | `/Game/FluidNinjaLive/Textures/T_PolarCoordinates1_velocity` |
+| A01 | Texture2D | 15,435 | `/Game/FluidNinjaLive/Textures/T_PolarCoordinates3_velocity` |
+| A01 | Texture2D | 8,889 | `/Game/FluidNinjaLive/Textures/T_Streak` |
+| A01 | Texture2D | 8,836 | `/Game/FluidNinjaLive/Textures/T_StreakFlip` |
+| A01 | Texture2D | 9,694 | `/Game/FluidNinjaLive/Textures/T_StreakFlipWide` |
+| A01 | Texture2D | 9,398 | `/Game/FluidNinjaLive/Textures/T_StreakFlipWide2` |
+| A01 | Texture2D | 31,085 | `/Game/FluidNinjaLive/Textures/T_TurbulenceOutward_velocity` |
+| A01 | Texture2D | 26,497 | `/Game/FluidNinjaLive/Textures/T_TurbulenceRound_velocity` |
+| A01 | Texture2D | 29,843 | `/Game/FluidNinjaLive/Textures/T_TurbulenceUpward_velocity` |
+| A01 | Texture2D | 8,199 | `/Game/FluidNinjaLive/Textures/T_VerticalDown_SideInward_velocity` |
+| A01 | Texture2D | 170,374 | `/Game/FluidNinjaLive/Textures/T_waves_rot90` |
+| A02 | StaticMesh | 39,374 | `/Game/FluidNinjaLive/Meshes/Boulder/SM_Boulder_LowresCollisionGeo` |
+| A02 | StaticMesh | 17,107 | `/Game/FluidNinjaLive/Meshes/Chaos/Cube_dup1` |
+| A02 | StaticMesh | 17,079 | `/Game/FluidNinjaLive/Meshes/Chaos/Cube_dup2` |
+| A02 | StaticMesh | 197,270 | `/Game/FluidNinjaLive/Meshes/Mountain/SM_Mountain_SimplifiedCollisionMesh` |
+| A02 | StaticMesh | 196,972 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Ship02_Collision` |
+| A03 | AnimSequence | 483,137 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Jog_Bwd` |
+| A03 | AnimSequence | 417,412 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Jog_Bwd_Left` |
+| A03 | AnimSequence | 417,414 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Jog_Bwd_Right` |
+| A03 | AnimSequence | 606,691 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Bwd` |
+| A03 | AnimSequence | 537,640 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Bwd_Left` |
+| A03 | AnimSequence | 537,514 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Bwd_Right` |
+| A03 | AnimSequence | 475,653 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Fwd` |
+| A03 | AnimSequence | 411,417 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Fwd_Left` |
+| A03 | AnimSequence | 411,411 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Fwd_Right` |
+| A03 | AnimSequence | 486,422 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Left` |
+| A03 | AnimSequence | 491,804 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MF_Unarmed_Walk_Right` |
+| A03 | AnimSequence | 663,094 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MM_DashMini` |
+| A03 | AnimSequence | 1,436,418 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MM_Idle` |
+| A03 | AnimSequence | 409,871 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/MM_Land` |
+| A03 | AnimSequence | 682,907 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_F1` |
+| A03 | AnimSequence | 672,815 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_FL1` |
+| A03 | AnimSequence | 672,797 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_FR1` |
+| A03 | AnimSequence | 673,194 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_F_L_21` |
+| A03 | AnimSequence | 673,278 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Run_Loop_F_R_21` |
+| A03 | AnimSequence | 914,621 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_F1` |
+| A03 | AnimSequence | 902,177 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_FL1` |
+| A03 | AnimSequence | 902,148 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_FR1` |
+| A03 | AnimSequence | 901,264 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_F_L_21` |
+| A03 | AnimSequence | 901,204 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Sprint_Loop_F_R_21` |
+| A03 | AnimSequence | 2,322,334 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Stand_Idle_Loop1` |
+| A03 | AnimSequence | 1,020,550 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/M_Neutral_Walk_Loop_F1` |
+| A03 | AnimSequence | 210,873 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/ThirdPersonJump_Loop` |
+| A03 | AnimSequence | 255,977 | `/Game/FluidNinjaLive/Meshes/Mannequin/Animations/ThirdPersonWalk` |
+| A03 | SkeletalMesh | 15,828,821 | `/Game/FluidNinjaLive/Meshes/Mannequin/Mesh/SKM_Manny_Simple` |
+| A03 | Skeleton | 191,105 | `/Game/FluidNinjaLive/Meshes/Mannequin/Mesh/SK_Mannequin` |
+| A03 | PhysicsAsset | 303,073 | `/Game/FluidNinjaLive/Meshes/Mannequin/Rigs/PA_Mannequin` |
+| A04 | StaticMesh | 17,155 | `/Game/FluidNinjaLive/Core/Assets/DefaultVisualizationMesh` |
+| A04 | StaticMesh | 49,888 | `/Game/FluidNinjaLive/Core/Assets/SM_NinjaLogo_LIVE2` |
+| A04 | StaticMesh | 90,480 | `/Game/FluidNinjaLive/Core/Assets/SM_NinjaLogo_N` |
+| A04 | StaticMesh | 21,743 | `/Game/FluidNinjaLive/Core/Assets/SM_NinjaLogo_TEXT2` |
+| A04 | StaticMesh | 1,015,391 | `/Game/FluidNinjaLive/Meshes/Boulder/SM_Boulder_SharpEdges` |
+| A04 | StaticMesh | 1,313,373 | `/Game/FluidNinjaLive/Meshes/Boulder/SM_Boulder_SmoothedEdges` |
+| A04 | StaticMesh | 152,015 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_100x100` |
+| A04 | StaticMesh | 368,919 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_200x200` |
+| A04 | StaticMesh | 610,576 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_200x200_Boxed` |
+| A04 | StaticMesh | 104,381 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_20x20` |
+| A04 | StaticMesh | 593,768 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_300x300` |
+| A04 | StaticMesh | 1,519,456 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_500x500` |
+| A04 | StaticMesh | 1,869,449 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_500x500_DistantLOD` |
+| A04 | StaticMesh | 3,164,687 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_500x500_MultiLOD` |
+| A04 | StaticMesh | 19,661 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_8x8` |
+| A04 | StaticMesh | 107,134 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_Arch1` |
+| A04 | StaticMesh | 99,730 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_Cube` |
+| A04 | StaticMesh | 126,415 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_Cylinder` |
+| A04 | StaticMesh | 502,551 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_Mountain` |
+| A04 | StaticMesh | 151,792 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_Sphere` |
+| A04 | StaticMesh | 104,542 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_TetrisBlock` |
+| A04 | StaticMesh | 303,967 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_WaterfallHull_lo` |
+| A04 | StaticMesh | 115,801 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_geosphere01` |
+| A04 | StaticMesh | 180,280 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Mesh01` |
+| A04 | StaticMesh | 499,492 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Plane04` |
+| A04 | StaticMesh | 2,323,400 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Ship03` |
+| A05 | GeometryCollection | 1,328,358 | `/Game/FluidNinjaLive/Meshes/Chaos/FracturedMesh_136chunks` |
+| A05 | GeometryCollection | 344,462 | `/Game/FluidNinjaLive/Meshes/Chaos/FracturedMesh_34chunks` |
+| A05 | GeometryCollection | 10,459,476 | `/Game/FluidNinjaLive/Meshes/Chaos/FracturedMesh_568chunks_Clustered` |
+| A06 | SkeletalMesh | 25,656 | `/Game/FluidNinjaLive/Meshes/Vehicle/Mesh/SKM_QuadDrone` |
+| A06 | Skeleton | 10,261 | `/Game/FluidNinjaLive/Meshes/Vehicle/Mesh/SK_Vehicle` |
+| A06 | PhysicsAsset | 10,673 | `/Game/FluidNinjaLive/Meshes/Vehicle/Rig/PA_Vehicle` |
+| A07 | StaticMesh | 720,363 | `/Game/FluidNinjaLive/Meshes/Grass/SM_Grass` |
+| A07 | StaticMesh | 507,012 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_200x200_LOD` |
+| A07 | StaticMesh | 1,016,813 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_300x300_DistantLOD` |
+| A07 | StaticMesh | 966,934 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_400x400` |
+| A07 | StaticMesh | 138,629 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_50x50` |
+| A07 | StaticMesh | 509,523 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_KettleHard` |
+| A07 | StaticMesh | 761,726 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_WaterfallHull_med` |
+| A07 | StaticMesh | 275,204 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_sphere_100segments_SimpleCollision` |
+| A07 | StaticMesh | 748,540 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_sphere_200segments` |
+| A07 | StaticMesh | 426,474 | `/Game/FluidNinjaLive/Meshes/Rock/SM_Rock1` |
+| A07 | StaticMesh | 6,950,530 | `/Game/FluidNinjaLive/Meshes/Tree/SM_BlackAlder_Forest_Simple` |
+| A07 | StaticMesh | 151,619 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Mesha` |
+| A07 | StaticMesh | 136,627 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Plane02b` |
+| A07 | StaticMesh | 2,254,302 | `/Game/FluidNinjaLive/Meshes/Wreck/wreck4_Ship02` |
+| A08 | StaticMesh | 316,935 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_LOD1_Aset_wood_firewood_S_udyjbjxva_00_LOD1` |
+| A08 | StaticMesh | 288,887 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_LOD1_Aset_wood_firewood_S_udyjbjxva_02_LOD1` |
+| A08 | StaticMesh | 289,808 | `/Game/FluidNinjaLive/Meshes/Bonfire/udyjbjxva_LOD1_Aset_wood_firewood_S_udyjbjxva_03_LOD1` |
+| A08 | StaticMesh | 595,384 | `/Game/FluidNinjaLive/Meshes/Bonfire/uenpfeifa_LOD0` |
+| A08 | StaticMesh | 502,649 | `/Game/FluidNinjaLive/Meshes/Mountain/SM_Mountain_CollisionEnabled` |
+| A08 | StaticMesh | 18,271 | `/Game/FluidNinjaLive/Meshes/Planes/SM_dashline` |
+| A08 | StaticMesh | 5,778,895 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_200x200_Twisted` |
+| A08 | StaticMesh | 1,016,987 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_300x300_LOD` |
+| A08 | StaticMesh | 99,609 | `/Game/FluidNinjaLive/Meshes/Planes/SM_plane_8x8_centerpivot` |
+| A08 | StaticMesh | 508,362 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_KettleSoft` |
+| A08 | StaticMesh | 145,137 | `/Game/FluidNinjaLive/Meshes/Primitives/SM_bendedplane_50x50` |
+| A09 | SoundWave | 5,682,080 | `/Game/FluidNinjaLive/Misc/S_waves_audio` |
+| A10 | StaticMesh | 99,395 | `/Game/FluidNinjaLive/Core/Assets/SM_CameraPlane` |
+| A10 | AnimSequence | 225,996 | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimationsLegacy/Legacy_ThirdPersonRun` |
+| A10 | AnimSequence | 277,249 | `/Game/FluidNinjaLive/Meshes/Mannequin/AnimationsLegacy/Legacy_ThirdPersonWalk` |
+| A10 | StaticMesh | 15,715,454 | `/Game/FluidNinjaLive/Meshes/Vehicle/Mesh/SM_QuadDrone_frame` |
+| A10 | StaticMesh | 635,709 | `/Game/FluidNinjaLive/Meshes/Vehicle/Mesh/SM_QuadDrone_wheel` |
+| A11 | SkeletalMesh | 5,199,167 | `/Game/FluidNinjaLive/Meshes/Mannequin/Mesh/SKM_Mannequin_UE4` |
+| A11 | PhysicsAsset | 141,229 | `/Game/FluidNinjaLive/Meshes/Mannequin/Mesh/SK_Mannequin_PhysicsAsset` |
+| A11 | Skeleton | 23,100 | `/Game/FluidNinjaLive/Meshes/Mannequin/Mesh/SK_Mannequin_UE4` |
+| A11 | StaticMesh | 2,017,657 | `/Game/FluidNinjaLive/Meshes/Vehicle/Mesh/SM_QuadDrone_frame_collision` |
+| A12 | Texture2D | 4,441 | `/Game/FluidNinjaLive/Core/Assets/T_VelocityNull` |
+| A13 | StaticMesh | 17,118 | `/Game/FluidNinjaLive/Core/Assets/ChaosSimpleCube` |
+| A13 | GeometryCollection | 21,932 | `/Game/FluidNinjaLive/Core/Assets/ChaosDummyGeoCollection_1chunk` |
+
+### A10/A11 사전검증 결과
+
+`20260901_art_a10_plan_v001`은 선택 자산을 건드리기 전에 멈췄다. 래퍼가
+이미 localized된 297개 아트를 모두 치환 후보로 보냈지만, 현재 native 계약이
+요구하는 replacement-target `.uasset` 경로/클래스/bytes/SHA-256 증거를 보내지
+않은 것이 원인이었다. 이 실행은 `mutation_attempted=false`,
+`mutation_performed=false`이며 결과 자산이 없다.
+
+래퍼는 A10에 실제 관찰된 기존 texture dependency 13개만 허용하고, 각 target의
+exact file evidence를 요청과 confirmation token에 함께 결속하도록 수정했다.
+`20260901_art_a10_plan_v002`에서 13개 증거 모두 native file-integrity 검사를
+통과했고 global error는 297개에서 0개가 되었다. 남은 실제 blocker는 다음이다.
+
+- clean-room 상위 Material Interface 4개: `M_Null`, `M_QuadDrone`,
+  `M_UE4Man_Body`, `M_UE4Man_ChestLogo`
+- 명시적으로 함께 localize해야 하는 allowlisted art 4개:
+  `SKM_Mannequin_UE4`, `SK_Mannequin_UE4`,
+  `SK_Mannequin_PhysicsAsset`, `SM_QuadDrone_frame_collision`
+- legacy Material Function 4개는 `M_UE4Man_Body`/`M_UE4Man_ChestLogo` 아래에서만
+  도달한다. 상위 clean-room target이 replacement traversal boundary가 되므로
+  복제하거나 별도 target으로 가져오지 않는다.
+
+따라서 A11과 네 clean-room Material을 먼저 완료한 뒤 A10을 재실행한다. v002도
+`dry_run_dirty_invariant_pass=true`, `mutation_attempted=false`,
+`mutation_performed=false`여서 안전하게 재시도할 수 있다.
+
+`20260901_art_a11_plan_v001`은 같은 13개 target file evidence를 모두 통과했다.
+선택한 네 자산 사이의 Skeleton/SkeletalMesh/PhysicsAsset 순환 참조는 같은 batch의
+selected boundary로 정상 인식되어 unselected-art가 0이었다. 실제 blocker는
+`M_UE4Man_Body`, `M_UE4Man_ChestLogo`, `M_QuadDrone` 세 상위 Material Interface뿐이다.
+두 mannequin 상위 target이 생기면 아래 legacy Material Function 네 개는 traversal
+대상에서 사라진다. 이 실행도 global error 0, dirty invariant pass,
+`mutation_attempted=false`, `mutation_performed=false`다.
+
+## 완료 정의
+
+135개 파일이 target에 존재하는 것만으로는 완료가 아니다. 다음이 모두 참일 때
+이 문서의 상태를 `complete`로 올린다.
+
+- 각 batch report의 requested/created/saved/readback count가 exact manifest와 같다.
+- source/temporary/MCP dependency와 serialized string hit가 모두 0이다.
+- selected art family의 내부 참조는 전부 target-local이다.
+- 알려진 15개 논리 blocker는 복제되지 않았고 replacement/strip/clean-room
+  재저작 근거가 남아 있다.
+- class별 descriptor, save-close-reload, cook/plugin-disabled load가 통과한다.
+- 해당 art를 소비하는 level fixture에서 원본과 target의 visual, motion,
+  collision, fracture 또는 audio parity가 승인된다.

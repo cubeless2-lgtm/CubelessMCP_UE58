@@ -1,0 +1,102 @@
+# Bitmap 입력 파이프라인 — 2026-09-05
+
+## 영구 Study 자산
+
+`/Game/Study/CubeFluidNinjaLive/Niagara/Core/Foundations/NS_CFNL_BitmapInputPipeline_v001`
+
+SHA256 `a19176802b5b73a25a2a55b068677ef028f44af9f09f0b93cba6eefa6702dc38`.
+
+독립 저작한 temp 후보를 기술 검증 후 Study로 승격했다. 원본 FluidNinja 자산을
+복제한 것이 아니다. 후보에서 새로 만든 scratch와 native engine 모듈만 포함한다.
+temp 후보는 보존했으며 Study 자산에 temp/원본/UnrealMCP 참조는 없다.
+이 자산은 **입력 foundation**이며 완성된 NinjaLiveCore나 최종 effect가 아니다.
+
+## 구현 흐름
+
+세 simulation stage가 같은 64×64 Grid를 순차적으로 읽고 쓴다.
+뒤 단계는 앞 단계의 값을 `GetPreviousFloatValue`로 읽고 진단 채널을 보존한다.
+14개 채널은 샘플 RGB, decoded density/velocity, UV, PainterTexture, 초기 Composite다.
+
+1. BitmapInput: 8개 UV float와 DensityOnly bool을 명시적 User→Module→HLSL로 연결한다.
+   `(Unit+WorldOffset)*(1+Scale)+Scroll*Time+RandomOffset`으로 좌표를 만들고,
+   Texture DI의 mip 0에서 RGBA를 읽는다. 1×1 차단, R/B 밀도 선택, RG 속도 decode를 적용한다.
+2. PainterTexture: 기존 Painter/SDF의 계산 결과를 명시적 외부 입력으로 받는다.
+   `coverage = SDFEnabled ? max(PainterDensity,SDFDensity) : PainterDensity`.
+   밀도는 `decodedDensity*DensityMultiplier*(1-clamp(coverage,0,1))`이고 속도는 그대로다.
+3. BitmapComposite: 브러시·속도장 계산 결과 역시 외부 입력으로 받는다.
+   `weight=1-clamp(dot(brushVelocity,brushVelocity),0,1)`.
+   속도는 `brushVelocity+weight*(fieldVelocity+VelocityStrength*PainterTexture.xy)`.
+   밀도는 `(1-EraserStrength)*brushDensity+0.2*PainterTexture.z`.
+
+마지막 식은 원본 Composite의 Op40/Op34까지다. 이후 gradient/소멸/충돌/다른
+합성·출력 경로를 완료한 것으로 취급하면 안 된다. EraserStrength 자체는 이 구간에서
+clamp하지 않는다. 마스크가 속도를 줄이지 않는 점, velocity weight가 브러시 속도
+길이의 제곱을 사용한다는 점을 경계 테스트로 고정했다.
+
+## 원본 분석 증거
+
+- BitmapDefinedDensity와 Ninja_Painter decode는 이전 문서의 수식/채널 검증을 재사용했다.
+- 원본 Ninja_Painter Convert 9/10/12/17/36/88을 읽기 전용 T3D 증거로 export했다.
+  이를 import하지 않고 SourcePath/DestinationPath로 실제 swizzle을 확인했다.
+- PainterTexture 최종 출력 독립식 vs 연결 replay 8,192건 PASS.
+- 원본 Ninja_CompositeAndGradient의 FunctionCall15 export에서
+  `FunctionSpecifiers=(("Attribute", "PainterTexture"))`를 확인했다.
+  일반 graph capture에 보이지 않던 실제 attribute 이름이므로 추정하지 않았다.
+- Composite Convert12는 XY→RG, Z→B를 확인했고, 독립 merge 식 vs 연결 replay
+  4,096건 PASS. 원본 uasset hash는 export 전후 불변이다.
+
+## 실제 GPU 검증
+
+4×4 transient RGBA16F RT를 native Canvas UFunction으로 네 색의 2×2 구역으로 칠했다.
+16개 원본 texel을 CPU raw readback으로 먼저 확인한 뒤 Niagara에 연결했다.
+처음 Python의 `k2_draw_texture` 노출 이름이 없어 실패했으며, 새 RT에서 실제
+`K2_DrawTexture` UFunction을 호출해 해결했다. 실패한 canvas도 finally로 종료했다.
+
+- UV를 각 구역 중심과 전체 중심으로 모아 sampling하고 DensityOnly를 false/true로
+  전환했다. 구역별 색 및 가운데의 네 색 평균까지 10-case PASS.
+- 밀도 배율/SDF 토글/마스크 음수·초과/음수 배율/0배율 8-case PASS.
+- brush magnitude 0/부분/1/초과, field, velocity strength, eraser 비clamp 7-case PASS.
+- temp에서 25개 통합 case, **승격된 Study 자산에서 다시 동일 25개 case PASS**.
+- 매 경우 14개 채널 × 4,096 finite samples, min/max/mean 일치(1e-4).
+  잘린 채널, 중복 채널, 불완전 Grid, non-finite는 실패한다.
+- 모든 stage를 같은 runtime instance에서 실행하고 마지막에 기본 입력으로 복원했다.
+  넓은 공간의 비균일 전체 분포를 셀별 비교한 것은 아니며, collapsed UV 테스트다.
+
+## 독립성 및 저장 검증
+
+후보 3개 Niagara와 기존 3개 BFL을 새 UnrealEditor-Cmd 프로세스에서
+`-DisablePlugins=UnrealMCP -NullRHI`로 로드: 6/6 PASS, MCP class/symbol 부재 확인.
+Study로 승격한 자산도 별도 새 프로세스에서 다시 로드: 1/1 PASS.
+이는 cold asset load와 plugin-disabled load 증거이며 NullRHI GPU 실행/cook/package
+증거가 아니다. GPU 실행은 정상 D3D12 editor에서 별도로 수행했다.
+승격 사전/사후 audit 24 dependencies, 금지 및 temp hit 0, dirty 0.
+
+## 증거 위치와 재개 조건
+
+기본 증거 루트: `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/NinjaLiveComponent/SetParams/`.
+
+- `20260905_bitmap_pipeline_authoring_v001.json`
+- `20260905_bitmap_pipeline_runtime_v001.json`: Canvas 노출 실패, 보존.
+- `20260905_bitmap_pipeline_runtime_v002.json`: 첫 10-case 통합.
+- `20260905_painter_texture_output_equation_v001.json`, `20260905_painter_texture_stage_v001.json`
+- `20260905_bitmap_pipeline_runtime_v003.json`: 10+8-case.
+- `20260905_bitmap_composite_equation_v001.json`, `20260905_bitmap_composite_stage_v001.json`
+- `20260905_bitmap_pipeline_runtime_v004.json`: temp 10+8+7-case.
+- `20260905_bitmap_pipeline_preflight_v001.json`, `20260905_bitmap_pipeline_promote_v001.json`
+- `20260905_bitmap_pipeline_runtime_v005.json`: Study 10+8+7-case 및 최종 SHA/audit.
+- `20260905_bitmap_pipeline_checkpoint_v001.json`: 기본값 복원 후 실제 14채널 GPU
+  재확인 및 global dirty/원본/MCP/temp 의존성 0.
+- `MCPGameProject/Saved/MCP/AssetReviews/CFNL_BitmapPipeline_20260905_v001/`
+- `MCPGameProject/Saved/MCP/AssetReviews/CFNL_BitmapPipeline_Study_20260905_v001/`
+
+Builder/extension/promotion은 fresh-only 또는 exact-hash 일회성이다. 출력 파일을 지우고
+재실행하지 않는다. 현재 preview는 Study 자산의 기본값이다. 원본/C++ 변경이나 commit 없음.
+남은 full Painter/Composite/Solver/host/output/59-level 검증은 별도이며 사용자 시각 검수는 아직 요청하지 않는다.
+
+최종 frozen checkpoint full offline 39/39 PASS (exit 0), 경계 unit 7 및 기존 GPU validator
+unit 6 PASS. UnrealEditor PID101064 정상 응답. 이 gate는 전체 effect 완료 판정이 아니다.
+
+다음 분석 메모: Composite의 Op35 `Min(...,1.1)`는 조사한 연결상 소비자가 없으므로
+최종 밀도 상한으로 단정하지 않는다. 최종 StackContext.Composite는 MapSet3에 쓰이며
+Convert16의 XY는 Op85, Z는 Op54로 들어온다. 이후 clamp/collision/edge/landscape
+분기는 아직 파이프라인 구현에 포함하지 않았다.

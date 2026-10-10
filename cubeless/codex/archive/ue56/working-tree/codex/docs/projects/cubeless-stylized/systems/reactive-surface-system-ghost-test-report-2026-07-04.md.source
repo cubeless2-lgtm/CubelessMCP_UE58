@@ -1,0 +1,274 @@
+# Reactive Surface System Ghost Test Report
+
+Date: 2026-07-04  
+Engine: Unreal Engine 5.6.1 (`5.6.1-44394996+++UE5+Release-5.6`)  
+Repository: `D:\Git\UnrealMCP5_6_1`  
+Reference plan: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-system-validation-plan.md` at commit `1b18e349`  
+Reference comparison: `codex/docs/projects/cubeless-stylized/systems/interaction-field-system.md`
+
+## Purpose
+
+This document records the pre-implementation ghost test results for the Reactive Surface System. The goal was not to implement production content, but to verify which assumptions in the finalized design are actually measurable in UE 5.6.1 before production work starts.
+
+All test assets were restricted to:
+
+```text
+/Game/_MCP_Temp/ReactiveGhost/
+```
+
+Production path was not used:
+
+```text
+/Game/ReactiveSurface/*
+```
+
+## Summary Judgment
+
+Phase 0 to Phase 2 is **conditional go**.
+
+Confirmed:
+
+- Grid2D to RGBA16F UAV RenderTarget export works in UE 5.6.1.
+- `RenderGridToRenderTarget` with `DirectSet / TwoD / NumThreads [512,512,1]` works.
+- Previous-frame Grid2D read via `SamplePreviousGridVector4Value` is callable, compilable, and executable.
+- Piper character has usable foot bones.
+- Blueprint actor CDO tick group can be set to `TG_PostUpdateWork`.
+
+Blocked before production confidence:
+
+- Niagara User Array DI creation and sim-stage Array Get/Count loop authoring.
+- Deterministic 1-cell reprojection stage with edge zero-fill.
+- Texture2D DI binding for footprint mask sampling.
+- Native PhysMat trace proof with `bReturnPhysicalMaterial=true`.
+- Live animated character fixture for PrePhysics vs PostUpdateWork socket/bone freshness measurement.
+
+## Test Results
+
+| Test | Result | Evidence | Temporary Assets |
+|---|---:|---|---|
+| G1. Grid2D -> RT export | PASS | 17x17 sample: 289/289 nonzero, ratio 1.0. Center RGBA: `[1.0, 1.0, 0.0, 1.0]`. Max pixel: `[248, 248, [1.0, 1.0, 0.0, 1.0]]`. | `/Game/_MCP_Temp/ReactiveGhost/NS_G1_RTExportProbe`, `/Game/_MCP_Temp/ReactiveGhost/RT_G1_RGBA16F`, `/Game/_MCP_Temp/ReactiveGhost/L_ReactiveGhost` |
+| G2. Set Niagara Array Vector/Float push | BLOCKED | UE 5.6.1 exposes `SetNiagaraArrayVector` and `SetNiagaraArrayFloat`. Runtime set to undeclared `User.G2_Positions` returned length 0, so BP setter does not create undeclared User Array DI. | G1 system reused |
+| G3. 1-cell reprojection smoke | BLOCKED | Template `AdvectGrid` is curl-noise advection, not deterministic offset reprojection. No current MCP route for 1-cell offset + no-wrap + edge zero-fill sim stage. | G1 system reused |
+| G4. Sim-stage footprint mask texture sample | BLOCKED | Engine has `UNiagaraDataInterfaceTexture` and `SampleTexture2D`, but current MCP has no Texture2D DI binder and no safe graph authoring path for rotated footprint mask stamping. | Blocked before asset creation |
+| G5. Socket/tick group premise | BLOCKED | Piper skeletal assets have foot bones: `foot_l`, `foot_fix_l`, `foot_r`, `foot_fix_r`. Socket count is 0. BP CDO tick group changed from `TG_PRE_PHYSICS` to `TG_POST_UPDATE_WORK`. Pose freshness delta could not be measured because the temp preview map had no live animated character fixture. | `/Game/_MCP_Temp/ReactiveGhost/BP_G5_TickProbe` |
+| G6. PhysMat premise | BLOCKED | Temp preview map had 0 ground-like components. Transient PhysMat override could be assigned, but UE 5.6.1 Python trace does not expose `bReturnPhysicalMaterial`, and Python `HitResult` fields are protected/unreadable. | Transient actor only |
+| G7. Grid2D previous-frame read | PASS | `SamplePreviousGridVector4Value` found 4 times in inspected Niagara graph. Compile error count 0, warning count 0, GPU compute script ready. G1 SIE RT readback proves execution path writes to RT. | G1 system reused |
+
+## Details
+
+### G1. Grid2D -> RT export
+
+The engine Niagara template `/Niagara/DefaultAssets/Templates/BehaviorExamples/RenderTargetTexturePainter` was duplicated to:
+
+```text
+/Game/_MCP_Temp/ReactiveGhost/NS_G1_RTExportProbe
+```
+
+RenderTarget:
+
+```text
+/Game/_MCP_Temp/ReactiveGhost/RT_G1_RGBA16F.RT_G1_RGBA16F
+```
+
+RenderTarget settings:
+
+- Size: `512x512`
+- Format: `RTF_RGBA16F`
+- `supports_uav = true`
+- `target_gamma = 1.0`
+- `use_legacy_gamma = false`
+
+Niagara simulation stage settings:
+
+- Stage: `RenderGridToRenderTarget`
+- Iteration source: `DirectSet`
+- Dispatch type: `TwoD`
+- Dispatch element type: `NumThreads`
+- Element count: `[512, 512, 1]`
+
+Result:
+
+- SIE game-world spawn wrote to RT.
+- Editor-world spawn alone did not provide the needed tick/write evidence.
+- 17x17 sample around center: 289/289 nonzero.
+- Center RGBA: `[1.0, 1.0, 0.0, 1.0]`.
+
+Conclusion:
+
+UE 5.6.1 supports the same core DirectSet Grid2D to RT export path assumed from the UE 5.7 measurement.
+
+### G2. Niagara Array push
+
+Confirmed engine/API presence:
+
+- `NiagaraDataInterfaceArrayFunctionLibrary.set_niagara_array_vector`
+- `NiagaraDataInterfaceArrayFunctionLibrary.set_niagara_array_float`
+- Array dynamic inputs such as Array Count/Get exist in engine content.
+
+Observed blocker:
+
+- Setting an undeclared user array parameter from BP/Python does not create the array data interface.
+- A set to `User.G2_Positions` followed by get returned length 0.
+
+Required correction:
+
+The plan must treat declared User Array DI as a prerequisite. The implementation cannot assume `Set Niagara Array` nodes create missing user arrays.
+
+### G3. Reprojection
+
+The available template `AdvectGrid` is a curl-noise advection stage. It is not equivalent to the document's Phase 2.5 sliding-window reprojection smoke:
+
+1. Single center stamp.
+2. Move window center by exactly one grid cell.
+3. Confirm exact 1-cell shift.
+4. Repeat 10 times.
+5. Confirm entering edge zero-fill.
+
+Required correction:
+
+Phase 2.5 must not claim reprojection is verified until a dedicated deterministic reprojection stage exists.
+
+### G4. Footprint mask texture
+
+Confirmed engine/API presence:
+
+- `UNiagaraDataInterfaceTexture`
+- `SampleTexture2D`
+- `LoadTexture2D`
+- `GatherRedTexture2D`
+- `GetTextureDimensions`
+
+Observed blocker:
+
+- Current MCP has a RenderTarget2D binder but no Texture2D DI binder.
+- Current MCP does not safely author the required sim-stage scratchpad graph for rotated mask sampling.
+
+Required correction:
+
+Footprint mask sampling remains plausible but unverified.
+
+### G5. Foot bones and tick group
+
+Piper skeletal assets checked:
+
+```text
+/Game/Cubeless/Character/Piper/SK_Piper.SK_Piper
+/Game/Cubeless/Character/Piper/SK_Piper_OutlineSmooth.SK_Piper_OutlineSmooth
+```
+
+Found foot bones:
+
+| Bone | Index | Parent |
+|---|---:|---|
+| `foot_l` | 167 | `calf_l` |
+| `foot_fix_l` | 169 | `foot_l` |
+| `foot_r` | 194 | `calf_r` |
+| `foot_fix_r` | 196 | `foot_r` |
+
+Socket result:
+
+- `socket_count = 0`
+- No `foot_l` / `foot_r` sockets.
+
+Tick group result:
+
+- Blueprint CDO tick group can be set to `TG_POST_UPDATE_WORK`.
+- Instance editing of tick group is not valid through Python because `ActorTickFunction` fields cannot be edited on instances.
+
+Required correction:
+
+The implementation should default to foot bones, not sockets, unless sockets are deliberately added.
+
+### G6. PhysMat trace
+
+Observed:
+
+- The temporary preview map had no ground-like components before the probe.
+- A transient mesh could receive a PhysicalMaterial override.
+- UE 5.6.1 Python `SystemLibrary.line_trace_single` does not expose a `bReturnPhysicalMaterial` parameter.
+- Python `HitResult` fields such as hit component, location, and physical material are protected or unavailable from Python.
+
+Required correction:
+
+PhysMat proof needs either:
+
+- a native MCP trace command that sets `bReturnPhysicalMaterial=true` and returns public HitResult fields, or
+- a BP fixture dedicated to returning the PhysMat result.
+
+### G7. Previous-frame Grid2D read
+
+Observed:
+
+- `SamplePreviousGridVector4Value` exists in the inspected Niagara graph.
+- It appears in both `RenderGrid` and `AdvectGrid` scratchpad paths.
+- Compile error count: 0.
+- Compile warning count: 0.
+- GPU compute script state: ready.
+
+Conclusion:
+
+Water option ① can remain the first attempt path. However, this only validates the previous-grid read path. It does not prove a full water height/velocity solver is stable.
+
+## Required Document Updates
+
+| Section | Required update |
+|---|---|
+| §10.2 / G2 | State that `Set Niagara Array` does not create undeclared User Array DI. Require declared User Array DI plus RT readback proof before array source registry is accepted. |
+| §5.4 / §13 / Phase 2.5 | State that deterministic reprojection requires a custom stage. Engine template `AdvectGrid` is not a valid 1-cell reprojection fixture. |
+| §10.2 / G4 | Mark Texture2D footprint mask sampling as engine-supported but unverified until a Texture2D DI binder and reviewed sim-stage graph authoring path exist. |
+| §10.2 / G5 | Replace socket assumption with current Piper reality: foot bones exist, foot sockets do not. |
+| §10.2 / G6 | Require native trace or BP fixture for PhysMat proof in UE 5.6.1. Python trace is insufficient. |
+| §23.4 / Water | Keep previous-grid read option ① as first attempt, but note that solver stability remains separately unproven. |
+
+## Risk Rows To Add
+
+| Risk | Failure mode | Mitigation |
+|---|---|---|
+| Undeclared Niagara User Array DI | BP `Set Niagara Array` silently has no usable Niagara-side array; source count is 0. | Add explicit User Array DI creation/upsert and G2 RT stamp proof. |
+| Missing deterministic reprojection | Sliding window preservation cannot be proven; edge behavior may wrap, smear, or clear incorrectly. | Author a dedicated 1-cell offset + edge zero-fill stage and run G3 before Phase 2.5. |
+| Texture2D footprint mask unbound | Footprint texture route remains theoretical despite engine DI support. | Add Texture2D DI binder and rotated mask readback test. |
+| PhysMat trace evidence gap | PhysMat gate may be assumed without measurable UE 5.6.1 proof. | Add native MCP trace command or BP fixture returning physical material. |
+| Piper socket mismatch | Implementation asks for sockets that do not exist. | Use `foot_l` / `foot_r` bones by default, or deliberately add sockets as content work. |
+| Water previous-read overconfidence | Previous-grid read exists but solver may still be unstable. | Treat G7 as API-path proof only; run water solver-specific stability smoke later. |
+
+## Recommended Start Order
+
+1. Lock the G1 path as the base RT export path.
+2. Build the first pass with single-source or small fixed-source stamp data, not array registry.
+3. Add MCP/API support for User Array DI before full multi-source source collection.
+4. Add Texture2D DI binder before footprint texture masks.
+5. Add deterministic reprojection smoke before enabling sliding-window preservation claims.
+6. Add native PhysMat trace proof before relying on PhysMat gate behavior.
+7. Try Water previous-grid option ① first, but verify solver stability separately.
+
+## Cleanup Confirmation
+
+ReactiveGhost cleanup result:
+
+- `/Game/_MCP_Temp/ReactiveGhost`: deleted.
+- ReactiveGhost asset count: 0.
+- ReactiveGhost filesystem folder: absent.
+- Dirty content packages: 0.
+- Dirty map packages: 0.
+- Git status: clean.
+
+Important note:
+
+`/Game/_MCP_Temp` itself still contains unrelated pre-existing temporary assets from other work. Those were intentionally not touched.
+
+## MCP / API / C++ Enhancement Backlog
+
+| Item | Reason |
+|---|---|
+| Allow configurable safe temp roots for Niagara mutation tools | Current guard defaults around `/Game/_MCP_Temp/NiagaraGenerated/`; this test needed `/Game/_MCP_Temp/ReactiveGhost/`. |
+| Add short connection helper/docs for `get_unreal_connection()` | Direct manual connection construction is easy to misuse. |
+| Add RT readback ghost-test command | Repeated SIE spawn, wait, sample, and nonzero/center reporting should be one command. |
+| Add Niagara User Array DI creation/upsert | Required for G2 and source registry implementation. |
+| Add sim-stage Array Count/Get loop authoring fixture | Required to prove array payloads stamp multiple positions into RT. |
+| Add Texture2D DI binder | Required for footprint mask texture sampling. |
+| Add footprint mask scratchpad/stage authoring route | Required for rotated footprint texture stamps. |
+| Add deterministic Grid2D reprojection test command | Required for 1-cell move, no-wrap, edge zero-fill proof. |
+| Extend Blueprint tick tooling to include tick group/end tick group | Needed for automated tick-order fixtures. |
+| Add native line trace command with `bReturnPhysicalMaterial=true` | Python trace cannot provide reliable PhysMat proof in UE 5.6.1. |
+| Add SIE lifecycle helper | G1-style tests need start SIE, find game world, spawn, wait, readback, cleanup. |
+| Document UE Python enum names | UE 5.6.1 uses `NCPoolMethod` and `TickingGroup`, not the names often expected from older examples. |

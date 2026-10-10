@@ -1,0 +1,9 @@
+{
+  "schema": "cubeless_actor_pipeline_verification_v1",
+  "passed": true,
+  "errors": [],
+  "phase": "reload",
+  "full_legacy_actor_parity": false,
+  "packaging": "not_run",
+  "report_sha256": "7ded11cf199ac9f5012be87413ddb7ae5faf773aff0abdda0381a39d021e7588"
+}

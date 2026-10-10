@@ -1,0 +1,4 @@
+interface:
+  display_name: "Niagara Authoring Review"
+  short_description: "Niagara MCP readiness and boundary review"
+  default_prompt: "Use $niagara-authoring-review to review Niagara MCP authoring readiness and offline gate results."

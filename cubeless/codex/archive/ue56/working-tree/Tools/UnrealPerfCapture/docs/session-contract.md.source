@@ -1,0 +1,107 @@
+# Session and synchronization contract
+
+## State machine
+
+```text
+Idle -> Arming -> Recording -> Stopping -> Finalizing -> Ready
+                                    \-> Partial / Failed
+```
+
+Only the session coordinator owns lifecycle transitions. `StopSession(reason)`
+is idempotent and must attempt to stop trace, metrics, and video even if an
+earlier subsystem fails.
+
+## Clock
+
+The controller's monotonic QPC timestamp is canonical. UTC is recorded for
+human-readable correlation only. `monotonicTicks`, `utc`, and `videoOffsetMs`
+always describe the same event-onset observation. A rule that needs several
+samples also stores the separate `decisionMonotonicTicks`, `decisionUtc`, and
+`decisionVideoOffsetMs` values. Trace acknowledgement QPC is stored separately
+and never substituted for observation or decision time.
+
+## Real start order
+
+1. Create the session folder and immutable configuration snapshot.
+2. Launch the owned packaged game or Unreal Editor with the parsed user
+   arguments, file trace, requested channels, startup bookmark, and a
+   log-visible `Trace.Status` observation bracket. Editor launch places the
+   selected `.uproject` first.
+3. Resolve its main window and start FFmpeg; wait until the output grows.
+4. Start PresentMon ingestion and publish its availability honestly.
+5. Record the paired QPC/video acknowledgement and startup Trace bookmark in
+   the event ledger.
+
+Trace begins at process launch, so it can include startup activity before video.
+The paired sync observation, not the button press, defines the time mapping.
+
+## Stop order
+
+1. Stop accepting automatic rule triggers.
+2. Add the external end lifecycle event.
+3. Stop PresentMon and issue `Trace.Stop`; wait for the `.utrace` file.
+4. Keep configured post-roll, stop FFmpeg gracefully, and close only the owned
+   Unreal target when configured.
+5. Run SummarizeTrace, Unreal Insights timing export, and FFprobe indexing.
+6. Fit the mapping, evaluate available Trace frame rules, write Evidence, then
+   generate reports and open the preview.
+
+Unexpected Unreal process exit is a stop reason. The production adapter must
+stop video rather than leave it recording indefinitely.
+
+`session.json` records the target kind, executable path, the selected `.uproject`
+used for Editor launch or Trace post-processing, app defaults plus parsed user
+launch arguments, and enabled Trace channels. Trace/log/control arguments owned
+by the session are rejected from user input before launch.
+
+## Event identity
+
+One physical incident has one stable identifier such as `HITCH_B0007`.
+Correlated rules within the merge interval append reasons to that incident
+instead of creating duplicate bookmarks.
+
+Required event fields:
+
+```text
+event_id, monotonic_ticks, utc, video_offset_ms,
+decision_monotonic_ticks, decision_utc, decision_video_offset_ms,
+trace_acknowledgement_monotonic_ticks, type, severity, metric_values,
+fired_rule_ids, unavailable_metrics, operator_note
+```
+
+## Artifact layout
+
+```text
+<session-id>/
+  session.json
+  profile.json
+  events.jsonl
+  metrics.csv
+  raw/
+    session.utrace
+    capture.mkv
+    frame_timing.csv
+  evidence/
+    clock.json
+    trace_bookmarks.json
+    frame_timeline.json
+    video_frames.json
+    sync_anchors.json
+    mapping.json
+    timeline.jsonl
+    index.json
+  report.html
+  report.md
+  logs/
+```
+
+Absent artifacts are recorded explicitly in `session.json`. A partial report is
+valid and must not invent measurements for missing adapters.
+
+## Post-Trace event semantics
+
+Automatic events detected from `frame_timeline.json` are named
+`TRACE_PERF_B####`. They retain the rule IDs, frame range, mapped video offset,
+derived Trace time, fit quality, and uncertainty. They are evidence bookmarks,
+not claims that a bookmark was retroactively inserted into the already closed
+`.utrace` file.

@@ -1,0 +1,24 @@
+# Reactive Surface Grass Direction Packing Report
+
+- Date: `2026-07-12`
+- Verdict: `PASS`
+- Scope: Grass direction packing only. Ground and Water were unchanged regression controls for this validation run, not permanent edit prohibitions.
+- Storage: `raw.RG = encoded world direction * A`, `raw.B = strength * A`, `raw.A = coverage`.
+- Logical decode for the bend material: `logical.RGB = raw.RGB / max(raw.A, epsilon)` and `amount = raw.B`.
+
+| Check | Result |
+| --- | --- |
+| Temp matrix | PASS |
+| Production matrix | PASS |
+| Empty field | PASS |
+| +X weak and edge | PASS |
+| -X weak | PASS |
+| +Y weak | PASS |
+| -Y weak | PASS |
+| Equal X/Y overlap | PASS |
+| Fade direction stability | PASS |
+| Ground/Water per-run regression match | True |
+| Audit violations | 0 |
+| Dirty packages | 0 |
+
+The later RT-addressing follow-up intentionally changed the Grass, Ground, and Water RT hashes after this direction-packing matrix completed. Its independent before/after record is `evidence/reactive-surface-rt-address-clamp-results-2026-07-12.json`.

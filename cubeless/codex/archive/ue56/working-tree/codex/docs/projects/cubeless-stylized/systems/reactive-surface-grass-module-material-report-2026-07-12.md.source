@@ -1,0 +1,36 @@
+# Reactive Surface Grass Module Material Report
+
+- Date: `2026-07-12`
+- Verdict: `PASS`
+- Scope: one stylized Grass Static Mesh module and its Grass-only material.
+- PP1 packing: per-blade pivot UV2/UV3; no Pivot Painter 2 textures.
+- Vertex Color B remains a root-to-tip data channel but is not used to deform the rigid tilt.
+- RT sampling occurs once at each PP1 pivot; every vertex in that blade receives one axis and angle.
+- Reactive geometry control is `RS_Grass_MaxTiltDegrees`; gradient and distance-clamp deformation controls are removed.
+- RT decoding: coverage-premultiplied RG is divided by A before direction decoding.
+- Snow, Ground, Water, Core, and Demo were unchanged regression controls for this run, not permanent edit prohibitions.
+- Mesh: `/Game/ReactiveSurface/Grass/Modules/SM_RS_StylizedGrassModule`.
+- Material: `/Game/ReactiveSurface/Grass/Modules/M_RS_StylizedGrassModule`.
+
+| Check | Result |
+| --- | --- |
+| collection_ids_valid | PASS |
+| collection_nodes_2 | PASS |
+| color_defaults | PASS |
+| compile_0 | PASS |
+| coverage_unpremultiply | PASS |
+| material_assigned | PASS |
+| mcp_audit_0 | PASS |
+| new_dirty_0 | PASS |
+| non_grass_hash_lock | PASS |
+| one_material_slot | PASS |
+| rigid_tilt_inputs_only | PASS |
+| rigid_tilt_no_gradient | PASS |
+| rigid_tilt_no_offset_clamp | PASS |
+| rt_sampled_at_pp1_pivot | PASS |
+| samples_grass_rt | PASS |
+| scalar_defaults | PASS |
+| single_custom_wpo | PASS |
+| two_sided_foliage | PASS |
+| warning_0 | PASS |
+| wpo_property_connected | PASS |

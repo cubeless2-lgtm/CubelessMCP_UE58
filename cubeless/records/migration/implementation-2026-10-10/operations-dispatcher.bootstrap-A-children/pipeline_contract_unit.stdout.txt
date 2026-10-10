@@ -1,0 +1,1 @@
+{"schema": "cubeless_external_pipeline_offline_tests_v1", "scope": "Synthetic report counterexamples and timeout handling; no engine calls/assets", "tests_run": 13, "passed": true, "failures": 0, "errors": 0}

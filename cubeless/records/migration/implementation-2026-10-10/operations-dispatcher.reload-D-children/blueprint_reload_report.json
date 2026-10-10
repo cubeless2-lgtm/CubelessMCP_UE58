@@ -1,0 +1,7 @@
+{
+  "schema": "cubeless_pipeline_report_verification_v1",
+  "passed": true,
+  "errors": [],
+  "phase": "reload",
+  "verified_scope": "Report contract and included assertions; authenticity and engine behavior depend on attached live evidence"
+}

@@ -1,0 +1,147 @@
+# CubeFluidNinjaLive A10 라이브 증거 갱신 (2026-09-04)
+
+이 문서는 `CubeFluidNinjaLive_A10_Parent_Materials.md`의 `observed, deferred`와
+이전 blocker 설명을 대체하는 최신 라이브 상태다.
+
+## 전체 타입 직접 오버라이드 증거
+
+UE 5.6.1 editor의 읽기 전용 `inspect_material_asset`로 두 원본
+`MaterialInstanceConstant`의 직접 오버라이드 타입 11개를 모두 구조화해 다시
+캡처했다. 원본 패키지는 저장하거나 수정하지 않았고, 캡처 전후 전역 dirty
+package 수와 source package dirty state는 모두 0/false였다.
+
+- evidence:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/materials/_A10_DirectOverrides_UE56/inspection/000000.json`
+- evidence identity: 114,307 bytes,
+  `07c9ff56a83adca852d9a93eb7e6cd1bc8ce802f2aebdae765017a59f12af704`
+- ChestLogo canonical override SHA-256:
+  `631bbcc309c75a8b6c86cc11020a888bc8fa5598fd591e42745968ec7893363a`
+- TraceMesh Inactive canonical override SHA-256:
+  `3c782f39a0a7643e3053a2753a4c6e8c6a64f1ea280abb0903ccd7e118b11370`
+
+네이티브 해시는 UE 5.6의 condensed JSON 숫자 규칙(`%.17g`)을 독립 구현한
+Python canonicalizer로 다시 계산했다. 두 해시가 모두 일치했다. 캡처가
+구조화한 타입은 다음과 같다.
+
+1. scalar
+2. vector
+3. double-vector
+4. texture
+5. static-switch
+6. texture-collection
+7. runtime-virtual-texture
+8. sparse-volume-texture
+9. font
+10. static-component-mask
+11. user-scene-texture
+
+ChestLogo의 직접 오버라이드는 정확히 scalar 1, texture 1, static-switch 1이고
+나머지는 0이다. 값은 `RefractionDepthBias=0`, localized target `NormalMap`,
+`PlasticOverride=true`다. TraceMesh Inactive는 scalar 4, vector 1이고 나머지는
+0이다.
+
+## TraceMesh 선행 작업 완료
+
+TraceMesh 후보는 별도 clean-room builder로 완료됐다. 원본 Material/Material
+Function은 authoring payload에 포함하거나 로드하지 않았고,
+`TransformToZVector`는 12개 UE 5.6 네이티브 수학 노드로 다시 구현했다.
+
+- target base:
+  `/Game/Study/CubeFluidNinjaLive/Materials/Core/M_CFNL_FluidNinjaLiveBase`
+  - 51,666 bytes
+  - `1ab11de911e73fc0daa00e0f882f978f0c87122580c42ee338a8c6e2940eec98`
+- target instance:
+  `/Game/Study/CubeFluidNinjaLive/Materials/Core/MI_CFNL_TraceMesh_Inactive`
+  - 9,379 bytes
+  - `88d839b3ff1dd8540cf1712226c01d2aa4a9f9da82619f00536790efa3b0e3e4`
+- authoring contract:
+  `4641d5fe35f934a6ecd399e95d0b4cddece310e907c2a7d9c46318f4a2abb618`
+- authoring spec:
+  `f371c9296980b5d4e427a54aca9b3fb69b7016118722ef2891adfebc2f5664a3`
+
+핫/콜드 양쪽에서 81 nodes, 89 links, 6 root outputs와 MI 직접 오버라이드
+5개가 동일했다. compile error/warning, dirty, redirector, source/UnrealMCP
+dependency는 모두 0이었다. 콜드 editor PID는 target 저장 시각 이후에 시작했고
+두 `.uasset` SHA는 핫 상태와 같았다.
+
+`-DisablePlugins=UnrealMCP` 및 `-EnablePlugins=PythonScriptPlugin`로 실행한 격리
+commandlet에서도 두 target은 각각 `/Script/Engine.Material`과
+`/Script/Engine.MaterialInstanceConstant`로 로드됐다. UnrealMCP bridge class와
+Python symbol은 실제로 없었고, 셰이더 잔여 컴파일 수는 0이었다.
+
+관련 증거:
+
+- hot:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/trace_mesh/hot_48160.json`
+- cold:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/trace_mesh/cold_98240.json`
+- plugin disabled:
+  `MCPGameProject/Saved/MCP/AssetReviews/cfnl_trace_mesh_20260904T2308/asset_plugin_independence_report.json`
+
+## A10 현재 계약
+
+- contract SHA-256:
+`8a3dba2983733ee10f207190d44dc7616b1be7dede9c31edb8b6b1777852b583`
+- source-free authoring payload SHA-256:
+`319b974ccbfb67eee9bbca5f7cf5c46def90c237d2a95e1ab502a8d567e85a32`
+- confirmation token:
+`cfnl-a10-parents-8a3dba2983733ee10f20`
+- Saved reference evidence fingerprint:
+  `2f0c2592c8afcb60209e13e2b812945fd83770390305639d05ae4290e41f0bad`
+
+해소된 blocker:
+
+- `trace_mesh_inactive_clean_room_parent_target_pending`
+- `material_instance_unstructured_override_type_audit_pending`
+
+마지막 A10 blocker였던
+`editor_execute_hot_compile_and_cold_readback_pending`도 같은 날 해소됐다.
+
+## A10 실제 저작 및 검수 완료
+
+fresh editor PID 17256에서 세 Material과 한 MaterialInstanceConstant를 새로
+저작했다. 첫 두 시도는 UE 5.6 Python/API 특성을 발견한 pre-save 검사에서
+fail-closed로 종료했고 target file은 하나도 저장하지 않았다.
+
+- Python `unreal.MaterialProperty`에 `MP_MaterialAttributes`가 노출되지 않아 Body의
+  root 한 연결은 기존 native editor command의 `MaterialAttributes` 경로로 설정했다.
+- `SetMaterialInstanceParent`와 일부 MI override setter는 실제 변경 후에도 유효한
+  성공 bool을 반환하지 않아, 반환값 대신 parent와 11종 override의 readback을
+  저장 전 조건으로 사용했다.
+- 실패 시 exact unsaved target package만 dirty 해제하고 저장 없이 editor를 닫았다.
+
+최종 target identity:
+
+| target | bytes | SHA-256 |
+|---|---:|---|
+| `M_Null` | 8,140 | `37a22bfbc4485e265a994d844898b6e07f83c9a620983b3a2ce7664550bfa3a5` |
+| `M_QuadDrone` | 24,613 | `1155022ef09a68b1aad5386947f4aa5ae0676ccc9c62b8f66a4214d9586042ff` |
+| `M_UE4Man_Body` | 42,726 | `99bdc0d593c2daa989e28d6c87f5993ef7120babd00a098726eb47e2db169afd` |
+| `M_UE4Man_ChestLogo` | 9,132 | `853c4c08f8c8d07128348800e50fd86d6d54723c4f89183758a91c8b19735794` |
+
+hot PID 17256에서 `M_Null=1/0/1`, `M_QuadDrone=22/19/5`,
+`M_UE4Man_Body=52/79/1`의 node/link/root-output과 compile error/warning 0을
+확인했다. 새 PID 60588 cold 검사에서 네 파일의 byte/SHA와 semantic manifest가
+모두 같았다. `/Game/Study/CubeFluidNinjaLive/Art` 318 assets 전체를 함께 감사해
+source/MCP forbidden dependency, redirector, dirty package, required target 누락이
+모두 0임을 확인했다.
+
+`-DisablePlugins=UnrealMCP` commandlet에서도 4/4 target이 Engine native class로
+로드됐고 bridge class/Python symbol은 없었다. commandlet error와 남은 shader
+compile도 0이다.
+
+실행 증거:
+
+- authoring: `target/materials/a10_parents/authoring_17256.json`,
+  `29e608d0657b4c6f1a0810fe4a1f9636c7a20c70a6479a62cb2f51a2c9a4f5f4`
+- hot: `target/materials/a10_parents/hot_17256.json`,
+  `78813cbf5c733d86a93225705cb78db0ec66914ed1cec1d899c30ec7184dea00`
+- cold: `target/materials/a10_parents/cold_60588.json`,
+  `90e063dbc4330e3941cd750b8839329647d74f100ba0f7945820273d0fce47e2`
+- plugin disabled:
+  `AssetReviews/cfnl_a10_parents_20260904T2344/asset_plugin_independence_report.json`,
+  `5c254f8dd9b24a2d0fd939cb8812d9ffca6ffe3b138d24fc2a7a0c2792de2ea6`
+
+A10 parent-material authoring/hot/cold/plugin-disabled blocker는 현재 0이다. 남은
+범위는 A10 레벨 문맥에서의 화면 기반 visual parity와 전체 프로젝트 cook/runtime
+검수다.

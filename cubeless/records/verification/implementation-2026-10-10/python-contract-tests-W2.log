@@ -1,0 +1,9 @@
+test_extra_outputs_guid_identity_shared_checkpoint_and_replay (test_graph_sequence.SequenceTests.test_extra_outputs_guid_identity_shared_checkpoint_and_replay) ... ok
+test_lost_response_preserves_uncertainty_and_never_dispatches_replay (test_graph_sequence.SequenceTests.test_lost_response_preserves_uncertainty_and_never_dispatches_replay) ... ok
+test_preflight_rejection_and_strict_inputs_do_not_claim_mutations (test_graph_sequence.SequenceTests.test_preflight_rejection_and_strict_inputs_do_not_claim_mutations) ... ok
+test_successful_native_reply_cannot_hide_missing_pin_or_old_node_change (test_graph_sequence.SequenceTests.test_successful_native_reply_cannot_hide_missing_pin_or_old_node_change) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.209s
+
+OK

@@ -1,0 +1,40 @@
+# Reactive Surface Water V16 Two-Foot Radius Report - 2026-07-08
+
+- Verdict: `PASS`
+- System: `/Game/ReactiveSurface/Water/NS_RS_Water.NS_RS_Water`
+- Change: Water source radius and strength were reduced so foot_l/foot_r sources can separate visually.
+- Change: Water containment now scales from source radius instead of a broad window-size floor.
+
+## Defaults
+- RS_Water_CellSize: `0.0009765625`
+- RS_Water_Damping: `0.978`
+- RS_Water_DefaultRadius: `3.0`
+- RS_Water_DefaultStrength: `0.26`
+- RS_Water_ImpulseClamp: `0.6`
+- RS_Water_ImpulseRadiusPixels: `1.0`
+- RS_Water_NormalStrength: `14.0`
+- RS_Water_SpongeDamping: `0.09`
+- RS_Water_SpongeWidth: `0.05`
+- RS_Water_StrokeInterval: `14.0`
+- RS_Water_SwimSpeedThreshold: `12.0`
+- RS_Water_SwimWakeStrength: `0.42`
+- RS_Water_WaveSpeed: `0.62`
+- RS_Water_WindowSizeWS: `1500.0`
+
+## Checks
+- two_user_positions: `True`
+- rt_nonzero_cpp_stats: `True`
+- two_visual_components: `True`
+
+## Stats
+- C++ RT stats: `{'success': True, 'read_only': True, 'render_target_path': '/Game/ReactiveSurface/Water/RT_RS_Water.RT_RS_Water', 'size': [1024, 1024], 'requested_region': [0, 1023, 0, 1023], 'region': [0, 1023, 0, 1023], 'channel': 'r', 'threshold': 0.501, 'pixel_count': 1048576, 'nonzero_count': 11191, 'sum': 6071.63134765625, 'max': 0.880859375, 'first_hits': [{'x': 500, 'y': 428, 'value': 0.50146484375, 'rgba': [0.50146484375, 0.50537109375, 0.99951171875, 1]}, {'x': 501, 'y': 428, 'value': 0.50146484375, 'rgba': [0.50146484375, 0.50634765625, 0.99951171875, 1]}, {'x': 502, 'y': 428, 'value': 0.50146484375, 'rgba': [0.50146484375, 0.5078125, 0.99951171875, 1]}, {'x': 503, 'y': 428, 'value': 0.501953125, 'rgba': [0.501953125, 0.50927734375, 0.99951171875, 1]}, {'x': 504, 'y': 428, 'value': 0.501953125, 'rgba': [0.501953125, 0.5107421875, 0.99951171875, 1]}, {'x': 505, 'y': 428, 'value': 0.501953125, 'rgba': [0.501953125, 0.51220703125, 0.99951171875, 1]}, {'x': 506, 'y': 428, 'value': 0.50244140625, 'rgba': [0.50244140625, 0.513671875, 0.99951171875, 1]}, {'x': 507, 'y': 428, 'value': 0.50244140625, 'rgba': [0.50244140625, 0.51513671875, 0.99951171875, 1]}], 'hit_bbox': [424, 428, 598, 589], 'hit_width': 175, 'hit_height': 162, 'hit_radius_px': 87.5, 'centroid': [513.4476635184071, 508.44774048045065], 'readback': 'FTextureRenderTargetResource::ReadLinearColorPixels', 'safety_note': 'Read-only render-target analysis. Loads the render target and reads GPU contents; does not save, compile, or mutate assets.'}`
+- Component analysis: `[{'path': 'D:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Saved\\MCP\\ReactiveSurfaceWaterV16TwoFootRadius\\frames\\v16_frame_01_zoom.png', 'threshold': 8, 'min_area': 6, 'component_count': 1, 'major_components': [{'area': 1430, 'bbox': [102, 102, 153, 150], 'centroid': [128.27832167832167, 125.73636363636363]}], 'two_major_components': False, 'two_separated_major_components': False}, {'path': 'D:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Saved\\MCP\\ReactiveSurfaceWaterV16TwoFootRadius\\frames\\v16_frame_02_zoom.png', 'threshold': 8, 'min_area': 6, 'component_count': 2, 'major_components': [{'area': 1652, 'bbox': [100, 100, 155, 152], 'centroid': [126.39164648910412, 125.71186440677967]}, {'area': 14, 'bbox': [149, 117, 150, 125], 'centroid': [149.35714285714286, 121.0]}], 'two_major_components': True, 'two_separated_major_components': False}, {'path': 'D:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Saved\\MCP\\ReactiveSurfaceWaterV16TwoFootRadius\\frames\\v16_frame_04_zoom.png', 'threshold': 8, 'min_area': 6, 'component_count': 2, 'major_components': [{'area': 902, 'bbox': [96, 96, 159, 155], 'centroid': [124.18514412416852, 125.87472283813747]}, {'area': 730, 'bbox': [107, 107, 145, 145], 'centroid': [126.01643835616439, 125.78767123287672]}], 'two_major_components': True, 'two_separated_major_components': False}, {'path': 'D:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Saved\\MCP\\ReactiveSurfaceWaterV16TwoFootRadius\\frames\\v16_frame_06_zoom.png', 'threshold': 8, 'min_area': 6, 'component_count': 4, 'major_components': [{'area': 969, 'bbox': [93, 93, 162, 159], 'centroid': [120.74819401444789, 124.43446852425181]}, {'area': 730, 'bbox': [107, 107, 145, 145], 'centroid': [126.0095890410959, 125.83835616438355]}, {'area': 48, 'bbox': [139, 130, 154, 147], 'centroid': [146.9375, 140.47916666666666]}, {'area': 19, 'bbox': [140, 143, 149, 150], 'centroid': [144.73684210526315, 147.0]}], 'two_major_components': True, 'two_separated_major_components': False}, {'path': 'D:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Saved\\MCP\\ReactiveSurfaceWaterV16TwoFootRadius\\frames\\v16_tail_zoom.png', 'threshold': 8, 'min_area': 6, 'component_count': 5, 'major_components': [{'area': 965, 'bbox': [91, 91, 155, 161], 'centroid': [116.59067357512953, 126.4341968911917]}, {'area': 727, 'bbox': [107, 107, 145, 145], 'centroid': [125.9697386519945, 125.85144429160935]}, {'area': 105, 'bbox': [153, 100, 164, 142], 'centroid': [160.4, 120.8952380952381]}, {'area': 22, 'bbox': [149, 131, 156, 142], 'centroid': [152.77272727272728, 136.95454545454547]}, {'area': 15, 'bbox': [145, 143, 152, 150], 'centroid': [148.53333333333333, 146.53333333333333]}], 'two_major_components': True, 'two_separated_major_components': True}]`
+
+## Visuals
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV16TwoFootRadius\water_v16_two_foot_radius_rt.gif`
+- Full+zoom GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV16TwoFootRadius\water_v16_two_foot_radius_full_plus_zoom.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV16TwoFootRadius\water_v16_two_foot_radius_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v16-two-foot-radius-results-2026-07-08.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV16TwoFootRadius\water_v16_two_foot_radius_bridge_results.json`

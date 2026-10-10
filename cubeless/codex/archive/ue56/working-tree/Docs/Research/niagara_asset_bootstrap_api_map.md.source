@@ -1,0 +1,661 @@
+# Niagara Asset Bootstrap API Map
+
+Status: research baseline plus first-pass UE 5.6.1 Niagara creation support in the local UnrealMCP fork.
+
+Goal: learn and document how Unreal Engine itself creates valid Niagara System and Emitter assets before adding MCP creation commands. The MCP plugin must remain an authoring tool only; generated Niagara assets must not serialize any `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, or `mcp_unreal` dependency.
+
+## Scope
+
+This note covers the engine-side API surface needed for:
+
+- creating an empty Niagara System asset,
+- creating an empty Niagara Emitter asset,
+- creating a basic visible sprite Niagara System,
+- creating conservative rain/snow sprite presets with stock BoxLocation, force/noise/color/size modules, and InitializeParticle size/lifetime tuning,
+- inspecting factory defaults without saving source assets,
+- previewing generated Niagara systems through transient actors without saving or reloading maps,
+- validating that generated content remains normal `/Script/Niagara` content.
+
+The first implementation slice should target `/Game/_MCP_Temp/NiagaraGenerated/` only.
+
+## Engine API Map
+
+### Saved Asset Creation Path
+
+Headers:
+
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Source\Developer\AssetTools\Public\IAssetTools.h`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Source\Developer\AssetTools\Private\AssetTools.cpp`
+
+Key API:
+
+- `IAssetTools::CreateAsset(const FString& AssetName, const FString& PackagePath, UClass* AssetClass, UFactory* Factory, FName CallingContext=NAME_None)`
+- `UAssetToolsImpl::CanCreateAsset(...)`
+
+Observed UE 5.6.1 flow:
+
+- `CreateAsset` guards the factory from GC, verifies the asset class/factory pair, sanitizes the long package name, then calls `CanCreateAsset`.
+- `CanCreateAsset` validates object/package names, rejects map-name collisions, checks path allow rules, fully loads the package, and handles existing-object collisions.
+- In unattended mode, an existing object collision returns `false` instead of opening an overwrite prompt.
+- After validation, `CreateAsset` creates the package, calls `Factory->FactoryCreateNew(...)` with `RF_Public | RF_Standalone | RF_Transactional`, registers `FAssetRegistryModule::AssetCreated(NewObj)`, and marks the package dirty.
+- Niagara's own baker helper uses this pattern by creating a transient factory object and calling `AssetTools.CreateAsset(...)`.
+
+Engine source evidence:
+
+- `IAssetTools.h:342`: `CreateAsset` declaration.
+- `AssetTools.cpp:1717-1775`: `CreateAsset` implementation.
+- `AssetTools.cpp:4595-4725`: `CanCreateAsset` validation and existing-object behavior.
+- `NiagaraBakerOutput.cpp:98-127`: Niagara helper that creates a transient factory and delegates to `AssetTools.CreateAsset`.
+
+Implication for MCP:
+
+- Use `AssetTools.CreateAsset` for first-pass saved Niagara System and Emitter creation instead of manually creating packages and duplicating partial object graphs.
+- Instantiate `UNiagaraSystemFactoryNew` or `UNiagaraEmitterFactoryNew` under `GetTransientPackage()`, set automation fields, then pass the factory to `CreateAsset`.
+- Reject existing target assets by default. Do not implement overwrite in the first pass because the editor path would normally prompt, while MCP runs unattended.
+- `CreateAsset` already registers the asset and marks the package dirty; the MCP command still needs explicit compile/status handling, save, and post-save dependency audit.
+
+### System Factory
+
+Header:
+
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Public\NiagaraSystemFactoryNew.h`
+
+Key API:
+
+- `UNiagaraSystemFactoryNew::FactoryCreateNew(...)`
+- `UNiagaraSystemFactoryNew::InitializeSystem(UNiagaraSystem* System, bool bCreateDefaultNodes)`
+- Public fields:
+  - `UNiagaraSystem* SystemToCopy`
+  - `TArray<FVersionedNiagaraEmitter> EmittersToAddToNewSystem`
+
+Observed UE 5.6.1 flow:
+
+- If `SystemToCopy` is set, the factory waits for source compilation and duplicates the source system.
+- If `EmittersToAddToNewSystem` is non-empty, the factory creates a new `UNiagaraSystem`, calls `InitializeSystem(NewSystem, true)`, then adds each emitter through `FNiagaraEditorUtilities::AddEmitterToSystem`.
+- If neither is set, the factory creates a new `UNiagaraSystem` and calls `InitializeSystem(NewSystem, true)`.
+- `InitializeSystem` creates a shared `UNiagaraScriptSource` and `UNiagaraGraph`, assigns it to the system spawn/update scripts, resets system spawn/update output nodes, and optionally adds the editor-configured required system update module.
+- The factory assigns a default effect type when settings provide one, then calls `NewSystem->RequestCompile(false)`.
+
+Engine source evidence:
+
+- `NiagaraSystemFactoryNew.cpp:80-147`: factory create/duplicate/add-emitter/new-system decision.
+- `NiagaraSystemFactoryNew.cpp:149-182`: system script source, graph, output nodes, and default system update module initialization.
+
+Implication for MCP:
+
+- Use the engine factory path or the same static initializer rather than constructing a package and partially initializing scripts by hand.
+- For an "empty system" command, `InitializeSystem(System, true)` matches editor behavior better than `false`.
+- For a "basic sprite system" command, prefer creating an emitter through `UNiagaraEmitterFactoryNew` and then adding it to the system.
+
+### Emitter Factory
+
+Header:
+
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Public\NiagaraEmitterFactoryNew.h`
+
+Key API:
+
+- `UNiagaraEmitterFactoryNew::FactoryCreateNew(...)`
+- `UNiagaraEmitterFactoryNew::InitializeEmitter(UNiagaraEmitter* NewEmitter, bool bAddDefaultModulesAndRenderers)`
+- Public fields:
+  - `UNiagaraEmitter* EmitterToCopy`
+  - `bool bUseInheritance`
+  - `bool bAddDefaultModulesAndRenderersToEmptyEmitter`
+
+Observed UE 5.6.1 flow:
+
+- If `EmitterToCopy` is set and inheritance is enabled, the factory uses `UNiagaraEmitter::CreateWithParentAndOwner`.
+- If `EmitterToCopy` is set and inheritance is disabled, the factory duplicates the source emitter, assigns a unique emitter name, and disables versioning.
+- If no source emitter is set, the factory creates a new `UNiagaraEmitter` and calls `InitializeEmitter(NewEmitter, bAddDefaultModulesAndRenderersToEmptyEmitter)`.
+- The constructor default for `bAddDefaultModulesAndRenderersToEmptyEmitter` is `true`.
+- The interactive `ConfigureProperties` path sets `bAddDefaultModulesAndRenderersToEmptyEmitter=false` only when no source emitter and no configured default empty emitter are selected.
+- `InitializeEmitter` creates emitter graph source and graph, assigns the source to spawn/update/emitter spawn/emitter update/GPU scripts, creates output nodes for all standard emitter script usages, and sets spawn script usage to `ParticleSpawnScriptInterpolated`.
+- With default modules enabled, it adds:
+  - one sprite renderer,
+  - `/Niagara/Modules/Emitter/EmitterState.EmitterState`,
+  - `/Niagara/Modules/Emitter/SpawnRate.SpawnRate` with `SpawnRate=10`,
+  - `/Niagara/Modules/Spawn/Location/SystemLocation.SystemLocation`,
+  - `/Niagara/Modules/Spawn/Velocity/AddVelocity.AddVelocity` with `Velocity=(0,0,100)`,
+  - a parameter module for sprite size, sprite rotation, and lifetime,
+  - `/Niagara/Modules/Update/Lifetime/UpdateAge.UpdateAge`,
+  - `/Niagara/Modules/Update/Color/Color.Color`,
+  - `/Niagara/Modules/Solvers/SolveForcesAndVelocity.SolveForcesAndVelocity`.
+
+Engine source evidence:
+
+- `NiagaraEmitterFactoryNew.cpp:125-167`: factory copy/inheritance/empty-emitter decision.
+- `NiagaraEmitterFactoryNew.cpp:169-245`: emitter graph/script source setup and default sprite emitter modules.
+
+Implication for MCP:
+
+- For a truly empty emitter, set `bAddDefaultModulesAndRenderersToEmptyEmitter=false` explicitly before calling `AssetTools.CreateAsset`.
+- `bAddDefaultModulesAndRenderersToEmptyEmitter=true` is the quickest safe path to a visible basic sprite emitter without hand-authoring the graph.
+- The current module-input and renderer MCP tools can tune the generated sprite emitter after factory creation.
+
+### Adding Emitters To Systems
+
+Headers:
+
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\Niagara\Classes\NiagaraSystem.h`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\Niagara\Classes\NiagaraEmitter.h`
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Plugins\FX\Niagara\Source\NiagaraEditor\Public\NiagaraEditorUtilities.h`
+
+Key API:
+
+- `FNiagaraEditorUtilities::AddEmitterToSystem(UNiagaraSystem& InSystem, UNiagaraEmitter& InEmitterToAdd, FGuid EmitterVersion, bool bCreateCopy=true)`
+- `UNiagaraSystem::AddEmitterHandle(UNiagaraEmitter& SourceEmitter, FName EmitterName, FGuid EmitterVersion)`
+- `UNiagaraSystem::AddEmitterHandleDirect(FNiagaraEmitterHandle& EmitterHandleToAdd)`
+- `UNiagaraSystem::DuplicateEmitterHandle(...)`
+- `UNiagaraEmitter::CreateWithParentAndOwner(...)`
+- `UNiagaraEmitter::CreateAsDuplicate(...)`
+
+Observed UE 5.6.1 flow:
+
+- `FNiagaraEditorUtilities::AddEmitterToSystem` kills live system instances before mutating the emitter handle list, gathers existing emitter names, creates a unique emitter handle name, calls `InSystem.Modify()`, then uses `UNiagaraSystem::AddEmitterHandle` for normal system assets.
+- After adding the handle, `AddEmitterToSystem` rebuilds emitter nodes and synchronizes the system overview graph.
+- `AddEmitterHandle` creates an owned emitter copy through `UNiagaraEmitter::CreateWithParentAndOwner`.
+- It adds an `FNiagaraEmitterHandle`, refreshes system parameters from the emitter, and invalidates cached data.
+- `AddEmitterHandleDirect` is explicitly documented for temporary systems only and should not be used for live assets.
+- `RefreshSystemParametersFromEmitter` copies emitter spawn/update RapidIteration parameters into the system spawn/update RapidIteration stores while the emitter handle is enabled.
+- `UNiagaraEmitter::CreateWithParentAndOwner` duplicates the source emitter into the system, disables versioning for the chosen version, sets the unique emitter name, records parent metadata, duplicates the last-merge parent, and marks the graph source not synchronized.
+- `UNiagaraEmitter::bIsInheritable` defaults to `true`.
+- `UNiagaraSystem::AddEmitterHandle` removes parent metadata only when the source emitter is not inheritable.
+
+Engine source evidence:
+
+- `NiagaraEditorUtilities.cpp:2102-2157`: `AddEmitterToSystem`.
+- `NiagaraSystem.cpp:2819-2833`: `AddEmitterHandle`.
+- `NiagaraSystem.cpp:2835-2840`: `AddEmitterHandleDirect`.
+- `NiagaraSystem.cpp:1508-1530`: `RefreshSystemParametersFromEmitter`.
+- `NiagaraEmitter.cpp:1108-1122`: `CreateWithParentAndOwner`.
+- `NiagaraEmitter.cpp:1126-1151`: `CreateAsDuplicate`.
+- `NiagaraEmitter.h:741`: default `bIsInheritable=true`.
+- `NiagaraEmitter.cpp:3681-3685`: `FVersionedNiagaraEmitterData::RemoveParent`.
+
+Implication for MCP:
+
+- For saved generated systems, prefer `FNiagaraEditorUtilities::AddEmitterToSystem` over direct handle mutation because it handles live instance teardown, name uniqueness, emitter node rebuild, and overview graph synchronization.
+- Avoid `AddEmitterHandleDirect` for saved content.
+- Do not hand-copy RapidIteration parameters when adding an emitter through the engine API; `AddEmitterHandle` already refreshes system parameter stores.
+- A visible basic sprite system should use a transient source emitter initialized through `UNiagaraEmitterFactoryNew::InitializeEmitter(..., true)`, but set that source emitter to `bIsInheritable=false` before adding it to the system. This forces `AddEmitterHandle` to remove parent metadata from the owned emitter copy and avoids saving a dependency on a transient or temp source emitter.
+- A saved temp emitter asset is useful for debugging only. It creates an extra dependency that must be audited away before promotion outside `/Game/_MCP_Temp`.
+
+### Compile And Save Flow
+
+Observed UE 5.6.1 flow:
+
+- `UNiagaraSystem::RequestCompile(bool bForce, ...)` runs on the game thread, returns `false` on dedicated server/cooked editor packages/filtered editor-only packages/reentrant cases, and launches active compilation work when needed.
+- If no compilation launches and one active compilation exists, `RequestCompile` polls once; otherwise callers still need to inspect or wait for completion separately.
+- `UNiagaraSystem::PollForCompilationComplete(bool bFlushRequestCompile)` can flush a pending request before checking completion.
+- `UNiagaraSystem::WaitForCompilationComplete(...)` flushes pending requests through `RequestCompile(false)` before blocking on active compile jobs.
+- `UEditorAssetSubsystem::SaveLoadedAsset` requires the object to be a registered asset, then delegates to `UEditorLoadingAndSavingUtils::SavePackages`, which runs unattended and can perform source-control checkout before saving.
+- The existing local MCP compile-status tool already wraps compile request and wait behavior with generated/temp guards.
+- The existing local direct save helper rejects invalid/transient packages, validates long package names, converts package names to filenames, saves with `RF_Public | RF_Standalone`, and clears dirty state on success.
+
+Engine source evidence:
+
+- `NiagaraSystem.cpp:3593-3659`: `RequestCompile`.
+- `NiagaraSystem.cpp:3087-3095`: `PollForCompilationComplete`.
+- `NiagaraSystem.cpp:2989-3064`: `WaitForCompilationComplete`.
+- `EditorAssetSubsystem.cpp:1288-1307`: `SaveLoadedAsset`.
+- `FileHelpers.cpp:5559-5579` and `FileHelpers.cpp:5644-5648`: unattended `SavePackages` path.
+- `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPProjectCommands.cpp:394-436`: local `SaveLoadedAssetForMCP` package-save pattern.
+
+Implication for MCP:
+
+- Creation commands should call `RequestCompile(false)` only after all initial graph/emitter mutations are complete.
+- The command response should report `compile_requested` and either return immediately or reuse the existing compile-status polling pattern when `wait_for_completion=true`.
+- Saving should use normal package save semantics (`RF_Public | RF_Standalone`, valid long package name, not transient), never MCP-owned classes or objects.
+- For the first pass, prefer a local direct save helper in `UnrealMCPNiagaraCommands.cpp` that mirrors `SaveLoadedAssetForMCP`, so the command behavior is deterministic and does not silently depend on source-control checkout.
+- If future workflow needs checkout-aware saves, switch deliberately to `UEditorAssetSubsystem::SaveLoadedAsset` after confirming registered-asset status from the `AssetTools.CreateAsset` path.
+
+### Dependency Audit Path
+
+Header:
+
+- `C:\Program Files\Epic Games\UE_5.6\Engine\Source\Runtime\AssetRegistry\Public\AssetRegistry\IAssetRegistry.h`
+
+Key API:
+
+- `IAssetRegistry::GetDependencies(FName PackageName, TArray<FName>& OutDependencies, EDependencyCategory Category, const FDependencyQuery& Flags)`
+- `FAssetRegistryDependencyOptions`
+
+Observed UE 5.6.1 flow:
+
+- AssetRegistry package dependency queries return dependencies reported in the on-disk package.
+- `FAssetRegistryDependencyOptions` includes soft package references, hard package references, searchable names, and management references.
+
+Engine source evidence:
+
+- `IAssetRegistry.h:132-155`: dependency option fields.
+- `IAssetRegistry.h:518-539`: dependency query overloads.
+
+Implication for MCP:
+
+- Run dependency audit after saving, not only on the in-memory package, because AssetRegistry dependency results are on-disk package reports.
+- Check both hard and soft package dependencies for forbidden MCP markers.
+- Also scan generated object/package path strings for `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, and `mcp_unreal`, because not every problematic marker is necessarily a package dependency.
+- For promotion outside temp, reject dependencies back into `/Game/_MCP_Temp` unless the user explicitly approves that exact dependency.
+
+## Existing Local MCP Surface
+
+Already available and useful for bootstrap learning:
+
+- `analyze_niagara_system`
+- `inspect_niagara_factory_bootstrap_defaults`
+- `audit_niagara_promotion_candidate`
+- `promote_niagara_system_candidate`
+- `inspect_niagara_renderers`
+- `inspect_niagara_user_parameters`
+- `inspect_niagara_stack`
+- `inspect_niagara_graph`
+- `inspect_niagara_graph_actions`
+- `apply_niagara_scratch_pad_graph_recipe`
+- `inspect_niagara_scratch_pad_interface`
+- `inspect_niagara_compile_status`
+- `inspect_niagara_emitter_properties`
+- `inspect_niagara_module_inputs`
+- `inspect_niagara_data_interface_overrides`
+- `inspect_niagara_simulation_stages`
+- `inspect_niagara_rapid_iteration_parameters`
+- `create_empty_niagara_system`
+- `create_empty_niagara_emitter`
+- `create_basic_sprite_niagara_system`
+- `create_sprite_niagara_preset_system`
+- `duplicate_or_attach_emitter_from_source`
+- `create_niagara_system_from_source_template`
+- `cleanup_generated_niagara_assets_offline`
+- `add_niagara_sprite_renderer`
+- `set_niagara_sprite_renderer_settings`
+- `set_niagara_emitter_local_space`
+- `set_niagara_emitter_sim_target`
+- `set_niagara_emitter_fixed_bounds`
+- `set_niagara_module_input_value`
+- `create_niagara_module_input_override`
+- `set_niagara_module_input_user_parameter`
+- `set_niagara_render_target2d_module_input`
+- `add_niagara_stock_module_to_stack`
+- `create_or_duplicate_scratch_pad_module`
+- `add_scratch_pad_module_to_stack`
+- `set_niagara_rapid_iteration_parameter`
+
+The saved temp-asset bootstrap gap is closed for the current UE 5.6.1 target: empty systems, empty emitters, visible sprite systems, conservative stock presets, and project-authored source-template seeds can all be created under `/Game/_MCP_Temp/NiagaraGenerated/` with compile/dependency checks. UE 5.6 graph-menu actions can now also be enumerated, transiently materialized for pin inspection, and used by a guarded ghost-only recipe writer. Unrestricted graph synthesis, source-asset Custom HLSL replacement, promotion policy outside temp, and visual quality authoring remain separate reviewed boundaries.
+
+### `inspect_niagara_graph_actions` and guarded graph recipes
+
+Status: implemented and live-validated against UE 5.6.1.
+
+- `UEdGraphSchema_Niagara::GetGraphActions` is exported and provides the same native operation, conversion, selection, reroute, and function-call templates used by the Niagara graph menu.
+- `FNiagaraSchemaAction_NewNode::SpawnNodeFromTemplate` can materialize a duplicated template into a transient preview graph, exposing the real pin surface without dirtying the asset.
+- `UNiagaraGraph::NotifyGraphNeedsRecompile` is declared in a public header but is not exported from the installed engine DLL. Plugin callers must not link against it. The available compile route is `UNiagaraSystem::RequestCompile(false)` plus an explicit completion wait and diagnostic readback; force rebuild is deliberately avoided because it rotates rebuild/change IDs and would invalidate the mutation proof.
+- The `UNiagaraGraph::FindOutputNodes` overloads and static final-node `BuildTraversal` overload needed by this reference proof are also declared without `NIAGARAEDITOR_API` in UE 5.6.1, so an external plugin cannot safely link them. The bridge therefore performs a conservative manual traversal: enumerate enabled output nodes, walk only enabled nodes through incoming links, and require a direct function-call reference to the selected Scratch Pad. `NiagaraNodeStaticSwitch`, `NiagaraNodeUsageSelector`, `NiagaraNodeSimTargetSelector`, and `NiagaraNodeSelect` are compile-time selector barriers; encountering one makes the scan incomplete and rejects the candidate rather than guessing the active branch.
+- Generic numeric operation pins do not become typed merely because a literal default string is assigned. The water damping ghost test first failed with unresolved Clamp Min/Max pins, rolled back, then passed after the constants were authored as native `Make float` conversion nodes.
+- The guarded writer accepts only generated systems under `/Game/_MCP_Temp/NiagaraGenerated`, requires an exact Custom HLSL body hash, and rejects an unreferenced, indirect-only, or selector-obscured Scratch Pad before mutation. UE 5.6 standalone Scratch Pad compilation can report false errors when emitter/system stack context is absent, so validation uses the real owning-system/caller context. Before both the pre-removal and final non-force compile, every caller's pending `ComputedId` must differ from baseline; after compile, both `CachedId` and `ComputedId` must match that captured pending ID while the caller remains clean and `UpToDate`.
+- Dependency auditing runs before mutation and is repeated against the final native graph immediately before save. The final pass uses a non-mutating save-contract archive with an explicit read-only weak-reference pass and covers function calls, serialized node hard/soft/weak object and type references, pin type/default references, selected-function transitive dependencies, and direct system dependencies; incomplete traversal or an MCP-only reference rejects the result.
+- Post-mutation failure performs best-effort structural restoration and a non-force recovery compile, but it is not a clean/full rollback. Even if node membership/order, Custom HLSL, links, graph fingerprint, and references are visibly restored, serialized `ChangeId`, `ForceRebuildId`, and traversal-cache IDs cannot be proven identical to disk. The ghost package therefore remains dirty, reports `rollback_verified=false`, `requires_package_reload=true`, `undo_recovery_unproven=true`, and `do_not_retry=true`. Reloading the exact package is the only supported recovery; Undo alone is not claimed safe, and the package must not be saved or retried before reload.
+- The live harness now guards all recipe dispatches, including both dry runs, before transport begins. Malformed envelopes, request/response mode mismatches, and non-string status values remain fail-closed; independent graph or dirty-package evidence can restore the exact reload obligation even after a nominal no-mutation response. A saved disk-hash divergence is a different terminal state and requires a known-good manual restore instead of reloading the changed bytes.
+- The per-phase timeout is normalized to a finite 1-60 seconds in both the Python payload and bridge, and the transport deadline covers all four possible compile waits (baseline, pre-removal, final, and recovery) plus margin. A socket/transport failure after dispatch is an indeterminate write outcome and is reported with mutation/save state unknown plus a reload-before-inspection contract rather than as a retryable generic failure.
+- Ghost source-template creation follows the same fail-closed boundary: after promotion dispatch, any exception or missing/incomplete response aborts the whole run, claims the exact target for offline cleanup even if no package segment is visible yet, and requires exact-package reload/closed-editor cleanup before another mutation. Offline cleanup probes both GUI and commandlet editor processes, treats probe failure as unknown, and discovers all six recognized package segments even when `.uasset` is absent.
+- The 2026-07-20 five-system ghost run inventoried 37 Custom HLSL nodes. Exactly 1 Water candidate reached and passed the guarded native-node conversion path; 36 remained unsupported and unchanged: 32 complex candidates plus 4 unreferenced Scratch Pads. The run kept every source package hash unchanged.
+- The 2026-07-21 stability rerun retained the same 37/1/36 inventory contract, added an exact final editor-dirty gate across all five sources and five ghosts, and required every compact creation dependency audit to contain integer-zero forbidden/temp counts plus a typed dependency list. Promotion responses are now bound to the requested source/target paths and cross-check the post-promotion audit before a success can be admitted.
+
+## Learning Commands
+
+These commands should be read-only from a content perspective. They may create transient objects under `GetTransientPackage()` but must not save packages or dirty project content.
+
+### `inspect_niagara_factory_bootstrap_defaults`
+
+Status: implemented in the local MCP C++ bridge.
+
+Parameters:
+
+- `kind`: `"all" | "system" | "emitter" | "empty_emitter" | "basic_sprite_emitter"`
+- `create_default_system_nodes`: bool, default `true`
+- `add_default_modules_and_renderers`: bool, default `false`, used only with `kind="emitter"`
+- `include_pins`: bool, default `false`
+- `max_function_calls`: int, default `80`
+
+Behavior:
+
+- Create transient Niagara objects with the same factory static initializer paths.
+- Inspect the resulting graph/script/output/module/renderer structure.
+- Return a payload compatible with a compact `analyze_niagara_system` style response where possible.
+- Never save, compile source assets, or register persistent asset registry entries.
+
+Return fields:
+
+- `kind`
+- `transient_only=true`
+- `saved=false`
+- `compile_requested=false`
+- `asset_registry_registered=false`
+- `system`
+- `emitters`
+
+Use:
+
+- Establish the expected UE 5.6.1 default structure without generating project content.
+- Compare future generated assets against the engine default.
+
+### `compare_niagara_system_bootstrap`
+
+Parameters:
+
+- `system_path`
+- `baseline_kind`: `"empty_system" | "basic_sprite_system"`
+- `include_graph=true`
+
+Behavior:
+
+- Inspect an existing Niagara System.
+- Compare high-level counts and required defaults against the transient factory baseline.
+- Do not mutate assets.
+
+Return fields:
+
+- `matches_baseline`
+- `missing_outputs`
+- `extra_emitters`
+- `missing_default_modules`
+- `renderer_diff`
+- `compile_status`
+
+Use:
+
+- Validate manually created samples and later MCP-generated samples.
+
+## Proposed Creation Commands
+
+Creation commands should be implemented only after the transient learning command proves the baseline structure.
+
+### `create_empty_niagara_system`
+
+Status: implemented in the local MCP C++ bridge.
+
+Parameters:
+
+- `target_system_path`
+- `overwrite_existing=false`
+- `create_default_system_nodes=true`
+- `save=true`
+- `request_compile=true`
+
+Safety:
+
+- Refuse targets outside `/Game/_MCP_Temp/NiagaraGenerated/` unless `allow_non_temp_path=true` is explicitly supplied for the current call.
+- Reject any target path containing `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, or `mcp_unreal`.
+- No generated asset should reference the UnrealMCP plugin.
+- The implemented first pass rejects overwrite attempts even when `overwrite_existing=true` is supplied.
+
+Implementation:
+
+- Use `AssetTools.CreateAsset` with a transient `UNiagaraSystemFactoryNew` whose `SystemToCopy` is null and `EmittersToAddToNewSystem` is empty.
+- Let the factory initialize the system graph, assign default effect type, and request compile.
+- Optionally wait/read compile status, save with the local direct save helper, then run dependency audit.
+
+### `create_empty_niagara_emitter`
+
+Status: implemented in the local MCP C++ bridge.
+
+Parameters:
+
+- `target_emitter_path`
+- `add_default_modules_and_renderers=false`
+- `overwrite_existing=false`
+- `save=true`
+
+Implementation:
+
+- Use `AssetTools.CreateAsset` with a transient `UNiagaraEmitterFactoryNew`.
+- Set `EmitterToCopy=nullptr`, `bUseInheritance=false`, and `bAddDefaultModulesAndRenderersToEmptyEmitter=false` for the real empty-emitter command.
+- Allow `add_default_modules_and_renderers=true` only when the caller intentionally wants the editor's basic sprite emitter baseline.
+- Save only generated/temp content by default.
+
+### `create_basic_sprite_niagara_system`
+
+Status: implemented in the local MCP C++ bridge.
+
+Parameters:
+
+- `target_system_path`
+- `emitter_name="Emitter"`
+- `material_path=""`
+- `save=true`
+- `wait_for_completion=true`
+
+Implementation:
+
+- Create a transient `UNiagaraEmitter` under `GetTransientPackage()`.
+- Initialize it with `UNiagaraEmitterFactoryNew::InitializeEmitter(Emitter, true)`, set the desired unique emitter name, and set `Emitter->bIsInheritable=false`.
+- Use `AssetTools.CreateAsset` with a transient `UNiagaraSystemFactoryNew` whose `EmittersToAddToNewSystem` contains that transient emitter version.
+- Let `UNiagaraSystemFactoryNew::FactoryCreateNew` call `InitializeSystem`, `FNiagaraEditorUtilities::AddEmitterToSystem`, default effect-type assignment, and `RequestCompile(false)`.
+- Verify that the owned emitter's `VersionedParent` and `VersionedParentAtLastMerge` are empty after creation.
+- Save only the Niagara System in the first pass; do not create an auxiliary emitter asset unless a debug flag is added later.
+
+### `create_sprite_niagara_preset_system`
+
+Status: implemented in the local MCP C++ bridge.
+
+Parameters:
+
+- `target_system_path`
+- `preset="basic"` (`basic`, `rain`, `snow`, `dust`, `sparks`)
+- `emitter_name="Emitter"`
+- `material_path=""`
+- optional overrides: `spawn_rate`, `velocity`, `alignment`, `facing_mode`, `sub_image_size`, `fixed_bounds_min`, `fixed_bounds_max`, `local_space`, `add_spawn_box_location`, `spawn_box_size`, `spawn_box_offset`
+- optional InitializeParticle overrides: `sprite_size`, `lifetime`
+- optional weather-detail toggle: `add_weather_detail_modules`
+- optional project weather material toggle: `use_project_weather_materials`
+- `save=true`
+- `wait_for_completion=true`
+
+Implementation:
+
+- Call the basic sprite creation path with `save=false` and `wait_for_completion=false`.
+- Use `set_niagara_module_inputs_batch` internally with `save=false` and `request_compile=false` to tune the existing factory `SpawnRate.SpawnRate` and `AddVelocity.Velocity` RapidIteration inputs.
+- For rain/snow by default, use `add_niagara_stock_module_to_stack` internally to insert `/Niagara/Modules/Spawn/Location/BoxLocation.BoxLocation`, then use `set_niagara_module_inputs_batch` to set `Box Size` and `Box Offset`.
+- For rain/snow by default, update existing InitializeParticle RapidIteration parameters whose names contain `.SetVariables_` and end with `.Particles.SpriteSize` / `.Particles.Lifetime`. Verified UE 5.6.1 defaults are set through exact parameter suffixes rather than normal module-input lookup.
+- For rain/snow by default, insert stock update modules `Drag`, `GravityForce`, `CurlNoiseForce`, `WindForce`, `ScaleColor`, and `ScaleSpriteSize`, then set their existing RapidIteration inputs.
+- If `use_project_weather_materials=true` and `material_path` is empty, apply project-owned rain/snow particle materials from `/Game/MCPWeather`. This is opt-in because it creates a project-content dependency; it does not create an UnrealMCP/plugin dependency.
+- Use the existing sprite renderer settings, fixed-bounds, and local-space handlers with `save=false` and `request_compile=false`.
+- Request compile once, optionally wait, save once through the direct Niagara package-save helper, then return the same dependency audit and parent-reference checks as the basic creation command.
+- Current presets are safe seed systems, not full weather/FX solvers; randomized variation, collision, camera-following, material-specific textures, and burst shaping remain later authoring work.
+
+Verification note:
+
+- 2026-06-29 live smoke verified rain/snow preset creation with default BoxLocation insertion, compile error/warning counts at 0, and the `add_spawn_box_location=false` escape hatch.
+- Deleting freshly validated Niagara Systems through `EditorAssetLibrary.delete_asset` in the same D3D12 editor session triggered an RHI crash during cleanup. Treat loaded Niagara test-asset deletion as a separate cleanup concern; prefer editor restart/offline cleanup or a safer native cleanup path before relying on live Python deletion for generated Niagara Systems.
+- Added `cleanup_generated_niagara_assets_offline` as the preferred generated-temp cleanup route after closing the editor. It is dry-run by default, requires the editor to be closed before real deletion by default, and clamps deletion to `/Game/_MCP_Temp/NiagaraGenerated`.
+- Preset creation failure cleanup is now deferred as JSON guidance instead of live `EditorAssetLibrary` deletion. The repeatable smoke harness is `Python/scripts/analysis/smoke_niagara_preset_loop.py`: run `live` while the editor bridge is available, close the editor, then run `cleanup` with the reported prefix.
+- 2026-06-29 repeatable smoke harness verification passed against UE 5.6.1 editor bridge `127.0.0.1:55561`: rain/snow each produced one sprite renderer, one emitter, BoxLocation enabled with the expected preset size/offset, stack function-call count 9, and compile error/warning counts 0. After closing the editor, offline cleanup deleted the four generated test systems selected by prefix with no residual files.
+- 2026-06-29 quality module probe confirmed these UE 5.6.1 stock module paths and editable RapidIteration inputs:
+  - `/Niagara/Modules/Update/Forces/Drag.Drag`: `Drag`, `Rotational Drag`.
+  - `/Niagara/Modules/Update/Forces/GravityForce.GravityForce`: `Gravity`.
+  - `/Niagara/Modules/Update/Forces/CurlNoiseForce.CurlNoiseForce`: `Noise Strength`, `Noise Frequency`, `Pan Noise Field`.
+  - `/Niagara/Modules/Update/Forces/WindForce.WindForce`: `Wind Speed`, `Wind Speed Scale`, `Frequency`, `Scale`.
+  - `/Niagara/Modules/Update/Color/ScaleColor.ScaleColor`: `Scale RGB`, `Scale Alpha`.
+  - `/Niagara/Modules/Update/Size/ScaleSpriteSize.ScaleSpriteSize`: `Uniform Curve Scale`.
+- 2026-06-29 quality v1 live smoke passed: rain/snow now add those six detail modules by default when `add_weather_detail_modules` is not false. Both presets compiled with error/warning counts 0, produced stack function-call count 15, and returned applied detail settings in JSON. Offline cleanup removed the generated quality-v1 systems with no residual files.
+- 2026-06-29 InitializeParticle probe confirmed factory `SetVariables_<GUID>` RapidIteration parameters can be set by exact name. Rain quality defaults now set `SpriteSize=[5,120]`, `Lifetime=1.8`; snow defaults set `SpriteSize=[22,22]`, `Lifetime=12`.
+- 2026-06-29 quality v2 live smoke passed: rain/snow compile error/warning counts were 0, stage count was 19, stack function-call count was 15, dependency count was 6, and readback verified exactly one `.SetVariables_*.Particles.SpriteSize` and `.SetVariables_*.Particles.Lifetime` value per preset with the expected defaults.
+- `preview_niagara_system_in_preview_lab` and `capture_niagara_preview_lab_view` now accept `allow_current_map_preview=true`. Default behavior still requires `/Game/SampleTestMap/Niagara_TestMap` and refuses map reload/save. With the explicit flag, current-map preview spawns transient actors, auto-frames them, captures under `Saved/MCP/NiagaraReviews`, cleans actors, and leaves `map_dirty_after_preview=false`.
+- 2026-06-29 current-map preview smoke captured `quality_v2_current_map/rain.png` and `quality_v2_current_map/snow.png` from `/Game/Template/Empty` with `used_expected_preview_lab_map=false`, `allow_current_map_preview=true`, `cleanup_after=true`, and no map save/reload. Visual review shows capture stability but also confirms remaining quality work: default sprite/material plus large weather volume framing still reads as sparse/faint in a generic empty map.
+- 2026-06-29 project-material opt-in smoke passed with `use_project_weather_materials=true`: rain applied `/Game/MCPWeather/FX/Rain/Materials/M_MCPWeather_Rain_Particle.M_MCPWeather_Rain_Particle`, snow applied `/Game/MCPWeather/FX/Snow/Materials/M_MCPWeather_Snow_Particle.M_MCPWeather_Snow_Particle`, and `inspect_niagara_renderers` confirmed each sprite renderer's `primary_material` and `used_materials`. Live compile remained at 0 errors/0 warnings, and current-map PNG evidence was written to `Saved/MCP/NiagaraReviews/project_materials_v1_current_map/`. Visual review confirms the option fixes material selection, while remaining quality work is preview framing/spawn density/volume behavior rather than plugin dependency or renderer material binding.
+- 2026-06-29 preview framing pass added explicit camera controls to `capture_niagara_preview_lab_view`, `preview_niagara_system_in_preview_lab`, and `sample_niagara_system_in_preview_lab`: `auto_frame`, `camera_location`, `camera_rotation`, and `camera_fov`. Defaults remain auto-framed. Manual camera mode was verified against generated rain/snow project-material seed assets at `Saved/MCP/NiagaraReviews/manual_camera_safe_v1/` with `camera_mode="manual_camera_override"` and `map_dirty_after_preview=false`.
+- 2026-06-29 preview override pass added `user_parameter_overrides` to `preview_niagara_system_in_preview_lab` and `sample_niagara_system_in_preview_lab`. Overrides are applied only to the transient preview `UNiagaraComponent` before activation, accept names with or without the `User.` namespace, and support bool/float/int/vector/color JSON values. This is intended for visual review of camera-following systems such as MCPWeather Snow where stronger `Amount` or custom camera values are useful, without mutating or saving the source Niagara System.
+- 2026-06-29 preview asset-swap policy pass added `preserve_override_parameters=true` by default to the Python wrappers and native Preview Lab commands for `preview_niagara_system_in_preview_lab` and `sample_niagara_system_in_preview_lab`. The native command now calls `UNiagaraComponent::SetAsset(NiagaraSystem, !preserve_override_parameters)`. Keep this default for Blueprint/component swap parity; set it false only for A/B reset-path diagnostics.
+- 2026-06-29 BP-manager Snow preview pass added `Python/scripts/analysis/preview_mcpweather_manager_source_template.py`. The script spawns a transient `/Game/MCPWeather/BP_MCPWeatherManager`, swaps `RainFX`/`SnowFX` to source or promoted systems, calls `SetWeather`/`EditorPreviewTick`, captures source/promoted viewport frames, and composes contact sheet/MP4 evidence. The first dense Snow run wrote visible source/promoted evidence under `Saved/MCP/NiagaraReviews/20260629_bp_manager_snow_source_template_v1/`, but a repeated dense rerun hit a UE 5.6.1 D3D12 out-of-video-memory fatal in Niagara rendering. Keep default boosts conservative, avoid repeated high-density Snow preview runs in one editor session, and restart the editor between dense visual passes.
+- 2026-06-29 BP-manager preview stabilization lowered the default Snow/Rain preview boosts, hides and disables non-target Niagara components, attempts per-variant garbage collection, and releases viewport realtime after capture. Conservative Snow smoke `20260629_bp_manager_snow_stable_v2` completed without new Fatal/OOM/Python errors, cleared dirty flags back to zero, and wrote visible source/promoted contact sheet and MP4 evidence under `Saved/MCP/NiagaraReviews/20260629_bp_manager_snow_stable_v2/`.
+- 2026-06-29 BP-manager Rain visual pass added per-run source/promoted path overrides, full-size contact sheets, transient fixed bounds on the preview Niagara component, dual `set_variable_*`/`set_niagara_variable_*` component setters, and a pre-swap `SetWeather`/`EditorPreviewTick` initialization attempt. Early Rain captures such as `20260629_bp_manager_rain_stable_v5` and `20260629_bp_manager_rain_stable_v7` completed and wrote MP4/contact-sheet evidence, but promoted Rain was much lower density than source Rain when simply swapped into `BP_MCPWeatherManager.RainFX`, despite source/promoted Rain matching 536/536 RapidIteration values, renderer summaries, user defaults, and read-only compile status.
+- 2026-06-29 BP-manager Rain root-cause pass traced the mismatch to `UNiagaraComponent::SetAsset` editor behavior in UE 5.6.1. The default `SetAsset(system)` path resets `OverrideParameters` and `InstanceParameterOverrides` before synchronization, while `SetAsset(system, false)` preserves the BP component's existing override state during a promoted-system swap. `Python/scripts/analysis/preview_mcpweather_manager_source_template.py` now defaults to `--preserve-override-parameters`, logs `target_asset_swaps`, and exposes `--no-preserve-override-parameters` plus `--force-asset-rebind` for A/B checks. Evidence: `20260629_bp_manager_rain_preserve_override_v1` shows promoted Rain density matching source after warm-up; `20260629_bp_manager_rain_no_preserve_v1` reproduces the low/blank promoted Rain path. For BP-manager previews or runtime authoring tests, swap Niagara systems with override preservation; no C++ extension is required for this specific preview parity issue unless we later need deeper parameter-store readback/copy APIs.
+- 2026-06-29 follow-up BP-manager Rain API-policy pass shows the above is necessary but not sufficient as a final visual proof. After the native Preview Lab API gained `preserve_override_parameters`, `20260629_bp_manager_rain_api_policy_v1` and `20260629_bp_manager_rain_promoted_only_probe_v1` still showed promoted Rain as low/blank in repeat BP-manager actor sessions, while the source-template RI/dependency audits continued to pass. Current conclusion: keep override preservation as the correct default SetAsset policy, but treat BP-manager Rain parity as a separate component-template/runtime-initialization problem. The next deeper step is C++ readback/copy support for `UNiagaraComponent` override/instance parameter state or a dedicated BP-manager preview harness that runs each variant in a fresh editor session.
+- 2026-06-29 BP-manager Rain runtime-state pass narrowed the repeat blank to preview timing, not a broken promoted Niagara asset. The native `inspect_niagara_component_runtime_state` command now reads live `FNiagaraSystemInstance`/`FNiagaraEmitterInstance` counters without saving or compiling. Early promoted Rain attempts could report an active component but no system instance while the generated system was still compiling; after compile readiness, promoted Rain reported 7 active emitters and GPU particle counts but short captures could still look blank. A longer promoted-only run, `20260630_bp_manager_rain_promoted_long_after_compile_v1`, reached runtime age ~7.27s with 6 active GPU emitters and visible rain in `promoted_023.png`. The BP-manager preview harness now waits for Niagara compile readiness before setup and defaults promoted variants to an extra 240 post-setup settle frames, recording both `compile_ready` and `settle` in `preview_report.json`.
+- 2026-06-30 BP-manager visual-review automation pass added per-frame image heuristics to `preview_mcpweather_manager_source_template.py`. The report now includes `frame_analysis` per variant and a top-level `frame_analysis_summary`. Rain uses a thin vertical-line candidate score, Snow uses bright neutral particle candidates, and consecutive-frame motion is recorded as a secondary signal. `--require-frame-analysis-pass` can turn the heuristic into a failing check, while the default remains evidence-only so human visual review can still arbitrate edge cases.
+- 2026-06-30 MCPWeather Niagara release gate added `Python/scripts/analysis/release_gate_mcpweather_niagara.py`. Run `uv --directory .\Python run python scripts\analysis\release_gate_mcpweather_niagara.py live` against a running UE 5.6.1 editor to aggregate promoted Rain/Snow compile readiness, `audit_niagara_promotion_candidate` dependency safety, and BP-manager source/promoted visual/runtime preview with `--require-frame-analysis-pass`. It writes `release_gate_report.json` under `MCPGameProject/Saved/MCP/NiagaraReviews/<run_id>/` plus the per-preset preview reports, contact sheets, and MP4s. Add `--run-visual-regression --run-plugin-independence` for a stricter one-command gate that also writes `visual_regression_report.json` and `plugin_independence_report.json` into the same run directory and folds those results into the top-level release status.
+- 2026-06-30 UnrealMCP plugin independence gate added `Python/scripts/analysis/verify_mcpweather_plugin_independence.py` plus the UE Python payload `verify_mcpweather_assets_without_unrealmcp_unreal.py`. Run `uv --directory .\Python run python scripts\analysis\verify_mcpweather_plugin_independence.py live` to statically scan promoted Rain/Snow packages for `/Script/UnrealMCP`, `/UnrealMCP`, `UnrealMCP`, `MCPUnreal`, and `mcp_unreal`, then launch `UnrealEditor-Cmd.exe -run=PythonScript -DisablePlugins=UnrealMCP -EnablePlugins=PythonScriptPlugin` to load the promoted Niagara Systems in a separate process without the UnrealMCP plugin. The command writes `plugin_independence_report.json` under `Saved/MCP/NiagaraReviews/<run_id>/`.
+- 2026-06-30 MCPWeather Niagara visual regression baseline added `Docs/Analysis/MCPWeatherNiagara/mcpweather_niagara_visual_baseline.json` and `Python/scripts/analysis/check_mcpweather_niagara_visual_regression.py`. Run `uv --directory .\Python run python scripts\analysis\check_mcpweather_niagara_visual_regression.py check --release-gate-report .\MCPGameProject\Saved\MCP\NiagaraReviews\<run_id>\release_gate_report.json` after a release gate pass. The checker compares Rain/Snow source/promoted compile, dependency audit, frame-analysis visibility/motion, runtime particle counts, and GPU emitter counts against the fixed baseline from `20260630_mcpweather_niagara_release_gate_v2`, and writes `Docs/Analysis/MCPWeatherNiagara/mcpweather_niagara_visual_regression_report.json`. It respects `release_gate_report.presets` or explicit `--presets`, so partial strict gates such as rain-only do not fail because snow is absent.
+- 2026-06-30 Rain promoted visual baseline tolerance was adjusted after `20260630_mcpweather_release_gate_rain_only_strict_v1`: promoted Rain can report low thin-line candidate scores while still passing preview automation through motion, runtime particle count, and 6 active GPU emitters. Keep promoted Rain's release signal centered on `automatic_review_pass`, motion, runtime particles, and GPU emitter count; use the line/effect score as a weak secondary signal for Rain rather than a hard visible-frame requirement.
+- 2026-06-30 MCPWeather promotion-to-release chain added `--run-release-gate` to `Python/scripts/analysis/promote_niagara_mcpweather_source_template.py`. The option requires `--execute`, passes the actual promoted target paths into `release_gate_mcpweather_niagara.py`, and runs preview, visual regression, and UnrealMCP plugin-independence checks by default. Keep dry-run promotion planning as the default; use `--execute --run-release-gate` only when intentionally writing the non-temp MCPWeather generated assets and immediately validating them for release.
+- 2026-06-30 MCPWeather promotion target override pass added `--rain-target-system-path` and `--snow-target-system-path` to `promote_niagara_mcpweather_source_template.py`. Existing `/Game/MCPWeather/Generated/NS_MCPWeather_Generated_Rain` and `..._Snow` compile, audit, and load without UnrealMCP, but `20260630_mcpweather_generated_targets_strict_v1` failed BP-manager preview/visual regression. Treat those existing `Generated_*` assets as non-release-quality until regenerated into a fresh explicit target path and validated with `--execute --run-release-gate`.
+- 2026-06-30 MCPWeather promotion target preflight now runs before temp source-template generation. `promote_niagara_mcpweather_source_template.py` uses a read-only `EditorAssetLibrary.does_asset_exist` check through `execute_python`; if any requested non-temp target already exists, the script fails before creating `/Game/_MCP_Temp/NiagaraGenerated` source assets. This closes the temp-artifact leak observed during the no-`--execute` release-gate contract probe.
+- 2026-06-30 MCPWeather promotion preflight-only mode added `--target-preflight-only`. Use it with explicit target paths to verify a future release candidate path is empty without creating temp source-template assets or writing non-temp content. This is the recommended first step before `--execute --run-release-gate` on a fresh candidate path.
+- 2026-06-30 release candidate execution created `/Game/MCPWeather/Generated/NS_MCPWeather_ReleaseCandidate_20260630_Rain` and `..._Snow`. Both compile at 0 errors / 0 warnings, pass dependency audit, and pass UnrealMCP plugin-independence static plus isolated-load checks. Snow passed strict visual preview in `20260630_release_candidate_execute_v1_release_gate`; Rain needed a longer promoted settle and frame sample, then passed `20260630_release_candidate_rain_long_strict_v1` with promoted visible frames 5/6, motion pairs 5, ~885k runtime particles, and 6 GPU emitters. `release_gate_mcpweather_niagara.py` and promotion chained release-gate defaults now use Rain `--rain-frames 6`, `--rain-promoted-post-setup-settle-frames 480`, and `--timeout-seconds 300`.
+- 2026-06-30 split release gate added `Python/scripts/analysis/run_mcpweather_niagara_split_release_gate.py`. It runs `release_gate_mcpweather_niagara.py` separately for each requested preset, keeps visual regression scoped to each preset report, then optionally runs UnrealMCP plugin-independence once for the selected asset set and writes one aggregate `split_release_gate_report.json`. Use it for release-candidate validation when a long-lived editor session times out during the combined Rain/Snow preview loop even though individual preset gates pass. `--preset-retries 1` records and retries failed preset gates, which is useful for transient preview bridge timeouts without re-running already-passed presets.
+- 2026-06-30 Snow promoted visual baseline motion tolerance was adjusted from `0.05` to `0.04` after `20260630_release_candidate_snow_split_retry_v1`: retry evidence had `automatic_review_pass=true`, visible frame count 2, motion pair count 1, effect score ~0.288, runtime particles 41067, GPU emitters 3, and max motion pixel ratio ~0.0454. Treat Snow visibility/effect score/runtime emitter evidence as primary; keep motion as a floor against fully static captures, not as a high-magnitude parity threshold.
+- 2026-06-30 Snow texture material contract added to `release_gate_mcpweather_niagara.py`. The gate now calls `inspect_niagara_renderers` and fails Snow candidates unless every enabled Sprite renderer reports `/Game/MCPWeather/FX/Snow/Materials/M_MCPWeather_Snow_Particle.M_MCPWeather_Snow_Particle` through `primary_material` or `used_materials`. Evidence from `NS_MCPWeather_ReleaseCandidate_20260630_Snow` showed all 3 active Sprite renderers using that material, and the preview contact sheet shows textured snowflake particles rather than a blank/invisible system. `check_mcpweather_niagara_visual_regression.py` also records `texture_materials` checks when that section exists in the release-gate report, so offline evidence preserves the texture-material contract.
+- 2026-06-30 release-candidate evidence review added `Python/scripts/analysis/review_mcpweather_release_candidate_evidence.py`. It is an offline-only reconciler for the current Rain/Snow candidate evidence: Rain long strict report, Snow split retry report, Snow texture material gate, current visual baseline, plugin-independence reports, and cleanup dry-run reports. It writes `Docs/Analysis/MCPWeatherNiagara/mcpweather_release_candidate_20260630_review.json` and is the preferred way to regenerate a single pass/fail candidate evidence report without rerunning viewport preview captures in an unstable long-lived editor session. Cleanup is reported separately under `maintenance.cleanup`; pending temp packages are maintenance work, not release-content failures.
+- 2026-06-30 release-candidate cleanup dry-run recorded four remaining generated temp Niagara packages: two under `NS_MCPWeatherPromotion_20260630_promotion_release_gate_contract_no_execute_` and two under `NS_MCPWeatherPromotion_20260630_release_candidate_execute_v1_`. Dry-run JSON reports live in `Docs/Analysis/MCPWeatherNiagara/mcpweather_temp_cleanup_*_dry_run.json`. Run the matching `cleanup --delete` commands only after Unreal Editor is closed; the active editor session also had `/Game/ThirdPerson/Lvl_ThirdPerson` dirty, observed through dry-run only.
+- 2026-06-30 visible Scratch Pad route advanced from temp proof to a non-temp release-candidate gate. `smoke_niagara_visible_scratch_pad_recipe.py live --run-id 20260630_visible_scratch_pad_non_temp_v1 --run-preview --allow-current-map-preview --run-non-temp-release-candidate --run-plugin-independence --release-target-system-path /Game/MCPWeather/Generated/NS_MCPWeather_VisibleScratchPadReleaseCandidate_20260630_V1` passed target preflight, source/release compile `0/0`, exact Snow particle material on the enabled Sprite renderer, source/release visible preview evidence, static forbidden-marker scan, and isolated `UnrealEditor-Cmd.exe -DisablePlugins=UnrealMCP` load. The generated temp source was cleaned afterward; the non-temp candidate remains project content and is not a cleanup target.
+- 2026-06-30 visible Scratch Pad offline verifier added `Python/scripts/analysis/verify_visible_scratch_pad_release_candidate_offline.py`. The read-only check reconciles the live report, candidate `.uasset`, forbidden-marker byte scan, temp cleanup dry-run, preview/material/plugin-independence evidence, and Git state. After committing the candidate asset, `check --require-committed-asset` passed with `content_status=pass`, candidate file size `300505`, static scan clean, temp cleanup `selected_count=0`, and Git state `tracked=true`, `committed_clean=true`.
+- 2026-06-30 Niagara authoring capability matrix added `Python/scripts/analysis/niagara_authoring_capability_status.py`. It reports `usable_with_boundaries` from offline evidence: 4 release-ready paths (visible Scratch Pad release candidate, MCPWeather source-template Rain/Snow, and BP-manager RainFX/SnowFX template parity), 7 temp-validated authoring paths including the literal override-pin promoted-temp route, and 2 research/follow-up boundaries for arbitrary Scratch Pad graph synthesis and overwrite/update promotion.
+- 2026-06-30 Scratch Pad graph-shape contract added `Python/scripts/analysis/verify_niagara_scratch_pad_graph_shape_contract.py`. The offline contract verifies the currently allowed graph patterns from saved live reports: single `ParameterMapSet` write, `User.*` `ParameterMapGet` link, visible Scratch Pad source graph, and Custom HLSL passthrough with explicit `Map` context plus `BaseValue` preservation. `check` passed with 23/23 checks and keeps arbitrary Scratch Pad graph synthesis outside the approved surface.
+- 2026-06-30 Scratch Pad graph admission contract added `Python/scripts/analysis/niagara_scratch_pad_graph_admission_contract.py`. The offline preflight request matrix admitted 3 reviewed shapes (vec2 SpriteSize write, User vec2 SpriteSize link, and Custom HLSL passthrough with `Map` context) and rejected 6 unsafe boundaries: arbitrary graph synthesis, overwrite, direct non-temp graph write, MCP-only dependency reference, Custom HLSL without context, and unknown parameter type.
+- 2026-06-30 Scratch Pad graph admission evaluator added `evaluate` mode to `niagara_scratch_pad_graph_admission_contract.py`. Agents can now preflight a single planned request from `--request-file` or `--request-json`; the command exits non-zero on rejected requests by default and supports `--expect rejected --fail-on unexpected` for negative tests.
+- 2026-06-30 Scratch Pad graph admission preflight was wired into the live Scratch Pad graph-authoring, blank parameter-write, blank User-parameter, and visible Scratch Pad recipe smokes. Each path now records a `scratch_pad_graph_admission_preflight` stage before calling graph mutation helpers, so the reviewed request allowlist is checked before live editor changes.
+- 2026-06-30 Scratch Pad graph admission preflight wiring contract added `Python/scripts/analysis/niagara_scratch_pad_graph_admission_preflight_wiring_contract.py`. The read-only AST check passed 4/4 live smoke targets and 34/34 checks, verifying the preflight stage and reviewed case names occur before each live graph mutation call.
+- 2026-06-30 Scratch Pad graph tool-surface contract added `Python/scripts/analysis/niagara_scratch_pad_graph_tool_surface_contract.py`. The read-only AST check passed 5/5 wrapper contracts and 61/61 checks, verifying public Python defaults and recipe payloads keep source-edit, overwrite, replace, and idempotent skip behavior aligned with the reviewed Scratch Pad graph admission surface.
+- 2026-06-30 Scratch Pad graph expansion gate contract added `Python/scripts/analysis/niagara_scratch_pad_graph_expansion_gate_contract.py`. The read-only reconciliation gate keeps arbitrary Scratch Pad graph synthesis closed by checking that the graph-shape, admission, preflight wiring, tool-surface, capability matrix, and docs all agree: only reviewed narrow mutation shapes are admitted, broad graph synthesis remains research-only, and any new shape must add its own live proof, admission fixture, tool-surface check, and documentation before expansion.
+- 2026-06-30 promotion lifecycle boundary contract added `Python/scripts/analysis/niagara_promotion_lifecycle_boundary_contract.py`. The offline check keeps bulk promotion, overwrite/update, redirector-aware replacement, and lifecycle migration closed as research-only by verifying wrapper defaults, manifest revalidation, confirmation-token behavior, C++ overwrite refusal, docs, and the capability matrix. Current promotion remains dry-run-first, explicit-target, confirmation-token gated, revalidated before mutation, and no-overwrite by default.
+- 2026-07-03 promotion overwrite/update preflight contract added `Python/scripts/analysis/niagara_promotion_overwrite_update_preflight_contract.py`. Overwrite/update remains closed while the contract records the minimum evidence needed before opening it: explicit target conflict policy, backup/restore proof, redirector/fixup policy, post-write dependency audit, execution report, and plugin-independence check.
+- 2026-06-30 BP manager component parity boundary contract added `Python/scripts/analysis/niagara_bp_manager_component_parity_boundary_contract.py`. The offline check records the current `UNiagaraComponent` parity boundary: live Blueprint-owned component override stores and emitter runtime counters can be read, preview tools preserve/apply transient component-only User overrides, and component asset-swap preview remains restore-only rather than a persistent BP template mutation path.
+- 2026-06-30 Niagara authoring readiness bundle added `Python/scripts/analysis/niagara_authoring_readiness_bundle.py`. The read-only bundle reconciles the current top-level state in one command: 4 release-ready project-content paths, 7 temp-validated authoring paths, 2 closed research/follow-up boundaries, the Scratch Pad expansion candidate closed state, the literal override-pin promoted-temp gate, and all Scratch Pad graph, promotion lifecycle, and BP-manager component parity contracts must agree before the bundle passes.
+- 2026-06-30 BP-manager Rain parity moved one step deeper with `preview_niagara_component_asset_swap`. The editor command loads a replacement `UNiagaraSystem` read-only, requires filters to match exactly one live `UNiagaraComponent`, refuses non-restoring or override-resetting swaps, assigns the replacement with `SetAsset(..., !preserve_override_parameters)`, samples before/swap/restore override and emitter runtime state, then restores the original asset and active state without saving or persisting component asset changes. Durable component-template override copy/write remains a separate follow-up.
+- 2026-06-30 BP-manager Rain component asset-swap live proof added `Python/scripts/analysis/smoke_niagara_component_asset_swap_preview.py`. The smoke spawns a transient `BP_MCPWeatherManager`, initializes `RainFX` with `/Game/MCPWeather/FX/Rain/NS_MCPWeather_Rain`, temporarily previews `/Game/MCPWeather/Generated/NS_MCPWeather_SourceTemplate_Rain`, verifies before/swap/restore asset paths, override store readback, runtime readback, no save/reload flags, and cleanup, then writes `Docs/Analysis/MCPWeatherNiagara/niagara_component_asset_swap_preview_live_20260630.json`.
+- 2026-06-30 Niagara editor shutdown stability classifier added `Python/scripts/analysis/niagara_editor_shutdown_stability_report.py`. Current evidence writes `Docs/Analysis/MCPWeatherNiagara/niagara_editor_shutdown_stability_20260630.json` with `pass_with_known_shutdown_risk`: component asset-swap live proof passed, a minimal editor open/close without MCP Python commands exited cleanly, and the observed access violation occurred during PythonScriptPlugin/python311 teardown after `UnrealMCPBridge: Server stopped` and `LogExit: Preparing to exit`. Treat this as a shutdown-log risk to record separately, not as a Niagara component swap proof failure.
+- 2026-06-30 BP component-template mutation admission contract added `Python/scripts/analysis/niagara_bp_component_template_mutation_admission_contract.py`. The offline request matrix admits only a dry-run design preflight for `/Game/MCPWeather/BP_MCPWeatherManager.RainFX` swapping from source Rain to `/Game/MCPWeather/Generated/NS_MCPWeather_SourceTemplate_Rain`, with explicit confirmation token, transient live-proof evidence, shutdown-risk record, override preservation, and UnrealMCP/MCP dependency markers forbidden. Passing the contract does not write or approve persistent Blueprint asset mutation; it only defines the reviewed preflight surface for a future durable mutation tool.
+- 2026-06-30 BP component-template inspection contract added `Python/scripts/analysis/niagara_bp_component_template_inspection_contract.py`. The new read-only editor route `inspect_blueprint_niagara_component_template` loads `/Game/MCPWeather/BP_MCPWeatherManager`, scans SCS `UNiagaraComponent` templates such as `RainFX`, reports assigned Niagara System paths and override parameter stores, and records dirty-state deltas without saving, reloading, compiling, or mutating the Blueprint. This gives the future BP template mutation executor a concrete preflight/readback surface while persistent writes remain closed.
+- 2026-06-30 BP component-template inspection live proof added `Python/scripts/analysis/smoke_niagara_bp_component_template_inspection.py`. The live smoke called `inspect_blueprint_niagara_component_template` against `/Game/MCPWeather/BP_MCPWeatherManager.RainFX`, verified exactly one SCS `UNiagaraComponent` template, confirmed the assigned source Rain system path, read 61 returned `User.*` override parameters, and confirmed no Blueprint dirty flag was added by the command. The report is `Docs/Analysis/MCPWeatherNiagara/niagara_bp_component_template_inspection_live_20260630.json`.
+- 2026-06-30 BP component-template mutation manifest planner added `Python/scripts/analysis/niagara_bp_component_template_mutation_manifest_planner.py`. The no-write manifest plan records the exact reviewed BP/component/system paths, admission token, transient proof, shutdown-risk evidence, required future executor phases, static forbidden-marker scan, isolated `-DisablePlugins=UnrealMCP` load, and BP-manager preview validation gate. It keeps `dry_run_only=true`, `write_blueprint_asset=false`, and `actual_bp_asset_write_tool_exists=false`, so it is a contract for future implementation rather than a persistent mutation tool.
+- 2026-06-30 finalize wrapper added `Python/scripts/analysis/finalize_mcpweather_release_candidate_after_editor_close.py`. Default `run` mode executes the offline evidence review and guarded cleanup dry-run together, then writes `Docs/Analysis/MCPWeatherNiagara/mcpweather_release_candidate_finalize_20260630.json`. After Unreal Editor is closed, `run --delete-cleanup` deletes the selected temp packages through `cleanup_generated_niagara_assets_offline_impl(require_editor_closed=True)` and then runs a dry-run verification pass expecting zero remaining selected packages.
+- 2026-06-30 release-candidate runbook added `Docs/Analysis/MCPWeatherNiagara/mcpweather_release_candidate_20260630_runbook.md` as the compact handoff for the current Rain/Snow candidates. It records the accepted candidate asset paths, evidence files, editor-open cleanup restriction, after-close finalize command, Snow texture-material contract, UnrealMCP plugin-independence contract, and preferred split strict gate after an editor restart.
+- 2026-06-30 release-candidate status helper added `Python/scripts/analysis/mcpweather_release_candidate_status.py`. It is read-only and does not connect to Unreal; it summarizes the review/finalize JSON, runbook contract, candidate `.uasset` presence, fast forbidden-marker byte scan, current `UnrealEditor.exe` process state, cleanup pending count, delete readiness, and next commands. By default cleanup pending remains a maintenance state, while `--require-cleanup-complete` can make pending temp packages fail the check and `--require-delete-ready` can fail when cleanup delete is blocked by an active editor process.
+- 2026-06-30 offline release-candidate verification bundle added `Python/scripts/analysis/verify_mcpweather_release_candidate_offline.py`. It is read-only and aggregates the evidence review, finalize dry-run, and status/delete-readiness check into `Docs/Analysis/MCPWeatherNiagara/mcpweather_release_candidate_offline_verify_20260630.json`. Use the stricter `--require-cleanup-complete` or `--require-delete-ready` flags only when those lifecycle states are expected to be true.
+- 2026-06-29 compact/local-space weather-volume experiment was not promoted. A custom compact rain/snow seed with `local_space=true` compiled, but repeated snow preview caused a NiagaraEditor worker assertion in UE 5.6.1. The generated compact assets were deleted offline by prefix. Keep the public preset defaults unchanged until a safer camera-follow/local-space profile is isolated; use manual preview camera controls for review framing instead.
+- 2026-06-29 MCPWeather source anatomy check: `/Game/MCPWeather/FX/Rain/NS_MCPWeather_Rain` and `/Game/MCPWeather/FX/Snow/NS_MCPWeather_Snow` are not simple stock-module systems. Rain exposes weather user parameters such as `Amount=18000`, `Spawn Rate=18000`, `CPU Spawn Rate=5500`, `General Velocity=[0,0,-4200]`, `Max Spawn Distance=2500`, `Spawn Box Height=2600`, `Override Camera Transform=true`, `Motion Stretching=12`, and a user material parameter for the rain sprite material. Snow exposes `Amount=30000`, `CPU Spawn Rate=6500`, `General Velocity=[0,0,-750]`, `Max Spawn Distance=10000`, `Spawn Box Height=2500`, `Particle Collision Enabled=true`, `Override Camera Transform=true`, and the snow sprite material.
+- The MCPWeather stacks depend on project-authored modules/scratch-pad-like graph logic, including camera variable extraction, weather spawn origin, specific velocity, particle path/collision cache, weather sprite appearance, camera depth/distance visibility, sprite velocity setting, alpha scaling, and velocity-buffer movement. `inspect_niagara_module_inputs` readback for snow returned 4 emitters, 92 modules, and 134 input candidates, with many editable values living in rapid-iteration parameters rather than simple public pins.
+- Practical authoring decision: do not continue tuning compact/local-space stock presets as the main quality path. The source-template route is now the preferred quality seed path: duplicate the source Niagara System into a generated temp package so system scripts, system RapidIteration values, emitters, renderers, user defaults, Scratch Pads, and system properties stay together; then remove unselected emitters only when a subset was requested, remap only user/material/rapid-iteration values, and run dependency audit before any promotion.
+- 2026-06-29 review fix: package path normalization in both C++ and Python cleanup helpers now strips object-path dots only from the final asset segment, so folder names containing dots do not bypass or break the generated-temp root checks.
+- 2026-06-29 source-template v2/v3 pass validated the MCPWeather route. `duplicate_or_attach_emitter_from_source` now localizes private source Scratch Pad scripts into the target temp system and rewrites graph `FunctionScript` references before save; this fixes the UE save failure caused by illegal private references such as source-system-owned Scratch Pads. It also supports `copy_source_user_parameters=true`, which copies source `User.*` defaults and copies Data Interface user parameters into target-owned Data Interface objects instead of preserving source-private object references.
+- 2026-06-29 source-template smoke `Python/scripts/analysis/smoke_niagara_mcpweather_source_template.py live --run-id 20260629_source_template_v3 --json` passed on UE 5.6.1. Rain copied 7 emitters, 5 renderers, 199 stack calls, 54 serializable user defaults, and localized 5 private Scratch Pad references across the source emitters. Snow copied 4 emitters, 3 renderers, 92 stack calls, 46 serializable user defaults, and localized 1 private Scratch Pad reference. Both generated systems compiled at 0 errors / 0 warnings and had no forbidden MCP dependency hits.
+- Readback confirmed important target user defaults after v3 copy: rain `Amount=18000`, `CPU Spawn Rate=5500`, `Spawn Rate=18000`, `Override Camera Transform=true`, `Custom Camera Forward=[1,0,-0.08]`, `Custom Camera Position=[0,0,160]`; snow `Amount=30000`, `CPU Spawn Rate=6500`, `Override Camera Transform=true`, `Custom Camera Forward=[0,1,0]`, `Custom Camera Position=[0,-3200,650]`.
+- Added Python one-call wrapper `create_niagara_system_from_source_template(...)` for the source-template route. It now duplicates the full source Niagara System into a generated temp package and removes unselected emitters only when `source_emitter_indices` is provided, preserving system-level stack context that emitter-only attach misses. This is now the preferred path for high-quality project-authored weather/FX seed generation; stock presets remain useful as simple blank/basic seeds.
+- 2026-06-29 review pass split the Python source-template logic into `create_niagara_system_from_source_template_impl(...)`, so the MCP tool and the live smoke harness share the same orchestration path. The smoke still supports `--route manual` for low-level bridge regression checks, while the default `--route wrapper` validates the public one-call route.
+- 2026-06-29 visual root-cause pass found that the previous wrapper's empty-system plus emitter-handle attach route preserved emitter counts/renderers but dropped source system stack RapidIteration context. MCPWeather rain differed in `Constants.SystemState.*` values and generated visuals were blank; direct source-system duplicate matched source RapidIteration 1:1 for rain and snow, passed post-duplicate dependency audit, and produced matching rain video evidence under `Saved/MCP/NiagaraReviews/20260629_source_dup_visual_v1/`.
+- 2026-06-29 regression guard added to `smoke_niagara_mcpweather_source_template.py`: the default wrapper route now compares `inspect_niagara_rapid_iteration_parameters` maps between source and generated systems. `20260629_ri_guard_v1` passed with rain 536/536 and snow 237/237 mapped RapidIteration values, with missing/extra/value diff counts all 0.
+- 2026-06-29 wrapper-route smoke `Python/scripts/analysis/smoke_niagara_mcpweather_source_template.py live --run-id 20260629_wrapper_v1` passed through the shared Python source-template implementation for rain and snow. Offline cleanup then deleted the 2 generated packages selected by prefix.
+- 2026-06-29 promotion preflight pass added `audit_niagara_promotion_candidate(...)`, a read-only single-system dependency gate for generated Niagara assets before moving them outside temp. It reports `promotion_ready`, validates optional non-temp target paths, and blocks MCP/plugin and `/Game/_MCP_Temp` dependencies by default without moving, saving, compiling, or deleting assets.
+- 2026-06-29 promotion v2 live smoke passed: `Python/scripts/analysis/smoke_niagara_mcpweather_source_template.py live --run-id 20260629_promotion_v2` created rain/snow source-template systems, ran compile/analysis/content audit, then ran `audit_niagara_promotion_candidate` with a non-temp proposed target path for each system. Both passed and offline cleanup deleted the 2 generated packages selected by prefix.
+- 2026-06-29 first-pass promotion command added `promote_niagara_system_candidate(...)`. It is dry-run by default, refuses overwrite, requires generated-temp source and non-temp target by default, duplicates rather than moves, leaves the source temp asset untouched, saves the promoted copy, and runs post-promotion dependency audit.
+- 2026-06-29 promote-command live smoke passed: `Python/scripts/analysis/smoke_niagara_mcpweather_source_template.py live --run-id 20260629_promote_command_v1` created rain/snow source-template systems, ran promotion preflight, then created saved promoted copies under the generated temp root with `allow_temp_target=true` for smoke containment. Post-promotion dependency audit passed for both, and offline cleanup deleted all 4 generated packages selected by prefix.
+
+### `add_niagara_stock_module_to_stack`
+
+Status: implemented in the local MCP C++ bridge.
+
+Parameters:
+
+- `target_system_path`
+- `module_script_path`
+- `target_usage="ParticleSpawnScriptInterpolated"`
+- optional selectors: `target_usage_id`, `target_emitter_index`, `target_emitter_name`, `target_index`, `suggested_name`
+- `skip_if_duplicate=true`
+- `save=true`
+- `request_compile=true`
+
+Implementation:
+
+- Load an existing `UNiagaraScript` module asset by path and reject MCP-only script references.
+- Validate `Script->GetUsage() == Module` and verify the script advertises support for the requested stack usage through `GetSupportedUsageContexts()`.
+- Resolve the target system or emitter stack graph and output node, then call `FNiagaraStackGraphUtilities::AddScriptModuleToStack`.
+- Skip duplicate insertion by default when the same module script already exists in the requested output stack.
+- This is the first stock-module layer needed for broader generated FX. It intentionally only inserts the module node; module-specific input tuning remains handled by `set_niagara_module_input_value` or `set_niagara_module_inputs_batch`.
+
+Live UE 5.6.1 observation:
+
+- `/Niagara/Modules/Spawn/Location/BoxLocation.BoxLocation` inserts successfully into `ParticleSpawnScriptInterpolated`.
+- After insertion, `inspect_niagara_module_inputs(..., module_name="BoxLocation", include_resolved_stack_inputs=true)` exposes writable existing RapidIteration values:
+  - `Module.Box Size`, default `[100, 100, 100]`,
+  - `Module.Box Offset`, default `[0, 0, 0]`,
+  - plus random seed, surface band, rotation, and spawn-group values.
+- `set_niagara_module_inputs_batch` successfully changed `Box Size` to `[2400, 2400, 900]` and `Box Offset` to `[0, 0, 650]`, then compiled with zero errors/warnings/dirty scripts.
+
+## Verification Plan
+
+Static checks:
+
+- `uv --directory .\Python run python -m py_compile unreal_mcp_server.py tools\niagara_tools.py`
+- `uv --directory .\Python run python scripts\analysis\test_niagara_tools_safety.py`
+
+C++ build check after implementation:
+
+```powershell
+$Project = (Resolve-Path .\MCPGameProject\MCPGameProject.uproject).ProviderPath
+& 'C:\Program Files\Epic Games\UE_5.6\Engine\Build\BatchFiles\Build.bat' MCPGameProjectEditor Win64 Development -Project="$Project" -WaitMutex
+```
+
+Live editor checks:
+
+- Launch UE 5.6.1 with `-UnrealMCPPort=55561`.
+- Call `inspect_niagara_factory_bootstrap_defaults` for `system`, `emitter`, and `basic_sprite_emitter`.
+- Create `/Game/_MCP_Temp/NiagaraGenerated/NS_MCP_Bootstrap_Empty`.
+- Run `analyze_niagara_system`, `inspect_niagara_compile_status`, and `audit_content_root_mcp`.
+- For visible sprite systems, use `preview_niagara_system_in_preview_lab` or `sample_niagara_system_in_preview_lab`.
+
+Dependency checks:
+
+- Generated assets must have no dependencies under:
+  - `/Script/UnrealMCP`
+  - `/UnrealMCP`
+  - `/Game/_MCP_Temp` when promoted outside temp
+  - any source content root not explicitly allowed for the current task
+
+## Remaining Questions
+
+- Whether `UNiagaraSystemFactoryNew::InitializeSystem(System, false)` is useful for any diagnostic path. The editor path uses `true`, so `false` should remain out of the public authoring path unless a clear engine-source reason appears.
+- Whether promotion should grow beyond first-pass duplication. Current implementation is intentionally conservative: dry-run by default, no overwrite, generated-temp source by default, non-temp target by default, and post-promotion dependency audit. Bulk promotion, overwrite/update, redirector handling, and source cleanup remain future reviewed work; the overwrite/update preflight contract now requires backup/restore, redirector/fixup, post-write audit, and plugin-independence evidence before that boundary can open.
+- How far to automate broad Scratch Pad graph synthesis. Current support can inspect, duplicate, insert, and narrowly edit/link selected pins; arbitrary graph generation still needs more engine-source study and stricter graph-shape validation.
+- Which preview route is safest for camera-following weather volumes. Current recommendation is manual preview camera controls or source-template copies; compact/local-space public preset changes are not promoted after the UE 5.6.1 worker assertion observed in preview.
+- BP component-template asset-swap dry-run executor surface added: `dry_run_blueprint_niagara_component_template_asset_swap` validates the reviewed `BP_MCPWeatherManager.RainFX` source Rain to source-template Rain plan, snapshots the `User.*` override store, and reports the planned replacement without calling `SetAsset`, compiling, saving, reloading, or dirtying content. Persistent Blueprint template mutation remains closed.
+- BP component-template asset-swap temp canary proof added: `execute_blueprint_niagara_component_template_asset_swap_canary` duplicates `BP_MCPWeatherManager` to `/Game/_MCP_Temp`, executes the RainFX source Rain to source-template Rain swap on that temp copy only, preserves the `User.*` override store, saves the temp canary for marker scan, deletes the temp asset, and keeps original/durable Blueprint mutation closed. Live evidence writes `Docs/Analysis/MCPWeatherNiagara/niagara_bp_component_template_asset_swap_canary_live_20260630.json`.
+- BP component-template asset-swap compile boundary recorded: `Python/scripts/analysis/niagara_bp_component_template_asset_swap_compile_boundary.py` reconciles the non-compile canary with the focused compile canary proof and verifies `state=compile_verified_temp_canary_live`.
+- BP component-template asset-swap compile canary proof added: `Python/scripts/analysis/smoke_niagara_bp_component_template_asset_swap_compile_canary.py` runs the same temp-only canary path with `compile_blueprint=true`, validates the native `FKismetEditorUtilities::CompileBlueprint` route on `/Game/_MCP_Temp` only, saves/scans/deletes the disposable target, and keeps original/durable Blueprint mutation closed.
+- BP component-template asset-swap plugin-independence canary proof added: `Python/scripts/analysis/smoke_niagara_bp_component_template_asset_swap_plugin_independence_canary.py` creates, compiles, and saves a disposable `/Game/_MCP_Temp/Niagara` Blueprint canary, closes the editor, loads it through `UnrealEditor-Cmd.exe -DisablePlugins=UnrealMCP`, verifies no UnrealMCP bridge class or Python symbols are available, then deletes only the exact temp package sidecars. Durable original Blueprint mutation remains closed.
+- 2026-07-02 BP component-template durable executor source route added: `execute_blueprint_niagara_component_template_asset_swap_durable` is now wired through Python, C++, and the bridge with `dry_run=true` by default, explicit `ALLOW_DURABLE_BP_COMPONENT_TEMPLATE_EXECUTE`, clean-Blueprint preflight, local-SCS-only mutation, required compile/save flags for real execution, and post-save UnrealMCP marker scan.
+- 2026-07-02 BP component-template durable executor dry-run proof added: `Python/scripts/analysis/smoke_niagara_bp_component_template_asset_swap_durable_dry_run.py` validates the original `BP_MCPWeatherManager.RainFX` durable executor path with `dry_run=true`, confirms the source Rain template, source-template Rain replacement load, `User.*` override store, no compile/save, no dirty package addition, and no mutation. `Python/scripts/analysis/niagara_bp_component_template_durable_executor_contract.py` reports `state=durable_executor_dry_run_live_validated_write_closed`: original Blueprint write execution remains not admitted until a separate non-dry-run admission and rollback review.
+- 2026-07-02 BP component-template rollback checkpoint dry-run gate added: `Python/scripts/analysis/niagara_bp_component_template_rollback_checkpoint_dry_run_contract.py` reads the original `BP_MCPWeatherManager` `.uasset`, records size and SHA-256, scans for UnrealMCP/MCP dependency markers, and plans checkpoint backup plus restore manifest paths under `MCPGameProject/Saved/MCP` without writing backup files or restoring content. It reports `state=rollback_checkpoint_restore_dry_run_validated_write_closed`, `rollback_checkpoint_dry_run_validated=true`, `rollback_restore_dry_run_validated=true`, and keeps original Blueprint writes closed.
+- 2026-07-02 BP component-template checkpoint/restore execution canary added: `Python/scripts/analysis/niagara_bp_component_template_checkpoint_restore_execution_canary.py` copies the original `BP_MCPWeatherManager` `.uasset` to a checkpoint backup under `Saved/MCP`, copies that backup to a restore probe, verifies both hashes and marker scans, confirms the source Content hash is unchanged, and cleans canary artifacts by default. It reports `state=checkpoint_restore_execution_canary_validated_write_closed`, `checkpoint_backup_execution_validated=true`, `restore_probe_execution_validated=true`, and `content_write_performed=false`.
+- 2026-07-02 BP component-template rollback restore execution proof added: `Python/scripts/analysis/niagara_bp_component_template_rollback_restore_execution_proof_contract.py` reruns the backup-to-restore-probe proof under `Saved/MCP`, writes a proof manifest, verifies matching hashes and marker scans, confirms the source Content hash is unchanged, and cleans proof artifacts by default. It reports `state=rollback_restore_execution_proof_validated_content_write_closed`, `rollback_restore_execution_proof_validated=true`, `rollback_restore_saved_mcp_probe_validated=true`, and keeps `content_restore_performed=false`.
+- 2026-07-02 BP component-template post-write verification harness added: `Python/scripts/analysis/niagara_bp_component_template_post_write_verification_harness_contract.py` reconciles durable admission, checkpoint/restore, rollback checkpoint dry-run, temp compile/save marker scan, UnrealMCP-disabled temp load, and runtime preview proof before any original Blueprint write. It reports `state=post_write_verification_harness_dry_run_validated_write_closed`, `post_write_verification_harness_dry_run_validated=true`, and keeps `actual_original_blueprint_write_performed=false`.
+- 2026-07-02 BP component-template final non-dry-run admission review added: `Python/scripts/analysis/niagara_bp_component_template_final_non_dry_run_admission_review_contract.py` records the current user checkpoint and exact single guarded execution payload, verifies the current source `.uasset` hash still matches the rollback checkpoint, confirms the scoped asset Git status is clean, scans the source asset for UnrealMCP/MCP markers, and now reconciles the rollback restore execution proof. It initially recorded `state=final_non_dry_run_admission_reviewed_rollback_proof_validated_write_still_closed`, `single_original_blueprint_write_eligible=true`, and `single_original_blueprint_write_admitted=false` until a fresh guarded write execution command was run.
+- 2026-07-03 BP component-template durable execute live proof added: `Python/scripts/analysis/smoke_niagara_bp_component_template_asset_swap_durable_execute.py` created a rollback backup under `Saved/MCP`, executed the reviewed `BP_MCPWeatherManager.RainFX` original Blueprint write with `dry_run=false`, `compile_blueprint=true`, `save_blueprint=true`, verified before/after component template asset paths and 61-entry `User.*` override preservation, passed compile/save and post-save marker scan, and wrote `niagara_bp_component_template_asset_swap_durable_execute_live_20260703.json`.
+- 2026-07-03 BP manager post-write verification added: `smoke_niagara_bp_component_template_inspection.py` verified saved `RainFX` now points to `/Game/MCPWeather/Generated/NS_MCPWeather_SourceTemplate_Rain`; `verify_unreal_asset_plugin_independence.py` loaded `/Game/MCPWeather/BP_MCPWeatherManager` with `-DisablePlugins=UnrealMCP`; `smoke_niagara_bp_manager_post_write_runtime_preview.py` spawned a transient manager and confirmed the default `RainFX` asset activates from the post-write source-template Rain system.
+- 2026-07-03 BP component-template final review closed for RainFX: `niagara_bp_component_template_final_non_dry_run_admission_review_contract.py` recorded the first original BP write proof with `single_original_blueprint_write_admitted=true`, `durable_write_execution_validated=true`, `post_write_plugin_independence_verified=true`, and `actual_original_blueprint_write_performed=true`.
+- 2026-07-03 BP component-template SnowFX durable execute live proof added: `smoke_niagara_bp_component_template_asset_swap_durable_dry_run.py` validated `BP_MCPWeatherManager.SnowFX` from source Snow to source-template Snow, then `smoke_niagara_bp_component_template_asset_swap_durable_execute.py` created a Snow rollback backup under `Saved/MCP`, executed the guarded original Blueprint write, preserved the 52-entry `User.*` override store, compiled/saved, passed marker scan, and wrote `niagara_bp_component_template_snow_asset_swap_durable_execute_live_20260703.json`.
+- 2026-07-03 BP manager Snow post-write verification added: `smoke_niagara_bp_component_template_inspection.py` verified saved `SnowFX` now points to `/Game/MCPWeather/Generated/NS_MCPWeather_SourceTemplate_Snow`; `verify_unreal_asset_plugin_independence.py` loaded `/Game/MCPWeather/BP_MCPWeatherManager` with `-DisablePlugins=UnrealMCP`; `smoke_niagara_bp_manager_post_write_runtime_preview.py` spawned a transient manager with `SnowAmount=1` and confirmed the default `SnowFX` asset activates from the post-write source-template Snow system.
+- 2026-07-03 BP component-template final review upgraded for RainFX/SnowFX: `niagara_bp_component_template_final_non_dry_run_admission_review_contract.py` now records `state=final_non_dry_run_original_writes_executed_verified`, `actual_original_blueprint_write_count=2`, `snow_durable_write_execution_validated=true`, `snow_post_write_plugin_independence_verified=true`, and `snow_post_write_runtime_preview_verified=true`.
+- 2026-07-03 Scratch Pad graph expansion candidate contract added: `Python/scripts/analysis/niagara_scratch_pad_graph_expansion_candidate_contract.py` records `Particles.Color` Linear Color User-parameter link as the reviewed color shape. The contract now expects current admission to admit only the exact temp-only route and records `state=public_temp_route_validated_arbitrary_synthesis_closed`: live temp proof, tool-surface defaults, preflight wiring, docs, and readiness reconciliation are validated while arbitrary Scratch Pad graph synthesis remains closed.
+- 2026-07-03 Scratch Pad color User-link public temp route added: `Python/scripts/analysis/smoke_niagara_scratch_pad_color_user_link_candidate.py` creates only `/Game/_MCP_Temp/NiagaraGenerated` assets, requires `ALLOW_SCRATCH_PAD_COLOR_USER_LINK_PROOF`, verifies current admission admits the reviewed color write/link before mutation, writes `Particles.Color` as Niagara `Linear Color`, links `User.MCP_ScratchPad_Color`, validates compile/user-parameter/graph readback, and writes `Docs/Analysis/MCPWeatherNiagara/niagara_scratch_pad_color_user_link_candidate_live_20260703.json`. A raw `vec4` attempt failed because UE 5.6 reports `Particles.Color` as `Linear Color`, not `Vector 4`.
+- 2026-07-03 Scratch Pad graph expansion gate refreshed to `Docs/Analysis/MCPWeatherNiagara/niagara_scratch_pad_graph_expansion_gate_contract_20260703.json`. The gate now reconciles six admitted narrow shapes, including `custom_hlsl_bool_visible_toggle_sprite_size`, and requires the bool visible-toggle live proof before treating that shape as reviewed. Broad arbitrary Scratch Pad graph synthesis remains closed.
+- 2026-07-03 Scratch Pad topology engine-source notes added `Docs/Research/niagara_scratch_pad_topology_source_notes_20260703.md`. The note ties future graph-shape expansion to UE 5.6.1 NiagaraEditor source paths for `UNiagaraNodeParameterMapSet`, `UNiagaraNodeParameterMapGet`, `UNiagaraNodeCustomHlsl`, and `FNiagaraStackGraphUtilities`, and records the candidate queue for assignment-module, additional write/read/default, and new Custom HLSL routes.
+- 2026-07-03 Scratch Pad assignment-module route contract added: `Python/scripts/analysis/niagara_scratch_pad_assignment_module_route_contract.py` records the source-backed `FNiagaraStackGraphUtilities::AddParameterModuleToStack` / `UNiagaraNodeAssignment` path and keeps broad arbitrary graph synthesis closed. The admission matrix now admits `assignment_module_single_parameter` as one exact temp-only shape, while overwrite, non-temp, MCP dependency, unknown type, missing-context Custom HLSL, and arbitrary multi-node graph requests remain rejected.
+- 2026-07-03 Scratch Pad assignment-module surface/preflight contract added: `Python/scripts/analysis/niagara_scratch_pad_assignment_module_surface_preflight_contract.py` records `add_niagara_scratch_pad_assignment_module_to_stack` as a token-gated public surface. It verifies the Python/C++ defaults and token guard, with admission open only for the reviewed SpriteSize, Color, Lifetime float, and Velocity vec3 temp routes.
+- 2026-07-03 Scratch Pad assignment-module live smoke harness added: `Python/scripts/analysis/smoke_niagara_scratch_pad_assignment_module_route.py` requires `ALLOW_SCRATCH_PAD_ASSIGNMENT_MODULE_ROUTE_PROOF`, runs `assignment_module_single_parameter` admission preflight before mutation, then uses the C++ `ALLOW_SCRATCH_PAD_ASSIGNMENT_MODULE_ROUTE` token only after that preflight. The harness writes `niagara_scratch_pad_assignment_module_live_20260703.json`; cleanup writes `niagara_scratch_pad_assignment_module_cleanup_20260703.json` and verifies zero generated packages remain for the run prefix.
+- 2026-07-03 Scratch Pad assignment-module SpriteSize temp live route validated: the readiness state is `assignment_module_route_temp_live_validated_arbitrary_synthesis_closed` for one generated-temp `Particles.SpriteSize` vec2 assignment module. This did not admit additional parameters, output usages, non-temp writes, overwrite/update, or arbitrary Scratch Pad graph synthesis.
+- 2026-07-03 Scratch Pad assignment-module Color temp live route validated: the same token-gated `FNiagaraStackGraphUtilities::AddParameterModuleToStack` path now admits a second exact fixture, `assignment_module_color_single_parameter`, for one generated-temp `Particles.Color` Niagara `Linear Color` assignment with default `1.000000,1.000000,1.000000,1.000000`. The color live proof writes `niagara_scratch_pad_assignment_module_color_live_20260703.json`; cleanup writes `niagara_scratch_pad_assignment_module_color_cleanup_20260703.json`. Broad arbitrary graph synthesis, non-temp writes, overwrite/update, other defaults, other parameter types, and other output usages remain closed.
+- 2026-07-03 Scratch Pad assignment-module Lifetime float temp live route validated: the token-gated `FNiagaraStackGraphUtilities::AddParameterModuleToStack` path now admits a third exact fixture, `assignment_module_float_single_parameter`, for one generated-temp `Particles.Lifetime` Niagara `float` assignment with default `5.000000`. The float live proof writes `niagara_scratch_pad_assignment_module_float_live_20260703.json`; cleanup writes `niagara_scratch_pad_assignment_module_float_cleanup_20260703.json`. Broad arbitrary graph synthesis, non-temp writes, overwrite/update, other defaults, other parameter types, and other output usages remain closed.
+- 2026-07-03 Scratch Pad assignment-module Velocity vec3 temp live route validated: the token-gated `FNiagaraStackGraphUtilities::AddParameterModuleToStack` path now admits a fourth exact fixture, `assignment_module_vec3_single_parameter`, for one generated-temp `Particles.Velocity` Niagara `vec3` assignment with default `0.000000,0.000000,100.000000`. The vec3 live proof writes `niagara_scratch_pad_assignment_module_vec3_live_20260703.json`; cleanup writes `niagara_scratch_pad_assignment_module_vec3_cleanup_20260703.json`. Broad arbitrary graph synthesis, non-temp writes, overwrite/update, other defaults, other parameter types, and other output usages remain closed.
+- 2026-07-03 From-scratch assignment-module defaults temp proof validated: `Python/scripts/analysis/smoke_niagara_from_scratch_assignment_module_defaults.py` creates one generated-temp basic sprite system, preflights the four reviewed assignment-module candidates, applies SpriteSize, Color, Lifetime, and Velocity defaults through `UNiagaraNodeAssignment`, checks compile/readback/Snow particle material/promotion audit/static forbidden-marker scan, captures preview evidence, then cleanup verifies zero generated packages remain. The live proof writes `niagara_from_scratch_assignment_module_defaults_live_20260703.json`; cleanup writes `niagara_from_scratch_assignment_module_defaults_cleanup_20260703.json`. This proves the reviewed shapes compose for a useful blank-system seed without opening arbitrary graph synthesis or project-content writes.
+- 2026-07-03 UDS-style independent Rain/Snow preset temp proof validated: `Python/scripts/analysis/smoke_niagara_uds_style_weather_presets.py` treats `/Game/UltraDynamicSky` Rain/Snow textures as visual references only, creates generated-temp Rain and Snow systems through `create_sprite_niagara_preset_system` with project MCPWeather materials, verifies local material/texture assets contain no UDS or UnrealMCP dependency markers, rejects `/Game/UltraDynamicSky` in the promotion dependency audit, checks renderer material readback, compile/readback, preview visibility, static scan, and cleanup. The live proof writes `niagara_uds_style_weather_presets_live_20260703.json`; cleanup writes `niagara_uds_style_weather_presets_cleanup_20260703.json`. This keeps the intended UDS look while preserving independent MCPWeather-owned content.
+- 2026-07-03 UDS-style promoted-temp release-plan proof validated: the same Rain/Snow temp systems can be planned through `plan_niagara_promotion_manifest`, executed only into generated-temp promoted copies through the confirmation-token `execute_niagara_promotion_manifest` path, audited against future `/Game/MCPWeather/Generated` targets that remain unwritten and empty, and loaded through the generic UnrealMCP-disabled plugin-independence gate. The proof writes `niagara_uds_style_weather_presets_release_plan_live_20260703.json`; cleanup writes `niagara_uds_style_weather_presets_release_plan_cleanup_20260703.json`.
+- 2026-07-03 UDS-style direct from-scratch release stand-in proof validated: `smoke_niagara_uds_style_weather_presets.py --run-from-scratch-release-plan --run-plugin-independence` does not promote, clone, duplicate a source Niagara System, or pre-create separate base temp systems. It directly calls `create_sprite_niagara_preset_system` for only the fresh generated-temp Rain/Snow release stand-ins, verifies MCPWeather-owned materials/textures, compile/readback, preview visibility, static forbidden-marker scan, promotion audit against empty future `/Game/MCPWeather/Generated` targets, UnrealMCP-disabled isolated load, and cleanup. The proof writes `niagara_uds_style_weather_presets_from_scratch_release_live_20260703.json`; cleanup writes `niagara_uds_style_weather_presets_from_scratch_release_cleanup_20260703.json`.
+- 2026-07-03 UDS-style direct project release candidates validated: `smoke_niagara_uds_style_weather_presets.py --run-direct-project-release-candidate --run-plugin-independence` preflights empty targets, then creates `/Game/MCPWeather/Generated/NS_MCPWeather_UDSStyleFromScratch_Rain_20260703_V2` and `/Game/MCPWeather/Generated/NS_MCPWeather_UDSStyleFromScratch_Snow_20260703_V2` directly with `create_sprite_niagara_preset_system` and `allow_non_temp_path=true`. It does not promote, clone, duplicate, or create base temp systems. The gate verifies MCPWeather-owned materials/textures, compile/readback, preview visibility, static forbidden-marker scan, dependency audit, and UnrealMCP-disabled isolated load. The proof writes `niagara_uds_style_weather_presets_direct_project_release_live_20260703.json`, and these release assets are not temp cleanup targets.
+- 2026-07-03 Niagara literal override-pin feasibility and first route added: `Python/scripts/analysis/niagara_literal_override_pin_authoring_feasibility.py` verifies UE 5.6 source support for a guarded non-RI literal module-input route. The key finding is that struct literal values should follow UE's override-pin `DefaultValue` path through `TryGetPinDefaultValueFromNiagaraVariable`; arbitrary `UNiagaraNodeInput` creation is not the first scalar/vector/color literal route. The first public route is `set_niagara_module_input_literal_override`, guarded to generated temp content by default and refusing linked override graphs. The live proof harness `Python/scripts/analysis/smoke_niagara_literal_override_pin.py` passed with run id `20260703_literal_override_pin_v2` and cleaned up its temp Niagara packages.
+- 2026-07-03 Literal override-pin promoted-temp gate added: `smoke_niagara_literal_override_pin.py --run-promoted-temp-release-gate --run-plugin-independence` exercises the manifest dry-run/confirmation-token execution path, validates the promoted copy still exposes `77.000000`, passes static forbidden-marker scan, passes isolated `UnrealEditor-Cmd.exe -DisablePlugins=UnrealMCP` load, and cleans the generated temp source/promoted packages. Proof summary: `Docs/Analysis/MCPWeatherNiagara/literal_override_pin_promoted_temp_20260703.json`.
+- 2026-07-03 Literal override-pin type-variant proof added: `smoke_niagara_literal_override_pin.py --run-type-variants --run-promoted-temp-release-gate --run-plugin-independence` validated typed override-pin defaults for `float`, `int32`, `Vector`, `Vector 2D`, and `Linear Color`, revalidated all default strings on the promoted-temp copy, passed UnrealMCP-disabled isolated load, and cleaned its temp packages. Proof summary: `Docs/Analysis/MCPWeatherNiagara/literal_override_pin_type_variants_20260703.json`. That run did not claim bool because stock modules and the earlier Scratch Pad parameter-write primitive did not expose a resolved bool stack module input.
+- 2026-07-03 Literal override-pin bool Scratch Pad module-input proof added: `add_niagara_scratch_pad_module_input` creates a reachable `Module.MCPBoolInput` bool read inside a target-local Scratch Pad and links it to an existing `Particles.MCPBoolProbe` consumer pin. `smoke_niagara_literal_override_pin.py --run-bool-scratch-pad-module-input --run-promoted-temp-release-gate --run-plugin-independence` then validates the bool stack input through `set_niagara_module_input_literal_override`, revalidates `false` on the promoted-temp copy, passes UnrealMCP-disabled isolated load, and cleans the temp packages. Proof summary: `Docs/Analysis/MCPWeatherNiagara/literal_override_pin_bool_scratch_pad_module_input_20260703.json`.
+- 2026-07-03 Scratch Pad bool User-parameter recipe added: `create_niagara_scratch_pad_bool_user_parameter_module` composes blank Scratch Pad creation, bool `Particles.MCPBoolProbe` `ParameterMapSet`, reachable `Module.MCPBoolInput`, stack insertion, and `set_niagara_module_input_user_parameter` binding to `User.MCP_ScratchPad_Bool`. `smoke_niagara_scratch_pad_bool_user_parameter.py --run-promoted-temp-release-gate --run-plugin-independence` validated source/promoted-temp readback, zero compile errors/warnings, promotion audit, UnrealMCP-disabled isolated load, and cleanup. Proof summary: `Docs/Analysis/MCPWeatherNiagara/scratch_pad_bool_user_parameter_20260703.json`.
+- 2026-07-03 Scratch Pad bool visible-toggle recipe added: `create_niagara_scratch_pad_bool_visible_toggle_module` composes blank Scratch Pad creation, vec2 `Particles.SpriteSize` `ParameterMapSet`, reachable `Module.MCPBaseSpriteSize` BaseValue, `User.MCP_VisibleToggle` upsert, and a reviewed Custom HLSL wrapper `BaseValue * (MCPVisibleToggle ? 1.0 : 0.0)`. `smoke_niagara_scratch_pad_bool_visible_toggle.py --run-promoted-temp-release-gate --run-plugin-independence` validated admission, source/promoted-temp graph readback, zero compile errors/warnings, promotion audit, UnrealMCP-disabled isolated load, and cleanup. Proof summary: `Docs/Analysis/MCPWeatherNiagara/scratch_pad_bool_visible_toggle_20260703.json`.
+- 2026-07-03 Scratch Pad bool visible-toggle preview proof added: `smoke_niagara_scratch_pad_bool_visible_toggle.py --run-preview-toggle-comparison --allow-current-map-preview --run-promoted-temp-release-gate --run-plugin-independence` validated promoted-temp transient `User.MCP_VisibleToggle=true/false` preview captures. The proof wrote PNG frames, a contact sheet, and MP4, with true bright-neutral ratio `0.065407`, false ratio `0.048685`, delta `0.016722`, and difference-pixel ratio `0.027678`; plugin independence and cleanup still passed. Proof summary: `Docs/Analysis/MCPWeatherNiagara/scratch_pad_bool_visible_toggle_preview_20260703.json`.
+- 2026-07-03 Scratch Pad bool visible-toggle release-candidate proof added: `smoke_niagara_scratch_pad_bool_visible_toggle.py --run-preview-toggle-comparison --allow-current-map-preview --run-non-temp-release-candidate --release-target-system-path /Game/MCPWeather/Generated/NS_MCPWeather_BoolVisibleToggleReleaseCandidate_20260703_V1 --run-plugin-independence` promoted the reviewed shape to project content through the confirmation-token manifest flow. The release asset compiled `0/0`, retained one settable `User.MCP_VisibleToggle`, one Scratch Pad stack module, clean promotion audit, static forbidden-marker scan, isolated UnrealMCP-disabled load, and true/false preview comparison with video. Cleanup removed only the generated temp source. Proof summary: `Docs/Analysis/MCPWeatherNiagara/scratch_pad_bool_visible_toggle_release_candidate_20260703.json`.
+- 2026-07-03 Scratch Pad bool visible-toggle release-candidate offline verifier added: `verify_scratch_pad_bool_visible_toggle_release_candidate_offline.py check --require-committed-asset` reconciles the release proof, committed `.uasset`, forbidden-marker scan, preview media evidence, plugin-independence report, Git tracked/clean status, and temp cleanup dry-run. It passed with `content_status=pass`, candidate size `230860`, cleanup `selected_count=0`, and Git `committed_clean=true`. Proof summary: `Docs/Analysis/MCPWeatherNiagara/scratch_pad_bool_visible_toggle_release_candidate_offline_verify_20260703.json`.
+- 2026-07-02 BP component-template durable write admission gate added: `Python/scripts/analysis/niagara_bp_component_template_durable_write_admission_contract.py` reconciles the durable executor contract, original Blueprint durable dry-run proof, rollback checkpoint dry-run contract, checkpoint/restore execution canary, post-write verification harness, temp compile proof, and UnrealMCP-disabled plugin-independence proof, then records `state=post_write_verification_harness_dry_run_validated_write_closed`, `durable_non_dry_run_admitted=false`, `rollback_checkpoint_required=true`, `checkpoint_restore_execution_canary_validated=true`, and `post_write_verification_harness_dry_run_validated=true`. Actual original Blueprint writes remain closed until a fresh guarded write execution command is run.

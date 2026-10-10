@@ -1,0 +1,47 @@
+{
+  "schema": "cubeless_runtime_marker_synthetic_tests_v1",
+  "success": true,
+  "scope": "synthetic external verifier tests only; no Unreal runtime executed",
+  "checks": [
+    {
+      "name": "valid_synthetic_header",
+      "passed": true
+    },
+    {
+      "name": "wrong_header_class_even_when_expected_string_is_in_payload",
+      "passed": true
+    },
+    {
+      "name": "truncated_header",
+      "passed": true
+    },
+    {
+      "name": "nonzero_exit",
+      "passed": true
+    },
+    {
+      "name": "wrong_executable_fingerprint",
+      "passed": true
+    },
+    {
+      "name": "marker_existed_in_baseline",
+      "passed": true
+    },
+    {
+      "name": "wrong_fixture_fingerprint",
+      "passed": true
+    },
+    {
+      "name": "wrong_user_directory",
+      "passed": true
+    },
+    {
+      "name": "stale_marker",
+      "passed": true
+    },
+    {
+      "name": "missing_marker",
+      "passed": true
+    }
+  ]
+}

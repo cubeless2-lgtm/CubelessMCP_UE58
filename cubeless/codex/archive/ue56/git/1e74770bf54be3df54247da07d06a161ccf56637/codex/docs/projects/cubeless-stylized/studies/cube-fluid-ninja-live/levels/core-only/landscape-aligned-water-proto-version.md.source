@@ -1,0 +1,101 @@
+# 레벨 카드: `LandscapeAlignedWater_ProtoVersion`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/CoreOnly/LandscapeAlignedWater_ProtoVersion` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/CoreOnly/L_CFNL_LandscapeAlignedWater_ProtoVersion` |
+| 문서 계층 | `core-only` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `31` |
+| Direct external | `11` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+standalone all-output core가 height/RVT, point sources와 external water plane을
+결합하는 landscape-aligned dense-water prototype다.
+
+- **Observed:** direct core/driver/Landscape/water plane, 5개 writer와
+  66-node input array graph.
+- **Inferred:** relative-height와 landscape material에 정렬되는 water
+  surface의 CoreOnly 통합 책임.
+- **Unknown:** displacement, shoreline/gap filling과 최종 surface parity.
+- **Target fixture:** `TF_Core_LandscapeAlignedWater`.
+
+## Actor
+
+native manifest는 32 actor, 84 component를 4 page로 완전 캡처했다.
+
+`StaticMeshActor=12; NiagaraActor=6; PostProcessVolume=2; Brush=1; DirectionalLight=1; DriveExternalSystemsWithSimData_C=1; ExponentialHeightFog=1; Landscape=1; LandscapeAlignedWater_ProtoVersion_C=1; LandscapeGizmoActiveActor=1; PawnAndCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; TextRenderActor=1; ThirdPersonCharacter_C=1`
+
+- wrapper host 0, `NS_NinjaLiveCore` 1개다.
+- core는 AutoActivate=false, resolution 2048², extents 60,60,1,
+  MDF+height+RVT reader, P/V/D 모두 on, point Data Channel on,
+  RVT relative-height expose와 landscape gradient 0.25를 가진다.
+- Landscape는 12 LandscapeComponent + 12 collision + root다.
+- driver는 core, Landscape와 `WATER Mesh`
+  `SM_plane_500x500`을 직접 참조한다. character와 faucet/SDF meshes도
+  input fixture에 있다.
+
+## Runtime
+
+- Level BP는 66 nodes/18 variables다. moving-ball lookup, character,
+  wreck bounds와 mouse를 Position/Vector4 arrays로 보내지만 manifest에는
+  MovingBall actor가 없다.
+- `pending` — 실제 source 배열, Landscape/water plane update,
+  shoreline와 성능.
+
+## Niagara
+
+- direct actor Asset은 `NinjaLiveCore`, non-empty
+  `InstanceParameterOverrides`는 1/1이며 세 output RT가 explicit다.
+- wrapper host가 없으므로 wrapper `Preset` field는 N/A다.
+- standalone input Niagara는
+  `NS_WriteDataCh_GPU_Source_Linear`×5다.
+- point/height/RVT readers의 coexistence는 **Observed config**이며 실행
+  순서와 buffer 값은 **Unknown**이다.
+
+## Material
+
+- driver material은 `MI_Water_DENSE_Protoversion`,
+  Landscape material은 `MI_WetTest_CheckerLight`다.
+- WATER Mesh의 초기 override는 `M_Null`이며 driver가 external material
+  적용 책임을 가진다.
+- level BP source-material defaults에는 dense prototype와 sparse river
+  wavy material이 있다. runtime selection/MID/화면은 `pending`이다.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- `reference/levels/CoreOnly__LandscapeAlignedWater_ProtoVersion.json`:
+  capture complete, 4 pages, 32 actors, 84 components, truncation 0.
+- revision `0c71c7e45a86bb88d884e0a18585ccb4`, query
+  `2b4c03e69735c35a736b1d14f52bf507`, source dirty false.
+- `reference/level_blueprints/Levels__CoreOnly__LandscapeAlignedWater_ProtoVersion/**`:
+  66 nodes, 18 variables.
+- `concepts/starter-core-level-observation.md`,
+  `concepts/blueprint-responsibility-map.md`.
+- `pending`: runtime landscape/water replay, target implementation, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

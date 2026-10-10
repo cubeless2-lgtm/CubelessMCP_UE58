@@ -1,0 +1,41 @@
+# Reactive Surface Water V25 Velocity Wake Report - 2026-07-09
+
+- Verdict: `PASS`
+- Goal: add a conservative velocity-aligned wake shape while keeping V24 pulse gating and V19 history-only normal output.
+- Production path: no direct normal `Positions` overlay; wake impulses are injected into height history only on Water pulse frames.
+
+## Defaults
+- RS_Water_CellSize: `0.0009765625`
+- RS_Water_Damping: `0.965`
+- RS_Water_DefaultRadius: `3.0`
+- RS_Water_DefaultStrength: `0.22`
+- RS_Water_ImpulseClamp: `0.52`
+- RS_Water_ImpulseRadiusPixels: `1.0`
+- RS_Water_NormalStrength: `24.0`
+- RS_Water_SpongeDamping: `0.09`
+- RS_Water_SpongeWidth: `0.05`
+- RS_Water_StrokeInterval: `14.0`
+- RS_Water_SwimSpeedThreshold: `12.0`
+- RS_Water_SwimWakeStrength: `0.5`
+- RS_Water_WaveSpeed: `0.62`
+- RS_Water_WindowSizeWS: `1500.0`
+- RS_Water_PulseInterval: `0.28`
+- RS_Water_PulseMinSpeed: `36.0`
+
+## Checks
+- compile error/warning: `0` / `0`
+- V24 pulse gate: `True` counts={'before': 1.0, 'after_move': 7.0, 'after_stationary': 7.0}
+- RT nonzero: `True`
+- active growth: `True`
+- wake elongated x: `True`
+- bounded visible extent: `True` (115x100, active=1410)
+- raw C++ extent note: `792x691`, nonzero=201686 at 0.501 threshold
+- max aspect: `1.5135135135135136`
+
+## Visuals
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV25VelocityWake\rt\water_v25_velocity_wake_full_plus_zoom.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV25VelocityWake\rt\water_v25_velocity_wake_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v25-velocity-wake-results-2026-07-09.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV25VelocityWake\water_v25_velocity_wake_bridge_results.json`

@@ -1,0 +1,60 @@
+# ControlRig Profile Recipe Compiler Design
+
+Date: 2026-06-30
+
+Scope: Phase 2 of `controlrig_stable_authoring_execution_plan.md`.
+
+## Goal
+
+Convert read-only skeleton profile evidence into deterministic recipe-planning
+output:
+
+```text
+skeleton profile + preset request -> stable preset request -> optional recipe JSON
+```
+
+The compiler is a planning layer. It does not build, compile, save, execute,
+solve, delete, rename, or overwrite assets.
+
+## Boundaries
+
+- Targets must be under `/Game/_MCP_Temp` or `/Game/_MCP_Sample`.
+- Generated requests force `save=false`.
+- Generated planning evidence keeps `adds_solver_units=false`.
+- No solver unit expansion.
+- No original asset mutation.
+- No UnrealMCP static C++ dependency on `UnrealMCPControlRigToolsEditor`.
+- Ambiguous required aliases are rejected unless the request supplies explicit
+  `bone_overrides`.
+
+## Implementation Shape
+
+- `profile_controlrig_skeleton` produces bounded reference-skeleton evidence.
+- `compile_controlrig_profile_recipe` derives deterministic preset requests in
+  Python.
+- Existing `make_controlrig_preset_recipe` remains the source of truth for
+  preset-to-recipe JSON generation, so the compiler does not duplicate the
+  authoring module's preset builders.
+- Pure Python tests verify stable output without launching Unreal Editor.
+
+## Supported First Pass
+
+- `simple_fk_control_chain`
+- `spine_spline_control_chain`
+- `hand_foot_target_controls`
+- `look_at_aim_target_controls`
+- `two_bone_ik_limb_controls`
+- `interaction_target_controls`
+- `curve_gate_controls`
+
+All are controls-only planning routes in this phase.
+
+## Verification
+
+```powershell
+uv --directory .\Python run python scripts\analysis\test_controlrig_authoring_tools.py
+uv --directory .\Python run python scripts\analysis\controlrig_animbp_mcp_release_gate.py
+```
+
+When C++ profile changes are also present, run the UE 5.6.1 editor target build
+and the skeleton profile commandlet smoke.

@@ -1,0 +1,164 @@
+# CubeFluidNinjaLive Density Buffer 머티리얼 클린룸 재구현
+
+## 결과
+
+`MI_DensityBuffer_Red`와 `MI_DensityBuffer_Translucent`의 실제 활성 수식을 원본의
+동결된 Material graph 증거에서 추적하고, 원본 parent/function을 복제하지 않은 하나의
+target-owned parent와 두 Material Instance로 다시 작성했다. 최종 자산은 다음과 같다.
+
+| 역할 | target package | 바이트 | SHA-256 |
+|---|---|---:|---|
+| 공유 parent | `/Game/Study/CubeFluidNinjaLive/Materials/Output/Surface/M_CFNL_DensityBuffer` | 44,443 | `afe4b68e67bfc764e7cd56b3c60d26c889b8aae7011b27eab63c70ce7bd7ec89` |
+| 불투명 red | `/Game/Study/CubeFluidNinjaLive/Materials/Output/Surface/MI_CFNL_DensityBuffer_Red` | 7,843 | `7d934f915c7bb7ebb1890cdd11c5a0f60ec6a0269f58107c69c60e7528849b7c` |
+| 반투명 white | `/Game/Study/CubeFluidNinjaLive/Materials/Output/Surface/MI_CFNL_DensityBuffer_Translucent` | 8,019 | `cc9be1a3ef8616c8729000bd51e5cb64a11c5a971f1c0f7a4a81f9f117dd3894` |
+
+parent는 UE 5.6 engine expression만 사용하는 65-expression Unlit Material이다. project
+Material Function, Custom expression, Material Parameter Collection, UnrealMCP runtime class를
+직렬화하지 않는다. 원본 Material/MI는 분석용으로만 읽었고 target authoring payload에는
+source asset을 load하거나 template으로 사용하지 않았다. project C++ 변경도 없다.
+
+이 완료 판정은 세 package 자체의 수식, instance override, 저장, cold load, plugin-disabled
+load와 제한된 결정론적 화면 비교에 적용된다. 이를 소비하는 59개 레벨의 배치, 전체 fluid
+runtime, 투명 정렬, 성능 및 최종 카메라 parity는 아직 별도 검수 대상이다.
+
+## 동결된 원본과 의미 분석
+
+의미 분석기는 다섯 source/capture ledger를 SHA-256으로 고정하고, 일반
+`MaterialExpressionStaticSwitch`가 연결된 `StaticBoolParameter`까지 실제 값으로 평가하도록
+작성했다. 따라서 비활성 feature branch를 활성 의미로 잘못 포함하지 않는다.
+
+- analyzer: `Python/scripts/analysis/analyze_cube_fluid_ninja_density_buffer_materials.py`
+  - 34,390바이트
+  - SHA-256 `06b9b9eeb6d8bede99cd2e878411e7652f031b33e5c48ecb02393202758a6094`
+- semantic report:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/20260905_density_buffer_semantic_slice_v004.json`
+  - 1,981,771바이트
+  - SHA-256 `93adf1effb79641945ff7de0edd826ce81a41235db189d7c0beb7b6250ec3a85`
+  - semantic contract `802ca220d20f92df3dfc28bde660755b4f9fbdc96712276f626028dbac533f1e`
+
+static reduction 뒤 surface 활성 노드는 red 230개, translucent 233개였고 water side
+view는 각 9개였다. 두 변형의 유일한 static 차이는 `Enable Opacity Fresnel=false/true`다.
+활성 경로에 project Material Function call은 0개였으므로, 거대한 원본 function tree를
+복사하거나 비활성 기능을 빈 대체물로 만드는 대신 아래 활성 수식만 compact graph로 새로
+저작할 수 있었다.
+
+## 복원한 수식
+
+`P`는 `AbsoluteWorldPosition`, `S`는 `TraceMeshSize`, `C`는
+`TraceMeshPosDouble`, `T`는 `VelocityDensityBuffer`다.
+
+```text
+world_uv = (P.xz - (C.xz - S.xz * 50)) * (0.01 / S.xz)
+uv       = ForceLocalSpace > 0 ? TexCoord0 : world_uv
+sample   = T.Sample(uv)
+density  = InverseDensityOnAlpha > 0 ? sample.a : sample.b
+d         = min(density, ClampDensity)
+
+color     = lerp(Color 2, Color 1, pow(d, ColorPow) * ColorMult)
+emissive  = color * EmissiveMultiplier
+
+alpha_d   = pow(min(d * AlphaMult, 1), AlphaPow) + AlphaAdd
+alpha_f   = Enable Opacity Fresnel ? 1 - Fresnel(OpacityFresnel) : 1
+opacity   = alpha_d * (alpha_f + AlphaAdd)
+
+roughness = min(max(density * FluidSimRoughnessMult, MainRoughness), TwoSidedSign)
+specular  = Specular
+normal    = float3(0, 0, 1) * TwoSidedSign
+WPO       = (VertexNormalWS * AdditionalOffset) * VertexNormalWS
+refraction = 1
+pixel_depth_offset = 0
+```
+
+보존한 runtime parameter surface는 texture `VelocityDensityBuffer`, 위치/크기
+`TraceMeshPosDouble`/`TraceMeshSize`, local/world UV 선택, A/B density channel 선택,
+density clamp, 두 색과 color curve, emissive, alpha curve, opacity Fresnel, roughness,
+specular, vertex offset이다. `DepthFadeDistance`와 `RefractionDepthBias`는 source MI의 direct
+scalar override 계약도 보존한다.
+
+## 인스턴스 계약
+
+red 인스턴스는 Opaque, two-sided, pixel-animation flag를 사용하고
+`RefractionDepthBias=0`, `Color 1=white`, `Color 2=(0.875,0,0.006963000167161226,1)`를
+직접 override한다. opacity Fresnel static switch는 override하지 않아 false다.
+
+translucent 인스턴스는 Translucent, two-sided, pixel-animation flag를 사용하고
+`DepthFadeDistance=25`, `RefractionDepthBias=0`, `Color 2=white`,
+`Enable Opacity Fresnel=true`를 직접 override한다. 두 인스턴스 모두 parent의 명시적인
+`bHasPixelAnimation=true`와 instance base-property override를 보존한다.
+
+builder 계약은 SHA-256
+`e37569d90cc7adb9c68574b159940a75e4ac1cf2302bd562e24bd9fb620d5ef6`, 실행 확인
+토큰은 `cfnl-density-buffer-e37569d90cc7adb9c68574b1`이다. builder와 analyzer는 source
+package를 authoring template으로 여는 경로가 없으며 기존 target overwrite도 fail-closed로
+제어한다.
+
+## 구현 중 발견한 UE 5.6 제약과 복구
+
+모든 실패는 성공한 최종 package 위에 덮어쓰지 않고 별도 report로 남겼다.
+
+1. Python reflection의 Fresnel property 이름이 예상과 달라 v001은 save 전에 중단했다.
+2. 초기 validator가 이전 schema field 이름을 사용해 v002가 save 전에 중단했다.
+3. UE Python이 Material root의 `MP_PIXEL_DEPTH_OFFSET` enum을 노출하지 않아 v003이 save
+   전에 중단했다. 이 한 연결만 기존 UnrealMCP authoring 도구의 native
+   `connect_material_property`를 사용했고, finished asset에는 그 도구 참조가 남지 않는다.
+4. v004~v006에서 MI의 pixel-animation cache가 parent의 명시 값과 일치해야 함을 확인했다.
+   parent에 `bHasPixelAnimation=true`를 기록하고 MI base override를 그 계약에 맞췄다.
+5. v007은 LWC `float3 - float2` compile error, v008은 이미 float2인 값에 R/B mask를 한
+   compile error를 드러냈다. 실패 package는 삭제하지 않고 각각
+   `failed_execute_v007_assets`, `failed_execute_v008_assets` 아래로 회수 가능하게 격리했다.
+6. v009는 세 자산 작성·compile·save·instance 검증까지 성공했지만 마지막 audit command
+   이름이 오래된 `audit_content_root`였다. 이를 실제 `audit_content_root_mcp`로 수정한 뒤
+   hot/cold verify-existing를 새 report로 통과시켰다.
+7. 시각 검수 v001/v002는 UE 5.6 Python API 이름 차이, v003은 export filename에 확장자를
+   자동 추가하지 않는 동작을 확인하고 실패했다. content mutation은 없었고 v004에서
+   `MaterialLibrary.create_dynamic_material_instance`, `create_render_target2d`, 명시적 `.png`
+   파일명을 사용해 통과했다.
+
+이 과정에서 source package save, duplicate/import, graph text import, source GUID 재사용,
+project C++ 수정은 하지 않았다.
+
+## 검증
+
+최종 cold verify report는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/DensityBuffer/20260905_density_verify_cold_v001.json`이며
+39,204바이트, SHA-256
+`356d7491644eb5e7ed727374d9ac8dda30568cac70510d1d8f01caeaa4898b5f`다.
+compile error/warning은 0, parent expression은 65, parameter name은 22개다. target root의
+class count는 Material 1 + MaterialInstanceConstant 2, forbidden dependency 0,
+redirector 0, dirty package 0이다.
+
+`20260905_density_plugin_disabled_v001.json`에서는 UnrealMCP를 비활성화한 별도 editor
+process가 세 package를 정확한 engine class로 load했다. report는 13,429바이트,
+SHA-256 `1ae288165f20640ee7af6c62009d1137040eb8e476151765a0dce5f371a402d6`다.
+
+시각 비교는 source와 target에 같은
+`/Game/FluidNinjaLive/Input/Cache/T_Cache_Coast_VelocityDensityBuffer_163`을 transient MID로
+설정하고 `ForceLocalSpace=1`, `InverseDensityOnAlpha=0`, RGBA8 256×256 조건으로 각각
+offscreen render했다. 이 texture는 검수 입력일 뿐 target package에 저장되지 않는다.
+
+| 변형 | 다른 픽셀 | 최대 채널 절대차 | 평균 채널 절대차 | PSNR | 결과 |
+|---|---:|---:|---:|---:|---|
+| red | 0 | 0 | 0.0 | ∞ | pass |
+| translucent | 0 | 0 | 0.0 | ∞ | pass |
+
+시각 report는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/materials/DensityBuffer/visual/20260905_cache163_v004/report.json`,
+5,037바이트, SHA-256
+`828685bf313fa3311d886d0dc09034887340d924c45086c1939eef68226f388f`다. 렌더 전후 dirty
+package 목록은 동일하고 content save는 0이다.
+
+## Component prerequisite 반영
+
+두 source MI는 이제 proposal이 아니라 검증된 target identity로
+`build_cube_fluid_ninja_live_component.py`의 직접 선행 package closure에 들어간다.
+이 density milestone 당시 closure는 `30 reviewed / 2 unresolved`였고 남은 identity는
+`Core/NinjaPreset`과 `Utilities/SmokeVolumeComponent`였다. 이후 두 자산을 모두 fresh-author하고
+검증하여 현재 component package identity closure는 `32 reviewed / 0 unresolved`다. 당시 갱신된 dry-run report는
+`MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/NinjaLiveComponent/20260905_density_dependency_update_v001.json`,
+1,180,717바이트, SHA-256
+`2fb655e4678e0c24400077b44d1e72ee4b97599eadbdf50a3d447fe04d407c9d`다.
+
+이 identity closure와 실제 disk availability는 구분한다. 2026-09-05 HVOL MI는
+새 저작과 hot/cold/plugin-disabled 계약을 통과했다. root `NinjaLive`는 아직 disk에 없고
+Component 실행 blocker도 남아 전체 authoring gate는 계속 닫혀 있다.
+HVOL의 수식·검증 한계는 `CubeFluidNinjaLive_HVOL_SimLandscape_CleanRoom.md`를 따른다.

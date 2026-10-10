@@ -1,0 +1,21 @@
+# Painted Polar v04
+
+현재 레벨과 BP는 `/Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude`에 있다. 구름은 히어로와 높은 고도 폴라 UV 두 레이어만 사용한다. 폐기된 아틀라스의 셰이더 입력, BP 변수, 설정 노드는 제거했다.
+
+`HeroCloudScale`은 BP `Clouds|Hero`에서 조절한다. 기본값 1.0은 기존 UV를 그대로 사용한다. UI 범위 0.5–1.5, 허용 범위 0.1–2. 폴라 중심 기준 전체 레이어 배율이므로 개별 구름의 크기뿐 아니라 고도도 함께 달라진다. 높은 고도 레이어에는 영향을 주지 않는다.
+
+현재 높은 고도 텍스처는 `T_PaintedCloud_HighUnderside_Var02_v04`이다. 낮은 고도 모듈 4종을 붓터치와 넓은 음영 단계로 교체했고, 이전 작은 크기의 1.5배를 적용했다. 빨간 박스로 지정된 `10_Veil` 영역은 픽셀 비교에서 변경 없음. 아틀라스 구름 4종은 사용하지 않는다.
+
+검증: BP/머티리얼 컴파일 오류 없음, HeroCloudScale 0.9/1.0 MID readback 및 뷰포트 확인, 최종 CDO/레벨 값 1.0. 프로젝트 에셋 의존성 112개를 검사했고 MCP 런타임 의존성 없음. `uv --directory Python run python scripts/analysis/run_verification.py --profile full` 통과.
+
+낮은 구름 원본 생성은 builtin image_gen을 사용했다. 원본 4종과 프롬프트는 `Altitude_Underside_Var02/Underside_*_Source.png`, `generation.json`에 있다. 채널은 R 음영, G 밀도, B 중간톤 마스크, A 커버리지다.
+
+## 원경 대기 오버레이
+
+최신 채널 규칙: 구름 실루엣 영역 마스크는 폐기했다. 상하 전체 구름 원본을 복원하고, 구름 커버리지에 세로 그라데이션만 곱해 R에 저장한다. 상단/하단 각각 UV 20% 구간에서 smoothstep으로 0까지 줄어들고 중간은 원래 구름을 유지한다. G/B는 기존 구름 명암을 그대로 보존하고 A는 1이다. 두 대기 오버레이 머티리얼 경로 모두 R을 적용량으로, G를 명암으로 읽으며 알파는 사용하지 않는다. 원본 이미지에 블러를 적용하지 않는다. `VerticalGradient.png`가 현재 그라데이션이며 이전 `GradientMask.png`, `RegionMask.png`, `FinalAlpha.png`는 미사용 과정 산출물이다. 2048×1024와 BP UV 기본값 유지. 아래 고도 0.8배 및 알파 기반 설명은 과거 버전이다.
+
+현재 BP의 `SkyboxBaseTexture`는 같은 Altitude 폴더의 `T_AtmosphereDistant_v05`를 사용한다. 가는 실결 대신 흐릿한 붓질 구름 덩어리로 다시 그렸고, RGB는 오버레이 명암, A는 연속 커버리지다. 기존 flow 텍스처와 속도 제어를 유지한다. 두 폴라 구름 레이어와 별개인 기존 대기 경로이다.
+
+원본과 패킹 정보는 `AtmosphereDistant_v05/`에 있다. 반구 UV의 고도를 0.8배로 매핑해 아래쪽까지 분포를 내렸다. 최종 텍스처는 사용자 요청에 따라 2048×1024로 리샘플링해 같은 에셋에 재임포트했다. 머티리얼은 RGB의 0.5 기준 명암을 `AtmosphereShadowTint`에 더해서 밝은 면과 그림자를 함께 표현한다. 기본 기준색은 (0.43, 0.45, 0.48), 적용량은 기존 0.55이다. 낮·밤 뷰포트, 컴파일, 의존성 검사와 full 검증을 통과했다.
+
+BP `Sky|Skybox Blend|UV`의 `SkyboxTilingU/V`와 `SkyboxOffsetU/V`로 대기 텍스처의 반복과 이동을 조절한다. 기본값은 타일링 (1,1), 오프셋 (0,0)으로 기존 배치를 유지한다. 타일링을 높이면 더 많이 반복되고, 오프셋 1은 한 주기다. 변환은 회전 이후, 베이스·플로우 샘플링 이전에 적용한다. V 반복은 명시적으로 wrap하며 기본 V 설정은 원래 UV를 보존한다. 네 값의 변경 및 기본값 복원 모두 MID readback으로 확인했다.

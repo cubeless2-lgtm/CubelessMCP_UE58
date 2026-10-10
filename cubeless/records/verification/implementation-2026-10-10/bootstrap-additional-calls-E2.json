@@ -1,0 +1,2588 @@
+{
+  "schema": "cubeless_bootstrap_additional_calls_v1",
+  "status": "pass",
+  "success": true,
+  "run_id": "4509bb2dbc2846f58f9e167c3c35ee74",
+  "project_file": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\CubelessMCPVerification.uproject",
+  "endpoint": "http://127.0.0.1:8001/mcp",
+  "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+  "skeletal_mesh": "/Engine/EngineMeshes/SkeletalCube.SkeletalCube",
+  "author_report_sha256": "c5921d922ff486ca7f32f545eb5bb6b2ec25568b21fa5016619152b563bf454c",
+  "script_sha256": "d68570d2fe807adbfb90f90355c12836ec297687373cf7eadf37da5791aac3d5",
+  "started_ns": 1791622594069793700,
+  "stages": [
+    {
+      "name": "preflight",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 3760,
+        "instance_id": "05A72117-4E0A-A78F-5C6E-87821B637E7C",
+        "session_id": "F815DC0A-5C39-42B7-8000-000000008200",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.3216005861759186
+      },
+      "elapsed_seconds": 0.014423
+    },
+    {
+      "name": "skeletal_sections",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "skeletal_mesh_path": "/Engine/EngineMeshes/SkeletalCube.SkeletalCube",
+        "lod_index": 0,
+        "package_dirty": false,
+        "sections": [
+          {
+            "section_index": 0,
+            "material_index": 0,
+            "original_data_section_index": 0,
+            "chunked_parent_section_index": -1,
+            "enabled": true,
+            "source_enabled": true
+          }
+        ],
+        "operation": "get_skeletal_mesh_sections",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.025101006031036377
+      },
+      "elapsed_seconds": 0.009013
+    },
+    {
+      "name": "skeletal_repeat_read_consistency",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "skeletal_mesh_path": "/Engine/EngineMeshes/SkeletalCube.SkeletalCube",
+        "lod_index": 0,
+        "package_dirty": false,
+        "sections": [
+          {
+            "section_index": 0,
+            "material_index": 0,
+            "original_data_section_index": 0,
+            "chunked_parent_section_index": -1,
+            "enabled": true,
+            "source_enabled": true
+          }
+        ],
+        "operation": "get_skeletal_mesh_sections",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.025101006031036377
+      },
+      "elapsed_seconds": 0.01253
+    },
+    {
+      "name": "negative_lod_rejected",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": false,
+        "stage": "preflight",
+        "error": "SkeletalMeshPath is required and LODIndex must be nonnegative.",
+        "operation": "get_skeletal_mesh_sections",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.006400048732757568
+      },
+      "elapsed_seconds": 0.012358
+    },
+    {
+      "name": "wrong_asset_type_rejected",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": false,
+        "stage": "load",
+        "error": "SkeletalMeshPath must resolve to a SkeletalMesh asset.",
+        "operation": "get_skeletal_mesh_sections",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.1739002764225006
+      },
+      "elapsed_seconds": 0.012455
+    },
+    {
+      "name": "blueprint_before",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "operation_id": "4b96b193-d9c8-43e9-89fc-aa557fd37a30",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "loaded_readback_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Read-only inspection can be repeated; load_asset may return an already-loaded object.",
+          "replayed": false
+        },
+        "data": {
+          "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+          "dirty": false,
+          "generated_class": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+          "graph_names": [
+            "UserConstructionScript",
+            "EventGraph"
+          ],
+          "name": "BP_MutationContract",
+          "parent_chain": [
+            "/Script/Engine.Actor",
+            "/Script/CoreUObject.Object"
+          ],
+          "parent_class": "/Script/Engine.Actor",
+          "path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+          "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+          "variable_names": []
+        }
+      },
+      "elapsed_seconds": 0.034244
+    },
+    {
+      "name": "graph_before",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "operation_id": "4653f436-3ed8-40e5-8598-85a7107daa78",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "status": "loaded_graph_readback_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Inspect the recorded result before issuing another mutation.",
+          "replayed": false
+        },
+        "data": {
+          "graph_name": "EventGraph",
+          "graph_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph",
+          "node_count": 4,
+          "node_scope": "K2 nodes returned by official BlueprintGraphEditor.list_all_nodes; comments are excluded",
+          "nodes": [
+            {
+              "class": "K2Node_Event",
+              "name": "K2Node_Event_0",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_Event_0",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "unknown",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OutputDelegate",
+                  "type_display": "델리게이트",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                }
+              ],
+              "title": "BeginPlay 이벤트",
+              "x": 0,
+              "y": 0
+            },
+            {
+              "class": "K2Node_Event",
+              "name": "K2Node_Event_1",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_Event_1",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "unknown",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OutputDelegate",
+                  "type_display": "델리게이트",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "string",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OtherActor",
+                  "type_display": "액터 오브젝트 레퍼런스",
+                  "value": ""
+                }
+              ],
+              "title": "ActorBeginOverlap 이벤트",
+              "x": 0,
+              "y": 208
+            },
+            {
+              "class": "K2Node_Event",
+              "name": "K2Node_Event_2",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_Event_2",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "unknown",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OutputDelegate",
+                  "type_display": "델리게이트",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "number",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "DeltaSeconds",
+                  "type_display": "플로트(단정밀도)",
+                  "value": "0.0"
+                }
+              ],
+              "title": "Tick 이벤트",
+              "x": 0,
+              "y": 416
+            },
+            {
+              "class": "K2Node_IfThenElse",
+              "name": "K2Node_IfThenElse_0",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_IfThenElse_0",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "input",
+                  "links": [],
+                  "name": "execute",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "boolean",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "input",
+                  "links": [],
+                  "name": "Condition",
+                  "type_display": "부울",
+                  "value": "true"
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "else",
+                  "type_display": "실행",
+                  "value": ""
+                }
+              ],
+              "title": "Branch",
+              "x": 0,
+              "y": 0
+            }
+          ]
+        }
+      },
+      "elapsed_seconds": 0.029238
+    },
+    {
+      "name": "guard_compile_blueprint",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 3760,
+        "instance_id": "05A72117-4E0A-A78F-5C6E-87821B637E7C",
+        "session_id": "F815DC0A-5C39-42B7-8000-000000008200",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.3161989152431488
+      },
+      "elapsed_seconds": 0.023244
+    },
+    {
+      "name": "compile_blueprint",
+      "passed": true,
+      "state": "complete",
+      "mutation": true,
+      "request": {
+        "toolset": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools",
+        "tool": "compile_blueprint",
+        "arguments": {
+          "blueprint_name": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+          "operation_id": "4509bb2dbc2846f58f9e167c3c35ee74_compile_blueprint"
+        }
+      },
+      "result": {
+        "success": true,
+        "operation_id": "4509bb2dbc2846f58f9e167c3c35ee74_compile_blueprint",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [
+          {
+            "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+            "attempted": true,
+            "kind": "compile",
+            "mutation_observed": true
+          }
+        ],
+        "compile": {
+          "attempted": true,
+          "compiled": true,
+          "diagnostics": [],
+          "error_count": 0,
+          "refreshed_nodes": false,
+          "requested": true,
+          "status": "up_to_date",
+          "warning_count": 0
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false,
+          "status": "not_saved"
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "compile_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "compile_or_refresh_would_repeat",
+          "policy": "Replay the same operation_id for the recorded outcome. Readback is not a disk reload.",
+          "replayed": false
+        },
+        "data": {
+          "after": {
+            "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+            "dirty": false,
+            "generated_class": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_MutationContract",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+          "atomic_rollback_available": false,
+          "before": {
+            "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+            "dirty": false,
+            "generated_class": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_MutationContract",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "blueprint_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+          "blueprint_status_code": 3,
+          "compile_action": "performed",
+          "compile_error_count": 0,
+          "compile_errors": [],
+          "compile_status": "passed",
+          "compile_warning_count": 0,
+          "compile_warnings": [],
+          "compiled": true,
+          "diagnostic_count": 0,
+          "diagnostics": [],
+          "dirty_after_compile": false,
+          "elapsed_ms": 51.2021966278553,
+          "elapsed_seconds": 0.081729,
+          "error_count": 0,
+          "has_warnings": false,
+          "messages": [],
+          "mutation_performed": true,
+          "name": "BP_MutationContract",
+          "operation": "compile_blueprint_validation",
+          "package_dirty_after": false,
+          "package_dirty_before": false,
+          "refresh_nodes_requested": false,
+          "refreshed_nodes": false,
+          "reload_verified": false,
+          "requested_save": false,
+          "retry_policy": "inspect_result_before_explicit_reexecution",
+          "runtime_verified": false,
+          "save_requested": false,
+          "saved": false,
+          "schema_version": "1.0",
+          "stage": "complete",
+          "status": "up_to_date",
+          "success": true,
+          "validation_pass": true,
+          "validation_scope": "compiler_messages_and_generated_class_only",
+          "warning_count": 0,
+          "was_dirty_before_compile": false
+        }
+      },
+      "elapsed_seconds": 0.135819
+    },
+    {
+      "name": "guard_compile_and_validate_blueprint",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 3760,
+        "instance_id": "05A72117-4E0A-A78F-5C6E-87821B637E7C",
+        "session_id": "F815DC0A-5C39-42B7-8000-000000008200",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.4015006124973297
+      },
+      "elapsed_seconds": 0.030171
+    },
+    {
+      "name": "compile_and_validate_blueprint",
+      "passed": true,
+      "state": "complete",
+      "mutation": true,
+      "request": {
+        "toolset": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools",
+        "tool": "compile_and_validate_blueprint",
+        "arguments": {
+          "blueprint_name": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+          "operation_id": "4509bb2dbc2846f58f9e167c3c35ee74_compile_and_validate_blueprint",
+          "save": false,
+          "refresh_nodes": true
+        }
+      },
+      "result": {
+        "success": true,
+        "operation_id": "4509bb2dbc2846f58f9e167c3c35ee74_compile_and_validate_blueprint",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [
+          {
+            "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+            "attempted": true,
+            "kind": "refresh_and_compile",
+            "mutation_observed": true
+          }
+        ],
+        "compile": {
+          "attempted": true,
+          "compiled": true,
+          "diagnostics": [],
+          "error_count": 0,
+          "refreshed_nodes": true,
+          "requested": true,
+          "status": "up_to_date",
+          "warning_count": 0
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false,
+          "status": "not_saved"
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "compile_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "compile_or_refresh_would_repeat",
+          "policy": "Replay the same operation_id for the recorded outcome. Readback is not a disk reload.",
+          "replayed": false
+        },
+        "data": {
+          "after": {
+            "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+            "dirty": true,
+            "generated_class": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_MutationContract",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+          "atomic_rollback_available": false,
+          "before": {
+            "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+            "dirty": false,
+            "generated_class": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_MutationContract",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "blueprint_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+          "blueprint_status_code": 3,
+          "compile_action": "performed",
+          "compile_error_count": 0,
+          "compile_errors": [],
+          "compile_status": "passed",
+          "compile_warning_count": 0,
+          "compile_warnings": [],
+          "compiled": true,
+          "diagnostic_count": 0,
+          "diagnostics": [],
+          "dirty_after_compile": true,
+          "elapsed_ms": 23.399896919727325,
+          "elapsed_seconds": 0.05374,
+          "error_count": 0,
+          "has_warnings": false,
+          "messages": [],
+          "mutation_performed": true,
+          "name": "BP_MutationContract",
+          "operation": "compile_blueprint_validation",
+          "package_dirty_after": true,
+          "package_dirty_before": false,
+          "refresh_nodes_requested": true,
+          "refreshed_nodes": true,
+          "reload_verified": false,
+          "requested_save": false,
+          "retry_policy": "inspect_result_before_explicit_reexecution",
+          "runtime_verified": false,
+          "save_requested": false,
+          "saved": false,
+          "schema_version": "1.0",
+          "stage": "complete",
+          "status": "up_to_date",
+          "success": true,
+          "validation_pass": true,
+          "validation_scope": "compiler_messages_and_generated_class_only",
+          "warning_count": 0,
+          "was_dirty_before_compile": false
+        }
+      },
+      "elapsed_seconds": 0.126552
+    },
+    {
+      "name": "blueprint_after",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "operation_id": "af84f9f1-2dcd-4d53-900f-14e5379f4e19",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "loaded_readback_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Read-only inspection can be repeated; load_asset may return an already-loaded object.",
+          "replayed": false
+        },
+        "data": {
+          "asset_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract",
+          "dirty": true,
+          "generated_class": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract_C",
+          "graph_names": [
+            "UserConstructionScript",
+            "EventGraph"
+          ],
+          "name": "BP_MutationContract",
+          "parent_chain": [
+            "/Script/Engine.Actor",
+            "/Script/CoreUObject.Object"
+          ],
+          "parent_class": "/Script/Engine.Actor",
+          "path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract",
+          "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+          "variable_names": []
+        }
+      },
+      "elapsed_seconds": 0.029851
+    },
+    {
+      "name": "graph_after",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "operation_id": "9ca5b37c-0420-4f6d-9c6c-fc43db0725b6",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "status": "loaded_graph_readback_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Inspect the recorded result before issuing another mutation.",
+          "replayed": false
+        },
+        "data": {
+          "graph_name": "EventGraph",
+          "graph_path": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph",
+          "node_count": 4,
+          "node_scope": "K2 nodes returned by official BlueprintGraphEditor.list_all_nodes; comments are excluded",
+          "nodes": [
+            {
+              "class": "K2Node_Event",
+              "name": "K2Node_Event_0",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_Event_0",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "unknown",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OutputDelegate",
+                  "type_display": "델리게이트",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                }
+              ],
+              "title": "BeginPlay 이벤트",
+              "x": 0,
+              "y": 0
+            },
+            {
+              "class": "K2Node_Event",
+              "name": "K2Node_Event_1",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_Event_1",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "unknown",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OutputDelegate",
+                  "type_display": "델리게이트",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "string",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OtherActor",
+                  "type_display": "액터 오브젝트 레퍼런스",
+                  "value": ""
+                }
+              ],
+              "title": "ActorBeginOverlap 이벤트",
+              "x": 0,
+              "y": 208
+            },
+            {
+              "class": "K2Node_Event",
+              "name": "K2Node_Event_2",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_Event_2",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "unknown",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "OutputDelegate",
+                  "type_display": "델리게이트",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "number",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "DeltaSeconds",
+                  "type_display": "플로트(단정밀도)",
+                  "value": "0.0"
+                }
+              ],
+              "title": "Tick 이벤트",
+              "x": 0,
+              "y": 416
+            },
+            {
+              "class": "K2Node_IfThenElse",
+              "name": "K2Node_IfThenElse_0",
+              "node_id": "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract.BP_MutationContract:EventGraph.K2Node_IfThenElse_0",
+              "node_identifier_kind": "object_path",
+              "pins": [
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "input",
+                  "links": [],
+                  "name": "execute",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "boolean",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "input",
+                  "links": [],
+                  "name": "Condition",
+                  "type_display": "부울",
+                  "value": "true"
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "then",
+                  "type_display": "실행",
+                  "value": ""
+                },
+                {
+                  "category": "exec",
+                  "category_encoding": "UE58_pin_json_schema_type",
+                  "direction": "output",
+                  "links": [],
+                  "name": "else",
+                  "type_display": "실행",
+                  "value": ""
+                }
+              ],
+              "title": "Branch",
+              "x": 0,
+              "y": 0
+            }
+          ]
+        }
+      },
+      "elapsed_seconds": 0.028611
+    },
+    {
+      "name": "editor_after",
+      "passed": true,
+      "state": "complete",
+      "mutation": false,
+      "request": null,
+      "result": {
+        "success": true,
+        "stage": "complete",
+        "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+        "project_name": "CubelessMCPVerification",
+        "process_id": 3760,
+        "instance_id": "05A72117-4E0A-A78F-5C6E-87821B637E7C",
+        "session_id": "F815DC0A-5C39-42B7-8000-000000008200",
+        "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+        "game_thread": true,
+        "pie_or_sie_active": false,
+        "is_commandlet": false,
+        "dirty_packages": [
+          "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract"
+        ],
+        "plugins": [
+          {
+            "name": "CubelessMCP_UE58",
+            "found": true,
+            "enabled": true,
+            "version": "0.1.0"
+          },
+          {
+            "name": "ModelContextProtocol",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "ToolsetRegistry",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          },
+          {
+            "name": "PythonScriptPlugin",
+            "found": true,
+            "enabled": true,
+            "version": "1.0"
+          }
+        ],
+        "operation": "get_editor_diagnostics",
+        "schema_version": "1.0",
+        "mutation_performed": false,
+        "saved": false,
+        "atomic_rollback_available": false,
+        "retry_policy": "safe_read_only",
+        "compile_action": "not_requested",
+        "elapsed_ms": 0.3260001540184021
+      },
+      "elapsed_seconds": 0.027135
+    }
+  ],
+  "automatic_retries": 0,
+  "atomic_rollback": false,
+  "outcome_unknown": false,
+  "save_requested": false,
+  "files": {
+    "blueprint": {
+      "path": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\Run_e46446c2ea9449a5b889e7558eae6dde\\BP_MutationContract.uasset",
+      "sha256_before": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "sha256_after": "dd9443f00486b1663b4e69bb3bffb67b1fc54cdf429c67f3d0b213cca9a2bf6f",
+      "disk_bytes_unchanged": true
+    },
+    "skeletal_mesh": {
+      "path": "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Content\\EngineMeshes\\SkeletalCube.uasset",
+      "sha256_before": "fed5ad127cd9c14af5eb27a7396919174290c82d4912eb40c4eadeb650cf295a",
+      "sha256_after": "fed5ad127cd9c14af5eb27a7396919174290c82d4912eb40c4eadeb650cf295a",
+      "disk_bytes_unchanged": true
+    }
+  },
+  "validation_scope": {
+    "skeletal": "actual reflected USkeletalMesh load/imported LOD section contract, repeat consistency and invalid-input rejection; no independent imported-model golden or full legacy parity",
+    "blueprint": "two wrapper calls, native compiler diagnostics, before/after state and graph topology, disk hash unchanged; in-memory compile/refresh changes are expected",
+    "disk_reload_after_calls": "not_run",
+    "packaging": "not_run",
+    "runtime_behavior": "not_run"
+  },
+  "initialize": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {
+      "resources": {},
+      "tools": {
+        "listChanged": true
+      }
+    },
+    "serverInfo": {
+      "name": "",
+      "title": "",
+      "version": ""
+    }
+  },
+  "top_level_tools": {
+    "tools": [
+      {
+        "name": "list_toolsets",
+        "description": "List all available toolsets with names and descriptions.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {}
+        }
+      },
+      {
+        "name": "describe_toolset",
+        "description": "Get detailed information about a toolset including all tool names, descriptions, and input schemas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "toolset_name": {
+              "type": "string",
+              "description": "Name of the toolset to describe. Use list_toolsets to see available names."
+            }
+          },
+          "required": [
+            "toolset_name"
+          ]
+        }
+      },
+      {
+        "name": "call_tool",
+        "description": "Call a tool by name. Provide toolset_name to call a toolset tool, or omit it to call a top-level MCP tool. Use list_toolsets and describe_toolset to discover available tools and their input schemas.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "toolset_name": {
+              "type": "string",
+              "description": "Optional. Name of the toolset containing the tool. Omit to call a top-level MCP tool. Use list_toolsets to discover toolset names."
+            },
+            "tool_name": {
+              "type": "string",
+              "description": "Name of the tool to call, without toolset prefix. Use describe_toolset to discover tool names and input schemas."
+            },
+            "arguments": {
+              "type": "object",
+              "description": "Arguments to pass to the tool. Must match the tool's input schema. Defaults to an empty object."
+            }
+          },
+          "required": [
+            "tool_name"
+          ]
+        }
+      }
+    ]
+  },
+  "discovered_schemas": {
+    "CubelessMCPUE58Editor.CubelessNativeToolset": {
+      "name": "CubelessMCPUE58Editor.CubelessNativeToolset",
+      "version": "0.1.0",
+      "description": "Cubeless native editor diagnostics, asset verification and compiler operations. Never reference this editor class from game assets.",
+      "tools": [
+        {
+          "description": "Read imported skeletal mesh sections for one LOD, including enabled state and source section identity.\nSkeletalMeshPath is an object path such as /Game/Meshes/SK_Test.SK_Test; LODIndex is zero-based.\nReturns JSON matching the legacy GetSections data fields plus operation status. Loads the mesh but never edits or saves it.\nIf mesh compilation is pending, returns a retryable read error instead of forcing synchronous compilation.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.GetSkeletalMeshSections",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "skeletalMeshPath": {
+                "type": "string"
+              },
+              "lODIndex": {
+                "type": "integer",
+                "default": 0
+              }
+            },
+            "required": [
+              "skeletalMeshPath"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Return JSON with engine/project identity, dirty packages, PIE state and MCP plugin state. Does not save, compile, close, or modify assets.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.GetEditorDiagnostics",
+          "inputSchema": {
+            "type": "object"
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Compile a Blueprint and return JSON with actual compiler errors, warnings and tokenized messages.\nBlueprintPath is the asset object path. Optional node refresh occurs before compilation; optional save occurs only after compilation passes.\nThis mutates compiler/generated-class state, is not atomic, and never retries or rolls back. Rejects PIE/SIE.\nA successful compile is not proof of runtime behavior or a reload; see saved and validation_scope separately.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.CompileBlueprintValidation",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprintPath": {
+                "type": "string"
+              },
+              "bSave": {
+                "type": "boolean",
+                "default": false
+              },
+              "bRefreshNodes": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "blueprintPath"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Audit saved package dependencies for Cubeless, legacy MCP, official MCP, Toolset Registry, Python and EditorScriptingUtilities references.\nPackageNames are long package names such as /Game/Tests/BP_Test, without object suffixes.\nIncludes hard and soft package references. Optional recursion has a strict MaxPackages budget (1..4096).\nReturns JSON containing edges, violations, incomplete reasons and dirty packages. Incomplete scans never pass.\nSaved Asset Registry data only: not proof of unsaved object references, all possible editor-only classes, or plugin-free packaging.",
+          "name": "CubelessMCPUE58Editor.CubelessNativeToolset.AuditPackageDependencies",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "packageNames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "bRecursive": {
+                "type": "boolean",
+                "default": true
+              },
+              "maxPackages": {
+                "type": "integer",
+                "default": 256
+              }
+            },
+            "required": [
+              "packageNames"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        }
+      ]
+    },
+    "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools": {
+      "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools",
+      "version": "1.0",
+      "description": "Cubeless Blueprint lifecycle tools with explicit compile, save, partial-failure and retry results.",
+      "tools": [
+        {
+          "description": "Refresh nodes if requested, compile and collect native diagnostics; save only after successful compilation.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            save: Save on successful compile; defaults to legacy False.\n            refresh_nodes: Refresh all nodes before compile; defaults to legacy True and may change graph serialization.\n            operation_id: Durable request ID; omitted/null generates a returned ID. Inspect a prior interrupted mutation before retry.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_validate_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "save": {
+                "type": "boolean",
+                "default": false
+              },
+              "refresh_nodes": {
+                "type": "boolean",
+                "default": true
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Compile once and optionally save once after successful compilation. Save failure fails the overall result.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            save: Save after successful compilation; defaults to legacy True.\n            operation_id: Durable request ID for identical-request replay protection; omitted/null generates a returned ID.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_save_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "save": {
+                "type": "boolean",
+                "default": true
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Compile one Blueprint with native compiler diagnostics; does not save or refresh nodes.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            operation_id: Durable request ID; omitted/null generates a returned ID. Never automatically retry an uncertain result.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Read Blueprint identity, status, graph/variable names and direct parent chain. Does not compile or save.\n\n        Args:\n            blueprint_name: Full /Game package or object path; a bare name means /Game/Blueprints/name.\n\n        Returns:\n            data_json describes loaded editor state. validation_json explicitly does not claim disk reload or complete dependency verification.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.inspect_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Create a Blueprint without overwriting, explicit compile, or save. Parent must resolve; known MCP/editor-tool parent chains are rejected.\n\n        Args:\n            name: New asset name. Use a single identifier, not a path.\n            parent_class: Native class name (Actor/Pawn etc.) or full native/generated class path; empty means Actor.\n            package_path: Directory under /Game; defaults to /Game/Blueprints (explicit empty also uses that legacy default). No object suffix.\n            operation_id: Unique request ID for durable replay protection. Omitted/null generates an ID returned in the result. Reuse only with identical arguments.\n\n        Returns:\n            Structured result. data_json includes name, path, asset_path and actual parent; creation remains unsaved.",
+          "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.create_blueprint",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "parent_class": {
+                "type": "string"
+              },
+              "package_path": {
+                "type": "string",
+                "default": "/Game/Blueprints"
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "parent_class"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        }
+      ]
+    },
+    "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools": {
+      "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools",
+      "version": "1.0",
+      "description": "Cubeless Branch/exec-link graph editing with mutation_result_v1 readback; compilation and saving are separate.",
+      "tools": [
+        {
+          "description": "Connect free output/input exec pins and verify both directions; refuse replacing links. Typed/conversion links are pending.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            source_node_id: Output node object-path node_id.\n            source_pin_name: Exact output pin name, such as then.\n            target_node_id: Input node object-path node_id.\n            target_pin_name: Exact input pin name, such as execute.\n            graph_name: Existing graph name.\n            operation_id: Unique durable request ID; omitted/null generates an ID returned in the result.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.connect_graph_pins",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "source_node_id": {
+                "type": "string"
+              },
+              "source_pin_name": {
+                "type": "string"
+              },
+              "target_node_id": {
+                "type": "string"
+              },
+              "target_pin_name": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "source_node_id",
+              "source_pin_name",
+              "target_node_id",
+              "target_pin_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Delete a K2 node and verify absence plus no dangling links. Linked exec deletion requires explicit opt-in.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            node_id: Exact object-path node_id returned by this Toolset.\n            graph_name: Existing graph name.\n            allow_exec_linked_delete: Permit removing a node with connected exec pins.\n            operation_id: Unique durable request ID; omitted/null generates an ID returned in the result.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.delete_node",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "node_id": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "allow_exec_linked_delete": {
+                "type": "boolean",
+                "default": false
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "node_id"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Move one K2 node, checking optional previous coordinates and reading back the final position; no compile/save.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            node_id: Exact object-path node_id returned by inspect_graph/add_branch_node.\n            x: New horizontal position.\n            y: New vertical position.\n            graph_name: Existing graph name.\n            expected_x: If supplied, refuse when the prior x differs.\n            expected_y: If supplied, refuse when the prior y differs.\n            operation_id: Unique durable request ID; omitted/null generates an ID returned in the result.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.set_node_position",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "node_id": {
+                "type": "string"
+              },
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "expected_x": {
+                "default": null,
+                "type": "integer"
+              },
+              "expected_y": {
+                "default": null,
+                "type": "integer"
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name",
+              "node_id",
+              "x",
+              "y"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Add a Branch node and verify its existence. data_json.node_id is its object path, not a legacy GUID.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            graph_name: Existing graph name.\n            x: Node horizontal position.\n            y: Node vertical position.\n            operation_id: Unique durable request ID; omitted/null generates an ID returned in the result.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.add_branch_node",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              },
+              "x": {
+                "type": "integer",
+                "default": 0
+              },
+              "y": {
+                "type": "integer",
+                "default": 0
+              },
+              "operation_id": {
+                "default": null,
+                "type": "string"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        },
+        {
+          "description": "Read up to 2048 K2 nodes and pins, positions and links; comments excluded, no compile/save or forced reload.\n\n        Args:\n            blueprint_name: Full /Game Blueprint package/object path.\n            graph_name: Existing graph name, defaults to EventGraph.",
+          "name": "cubeless_mcp_ue58.registration.graph_toolset.CubelessBlueprintGraphTools.inspect_graph",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "blueprint_name": {
+                "type": "string"
+              },
+              "graph_name": {
+                "type": "string",
+                "default": "EventGraph"
+              }
+            },
+            "required": [
+              "blueprint_name"
+            ]
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "returnValue": {
+                "title": "CubelessPythonOperationResult",
+                "type": "object",
+                "properties": {
+                  "data_json": {
+                    "type": "string",
+                    "description": "JSON object containing operation-specific output and legacy contract fields."
+                  },
+                  "retry_json": {
+                    "type": "string",
+                    "description": "JSON object describing retry policy, duplicate risk and request replay."
+                  },
+                  "validation_json": {
+                    "type": "string",
+                    "description": "JSON object describing performed checks and missing validation, including reload."
+                  },
+                  "save_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted save and saved state."
+                  },
+                  "compile_json": {
+                    "type": "string",
+                    "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                  },
+                  "changes_json": {
+                    "type": "string",
+                    "description": "JSON array of attempted and observed changes; no atomic rollback."
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "error_code": {
+                    "type": "string"
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "operation_id": {
+                    "type": "string"
+                  },
+                  "success": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "data_json",
+                  "retry_json",
+                  "validation_json",
+                  "save_json",
+                  "compile_json",
+                  "changes_json",
+                  "error",
+                  "error_code",
+                  "stage",
+                  "operation_id",
+                  "success"
+                ]
+              }
+            },
+            "required": [
+              "returnValue"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "registered_schema_sha256": "f3c3e6c4b664772a453ed9dd01dbca637c3fc6b03281109324f57922b1533d13",
+  "editor": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 3760,
+    "instance_id": "05A72117-4E0A-A78F-5C6E-87821B637E7C",
+    "session_id": "F815DC0A-5C39-42B7-8000-000000008200",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.3216005861759186
+  },
+  "loaded_installation_file_hashes": {
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification\\bootstrap_additional_calls.py": "d68570d2fe807adbfb90f90355c12836ec297687373cf7eadf37da5791aac3d5",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\official_mcp_client.py": "6efe96be0d35e8fe7f8b1288fcb3835f4399821cea434a00f652d99d3182fbba",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\pipelines\\blueprint_mutation_smoke.py": "3296c748548b0080973f8e20c16132b7c2e1b12091526979ccb70d2a8474fdf6",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\registration\\toolsets.py": "100de89eb00086cd49232bde557ea07857d009e6c439ba3b63a9cdfc80d25923",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\operations\\blueprint.py": "34b8dc50e121d3d7ca85002bfce48ca59f4fc1ec9697af64e388829deff10d87",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Plugins\\CubelessMCP_UE58\\Content\\Python\\cubeless_mcp_ue58\\operations\\state.py": "b2736f5c0c6daf677a5c6bc8d4ed1a8c0d3e32865cb1ab39ca60bdc478c303ae",
+    "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Plugins\\CubelessMCP_UE58\\Binaries\\Win64\\UnrealEditor-CubelessMCPUE58Editor.dll": "18b6e45b12cc6eb58b1cfc9a0b34c0b255542084f42432ff76f99908fb35f5be",
+    "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Source\\Editor\\PhysicsAssetEditor\\Private\\PhysicsAssetEditorSharedData.cpp": "1c089bbbec113bbb575a5e20173d525993c430beedf0e7bc6c09ab40a369174d"
+  },
+  "editor_after": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 3760,
+    "instance_id": "05A72117-4E0A-A78F-5C6E-87821B637E7C",
+    "session_id": "F815DC0A-5C39-42B7-8000-000000008200",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [
+      "/Game/CubelessMCPTests/Run_e46446c2ea9449a5b889e7558eae6dde/BP_MutationContract"
+    ],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.3260001540184021
+  },
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.006539
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 0.033572
+    },
+    {
+      "method": "tools/list",
+      "request_id": 2,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016597
+    },
+    {
+      "method": "tools/call",
+      "request_id": 3,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016802
+    },
+    {
+      "method": "tools/call",
+      "request_id": 4,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.01679
+    },
+    {
+      "method": "tools/call",
+      "request_id": 5,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.017157
+    },
+    {
+      "method": "tools/call",
+      "request_id": 6,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016469
+    },
+    {
+      "method": "tools/call",
+      "request_id": 7,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.013914
+    },
+    {
+      "method": "tools/call",
+      "request_id": 8,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.008941
+    },
+    {
+      "method": "tools/call",
+      "request_id": 9,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.012461
+    },
+    {
+      "method": "tools/call",
+      "request_id": 10,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.012313
+    },
+    {
+      "method": "tools/call",
+      "request_id": 11,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.012409
+    },
+    {
+      "method": "tools/call",
+      "request_id": 12,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.034169
+    },
+    {
+      "method": "tools/call",
+      "request_id": 13,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.029102
+    },
+    {
+      "method": "tools/call",
+      "request_id": 14,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.022867
+    },
+    {
+      "method": "tools/call",
+      "request_id": 15,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.1357
+    },
+    {
+      "method": "tools/call",
+      "request_id": 16,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.029737
+    },
+    {
+      "method": "tools/call",
+      "request_id": 17,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.126409
+    },
+    {
+      "method": "tools/call",
+      "request_id": 18,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.029778
+    },
+    {
+      "method": "tools/call",
+      "request_id": 19,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.028469
+    },
+    {
+      "method": "tools/call",
+      "request_id": 20,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.026741
+    }
+  ],
+  "finished_ns": 1791622594807896500
+}

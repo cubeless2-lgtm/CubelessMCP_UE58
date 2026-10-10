@@ -1,0 +1,41 @@
+{
+  "source": "C:\\Git\\UnrealMCP5_6_1\\MCPGameProject\\Plugins\\UnrealMCP\\Source\\UnrealMCP\\Private\\Commands\\UnrealMCPMaterialCommands.cpp",
+  "source_sha256": "8c41e028d0f6b27e0d5c2d85cad37216bab8d2234e61189c812e6a463b0d5a91",
+  "symbols": [
+    {
+      "symbol": "JsonValueToImportText",
+      "source_line": 357,
+      "source_end_line": 381
+    },
+    {
+      "symbol": "TryGetObjectNumber",
+      "source_line": 383,
+      "source_end_line": 405
+    },
+    {
+      "symbol": "JsonValueToStructImportText",
+      "source_line": 407,
+      "source_end_line": 476
+    },
+    {
+      "symbol": "FindMaterialExpressionClass",
+      "source_line": 1028,
+      "source_end_line": 1078
+    },
+    {
+      "symbol": "ShouldDeferImmediateMaterialExpressionUpdate",
+      "source_line": 1080,
+      "source_end_line": 1091
+    },
+    {
+      "symbol": "RefreshExpressionNodeSafe",
+      "source_line": 1093,
+      "source_end_line": 1111
+    }
+  ],
+  "adapted_handlers": {
+    "HandleAddMaterialNode": 5092,
+    "HandleSetMaterialNodeProperty": 5298,
+    "SetObjectPropertyValue": 801
+  }
+}

@@ -1,0 +1,50 @@
+# Reactive Surface T7-T11 Execution Report (Claude run)
+
+Date: 2026-07-04  
+Executor: Claude (fellow ghost tester), direct bridge driver to 127.0.0.1:55561  
+Handoff source: `codex/docs/projects/cubeless-stylized/systems/reactive-surface-t7-t11-handoff-2026-07-04.md`  
+Runner (modified, this commit): `codex/scripts/reactive_surface/reactive_surface_t7_t11_handoff_runner.py`  
+Evidence (runtime only, gitignored): `MCPGameProject/Saved/MCP/ReactiveGhost4/reactive_surface_t7_t11_handoff_execution.json`
+
+## Final Verdicts (run 7)
+
+| Test | Result | Numeric evidence |
+|---|---:|---|
+| T7 Sleep/Wake Grid2D persistence | **PASS** | before-deactivate full-scan 71/1024 nonzero (t=8.3s); while-deactivated 71 with **identical values** (`hold_identical_during_sleep=true`, t=11.1s); after-reactivate 70 nonzero, values decayed naturally (t=13.8s). Wake zero-overwrite disproven. |
+| T8 Material V-flip in PIE | **BLOCKED** | RT write proven (scan 71 nonzero); remaining work is the worldXY->UV emissive material graph + PIE viewport pixel comparison. |
+| T9 Three-system concurrent | **PASS** | Ground/Grass/Water RTs each 71 nonzero at the same world time (t=27.4s). Cross-talk caveat stands (identical deterministic pattern; needs per-system signature). |
+| T10 PIE parity | **PASS** | `world_kind=game_world`, scan 71 nonzero (t=31.5s). |
+| CLEANUP | PASS | temp roots removed (old + new), dirty packages 0. |
+
+T7 extra findings:
+
+- `reset_system` does NOT clear the grid; new paint mixes in (scan 82). Do not use it as a clear route in sleep policy.
+- `reinitialize_system` restarts the deterministic sim and reproduces the same pattern (scan 70).
+- Caveat: the template painter keeps stamping while active, so "preserved" vs "identically restamped" cannot be fully separated; the critical FAIL mode (wake overwrites RT with zero) is disproven, and full freeze during deactivate is proven value-for-value.
+
+## Root Causes Fixed Across Runs 1-7 (handoff runner was incomplete)
+
+| Run | Root cause | Fix applied in runner |
+|---:|---|---|
+| 1 | No SIE start step; every prefer_game readback would fall back to editor_world | Added `PY_START_SIM`/`PY_CHECK_GAME_WORLD`/`PY_END_SIM` + client-side sleeps |
+| 1 | Niagara mutation tools guard-refuse paths outside `/Game/_MCP_Temp/NiagaraGenerated/` | Temp root moved to `/Game/_MCP_Temp/NiagaraGenerated/ReactiveGhost4` (documented deviation) |
+| 2 | `unreal.ENCPoolMethod` does not exist in 5.6.1 (`NCPoolMethod` is real) — trap already documented in the first ghost report | getattr fallback |
+| 2 | Cleanup failed because the open editor world lived inside the temp root | `open_editor_level` to `/Game/Template/Empty` before cleanup |
+| 3 | No RT DI binding step at all — cloned systems never pointed at the created RTs | Per-system `set_niagara_render_target2d_module_input` x3 (Emitter / InitializeGridToRenderTargetSize / RenderGrid) + runtime `set_variable_texture_render_target` |
+| 4 | Single synchronous `execute_python` blocks the game thread; zero frames render between spawn and readback, GPU sim never dispatches | Split spawn/readback into separate bridge commands with real-time sleeps; component refs stashed on `builtins` |
+| 5 | `CircleLocation` is a dynamic input, not RapidIteration (`set_niagara_module_inputs_batch set_existing` refuses) | `set_niagara_module_input_user_parameter` with `default_value=[0.5,0.5]` |
+| 6 | **Judgment bug**: center-only 17x17 readback misses paint drifted by the template's curl-noise AdvectGrid | Full-RT step-16 scan (32x32) added to readback; judgments switched to `_any_write` |
+
+## Remaining Smoke Backlog (for next round)
+
+1. **T8 completion (highest value)**: author `M_T8_WorldXY_RT_Emissive` (worldXY->UV, same window contract), place plane, stamp +X/+Y asymmetric positions, PIE viewport capture, pixel-coordinate comparison. MaterialEditingLibrary/MaterialFactoryNew both confirmed present.
+2. **T9 signature isolation**: give each system a distinct `CircleColor` via `set_niagara_module_input_user_parameter`, then assert each RT contains only its own color. Completes cross-talk proof.
+3. **GPU numeric baseline**: `stat gpu` can be sent but not parsed via this Python route; needs a ProfileGPU log-capture or dedicated timing command.
+4. **V1 array positive path** (from ReactiveGhost3 round): still the top design-critical unknown — declared User Array DI + Count loop -> RT stamp.
+5. **Deterministic reprojection stage** (V4) and **previous-frame temporal probe** (V5): now unblocked in principle because the run-7 pattern (SIE + split commands + full scan) is proven; both need dedicated scratch-pad authoring.
+6. **Pose freshness fixture** (V6): needs an animated character fixture; measurement harness pattern from this round applies.
+
+## Notes for Reuse
+
+- The run-7 pattern is the reusable SIE harness: `safe_new_preview_map` -> asset setup -> per-system clone/stage/bind/stamp/compile -> `editor_play_simulate` -> realtime viewport override -> split spawn/readback commands with sleeps -> `editor_request_end_play` -> leave map -> delete temp roots -> clear dirty.
+- Readback trust rule confirmed again: game world + real rendered frames only; and now additionally "scan the whole RT, do not judge by center."

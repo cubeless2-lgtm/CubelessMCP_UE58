@@ -1,0 +1,55 @@
+# 구름 GPU 비용과 품질 절충 — 2026-09-14
+
+사용자가 GPU 성능 절충을 요청해 **Mode 0 · View 4 · 최대 384 샘플**을 일반 작업 기본값으로 선택했습니다. 이전의 Mode 3 · View 16 · 최대 1,536 샘플을 대체합니다. 현재 에디터와 저장 맵에 적용했으며, 프로젝트 설정에도 Mode 0·상한 384를 기록했습니다.
+
+## 실제 GPU 비교
+
+UE 5.6.1, RTX 5070 Ti, 같은 **1214×748 일반 에디터 뷰포트·카메라·FOV 100**에서 native CSV profiler의 `GPU/VolumetricCloud`를 측정했습니다. 측정 중에는 스크린샷을 요청하지 않았습니다. 백그라운드 CPU 제한은 측정 동안만 해제하고 복원했습니다.
+
+| 비교안 | Mode / View / 상한 | 구름 GPU 중앙값 | p95 | 기준 대비 감소 |
+| --- | --- | ---: | ---: | ---: |
+| 이전 품질 우선 | 3 / 16 / 1536 | 1,496.95 ms | 1,504.15 ms | — |
+| 샘플 절반 | 3 / 8 / 768 | 759.02 ms | 763.00 ms | 49.3% |
+| 절반 해상도 추적 | 1 / 8 / 768 | 221.74 ms | 223.39 ms | 85.2% |
+| **선택한 작업 기본값** | **0 / 4 / 384** | **39.43 ms** | **40.61 ms** | **97.4%** |
+| 더 낮춘 비교안 | 0 / 2 / 192 | 19.97 ms | 20.64 ms | 98.7% |
+
+Mode 0은 구름을 가로·세로 각각 1/4 크기로 추적하고 절반 크기로 복원한 뒤 화면에 합성하는 UE 기본 경로입니다. 장면 전체의 화면 해상도를 낮추지 않았습니다. View·상한도 함께 조절했으므로 최종 개선율을 해상도 변경 하나의 효과로 해석하지 않습니다.
+
+에디터가 장면을 렌더링하지 않은 tick의 구름 시간 0을 제외하고, 첫 3개 렌더 샘플을 버렸습니다. 유효 샘플은 이전값 31개, 샘플 절반 47개, 나머지 각 95개입니다. **구름 GPU 구간의 비용이며 전체 GPU 프레임 시간·게임 FPS가 아닙니다.** 높은 해상도나 다른 구도에서도 같은 ms가 나온다는 의미는 아닙니다. 39ms도 60 FPS 전체 예산보다 크므로 제품 수준의 최적화가 끝난 상태는 아닙니다.
+
+[측정값과 집계 범위](gpu_comparison.json), [이전 CSV](Profiles/QualityCSV.csv), [선택안 CSV](Profiles/Interactive.csv), [비교 스크립트](../../../scripts/balance_cloud_performance_ue.py)
+
+## 화질 판단
+
+큰 타워 실루엣, 하부 연결, 색과 명암은 유지합니다. 대신 작은 굴곡과 얇은 섬유가 조금 부드러워지고, 가는 외곽의 점상 무늬는 남습니다. 192 샘플 안은 얇은 구름과 하부가 더 잘게 끊겨 보여 제외했습니다. 원본 SVT의 Mip은 0을 유지합니다.
+
+| 이전 품질 우선 | 선택한 작업 기본값 |
+| --- | --- |
+| ![이전](Images/Baseline.png) | ![선택안](Images/Interactive.png) |
+
+[제외한 192 샘플 안](Images/Economy.png), [대표 구름](Images/Final_Hero.png), [하부 시점](Images/Final_Lower.png)
+
+[카메라 단계 검수](Final_motion.json)에서 좌우 2° 이동과 정지 이미지 3장을 확인하고 원래 카메라를 복원했습니다. 큰 형태의 소실은 보이지 않았습니다. 이 검수는 연속 영상이나 미세 깜빡임이 없다는 보증은 아닙니다.
+
+## 보존한 아트와 조절 방법
+
+- [70개 액터 보존](preservation.json): 위치·회전·크기·부모·개별 Density·EdgeCut·아이콘 변화 0. GameMode·PlayerStart 유지.
+- [28개 원본과 의존성](dependency_audit.json): SourceVolume 유지, MCP·Python 도구 의존성 0. 이전 검수의 저장 맵 해시와 이번 시작 맵의 동일성을 확인한 뒤 원본을 비교했습니다.
+- Shadow 2, 샘플별 대기광, Extinction 0.0042, Feather 0.04, 하부 음영 0.64, Albedo와 산란 계수 유지.
+- `CloudLayout > CloudRenderer > View Sample Count Scale`이 맵에 저장되는 샘플 배율입니다. 현재값은 **4**입니다. Mode와 상한은 `MCPGameProject/Config/DefaultEngine.ini`의 `[SystemSettings]`에 각각 **0**, **384**로 저장했습니다.
+- 이전 최고 품질 비교값은 Mode 3·View 16·상한 1536입니다. 다시 적용하면 매우 무거워지므로 비교용으로만 남깁니다.
+
+[최종 값](Final_values.json), [저장 결과](saved.json). 이번 변경은 맵과 설정 두 파일이며, 마스터 머티리얼과 MIC는 시작 시점의 파일을 유지합니다. 백업은 `MCPGameProject/Saved/CubelessClouds/Performance_20260914/Before_*`입니다. C++·베이크·Polar UV·Obsidian 미러는 추가하지 않았습니다.
+
+## 검증 상태
+
+- **전체 오프라인 42/42 통과**: 같은 저장소의 분리된 후보에서 6,878개 입력을 고정하고 전후 변경 0개를 확인했습니다. 다른 작업의 미완료 파일은 포함하지 않았습니다. [결과](Verification/summary.json), [전체 로그](Verification/full.log), [입력 해시](Verification/inputs.json), [현재 구현 9개 파일의 동등성](Verification/final_equivalence.json).
+- **UnrealMCP 비활성 재로드 통과**: 별도 UE 5.6.1 NullRHI 프로세스에서 28개 슬롯 초기화, 기존 아트 값, View 4·Mode 0·상한 384의 재로드를 확인했습니다. [결과](cold_result.json), [로그](Verification/cold.log).
+- **DX12/SM6 지정 맵 cook 통과**: 115개 패키지, 오류 0개, 기존 Lumen 우선순위 경고 2개. 머티리얼 fallback과 UnrealMCP 로드 없음. [결과](cook_result.json), [로그](Verification/cook_sm6.log). 실행 파일 패키징·DX11/SM5 호환 검증은 별도입니다.
+- [에디터 최종 상태](final_runtime.json): 원래 카메라와 Game View 복원, 백그라운드 CPU 제한 복원, GPU CSV 수집 종료, 활성 측정 callback 0개. 원래 화면 해상도 비율 100과 TSR을 유지합니다.
+- [main 제출 전 검증 동등성](Verification/submission_equivalence.json): 소스·설정·자산 5,148개와 지침·스키마·기타 문서 791개가 기존 전체 검사 입력과 일치해 해당 42/42 결과를 재사용했습니다. 마지막 검사에서 생성하는 공통 스키마 보고서는 판정 입력이 아니며 이번 제출에서 제외했습니다. 로그 사본의 줄 끝 공백만 정리했고 원본은 Saved에 보존했습니다.
+
+처음 GPU CSV 요청은 UE가 출력 폴더 앞에 절대 경로를 덧붙여 파일 생성에 실패했습니다. 측정 설정을 복원한 뒤 파일명만 지정해 다시 측정했습니다. 해당 실패 요청은 GPU 수치에 포함하지 않습니다. 이 과정에서 에디터 재시작이나 GPU 오류는 발생하지 않았습니다.
+
+다음 성능 과제는 현재 기본값에서 대표 구도와 실제 플레이 해상도의 비용을 확인하고, 가는 구름의 잔무늬를 억제하면서 밀도장 평가·그림자 계산 비용을 줄이는 것입니다. 아트 배치는 계속 개별 액터로 편집합니다.

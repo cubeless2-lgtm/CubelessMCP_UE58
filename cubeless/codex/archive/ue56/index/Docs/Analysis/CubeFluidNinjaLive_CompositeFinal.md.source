@@ -1,0 +1,61 @@
+# CubeFluidNinjaLive 최종 Composite 출력 경계
+
+2026-09-05. 원본은 읽기 전용으로 분석했고 그래프/스크래치 복제나 프로젝트 C++ 변경은 하지 않았다.
+
+## 구현 범위
+
+새 후보 `/Game/_MCP_Temp/NiagaraGenerated/CFNLCompositeFinalV001/NS_CompositeFinal`.
+SHA256 `9bdad5b33cbeeafe513acf5e0f00b7863d3e4c2c73a6d4bdb5f75d2018cf365a`.
+native Grid2D와 새 scratch HLSL, User→Module 입력 연결로 작성했다.
+영구 Study 승격 전이며 기존 BitmapInputPipeline은 변경하지 않았다.
+
+입력은 최종 단계 직전 velocity, density, 두 mask, velocity limit, weaken,
+feedback, landscape enabled, height condition이다. 마스크와 상류 값의 생성은
+아직 외부 입력으로 분리된 범위이며 원본 전체 모듈 구현이 아니다.
+
+```text
+velocityWeight = clamp(velocityMask, weaken, 1)
+densityWeight = clamp(densityMask, weaken, 1)
+if landscapeEnabled && feedback > 1:
+    density = max(density, float(heightCondition))
+FinalVelocity = clamp(velocity, -limit, limit) * velocityWeight
+FinalDensity = densityWeight * max(0.000001, density)
+```
+
+속도 제한은 마스크 곱셈 전이다. density epsilon도 마스크 곱셈 전이므로
+mask 0이면 최종 density 0이 맞다. feedback == 1은 landscape 분기가 아니다.
+density를 1로 제한하지 않는다. 검증 도메인은 유한 입력, limit≥0, weaken∈[0,1].
+원본 Convert13/16/24/78의 실제 Connections는 읽기 전용 T3D로 확인했으며
+내보낸 데이터를 후보에 import하지 않았다.
+
+## 증거와 실패 기록
+
+- `analyze_cube_fluid_ninja_composite_final.py`: 독립식 대 원본 연결 replay 16,384 사례 PASS.
+- `verify_cube_fluid_ninja_composite_final_gpu.py`: 64×64, FinalVX/FinalVY/FinalDensity,
+  13 사례 PASS. 기본값, clamp 순서, 음수/상한 mask, weaken, epsilon 순서,
+  feedback 경계, landscape off, height false, HDR density, limit 0, 기본값 복원 포함.
+- `test_cube_fluid_ninja_composite_final.py`: 6 경계/검증기 테스트 PASS.
+- 현재 frozen checkpoint `run_verification.py --profile full`: 39/39 PASS (exit 0).
+- `CFNL_CompositeFinal_20260905_v001`: MCP disabled 별도 NullRHI cold-load 1/1 PASS,
+  NiagaraSystem class 일치, 금지 문자열 0. 이것은 cook/package 또는 GPU 증거가 아니다.
+- GPU 보고서 v003에서 기본값 복원, 저장 SHA 불변, 의존성/dirty audit 통과.
+
+GPU v001은 float 이상값에 지나치게 엄격한 오차 기준을 적용하여 실패했다.
+실제 Grid 형식은 `channel_statistics.runtime_pixel_format = PF_R16F`이며
+1e-6의 저장값이 9.5367431640625e-7로 관측됐다. v002는 형식 필드의
+잘못된 경로를 읽어 실패했다. 실패 보고서는 보존했다.
+v003은 PF_R16F를 명시적으로 확인하고 half 한 ULP 범위를 적용한다:
+`max(2^-24, 2^(floor(log2(abs(expected)))-10))` (0일 때 2^-24).
+HLSL의 1e-6은 바꾸지 않았다. 1e-6 대신 0을 반환하는 오류는 테스트에서 거부한다.
+각 채널 4096개 유한 샘플과 min/max/mean을 비교했으며 전체 공간별 일치 증거는 아니다.
+
+원시 보고서는 Saved/MCP/CubeFluidNinjaLiveStudy/target/blueprints/
+NinjaLiveComponent/SetParams 아래 `20260905_composite_final_*`에 있다.
+
+## 다음 구현 경계
+
+영구 BitmapInputPipeline의 초기 Composite Op40/Op34를 최종 출력에 바로 연결하면 안 된다.
+그 사이 추가 velocity, gain, noise, density saturate/edge mask 연산이 남는다.
+collision texture/edge mask, optional SDF/RVT mask, landscape height condition 생성,
+WetMask 출력도 별도로 재구현해야 한다. 이후 Painter upstream, Solver/host,
+59개 레벨 조립 및 기술 검증이 필요하다. 현재 시각 검수만 남은 상태가 아니다.

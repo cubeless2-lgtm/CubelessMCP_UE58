@@ -1,0 +1,124 @@
+# Prismatiscape Segment Deform Pass
+
+작성일: 2026-06-26
+
+목적: `APrismatiscapeStudyTwoSocketStick` native parent를 정식 BP child로 만들고, 두 endpoint capsule deform 흐름을 `_MCP_Temp` 없이 검증한다.
+
+## 결과
+
+| 자산 | 역할 | 상태 |
+| --- | --- | --- |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_SegmentDeformStick` | segment/two-socket deform BP child | 생성/컴파일/저장 완료 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_SegmentDeformVerification` | segment deform 전용 검증 map | PIE/cook/stage 통과 |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Clean` | deform RT 반응 표면 | 재사용 |
+
+BP 생성 클래스:
+
+```text
+/Game/PrismatiscapeStudy/BP/BP_PrisStudy_SegmentDeformStick.BP_PrisStudy_SegmentDeformStick_C
+```
+
+CDO 컴포넌트:
+
+| Component | Class | 주요 값 |
+| --- | --- | --- |
+| `StickMesh` | `/Script/Engine.StaticMeshComponent` | Engine basic cube mesh |
+| `TwoSocketDeform` | `/Script/MCPGameProject.PrismatiscapeStudySegmentDeformComponent` | `StartLocalOffset=(-85,0,0)`, `EndLocalOffset=(85,0,0)`, `StartRadius=18`, `EndRadius=18`, `Strength=2.0` |
+
+## PIE Runtime Verification
+
+검증 map:
+
+```text
+/Game/PrismatiscapeStudy/Maps/M_PrisStudy_SegmentDeformVerification
+```
+
+PIE world:
+
+```text
+/Game/PrismatiscapeStudy/Maps/UEDPIE_0_M_PrisStudy_SegmentDeformVerification.M_PrisStudy_SegmentDeformVerification
+```
+
+런타임에서 `PrisSegment_BP_SegmentDeformStick`를 이동/회전한 뒤 Manager와 RT를 확인했다.
+
+| 항목 | 값 |
+| --- | --- |
+| Manager | `Prismatiscape_Manager_BP_C_0` |
+| DeformComponents | `1` |
+| WindComponents | `0` |
+| InteractionBubbleComponents | `0` |
+| Segment actor PIE location | `(-95, 18, 9)` |
+| Segment actor PIE yaw | `-28` |
+| Deform RT size | `256 x 256` |
+| Deform RT nonzero | `65529 / 65536` |
+| Deform RT max abs | `0.4258262813091278` |
+
+검증 screenshot:
+
+```text
+MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_SegmentDeformVerification_Framed.png
+```
+
+첫 static screenshot은 active viewport framing이 어두워 폐기했고, 최종 screenshot은 `set_level_viewport_camera_info`로 BP actor를 향하게 한 뒤 `capture_viewport_bookmark_screenshot` active viewport mode로 저장했다.
+
+## Dependency Audit
+
+AssetRegistry dependency:
+
+| 자산 | Dependency |
+| --- | --- |
+| `BP_PrisStudy_SegmentDeformStick` | `/Script/MCPGameProject` |
+| `M_PrisStudy_SegmentDeformVerification` | `/Engine/BasicShapes/Cube`, `/Engine/BasicShapes/Plane`, `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_SegmentDeformStick`, `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Clean`, `/Script/MCPGameProject`, `/Script/NavigationSystem` |
+
+위 dependency audit에서 아래 항목은 발견되지 않았다.
+
+- `_MCP_Temp`
+- `/Script/UnrealMCP`
+- `/UnrealMCP`
+- `MCPUnreal`
+- `/Script/PrismatiscapeEditor`
+- `/Game/Prismatica`
+- `DemoMap`
+
+Binary string scan에서는 map uasset에 `/Game/UltraDynamicSky/Maps/DemoMap` 문자열이 남는다. Clean map에서도 같은 문자열이 보이며 AssetRegistry dependency에는 잡히지 않는다. 현재 프로젝트 default/startup map metadata에서 온 토큰으로 보고, cook/stage manifest 기준으로 최종 판정한다.
+
+## Cook/Stage Verification
+
+명령:
+
+```powershell
+.\scripts\cook_prismatiscape_clean_map.ps1 -Map /Game/PrismatiscapeStudy/Maps/M_PrisStudy_SegmentDeformVerification
+```
+
+결과:
+
+| 항목 | 값 |
+| --- | ---: |
+| UAT exit code | `0` |
+| BuildCookRun | `BUILD SUCCESSFUL` |
+| Segment map staged entries | `2` |
+| Segment BP staged entries | `2` |
+| `UltraDynamicSky/Maps/DemoMap` | `0` |
+| `UltraDynamicSky/Maps/DemoMaterials` | `0` |
+| `PrismatiscapeStudy` | `6` |
+| `_MCP_Temp` | `0` |
+| `Prismatiscape_CloudNoise` | `3` |
+| `YeetoMosquito` | `2` |
+| `Prismatiscape plugin Demo entries` | `13` |
+
+남은 warning:
+
+- Lumen project setting priority warning 2건. 실제 staged config 값은 Lumen/RayTracing disabled 상태다.
+- plugin `Prismatiscape_SimulationProfile`의 `/Script/PrismatiscapeEditor` `VerifyImport` warning 1건.
+
+중요 caveat:
+
+- staged config의 `GameDefaultMap`/`EditorStartupMap`은 아직 `/Game/UltraDynamicSky/Maps/DemoMap.DemoMap`을 가리킨다.
+- `-NeverCookDir=/Game/UltraDynamicSky/Maps`로 cooked/staged file은 제외되지만, runnable build 기본맵까지 바꾸려면 별도 commandline/generated config/default map 패스가 필요하다.
+- `/Prismatiscape/Demo` 전체 제외는 아직 금지다. `Prismatiscape_NiagaraGridDrawer`가 `Prismatiscape_CloudNoise`를 직접 참조해 cook error를 만든다.
+
+## 판정
+
+`BP_PrisStudy_SegmentDeformStick`은 정식 `/Game/PrismatiscapeStudy` BP 학습 후보로 통과한다.
+
+이 패스는 `BP-generated component` 자동 부착 없이 C++ parent가 안정 컴포넌트를 보유하고, BP child는 기본값과 배치만 담당하는 안전 제작 루트의 검증 사례다.

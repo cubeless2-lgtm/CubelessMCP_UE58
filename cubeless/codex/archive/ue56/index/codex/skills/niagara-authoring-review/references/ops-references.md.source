@@ -1,0 +1,32 @@
+# Ops References
+
+Resolve paths from the repository root unless a path starts with `codex/`.
+
+## Core Niagara References
+
+- `Docs/Tools/niagara_tools.md`
+- `Docs/Research/niagara_scratch_pad_topology_source_notes_20260703.md`
+- `Docs/Research/niagara_from_scratch_authoring_research_plan.md`
+- `codex/docs/projects/cubeless-stylized/tooling/niagara-mcp-authoring-extension.md`
+
+## Gate Scripts
+
+- `Python/scripts/analysis/run_niagara_authoring_offline_gates.py`
+- `Python/scripts/analysis/niagara_authoring_capability_status.py`
+- `Python/scripts/analysis/niagara_authoring_readiness_bundle.py`
+- `Python/scripts/analysis/test_niagara_tools_safety.py`
+- `Python/scripts/analysis/test_niagara_uds_style_direct_project_policy.py`
+- `Python/scripts/analysis/verify_niagara_uds_style_texture_connections_offline.py`
+
+## Evidence Roots
+
+- `Docs/Analysis/MCPWeatherNiagara/`
+- `MCPGameProject/Saved/MCP/NiagaraReviews/`
+- `MCPGameProject/Saved/MCP/AssetReviews/`
+
+## Related Safety References
+
+- `AGENTS.md` for the absolute authoring dependency rule and verification commands.
+- `codex/docs/workflows/unreal-asset-authoring.md` for promotion and final-content safety.
+- `codex/docs/workflows/map-and-preview-safety.md` for preview capture and map safety.
+- Use `$unreal-mcp-safety-review` if the review touches map opens, previews, packaging, or forbidden MCP dependency scans.

@@ -1,0 +1,64 @@
+# 레벨 카드: `Clouds_PASSIVE`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Clouds_PASSIVE` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Clouds_PASSIVE` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `27` |
+| Direct external | `11` |
+
+직접 의존성 수는 inventory 값이며 전이·runtime 필수성을 뜻하지 않는다.
+
+## 정적 의미
+
+- **Observed:** core host 없이 10 `VolumetricCloud`, 1 `HeterogeneousVolume`, 3 `SurfaceAlignedVolumes`와 4 `WriteMaterialsToRenderTargets_C`가 passive setup 10개를 구성한다.
+- **Inferred:** solver-driven cloud와 분리된 material/volume-only CVOL·FVOL·HVOL 기준 gallery다.
+- **Unknown:** camera fade, cloud shadow, HVOL distance cvar, sublevel load timing과 화면 parity.
+- **Target fixture:** `TF_CVOL_Passive_CloudGallery` 제안.
+
+## Actor / Component
+
+- manifest=`120 actors / 354 components / 12 pages / 2 component captures`.
+- actor class histogram: `StaticMeshActor=45; TextRenderActor=41; VolumetricCloud=10; ThirdPersonCharacter_C=8; NiagaraActor=3; Brush=2; Landscape=2; AdditionalMountains_C=1; Clouds_PASSIVE_C=1; DirectionalLight=1; ExponentialHeightFog=1; HeterogeneousVolume=1; PawnAndCameraUtility_C=1; PostProcessVolume=1; SkyAtmosphere=1; SkyLight=1`.
+- component class histogram: `BillboardComponent=58; LandscapeComponent=56; LandscapeHeightfieldCollisionComponent=56; StaticMeshComponent=45; TextRenderComponent=41; ArrowComponent=13; VolumetricCloudComponent=10; CameraComponent=8; CameraProxyMeshComponent=8; CapsuleComponent=8; CharacterMovementComponent=8; DrawFrustumComponent=8; SkeletalMeshComponent=8; SpringArmComponent=8; WriteMaterialsToRenderTargets_C=4; BrushComponent=3; NiagaraComponent=3; SceneComponent=3; DirectionalLightComponent=1; ExponentialHeightFogComponent=1; HeterogeneousVolumeComponent=1; MaterialBillboardComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1`.
+- Landscapes=`19+95 components`; sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`87 nodes / 164 links / 0 variables / 0 errors`; 숫자 0~9 setup visibility, FVOL/HVOL quality·distance cvar, cloud shadow와 distant-mountains sublevel load를 제어한다.
+- passive material writers가 4 multi-layer cloud actor에 붙고 두 FVOL Niagara actor는 Pawn1/Pawn2에 attached다.
+- 실제 culling/fading/visibility는 `pending`.
+
+## Niagara
+
+- core host 0; core path/preset은 해당 없음.
+- `SurfaceAlignedVolumes` 3(auto true): utility 1 + pawn-attached FVOL 2. full capture=`111 nodes / 147 links / 25 modules / 3 renderers / 4 scratch`, warning/error 0.
+
+## Material / Art
+
+- manifest material refs=`17`, art refs=`2`.
+- key materials=`MI_CVOL_PASSIVE_Cloudscape_{Nimbus,Mammatus,StratusRings}`, Cyclone, Sandstorm, TornadoUpperPart, Volcano/Mushroom layer hosts, `MI_HVOL_PASSIVE_BOX_TornadoLowerPart`.
+- mountain/Manny는 art localization 후보; passive cloud/HVOL materials는 clean-room graph로 다시 만든다.
+
+## Clean-room 구현 순서
+
+1. mountain/Landscape/pawn staging을 구성한다.
+2. 10 cloud + lower tornado HVOL actor와 passive RT writer 계약을 독립 작성한다.
+3. `SurfaceAlignedVolumes` 대체 output과 passive material family를 다시 만든다.
+4. 숫자 전환·cvar·sublevel orchestration 뒤 distance/fade/runtime/parity를 검수한다.
+
+## Evidence / Parity / Exception
+
+- revision=`6be6c5a329608a913ff1204a23e5a03f`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation과 runtime/visual/behavior/performance parity는 `pending`.
+- distant mountain·Manny·texture만 dependency-safe localization 후보다. passive volume logic/material/Niagara는 복사하지 않는다.

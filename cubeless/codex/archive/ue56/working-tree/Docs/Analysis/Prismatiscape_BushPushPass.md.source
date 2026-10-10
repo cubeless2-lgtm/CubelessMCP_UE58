@@ -1,0 +1,114 @@
+# Prismatiscape BushPush Pass
+
+작성일: 2026-06-26
+
+목적: `Pris_LargeSingleBushWPO` 계열 large foliage push를 학습용 정식 후보로 승격하고, `_MCP_Temp`가 아닌 `/Game/PrismatiscapeStudy` 경로에서 runtime/cook/stage를 검증한다.
+
+## 승격 후보 자산
+
+| 자산 | Source | 상태 |
+| --- | --- | --- |
+| `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_BushPushBall` | `APrismatiscapeStudyInteractionBubbleBall` native parent | 생성/저장 완료 |
+| `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Project` | `/Game/_MCP_Temp/PrismatiscapeStudy/M_PrisStudy_BushWPO_MCP` | 복제/저장 완료 |
+| `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification` | 새 formal verification map | 생성/저장 완료 |
+
+`BP_PrisStudy_BushPushBall`은 interaction-only 학습 BP다. `Sphere`와 `InteractionBubble`만 가지며 deform trail을 포함하지 않는다. Bush push 검증에서 deform RT를 섞지 않고 `InteractionBubble` 경로를 분리하기 위한 자산이다.
+
+## Runtime 기준
+
+검수 맵:
+
+```text
+/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification
+```
+
+formal map PIE runtime smoke:
+
+| 항목 | 값 |
+| --- | --- |
+| PIE world | `/Game/PrismatiscapeStudy/Maps/UEDPIE_0_M_PrisStudy_FormalVerification` |
+| Manager | `Prismatiscape_Manager_BP_C_0` |
+| moved actors | `PrisFormal_InteractionDeformBall`, `PrisFormal_WindBall`, `PrisFormal_BushPushBall` |
+| Deform array count | `1` |
+| Wind array count | `1` |
+| Interaction array count | `2` |
+| BushPush sample | `[-35.0, -105.0, 62.0, 66.5]` |
+| Grass material | `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_GrassWPO_Project` |
+| Bush material | `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Project` |
+
+RT sampled readback:
+
+| RT | sampled nonzero | max abs |
+| --- | --- | --- |
+| `Prismatiscape_InteractionBubble_RT` | `2 / 1024` step8, `9 / 4096` step4 | `0.56787109375` |
+| `Prismatiscape_Wind_RT` | `758 / 1024` step8 | `0.0244140625` |
+| `Prismatiscape_Deform_RT` | `0 / 4096` step4 | `0.0` |
+
+Deform RT가 formal map에서 0인 것은 BushPush 승격 blocker로 보지 않는다. 이 pass의 핵심은 interaction-only push이며, Grass deform RT는 `Prismatiscape_GrassTramplePass.md`의 `_MCP_Temp` 검증맵에서 이미 nonzero로 확인했다. formal map에서는 interaction/wind와 공식 경로 cook 포함 여부를 주 검증 대상으로 둔다.
+
+Screenshots:
+
+```text
+MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_BushPush_Close2.png
+MCPGameProject/Saved/MCP_Screenshots/PrismatiscapeStudy_FormalVerification_BushPush_Lit.png
+```
+
+## Dependency Audit
+
+AssetRegistry recursive dependency audit 대상:
+
+- `/Game/PrismatiscapeStudy/BP/BP_PrisStudy_BushPushBall`
+- `/Game/PrismatiscapeStudy/Materials/M_PrisStudy_BushWPO_Project`
+- `/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification`
+
+Flagged paths:
+
+- `/Script/PrismatiscapeEditor`
+- `/Game/Prismatica`
+- `/Script/UnrealEd`
+- `/Game/_MCP_Temp`
+- `/Script/UnrealMCP`
+- `/Game/UltraDynamicSky/Maps/DemoMap`
+
+Result: AssetRegistry recursive dependency에서 flagged path 없음.
+
+Known study dependencies:
+
+| 자산 | 의존성 메모 |
+| --- | --- |
+| `BP_PrisStudy_BushPushBall` | `/Script/MCPGameProject`, `/Script/Prismatiscape` |
+| `M_PrisStudy_BushWPO_Project` | `Pris_LargeSingleBushWPO`, `Prismatiscape_InteractionBubble_RT`, `Prismatiscape_Wind_RT`, `Prismatiscape_MPC`, demo textures |
+| `M_PrisStudy_FormalVerification` | 정식 BP/Material 후보 5개, plugin `Prismatiscape_GenericBush`, runtime `Prismatiscape` |
+
+`M_PrisStudy_BushWPO_Project`는 학습용 승격 후보이며 production master material은 아니다. Demo texture 의존성(`Prismatiscape_CloudNoise`, `YeetoMosquito`)과 plugin material function coupling은 다음 production 이식 단계에서 제거한다.
+
+## Cook/Stage 기준
+
+명령:
+
+```powershell
+RunUAT.bat BuildCookRun -project="C:\Git\UnrealMCP5_6_1\MCPGameProject\MCPGameProject.uproject" -noP4 -platform=Win64 -clientconfig=Development -cook -map=/Game/PrismatiscapeStudy/Maps/M_PrisStudy_FormalVerification -stage -skippackage -nopak
+```
+
+결과:
+
+| 단계 | 결과 |
+| --- | --- |
+| Cook | 성공, `Done!`, `0 error(s)`, `3 warning(s)` |
+| Stage | 성공, ExitCode `0` |
+| Staging manifest | `PrismatiscapeStudy` 항목 `12`, `_MCP_Temp` 항목 `0` |
+
+Cook warning:
+
+- Lumen project setting priority warning 2건.
+- `Prismatiscape_SimulationProfile`의 `/Script/PrismatiscapeEditor` `VerifyImport` warning 1건.
+
+## 판정
+
+BushPush 학습 후보는 `/Game/PrismatiscapeStudy` 정식 경로에서 runtime interaction, visual QA, recursive dependency, cook/stage manifest 기준을 통과했다.
+
+Main push 전 남는 결정은 코드/자산 품질이 아니라 배포 범위다.
+
+- Prismatiscape Marketplace plugin을 repository에 vendoring할지, 외부 설치 전제로 둘지 결정해야 한다.
+- `_MCP_Temp`와 `DemoMap.umap` 변경은 push 제외 후보로 남긴다.
+- production material 단계에서는 demo texture 의존성을 제거한다.

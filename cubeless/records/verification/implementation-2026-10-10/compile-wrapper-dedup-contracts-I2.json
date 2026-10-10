@@ -1,0 +1,1261 @@
+{
+  "status": "pass",
+  "run_id": "76b11f8573574906b0075bf380a38aaf",
+  "package": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+  "stages": [
+    {
+      "name": "create",
+      "arguments": {
+        "name": "BP_CompileContracts",
+        "parent_class": "Actor",
+        "package_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf",
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_create"
+      },
+      "mutation": true,
+      "raw": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"returnValue\":{\"data_json\":\"{\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": true, \\\"elapsed_seconds\\\": 0.021307, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"legacy_contract\\\": \\\"create_blueprint: unsaved creation, no overwrite\\\", \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"requested_parent_class\\\": \\\"Actor\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}\",\"retry_json\":\"{\\\"atomic_rollback\\\": false, \\\"automatic_retry\\\": false, \\\"duplicate_risk\\\": \\\"asset_already_created\\\", \\\"policy\\\": \\\"Replay the same operation_id to retrieve its outcome; use inspect_blueprint before any new operation.\\\", \\\"replayed\\\": false}\",\"validation_json\":\"{\\\"asset_identity\\\": \\\"passed\\\", \\\"complete_dependency_scan\\\": \\\"not_run\\\", \\\"disk_reload\\\": \\\"not_run\\\", \\\"packaged_runtime\\\": \\\"not_run\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_chain_guard\\\": \\\"passed\\\", \\\"status\\\": \\\"loaded_readback_passed\\\"}\",\"save_json\":\"{\\\"attempted\\\": false, \\\"requested\\\": false, \\\"saved\\\": false}\",\"compile_json\":\"{\\\"attempted\\\": false, \\\"requested\\\": false, \\\"status\\\": \\\"not_requested\\\"}\",\"changes_json\":\"[{\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"attempted\\\": true, \\\"created\\\": true, \\\"kind\\\": \\\"create_blueprint\\\"}]\",\"error\":\"\",\"error_code\":\"\",\"stage\":\"complete\",\"operation_id\":\"76b11f8573574906b0075bf380a38aaf_create\",\"success\":true}}"
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_create",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [
+          {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "attempted": true,
+            "created": true,
+            "kind": "create_blueprint"
+          }
+        ],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "asset_identity": "passed",
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain": [
+            "/Script/Engine.Actor",
+            "/Script/CoreUObject.Object"
+          ],
+          "parent_chain_guard": "passed",
+          "status": "loaded_readback_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "asset_already_created",
+          "policy": "Replay the same operation_id to retrieve its outcome; use inspect_blueprint before any new operation.",
+          "replayed": false
+        },
+        "data": {
+          "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "dirty": true,
+          "elapsed_seconds": 0.021307,
+          "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+          "graph_names": [
+            "UserConstructionScript",
+            "EventGraph"
+          ],
+          "legacy_contract": "create_blueprint: unsaved creation, no overwrite",
+          "name": "BP_CompileContracts",
+          "parent_chain": [
+            "/Script/Engine.Actor",
+            "/Script/CoreUObject.Object"
+          ],
+          "parent_class": "/Script/Engine.Actor",
+          "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+          "requested_parent_class": "Actor",
+          "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+          "variable_names": []
+        }
+      }
+    },
+    {
+      "name": "compile_blueprint",
+      "arguments": {
+        "blueprint_name": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_compile_blueprint"
+      },
+      "mutation": true,
+      "raw": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"returnValue\":{\"data_json\":\"{\\\"after\\\": {\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": true, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}, \\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"atomic_rollback_available\\\": false, \\\"before\\\": {\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": true, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}, \\\"blueprint_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"blueprint_status_code\\\": 3, \\\"compile_action\\\": \\\"performed\\\", \\\"compile_error_count\\\": 0, \\\"compile_errors\\\": [], \\\"compile_status\\\": \\\"passed\\\", \\\"compile_warning_count\\\": 0, \\\"compile_warnings\\\": [], \\\"compiled\\\": true, \\\"diagnostic_count\\\": 0, \\\"diagnostics\\\": [], \\\"dirty_after_compile\\\": true, \\\"elapsed_ms\\\": 28.83169800043106, \\\"elapsed_seconds\\\": 0.046051, \\\"error_count\\\": 0, \\\"has_warnings\\\": false, \\\"messages\\\": [], \\\"mutation_performed\\\": true, \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"operation\\\": \\\"compile_blueprint_validation\\\", \\\"package_dirty_after\\\": true, \\\"package_dirty_before\\\": true, \\\"refresh_nodes_requested\\\": false, \\\"refreshed_nodes\\\": false, \\\"reload_verified\\\": false, \\\"requested_save\\\": false, \\\"retry_policy\\\": \\\"inspect_result_before_explicit_reexecution\\\", \\\"runtime_verified\\\": false, \\\"save_requested\\\": false, \\\"saved\\\": false, \\\"schema_version\\\": \\\"1.0\\\", \\\"stage\\\": \\\"complete\\\", \\\"status\\\": \\\"up_to_date\\\", \\\"success\\\": true, \\\"validation_pass\\\": true, \\\"validation_scope\\\": \\\"compiler_messages_and_generated_class_only\\\", \\\"warning_count\\\": 0, \\\"was_dirty_before_compile\\\": true}\",\"retry_json\":\"{\\\"atomic_rollback\\\": false, \\\"automatic_retry\\\": false, \\\"duplicate_risk\\\": \\\"compile_or_refresh_would_repeat\\\", \\\"policy\\\": \\\"Replay the same operation_id for the recorded outcome. Readback is not a disk reload.\\\", \\\"replayed\\\": false}\",\"validation_json\":\"{\\\"complete_dependency_scan\\\": \\\"not_run\\\", \\\"disk_reload\\\": \\\"not_run\\\", \\\"packaged_runtime\\\": \\\"not_run\\\", \\\"parent_chain_guard\\\": \\\"passed\\\", \\\"status\\\": \\\"compile_passed\\\"}\",\"save_json\":\"{\\\"attempted\\\": false, \\\"requested\\\": false, \\\"saved\\\": false, \\\"status\\\": \\\"not_saved\\\"}\",\"compile_json\":\"{\\\"attempted\\\": true, \\\"compiled\\\": true, \\\"diagnostics\\\": [], \\\"error_count\\\": 0, \\\"refreshed_nodes\\\": false, \\\"requested\\\": true, \\\"status\\\": \\\"up_to_date\\\", \\\"warning_count\\\": 0}\",\"changes_json\":\"[{\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"attempted\\\": true, \\\"kind\\\": \\\"compile\\\", \\\"mutation_observed\\\": true}]\",\"error\":\"\",\"error_code\":\"\",\"stage\":\"complete\",\"operation_id\":\"76b11f8573574906b0075bf380a38aaf_compile_blueprint\",\"success\":true}}"
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_compile_blueprint",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [
+          {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "attempted": true,
+            "kind": "compile",
+            "mutation_observed": true
+          }
+        ],
+        "compile": {
+          "attempted": true,
+          "compiled": true,
+          "diagnostics": [],
+          "error_count": 0,
+          "refreshed_nodes": false,
+          "requested": true,
+          "status": "up_to_date",
+          "warning_count": 0
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false,
+          "status": "not_saved"
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "compile_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "compile_or_refresh_would_repeat",
+          "policy": "Replay the same operation_id for the recorded outcome. Readback is not a disk reload.",
+          "replayed": false
+        },
+        "data": {
+          "after": {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "dirty": true,
+            "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_CompileContracts",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "atomic_rollback_available": false,
+          "before": {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "dirty": true,
+            "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_CompileContracts",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "blueprint_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "blueprint_status_code": 3,
+          "compile_action": "performed",
+          "compile_error_count": 0,
+          "compile_errors": [],
+          "compile_status": "passed",
+          "compile_warning_count": 0,
+          "compile_warnings": [],
+          "compiled": true,
+          "diagnostic_count": 0,
+          "diagnostics": [],
+          "dirty_after_compile": true,
+          "elapsed_ms": 28.83169800043106,
+          "elapsed_seconds": 0.046051,
+          "error_count": 0,
+          "has_warnings": false,
+          "messages": [],
+          "mutation_performed": true,
+          "name": "BP_CompileContracts",
+          "operation": "compile_blueprint_validation",
+          "package_dirty_after": true,
+          "package_dirty_before": true,
+          "refresh_nodes_requested": false,
+          "refreshed_nodes": false,
+          "reload_verified": false,
+          "requested_save": false,
+          "retry_policy": "inspect_result_before_explicit_reexecution",
+          "runtime_verified": false,
+          "save_requested": false,
+          "saved": false,
+          "schema_version": "1.0",
+          "stage": "complete",
+          "status": "up_to_date",
+          "success": true,
+          "validation_pass": true,
+          "validation_scope": "compiler_messages_and_generated_class_only",
+          "warning_count": 0,
+          "was_dirty_before_compile": true
+        }
+      }
+    },
+    {
+      "name": "compile_and_validate_blueprint",
+      "arguments": {
+        "blueprint_name": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_compile_and_validate_blueprint"
+      },
+      "mutation": true,
+      "raw": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"returnValue\":{\"data_json\":\"{\\\"after\\\": {\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": true, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}, \\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"atomic_rollback_available\\\": false, \\\"before\\\": {\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": true, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}, \\\"blueprint_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"blueprint_status_code\\\": 3, \\\"compile_action\\\": \\\"performed\\\", \\\"compile_error_count\\\": 0, \\\"compile_errors\\\": [], \\\"compile_status\\\": \\\"passed\\\", \\\"compile_warning_count\\\": 0, \\\"compile_warnings\\\": [], \\\"compiled\\\": true, \\\"diagnostic_count\\\": 0, \\\"diagnostics\\\": [], \\\"dirty_after_compile\\\": true, \\\"elapsed_ms\\\": 26.891499757766724, \\\"elapsed_seconds\\\": 0.038185, \\\"error_count\\\": 0, \\\"has_warnings\\\": false, \\\"messages\\\": [], \\\"mutation_performed\\\": true, \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"operation\\\": \\\"compile_blueprint_validation\\\", \\\"package_dirty_after\\\": true, \\\"package_dirty_before\\\": true, \\\"refresh_nodes_requested\\\": true, \\\"refreshed_nodes\\\": true, \\\"reload_verified\\\": false, \\\"requested_save\\\": false, \\\"retry_policy\\\": \\\"inspect_result_before_explicit_reexecution\\\", \\\"runtime_verified\\\": false, \\\"save_requested\\\": false, \\\"saved\\\": false, \\\"schema_version\\\": \\\"1.0\\\", \\\"stage\\\": \\\"complete\\\", \\\"status\\\": \\\"up_to_date\\\", \\\"success\\\": true, \\\"validation_pass\\\": true, \\\"validation_scope\\\": \\\"compiler_messages_and_generated_class_only\\\", \\\"warning_count\\\": 0, \\\"was_dirty_before_compile\\\": true}\",\"retry_json\":\"{\\\"atomic_rollback\\\": false, \\\"automatic_retry\\\": false, \\\"duplicate_risk\\\": \\\"compile_or_refresh_would_repeat\\\", \\\"policy\\\": \\\"Replay the same operation_id for the recorded outcome. Readback is not a disk reload.\\\", \\\"replayed\\\": false}\",\"validation_json\":\"{\\\"complete_dependency_scan\\\": \\\"not_run\\\", \\\"disk_reload\\\": \\\"not_run\\\", \\\"packaged_runtime\\\": \\\"not_run\\\", \\\"parent_chain_guard\\\": \\\"passed\\\", \\\"status\\\": \\\"compile_passed\\\"}\",\"save_json\":\"{\\\"attempted\\\": false, \\\"requested\\\": false, \\\"saved\\\": false, \\\"status\\\": \\\"not_saved\\\"}\",\"compile_json\":\"{\\\"attempted\\\": true, \\\"compiled\\\": true, \\\"diagnostics\\\": [], \\\"error_count\\\": 0, \\\"refreshed_nodes\\\": true, \\\"requested\\\": true, \\\"status\\\": \\\"up_to_date\\\", \\\"warning_count\\\": 0}\",\"changes_json\":\"[{\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"attempted\\\": true, \\\"kind\\\": \\\"refresh_and_compile\\\", \\\"mutation_observed\\\": true}]\",\"error\":\"\",\"error_code\":\"\",\"stage\":\"complete\",\"operation_id\":\"76b11f8573574906b0075bf380a38aaf_compile_and_validate_blueprint\",\"success\":true}}"
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_compile_and_validate_blueprint",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [
+          {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "attempted": true,
+            "kind": "refresh_and_compile",
+            "mutation_observed": true
+          }
+        ],
+        "compile": {
+          "attempted": true,
+          "compiled": true,
+          "diagnostics": [],
+          "error_count": 0,
+          "refreshed_nodes": true,
+          "requested": true,
+          "status": "up_to_date",
+          "warning_count": 0
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false,
+          "status": "not_saved"
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "compile_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "compile_or_refresh_would_repeat",
+          "policy": "Replay the same operation_id for the recorded outcome. Readback is not a disk reload.",
+          "replayed": false
+        },
+        "data": {
+          "after": {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "dirty": true,
+            "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_CompileContracts",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "atomic_rollback_available": false,
+          "before": {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "dirty": true,
+            "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_CompileContracts",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "blueprint_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "blueprint_status_code": 3,
+          "compile_action": "performed",
+          "compile_error_count": 0,
+          "compile_errors": [],
+          "compile_status": "passed",
+          "compile_warning_count": 0,
+          "compile_warnings": [],
+          "compiled": true,
+          "diagnostic_count": 0,
+          "diagnostics": [],
+          "dirty_after_compile": true,
+          "elapsed_ms": 26.891499757766724,
+          "elapsed_seconds": 0.038185,
+          "error_count": 0,
+          "has_warnings": false,
+          "messages": [],
+          "mutation_performed": true,
+          "name": "BP_CompileContracts",
+          "operation": "compile_blueprint_validation",
+          "package_dirty_after": true,
+          "package_dirty_before": true,
+          "refresh_nodes_requested": true,
+          "refreshed_nodes": true,
+          "reload_verified": false,
+          "requested_save": false,
+          "retry_policy": "inspect_result_before_explicit_reexecution",
+          "runtime_verified": false,
+          "save_requested": false,
+          "saved": false,
+          "schema_version": "1.0",
+          "stage": "complete",
+          "status": "up_to_date",
+          "success": true,
+          "validation_pass": true,
+          "validation_scope": "compiler_messages_and_generated_class_only",
+          "warning_count": 0,
+          "was_dirty_before_compile": true
+        }
+      }
+    },
+    {
+      "name": "compile_and_save_blueprint",
+      "arguments": {
+        "blueprint_name": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_compile_and_save_blueprint"
+      },
+      "mutation": true,
+      "raw": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"returnValue\":{\"data_json\":\"{\\\"after\\\": {\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": false, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}, \\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"atomic_rollback_available\\\": false, \\\"before\\\": {\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": true, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}, \\\"blueprint_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"blueprint_status_code\\\": 3, \\\"compile_action\\\": \\\"performed\\\", \\\"compile_error_count\\\": 0, \\\"compile_errors\\\": [], \\\"compile_status\\\": \\\"passed\\\", \\\"compile_warning_count\\\": 0, \\\"compile_warnings\\\": [], \\\"compiled\\\": true, \\\"diagnostic_count\\\": 0, \\\"diagnostics\\\": [], \\\"dirty_after_compile\\\": false, \\\"elapsed_ms\\\": 38.73639926314354, \\\"elapsed_seconds\\\": 0.056067, \\\"error_count\\\": 0, \\\"has_warnings\\\": false, \\\"messages\\\": [], \\\"mutation_performed\\\": true, \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"operation\\\": \\\"compile_blueprint_validation\\\", \\\"package_dirty_after\\\": false, \\\"package_dirty_before\\\": true, \\\"refresh_nodes_requested\\\": false, \\\"refreshed_nodes\\\": false, \\\"reload_verified\\\": false, \\\"requested_save\\\": true, \\\"retry_policy\\\": \\\"inspect_result_before_explicit_reexecution\\\", \\\"runtime_verified\\\": false, \\\"save_requested\\\": true, \\\"saved\\\": true, \\\"schema_version\\\": \\\"1.0\\\", \\\"stage\\\": \\\"complete\\\", \\\"status\\\": \\\"up_to_date\\\", \\\"success\\\": true, \\\"validation_pass\\\": true, \\\"validation_scope\\\": \\\"compiler_messages_and_generated_class_only\\\", \\\"warning_count\\\": 0, \\\"was_dirty_before_compile\\\": true}\",\"retry_json\":\"{\\\"atomic_rollback\\\": false, \\\"automatic_retry\\\": false, \\\"duplicate_risk\\\": \\\"compile_or_refresh_would_repeat\\\", \\\"policy\\\": \\\"Replay the same operation_id for the recorded outcome. Readback is not a disk reload.\\\", \\\"replayed\\\": false}\",\"validation_json\":\"{\\\"complete_dependency_scan\\\": \\\"not_run\\\", \\\"disk_reload\\\": \\\"not_run\\\", \\\"packaged_runtime\\\": \\\"not_run\\\", \\\"parent_chain_guard\\\": \\\"passed\\\", \\\"status\\\": \\\"compile_passed\\\"}\",\"save_json\":\"{\\\"attempted\\\": true, \\\"requested\\\": true, \\\"saved\\\": true, \\\"status\\\": \\\"saved\\\"}\",\"compile_json\":\"{\\\"attempted\\\": true, \\\"compiled\\\": true, \\\"diagnostics\\\": [], \\\"error_count\\\": 0, \\\"refreshed_nodes\\\": false, \\\"requested\\\": true, \\\"status\\\": \\\"up_to_date\\\", \\\"warning_count\\\": 0}\",\"changes_json\":\"[{\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"attempted\\\": true, \\\"kind\\\": \\\"compile\\\", \\\"mutation_observed\\\": true}]\",\"error\":\"\",\"error_code\":\"\",\"stage\":\"complete\",\"operation_id\":\"76b11f8573574906b0075bf380a38aaf_compile_and_save_blueprint\",\"success\":true}}"
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "operation_id": "76b11f8573574906b0075bf380a38aaf_compile_and_save_blueprint",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [
+          {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "attempted": true,
+            "kind": "compile",
+            "mutation_observed": true
+          }
+        ],
+        "compile": {
+          "attempted": true,
+          "compiled": true,
+          "diagnostics": [],
+          "error_count": 0,
+          "refreshed_nodes": false,
+          "requested": true,
+          "status": "up_to_date",
+          "warning_count": 0
+        },
+        "save": {
+          "attempted": true,
+          "requested": true,
+          "saved": true,
+          "status": "saved"
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "compile_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "compile_or_refresh_would_repeat",
+          "policy": "Replay the same operation_id for the recorded outcome. Readback is not a disk reload.",
+          "replayed": false
+        },
+        "data": {
+          "after": {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "dirty": false,
+            "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_CompileContracts",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "atomic_rollback_available": false,
+          "before": {
+            "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+            "dirty": true,
+            "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+            "graph_names": [
+              "UserConstructionScript",
+              "EventGraph"
+            ],
+            "name": "BP_CompileContracts",
+            "parent_chain": [
+              "/Script/Engine.Actor",
+              "/Script/CoreUObject.Object"
+            ],
+            "parent_class": "/Script/Engine.Actor",
+            "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+            "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+            "variable_names": []
+          },
+          "blueprint_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "blueprint_status_code": 3,
+          "compile_action": "performed",
+          "compile_error_count": 0,
+          "compile_errors": [],
+          "compile_status": "passed",
+          "compile_warning_count": 0,
+          "compile_warnings": [],
+          "compiled": true,
+          "diagnostic_count": 0,
+          "diagnostics": [],
+          "dirty_after_compile": false,
+          "elapsed_ms": 38.73639926314354,
+          "elapsed_seconds": 0.056067,
+          "error_count": 0,
+          "has_warnings": false,
+          "messages": [],
+          "mutation_performed": true,
+          "name": "BP_CompileContracts",
+          "operation": "compile_blueprint_validation",
+          "package_dirty_after": false,
+          "package_dirty_before": true,
+          "refresh_nodes_requested": false,
+          "refreshed_nodes": false,
+          "reload_verified": false,
+          "requested_save": true,
+          "retry_policy": "inspect_result_before_explicit_reexecution",
+          "runtime_verified": false,
+          "save_requested": true,
+          "saved": true,
+          "schema_version": "1.0",
+          "stage": "complete",
+          "status": "up_to_date",
+          "success": true,
+          "validation_pass": true,
+          "validation_scope": "compiler_messages_and_generated_class_only",
+          "warning_count": 0,
+          "was_dirty_before_compile": true
+        }
+      }
+    },
+    {
+      "name": "inspect_saved",
+      "arguments": {
+        "blueprint_name": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts"
+      },
+      "mutation": false,
+      "raw": {
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"returnValue\":{\"data_json\":\"{\\\"asset_path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts\\\", \\\"dirty\\\": false, \\\"generated_class\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C\\\", \\\"graph_names\\\": [\\\"UserConstructionScript\\\", \\\"EventGraph\\\"], \\\"name\\\": \\\"BP_CompileContracts\\\", \\\"parent_chain\\\": [\\\"/Script/Engine.Actor\\\", \\\"/Script/CoreUObject.Object\\\"], \\\"parent_class\\\": \\\"/Script/Engine.Actor\\\", \\\"path\\\": \\\"/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts\\\", \\\"status\\\": \\\"<BlueprintStatus.BS_UP_TO_DATE: 3>\\\", \\\"variable_names\\\": []}\",\"retry_json\":\"{\\\"atomic_rollback\\\": false, \\\"automatic_retry\\\": false, \\\"duplicate_risk\\\": \\\"none_observed\\\", \\\"policy\\\": \\\"Read-only inspection can be repeated; load_asset may return an already-loaded object.\\\", \\\"replayed\\\": false}\",\"validation_json\":\"{\\\"complete_dependency_scan\\\": \\\"not_run\\\", \\\"disk_reload\\\": \\\"not_run\\\", \\\"packaged_runtime\\\": \\\"not_run\\\", \\\"parent_chain_guard\\\": \\\"passed\\\", \\\"status\\\": \\\"loaded_readback_passed\\\"}\",\"save_json\":\"{\\\"attempted\\\": false, \\\"requested\\\": false, \\\"saved\\\": false}\",\"compile_json\":\"{\\\"attempted\\\": false, \\\"requested\\\": false, \\\"status\\\": \\\"not_requested\\\"}\",\"changes_json\":\"[]\",\"error\":\"\",\"error_code\":\"\",\"stage\":\"complete\",\"operation_id\":\"64181cf1-96d9-4a05-bb34-042b24554043\",\"success\":true}}"
+          }
+        ]
+      },
+      "result": {
+        "success": true,
+        "operation_id": "64181cf1-96d9-4a05-bb34-042b24554043",
+        "stage": "complete",
+        "error_code": "",
+        "error": "",
+        "changes": [],
+        "compile": {
+          "attempted": false,
+          "requested": false,
+          "status": "not_requested"
+        },
+        "save": {
+          "attempted": false,
+          "requested": false,
+          "saved": false
+        },
+        "validation": {
+          "complete_dependency_scan": "not_run",
+          "disk_reload": "not_run",
+          "packaged_runtime": "not_run",
+          "parent_chain_guard": "passed",
+          "status": "loaded_readback_passed"
+        },
+        "retry": {
+          "atomic_rollback": false,
+          "automatic_retry": false,
+          "duplicate_risk": "none_observed",
+          "policy": "Read-only inspection can be repeated; load_asset may return an already-loaded object.",
+          "replayed": false
+        },
+        "data": {
+          "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+          "dirty": false,
+          "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+          "graph_names": [
+            "UserConstructionScript",
+            "EventGraph"
+          ],
+          "name": "BP_CompileContracts",
+          "parent_chain": [
+            "/Script/Engine.Actor",
+            "/Script/CoreUObject.Object"
+          ],
+          "parent_class": "/Script/Engine.Actor",
+          "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+          "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+          "variable_names": []
+        }
+      }
+    }
+  ],
+  "automatic_retries": 0,
+  "outcome_unknown": false,
+  "save": true,
+  "reload": "not_run",
+  "prior_resolution": "compile-wrapper-I-reconciliation-R2.json",
+  "preflight": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 33480,
+    "instance_id": "735B8D23-45A1-017D-7E3E-89B095B774C1",
+    "session_id": "AD24DC0A-F8CD-4C2E-8000-00000000AC00",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.2932995557785034
+  },
+  "schema_raw": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools\",\"version\":\"1.0\",\"description\":\"Cubeless Blueprint lifecycle tools with explicit compile, save, partial-failure and retry results.\",\"tools\":[{\"description\":\"Refresh nodes if requested, compile and collect native diagnostics; save only after successful compilation.\\n\\n        Args:\\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\\n            save: Save on successful compile; defaults to legacy False.\\n            refresh_nodes: Refresh all nodes before compile; defaults to legacy True and may change graph serialization.\\n            operation_id: Durable request ID; omitted/null generates a returned ID. Inspect a prior interrupted mutation before retry.\",\"name\":\"cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_validate_blueprint\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"blueprint_name\":{\"type\":\"string\"},\"save\":{\"type\":\"boolean\",\"default\":false},\"refresh_nodes\":{\"type\":\"boolean\",\"default\":true},\"operation_id\":{\"default\":null,\"type\":\"string\"}},\"required\":[\"blueprint_name\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"returnValue\":{\"title\":\"CubelessPythonOperationResult\",\"type\":\"object\",\"properties\":{\"data_json\":{\"type\":\"string\",\"description\":\"JSON object containing operation-specific output and legacy contract fields.\"},\"retry_json\":{\"type\":\"string\",\"description\":\"JSON object describing retry policy, duplicate risk and request replay.\"},\"validation_json\":{\"type\":\"string\",\"description\":\"JSON object describing performed checks and missing validation, including reload.\"},\"save_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted save and saved state.\"},\"compile_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted compile, status and diagnostics.\"},\"changes_json\":{\"type\":\"string\",\"description\":\"JSON array of attempted and observed changes; no atomic rollback.\"},\"error\":{\"type\":\"string\"},\"error_code\":{\"type\":\"string\"},\"stage\":{\"type\":\"string\"},\"operation_id\":{\"type\":\"string\"},\"success\":{\"type\":\"boolean\"}},\"required\":[\"data_json\",\"retry_json\",\"validation_json\",\"save_json\",\"compile_json\",\"changes_json\",\"error\",\"error_code\",\"stage\",\"operation_id\",\"success\"]}},\"required\":[\"returnValue\"]}},{\"description\":\"Compile once and optionally save once after successful compilation. Save failure fails the overall result.\\n\\n        Args:\\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\\n            save: Save after successful compilation; defaults to legacy True.\\n            operation_id: Durable request ID for identical-request replay protection; omitted/null generates a returned ID.\",\"name\":\"cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_save_blueprint\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"blueprint_name\":{\"type\":\"string\"},\"save\":{\"type\":\"boolean\",\"default\":true},\"operation_id\":{\"default\":null,\"type\":\"string\"}},\"required\":[\"blueprint_name\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"returnValue\":{\"title\":\"CubelessPythonOperationResult\",\"type\":\"object\",\"properties\":{\"data_json\":{\"type\":\"string\",\"description\":\"JSON object containing operation-specific output and legacy contract fields.\"},\"retry_json\":{\"type\":\"string\",\"description\":\"JSON object describing retry policy, duplicate risk and request replay.\"},\"validation_json\":{\"type\":\"string\",\"description\":\"JSON object describing performed checks and missing validation, including reload.\"},\"save_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted save and saved state.\"},\"compile_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted compile, status and diagnostics.\"},\"changes_json\":{\"type\":\"string\",\"description\":\"JSON array of attempted and observed changes; no atomic rollback.\"},\"error\":{\"type\":\"string\"},\"error_code\":{\"type\":\"string\"},\"stage\":{\"type\":\"string\"},\"operation_id\":{\"type\":\"string\"},\"success\":{\"type\":\"boolean\"}},\"required\":[\"data_json\",\"retry_json\",\"validation_json\",\"save_json\",\"compile_json\",\"changes_json\",\"error\",\"error_code\",\"stage\",\"operation_id\",\"success\"]}},\"required\":[\"returnValue\"]}},{\"description\":\"Compile one Blueprint with native compiler diagnostics; does not save or refresh nodes.\\n\\n        Args:\\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\\n            operation_id: Durable request ID; omitted/null generates a returned ID. Never automatically retry an uncertain result.\",\"name\":\"cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_blueprint\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"blueprint_name\":{\"type\":\"string\"},\"operation_id\":{\"default\":null,\"type\":\"string\"}},\"required\":[\"blueprint_name\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"returnValue\":{\"title\":\"CubelessPythonOperationResult\",\"type\":\"object\",\"properties\":{\"data_json\":{\"type\":\"string\",\"description\":\"JSON object containing operation-specific output and legacy contract fields.\"},\"retry_json\":{\"type\":\"string\",\"description\":\"JSON object describing retry policy, duplicate risk and request replay.\"},\"validation_json\":{\"type\":\"string\",\"description\":\"JSON object describing performed checks and missing validation, including reload.\"},\"save_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted save and saved state.\"},\"compile_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted compile, status and diagnostics.\"},\"changes_json\":{\"type\":\"string\",\"description\":\"JSON array of attempted and observed changes; no atomic rollback.\"},\"error\":{\"type\":\"string\"},\"error_code\":{\"type\":\"string\"},\"stage\":{\"type\":\"string\"},\"operation_id\":{\"type\":\"string\"},\"success\":{\"type\":\"boolean\"}},\"required\":[\"data_json\",\"retry_json\",\"validation_json\",\"save_json\",\"compile_json\",\"changes_json\",\"error\",\"error_code\",\"stage\",\"operation_id\",\"success\"]}},\"required\":[\"returnValue\"]}},{\"description\":\"Read Blueprint identity, status, graph/variable names and direct parent chain. Does not compile or save.\\n\\n        Args:\\n            blueprint_name: Full /Game package or object path; a bare name means /Game/Blueprints/name.\\n\\n        Returns:\\n            data_json describes loaded editor state. validation_json explicitly does not claim disk reload or complete dependency verification.\",\"name\":\"cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.inspect_blueprint\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"blueprint_name\":{\"type\":\"string\"}},\"required\":[\"blueprint_name\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"returnValue\":{\"title\":\"CubelessPythonOperationResult\",\"type\":\"object\",\"properties\":{\"data_json\":{\"type\":\"string\",\"description\":\"JSON object containing operation-specific output and legacy contract fields.\"},\"retry_json\":{\"type\":\"string\",\"description\":\"JSON object describing retry policy, duplicate risk and request replay.\"},\"validation_json\":{\"type\":\"string\",\"description\":\"JSON object describing performed checks and missing validation, including reload.\"},\"save_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted save and saved state.\"},\"compile_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted compile, status and diagnostics.\"},\"changes_json\":{\"type\":\"string\",\"description\":\"JSON array of attempted and observed changes; no atomic rollback.\"},\"error\":{\"type\":\"string\"},\"error_code\":{\"type\":\"string\"},\"stage\":{\"type\":\"string\"},\"operation_id\":{\"type\":\"string\"},\"success\":{\"type\":\"boolean\"}},\"required\":[\"data_json\",\"retry_json\",\"validation_json\",\"save_json\",\"compile_json\",\"changes_json\",\"error\",\"error_code\",\"stage\",\"operation_id\",\"success\"]}},\"required\":[\"returnValue\"]}},{\"description\":\"Create a Blueprint without overwriting, explicit compile, or save. Parent must resolve; known MCP/editor-tool parent chains are rejected.\\n\\n        Args:\\n            name: New asset name. Use a single identifier, not a path.\\n            parent_class: Native class name (Actor/Pawn etc.) or full native/generated class path; empty means Actor.\\n            package_path: Directory under /Game; defaults to /Game/Blueprints (explicit empty also uses that legacy default). No object suffix.\\n            operation_id: Unique request ID for durable replay protection. Omitted/null generates an ID returned in the result. Reuse only with identical arguments.\\n\\n        Returns:\\n            Structured result. data_json includes name, path, asset_path and actual parent; creation remains unsaved.\",\"name\":\"cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.create_blueprint\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"name\":{\"type\":\"string\"},\"parent_class\":{\"type\":\"string\"},\"package_path\":{\"type\":\"string\",\"default\":\"/Game/Blueprints\"},\"operation_id\":{\"default\":null,\"type\":\"string\"}},\"required\":[\"name\",\"parent_class\"]},\"outputSchema\":{\"type\":\"object\",\"properties\":{\"returnValue\":{\"title\":\"CubelessPythonOperationResult\",\"type\":\"object\",\"properties\":{\"data_json\":{\"type\":\"string\",\"description\":\"JSON object containing operation-specific output and legacy contract fields.\"},\"retry_json\":{\"type\":\"string\",\"description\":\"JSON object describing retry policy, duplicate risk and request replay.\"},\"validation_json\":{\"type\":\"string\",\"description\":\"JSON object describing performed checks and missing validation, including reload.\"},\"save_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted save and saved state.\"},\"compile_json\":{\"type\":\"string\",\"description\":\"JSON object describing requested/attempted compile, status and diagnostics.\"},\"changes_json\":{\"type\":\"string\",\"description\":\"JSON array of attempted and observed changes; no atomic rollback.\"},\"error\":{\"type\":\"string\"},\"error_code\":{\"type\":\"string\"},\"stage\":{\"type\":\"string\"},\"operation_id\":{\"type\":\"string\"},\"success\":{\"type\":\"boolean\"}},\"required\":[\"data_json\",\"retry_json\",\"validation_json\",\"save_json\",\"compile_json\",\"changes_json\",\"error\",\"error_code\",\"stage\",\"operation_id\",\"success\"]}},\"required\":[\"returnValue\"]}}]}"
+      }
+    ]
+  },
+  "schema": {
+    "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools",
+    "version": "1.0",
+    "description": "Cubeless Blueprint lifecycle tools with explicit compile, save, partial-failure and retry results.",
+    "tools": [
+      {
+        "description": "Refresh nodes if requested, compile and collect native diagnostics; save only after successful compilation.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            save: Save on successful compile; defaults to legacy False.\n            refresh_nodes: Refresh all nodes before compile; defaults to legacy True and may change graph serialization.\n            operation_id: Durable request ID; omitted/null generates a returned ID. Inspect a prior interrupted mutation before retry.",
+        "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_validate_blueprint",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blueprint_name": {
+              "type": "string"
+            },
+            "save": {
+              "type": "boolean",
+              "default": false
+            },
+            "refresh_nodes": {
+              "type": "boolean",
+              "default": true
+            },
+            "operation_id": {
+              "default": null,
+              "type": "string"
+            }
+          },
+          "required": [
+            "blueprint_name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "title": "CubelessPythonOperationResult",
+              "type": "object",
+              "properties": {
+                "data_json": {
+                  "type": "string",
+                  "description": "JSON object containing operation-specific output and legacy contract fields."
+                },
+                "retry_json": {
+                  "type": "string",
+                  "description": "JSON object describing retry policy, duplicate risk and request replay."
+                },
+                "validation_json": {
+                  "type": "string",
+                  "description": "JSON object describing performed checks and missing validation, including reload."
+                },
+                "save_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted save and saved state."
+                },
+                "compile_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                },
+                "changes_json": {
+                  "type": "string",
+                  "description": "JSON array of attempted and observed changes; no atomic rollback."
+                },
+                "error": {
+                  "type": "string"
+                },
+                "error_code": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string"
+                },
+                "operation_id": {
+                  "type": "string"
+                },
+                "success": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "data_json",
+                "retry_json",
+                "validation_json",
+                "save_json",
+                "compile_json",
+                "changes_json",
+                "error",
+                "error_code",
+                "stage",
+                "operation_id",
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Compile once and optionally save once after successful compilation. Save failure fails the overall result.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            save: Save after successful compilation; defaults to legacy True.\n            operation_id: Durable request ID for identical-request replay protection; omitted/null generates a returned ID.",
+        "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_and_save_blueprint",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blueprint_name": {
+              "type": "string"
+            },
+            "save": {
+              "type": "boolean",
+              "default": true
+            },
+            "operation_id": {
+              "default": null,
+              "type": "string"
+            }
+          },
+          "required": [
+            "blueprint_name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "title": "CubelessPythonOperationResult",
+              "type": "object",
+              "properties": {
+                "data_json": {
+                  "type": "string",
+                  "description": "JSON object containing operation-specific output and legacy contract fields."
+                },
+                "retry_json": {
+                  "type": "string",
+                  "description": "JSON object describing retry policy, duplicate risk and request replay."
+                },
+                "validation_json": {
+                  "type": "string",
+                  "description": "JSON object describing performed checks and missing validation, including reload."
+                },
+                "save_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted save and saved state."
+                },
+                "compile_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                },
+                "changes_json": {
+                  "type": "string",
+                  "description": "JSON array of attempted and observed changes; no atomic rollback."
+                },
+                "error": {
+                  "type": "string"
+                },
+                "error_code": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string"
+                },
+                "operation_id": {
+                  "type": "string"
+                },
+                "success": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "data_json",
+                "retry_json",
+                "validation_json",
+                "save_json",
+                "compile_json",
+                "changes_json",
+                "error",
+                "error_code",
+                "stage",
+                "operation_id",
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Compile one Blueprint with native compiler diagnostics; does not save or refresh nodes.\n\n        Args:\n            blueprint_name: Full /Game package/object path, or bare name under /Game/Blueprints.\n            operation_id: Durable request ID; omitted/null generates a returned ID. Never automatically retry an uncertain result.",
+        "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.compile_blueprint",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blueprint_name": {
+              "type": "string"
+            },
+            "operation_id": {
+              "default": null,
+              "type": "string"
+            }
+          },
+          "required": [
+            "blueprint_name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "title": "CubelessPythonOperationResult",
+              "type": "object",
+              "properties": {
+                "data_json": {
+                  "type": "string",
+                  "description": "JSON object containing operation-specific output and legacy contract fields."
+                },
+                "retry_json": {
+                  "type": "string",
+                  "description": "JSON object describing retry policy, duplicate risk and request replay."
+                },
+                "validation_json": {
+                  "type": "string",
+                  "description": "JSON object describing performed checks and missing validation, including reload."
+                },
+                "save_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted save and saved state."
+                },
+                "compile_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                },
+                "changes_json": {
+                  "type": "string",
+                  "description": "JSON array of attempted and observed changes; no atomic rollback."
+                },
+                "error": {
+                  "type": "string"
+                },
+                "error_code": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string"
+                },
+                "operation_id": {
+                  "type": "string"
+                },
+                "success": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "data_json",
+                "retry_json",
+                "validation_json",
+                "save_json",
+                "compile_json",
+                "changes_json",
+                "error",
+                "error_code",
+                "stage",
+                "operation_id",
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Read Blueprint identity, status, graph/variable names and direct parent chain. Does not compile or save.\n\n        Args:\n            blueprint_name: Full /Game package or object path; a bare name means /Game/Blueprints/name.\n\n        Returns:\n            data_json describes loaded editor state. validation_json explicitly does not claim disk reload or complete dependency verification.",
+        "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.inspect_blueprint",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "blueprint_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "blueprint_name"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "title": "CubelessPythonOperationResult",
+              "type": "object",
+              "properties": {
+                "data_json": {
+                  "type": "string",
+                  "description": "JSON object containing operation-specific output and legacy contract fields."
+                },
+                "retry_json": {
+                  "type": "string",
+                  "description": "JSON object describing retry policy, duplicate risk and request replay."
+                },
+                "validation_json": {
+                  "type": "string",
+                  "description": "JSON object describing performed checks and missing validation, including reload."
+                },
+                "save_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted save and saved state."
+                },
+                "compile_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                },
+                "changes_json": {
+                  "type": "string",
+                  "description": "JSON array of attempted and observed changes; no atomic rollback."
+                },
+                "error": {
+                  "type": "string"
+                },
+                "error_code": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string"
+                },
+                "operation_id": {
+                  "type": "string"
+                },
+                "success": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "data_json",
+                "retry_json",
+                "validation_json",
+                "save_json",
+                "compile_json",
+                "changes_json",
+                "error",
+                "error_code",
+                "stage",
+                "operation_id",
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      },
+      {
+        "description": "Create a Blueprint without overwriting, explicit compile, or save. Parent must resolve; known MCP/editor-tool parent chains are rejected.\n\n        Args:\n            name: New asset name. Use a single identifier, not a path.\n            parent_class: Native class name (Actor/Pawn etc.) or full native/generated class path; empty means Actor.\n            package_path: Directory under /Game; defaults to /Game/Blueprints (explicit empty also uses that legacy default). No object suffix.\n            operation_id: Unique request ID for durable replay protection. Omitted/null generates an ID returned in the result. Reuse only with identical arguments.\n\n        Returns:\n            Structured result. data_json includes name, path, asset_path and actual parent; creation remains unsaved.",
+        "name": "cubeless_mcp_ue58.registration.toolsets.CubelessBlueprintTools.create_blueprint",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "parent_class": {
+              "type": "string"
+            },
+            "package_path": {
+              "type": "string",
+              "default": "/Game/Blueprints"
+            },
+            "operation_id": {
+              "default": null,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "parent_class"
+          ]
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "returnValue": {
+              "title": "CubelessPythonOperationResult",
+              "type": "object",
+              "properties": {
+                "data_json": {
+                  "type": "string",
+                  "description": "JSON object containing operation-specific output and legacy contract fields."
+                },
+                "retry_json": {
+                  "type": "string",
+                  "description": "JSON object describing retry policy, duplicate risk and request replay."
+                },
+                "validation_json": {
+                  "type": "string",
+                  "description": "JSON object describing performed checks and missing validation, including reload."
+                },
+                "save_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted save and saved state."
+                },
+                "compile_json": {
+                  "type": "string",
+                  "description": "JSON object describing requested/attempted compile, status and diagnostics."
+                },
+                "changes_json": {
+                  "type": "string",
+                  "description": "JSON array of attempted and observed changes; no atomic rollback."
+                },
+                "error": {
+                  "type": "string"
+                },
+                "error_code": {
+                  "type": "string"
+                },
+                "stage": {
+                  "type": "string"
+                },
+                "operation_id": {
+                  "type": "string"
+                },
+                "success": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "data_json",
+                "retry_json",
+                "validation_json",
+                "save_json",
+                "compile_json",
+                "changes_json",
+                "error",
+                "error_code",
+                "stage",
+                "operation_id",
+                "success"
+              ]
+            }
+          },
+          "required": [
+            "returnValue"
+          ]
+        }
+      }
+    ]
+  },
+  "saved_inspection": {
+    "success": true,
+    "operation_id": "64181cf1-96d9-4a05-bb34-042b24554043",
+    "stage": "complete",
+    "error_code": "",
+    "error": "",
+    "changes": [],
+    "compile": {
+      "attempted": false,
+      "requested": false,
+      "status": "not_requested"
+    },
+    "save": {
+      "attempted": false,
+      "requested": false,
+      "saved": false
+    },
+    "validation": {
+      "complete_dependency_scan": "not_run",
+      "disk_reload": "not_run",
+      "packaged_runtime": "not_run",
+      "parent_chain_guard": "passed",
+      "status": "loaded_readback_passed"
+    },
+    "retry": {
+      "atomic_rollback": false,
+      "automatic_retry": false,
+      "duplicate_risk": "none_observed",
+      "policy": "Read-only inspection can be repeated; load_asset may return an already-loaded object.",
+      "replayed": false
+    },
+    "data": {
+      "asset_path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts",
+      "dirty": false,
+      "generated_class": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts.BP_CompileContracts_C",
+      "graph_names": [
+        "UserConstructionScript",
+        "EventGraph"
+      ],
+      "name": "BP_CompileContracts",
+      "parent_chain": [
+        "/Script/Engine.Actor",
+        "/Script/CoreUObject.Object"
+      ],
+      "parent_class": "/Script/Engine.Actor",
+      "path": "/Game/CubelessMCPTests/CompileContracts_76b11f8573574906b0075bf380a38aaf/BP_CompileContracts",
+      "status": "<BlueprintStatus.BS_UP_TO_DATE: 3>",
+      "variable_names": []
+    }
+  },
+  "final_editor": {
+    "success": true,
+    "stage": "complete",
+    "engine_version": "5.8.3-58210709+++UE5+Release-5.8",
+    "project_name": "CubelessMCPVerification",
+    "process_id": 33480,
+    "instance_id": "735B8D23-45A1-017D-7E3E-89B095B774C1",
+    "session_id": "AD24DC0A-F8CD-4C2E-8000-00000000AC00",
+    "project_file": "C:/Git/UnrealMCP5_8_3/UnrealMCP5_8_3/cubeless/workspaces/UE58Verification/CubelessMCPVerification.uproject",
+    "game_thread": true,
+    "pie_or_sie_active": false,
+    "is_commandlet": false,
+    "dirty_packages": [],
+    "plugins": [
+      {
+        "name": "CubelessMCP_UE58",
+        "found": true,
+        "enabled": true,
+        "version": "0.1.0"
+      },
+      {
+        "name": "ModelContextProtocol",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "ToolsetRegistry",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      },
+      {
+        "name": "PythonScriptPlugin",
+        "found": true,
+        "enabled": true,
+        "version": "1.0"
+      }
+    ],
+    "operation": "get_editor_diagnostics",
+    "schema_version": "1.0",
+    "mutation_performed": false,
+    "saved": false,
+    "atomic_rollback_available": false,
+    "retry_policy": "safe_read_only",
+    "compile_action": "not_requested",
+    "elapsed_ms": 0.261697918176651
+  },
+  "calls": [
+    {
+      "method": "initialize",
+      "request_id": 1,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.018224
+    },
+    {
+      "method": "notifications/initialized",
+      "request_id": null,
+      "mutation": false,
+      "status": "accepted",
+      "http_status": 202,
+      "elapsed_seconds": 0.032957
+    },
+    {
+      "method": "tools/call",
+      "request_id": 2,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.034524
+    },
+    {
+      "method": "tools/call",
+      "request_id": 3,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.016599
+    },
+    {
+      "method": "tools/call",
+      "request_id": 4,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.039204
+    },
+    {
+      "method": "tools/call",
+      "request_id": 5,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.083318
+    },
+    {
+      "method": "tools/call",
+      "request_id": 6,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.067911
+    },
+    {
+      "method": "tools/call",
+      "request_id": 7,
+      "mutation": true,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.093322
+    },
+    {
+      "method": "tools/call",
+      "request_id": 8,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.036366
+    },
+    {
+      "method": "tools/call",
+      "request_id": 9,
+      "mutation": false,
+      "status": "received",
+      "http_status": 200,
+      "elapsed_seconds": 0.032754
+    }
+  ]
+}

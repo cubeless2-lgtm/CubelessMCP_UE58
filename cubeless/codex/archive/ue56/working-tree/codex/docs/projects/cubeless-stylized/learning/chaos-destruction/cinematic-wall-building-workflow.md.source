@@ -1,0 +1,133 @@
+# Chaos wall/building cinematic workflow
+
+## Scope
+
+This workflow turns preserved Static Mesh inputs into native Geometry
+Collections, records real solver-driven destruction to native Chaos Cache
+Collections, and drives those caches from native Level Sequences and Movie
+Render Queue. UnrealMCP is an authoring tool only. Final assets must load,
+play, cook, package, and render without the UnrealMCP plugin.
+
+All generated samples use:
+
+- asset root `/Game/_MCP_Temp/ChaosDestructionLearning/Cinematic`
+- Unreal Engine 5.6.1
+- 30 fps display rate, 24000 tick resolution, and 30 Hz fixed physics
+- Root Mesh Proxy through `UGeometryCollectionRootProxyRenderer`
+- `EnableNanite=false`; Nanite is out of scope
+
+## Required samples
+
+| ID | Sample | Minimum gate |
+|---|---|---|
+| S01 | Single wall | 64 rigid leaves, collision and trace destruction, Root Proxy transition, 2-second cache and Sequence |
+| S02 | Door/window wall | 96 leaves; opening ray misses 20/20 and jamb/wall ray hits 20/20 before and after fracture |
+| S03 | Anchored small building | 128 leaves; 10-30% foundation pieces anchored within 0.5 cm and 0.5 degrees while upper pieces move at least 10 cm or break |
+| S04 | Sequential multi-storey building | 256 leaves, hierarchy depth at least 3, three collapse stages separated by at least 10 frames |
+| S05 | Reused-cache shots | one exact cache object path reused by at least three sections/camera cuts with different offsets or play rates |
+
+## Evidence contract
+
+Every command keeps `operation_status`, `assertion_status`, and
+`learning_verdict` separate. A successful dispatch is not proof that a later
+physics or Sequencer result occurred. Missing live evidence is `BLOCKED`; an
+executed but incorrect result is `FAIL`.
+
+State hashes are SHA-256 over sorted `(component path, transform index,
+position, rotation, scale)` records. Position is quantized to 0.1 cm and
+rotation to 0.1 degrees. CRC32 or hashes computed from expected rather than
+observed transforms are not accepted.
+
+Each sample manifest records asset paths, manager/field actor identities,
+cache names, binding GUIDs, dirty-package snapshots, source package SHA-256
+before and after, Asset Registry dependencies, editor/build logs, and raw
+performance samples.
+
+## Acceptance gates
+
+1. Source and output paths differ. Source hashes are unchanged, source
+   packages remain clean, transforms are finite with nonzero scale, and the
+   assembled bounds match input instance bounds within 1%.
+2. Fracture has one root, no invalid parent/cycle/triangle/non-manifold defect,
+   the required sample leaf/depth count, and the same hierarchy digest when
+   repeated with the same seed.
+3. The Anchor Field is serialized into the GC component initialization fields
+   before fresh PIE. Its foundation and upper-structure motion satisfy the S03
+   gate.
+4. Trace strain produces 20/20 intentional hits with a valid component and
+   `FHitResult.Item`; 20/20 intentional misses do not change break count. A
+   later physics tick has velocity-direction dot product greater than 0.5 and
+   increased broken or released state.
+5. Tiny threshold 0.04 removes or explains all candidates, reduces collision
+   shapes by at least 20%, preserves bounds/volume within 1%, and does not close
+   the S02 opening.
+6. Sleep and Break removal are tested separately within one fixed tick. Eight
+   simultaneous breaks with `PerAdvanceBreaksAllowed=2` process at most two per
+   frame and eventually process all eight. Baseline/controlled release limits
+   and full setting restoration pass in all five runs.
+7. Root Proxy arrays and renderer are valid, Nanite is off, proxy-only changes
+   to native GC within one frame of real fracture with no double-render frame.
+   A 32-instance A/B reduces draw calls by at least 20%, with RenderThread/GPU
+   median regression no worse than 5%.
+8. Every manager observes one native `UChaosCacheCollection` entry with a
+   unique cache name, and source cache assets are clean after recording.
+9. Every cache contains at least 60 frames and at least 2.0 seconds, and its
+   observed transform tracks vary over time.
+10. Every native `ULevelSequence` reads back 30 fps/24000, a valid playback
+    range, and a camera cut after asset reload.
+11. A manager possessable resolves to the exact `AChaosCacheManager`; a native
+    Chaos Cache track/section refers to the same manager cache and remains
+    resolved after reload.
+12. Before section start the state is the rest hash; at the chosen start frame
+    it equals the expected cache-time hash. Offset, play rate, reverse, and
+    inclusive/exclusive ranges read back within one tick.
+13. Frames `[0, 15, 30, 45, 60]` evaluated forward, reverse, and random order at
+    least twice yield the same SHA-256 per frame regardless of visit history.
+14. S05 runs a real MRQ job at 640x360 for 60 frames. Decode failures, zero-byte
+    frames, and black frames are zero; repeated key-frame perceptual hashes
+    differ by at most 4 while Chaos state hashes are identical.
+15. Package, cache, manager, and binding identifiers do not collide. S05 uses
+    one cache object, not cloned caches made to appear equivalent.
+
+## Performance acceptance
+
+All A/B cases run five times with the same map, camera, warmup, actor count,
+fixed physics, and rendering settings. Evidence retains all raw values plus
+median and p95; fixed delta does not replace wall-clock frame timing.
+
+For S04 controlled playback/runtime:
+
+- peak active bodies are at most 256 and at most 75% of baseline
+- `STAT_AdvanceClustering` median is at most baseline times 1.05
+- `STAT_AdvanceClustering` p95 is at most baseline
+- GameThread p95 is at most 33.33 ms
+- at most 5% of frames exceed 33.33 ms
+- no more than two over-budget frames are consecutive
+
+The budget is fixed before measurement and is not relaxed after seeing a
+result.
+
+## Disallowed proof shortcuts
+
+Do not force a Root Proxy broken state, write transforms every frame, force
+kinematic state merely to claim cache playback suppression, call manager
+`SetStartTime` during Sequencer validation, generate expected transforms or
+hashes instead of sampling cache output, substitute viewport screenshots for
+MRQ, hide wall-clock drops with fixed delta, or clone cache objects for S05.
+One declared initial impulse/velocity and real External Strain are allowed;
+subsequent state must come from Chaos, the Cache Manager, or Sequencer.
+
+## NoMCP promotion gate
+
+The clean host must not contain `Plugins/UnrealMCP`. `ChaosCaching` and
+`MovieRenderPipeline` remain explicitly enabled in the project independently.
+All five maps and Sequences must reload, resolve bindings, play, render through
+MRQ, cook/package, and exit cleanly with zero missing-class/link errors, zero
+dirty packages, and zero Asset Registry dependency hits for `/Script/UnrealMCP`,
+`/UnrealMCP`, or other MCP-only names.
+
+## Current status
+
+The acceptance contract is frozen. Until the isolated live suite, MRQ output,
+five-run measurements, and NoMCP host checks all pass, the cinematic workflow
+remains `BLOCKED` rather than being promoted from configuration-only evidence.

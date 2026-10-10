@@ -1,0 +1,322 @@
+# CubeFluidNinjaLive Behavior Principles
+
+## 문서 상태와 증거 범위
+
+현재 상태는 `captured structure, runtime behavior pending`이다. 이 문서는
+읽기 전용으로 캡처한 Blueprint, Niagara, Material 구조에서 재구현해야 할
+책임과 검증 계약을 추출한다. 아직 59개 레벨의 고정 입력 replay와 원본/목표
+런타임 비교가 없으므로 동작 또는 화면 동등성을 주장하지 않는다.
+
+정본 증거는 다음 위치에 있다.
+
+- 전체 인벤토리:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference_inventory.json`
+- Blueprint:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/blueprints/`
+- Niagara:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/niagara/`
+- Material:
+  `MCPGameProject/Saved/MCP/CubeFluidNinjaLiveStudy/reference/materials/`
+
+### 검산된 캡처 수치
+
+| 영역 | 검산 결과 | 해석 한계 |
+| --- | ---: | --- |
+| Blueprint 계열 자산 | 53 | Blueprint 49, AnimBlueprint 3, WidgetBlueprint 1 |
+| Blueprint topology 파일 | 262 | 332개 graph object, node 11,685, link 12,469, truncation/error 0 |
+| Niagara System | 68 | 모든 파일의 compact summary는 성공; 내부 node/link topology는 재캡처 필요 |
+| Niagara summary 합계 | emitter 78, renderer 75, stack call 4,150 | summary 수치이며 full node topology가 아님 |
+| Material 분석 자산 | 951 | graph 자산 153, Material Instance 798 |
+| Material graph 자산 | 153 | Material 86, Material Function 64, layer 2, blend 1 |
+| Material graph 규모 | node 8,186 | nodes.json 153개, capture error 0 |
+| 레벨 | 59 | actor/component/runtime manifest는 아직 전체 캡처되지 않음 |
+
+현재 68개 Niagara JSON은 aggregate summary에서 graph node 10,639, link
+14,823을 보고하지만, 음수 max cap이 즉시 truncation으로 처리된 캡처 문제로
+실제 node 배열은 비어 있다. 따라서 이 수치는 복잡도 표지로만 사용하며,
+수식·pin·실행 순서의 근거로 사용하지 않는다. 스크립트 수정 후 에디터를
+재시작하고 큰 양의 한도로 full topology를 다시 캡처해야 한다.
+
+## 클린룸 해석 규칙
+
+원본 graph의 node 배치, package 구조, GUID, 이름을 결과물로 복제하지 않는다.
+대신 각 기능을 다음 네 항목으로 바꿔 기록한다.
+
+1. `observed`: 캡처에서 직접 확인된 구성, parameter, dependency, graph 책임.
+2. `inferred`: 여러 이름과 연결에서 추론했지만 runtime replay로 확정하지 않은 원리.
+3. `target decision`: 프로젝트 소유 구현에서 선택할 더 작은 책임 구조.
+4. `acceptance`: 같은 입력에서 사용자에게 보이는 결과를 비교할 검증 기준.
+
+원본 자산 수와 target 자산 수가 같은지는 동등성 기준이 아니다. 책임을 합치거나
+나눌 수 있지만, 입력·상태 전이·출력·lifecycle·성능 계약은 레벨별 증거로
+보존해야 한다.
+
+## 구조 증거가 보여 주는 핵심 원리
+
+### 1. 원본은 제어와 parameter bridge를 두 자산에 집중한다
+
+`/Game/FluidNinjaLive/NinjaLive`는 23개 graph와 1,013개 node를 가지며,
+`ActivationVolume`, `InteractionVolume`, `NinjaLiveComponent`, `EditorIcon`
+component를 포함한다. graph 이름은 overlap 수집, mouse/touch, interaction
+volume 변환, pawn/vehicle filtering, capacity filtering 책임을 보여 준다.
+
+`/Game/FluidNinjaLive/NinjaLiveComponent`는 87개 graph와 6,004개 node를
+가지며 다음 큰 책임이 한곳에 모여 있다.
+
+- `PresetReadWrite`: 2,001 node.
+- `SetParams`: 886 node.
+- `EventGraph`: 482 node.
+- `CreateOuputMaterialAndSetItOnTargets`: 452 node.
+- `ParsePresetMapAndSetVariables`: 208 node.
+- `RaymarchBasedLightingOPs`, `LOD`, render target 생성·검증·export, cache 저장.
+
+두 자산만 7,017개 node로 전체 Blueprint 구조의 큰 비중을 차지한다. 이는
+원본의 책임을 그대로 한 target Blueprint에 다시 쌓아야 한다는 뜻이 아니라,
+다음 계약을 별도 계층으로 분리해야 한다는 증거다.
+
+- lifecycle과 activation.
+- preset/configuration 해석.
+- input source 수집과 좌표 변환.
+- solver parameter 전달.
+- transient buffer 소유.
+- output material/Niagara binding.
+- debug, LOD, cache, parity capture.
+
+### 2. Blueprint는 authoring 값을 Niagara runtime 값으로 번역한다
+
+`NinjaLiveComponent/SetParams` topology에서 확인된 호출은 최소 107개의
+float parameter 설정, 60개의 bool parameter 설정, 16개의 texture 설정,
+14개의 int parameter 설정, 10개의 object 설정을 포함한다. 읽는 변수 이름은
+다음 domain으로 묶인다.
+
+- grid/domain: `ResolutionX`, `ResolutionY`, `ExtentsXYZ`, `SimSpeed`,
+  `TickRateCustom`, 이동 잠금·quantizer.
+- painter: strength, size, hardness, puncture, velocity, interpolation, noise.
+- composite: density/velocity feedback, edge mask, noise, direct velocity.
+- pressure: divergence, feedback, kernel, buffer downscale, edge mask.
+- terrain/obstacle: RVT, external height, SDF, collision mask, spline.
+- source adapters: Data Channel, Geometry Collection, skeletal bone, position array.
+- export/output: painter, velocity-density, pressure-divergence RT와 여러 output material.
+
+따라서 target에서 level actor의 editable 값이 solver의 내부 namespace와 직접
+뒤섞이면 안 된다. typed configuration을 검증한 뒤 한 번에 runtime binding으로
+번역하는 명시적 parameter bridge가 필요하다.
+
+### 3. core simulation은 입력·grid·solve·export를 한 시스템에서 조율한다
+
+`NinjaLiveCore.json`의 compact summary에서 직접 확인된 값은 다음과 같다.
+
+- emitter 4: `PainterAndSim`, `ChaosReader`, 비활성 `BoneReader`, `ArrayReader`.
+- renderer 5: sprite 1, mesh 3, volume 1이며 모두 `PainterAndSim`에 연결.
+- user parameter 220, 그중 settable 212.
+- parameter type: float 108, bool 61, int32 15, texture 10, object 6 외
+  material, render target, spline, skeletal, Geometry Collection, RVT 등.
+- stack function call 88, scratch pad 2, graph 8.
+- compile script 39, error 0, warning 3.
+
+parameter namespace는 `Painter.*`, `Composite.*`, `Pressure.*`, `RVT.*`,
+`SDF.*`, `Export.*`로 나뉘며, `RT_Painter`, `RT_VelocityDensity`,
+`RT_PressureDivergence`가 명시돼 있다. Grid2D Collection 입력 이름에는
+Painter, Composite, Advection, Pressure grid가 나타난다. cache texture,
+Data Channel, spline, mesh distance field, Geometry Collection, tracked position과
+bone 입력도 확인된다.
+
+이는 아래의 책임 사슬을 강하게 지지하지만, 정확한 simulation stage 순서와
+iteration 수는 full Niagara topology 재캡처 전까지 `inferred`다.
+
+```text
+domain/grid 준비
+  -> point/field/height/obstacle 입력 누적
+  -> velocity-density 합성
+  -> advection
+  -> divergence/pressure 계산
+  -> velocity projection 또는 보정
+  -> dissipation/feedback/edge 처리
+  -> painter/velocity-density/pressure-divergence export
+```
+
+### 4. 출력은 solver와 분리 가능한 family다
+
+68개 Niagara System은 경로 기준으로 다음처럼 나뉜다.
+
+| 관찰 family | system 수 | 확인된 역할 표지 |
+| --- | ---: | --- |
+| core | 1 | simulation, input readers, export, debug renderer |
+| input Niagara | 18 | burst, radial, vortex, bonfire, smoke, hose, Data Channel writer |
+| legacy sim-driven output | 37 | flow balls, splash, bubbles, sand, snow, plankton 등 |
+| passive decor | 9 | rain, blizzard, sparks, sandstorm, plankton 등 |
+| surface-aligned output | 3 | particle, mesh, volume alignment |
+
+전체 renderer는 sprite 56, mesh 17, volume 2다. target은 이 68개 package를
+기계적으로 다시 만드는 대신, solver 상태를 읽는 공통 output reader와
+renderer recipe를 만들고 renderer topology 또는 lifecycle이 실제로 다를 때만
+별도 System을 둔다. passive decor는 solver 상태를 소유하지 않는 별도 계층으로
+유지한다. sim-driven과 passive를 같은 preset flag로만 구분하지 않는다.
+
+### 5. Material은 소수 graph와 다수 parameter recipe 구조다
+
+Material 캡처는 153개 graph 자산에서 8,186개 node, function call 308,
+texture sample 311, Custom HLSL node 21, static switch node 631을 확인했다.
+86개 Material의 domain은 Surface 69, Post Process 7, Volume 7,
+Light Function 2, Deferred Decal 1이다.
+
+798개 Material Instance에는 scalar override 24,196, vector override 1,827,
+texture override 1,729가 기록돼 있고, non-empty direct parent는 63개다.
+레벨 59개의 직접 dependency 합집합 871개 중 Material Instance가 595개다.
+따라서 target의 올바른 단위는 798개 graph 복제가 아니라 다음 둘이다.
+
+1. sampling, flow, wetness, height/normal, volume lighting, particle shading을
+   표현하는 새 master/function graph.
+2. 레벨에서 실제로 요구되는 값 묶음을 보존하는 project-owned recipe/instance.
+
+`CVOL`, `FVOLbox`, `FVOLniagara`, `HVOLbox`, `HVOLniagara`, `SVOL`,
+`Surface_Water_Dense`, `Surface_Water_Sparse`, `Surface_Various`는 확인된 package
+family다. 각 약어의 정확한 algorithm 의미는 레벨 runtime과 full graph 의미
+분석 전에는 확정하지 않는다.
+
+## 재구현해야 할 동작 계약
+
+### Lifecycle 계약
+
+target host는 다음 상태를 명시적으로 가져야 한다. 이는 원본 enum을 복제한
+것이 아니라 graph 책임에서 도출한 target state machine이다.
+
+```text
+Uninitialized
+  -> AllocatingBuffers
+  -> ApplyingPreset
+  -> Warmup
+  -> Active
+       -> Paused
+       -> Cached
+       -> RecenterOrLODChange -> AllocatingBuffers
+       -> Reset -> ApplyingPreset
+  -> ShuttingDown
+```
+
+각 전이는 buffer clear 여부, input list lifetime, Niagara activation, MID/RT
+재바인딩을 정의해야 한다. reset 후 잔여 density/velocity가 남는지, cache에서
+재시작할 때 어떤 channel이 복원되는지는 레벨별 수치 검증으로 잠근다.
+
+### Parameter 우선순위 계약
+
+target에서 사용할 우선순위는 다음과 같다.
+
+```text
+engine-safe default
+  < project preset recipe
+  < level instance override
+  < runtime interaction/input
+  < temporary diagnostics override
+```
+
+diagnostics override는 저장 결과에 남기지 않는다. preset 적용 뒤 runtime
+derived 값은 authoring 값에 역기록하지 않는다. `PresetReadWrite`,
+`ParsePresetMapAndSetVariables`, `SetParams`는 이 계층이 필요하다는 증거지만,
+원본의 정확한 충돌 우선순위는 아직 runtime 검증되지 않았다.
+
+### 좌표와 domain 계약
+
+모든 source adapter는 다음 정보를 solver에 넘기기 전에 같은 contract로
+정규화한다.
+
+- world transform과 domain-local transform.
+- bounds/extents와 normalized UV.
+- source radius/shape와 density/velocity scale.
+- local/world/camera-facing alignment.
+- height, SDF, collision mask의 단위와 sign.
+- recenter 또는 domain 이동 때 이전 state 재표본화 정책.
+
+mesh, landscape, spline, skeletal, Chaos, array, Data Channel 입력이 solver마다
+서로 다른 좌표 해석을 갖지 않게 한다. exact transform 식과 half-texel 보정은
+reference 수치 캡처 뒤 잠근다.
+
+### 입력 누적 계약
+
+입력은 다음 semantic channel로 변환한다.
+
+- density 또는 occupancy.
+- planar/world velocity.
+- painter/elevation 또는 wetness.
+- obstacle/collision/SDF.
+- 선택적 temperature, color, auxiliary mask.
+
+point-like와 field-like source, additive와 eraser, persistent와 one-shot을
+구분한다. 같은 frame에 여러 source가 들어올 때 ordering과 clamp가 결과를
+바꾸므로 input replay는 source ID와 frame index를 포함해야 한다.
+
+### Simulation 계약
+
+solver는 구현 기술보다 관찰 가능한 상태를 기준으로 검증한다.
+
+- 입력이 advect되는 방향과 속도.
+- density/velocity의 감쇠와 feedback.
+- obstacle에서의 침투, 반사, tangential flow.
+- divergence와 pressure 보정 결과.
+- boundary, height field, spline/coast gradient 반응.
+- fixed timestep/substep에서의 determinism.
+
+원본 stage 이름이나 node 수를 맞추는 것이 아니라 동일 fixture의 RT 통계,
+mask IoU, velocity direction, propagation, 화면을 맞춘다.
+
+### Export와 output 계약
+
+solver의 transient state는 명시적 read-only output contract로 내보낸다.
+
+- painter/elevation.
+- velocity-density.
+- pressure-divergence.
+- 필요 시 normal/gradient, up-vector, wetness, height, auxiliary mask.
+
+Material과 output Niagara는 solver state를 수정하지 않는다. Surface, volume,
+particle, debug output은 같은 exported state를 각자의 shading/sampling 규칙으로
+해석한다. output을 바꿨을 때 solver 결과가 달라지면 ownership 위반이다.
+
+## 목표의 작은 project-owned 구조
+
+target은 다음 책임을 최소 단위로 새로 저작한다.
+
+| 책임 | target 역할 | 복제하지 않는 것 |
+| --- | --- | --- |
+| host | activation, lifecycle, domain, buffer ownership | 원본 actor/component graph 배치 |
+| typed config | grid, input, solver, output, LOD recipe | 220개 값을 하나의 flat map으로 노출 |
+| input adapters | mesh, spline, RVT, Data Channel, skeletal, Chaos, array | source별 중복 좌표 변환 |
+| core solver | 새 Niagara Grid/RT module과 stage | 원본 module/Scratch Pad/package |
+| output adapters | surface, particle, mesh, volume, passive | 68개 System의 무조건적 1:1 복제 |
+| material library | 새 master/function과 level recipe | 798개 instance graph의 기계적 복제 |
+| validation harness | fixed input, state readback, screenshot, perf | 수동 시각 확인만으로 완료 판정 |
+
+새 Niagara module과 Scratch Pad는 원본 수식과 동작을 관찰해 새 graph로
+저작한다. 원본 package를 parent, inherited emitter, function call, embedded
+scratch dependency로 남기지 않는다.
+
+## 명시적 unknown과 다음 증거
+
+| unknown | 현재 이유 | 닫는 방법 |
+| --- | --- | --- |
+| core stage의 정확한 순서·iteration·pin 수식 | 현재 Niagara node/link topology truncation | 에디터 재시작 후 큰 양의 cap으로 68개 full 재캡처 |
+| Blueprint 변수 전체 default와 instance override | variable enumeration이 generated field 일부만 반환 | native class/default/instance property manifest |
+| 59개 레벨의 actor/component 구성 | 전체 manifest 미완료 | native read-only level manifest inspector로 순회 |
+| map transition 직후 Python UObject walk 안전성 | request 1631에서 python311/PythonScriptPlugin crash | 해당 방식 금지, native inspector로 대체 |
+| preset 충돌 우선순위 | graph 이름만 확인, runtime replay 없음 | starter level에서 preset/override matrix 캡처 |
+| dense와 sparse의 저장·solve 차이 | package·level family만 확인 | 동일 input RT/readback 비교 |
+| CVOL/FVOL/HVOL/SVOL/FAKE 의미와 비용 | 이름과 material/system family만 확인 | renderer/material/runtime fixture별 측정 |
+| 21개 Custom HLSL의 필수 의미 | node 존재만 집계 | 개별 graph 분석과 UE 5.6 equivalent 재저작 |
+| source art 최소 closure | direct dependency만 집계 | export/import 후 target recursive dependency audit |
+
+레벨 open 자체는 native 요청 1628과 상태 요청 1629~1630에서 성공했지만,
+첫 post-transition `execute_python` actor snapshot 요청 1631이
+`python311.dll`과 `UnrealEditor-PythonScriptPlugin.dll` callstack으로 에디터를
+종료시켰다. 근거는 `MCPGameProject/Saved/Logs/MCPGameProject.log`와
+`MCPGameProject/Saved/Crashes/UECC-Windows-16CF4A17478916DCED17E2B9A7DC308D_0000`
+이다. 이 한 건을 모든 Unreal Python 호출의 일반적 결함으로 확대하지 않지만,
+이 study의 bulk map 순회에서는 post-transition Python UObject walk를 금지한다.
+
+## 완료 판정
+
+이 문서는 구현 설계의 기준이지 parity 증거가 아니다. 각 원리는 다음 세 가지가
+모두 연결될 때만 `complete`로 승격한다.
+
+1. source 구조와 runtime 관찰 증거.
+2. target-local 새 구현과 compile/save/reload 증거.
+3. 동일 fixture의 수치·화면·성능 비교와 금지 dependency 0건.

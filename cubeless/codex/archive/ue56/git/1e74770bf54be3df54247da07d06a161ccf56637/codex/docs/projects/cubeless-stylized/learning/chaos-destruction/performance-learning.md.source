@@ -1,0 +1,176 @@
+# Chaos Destruction Performance Learning
+
+Date: 2026-08-05
+
+Target: Unreal Engine 5.6.1, `MCPGameProject`, UnrealMCP authoring and
+verification tooling.
+
+Status: verification complete; awaiting final Ieta audit. Initial Ieta review classified the original seven learning topics as
+`BLOCKED` because the engine supports the features but the repository did not
+yet contain Chaos-specific MCP commands, controlled fixtures, or numeric live
+evidence. On 2026-08-05 the user explicitly removed Nanite
+from the learning and test scope; completion therefore covers six topics.
+
+## Scope
+
+The learning loop covers all of the following:
+
+1. Tiny Geometry merging.
+2. Remove on Sleep and Remove on Break.
+3. One-Way Interaction.
+4. Cluster-break and released-particle throttling.
+5. Native trace plus External Strain and breaking velocity.
+6. Chaos Cache recording and deterministic playback.
+
+The authoritative engine is the installed UE 5.6.1 build. When documentation
+wording differs from the installed source, record the difference and use the
+installed source behavior for the verdict.
+
+## Safety Boundary
+
+- Keep generated fixtures under `/Game/_MCP_Temp/ChaosDestructionLearning`.
+- Do not modify marketplace, engine, original project, or production assets.
+- UnrealMCP C++ may author and inspect assets, but generated content must not
+  serialize UnrealMCP classes, functions, components, or module references.
+- Do not create project C++ or gameplay/runtime helper modules.
+- Preserve shared editor state. Use a separate test editor port for lifecycle,
+  map-switch, PIE/SIE, cache-recording, or cleanup work.
+- Scope every changed Chaos CVar and restore its previous value even on error.
+
+## Common Verdict Rule
+
+- `PASS`: UE 5.6.1 live PIE reaches the decisive condition and records numeric
+  evidence. Performance comparisons use the same fixture, map, camera, warmup,
+  and fixed-step conditions for five runs, with median and p95 reported.
+- `FAIL`: the decisive condition ran, but the functional result, state change,
+  limit, determinism, or expected A/B direction was wrong.
+- `BLOCKED`: tooling, plugin, editor, or fixture setup prevented the decisive
+  condition from running. A visual impression is never sufficient for `PASS`.
+
+## Ieta Acceptance Matrix
+
+### Tiny Geometry
+
+- Start with at least 64 leaf bones and at least 12 candidates below relative
+  volume `0.04`.
+- After optimization, leaf/rigid-body count and peak active-body count must
+  decrease, and candidates must merge into valid connected neighbors.
+- Overall bounds and volume deviation must stay within one percent.
+- `STAT_AdvanceClustering` median must not regress by more than five percent.
+
+### Remove on Sleep and Remove on Break
+
+- Exercise both mechanisms independently.
+- Small pieces must be removed within one fixed tick of their configured
+  completion time while designated large structural pieces remain.
+- Record configured timers and per-frame active, disabled, visible, broken,
+  and remaining-transform counts.
+
+### One-Way Interaction
+
+- Compare `OneWayInteractionLevel=-1` with level `2` using identical debris and
+  a 50 kg dynamic witness body.
+- The normal case must move the witness by at least one centimeter. The
+  one-way case must keep witness displacement or velocity change below ten
+  percent of the normal case while debris still collides with the static floor.
+
+### Break and Particle Throttling
+
+- Break at least eight collections in the same frame.
+- With `PerAdvanceBreaksAllowed=2`, no frame may process more than two cluster
+  breaks; remaining work must be observed on later frames rather than lost.
+- Compare particle-release min/max throttling against the baseline and record
+  per-frame break, released, active, and disabled counts.
+- Restore all CVars after every run.
+
+### Trace and External Strain
+
+- The native trace must return actor, component, and a valid `FHitResult.Item`.
+- Twenty valid hits must target the intended pieces; misses must not fracture.
+- Breaking velocity must point along the requested shot direction.
+- Compare 100 trace/external-strain hits with the equivalent Field path using
+  five-run GameThread and Chaos timing evidence.
+
+### Chaos Cache
+
+- Record at least one second and at least 30 frames.
+- Quantize transforms to `0.1 cm` and `0.1 degree`, then compare hashes at
+  0.25, 0.5, and 1.0 seconds over two playback passes.
+- Playback hashes must match, live simulation must not run in parallel with
+  playback, and a 16-instance playback comparison must reduce Chaos physics
+  median relative to live simulation.
+
+## Required Tooling Surface
+
+The first maintained command group should provide:
+
+- `create_chaos_destruction_learning_fixture`
+- `inspect_geometry_collection_performance_guarded`
+- `run_chaos_destruction_performance_smoke`
+- `run_chaos_cache_smoke`
+
+The native layer is justified because UE 5.6 Unreal Python does not provide a
+stable complete route for Fracture Engine Tiny Geo mutation, managed-array
+removal facades, exact trace item indices, dynamic collection particle state,
+or cache frame/duration evidence.
+
+## Final Completion Gate
+
+Learning is complete only when:
+
+- all six in-scope topics are `PASS`, with zero `FAIL` or `BLOCKED` results;
+- UE 5.6.1 build, Python compilation/import, F821, registration, response
+  schema where applicable, and live bridge smokes pass;
+- all performance comparisons contain five-run median and p95 evidence;
+- every scoped CVar is restored;
+- temporary asset and dirty-package state is reported;
+- dependency audit finds no UnrealMCP/MCP-only reference in generated assets;
+- the complete six-topic regression passes again after the last fix.
+
+## Final38 Verification Results
+
+All measurements used UE 5.6.1, an isolated editor on port `55562`, fixed
+30 Hz stepping, fresh PIE per functional scenario and performance run, and the
+same learning map. Nanite is `N/A`; the cinematic workflow verifies the
+non-Nanite `UGeometryCollectionRootProxyRenderer` path separately.
+
+| In-scope area | Five-run result | Verdict |
+| --- | --- | --- |
+| Tiny Geometry | rigid/peak active bodies `3072 -> 2304`; `STAT_AdvanceClustering` median `2.978 -> 1.609 ms`, p95 `3.715 -> 2.244 ms`; rigid pieces `96 -> 72`, candidates `24 -> 0`, volume/bounds delta `0%` | PASS |
+| Remove on Sleep / Break | both mechanisms `5/5`; 24 target pieces removed and 8 designated large pieces remained in every run; representative completion delays `1.5333 s` Sleep and `0.9667 s` Break | PASS |
+| One-Way Interaction | normal witness median/p95 `511.351/511.351 cm`; level-2 median/p95 `0.984/0.984 cm`, ratio `0.192%`; both paths had same-solver pair/current/enabled constraints, four manifold points, observed Phi, finite positive solver impulse, exact leaf capture, and floor reach | PASS |
+| Break/Particle Throttling | `5/5`; eight simultaneous collections processed with maximum two new cluster breaks per frame; later-frame rescheduling observed and solver settings restored | PASS |
+| Trace + External Strain | `100/100` valid item hits and `100/100` Field dispatches in every run; Trace median/p95 `0.404/0.524 ms`, Field median/p95 `0.462/1.000 ms` | PASS |
+| Chaos Cache | deterministic two-pass hashes at 0.25/0.5/1.0 s, hashes vary across times, 1.2 s and 36+ frames, 1680 forced-kinematic physics objects, source asset not dirtied; live/playback Chaos median `2.069 -> 1.614 ms`, p95 `2.669 -> 2.122 ms` | PASS |
+
+Primary numeric evidence:
+
+- `tmp/ChaosLearning/evidence/chaos-functional-final38-5x.json`
+- `tmp/ChaosLearning/evidence/chaos-performance-final38-5x.json`
+- `tmp/ChaosLearning/LiveHostFinal38-Unreal.log`
+- `tmp/ChaosLearning/LiveHostNoMCP-Final38-Unreal.log`
+- `tmp/ChaosLearning/Final38-full-build.stdout.log`
+
+Final38 plugin source/fresh full-package SHA-256 is
+`61C3AE33F3683DABDEF42D0B8476EEDFEA4ACCB2D6BF9E2B3F3774A3B21DD361`.
+The fresh StrictIncludes BuildPlugin run compiled all 46 units and linked the
+DLL successfully. Offline Python compile/import, F821,
+367-tool registration, response-schema audit, and live bridge smoke passed.
+The Asset Registry audit found zero forbidden MCP dependencies; the plugin-free
+host loaded the learning map with `ChaosCaching` enabled, without an
+`UnrealMCP` plugin directory or load/link errors, then exited cleanly.
+
+## Primary References
+
+- Epic, Chaos Destruction Optimization for UE 5.6:
+  <https://dev.epicgames.com/documentation/unreal-engine/chaos-destruction-optimization?application_version=5.6>
+- Epic, Destruction Quick Start:
+  <https://dev.epicgames.com/documentation/unreal-engine/destruction-quick-start?application_version=5.6>
+- Epic, Geometry Collections User Guide:
+  <https://dev.epicgames.com/documentation/en-us/unreal-engine/geometry-collections-user-guide?application_version=5.6>
+- Epic, Chaos Fields User Guide:
+  <https://dev.epicgames.com/documentation/unreal-engine/chaos-fields-user-guide-in-unreal-engine?application_version=5.6>
+- Local UE 5.6.1 source anchors:
+  `GeometryCollectionObject.h`, `GeometryCollectionComponent.h`,
+  `FractureEngineUtility.h`, `CollectionRemoveOnBreakFacade.h`,
+  `PBDRigidClustering.cpp`, and `CacheManagerActor.h`.

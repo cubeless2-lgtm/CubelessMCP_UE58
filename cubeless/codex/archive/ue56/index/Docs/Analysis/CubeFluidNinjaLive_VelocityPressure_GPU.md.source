@@ -1,0 +1,112 @@
+# Velocity post-composite / Pressure sampling
+
+2026-09-05. 원본 read-only, 새 scratch/native Grid2D 저작, 프로젝트 C++ 변경 없음.
+
+## 속도 합성 경로
+
+원본 Op40→Op44를 독립식으로 재구현하고 frozen graph replay 8192건 PASS.
+Convert7/8/9는 read-only T3D Connections로 확인하고 import하지 않았다.
+
+```text
+delta = previous.xy - pressureGradient
+weight = max(saturate(dot(delta,delta)*0.2), 1-maskNoise)
+field = heightReaders || splineReader ? sampledField : 0
+velocity = delta + (previous.z + brushDensity*(eraser*0.1))*(merged+field)*0.5
+           + noiseStrength*noise*weight
+if !simAreaClamp: velocity += noise*(1-velocityEdge)*20
+```
+
+이후 기존 velocity limit, collision weight를 적용한다. 이전 density는 density-post로
+덮어쓴 값이 아니라 원본 previous.z 입력이다. 원본의 연결 순서를 보존했다.
+`CFNLPostCompositeV001/NS_PostComposite`에 EdgeMask, density-post, collision, final과
+함께 구현했다. 실제 GPU 47건 PASS, 기본값 복원, 저장 hash 불변, audit PASS.
+SHA256 `327c5dfe42db2cb5c6f0398eb5ec5c29179a29f76e269efe158321600c2ed0e5`.
+compile error/warning 0, GPU UpToDate, unknown2/outstanding false.
+MCP disabled 별도 NullRHI cold-load 1/1 PASS.
+
+## 압력 샘플링의 원본 동작 분석
+
+원본 CustomHlsl3는 압력 vector2의 R 채널을 UV±TexelSize에서 네 번 샘플링하고
+수평/수직 차이에 .5를 곱한다. TexelSize로 나누는 미분식이 아니다.
+원본 `if(Clamp=false)`는 비교가 아니라 false 대입이다. 분기 안 `frac(UV1)` 등도
+반환값을 저장하지 않는다. 따라서 이 코드가 wrap 좌표를 생성한다고 해석하지 않았다.
+이는 코드 의미 분석이며 원본의 전체 GPU 결과와 비교한 증거는 아니다.
+
+UE5.6 NiagaraDataInterfaceGrid2DCollection.cpp:1693은 native Grid sampler에
+SF_Bilinear/AM_Clamp를 사용한다. 신규 HLSL은 네 이웃을 native sampler로 읽고
+R의 차이를 계산한다. 원본 HLSL 문자열이나 노드를 복제/import하지 않았다.
+
+## 실제 Grid 테스트
+
+`CFNLPressureSampleV001/NS_PressureSample`는 두 stage다.
+첫 stage가 각 셀 중심에서 P=slopeX*u+slopeY*v+offset, 두 번째 성분 7을
+Pressure vector2에 기록한다. 두 번째 stage가 SamplePreviousGridVector2DValue로
+읽어 GradientX/Y를 쓰며 Pressure도 보존한다.
+SHA256 `16ad51f6847799a45a31ce828ac05534a5ae5aef4703178368919d2fcf3de977`.
+
+GPU 10건 PASS: 내부, 양쪽 경계, 범위 밖 UV, 음수 slope, 상수 pressure,
+0/비등방/음수 간격, 기본값 복원. 분석식은 sample UV를 [0.5/64,63.5/64]로
+clamp한 평면의 중앙 차이이다. PF_R16F에 정확히 표현 가능한 fixture 값을 사용했다.
+64×64/4채널/4096finite 및 gradient min/max/mean, pressure min/max/mean 검사.
+원본 G가 아닌 R만 gradient에 기여하는 구조다. 비선형 pressure/실제 solver pressure,
+전체 셀별 공간 parity 및 본 PostComposite 후보와의 연결은 아직 검증하지 않았다.
+MCP disabled NullRHI cold-load 1/1 PASS, saved hash 불변/dirty와 의존성 audit PASS.
+
+## 증거와 재개
+
+- analyze_cube_fluid_ninja_velocity_post.py / build_cube_fluid_ninja_collision_final_gpu.py
+  (`--edge-mask --density-post --velocity-post`) / 동일 verifier.
+- build_cube_fluid_ninja_pressure_sample.py / verify_cube_fluid_ninja_pressure_sample.py.
+- test_cube_fluid_ninja_velocity_pressure.py: 6개 경계 테스트.
+- Saved SetParams `20260905_post_composite_*`, `20260905_pressure_sample_*`,
+  `20260905_velocity_post_equation_v001.json`.
+- AssetReviews `CFNL_PostComposite_20260905_v001`, `CFNL_PressureSample_20260905_v001`.
+
+현재 preview PressureSample 기본값 복원. 후보들은 모두 temp이며 영구 Study 추가 없음.
+다음은 실제 PressureGrid→PostComposite 연결, texture/noise/previous/field 입력 생성,
+WetMask, Painter/Solver/host와 59개 레벨이다. 사용자 시각 검수만 남은 상태가 아니다.
+
+## PressureGrid 통합 후 정밀도 진단
+
+실제 Pressure fixture→PostComposite 연결 후보 V001을 새로 작성했다.
+SHA `146d2ae608c07720a8de0526e62276f42b53c75058e45c6ac3210febf326db3f`.
+GPU runtime v001은 edge_2(UVX=.02)에서 실패했다. 이상 실수 gradient를 사용한
+FinalVX 기대 -0.01390625와 GPU -0.01416015625가 달랐다. PASS로 처리하지 않았다.
+
+별도 V002에는 SampleE/W/N/S, GradientX/Y 진단 채널을 추가했다. Pressure2채널,
+Final3채널과 합쳐 11채널이다. 그래프 import 없이 새로 작성했다.
+SHA `49a60b262f1428ca7dc432f22f86b619bb72cdfadd29a9e7a0d17d298c86400e`.
+V001/V002 모두 plugin-disabled cold-load PASS. V002 runtime v002는 sample 및
+gradient 검사 후 edge_3의 최종 속도에서 실패했다. 저장된 gradient 자체의
+PF_R16F 반올림을 후속 속도 계산에서 0오차로 취급한 검증기의 가정이 원인 후보였다.
+
+runtime v003은 각 pressure sample을 이상적 clamp 평면 값의 half 1 ULP와 비교하고,
+그 sample 차이와 저장 gradient를 다시 1 ULP로 비교한다. 저장 gradient 오차
+ex,ey가 속도에 전파되는 범위는 아래처럼 계산한다.
+
+```text
+weightError = .2*(2*abs(delta.x)*ex + ex² + 2*abs(delta.y)*ey + ey²)
+velocityError.x = (ex + abs(noiseStrength*noise.x)*weightError)*collisionWeight
+velocityError.y = (ey + abs(noiseStrength*noise.y)*weightError)*collisionWeight
+```
+
+saturate/max와 velocity clamp는 입력 차이를 확대하지 않는 성질을 사용했다.
+이 범위는 최종 half 반올림 한 ULP에 더한다. density 허용오차는 바꾸지 않는다.
+기존 독립 출력 검증기는 기본 extra allowance 0을 유지한다. 모든 실패 보고서를
+보존했다. 성공 여부와 기본값 복원은 v003 보고서의 실제 결과를 기준으로 한다.
+
+v003 실제 결과: 47/47 PASS, 기본값 GPU 복원 PASS, 저장 SHA 불변 및 audit PASS.
+현재 preview는 PressureCompositeV002이며 이전 PressureSample preview 표기를 대체한다.
+진단 채널을 추가한 뒤에도 V002 MCP disabled cold-load 1/1 PASS.
+마지막 통합 검증기 체크포인트 full offline 39/39 PASS. 출력 unit 6,
+velocity/pressure unit 6, edge/density unit 7 재실행 PASS.
+
+## 후속 WetMask 분석
+
+원본 FunctionCall22의 실제 Attribute=WetMask를 read-only export로 확인했다.
+`analyze_cube_fluid_ninja_wet_mask.py` 독립식 vs 연결 replay 4096건 PASS:
+`wet = edge * (previousWet*.982 + finalDensity*(1-WetMapFeedback))`.
+추가 saturate는 없다. previousWet의 감쇠 계수 .982는 feedback 변수가 아니라 상수다.
+GPU 구현은 아직 하지 않았고, Unit+WorldOffsetDelta→UnitToIndex→previous WetMask
+조회 및 edge 생성은 다음 구현 범위다. source export/보고서는 Saved SetParams의
+`20260905_wet_mask_reader_v001*`, `20260905_wet_mask_equation_v001.json`.

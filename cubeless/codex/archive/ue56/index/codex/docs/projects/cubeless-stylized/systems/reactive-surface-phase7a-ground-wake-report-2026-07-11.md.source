@@ -1,0 +1,10 @@
+# Reactive Surface Phase 7-A Ground Wake/Recenter Report
+
+- Verdict: **PASS**
+- Ground hold: `PASS`
+- Ground recenter: `PASS`
+- Observed movement: `[64.0, 0.0]` px
+- Movement error: `[0.0, 0.0]` px
+- Dirty packages: `0`
+
+Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-phase7a-ground-wake-results-2026-07-11.json`

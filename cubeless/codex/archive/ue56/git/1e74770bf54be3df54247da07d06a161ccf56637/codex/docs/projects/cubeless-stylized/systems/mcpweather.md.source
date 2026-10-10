@@ -1,0 +1,172 @@
+# MCPWeather — 카메라 추적 날씨 매니저 (BP + MPC + MF + Niagara)
+
+> 상태: **검수 완료 — 비/눈/오클루전/비PIE 에디터 프리뷰 검증. Rain/Snow Niagara를 MCPWeather 자체 자산으로 재제작 완료**.
+> 작성: 2026-06-27. 갱신: 2026-06-28 (UDS 의존 없는 자체 Rain/Snow Niagara FX로 교체). 갱신 주기: FX 폴리시·검수 단계마다.
+> 원본 진행 원장(에이전트): 세션 스크래치패드 `mcpweather-progress.md`. 본 문서가 레포 영구본.
+> 스코프: 쓰기는 `/Game/MCPWeather/`, QA 임시는 `/Game/_MCP_Temp/`. 원본 UDS 자산은 읽기/복제만.
+
+---
+
+## 1. 목적 (Context)
+
+플레이어 카메라를 따라다니며 **비/눈/바람/젖음/눈쌓임**을 한 매니저로 총괄하는 날씨 시스템.
+모든 효과를 **MPC(Material Parameter Collection)** 한 곳에 기록해 씬 머티리얼이 공유 샘플하고,
+파티클(비/눈)은 Niagara 컴포넌트로 카메라를 추적한다. 런타임 C++ 없이 **BP + Niagara + Material + MPC** 로만 구성.
+
+---
+
+## 2. 자산 인벤토리 (`/Game/MCPWeather/`)
+
+| 자산 | 경로 | 역할 |
+|---|---|---|
+| MPC | `MPC_MCPWeather` | 7 scalar (RainAmount, SnowAmount, WindIntensity, WindAngle, Wetness, SnowCover, OcclusionUseDF) + 1 vector (WindForce). 씬 공유 기록면. |
+| 매니저 BP | `BP_MCPWeatherManager` | Actor. NiagaraComp `RainFX`/`SnowFX`. 공개변수(인스턴스 편집): RainAmount/SnowAmount/WindIntensity/WindAngle/OcclusionUseDF/WindForceScale(=300)/Wetness/SnowCover/WeatherInterpSpeed(=2). |
+| 비 시스템 | `FX/Rain/NS_MCPWeather_Rain` | **BP 연결 대상.** UDS Rain을 로컬 자산으로 복제/리맵한 standalone 시스템. UDS Weather BP가 주던 비오는 날 값을 기본값으로 저장했고, 주요 `SpawnRate` 모듈은 `User.Amount`에 연결해 BP `RainAmount`가 강도를 제어한다. |
+| 눈 시스템 | `FX/Snow/NS_MCPWeather_Snow` | **BP 연결 대상.** UDS Snow를 로컬 자산으로 복제/리맵한 standalone 시스템. UDS path 배열 없이 보이도록 복제된 `CPU_Collision` renderer를 local snow material로 켰고, 주요 `SpawnRate` 모듈은 `User.Amount`에 연결해 BP `SnowAmount`가 강도를 제어한다. |
+| 비 머티리얼/텍스처 | `FX/Rain/Materials`, `FX/Rain/Textures` | UDS Rain material/texture 계열을 MCPWeather 내부 자산으로 복제/리맵. 외부 UDS 참조 없이 렌더. |
+| 눈 머티리얼/텍스처 | `FX/Snow/Materials`, `FX/Snow/Textures` | UDS Snow material/texture 계열을 MCPWeather 내부 자산으로 복제/리맵. 외부 UDS 참조 없이 렌더. |
+| MF 바람 | `Materials/MF_MCP_SampleWind` | WindForce→WindVector, WindIntensity→WindSway. MPC resolve OK. |
+| MF 젖음 | `Materials/MF_MCP_SurfaceWetness` | Wetness 위면젖음(BaseColor/Roughness/Normal). 젖은 BaseColor = `lerp(BaseColor, Desat(BaseColor)·0.30, Wetness·upMask·OccMask)` (다크닝 0.30 — 0.55 워시아웃/0.22 과흑 사이 균형값), 젖은 Roughness ×0.15. **오클루전 게이트**(wetMask×MF_MCP_Occlusion). |
+| MF 눈 | `Materials/MF_MCP_SnowCover` | SnowCover 위면 흰눈+높은 Rough. **오클루전 게이트**(snowMask×MF_MCP_Occlusion). |
+| 데모 표면 머티리얼 | `Materials/M_MCPWeatherSurface` | **MF 스택 사용 예시(Tier-1).** BaseColor 상수(0.34,0.30,0.26) → `MF_MCP_SurfaceWetness` → `MF_MCP_SnowCover` → 머티리얼 출력(BaseColor/Roughness/Normal). MD_Surface/Opaque/DefaultLit. 씬 메시에 적용해 비+젖은바닥+지붕 오클루전을 한 프레임에 시연. |
+| MF 오클루전 | `Materials/MF_MCP_Occlusion` | **DF 표면 오클루전 헬퍼.** `saturate(DistanceToNearestSurface(WorldPos+up·300)/300)`로 머리 위 지오메트리(지붕) 감지 → `lerp(1, skyVis, MPC.OcclusionUseDF)` 게이트 → 출력 OcclusionMask. 엔진 노드만(self-contained). |
+
+**UDS 의존 0**: 최종 Rain/Snow 분리본은 UDS 원본을 참고/복제하되 Material, Texture, MPC, NPC, Niagara Script/Emitter 참조를 `/Game/MCPWeather/FX` 내부 자산으로 리맵했다. `/Game/UltraDynamicSky` 참조가 남은 중간 실험 자산(`NS_MCPWeather_Snow_UDSRecloneTest`)은 삭제했다. Claude 초안 FX(`M_MCPRain_Soft`, `M_MCPRain_Streak`, `M_MCPSnow_Soft`, `T_MCP_RainStreak`)와 이전 루트 FX(`FX/NS_Rain`, `FX/NS_Snow`, `M_MCPWeatherRain_VelocityStreak`, `M_MCPWeatherSnow_SoftFlake`)도 최종에서 제거했다.
+
+---
+
+## 3. BP 배선 (검증 완료)
+
+### SetWeather (함수)
+- MPC 스칼라 5개 set: RainAmount/SnowAmount/WindIntensity/WindAngle + OcclusionUseDF(Get bool→SelectFloat A=1/B=0→ScalarSet).
+- **WindForce 벡터**: `DegCos/DegSin(WindAngle) × WindIntensity × WindForceScale → MakeVector(X,Y,0) → Conv_VectorToLinearColor → SetVectorParameterValue("WindForce")`.
+- **Niagara Amount**: `SetNiagaraVariableFloat(RainFX,"Amount", RainAmount×9000)` / `(SnowFX,"Amount", SnowAmount×7000)`. (함수는 `UNiagaraComponent` 메서드 — `NiagaraFunctionLibrary` 아님.) 배율은 셸 스폰 밀도에 맞춘 값.
+- **컴포넌트 스케일**: UDS clone FX는 원본 볼륨/스프라이트 스케일 기준으로 렌더되므로 RainFX/SnowFX 템플릿 RelativeScale3D=1.0. 이전 Fountain 기반 FX에서 쓰던 축소 스케일(0.25/0.3)은 삭제했다.
+
+### ConstructionScript
+- `SetWeather(self)` 호출 → 배치/스폰 시 즉시 MPC·Amount 반영.
+
+### EventTick
+- 카메라추적: `GetPlayerCameraManager(0) → GetCameraLocation → (+ (0,0,800) 오프셋) → RainFX/SnowFX SetWorldLocation`. (오프셋: 비가 머리 위에서 떨어지게, 렌즈 박힘 방지.)
+- 보간: `GetScalarParameterValue(MPC, Wetness/SnowCover)=Current, BP변수=Target, DeltaSeconds, WeatherInterpSpeed → FInterpTo → SetScalarParameterValue(MPC)`. (Wetness/SnowCover는 SetWeather 비대상, Tick 보간 전용.)
+
+전 그래프 컴파일 error0/validation_pass/saved.
+
+---
+
+## 4. 검증 결과 (수치 — `/Game/_MCP_Temp/MCPWeather_QA`)
+
+매니저 스폰 + 인스턴스값(Rain=1/Snow=0.5/WindI=1/WindA=45/Occ=true) → SetWeather 구동 → MPC 읽기:
+- RainAmount=1, SnowAmount=0.5, WindIntensity=1, WindAngle=45, OcclusionUseDF=1 ✓
+- **WindForce=(212.13, 212.13, 0)** = cos45·sin45(0.7071) × 1 × 300 — 소수점까지 일치. WindForce 서브그래프 수학 정확 ✓
+- Wetness/SnowCover=0 (SetWeather 비대상, 정상).
+- PIE: RainFX 위치 = 카메라 위치(+오프셋) 실측 → **카메라 추적 작동**.
+- QA 후 MPC 전 파라미터 중립(0) 복귀 확인.
+
+---
+
+## 5. Niagara FX 상태 & 결정 (자체 Rain/Snow 시스템 — 채택·작동)
+
+원래 "비 안 나옴"의 진짜 원인: NS_MCPRain/Snow가 **UDS GPU 이미터 이식본**이라 UDS Sky 액터가 공급하는 유저데이터(캐시 파티클 경로, 워터레벨 텍스처, Kill 스피어)를 읽는데, standalone이면 그 데이터가 null이라 **Kill/Visibility 모듈이 파티클을 전부 컬링** → 안 보임. BP 배선은 내내 정상이었음.
+
+웹 확인: [UDS 6.20 공식 문서](https://www.ultradynamicsky.com/Documentation/V6/6-20)의 Weather setup도 Ultra Dynamic Sky 액터를 전제로 설명한다. 그래서 MCPWeather 최종 FX는 UDS Weather/Sky 런타임 계약을 복제하지 않고, 필요한 룩만 자체 Niagara/Material/Texture로 재구성한다.
+
+루트 A(UDS Kill 모듈 비활성)는 과거 후보였지만 폐기. UDS 이미터는 Weather/Sky 액터가 공급하는 파라미터와 캐시를 전제로 해서, 모듈을 일부 끄는 방식은 장기 유지보수와 의존성 감사에 불리하다.
+
+**채택(현재)**: UDS Rain/Snow Niagara를 레퍼런스로 삼아 `/Game/MCPWeather/FX/Rain`과 `/Game/MCPWeather/FX/Snow` 아래에 완전 분리본을 만들었다. 원본 UDS의 Weather/Sky 액터 계약은 final content에 남기지 않고, UDS가 넘기던 눈/비 오는 날 값은 우리 자산 기본값으로 고정한다.
+- Rain: `FX/Rain/NS_MCPWeather_Rain`. UDS rain emitter/material/texture/MPC 계열을 local asset으로 복제/리맵했다. 원본 UDS 참조 없이 QA viewport에서 realtime 캡처 검수 통과. 주요 `SpawnRate` 모듈은 `User.Amount`에 연결되어 standalone 기본값과 BP 강도 제어를 같이 만족한다.
+- Snow: `FX/Snow/NS_MCPWeather_Snow`. UDS `Snow` 시스템을 local asset으로 복제/리맵했다. UDS Weather BP가 공급하던 `Particle Paths CPU` 배열이 없으면 GPU path emitter가 standalone에서 안 보이므로, 복제된 `CPU_Collision` renderer를 켜고 local snow material을 연결해 path 배열 없이도 눈이 렌더되게 했다. 기본값은 `Spawn Rate=0`, `CPU Spawn Rate=6500`, `Particle Paths Count=0`, `Sprite Scale=1.75`, `Sprite Alpha=0.85`, `Wind Velocity Scale=350`, `Motion Stretching=0`, `Stuck Snow Enabled=false`.
+- 로컬 의존성: Snow material/texture/MPC/NPC는 `FX/Snow/Materials`, `FX/Snow/Textures`, `FX/Snow/Collections` 아래만 참조한다. Material collection 값은 눈오는 UDS 기본 상태에 맞춰 Snow/Snowing/Fog/Cloud/Wind 계열만 보존했다.
+- 삭제: Claude 초안 FX `M_MCPRain_Soft`, `M_MCPRain_Streak`, `M_MCPSnow_Soft`, `T_MCP_RainStreak`는 최종 자산에서 제거했다. UDS 참조가 남은 `NS_MCPWeather_Snow_UDSRecloneTest`도 삭제했다.
+- 검증: Snow/Rain Niagara compile error/warning 0. 임시 Snow QA 장면에서 에디터를 전면 활성화하고 active viewport realtime override를 건 뒤 캡처한 `snow_default_asset_final.png`에서 asset 기본값만으로 눈 렌더 확인. `/Game/_MCP_Temp/MCPWeather_QA`에서는 BP 매니저가 새 Rain/Snow asset을 직접 참조하고, RainFX/SnowFX가 에디터 카메라 위치 + Z800으로 이동하며, 스케일 1.0에서 강수가 뷰포트에 렌더되는 것을 `manager_new_rain_snow_scale1.png`로 확인했다. 임시 `/Game/SampleTestMap/Niagara_TestMap` QA 맵은 최종 콘텐츠 범위에서 제거했다.
+
+### FX ↔ BP 통합 계약 (Contract)
+1. 시스템에 **User float 파라미터 `Amount`** 노출 → SpawnRate에 연결. BP `SetWeather`가 `SetNiagaraVariableFloat("Amount", Rain×9000 / Snow×7000)`로 구동.
+2. **UDS Sky 의존 0** → standalone 렌더. 외부 `/Game/UltraDynamicSky` 참조 금지.
+3. 현재 연결: BP `RainFX→/Game/MCPWeather/FX/Rain/NS_MCPWeather_Rain`, `SnowFX→/Game/MCPWeather/FX/Snow/NS_MCPWeather_Snow`. 컴포넌트 템플릿의 Niagara asset reference가 최종 시스템을 직접 가리킨다.
+
+---
+
+## 5-b. 표면 오클루전 (OcclusionUseDF — 구현·검수 완료)
+
+기존 `OcclusionUseDF`는 SetWeather가 MPC에 값만 넣고 **소비처 없는 댕글링 플래그**였음. Tier 3에서 **표면 오클루전**으로 소비처 구현:
+- 헬퍼 `MF_MCP_Occlusion`: `DistanceToNearestSurface(표면+up·300)/300 → saturate`로 머리 위 지오메트리(지붕) 감지, `lerp(1, skyVis, MPC.OcclusionUseDF)` 게이트.
+- `MF_MCP_SurfaceWetness`/`MF_MCP_SnowCover`: 위면 마스크(Wetness/SnowCover × 노멀)에 오클루전 마스크를 **추가 곱** → 지붕 밑은 젖음/눈 안 생김.
+- **PIE 검수 통과**: 바닥(occ 머티리얼)+지붕 슬래브 절반. OcclusionUseDF=1 → 지붕 밑 마스크≈0(어두운 사각형), 트인 곳 마스크=1. OcclusionUseDF=0 → 전부 마스크1(차단 해제). 토글 정상.
+- 전제: 프로젝트 `r.GenerateMeshDistanceFields=1`(확인됨). DF는 **PIE/realtime 컨텍스트에서만** 유효 — 비PIE 에디터 뷰포트는 GDF 부재로 마스크 0.
+- **파티클 오클루전**(지붕 밑 비 안 떨어짐)은 여전히 Niagara 파티클 스크립트라 툴 차단 → 미구현(수동). 표면 오클루전만 제공.
+
+---
+
+## 6. 한계 / 다음 단계
+
+- **현재 작동**: `FX/Rain/NS_MCPWeather_Rain` / `FX/Snow/NS_MCPWeather_Snow`가 BP 기본값으로 직접 연결됨. Rain/Snow 본체 FX는 MCPWeather 자체 UDS clone 자산으로 교체 완료.
+- **눈 검증 완료(2026-06-28~29)**: UDS Snow clone material/texture 기반 눈송이 렌더. `User.Amount` 링크와 BP `SnowAmount×7000` 구동 확인.
+- **Tier-1 데모 표면 머티리얼 완료(2026-06-27, 커밋 `3a87b70`)**: `M_MCPWeatherSurface`(MF 젖음→눈 스택)를 씬 메시에 적용해 비+젖은바닥+지붕 오클루전을 한 프레임에 시연. 젖음 다크닝 0.30으로 튜닝(워시아웃↔과흑 균형). 실사용 머티리얼에 MF 스택을 붙이는 레퍼런스.
+- **표면 오클루전 완료(Tier 3)**: OcclusionUseDF가 MF_MCP_Occlusion 통해 젖음/눈을 지붕 밑에서 차단. PIE 토글 검수 통과(섹션 5-b).
+- **UDS 의존 제거 완료**: 최종 Rain/Snow 자산은 `/Game/UltraDynamicSky`를 참조하지 않는다. Snow는 UDS 눈송이 룩을 로컬 텍스처/머티리얼로 분리해 사용하며, 실패한 `_Isolated/_Working/_Legacy` 중간 시스템은 삭제했다.
+- **PIE/에디터 실측**: Tick 보간/추적은 토폴로지+컴파일+MPC 구동+오프셋 실측으로 검증. QA 맵에서 `EditorPreviewTick(CameraLocation, 0.033)` 호출 시 RainFX/SnowFX가 `CameraLocation + (0,0,800)`으로 이동.
+- **잔존 무해**: NS 두 시스템에 미사용 User `Spawn Rate`(0) 고아 1개씩(제거 API 없음).
+- **서버버그(node_tools.py, connect 버그와 무관)**: `list_blueprint_components`(anim_class 미정의), `get_actors_in_level`(blueprint_name 미정의) — 우회는 execute_unreal_python 인트로스펙션.
+
+---
+
+## 6-b. 에디터 뷰포트 프리뷰 셸 이력 (Content/Python — 현재 비활성)
+
+초기에는 PIE 없이 **에디터 뷰포트에서 강수 FX가 에디터 카메라를 따라가게** 하려고 UDS식 Python 셸을 사용했다. 이 경로는 2026-06-28 기준 비활성이다. 최종 프리뷰 tick은 Python editor tick이 아니라 BP 기반 handler가 담당한다.
+
+- 파일: `MCPGameProject/Content/Python/mcpweather_editor_preview.py`(드라이버) + `init_unreal.py`(현재 자동 tick 시작 비활성).
+- 동작: 슬레이트 post-tick이 `get_level_viewport_camera_info`로 에디터 카메라를 읽어 RainFX/SnowFX를 카메라 앞+위로 이동 + Niagara `User.Amount` 구동. PIE 중엔 매니저 EventTick에 양보. `start()`가 `editor_set_viewport_realtime(True)` 호출.
+- reload-안전: 콜백 핸들을 `unreal` 모듈 영속 슬롯에 저장(슬레이트 콜백 누수 방지). API: `start()/stop()/toggle()/is_running()/set_invalidate()`.
+- 검증(좌표): cam(0,0,300)→FX(0,0,1100), cam(1200,600,500)→FX(1200,600,1300) — 정확 추적. 컴포넌트 active/visible 확인.
+- **한계**: 머티리얼(젖음/눈)은 에디터 프리뷰에서 **구동 안 됨**. 이 UE5.6 빌드가 런타임 MPC 세터(`UWorld::GetParameterCollectionInstance`)를 Python에 미노출 → 순수 에디터 Python으로 MPC 못 건드림. 에디터 프리뷰는 **파티클 추적만**; 젖은바닥/눈 룩은 PIE 또는 MCP `set_material_parameter_collection_values`(set_runtime) 필요.
+- 전제: 파티클 애니메이션엔 뷰포트 Realtime 필요(UDS도 동일).
+
+## 6-d. BP 기반 비PIE 에디터 프리뷰 (2026-06-28 — 현재 경로)
+
+목표: MCPWeather 에디터 프리뷰를 UDS처럼 BP 기반으로 돌린다. Python editor tick은 사용하지 않는다.
+
+- `/Game/MCPWeather/Editor/BPI_MCPWeatherEditorTickHandler`: 매니저 Actor를 handler에 전달하는 인터페이스.
+- `/Game/MCPWeather/Editor/BP_MCPWeatherEditorTickDriver`: `EditorUtilityObject` 기반 handler. `run_editor_utility_on_startup`으로 에디터 시작 시 실행되며, `LevelEditorSubsystem.OnEditorCameraMoved`에 native delegate bind 노드를 연결한다.
+- `BP_MCPWeatherManager` Construction Script: 런타임 매니저는 다시 `SetWeather(self)`만 호출한다. 드라이버/BPI/Blutility/LevelEditor 참조를 매니저 CS에서 제거해 `/Game/MCPWeather/BP_MCPWeatherManager`가 MCP/에디터 authoring helper에 의존하지 않게 유지한다.
+- delegate 이벤트 `HandleEditorCameraMoved(Location, Rotation, ViewportType, ViewIndex)`는 에디터 월드에서 `BP_MCPWeatherManager`를 다시 찾고 `TargetManager.EditorPreviewTick(Location, 0.033)`을 호출한다. Manager 함수가 RainFX/SnowFX를 `Location + (0,0,800)`으로 이동시키고 에디터 월드 MPC runtime instance를 갱신한다.
+- 보강: `OnMapOpened` 이벤트도 바인딩해 맵 전환 뒤 매니저 검색과 카메라 이동 이벤트 연결을 다시 시도한다. 타이머/next tick 실험 노드는 최종 정리에서 삭제해 현재 자동 갱신은 카메라 이동 delegate 기반만 남겼다.
+- 검증: QA 맵 `/Game/_MCP_Temp/MCPWeather_QA` 새 에디터 세션에서 수동 `try_run` 없이 `LevelEditorSubsystem.OnEditorCameraMoved.Broadcast((-222,333,444), ...)` 테스트 후 RainFX/SnowFX가 `(-222,333,1244)`로 이동. 에디터 월드 MPC runtime instance도 RainAmount=0.37, SnowAmount=0.23, WindIntensity=0.42, WindAngle=30, Wetness=0.61, SnowCover=0.17, OcclusionUseDF=1, WindForce=(109.119,62.999,0)로 즉시 반영됐다.
+- 최종 감사: 드라이버 BP 그래프에서 `Set Timer`, `K2_SetTimer`, `K2_SetTimerForNextTick`, `Next Tick`, `EditorPreviewTickEvent` 참조 노드 0건. `/Game/MCPWeather/BP_MCPWeatherManager` AssetRegistry 의존성에서 `/Script/UnrealEd` 및 UnrealMCP/MCP 경로 0건.
+- 주의: UE 5.6의 `UnrealEditorSubsystem.SetLevelViewportCameraInfo`는 카메라 값만 바꾸고 `OnEditorCameraMoved`를 즉시 broadcast하지 않는다. 실제 viewport camera interaction은 UE source `LevelEditorViewport.cpp`에서 `FEditorDelegates::OnEditorCameraMoved.Broadcast(...)`를 호출한다.
+
+## 6-c. 카메라 추적 "지연" 진단 & 최적화 방향 (2026-06-27)
+
+증상: 우리 강수가 카메라를 따라올 때 **지연/끌림**이 보임(UDS는 부드러움).
+
+**원인(인스펙트 근거)**: NS_Rain/Snow는 엔진 **Fountain 복제** — `ShapeLocation`(좁은 점/구 스폰) + `AddVelocity`(위로 분사) + Gravity/Drag. **고정 바운즈**(A→B 순간이동에 extent 동일 확인). 이미터 **Local Space 플래그는 UE5.6에서 `bLocalSpace` deprecated라 Python으로 못 읽음**(미확정); 엔진 Fountain 기본이 월드 스페이스라 월드일 가능성 높음.
+- 월드 스페이스 + 점-분사 구조면: 컴포넌트(스폰점)를 옮겨도 기존 파티클은 옛 월드 위치에 남고, 새 위치는 위에서부터 ~수명 동안 채워짐 → **빠져나갔다 채워지는 지연**. 좁은 스폰 반경이 악화.
+- UDS가 부드러운 건 강수가 **로컬 스페이스 볼륨**(카메라에 강체로 붙음)이라 항상 꽉 차 즉시 따라오기 때문.
+
+**최적화 관점이 처방을 정함**: 비용은 ① live 파티클 수 ② 반투명 오버드로우. 카메라 추적 강수는 **로컬 스페이스 + 화면 크기 작은 볼륨 + GPU sim**이 화질(지연 0)과 성능(적은 입자로 같은 밀도)을 **동시에** 만족. "월드+넓은 볼륨으로 지연 없애기"는 입자 폭증으로 최악.
+
+**권장 설계**: ① 이미터 Local Space ON ② ShapeLocation Box(~시야 프러스텀, 예 1500×1500) ③ SimTarget GPU(고정 바운즈 궁합 OK) ④ 짧은 수명+바닥아래 Kill ⑤ 스프라이트 크기 절제(오버드로우) ⑥ Niagara Scalability 컬링.
+
+**툴 차단 → 해소(T1+T2핵심)**: 위 ①③④는 이미터 레벨이라 MCP C++ 확장 T1으로 풀림. ②④⑤(ShapeLocation 박스/하강 속도/스프라이트 크기/Lifetime)도 **T2 핵심 수정(`FindEmitterScriptForUsage`→`IsEquivalentUsage`)으로 기존 RI 모듈입력 툴이 파티클 스폰 모듈에서 작동**하게 돼 해금됐고, 2026-06-28 자체 Rain/Snow 재작업에 적용했다. 포인터: `codex/docs/projects/cubeless-stylized/tooling/niagara-mcp-authoring-extension.md` §0-b.
+
+### 적용 & 검증 완료 (2026-06-27)
+- **이전 `NS_Rain` / `NS_Snow` 실험 이력**: Local Space ON + SimTarget GPU + Fixed bounds까지 검증했으나, 최종 UDS clone FX 채택 후 삭제했다. 현재 BP 연결 대상은 `FX/Rain/NS_MCPWeather_Rain` / `FX/Snow/NS_MCPWeather_Snow`.
+- 로컬/월드 **확정**: 적용 전 Fountain은 월드 스페이스였고(지연 원인), 이제 Local Space로 전환 → 필드가 컴포넌트에 강체로 붙어 지연 구조적 해소.
+- **GPU 정상**: 최종 Rain/Snow clone 시스템 컴파일 error/warning 0. 매니저 연결 후 비PIE 에디터 뷰포트에서 강수 렌더 시각 확인.
+- ⚠️ **데모 프레이밍 주의**: 매니저 RainFX/SnowFX는 카메라+Z800(시점 바로 위)에 스폰돼서, 씬을 바라보는 **3인칭 데모 카메라엔 안 잡힘**(1인칭 시점용 설계 — 게임플레이에선 정상). 데모용으로 보이게 하려면 스폰 오프셋을 전방으로(에디터 프리뷰 셸 §6-b는 이미 전방 오프셋 사용).
+- ShapeLocation 박스 크기·하강 속도·스프라이트 크기 절제는 2026-06-28 자체 FX 재작업에서 적용 완료.
+
+### 줄기비/눈송이 업그레이드 (2026-06-28) — UDS clone, self-contained
+- UDS 비/눈 원본을 레퍼런스로 쓰되 final asset은 `/Game/MCPWeather/FX` 내부 material/texture/MPC/NPC/Niagara script로 완전 분리한다.
+- 비 자산: `FX/Rain/NS_MCPWeather_Rain` + `FX/Rain/Materials` + `FX/Rain/Textures`. UDS rain 룩을 local dependency만으로 캡처 검수했다.
+- 눈 자산: `FX/Snow/NS_MCPWeather_Snow` + `FX/Snow/Materials/M_MCPWeather_Snow_Particle` + `FX/Snow/Textures/T_MCPWeather_RainSnow_Sheet`. UDS path 배열 의존을 우회하기 위해 복제된 `CPU_Collision` renderer를 standalone visible snow emitter로 사용한다. 혼동되는 임시 머티리얼 이름은 최종 참조에서 제거했다.
+- active viewport QA: UE 5.6 active viewport에 `Background Process` realtime false override가 남을 수 있어, editor helper `set_active_viewport_realtime`가 review override를 마지막에 올린 뒤 캡처한다.
+- BP 통합 완료. `BP_MCPWeatherManager`의 RainFX/SnowFX 컴포넌트는 최종 UDS clone 시스템을 직접 참조하며, 구 루트 FX는 참조자 0 확인 후 삭제했다.
+- 미구현(범위 밖): UDS의 바닥 튀김/파문/데칼(별도 이미터들).
+
+---
+
+## 7. 재개 포인터
+
+- BP 그래프/노드 ID 상세: 세션 스크래치패드 `mcpweather-progress.md`.
+- 안전 규칙: 맵 전환은 `open_editor_level`/`safe_new_preview_map`만(generic execute_python 금지), 프로모트 전 `/Script/UnrealMCP` 하드참조 감사. 출처: `codex/docs/workflows/unreal-mcp.md`, `codex/docs/workflows/map-and-preview-safety.md`.

@@ -1,0 +1,115 @@
+# Cloud_VDB 아트 소스 전체 카탈로그
+
+> 모든 이미지는 Unreal Engine 5.6.1 PIE에서 동일한 미리보기 액터와 조명으로 촬영했습니다. 원본 Cloud_VDB 자산은 수정하거나 저장하지 않았습니다.
+
+| 번호 | 상태 | 역할 | 유형 | 소스 | 판단 | 이미지 |
+| ---: | :---: | --- | --- | --- | --- | :---: |
+| 001 | 선정 | Tower | Cumulonimbus | `AP_Cumulonimbus_Cloud_01` | 주 덩어리와 상승 돌출부가 한 실루엣으로 연결되어 메인 성장 타워 기준으로 좋음. | [보기](Images/All/001_AP_Cumulonimbus_Cloud_01_PIE.png) |
+| 002 | 보류 | Tower 후보 | Cumulonimbus | `AP_Cumulonimbus_Cloud_02` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/002_AP_Cumulonimbus_Cloud_02_PIE.png) |
+| 003 | 보류 | Tower 후보 | Cumulonimbus | `AP_Cumulonimbus_Cloud_03` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/003_AP_Cumulonimbus_Cloud_03_PIE.png) |
+| 004 | 탈락 | Tower 중복 | Cumulonimbus | `AP_Cumulonimbus_Cloud_04` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/004_AP_Cumulonimbus_Cloud_04_PIE.png) |
+| 005 | 탈락 | Tower 중복 | Cumulonimbus | `AP_Cumulonimbus_Cloud_05` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/005_AP_Cumulonimbus_Cloud_05_PIE.png) |
+| 006 | 보류 | Tower 후보 | Cumulonimbus | `Kit_02_Cumulonimbus_01` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/006_Kit_02_Cumulonimbus_01_PIE.png) |
+| 007 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_02_Cumulonimbus_02` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/007_Kit_02_Cumulonimbus_02_PIE.png) |
+| 008 | 선정 | Tower | Cumulonimbus | `Kit_02_Cumulonimbus_03` | 대각선으로 이어지는 발달 단계가 뚜렷해 방향성 있는 타워 변형에 적합. | [보기](Images/All/008_Kit_02_Cumulonimbus_03_PIE.png) |
+| 009 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_02_Cumulonimbus_04` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/009_Kit_02_Cumulonimbus_04_PIE.png) |
+| 010 | 보류 | Tower 후보 | Cumulonimbus | `Kit_02_Cumulonimbus_05` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/010_Kit_02_Cumulonimbus_05_PIE.png) |
+| 011 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_02_Cumulonimbus_06` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/011_Kit_02_Cumulonimbus_06_PIE.png) |
+| 012 | 보류 | Tower 후보 | Cumulonimbus | `Kit_02_Cumulonimbus_07` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/012_Kit_02_Cumulonimbus_07_PIE.png) |
+| 013 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_02_Cumulonimbus_08` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/013_Kit_02_Cumulonimbus_08_PIE.png) |
+| 014 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_02_Cumulonimbus_09` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/014_Kit_02_Cumulonimbus_09_PIE.png) |
+| 015 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_cumulonimbus_01` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/015_Kit_cumulonimbus_01_PIE.png) |
+| 016 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_cumulonimbus_02` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/016_Kit_cumulonimbus_02_PIE.png) |
+| 017 | 보류 | Tower 후보 | Cumulonimbus | `Kit_cumulonimbus_03` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/017_Kit_cumulonimbus_03_PIE.png) |
+| 018 | 보류 | Tower 후보 | Cumulonimbus | `Kit_cumulonimbus_04` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/018_Kit_cumulonimbus_04_PIE.png) |
+| 019 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_cumulonimbus_05` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/019_Kit_cumulonimbus_05_PIE.png) |
+| 020 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_cumulonimbus_06` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/020_Kit_cumulonimbus_06_PIE.png) |
+| 021 | 선정 | Tower | Cumulonimbus | `Kit_cumulonimbus_07` | 기둥·중간 로브·상부 캡이 분리되어 성장 단계 조립 기준으로 쓰기 좋음. | [보기](Images/All/021_Kit_cumulonimbus_07_PIE.png) |
+| 022 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_cumulonimbus_08` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/022_Kit_cumulonimbus_08_PIE.png) |
+| 023 | 보류 | Tower 후보 | Cumulonimbus | `Kit_cumulonimbus_09` | 타워 변형으로 가치가 있으나 1차 선정 Tower와 기능이 겹쳐 후속 조합 테스트까지 보류. | [보기](Images/All/023_Kit_cumulonimbus_09_PIE.png) |
+| 024 | 탈락 | Tower 중복 | Cumulonimbus | `Kit_cumulonimbus_10` | 선정·보류 Tower와 기본 덩어리 흐름이 겹치거나 실루엣 구분이 약해 1차 세트에서 제외. | [보기](Images/All/024_Kit_cumulonimbus_10_PIE.png) |
+| 025 | 보류 | Core/Lobe 후보 | Cumulus | `AP_Cumulus_Cloud_01` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/025_AP_Cumulus_Cloud_01_PIE.png) |
+| 026 | 탈락 | 형태 중복 | Cumulus | `AP_Cumulus_Cloud_02` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/026_AP_Cumulus_Cloud_02_PIE.png) |
+| 027 | 보류 | Core/Lobe 후보 | Cumulus | `AP_Cumulus_Cloud_03` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/027_AP_Cumulus_Cloud_03_PIE.png) |
+| 028 | 탈락 | 저밀도/광범위 | Cumulus | `AP_Cumulus_Cloud_04` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/028_AP_Cumulus_Cloud_04_PIE.png) |
+| 029 | 탈락 | 저밀도/광범위 | Cumulus | `AP_Cumulus_Cloud_05` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/029_AP_Cumulus_Cloud_05_PIE.png) |
+| 030 | 탈락 | 저밀도/광범위 | Cumulus | `AP_Cumulus_Cloud_06` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/030_AP_Cumulus_Cloud_06_PIE.png) |
+| 031 | 탈락 | 저밀도/광범위 | Cumulus | `AP_Cumulus_Cloud_07` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/031_AP_Cumulus_Cloud_07_PIE.png) |
+| 032 | 탈락 | 형태 중복 | Cumulus | `AP_Cumulus_Cloud_08` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/032_AP_Cumulus_Cloud_08_PIE.png) |
+| 033 | 선정 | Core | Cumulus | `AP_Cumulus_Cloud_09` | 밀도 높은 중심 덩어리와 여러 로브가 안정적으로 연결된 기본 코어. | [보기](Images/All/033_AP_Cumulus_Cloud_09_PIE.png) |
+| 034 | 보류 | Core/Lobe 후보 | Cumulus | `AP_Cumulus_Cloud_10` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/034_AP_Cumulus_Cloud_10_PIE.png) |
+| 035 | 탈락 | 저밀도/광범위 | Cumulus | `AP_Cumulus_Cloud_11` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/035_AP_Cumulus_Cloud_11_PIE.png) |
+| 036 | 탈락 | 저밀도/광범위 | Cumulus | `AP_Cumulus_Cloud_12` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/036_AP_Cumulus_Cloud_12_PIE.png) |
+| 037 | 선정 | Lobe | Cumulus | `Kit_02_Cumulus_01` | 비대칭 돌출부가 분명하고 하부 잔가지가 있어 중간 크기 로브 변형에 유용. | [보기](Images/All/037_Kit_02_Cumulus_01_PIE.png) |
+| 038 | 탈락 | 형태 중복 | Cumulus | `Kit_02_Cumulus_02` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/038_Kit_02_Cumulus_02_PIE.png) |
+| 039 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_02_Cumulus_03` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/039_Kit_02_Cumulus_03_PIE.png) |
+| 040 | 선정 | Connector | Cumulus | `Kit_02_Cumulus_04` | 두 덩어리 사이가 낮은 밀도로 이어져 코어 사이 연결 모듈로 적합. | [보기](Images/All/040_Kit_02_Cumulus_04_PIE.png) |
+| 041 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_02_Cumulus_05` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/041_Kit_02_Cumulus_05_PIE.png) |
+| 042 | 선정 | Lobe | Cumulus | `Kit_02_Cumulus_06` | 수직 돌출부와 낮은 받침 덩어리가 함께 있어 코어에서 타워로 넘어가는 로브에 적합. | [보기](Images/All/042_Kit_02_Cumulus_06_PIE.png) |
+| 043 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_02_Cumulus_07` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/043_Kit_02_Cumulus_07_PIE.png) |
+| 044 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_02_Cumulus_08` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/044_Kit_02_Cumulus_08_PIE.png) |
+| 045 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_02_Cumulus_09` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/045_Kit_02_Cumulus_09_PIE.png) |
+| 046 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_02_Cumulus_10` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/046_Kit_02_Cumulus_10_PIE.png) |
+| 047 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_02_Cumulus_11` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/047_Kit_02_Cumulus_11_PIE.png) |
+| 048 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_02_Cumulus_12` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/048_Kit_02_Cumulus_12_PIE.png) |
+| 049 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_02_Cumulus_13` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/049_Kit_02_Cumulus_13_PIE.png) |
+| 050 | 선정 | Connector | Cumulus | `Kit_02_Cumulus_14` | 수평으로 이어지는 복수 덩어리가 자연스러워 긴 구름 띠의 중간 연결부로 좋음. | [보기](Images/All/050_Kit_02_Cumulus_14_PIE.png) |
+| 051 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_01` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/051_Kit_cumulus_01_PIE.png) |
+| 052 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_cumulus_02` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/052_Kit_cumulus_02_PIE.png) |
+| 053 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_cumulus_03` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/053_Kit_cumulus_03_PIE.png) |
+| 054 | 선정 | Edge | Cumulus | `Kit_cumulus_04` | 부드럽고 낮은 밀도의 외곽이 뚜렷해 큰 덩어리의 가장자리 완화용으로 적합. | [보기](Images/All/054_Kit_cumulus_04_PIE.png) |
+| 055 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_05` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/055_Kit_cumulus_05_PIE.png) |
+| 056 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_06` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/056_Kit_cumulus_06_PIE.png) |
+| 057 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_07` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/057_Kit_cumulus_07_PIE.png) |
+| 058 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_cumulus_08` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/058_Kit_cumulus_08_PIE.png) |
+| 059 | 탈락 | 형태 중복 | Cumulus | `Kit_cumulus_09` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/059_Kit_cumulus_09_PIE.png) |
+| 060 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_10` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/060_Kit_cumulus_10_PIE.png) |
+| 061 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_11` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/061_Kit_cumulus_11_PIE.png) |
+| 062 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_12` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/062_Kit_cumulus_12_PIE.png) |
+| 063 | 탈락 | 형태 중복 | Cumulus | `Kit_cumulus_13` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/063_Kit_cumulus_13_PIE.png) |
+| 064 | 보류 | Core/Lobe 후보 | Cumulus | `Kit_cumulus_14` | 형태 대안으로 쓸 수 있으나 1차 선정본보다 역할 구분 또는 연결 실루엣이 약해 보류. | [보기](Images/All/064_Kit_cumulus_14_PIE.png) |
+| 065 | 탈락 | 형태 중복 | Cumulus | `Kit_cumulus_15` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/065_Kit_cumulus_15_PIE.png) |
+| 066 | 탈락 | 저밀도/광범위 | Cumulus | `Kit_cumulus_16` | 범위가 넓고 연무 성분이 강해 Core·Lobe·Connector의 경계를 제어하기 어려워 제외. | [보기](Images/All/066_Kit_cumulus_16_PIE.png) |
+| 067 | 탈락 | 형태 중복 | Cumulus | `Kit_cumulus_17` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/067_Kit_cumulus_17_PIE.png) |
+| 068 | 탈락 | 형태 중복 | Cumulus | `Kit_cumulus_18` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/068_Kit_cumulus_18_PIE.png) |
+| 069 | 탈락 | 형태 중복 | Cumulus | `Kit_cumulus_19` | 선정·보류 Cumulus와 역할이 겹치고 독립 모듈로서 실루엣 차이가 작아 제외. | [보기](Images/All/069_Kit_cumulus_19_PIE.png) |
+| 070 | 보류 | Wispy/Edge 후보 | Cirrus | `AP_Cirrus_Cloud_01` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/070_AP_Cirrus_Cloud_01_PIE.png) |
+| 071 | 선정 | Wispy | Cirrus | `AP_Cirrus_Cloud_02` | 한 방향으로 늘어난 얇은 흐름과 소멸부가 분명해 바람 방향 표현에 좋음. | [보기](Images/All/071_AP_Cirrus_Cloud_02_PIE.png) |
+| 072 | 탈락 | 밀도 부족 | Cirrus | `AP_Cirrus_Cloud_03` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/072_AP_Cirrus_Cloud_03_PIE.png) |
+| 073 | 보류 | Wispy/Edge 후보 | Cirrus | `AP_Cirrus_Cloud_04` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/073_AP_Cirrus_Cloud_04_PIE.png) |
+| 074 | 보류 | Wispy/Edge 후보 | Cirrus | `AP_Cirrus_Cloud_05` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/074_AP_Cirrus_Cloud_05_PIE.png) |
+| 075 | 탈락 | 형태 중복 | Cirrus | `AP_Cirrus_Cloud_06` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/075_AP_Cirrus_Cloud_06_PIE.png) |
+| 076 | 보류 | Wispy/Edge 후보 | Cirrus | `AP_Cirrus_Cloud_07` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/076_AP_Cirrus_Cloud_07_PIE.png) |
+| 077 | 탈락 | 형태 중복 | Cirrus | `AP_Cirrus_Cloud_08` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/077_AP_Cirrus_Cloud_08_PIE.png) |
+| 078 | 선정 | Edge | Cirrus | `Kit_02_Cirrus_01` | 넓은 날개형 실루엣과 중앙 연결부가 있어 상부 캡·모루형 외곽 기준으로 유용. | [보기](Images/All/078_Kit_02_Cirrus_01_PIE.png) |
+| 079 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_02` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/079_Kit_02_Cirrus_02_PIE.png) |
+| 080 | 보류 | Wispy/Edge 후보 | Cirrus | `Kit_02_Cirrus_03` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/080_Kit_02_Cirrus_03_PIE.png) |
+| 081 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_04` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/081_Kit_02_Cirrus_04_PIE.png) |
+| 082 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_05` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/082_Kit_02_Cirrus_05_PIE.png) |
+| 083 | 탈락 | 형태 중복 | Cirrus | `Kit_02_Cirrus_06` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/083_Kit_02_Cirrus_06_PIE.png) |
+| 084 | 탈락 | 형태 중복 | Cirrus | `Kit_02_Cirrus_07` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/084_Kit_02_Cirrus_07_PIE.png) |
+| 085 | 보류 | Wispy/Edge 후보 | Cirrus | `Kit_02_Cirrus_08` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/085_Kit_02_Cirrus_08_PIE.png) |
+| 086 | 탈락 | 형태 중복 | Cirrus | `Kit_02_Cirrus_09` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/086_Kit_02_Cirrus_09_PIE.png) |
+| 087 | 탈락 | 형태 중복 | Cirrus | `Kit_02_Cirrus_10` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/087_Kit_02_Cirrus_10_PIE.png) |
+| 088 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_11` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/088_Kit_02_Cirrus_11_PIE.png) |
+| 089 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_12` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/089_Kit_02_Cirrus_12_PIE.png) |
+| 090 | 탈락 | 형태 중복 | Cirrus | `Kit_02_Cirrus_13` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/090_Kit_02_Cirrus_13_PIE.png) |
+| 091 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_14` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/091_Kit_02_Cirrus_14_PIE.png) |
+| 092 | 탈락 | 형태 중복 | Cirrus | `Kit_02_Cirrus_15` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/092_Kit_02_Cirrus_15_PIE.png) |
+| 093 | 탈락 | 밀도 부족 | Cirrus | `Kit_02_Cirrus_16` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/093_Kit_02_Cirrus_16_PIE.png) |
+| 094 | 보류 | Wispy/Edge 후보 | Cirrus | `Kit_cirrus_01` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/094_Kit_cirrus_01_PIE.png) |
+| 095 | 탈락 | 밀도 부족 | Cirrus | `Kit_cirrus_02` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/095_Kit_cirrus_02_PIE.png) |
+| 096 | 선정 | Wispy | Cirrus | `Kit_cirrus_03` | 겹친 두 줄의 굽은 흐름이 있어 단일 선형 소스보다 풍부한 고층 디테일을 제공. | [보기](Images/All/096_Kit_cirrus_03_PIE.png) |
+| 097 | 탈락 | 밀도 부족 | Cirrus | `Kit_cirrus_04` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/097_Kit_cirrus_04_PIE.png) |
+| 098 | 탈락 | 밀도 부족 | Cirrus | `Kit_cirrus_05` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/098_Kit_cirrus_05_PIE.png) |
+| 099 | 탈락 | 형태 중복 | Cirrus | `Kit_cirrus_06` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/099_Kit_cirrus_06_PIE.png) |
+| 100 | 보류 | Wispy/Edge 후보 | Cirrus | `Kit_cirrus_07` | 방향성과 밀도 변형은 유용하지만 1차 Wispy·Edge 세트와 겹쳐 후속 고층 레이어 검토까지 보류. | [보기](Images/All/100_Kit_cirrus_07_PIE.png) |
+| 101 | 탈락 | 밀도 부족 | Cirrus | `Kit_cirrus_08` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/101_Kit_cirrus_08_PIE.png) |
+| 102 | 탈락 | 형태 중복 | Cirrus | `Kit_cirrus_09` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/102_Kit_cirrus_09_PIE.png) |
+| 103 | 탈락 | 형태 중복 | Cirrus | `Kit_cirrus_10` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/103_Kit_cirrus_10_PIE.png) |
+| 104 | 탈락 | 형태 중복 | Cirrus | `Kit_cirrus_11` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/104_Kit_cirrus_11_PIE.png) |
+| 105 | 탈락 | 형태 중복 | Cirrus | `Kit_cirrus_12` | 선정·보류 고층 구름과 방향 또는 곡선 흐름이 겹쳐 1차 세트에서 제외. | [보기](Images/All/105_Kit_cirrus_12_PIE.png) |
+| 106 | 탈락 | 밀도 부족 | Cirrus | `Kit_cirrus_13` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/106_Kit_cirrus_13_PIE.png) |
+| 107 | 탈락 | 밀도 부족 | Cirrus | `Kit_cirrus_14` | 밀도가 너무 옅거나 흐름의 중심선이 약해 Wispy·Edge 기준 소스로 쓰기 어려워 제외. | [보기](Images/All/107_Kit_cirrus_14_PIE.png) |
+| 108 | 탈락 | 범위 밖 | Contrail | `Kit_contrail_01` | 현재 비행·항적 구름 우선순위를 뒤로 미뤘으므로 1차 Nubis³형 구름 키트에서 제외. | [보기](Images/All/108_Kit_contrail_01_PIE.png) |
+| 109 | 탈락 | 범위 밖 | Contrail | `Kit_contrail_02` | 현재 비행·항적 구름 우선순위를 뒤로 미뤘으므로 1차 Nubis³형 구름 키트에서 제외. | [보기](Images/All/109_Kit_contrail_02_PIE.png) |

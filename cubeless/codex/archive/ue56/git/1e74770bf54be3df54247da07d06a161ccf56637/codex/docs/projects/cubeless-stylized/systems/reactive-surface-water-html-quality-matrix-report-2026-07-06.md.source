@@ -1,0 +1,22 @@
+# Reactive Surface Water HTML Quality Matrix Report - 2026-07-06
+
+## Scope
+
+- Validates the Water Material/RT normal output against the user-provided `wave_ripple_no_rain.html` formula across multiple input shapes.
+- PASS requires direct orientation; flipped/rotated best matches are not accepted.
+- Contact sheet row columns are HTML reference, Unreal output, amplified diff.
+
+## Result
+
+- Verdict: `PASS`
+- Matrix contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterHTMLQualityMatrix\water_html_quality_matrix_contact_sheet.png`
+- Evidence JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-html-quality-matrix-results-2026-07-06.json`
+
+## Case Metrics
+
+- `horizontal_drag`: `PASS`, corr `0.9999930364797908`, rmse `0.22568315793384547`, best `direct`
+- `vertical_drag`: `PASS`, corr `0.9999930590353943`, rmse `0.2253126791758119`, best `direct`
+- `diagonal_drag`: `PASS`, corr `0.9999926868148854`, rmse `0.21833981860261456`, best `direct`
+- `reverse_offset_drag`: `PASS`, corr `0.9999933520501271`, rmse `0.2153934817767971`, best `direct`
+- `single_click_decay`: `PASS`, corr `0.9999919826525254`, rmse `0.2240589858715726`, best `direct`
+- `near_edge_drag`: `PASS`, corr `0.9999934537877971`, rmse `0.22027216058809734`, best `direct`

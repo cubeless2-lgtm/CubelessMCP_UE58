@@ -1,0 +1,43 @@
+# Erosion spline replacement
+
+Replace the old three PCG graphs, their wrappers and all 36 include/exclude box
+actors and six box Blueprint assets. Preserve architecture, lighting, asynchronous
+environment selection, local Level Instance references and editor preview.
+
+Each erosion owns an independent spline-region Blueprint and native PCG graph.
+Regions attach to their own ErosionLayout. RegionMode switches Include/Exclude;
+an exclusion always wins. Width, edge falloff and projection depth shape each
+region. Include regions now also own MaxCount, Density, PackingGap and
+PackingBoundsScale, with ActualCount showing the final result. Spline points
+remain editable with the ordinary viewport handles.
+Open ribbons are the first supported authoring form, including vertical walls.
+
+Generation uses randomized surface candidates, spline density, large/medium/small
+stages per Include, cross-spline overlap pruning and small-point gap filling.
+Mesh/weight arrays, count,
+size proportions/ranges, sampling spacing, packing clearance, rotation, attachment
+depth, density and seed remain editable. Internal trace/noise/pruning switches
+are fixed. All names/categories are English and tooltips Korean. Runtime is
+Blueprint and native PCG only; Python is authoring/verification only.
+
+Verification must cover all three erosions in source RXPart, two transformed
+Level Instances, PIE selected-only loading and matching preview/runtime results.
+Required deltas: spline shape/width, Include/Exclude toggle, independent erosion
+edits, mesh overrides/weights, count, size, spacing and packing. Test exclusion
+precedence, wall-back rejection, non-grid placement, finite candidate budget and
+cleanup of old actors/assets/references. Capture actual generated results.
+Promote only after dependency audit, Blueprint compile and full regression gate.
+
+Per-spline controls are implemented by three native packing workers and one
+shared native stats worker. Exclusions apply before local packing. Candidate
+slots are reserved evenly per Include, including disabled Includes, and rounded
+down to stay within the common budget without reallocating other regions.
+BoundsScale adjusts pruning bounds about their centre and does not rescale meshes;
+values below 1 permit actual mesh penetration. MaxCount is an upper limit.
+RebuildPreview on a region forwards to its attached Layout's dispatcher. The
+editor-only preview registers only on its own Layout and unbinds the prior Layout
+before rebinding. Layout has no Preview class/PCG graph hard dependency. Counts
+update after global pruning; excludes and inactive
+erosions reset to zero. Preview remains editor-only but uses an Actor parent for
+calls from ordinary BPs. Nine migrated Layout variables are removed with an exact
+allowlist after live PCG and BP consumer audits and independent review.

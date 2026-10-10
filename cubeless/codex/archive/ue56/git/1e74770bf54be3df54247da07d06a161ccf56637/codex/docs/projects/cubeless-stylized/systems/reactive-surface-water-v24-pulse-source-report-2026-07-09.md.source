@@ -1,0 +1,31 @@
+# Reactive Surface Water V24 Pulse Source Report - 2026-07-09
+
+- Verdict: `PASS`
+- Goal: stop foot-attached circular Water normals by converting Water source input from every-tick stamps to movement-gated pulses.
+- Niagara solver baseline: V19 history-only normal output; direct normal `Positions` overlay remains removed.
+
+## Defaults
+- RS_Water_PulseTimer: `0.0`
+- RS_Water_PulseInterval: `0.12`
+- RS_Water_PulseMinSpeed: `25.0`
+- RS_Water_PulseDebugCount: `0.0`
+
+## Checks
+- compile error/warning: `0` / `0`
+- movement positions lengths: `[0, 0, 0, 0, 0, 0]`
+- stationary positions lengths: `[0, 0, 0, 0]`
+- pulse debug counts: `{'before': 1.0, 'after_move': 7.0, 'after_stationary': 7.0}`
+- pulse during movement: `True`
+- empty during stationary: `True`
+- no stationary pulse: `True`
+- RT nonzero: `True`
+
+## Visual Capture
+- RT nonzero count: `36013`
+- RT bbox: `[372, 358, 664, 659]`
+- GIF: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV24PulseSource\rt_capture\water_v24_pulse_source_full_plus_zoom.gif`
+- Contact sheet: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV24PulseSource\rt_capture\water_v24_pulse_source_contact_sheet.png`
+
+## Evidence
+- JSON: `D:\Git\UnrealMCP5_6_1\codex\docs\projects\cubeless-stylized\systems\evidence\reactive-surface-water-v24-pulse-source-results-2026-07-09.json`
+- Bridge log: `D:\Git\UnrealMCP5_6_1\MCPGameProject\Saved\MCP\ReactiveSurfaceWaterV24PulseSource\water_v24_pulse_source_bridge_results.json`

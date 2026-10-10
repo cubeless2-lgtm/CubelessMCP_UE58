@@ -1,0 +1,84 @@
+{
+  "schema": "cubeless_operations_implementation_status_v1",
+  "date_kst": "2026-10-10",
+  "active_guidance": "cubeless/codex/AGENTS.md",
+  "roles_rewritten": 7,
+  "roles_launched_by_documents": 0,
+  "archived_documents": {
+    "selected_documents": 792,
+    "archived_documents": 792,
+    "variant_files": 2331,
+    "all_nul_working_tree": 16,
+    "changed_since_planning": 0,
+    "errors": 0
+  },
+  "archive_independent_rehash": {
+    "checked_variants": 2331,
+    "hash_mismatches": []
+  },
+  "legacy_skills": {
+    "count": 6,
+    "state": "historical preservation only; not installed as active skills"
+  },
+  "legacy_execution_scripts": {
+    "candidate_count": 3518,
+    "state": "full migration incomplete; initial Blueprint smoke authored only"
+  },
+  "initial_pipeline": {
+    "legacy_id": "OPS56-VERIFY-002",
+    "path": "cubeless/tools/pipelines/blueprint_mutation_smoke.py",
+    "state": "implemented_not_live_executed_by_this_agent",
+    "phases": [
+      "author",
+      "reload",
+      "cleanup"
+    ],
+    "legacy_graph_scope": "two Branch nodes only; not full graph feature parity",
+    "mutation_runtime_evidence": "root integration pending"
+  },
+  "offline_tests": {
+    "evidence": "operations-offline-tests-v3.json",
+    "tests": 13,
+    "passed": true,
+    "scope": "synthetic report/transport failure counterexamples only"
+  },
+  "official_http_evidence": [
+    {
+      "evidence": "operations-official-discovery.json",
+      "endpoint": "http://localhost:8000/mcp",
+      "status": "pass",
+      "call_count": 4,
+      "elapsed_sum_seconds": 9.234681,
+      "median_request_seconds": 2.332178,
+      "scope": "read-only discovery/schema; one sample, not mutation or batch benchmark"
+    },
+    {
+      "evidence": "operations-programmatic-schema.json",
+      "endpoint": "http://127.0.0.1:8000/mcp",
+      "status": "pass",
+      "call_count": 5,
+      "elapsed_sum_seconds": 1.402904,
+      "median_request_seconds": 0.332663,
+      "scope": "read-only discovery/schema; one sample, not mutation or batch benchmark"
+    },
+    {
+      "evidence": "operations-plugin-schema.json",
+      "endpoint": "http://127.0.0.1:8000/mcp",
+      "status": "pass",
+      "call_count": 5,
+      "elapsed_sum_seconds": 1.402622,
+      "median_request_seconds": 0.333905,
+      "scope": "read-only discovery/schema; one sample, not mutation or batch benchmark"
+    }
+  ],
+  "source_modifications": false,
+  "editor_asset_mutations_by_this_agent": false,
+  "engine_source_modified": false,
+  "remaining": [
+    "Actual initial pipeline author/reload/cleanup integration",
+    "All other legacy pipelines and verification Python",
+    "Additional ignored/uninventoried docs and binary/JSON evidence",
+    "Semantic migration of all historical lessons and skills",
+    "MCP-free packaging/run evidence by root workflow"
+  ]
+}

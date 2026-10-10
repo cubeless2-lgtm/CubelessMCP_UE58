@@ -1,0 +1,106 @@
+# Cubeless Cloud VDB Study 02 — Hero Growing Tower
+
+## 결과
+
+선정 VDB 9개를 Cumulus 받침과 3단 Cumulonimbus 타워로 조합하고, 지상 플레이어 화면에 맞춰 km 단위로 확대·배치했습니다. 구름군을 Z축으로 `-90°` 회전해 받침이 플레이어 쪽에서 보이게 했으며, 밀도는 화면 비교 후 이전의 `45%`로 조정했습니다. 현재는 **크기·배치 검수용 패스**입니다. 하단에 몰린 어두운 부분과 상부의 평평한 명암은 추가 폴리시가 필요합니다.
+
+**현재는 구름군 하나의 시험 배치이며, 하늘 전체에 구름군을 분포시킨 단계가 아닙니다.** 형태를 다듬은 뒤 다른 구름군과 상층 Crown을 준비하고 전체 하늘을 구성합니다.
+
+- 대상 맵: `/Game/CubelessClouds/Studies/Study_02_HeroGrowingTower/L_Study_02_HeroGrowingTower`
+- 구성: 독립 `BP_Cloud_Forge_VDB` 액터 9개, 고유 VDB 9개
+- 원본: `/Game/Cloud_VDB`의 기존 Blueprint·Material·Sparse Volume Texture
+- 렌더링: 기존 `HeterogeneousVolumeComponent`의 직접 VDB 렌더링. Nubis³식 통합 밀도장 렌더러나 `VolumetricCloud` 전환은 아직 구현하지 않았습니다.
+- 캡처: 일반 에디터 뷰포트 5방향 → 상반구 Polar UV
+- 재현·검증: `scripts/build_cloud_vdb_hero_growing_tower_study_ue.py`
+
+## 일반 뷰포트에서 보기
+
+PIE는 필요하지 않습니다. 대상 맵을 연 뒤 Perspective 뷰포트에서 `Realtime`을 켜고 콘솔 변수 `r.HeterogeneousVolumes 1`을 적용하면 VDB 구름이 표시됩니다. 비교 구도는 위치 `(-400, 0, 124) cm`, Pitch `11°`, Yaw `0°`, FOV `70°`입니다. `G` 키로 아이콘을 숨기거나 다시 표시할 수 있습니다.
+
+사용자의 `BP_ThirdPersonGameMode`, 검수용 캐릭터, `PlayerStart (0, 0, 10) cm`와 바닥 Plane을 유지했습니다. Play를 누르면 사용자 플레이어로 규모와 배치를 확인할 수 있습니다. 캡처 스크립트는 PIE를 자동 시작·종료하지 않습니다.
+
+## 사용자 아트 수정
+
+World Outliner에서 `CubelessClouds/Study_02_HeroGrowingTower/Clouds`를 펼치면 `Core`, `Tower`, `Lobe`, `Connector`, `Edge` 역할별 폴더와 번호가 붙은 액터를 찾을 수 있습니다. 각 액터의 `Location`, `Rotation`, `Scale`을 직접 조정하면 됩니다.
+
+사용자가 수정한 Transform을 현재 아트 기준으로 취급합니다. 최초 빌드는 기존 Study 02 액터가 있으면 중단하는 create-only 방식이며, 이후 `snapshot`과 `capture-polar`는 열린 맵의 실제 값을 읽기만 하므로 수동 배치를 초기값으로 되돌리지 않습니다.
+
+## 현재 배치
+
+위치는 Unreal 기본 단위인 **cm**, 스케일은 배율입니다. 배치 피벗은 `(675750, 212000, 100000) cm`이고 지상 원점에서 수평거리 약 `7.08 km`입니다. 실제 구름 크기·고도는 밀도가 차 있는 영역에 따라 달라집니다. VDB 경계 상자에는 빈 공간이 있으므로 피벗이나 상자 크기를 보이는 구름 경계로 해석하지 않습니다.
+
+| ID | 역할 | VDB | 위치 | 스케일 | Density / Self Shadow |
+| --- | --- | --- | --- | --- | --- |
+| `C01` | Core | `AP_Cumulus_Cloud_09` | `(654750, 192500, 97000)` | `(1920, 1740, 1440)` | `0.081 / 0.285` |
+| `L01` | Lobe | `Kit_02_Cumulus_01` | `(666750, 222500, 97000)` | `(1920, 1650, 1380)` | `0.072 / 0.270` |
+| `L02` | Lobe | `Kit_02_Cumulus_06` | `(666750, 156500, 97000)` | `(1980, 1710, 1440)` | `0.07425 / 0.2775` |
+| `N01` | Connector | `Kit_02_Cumulus_04` | `(675750, 252500, 100000)` | `(2040, 1680, 1200)` | `0.0585 / 0.2325` |
+| `N02` | Connector | `Kit_02_Cumulus_14` | `(675750, 123500, 100000)` | `(1800, 1530, 1140)` | `0.05625 / 0.225` |
+| `E01` | Edge | `Kit_cumulus_04` | `(684750, 279500, 103000)` | `(1800, 1410, 1110)` | `0.045 / 0.2025` |
+| `T01` | Tower | `AP_Cumulonimbus_Cloud_01` | `(660750, 192500, 52000)` | `(1200, 1080, 1440)` | `0.0594 / 0.3225` |
+| `T02` | Tower | `Kit_cumulonimbus_07` | `(672750, 150500, 118000)` | `(930, 840, 1020)` | `0.0531 / 0.3075` |
+| `T03` | Tower | `Kit_02_Cumulonimbus_03` | `(678750, 123500, 187000)` | `(690, 630, 720)` | `0.0486 / 0.285` |
+
+조명은 Key Sun `8.5`, Cool Fill `1.35`, 실시간 SkyLight `1.5`입니다. 두 Directional Light의 Forward Shading Priority는 `1 / 0`으로 분리했습니다.
+
+9개 액터의 Trace Distance는 `2000000 cm`입니다. Max Shadow Trace Distance `30000 → 600000`, Lighting Cache `2 → 0` 비교만으로 하부 명암 문제가 해결되지는 않아 원래 값으로 복원했습니다. 밀도를 스케일의 역수로 줄이면 형태가 희미해졌으므로 최종 밀도는 이미지 비교로 선택했습니다.
+
+## 일반 뷰포트 이미지
+
+### Beauty
+
+![Hero Growing Tower Beauty](Images/Study_02_HeroGrowingTower_Beauty_Viewport.png)
+
+### Polar UV — Clean
+
+![Hero Growing Tower Polar Clean](Images/Study_02_HeroGrowingTower_PolarReview_Clean_Viewport.png)
+
+### Polar UV — Annotated
+
+![Hero Growing Tower Polar Annotated](Images/Study_02_HeroGrowingTower_PolarReview_Annotated_Viewport.png)
+
+Polar UV의 중심은 천정 `+Z`, 원 둘레는 수평선입니다. 위쪽은 North `+Y`, 오른쪽은 East `+X`입니다. Clean은 전체 실루엣과 여백을, Annotated는 액터 ID와 고도·방향을 확인하는 이미지입니다.
+
+현재 Polar 이미지에는 캡처 방향 사이의 밝기 경계가 남아 있습니다. 구름 방향·면적·여백을 보는 보조 자료이며 최종 색감 판단은 Beauty/플레이어 화면에서 합니다. 기존 `PlayerGround_PIE.png`는 회전·밀도 조정 전 비교 이미지이므로 현재 배치의 최종 캡처로 사용하지 않습니다.
+
+## 검수 명령
+
+저장소 루트에서 실행합니다. 사용자 배치를 수정한 뒤 맵을 저장하고 `snapshot` 또는 `capture-polar`로 갱신합니다. 과거 `initial-build`, `art-pass-03`, `player-ground-real-scale-pass-01`은 다시 실행하지 않습니다.
+
+```powershell
+uv --directory .\Python run python ..\scripts\build_cloud_vdb_hero_growing_tower_study_ue.py --stage snapshot
+uv --directory .\Python run python ..\scripts\build_cloud_vdb_hero_growing_tower_study_ue.py --stage capture-polar
+uv --directory .\Python run python ..\scripts\build_cloud_vdb_hero_growing_tower_study_ue.py --stage capture-editor-ground
+```
+
+`capture-editor-ground`는 현재 일반 뷰포트 해상도로 캡처합니다. `capture-player-ground`는 사용자가 이미 Play 중일 때만 현재 플레이어 시야를 `1816×1017`로 촬영합니다. 카메라를 돌리거나 PIE를 시작·종료하지 않습니다. 현재 에디터 상태에서는 일반 뷰포트 경로만 새로 검증했습니다.
+
+## 검증
+
+- Cloud actor·`HeterogeneousVolumeComponent`·동적 Material instance 각 9개 확인
+- 현재 맵의 실제 9개 배치를 스냅샷에 기록. 빌더의 최초 배치 상수는 과거 생성 기준이며 현재 맵을 덮어쓰는 용도로 사용하지 않음
+- 5방향 일반 뷰포트 캡처와 Polar 투영 성공
+- 캡처 전후 dirty content/map package 변화 0
+- 완성 맵의 transitive UnrealMCP 의존성과 바이너리 표식 0
+- Polar 방향 self-test 11/11 통과
+- 마스크 생성, VDB/텍스처 베이크, Texture2D 임포트 없음
+- 프로젝트 C++ 변경 없음
+- 최종 Python 문법 검사와 Polar 방향 self-test 통과
+- `uv --directory .\Python run python scripts\analysis\run_verification.py --profile full`: **42/42 통과**, exit `0`. Windows / Python `3.11.8`; 검증 전후 입력 3594개 해시 변화 없음
+- `uv --directory .\Python run python scripts\smoke_live_bridge.py`: 읽기 전용 **6/6 통과**
+- 캡처 세션 처리 독립 검토 완료. 자동 PIE 시작·종료 제거, 기존 세션에서 촬영만 수행
+
+전체 검증의 첫 실행에서는 과거 Obsidian 동기화 스크립트의 고정 PC 경로가 발견됐습니다. 경로를 현재 저장소 기준으로 바꾸고 해당 CLI의 자동 발행을 중단한 뒤, 최종 전체 검증을 새로 실행해 통과했습니다. Obsidian 문서는 갱신하지 않았습니다.
+
+검증 증거는 [최종 요약](../../../MCPGameProject/Saved/CubelessClouds/Verification/20260913_PlayerGround_Final/summary.json)과 [전체 로그](../../../MCPGameProject/Saved/CubelessClouds/Verification/20260913_PlayerGround_Final/full.log)에 있습니다. 이후 변경은 이 검증 결과를 설명하는 MD 문구뿐입니다. 현재 맵 SHA-256은 `d631224bcac16954eddab09a222da7f346e0ae58043260e1ab2faaf644567e72`입니다.
+
+정확한 현재 값은 [current_layout_snapshot.json](current_layout_snapshot.json), 생성·캡처 이력은 [study_manifest.json](study_manifest.json)에 기록했습니다.
+
+작업 기록은 이 MD와 아트 구성 계획에만 갱신합니다. Obsidian 별도 노트와 이미지 복사는 중단했습니다. 사용자는 이 MD를 Obsidian으로 열람·정리할 수 있습니다.
+
+## 관련 파일
+
+- [작성·검수 스크립트](../../../scripts/build_cloud_vdb_hero_growing_tower_study_ue.py)
+- [Polar 변환기](../../../scripts/cloud_polar_review.py)
+- [대상 맵](../../../MCPGameProject/Content/CubelessClouds/Studies/Study_02_HeroGrowingTower/L_Study_02_HeroGrowingTower.umap)
+- [아트 구성 계획](../CubelessClouds_ArtCompositionPlan_20260913.md)

@@ -1,0 +1,61 @@
+# 레벨 카드: `Fog_Mist_PASSIVE`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Fog_Mist_PASSIVE` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Fog_Mist_PASSIVE` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `14` |
+| Direct external | `9` |
+
+직접 의존성 수는 inventory 값이며 전이·runtime 필수성을 뜻하지 않는다.
+
+## 정적 의미
+
+- **Observed:** core host 없이 pawn-attached `SurfaceAlignedVolumes` 3개가 FVOL 2와 HVOL 1을 제공하며 Landscape25·moving balls2·point lights5가 있다.
+- **Inferred:** `Fog_Mist`의 solver-free passive 대조군이다.
+- **Unknown:** pawn별 activation, mid-zone fade, cvar와 실제 visibility/performance.
+- **Target fixture:** `TF_FogMist_Passive` 제안.
+
+## Actor / Component
+
+- manifest=`67 actors / 135 components / 7 pages / 1 component capture`.
+- actor class histogram: `StaticMeshActor=29; TextRenderActor=17; PointLight=5; NiagaraActor=3; MovingBall1_C=2; ThirdPersonCharacter_C=2; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; Fog_Mist_PASSIVE_C=1; Landscape=1; PawnAndCameraUtility_C=1; PostProcessVolume=1; SkyAtmosphere=1; SkyLight=1`.
+- component class histogram: `StaticMeshComponent=31; BillboardComponent=23; TextRenderComponent=17; LandscapeComponent=12; LandscapeHeightfieldCollisionComponent=12; ArrowComponent=7; PointLightComponent=5; SceneComponent=4; NiagaraComponent=3; BrushComponent=2; CameraComponent=2; CameraProxyMeshComponent=2; CapsuleComponent=2; CharacterMovementComponent=2; DrawFrustumComponent=2; SkeletalMeshComponent=2; SpringArmComponent=2; DirectionalLightComponent=1; ExponentialHeightFogComponent=1; MaterialBillboardComponent=1; SkyAtmosphereComponent=1; SkyLightComponent=1`.
+- sequence actor 0.
+
+## Runtime / Driver
+
+- Level BP=`67 nodes / 69 links / 0 variables / 0 errors`; pawn 1/2 possess, display-name 기반 FVOL/HVOL activate/deactivate, visibility, quality cvar, point-light 조건이 관찰된다.
+- runtime pawn switch/fade는 `pending`.
+
+## Niagara
+
+- core host 0; core path/preset은 해당 없음. `SurfaceAlignedVolumes` 3: `FVOL 200m passive` auto true, mid-zone faded-out auto true, `HVOL 32m passive` auto false.
+- full capture=`111 nodes / 147 links / 25 modules / 3 renderers / 4 scratch`, warning/error 0.
+
+## Material / Art
+
+- material refs=`5`, art refs=`1`; 핵심 output=`MI_FVOL_PASSIVE_FarBackgroundExtension`.
+- Manny/texture는 art 후보이며 passive volume system/material logic은 clean-room 대상이다.
+
+## Clean-room 구현 순서
+
+1. 두 pawn/Landscape/point-light scene을 구성한다.
+2. solver 없이 local HVOL과 두 far FVOL output을 독립 작성한다.
+3. pawn 전환·activate/deactivate·cvar orchestration을 새 BP로 만든다.
+4. `Fog_Mist`와 같은 카메라에서 runtime/fade/performance를 A/B 검수한다.
+
+## Evidence / Parity / Exception
+
+- revision=`8eaca9421e15bc1824a4308a318e61fa`, query=`2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- [family observation](../../concepts/remaining-volume-particle-performance-level-observation.md).
+- implementation/runtime/parity는 `pending`; art만 조건부 localization 후보다.

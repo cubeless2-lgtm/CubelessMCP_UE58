@@ -1,0 +1,64 @@
+# 구름 점 노이즈 수정과 외곽·하부 2차 조정
+
+아트 1차안을 `9b56d1cb4477773f8fe90f3f2c5fa90f1b66a8d7`로 main에 제출·푸시한 뒤, 사용자 에디터 시점의 얇은 구름에서 보이던 점 노이즈를 줄였습니다. 이번 제출에는 노이즈 수정, 외곽·하부 2차 조정, 편집 스크립트와 검증 기록을 포함합니다.
+
+## 결과
+
+| 수정 전 | 수정 후 |
+| --- | --- |
+| ![사용자 시점 이전](Images/Baseline_User.png) | ![사용자 시점 최종](Images/Final_User.png) |
+
+![대표 타워 최종](Images/Final_Hero.png)
+
+광선 샘플 수를 늘렸을 때 얇은 구름의 큰 점무늬가 줄었고, 미세 밀도 필터와 외곽 감쇠를 추가해 하단과 경계를 정리했습니다. 섬유처럼 갈라진 원본 VDB의 형태와 일부 미세한 잔무늬는 남습니다. 모든 노이즈가 제거됐거나 최종 게임 성능을 달성했다는 의미는 아닙니다.
+
+사용자 시점 비교는 동일 위치·회전·FOV 100°, 966×572의 일반 에디터 캡처입니다. 비교 카메라를 사용한 뒤 기존 사용자 카메라를 복원했습니다. [타워](Images/Final_Hero.png)와 [하부](Images/Final_Lower.png)는 보조 구도입니다.
+
+## 원인 비교와 선택
+
+- 초기 `View Sample Count Scale`은 2였습니다. UE 5.6.1의 기본 광선 샘플 수 96과 곱하면 상한은 192이며, 이를 8로 올려 768로 확장했습니다. 실제 광선별 샘플 수는 통과 거리·조기 종료에도 영향을 받습니다.
+- `r.VolumetricRenderTarget.Mode` 0·1·2·3을 비교했습니다. 해상도 모드 변경만으로 점무늬는 해결되지 않았고, 샘플 수 증가가 주요 개선 요인이었습니다. 최종 모드는 원래 값 **0**으로 복원했습니다. 프로젝트 전역 렌더 설정은 변경하지 않았습니다.
+- Mip 2는 대표 타워의 작은 형태까지 지나치게 흐려 최종값으로 선택하지 않았습니다. Mip 1과 약한 외곽 감쇠를 사용합니다.
+- 초기 진단에서 `r.PostProcessAAQuality`를 조회하면 0이 반환됐으나, UE 5.6.1 로그상 **존재하지 않는 CVar**였습니다. AA가 꺼져 있다는 증거가 아니며 설정 시도도 효과가 없었습니다. 실제 `r.AntiAliasingMethod`는 4였습니다.
+
+모드·샘플 수의 엔진 동작은 [Epic UE 5.6 Volumetric Cloud 문서](https://dev.epicgames.com/documentation/en-us/unreal-engine/volumetric-cloud-component-in-unreal-engine?application_version=5.6)와 로컬 UE 5.6.1의 `VolumetricCloudComponent.h`, `VolumetricCloudRendering.cpp`, `VolumetricRenderTarget.cpp`에서 확인했습니다. 성능 대비 품질 선택은 위 실제 화면 비교를 근거로 했습니다.
+
+## 직접 수정하는 값
+
+| 편집 위치 | 항목 | 이전 → 최종 | 효과 |
+| --- | --- | --- | --- |
+| 레벨 `CloudLayout > CloudRenderer` | `View Sample Count Scale` | 2 → **8** | 얇은 밀도층의 광선 샘플 부족 완화 |
+| 같은 컴포넌트 | `Shadow View Sample Count Scale` | 1 → **2** | 구름 내부 그림자 샘플 보강 |
+| 같은 컴포넌트 | `Sky Light Cloud Bottom Occlusion` | 0.50 → **0.58** | 하부 명암을 약간 보강 |
+| `MI_VC_CloudAuthoring > Cloud Art` | `CloudDetailMip` | 신규 → **1** | 원본 SVT의 미세 밀도 필터. 0은 원본 상세도, 1·2는 더 부드러운 단계 |
+| 같은 머티리얼 인스턴스 | `CloudEdgeFeather` | 신규 → **0.03** | 낮은 밀도 경계만 부드럽게 감쇠. 0은 기존 계산 |
+
+두 새 머티리얼 값은 32개 슬롯 전체에 적용됩니다. 개별 구름은 기존 Details의 `Density`·`EdgeCut`을 계속 사용합니다. 위치·회전·크기, 원본 VDB, 슬롯 번호·아이콘·그룹 편집은 유지했습니다. 머티리얼 인스턴스와 레벨을 함께 저장하면 됩니다.
+
+마스터의 새 파라미터 기본값은 0으로, 두 값을 0으로 놓으면 이전 밀도 계산을 유지합니다. `CloudDetailMip`는 SVT에 이미 있는 mip을 사용하며 새 VDB·마스크·베이크를 만들지 않습니다. 기존 산란 함수·색·ExtinctionPerMeter 값은 유지했습니다.
+
+품질을 우선한 현재 설정은 렌더링 비용이 증가합니다. 샘플 상한 배율을 실제 FPS 배율로 해석하면 안 됩니다. 목표 GPU별 프레임 시간과 패키지 실행 성능은 아직 측정하지 않았습니다.
+
+## 저장·검증
+
+- 맵: `/Game/CubelessClouds/Studies/Study_03_AnvilCrown/L_Study_03_AnvilCrown`
+- 에셋: `/Game/CubelessClouds/VolumetricCloud/LiveEditing/Authoring/M_VC_CloudAuthoring`, `MI_VC_CloudAuthoring`
+- [배치 보존 비교](preservation.json): 70개 액터, 위치·회전·크기 수치 오차만 존재, 개별 밀도·EdgeCut·부모 변경 0개.
+- [머티리얼 컴파일](material_compile.json): 오류 0개. [그래프 연결·의존성 감사](material_and_dependency_audit.json): 32개 mip 연결·32개 외곽 감쇠 연결 확인, MCP·Python·프로젝트 에디터 유틸리티 의존성 없음.
+- [저장 결과와 SHA-256](saved.json): 저장 직후 dirty content/map 0개, 사용자 GameMode·PlayerStart 유지.
+- **전체 오프라인 42/42 통과:** 최종 스크립트·맵 수정 후 새로 실행했습니다. 동일 저장소의 분리된 후보 입력 6,591개를 전후 비교해 변경 0개를 확인했습니다. [실행 결과](Verification/summary.json), [로그](Verification/full.log), [입력 해시](Verification/inputs.json), [후보 동등성](Verification/final_equivalence.json).
+- **UnrealMCP 비활성 재로드 통과:** 별도 UE 5.6.1 프로세스에서 맵 로드와 native Blueprint 초기화를 확인했습니다. 28개 슬롯, View 8·Shadow 2, Mip 1·Feather 0.03, 하부 음영 0.58이 유지됐습니다. [결과](cold_result.json), [로그](Verification/cold.log).
+- **DX12/SM6 지정 맵 cook 통과:** 115개 패키지, 오류 0개, 머티리얼 fallback 없음, 에디터 유틸리티 cook 제외. 기존 Lumen 설정 우선순위 경고 2개가 있습니다. [결과](cook_result.json), [로그](Verification/cook_sm6.log).
+
+첫 재로드 검사에서는 그림자 샘플 값이 1로 돌아간 것을 검출했습니다. 컴포넌트 값을 연속 편집한 뒤 이전 UObject 래퍼를 재사용하지 않도록, 각 속성 적용마다 컴포넌트를 다시 조회하고 별도 호출에서 readback하는 방식으로 수정했습니다. 수정 후 재로드와 전체 검증을 새로 통과했습니다. [첫 실패 증거](First_cold_result.json), [저장 수정 확인](shadow_persistence_fix.json). 저장 직전의 첫 범위 검사도 dirty package를 객체 표시 문자열과 비교해 중단됐으므로, 실제 패키지 이름으로 검증한 뒤 저장했습니다. 공유 에디터의 저장 전후 상태를 확인했고 알 수 없는 변경 결과는 남아 있지 않습니다.
+
+추적용 로그는 행 끝 공백만 정규화했습니다. 원본 출력과 실행 스크립트는 프로젝트 `Saved/CubelessClouds/NoisePolish_20260914`에 보관합니다. 최종 검증 뒤에는 설명용 MD와 결과 증거만 갱신했습니다.
+
+지원 기준은 UE 5.6.1 DX12/SM6입니다. 기존 DX11/SM5 샘플러 제한은 그대로이며, 이번 결과는 전체 실행 파일 패키징 완료를 뜻하지 않습니다. 공유 에디터 재시작·맵 변경·PIE 시작/종료는 하지 않았습니다. 기록은 이 MD와 연결된 증거만 유지합니다.
+
+## 재현 자료
+
+- [조정 스크립트](../../../scripts/polish_cloud_noise_ue.py): 품질 비교, 중립 기본값의 머티리얼 제어 추가, 디테일·음영 적용, 복원 가능한 카메라 캡처.
+- [초기 상태](before.json), [초기 샘플 노드](material_before.json), [최종 배치](Final_layout.json)
+- [해상도만 변경](Images/Mode1_Samples2.png), [샘플 수 증가](Images/Mode0_Samples8.png), [Mip 2 비교](Images/Mip2_Feather003.png)
+- [아트 구성 계획](../CubelessClouds_ArtCompositionPlan_20260913.md), [제출된 아트 1차 기록](../CubelessClouds_HeroArt_20260914/README.md)

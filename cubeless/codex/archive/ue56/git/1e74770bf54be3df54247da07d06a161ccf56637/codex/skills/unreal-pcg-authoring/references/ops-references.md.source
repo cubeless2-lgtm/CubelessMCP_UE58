@@ -1,0 +1,20 @@
+# Ops References
+
+Resolve paths from this repository's `codex/` root unless explicitly overridden by a file.
+
+## Always Read
+
+- `docs/workflows/pcg-blueprint-authoring.md`
+- `docs/workflows/unreal-asset-authoring.md`
+
+## Read When Relevant
+
+- `docs/projects/cubeless-stylized/systems/pcg-dungeon/pcg-dungeon-review-checklist.md` for PCG Dungeon delivery review.
+- `docs/projects/cubeless-stylized/systems/pcg-dungeon/pcg-dungeon-operator-guide.md` for PCG Dungeon operator-facing behavior.
+- `docs/projects/cubeless-stylized/systems/pcg-dungeon/pcg-dungeon-v2-prototype.md` for V2 controller, preset, and runner behavior.
+- `docs/projects/cubeless-stylized/learning/pcg/pcgstudy-source-independent-authoring.md` for source-independent PCG authoring lessons.
+- `docs/projects/cubeless-stylized/learning/pcg/pcg-cpp-improvement-backlog.md` for historical C++ and tooling improvement notes.
+
+## Verification Tools
+
+Use project-local tools from the active Unreal project when present. In this repository, common checks include `Tools/Unreal/check_pcg_dungeon_delivery_preflight.py`, `Tools/Unreal/audit_pcg_dungeon_asset_manifest.py`, and targeted runner scripts under `Tools/Unreal/`.

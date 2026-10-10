@@ -1,0 +1,13 @@
+# Evolution V03 relief study
+
+User-selected source: /Game/RXSkySystem/Cubeless/PaintedCloud/v03/Evolution/T_PaintedCloud_Evolution_v03. Midtones texture was rejected. Material default, MI, BP CDO and placed actor were restored to Evolution. Midtones has zero confirmed package referencers but deletion is pending: live Python force-delete was blocked by editor safety guard. Do not claim it was deleted.
+
+CloudHeight_Evolution_v03.png was generated with built-in image_gen against a grayscale R*A inspection of the exact Evolution packed PNG. Earlier Midtones-derived height candidate was rejected and not imported. Generative registration is approximate.
+
+Added independent BP instance controls in Clouds|Relief: CloudPOMStrength 0.012 (shader clamps 0–0.05), CloudPOMSteps 8 (4–12), CloudHeightLightStrength 0.5 (0–1). Zero strengths disable their respective effects. POM is a bounded height-field ray intersection with linear refinement and gradient texture sampling, applied to the shared packed RGBA UV. Height-gradient lighting modifies the painted shade with the current light direction while retaining the sky-colour floor. Weak edge coverage suppresses relief. No pixel depth offset or self-shadow ray march.
+
+Fixed-pose screenshots Off/POM/HeightLight/Both are in Saved/PaintedEvolutionV03/Relief_Compare.png. POM is subtle near the dome centre; height lighting has the more visible effect. BP compile 0 errors/0 warnings, material compile 0 errors, direct dependency audit found no MCP-only references. Restored automatic cloud time after comparison. GPU timings and new PIE verification not measured; previous full repository verification remains blocked by unrelated Niagara gates. Backups: Saved/PaintedEvolutionV03/BeforePOM_*.
+
+## Prompt
+
+Convert THIS exact cloud texture into an aligned smooth geometric height map for parallax occlusion mapping. Preserve the exact cloud footprint positions and sizes, tiny thin wisps, empty space and circular polar projection. Do NOT enlarge, add or move any clouds. Output opaque grayscale on pure black empty background. Model broad smoothly rounded overlapping cumulus lobes with smooth gray gradients, bright means geometrically raised, dark means recess, not directional light. Disregard the painted highlights as lighting: create continuous rounded geometric relief with no outlines, no tiny grain, no cast shadows. Thin wisps extremely low relief, dark gray fading smoothly to zero. Silhouette boundaries height zero, interiors broad rolling hills with irregular overlapping lobes. No text or grid. This input is the correct Evolution_v03 asset, not the newer Midtones version.

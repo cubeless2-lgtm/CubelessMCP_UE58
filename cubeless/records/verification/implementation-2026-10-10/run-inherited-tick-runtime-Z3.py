@@ -1,0 +1,6 @@
+import sys,json
+sys.path.insert(0, 'C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\tools\\verification')
+from verify_inherited_tick_runtime import verify
+result=verify(**{'project_file': 'C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\CubelessRuntimeProof.uproject', 'parent_package': '/Game/CubelessMCPTests/InheritedTick_6b21f697646d4900abcb12a26f72cd04/BP_TickParent', 'parent_sha256': '6201a3e3752afbdc161625c9210977bf43e4d50124a8c5409e6af75b4bbdaddb', 'host_package': '/Game/CubelessMCPTests/InheritedTick_6b21f697646d4900abcb12a26f72cd04/BP_TickHost', 'host_sha256': '5594a1c7a9eda69f40afdd9c0b1ac160940bcd241af0721bc9118d126990a770', 'component_package': '/Game/CubelessMCPTests/FunctionTimer_ac30351e04c74596887ffe9b9146f4dd/BP_FunctionTimer', 'component_sha256': 'bf97de438589de1155166eba36d99c05a98ea7398d918bd5fb018a71ddb5c3b1', 'report_path': 'C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\records\\verification\\implementation-2026-10-10\\inherited-tick-runtime-Z3.json'})
+print(json.dumps({k:result.get(k) for k in ("success","stage","error","outcome_unknown","calls_verified")},ensure_ascii=True))
+if not result["success"]: raise RuntimeError("Inherited Tick runtime failed; inspect report without automatic retry")

@@ -1,0 +1,75 @@
+{
+  "scope": "single bootstrap fixture samples; not a whole-migration benchmark or UE56 comparison",
+  "engine": "5.8.3 CL58210709",
+  "platform": "Win64",
+  "editor_flags": [
+    "-nullrhi",
+    "-unattended",
+    "-NoSound"
+  ],
+  "endpoint": "official UE ModelContextProtocol http://127.0.0.1:8001/mcp",
+  "workload": "Actor Blueprint, two Branch nodes, one exec link, one move, protected-delete negative case then delete, compile/save once; separate process reload",
+  "samples": [
+    {
+      "phase": "author",
+      "elapsed_seconds": 0.750446,
+      "call_count": 26,
+      "compile_attempt_count": 1,
+      "save_attempt_count": 1,
+      "mutation_request_count": 11
+    },
+    {
+      "phase": "reload",
+      "elapsed_seconds": 0.320406,
+      "call_count": 11,
+      "compile_attempt_count": 0,
+      "save_attempt_count": 0,
+      "mutation_request_count": 0
+    }
+  ],
+  "startup_included": false,
+  "network": "local loopback; synchronous sequential client calls",
+  "existing_user_editor": "left running separately",
+  "builds": [
+    {
+      "id": "B",
+      "kind": "incremental editor plugin",
+      "elapsed_seconds": 55.29,
+      "result": "pass"
+    },
+    {
+      "id": "C",
+      "kind": "incremental editor plugin",
+      "elapsed_seconds": 25.29,
+      "result": "pass"
+    },
+    {
+      "id": "D",
+      "kind": "incremental editor plugin",
+      "elapsed_seconds": 6.26,
+      "result": "pass"
+    },
+    {
+      "id": "Distribution-B",
+      "kind": "RunUAT BuildPlugin fresh host",
+      "ubt_seconds": 61.22,
+      "automation_reported_seconds": 62,
+      "result": "pass"
+    }
+  ],
+  "build_conditions": {
+    "toolchain": "MSVC 14.44.35228",
+    "sdk": "10.0.22621.0",
+    "logical_cores": 20,
+    "physical_cores": 14,
+    "physical_ram_gib": 31.73,
+    "build_parallelism": "incremental up to2; distribution auto limited to8",
+    "cache": "not cleared; PCH/workload differ between samples"
+  },
+  "limitations": [
+    "One sample per phase; no percentile or throughput generalization.",
+    "Discovery/session setup included in phase times; editor startup excluded.",
+    "No claim that multiple user operations are implemented as one engine batch; client presently issues sequential concrete tool calls.",
+    "Compile once and save once for graph authoring, but all original batch semantics remain independently pending."
+  ]
+}

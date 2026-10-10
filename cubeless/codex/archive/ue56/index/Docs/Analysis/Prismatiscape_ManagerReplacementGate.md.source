@@ -1,0 +1,287 @@
+# Prismatiscape Manager Replacement Gate
+
+작성일: 2026-06-26
+
+목적: `Prismatiscape_CloudNoise`까지 제거하려면 Manager BP/Niagara 의존성을 어디까지 대체해야 하는지 검증한다.
+
+## 결론
+
+`CloudNoise` 제거는 material/BP child 문제가 아니라 plugin Manager/Niagara 문제다. 현재 main에 올릴 수 있는 프로젝트 범위만으로는 마지막 demo entries `3`개를 기능 유지 상태로 제거할 수 없다.
+
+| 시도 | 결과 | 판정 |
+| --- | --- | --- |
+| `PrismatiscapeManagerClass=/Script/Prismatiscape.PrismatiscapeManager` config override | settings 값은 native Manager로 바뀜 | 적용은 됨 |
+| native `APrismatiscapeManager` 단독 PIE | registered components는 잡히지만 shape arrays와 RT가 모두 `0` | 기능 불충분 |
+| project-owned `APrismatiscapeStudyNativeManager` opt-in PIE/cook/smoke | shape arrays와 RT nonzero, staged config patch 성공 | prototype 통과 |
+| config override + `/Prismatiscape/Demo` NeverCook | cook error: `NiagaraGridDrawer -> Prismatiscape_CloudNoise` missing | 실패 |
+| Marketplace plugin source/asset 수정 | `.gitignore`로 push 범위 밖 | 별도 승인/배포 정책 필요 |
+
+## Evidence
+
+### Settings Override
+
+임시 config:
+
+```ini
+[/Script/Prismatiscape.PrismatiscapeSettings]
+PrismatiscapeManagerClass=/Script/Prismatiscape.PrismatiscapeManager
+```
+
+Editor Python 확인:
+
+| 항목 | 값 |
+| --- | --- |
+| `PrismatiscapeManagerClass` | `/Script/Prismatiscape.PrismatiscapeManager` |
+| `Prismatiscape_Manager_BP` loaded | `true` |
+| `Prismatiscape_Manager_BP_C` loaded | `true` |
+
+즉 config override는 적용되지만, `UPrismatiscapeSettings` constructor의 `ConstructorHelpers::FClassFinder`가 Manager BP를 여전히 로드한다.
+
+### Native Manager Runtime
+
+Clean verification map PIE/SIE 결과:
+
+| 항목 | 값 |
+| --- | --- |
+| Manager actor | `PrismatiscapeManager_0` |
+| Manager class | `/Script/Prismatiscape.PrismatiscapeManager` |
+| DeformComponents | `2` |
+| WindComponents | `1` |
+| InteractionBubbleComponents | `2` |
+| Deform capsule arrays | `0` |
+| Wind capsule arrays | `0` |
+| Interaction bubble arrays | `0` |
+| `Prismatiscape_Deform_RT` center 64x64 | `0 / 4096`, max abs `0.0` |
+| `Prismatiscape_Wind_RT` center 64x64 | `0 / 4096`, max abs `0.0` |
+| `Prismatiscape_InteractionBubble_RT` center 64x64 | `0 / 4096`, max abs `0.0` |
+
+원인:
+
+- `UPrismatiscapeDrawComponent::ToggleDrawing_Implementation`은 native에서 비어 있다.
+- `APrismatiscapeManager::UpdateAllVisibilities_Implementation`도 native에서 비어 있다.
+- `APrismatiscapeManager::PostTick`은 `BlueprintImplementableEvent`라 native base에서는 RT/Niagara/MPC 업데이트가 없다.
+
+따라서 native Manager로만 바꾸면 component registration은 살아 있지만 visual/runtime simulation은 죽는다.
+
+### Project-owned Native Manager Prototype
+
+프로젝트 runtime에 `APrismatiscapeStudyNativeManager`를 추가했다.
+
+| 항목 | 값 |
+| --- | --- |
+| Class path | `/Script/MCPGameProject.PrismatiscapeStudyNativeManager` |
+| 목적 | Manager BP 없이 project-owned manager path를 검증 |
+| 구현 범위 | visibility 활성화, component owner 평균 follow location, shape array 수집 유지, Deform/Wind/Interaction Canvas spatial placeholder draw, MPC resolution/location update |
+| 제외 범위 | Niagara grid simulation parity, temporal accumulation/smoothing, water/surface simulation, plugin hard-load 제거 |
+
+Clean material verification map에서 transient settings override로 PIE/SIE 검증했다.
+
+| 항목 | 값 |
+| --- | --- |
+| Manager actor | `PrismatiscapeStudyNativeManager_0` |
+| Manager class | `/Script/MCPGameProject.PrismatiscapeStudyNativeManager` |
+| DeformComponents | `2` |
+| WindComponents | `1` |
+| InteractionBubbleComponents | `2` |
+| Deform capsule arrays | `2` |
+| Wind capsule arrays | `1` |
+| Interaction bubble arrays | `2` |
+| `bUseSpatialStudyRenderTargets` | `true` |
+
+Canvas spatial placeholder readback은 full-target step `4` 샘플로 확인했다.
+
+| RT | Nonzero / Sampled | Max abs | Bounds | Centroid |
+| --- | --- | --- | --- | --- |
+| `Prismatiscape_Deform_RT` | `58 / 4096` | `0.94970703125` | `[104, 116, 148, 132]` | `[126.0, 123.72413793103448]` |
+| `Prismatiscape_Wind_RT` | `11 / 4096` | `0.599609375` | `[116, 132, 132, 140]` | `[124.0, 136.0]` |
+| `Prismatiscape_InteractionBubble_RT` | `42 / 4096` | `0.599609375` | `[116, 116, 148, 136]` | `[133.9047619047619, 126.0]` |
+
+BP-readable diagnostics도 같은 SIE gate에서 읽었다.
+
+| 항목 | 값 |
+| --- | --- |
+| `LastStudyRenderStats.bUsedSpatialRenderer` | `true` |
+| RT update bools | `[true, true, true]` |
+| Shape counts | `[2, 1, 2]` |
+| Array mismatch counts | `[0, 0, 0]` |
+| `FailedRenderTargetUpdateCount` | `0` |
+| RT sizes | `[[256, 256], [256, 256], [256, 256]]` |
+| Follow location | `[31.25, -46.25, 61.0]` |
+| `SimulationSizeWS` | `4096.0` |
+
+BP/automation에서 현재 배열 스냅샷을 직접 검증할 수 있게 `RefreshStudyDiagnosticsFromCurrentArrays()`를 추가했다. 이 함수는 `FlushAllArrays()`나 `GatherAllShapesFromRegisteredComponents()`를 호출하지 않고 현재 배열 기준으로 MPC/RT/stat만 갱신한 뒤 `LastStudyRenderStats`를 반환한다.
+
+`-nullrhi` SIE에서 transient mismatch 주입도 확인했다. RT update bool은 NullRHI 때문에 `[false,false,false]`이고 failure count는 `3`이므로, 이 run은 stat/API readback 전용으로 해석한다.
+
+| 단계 | Deform array lengths | Mismatch counts |
+| --- | --- | --- |
+| Baseline | `[2,2,2]` | `[0,0,0]` |
+| Inject start-only row | `[3,2,2]` | `[1,0,0]` |
+| Restored | `[2,2,2]` | `[0,0,0]` |
+
+settings manager class는 원래 Manager BP로 복구했고, PIE 종료 후 dirty package는 `0`이었다.
+
+MPC parity readback도 같은 SIE run에서 확인했다.
+
+| 항목 | 값 |
+| --- | --- |
+| `FollowLocationThisFrame` | `[31.25, -46.25, 61.0]` |
+| `Deform Resolution` | `256.0` |
+| `Wind Resolution` | `256.0` |
+| `Water Resolution` | `512.0` |
+| `SurfaceResolution` | `768.0` |
+| `SimulationSizeWS` | `4096.0` |
+| `Deform RT Location` | `[31.25, -46.25, 61.0, 0.0]` |
+| `Wind RT Location` | `[31.25, -46.25, 61.0, 0.0]` |
+| `Water RT Location` | `[31.25, -46.25, 61.0, 0.0]` |
+| `Surface RT Location` | `[31.25, -46.25, 61.0, 0.0]` |
+
+Cook/stage/smoke는 source config를 바꾸지 않고 staged config만 패치해서 검증했다.
+
+```powershell
+.\scripts\cook_prismatiscape_clean_map.ps1 `
+  -Map /Game/PrismatiscapeStudy/Maps/M_PrisStudy_CleanMaterialVerification `
+  -BuildGame `
+  -UseStudyNativeManager `
+  -SmokeLaunch `
+  -SmokeTimeoutSeconds 60
+```
+
+| 항목 | 값 |
+| --- | --- |
+| Game target build | `Succeeded` |
+| BuildCookRun | `BUILD SUCCESSFUL` |
+| Staged `PrismatiscapeManagerClass` | `/Script/MCPGameProject.PrismatiscapeStudyNativeManager` |
+| Source `GameDefaultMap` | `/Game/UltraDynamicSky/Maps/DemoMap.DemoMap` |
+| `DemoMap` staged entries | `0` |
+| `_MCP_Temp` staged entries | `0` |
+| `ExampleCharacter` staged entries | `0` |
+| `YeetoMosquito` staged entries | `0` |
+| `Prismatiscape_CloudNoise` staged entries | `3` |
+| Smoke launch exit code | `0` |
+
+판정:
+
+- project-owned manager replacement path는 실행 가능하며 lightweight MPC parameter parity와 Canvas spatial placeholder RT drawing까지 닫혔다.
+- 현재 prototype RT drawing은 shape 위치를 RT space로 찍는 학습/검증용 placeholder이며 Manager BP의 Niagara/grid simulation, temporal accumulation, water/surface simulation과 1:1 동등 구현은 아니다.
+- `CloudNoise=3`은 여전히 plugin settings constructor hard-load와 `ManagerBP -> NiagaraGridDrawer -> CloudNoise` chain 때문에 남는다.
+- source `DefaultGame.ini`에는 manager override를 넣지 않는다. opt-in smoke에서만 staged `DefaultGame.ini`를 패치한다.
+
+### NeverCook `/Prismatiscape/Demo`
+
+명령 요지:
+
+```powershell
+RunUAT BuildCookRun `
+  -project=...\MCPGameProject.uproject `
+  -cook `
+  -map=/Game/PrismatiscapeStudy/Maps/M_PrisStudy_CleanMaterialVerification `
+  -stage `
+  -skippackage `
+  -nopak `
+  -AdditionalCookerOptions="-NeverCookDir=/Game/UltraDynamicSky/Maps -NeverCookDir=/Prismatiscape/Demo"
+```
+
+결과:
+
+```text
+BUILD FAILED
+ExitCode=25
+LogCook: Error: Content is missing from cook.
+Source package: /Prismatiscape/Prismatiscape_NiagaraGridDrawer
+Target package: /Prismatiscape/Demo/ExampleMaterials/Textures/Prismatiscape_CloudNoise
+```
+
+`Prismatiscape_NiagaraGridDrawer`가 cook graph에 남는 한 `/Prismatiscape/Demo`를 통째로 제외할 수 없다.
+
+## Durable Implementation Options
+
+### Option A: Plugin Patch Line
+
+필요 조건:
+
+- Marketplace plugin source/content vendoring 또는 local patch 배포 정책 승인.
+- `UPrismatiscapeSettings` constructor의 hard-load 기본값을 native/soft reference로 바꿈.
+- Manager BP/NiagaraGridDrawer를 쓰지 않는 project-owned manager class를 config로 지정.
+
+장점:
+
+- cook graph에서 `Prismatiscape_Manager_BP`, `Prismatiscape_NiagaraGridDrawer`, `Prismatiscape_CloudNoise`를 근본적으로 제거할 수 있다.
+
+위험:
+
+- Prismatiscape plugin은 현재 `.gitignore`의 `MCPGameProject/Plugins/Prismatiscape/` 아래라 main push 범위 밖이다.
+- 라이선스/배포 범위 확인 없이 plugin source/content를 repository에 포함하면 안 된다.
+
+### Option B: Project-owned Native Manager/Renderer
+
+필요 구현:
+
+- `APrismatiscapeManager` subclass를 프로젝트 runtime에 추가.
+- `Tick`을 override해서 `SetFollowLocationThisFrame`, visibility 처리, array flush/gather, lightweight RT/MPC update를 C++에서 수행.
+- `UPrismatiscapeDrawComponent` 계열의 `bIsVisible`을 native path에서 안정적으로 활성화.
+- Clean material 후보가 쓰는 최소 RT 3종을 갱신:
+  - `Prismatiscape_Deform_RT`
+  - `Prismatiscape_Wind_RT`
+  - `Prismatiscape_InteractionBubble_RT`
+- `Prismatiscape_MPC`의 resolution/location/simulation size parameter를 설정.
+- 현재 project-owned prototype은 위 3개 RT에 Canvas spatial placeholder를 그린다.
+
+남는 문제:
+
+- 이 구현만으로는 `UPrismatiscapeSettings` constructor hard-load가 사라지지 않는다.
+- Canvas placeholder는 Niagara grid의 누적/감쇠/해시/물/표면 simulation과 동등하지 않다.
+- plugin patch 또는 cook graph에서 ManagerBP/NiagaraGridDrawer 참조를 끊는 별도 조치 없이 `CloudNoise` cook dependency는 남는다.
+
+### Option C: Packaging-only Trim
+
+staged loose files에서 `/Prismatiscape/Demo` 파일을 삭제하는 방식은 현재 채택하지 않는다.
+
+이유:
+
+- cook dependency graph가 깨진 상태를 숨긴다.
+- pak/IoStore packaging으로 가면 같은 방식이 바로 통하지 않는다.
+- runtime feature 보존 여부를 asset graph 수준에서 증명하지 못한다.
+
+## 이에타 판정
+
+다음 큰 구현은 두 단계 승인 단위로 나눠야 한다.
+
+1. Project-owned native manager/renderer prototype.
+2. Plugin hard-load 제거 정책 결정.
+
+지금 main에 안전하게 남길 수 있는 것은 검증된 판단이다. 즉 `CloudNoise=3`은 Manager replacement 전까지 known dependency이며, 현재 clean/segment map gate는 `DemoMap=0`, `_MCP_Temp=0`, `ExampleCharacter=0`, `YeetoMosquito=0`, `CloudNoise=3`을 기준으로 유지한다.
+
+## 티브렛 다음 작업 후보
+
+plugin patch가 승인되기 전에는 `PrismatiscapeStudy` 프로젝트 runtime에 native manager prototype을 만들 수 있다. 단, 이 작업의 검증 기준은 `CloudNoise=0`이 아니라 다음으로 둔다.
+
+| 기준 | 목표 |
+| --- | --- |
+| Manager class | project-owned manager subclass |
+| Components | clean map에서 Deform `2`, Wind `1`, Interaction `2` 이상 |
+| RT readback | Deform/Wind/Interaction RT spatial placeholder nonzero |
+| Diagnostics readback | `LastStudyRenderStats`에서 update bools, shape counts, array mismatch counts, RT sizes, failure count 확인 |
+| MPC readback | Prismatiscape MPC resolution/location/simulation size 값 확인 |
+| Cook/smoke | clean map smoke exit `0` |
+| Dependency | `/Script/UnrealMCP`, `_MCP_Temp`, `DemoMap` 없음 |
+
+`CloudNoise=0`은 plugin hard-load 제거 또는 공식 plugin patch 정책이 같이 들어올 때 최종 gate로 올린다.
+
+## 티브렛 Prototype 판정
+
+`APrismatiscapeStudyNativeManager`는 다음 gate를 통과했다.
+
+| 기준 | 결과 |
+| --- | --- |
+| Manager class | project-owned native subclass |
+| Components | Deform `2`, Wind `1`, Interaction `2` |
+| Shape arrays | Deform `2`, Wind `1`, Interaction `2` |
+| RT readback | Deform `58/4096`, Wind `11/4096`, Interaction `42/4096` step-4 sampled nonzero |
+| Diagnostics readback | spatial `true`, update `[true,true,true]`, shape counts `[2,1,2]`, mismatch `[0,0,0]`, failures `0`, RT sizes `256x256` |
+| Follow location | `[31.25, -46.25, 61.0]` |
+| MPC readback | resolution `256/256/512/768`, `SimulationSizeWS=4096`, RT location vectors all `[31.25, -46.25, 61.0, 0.0]` |
+| Cook/smoke | clean map `-UseStudyNativeManager` smoke exit `0` |
+| Source config mutation | 없음 |
+
+다음 단계는 prototype을 유지한 채 Canvas placeholder를 실제 Niagara/grid parity로 확장할지, 또는 plugin hard-load 제거 정책을 먼저 정할지 결정하는 것이다. Plugin hard-load 제거는 Marketplace plugin patch 정책과 함께 별도 승인 단위로 남긴다.

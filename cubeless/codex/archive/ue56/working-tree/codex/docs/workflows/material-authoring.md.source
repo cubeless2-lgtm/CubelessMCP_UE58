@@ -1,0 +1,46 @@
+# Material Analysis And Authoring
+
+## Default Principle
+
+- Build Unreal materials with native Material Expression nodes as much as practical.
+- Isolate only difficult or unreadable logic into small `MaterialExpressionCustom` nodes.
+- Do not convert a whole material into one opaque Custom node by default.
+- Do not force node-only conversion unless the user explicitly asks for a node-only test or a native-only graph. Node-only expansion is allowed for verification, but production material work should prefer the hybrid approach.
+
+## Native Nodes
+
+- Keep material semantics and user-facing controls in native nodes: `TextureCoordinate`, `Time`, scalar/vector parameters, texture samples, material functions, color constants, palette/parameter blending, final clamps, and root material property connections.
+- Preserve meaningful `Named Reroute` nodes when expanding or rebuilding complex material function graphs. They are part of the graph's readability contract, not disposable clutter, when they name shared values, branch decisions, long-distance wires, or fan-out hubs.
+- Do not keep auto-suffixed route names such as `Color Multiplier_1` or `Is Sun_8` after function expansion. Rename repeated route hubs with semantic context, for example by subsystem, layer, pass letter, or source function role.
+- Prefer `Named Reroute` for high-fanout or long-distance shared values. Keep short one-to-one links as direct wires unless a named route materially improves graph comprehension.
+- When rebuilding from a reference material, preserve the reference's route semantics first, then adapt names to the target project's ownership and repeated-instance context.
+
+## Custom Nodes
+
+- Use Custom nodes for difficult math islands, especially source-shader `if`/`for` blocks, hash/noise functions, repeated SDF formulas, matrix-style coordinate transforms, sampler-heavy helper logic, warp/glitch/halftone loops, and compact branch-heavy formulas.
+- Custom nodes should be small, named, isolated, and have explicit validated inputs and output types.
+
+## Conversion Workflow
+
+- When converting public GLSL/HLSL or Unity/Godot shader code, first classify which parts stay native and which parts require Custom-node isolation.
+- Preserve render-state, material-domain, shading-model, parameter, texture, and root-property meaning in the Unreal graph.
+- For sample textures or effect images, classify the texture purpose first. Use image generation for organic or stylized source art where visual quality matters, and procedural generation for exact numeric data, UV grids, gradients, LUTs, and strict channel validation patterns.
+- For packed effect textures, define channel roles per request before generation or packing. Do not assume a fixed RGBA layout except where a specific workflow, such as Ultra Dynamic Sky static clouds, already defines one.
+
+## Final Graph Layout Hook
+
+- Treat function expansion and function reassembly as task-specific choices. Do not make them mandatory for every material job.
+- Treat final graph cleanup as a default closeout hook for material authoring, especially after function expansion, graph cloning, large paste operations, reference-material conversion, or route/name repair.
+- Arrange the material output/root expression as the main graph sink, then align upstream calculation blocks so the final signal path is readable.
+- Keep `Named Reroute Declaration` nodes visually distinct from ordinary math nodes when they define long-distance or fan-out values. They may live in a separate route shelf or local route zone, but must not overlap one another.
+- Treat `Named Reroute Usage` nodes like ordinary graph nodes at their consumption sites. Place them beside the Lerp, Multiply, function call, or other consumer that reads the routed value rather than stacking them with the declarations.
+- When a route declaration owns a source-side dependency tree, organize that tree relative to the declaration as a local output root. If multiple routes share the same source math, group that source math once instead of duplicating or scattering it.
+- Prefer stable spacing over compactness. A slightly wider graph is better than route wires crossing through unrelated blocks or route names becoming hard to inspect.
+
+## Verification
+
+- Verify material work through UnrealMCP after creation or modification.
+- List material nodes, confirm Custom-node count, material function call count, route counts and names, and connected inputs. Compile with structured error reporting, confirm `compile_error_count=0`, and save only after compile success unless the user asked for a draft asset.
+- For expanded material graphs, verify that `Named Reroute` usages resolve to valid declarations and that display names do not contain meaningless numeric suffixes from paste or expansion collision handling.
+- After the final graph layout hook, verify that route declarations do not overlap, route usage nodes are placed with their consumers, and automated layouts do not leave expression nodes to the right of the intended root/output sink.
+- If a Custom node compile error, unconnected input, editor crash, or MCP graph-editing failure occurs, fix the MCP/editor scripting issue or isolate the failing shader logic before continuing the batch or asset work.

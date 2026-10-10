@@ -1,0 +1,73 @@
+# 레벨 카드: `Water_Dense_Creek2`
+
+## Source / Target
+
+| 항목 | 값 |
+| --- | --- |
+| Source | `/Game/FluidNinjaLive/Levels/Water_Dense_Creek2` |
+| Target | `/Game/Study/CubeFluidNinjaLive/Levels/L_CFNL_Water_Dense_Creek2` |
+| 문서 계층 | `root` |
+| 상태 | `static-semantic-complete; runtime/implementation/parity-pending` |
+
+## Direct Dependencies
+
+| 구분 | 개수 |
+| --- | ---: |
+| Direct internal | `71` |
+| Direct external | `11` |
+
+이 수치는 `reference_inventory.json`의 해당 레벨에 기록된 직접 의존성 배열의 개수이며 전이 의존성이나 런타임 필수성을 뜻하지 않는다.
+
+## 의도
+
+Dense 방식의 개울 표현 두 번째 구성을 다루는 레벨이다. 이 설명은 레벨 이름과 원본 계층에서 확실히 읽히는 범위를 넘지 않는다.
+
+### 정적 판정
+
+- **Observed:** 단일 2048² host, dam timeline, clear/murky switch, Landscape 없는 creek scene다.
+- **Inferred:** dam-driven dense creek와 cache-free restart를 분리 검증하는 fixture다.
+- **Unknown:** dam motion과 restart의 실제 timing/result.
+- **Target fixture:** `TF_WaterDense_CreekDam` 제안.
+
+## Actor
+
+- manifest 합계 `176 actors / 229 components / 18 pages`.
+- exact class histogram: `StaticMeshActor=136; TextRenderActor=21; NiagaraActor=4; PostProcessVolume=3; Brush=1; DirectionalLight=1; ExponentialHeightFog=1; LandscapeGizmoActiveActor=1; NinjaLive_C=1; PawnAndCameraUtility_C=1; SceneCaptureCameraUtility_C=1; SkyAtmosphere=1; SkyLight=1; ThirdPersonCharacter_C=1; TriggerBox=1; Water_Dense_Creek2_C=1`.
+- Landscape/driver/GeometryCollection 없음; TriggerBox 1, SceneCaptureCameraUtility 1, sequence actor 0.
+
+## Runtime
+
+- Level BP `96 nodes / 21 variables`: dam timeline, clear/murky swap, cached data 없이 restart, possess/collision hide.
+- timeline·restart·collision state 결과는 `pending`.
+
+## Niagara
+
+- host 1, NinjaLiveCore/preset=None/override non-empty; 2048², extents 80/80/2, Simple=0, volume 없음, PVD=`TTT`, input=`MDF+height`.
+- standalone: linear writer×3 + `SurfaceAlignedMeshes`. 내부 topology/runtime `pending`.
+
+## Material
+
+- selected secondary `MI_Water_DENSE_Creek_murkyfoam5_wavetile`.
+- clear/murky runtime swap과 화면 parity `pending`.
+
+## Art
+
+- `pending` — 텍스처, 스태틱 메시, 스켈레탈 메시, 애니메이션 및 기타 아트 소스 사용 내역이 아직 수집되지 않았다.
+
+## Implementation
+
+- `pending` — 독립 재구현 절차와 생성 순서가 아직 작성·검증되지 않았다. 원본 복사·붙여넣기는 구현 근거로 인정하지 않는다.
+
+## Parity
+
+- `pending` — Source와 Target의 시각, 동작, 상호작용, 타이밍 및 성능 동등성이 아직 비교되지 않았다.
+
+## Evidence
+
+- native manifest revision `ac250b193b8ab6a7d48e39f028928160`, query `2b4c03e69735c35a736b1d14f52bf507`; complete/non-truncated/clean/non-mutating.
+- Level BP EventGraph 1, 96/21, error 0. [family observation](../../concepts/root-water-surface-media-observation.md).
+- `pending`: PIE/SIE, implementation, parity.
+
+## Exception
+
+- `pending` — 독립 재구현이 불가능하여 의존성 없이 가져와야 하는 항목과 그 사유가 아직 식별되지 않았다.

@@ -1,0 +1,34 @@
+# Promoted Lessons
+
+## Workspace
+
+- Sibling-relative paths are the durable rule. Drive letters are local accidents.
+- Path fixes must reach code and scripts, not only prose. Executable `C:/Git`, `D:/Git`, and `F:/Git` defaults tend to reappear unless a resolver helper owns the rule.
+
+## Git
+
+- Submodules are separate repositories. Parent pushes and submodule pushes are not interchangeable.
+- Rollback tags before large instruction or repository-structure migrations make recovery obvious.
+
+## Unreal MCP
+
+- Generic Python map switching through MCP can crash the editor with `World Memory Leaks`. Use native map commands with dry-run preflight.
+- Native map switching can still be unsafe if the real `LoadMap` runs inline inside the bridge command handler. Prefer deferred real loads with request ids and status polling before continuing.
+- Editor bridge status, MCP server path, and secondary plugin ports must be reported separately. A healthy secondary port does not prove the primary bridge is connected.
+- Temporary MCP outputs belong under `_MCP_Temp` and should stay out of Git unless explicitly requested.
+- Generic MCP Blueprint helpers should require project-specific runtime helper classes as explicit parameters instead of baking one project's module path into shared tooling.
+- MCP and UnrealMCP are optional authoring aids for consuming projects. Do not add project C++ APIs, module dependencies, descriptors, or asset hard references that require the UnrealMCP plugin unless the user explicitly asks for that coupling.
+- MCP C++ extensions should stay editor-only by default. The authored result should be native Unreal content that still loads, cooks, packages, and runs without the MCP plugin unless an MCP runtime dependency was explicitly accepted.
+
+## UV And Images
+
+- `StaticMeshDescription.GetVertexInstanceUV` can assert/crash when probing a UV channel that does not exist. Always check channel count first.
+- Alpha loss is common. Verify actual alpha data for deliverables and use opaque display copies only for review.
+- UV-fitted textures need source art, real UV layout, and mesh preview reviewed together; a pretty source image is not enough.
+
+## Materials
+
+- Hybrid material authoring is the default: native nodes for meaning and controls, small Custom nodes for dense math islands.
+- BaseColor should stay albedo-like for PBR work. Lighting and material response belong in separate maps or material logic.
+- In large expanded Unreal material graphs, meaningful `Named Reroute` nodes should be preserved or rebuilt as semantic hubs. Remove paste-generated suffix noise, but do not flatten every route into direct wires when the route expresses shared value meaning or keeps the graph readable.
+- Function expansion/reassembly is optional material strategy, but final graph cleanup should be a default closeout hook. Keep `Named Reroute Declaration` nodes in non-overlapping route zones, and place `Named Reroute Usage` nodes with the ordinary consumer nodes that read them.

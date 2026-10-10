@@ -1,0 +1,14 @@
+# Remove boxed upper cluster
+
+Removed only upper cluster index 3 at azimuth 315, elevation 35 degrees from
+the v09 assembly. The requested cloud was confirmed using a static 315-degree
+viewport comparison matching the user's marked image. Other upper clusters,
+hero shapes, horizon groups and rear atmosphere remain unchanged.
+
+Current level actor uses
+`/Game/RXSkySystem/Cubeless/PaintedCloud/v03/Fragmented_v10/T_PaintedCloud_FragmentedClean_v03`.
+RGBA rules and 4K polar projection are unchanged. Source/readback pixels match;
+the level's time, rear texture and all scalar controls were preserved.
+
+Before/after view evidence and backup:
+`MCPGameProject/Saved/PaintedEvolutionV03/FragmentedClean/`.

@@ -1,0 +1,41 @@
+# Component Reading Router
+
+## Purpose
+
+- Start with the repository bootstrap only. Read a row only when the current request will actually inspect, edit, or verify that component.
+- All rows, including RPC, PCG, Texture, Niagara, Blueprint, AnimBP/ControlRig, and SkyDome, are mutually conditional. Selecting one row never includes another row automatically.
+- Combine rows only when a task genuinely spans those components. Do not load every extension file for a single-component change.
+- Read a C++ source group only when the requested or discovered change can affect that group; Python-only and documentation-only work does not require unrelated C++ source reads.
+
+## Routing Table
+
+| Component or request | Required starting set | Add only when affected |
+| --- | --- | --- |
+| Generic MCP Python tool or server | `codex/agents/tivret-mcp.md`, the matching `Docs/Tools/*.md`, and the affected `Python/tools/*.py` or `Python/services/*.py` | `Python/unreal_mcp_server.py`, registration/discovery/policy modules, or a matching C++ command handler when routing or the native contract changes |
+| RPC transport, timeout, queue, batch, job/cancel, pagination, or persistent connections | `codex/docs/workflows/mcp-rpc-verification-first.md`, `Python/services/unreal_bridge_connection.py`, and the affected transport tests | `Python/unreal_mcp_server.py` and `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/UnrealMCPBridge.cpp` only when their contracts change |
+| Generic `execute_python` or project command bridge | `Python/tools/python_tools.py` and the matching tool documentation | `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPProjectCommands.cpp` when the native command surface changes |
+| PCG tools or PCG authoring | `Docs/LOCAL_PCG_EXTENSION.md`, `Docs/Tools/pcg_tools.md`, `Python/tools/pcg_tools.py`, and `codex/docs/workflows/pcg-blueprint-authoring.md` | `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPPCGCommands.cpp`, project-command C++, or asset-authoring workflow only when the affected route requires it |
+| AI texture generation or Unreal texture import | `Docs/Tools/ai_texture_tools.md`, `Python/tools/texture_generation.py`, `Python/services/openai_image_service.py`, `Python/services/unreal_texture_importer.py`, and `codex/docs/policies/cost-control.md` | `codex/docs/workflows/unreal-asset-authoring.md` when importing or modifying Unreal assets |
+| Existing texture/material assignment or selected-mesh texturing | `codex/docs/workflows/selected-static-mesh-texturing.md` | `Docs/Tools/material_tools.md`, `Python/tools/material_tools.py`, and `codex/docs/workflows/unreal-asset-authoring.md` only when the requested material or import operation needs them |
+| Niagara inspection, authoring, promotion, or runtime probe | `Docs/Tools/niagara_tools.md` and the affected `Python/tools/niagara_tools.py` surface | `Docs/Tools/niagara_effect_planning.md` plus its listed planning sources for planning/diagnostics; `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCP/Private/Commands/UnrealMCPNiagaraCommands_Part*.cpp` only for an affected native route |
+| Blueprint asset, component, variable, or graph work | `Docs/Tools/blueprint_tools.md` and the affected `Python/tools/blueprint_tools.py` surface | `Docs/Tools/node_tools.md` and `Python/tools/node_tools.py` for graph/node work; `codex/docs/workflows/blueprint-category-ordering.md` only for category ordering |
+| Animation Blueprint or ControlRig work | `codex/docs/workflows/controlrig-animbp-mcp-learning.md` and `Docs/Tools/anim_controlrig_tools.md` | `Docs/Tools/node_tools.md`/`Python/tools/node_tools.py` for AnimGraph or state-machine topology; `Docs/Tools/blueprint_tools.md`/`Python/tools/blueprint_tools.py` for Blueprint asset/component operations; `Docs/Tools/skeletal_tools.md`/`Python/tools/skeletal_tools.py` for skeleton-asset changes; `Python/tools/controlrig_authoring_tools.py` or `UnrealMCPControlRigToolsEditor` sources only when that route changes |
+| SkyDome panorama conversion, polar clouds, or VDB preview | `codex/docs/workflows/skydome-panorama-converter.md` | The conditional panorama, polar-cloud, import, or preview files listed by that workflow |
+| Unreal asset, map, material, image, or packaging work | The matching file under `codex/docs/workflows/` | The matching `Docs/Tools/*.md` and affected implementation files only |
+| UnrealMCP plugin C++ | `codex/agents/tivret-mcp.md`, `codex/docs/policies/project-cpp-approval-gate.md`, and the matching command or bridge sources | `codex/agents/unreal-cpp-reviewer.md` and `codex/docs/workflows/unreal-cpp-review.md` for review or promotion |
+| Upstream synchronization | `codex/agents/mcp-upstream-manager.md` and `codex/docs/workflows/mcp-upstream-update.md` | Component rows affected by a conflict |
+| Implementation, executable-workflow, or shared-contract release/main promotion | `codex/agents/mcp-release-verifier.md` and the verification entry point in the project binding | Live-editor or UE build workflows only when the changed surface requires them; pure instruction/documentation-only promotion follows Tier 0 |
+
+## Common Boundaries
+
+- Apply `codex/docs/policies/safety-matrix.md` whenever a listed risk signal appears; load the source it points to rather than copying the rule into this router.
+- Apply `codex/docs/policies/authoring-dependency-boundary.md` whenever saved project content or project APIs may change.
+- Apply `codex/docs/policies/project-cpp-approval-gate.md` before any non-UnrealMCP project C++ mutation.
+- Apply `codex/docs/policies/git-repositories.md` before staging, committing, or pushing.
+- When no row matches, inspect names and imports to identify the narrow owner set before opening broad source trees.
+
+## ControlRig Module Boundary
+
+- Existing recipe authoring lives in the editor-only `MCPGameProject/Plugins/UnrealMCP/Source/UnrealMCPControlRigToolsEditor` module and its `UUnrealMCPControlRigAuthoringSubsystem`.
+- Python adapters should prefer that subsystem through reflection and may retain only a narrow compatibility fallback for an already-running older editor session.
+- Do not create a second ControlRig authoring plugin. The main `UnrealMCP` module must not include or statically depend on `UnrealMCPControlRigToolsEditor`; keep authoring calls behind reflection or Python boundaries.

@@ -1,0 +1,201 @@
+# Reactive Surface 변수 카테고리 정리 보고서 — 2026-07-18
+
+## 결론
+
+- 현재 비주얼 룩과 런타임 파라미터를 유지한 채 Controller, `BPC_ReactivePoint`, `BP_ReactiveSurfaceRegistry`의 변수 카테고리·노출·한국어 툴팁을 정리했다.
+- 실제 변수 식별자와 Friendly/Display Name은 처음부터 모두 영어였고 변경하지 않았다. 한글이었던 것은 카테고리 경로뿐이며, 카테고리는 전부 영어로 바꾸고 툴팁만 상세한 한국어로 유지했다.
+- 변수 선언, GUID, 순서, 타입, 기본값, `ExposeOnSpawn`, Controller EventGraph 연결은 삭제하거나 변경하지 않았다.
+- Controller의 레벨 인스턴스 노출은 36개에서 25개로 줄였고, 룩/안정성 내부값 11개는 Instance 편집을 껐다.
+- 분리할 기술적 이유가 없던 Grass/Ground 윈도우 MPC를 `MPC_RS_RuntimeWindows`로 통합했다. Grass, Ground, Water 파라미터는 하나의 MPC 안에서도 채널별 독립 이름·값·GUID를 유지한다.
+- 더 이상 사용하지 않기로 한 `debug.reactive` C++ 디버거는 소스, 모듈 수명주기 hook, 활성 도구 문서와 빈 Saved 롤백 폴더까지 안전하게 제거했다.
+- 의미가 다르거나 현재 룩을 바꿀 위험이 있는 변수 통합은 수행하지 않았다.
+
+## 변경 범위
+
+### Controller
+
+75개 변수를 다음 영어 카테고리 축으로 재분류했다.
+
+- `Reactive Surface|Common`: `Direct Controls`, `Diagnostics`, `Runtime Internal|Source Collection`
+- `Reactive Surface|Grass`: `Direct Controls`, `Advanced Controls`, `Runtime Internal|Source Bus`, `Window State`, `Default Radius`, `Assets`, `Fixed Tuning`, `Fixed Safety`
+- `Reactive Surface|Ground & Snow`: `Direct Controls`, `Advanced Controls`, `Runtime Internal|Source Bus`, `Window State`, `Default Radius`, `Assets`, `Stamp State`, `Compatibility`, `Fixed Safety`
+- `Reactive Surface|Water`: `Direct Controls`, `Advanced Controls`, `Runtime Internal|Source Bus`, `Window State`, `Runtime State`, `Assets`, `Compatibility`, `Fixed Normal Tuning`, `Fixed Solver Safety`
+
+Instance 편집을 끈 11개 변수는 다음과 같다.
+
+- `RS_Grass_ReboundMaxVelocity`
+- `RS_Ground_AtomicRecenterEnabled`
+- `RS_Water_NormalStrength`
+- `RS_Water_NormalDeadZone`
+- `RS_Water_NormalFadeEnd`
+- `RS_Water_ImpulseRadiusPixels`
+- `RS_Water_ImpulseClamp`
+- `RS_Water_SpongeWidth`
+- `RS_Water_SpongeDamping`
+- `RS_Water_RecenterChunkPixels`
+- `RS_Water_RecenterClearFraction`
+
+이 값들은 삭제하지 않았다. 현재 룩 또는 솔버 안정성에 직접 관여하지만 일반 레벨 튜닝값은 아니므로, 고정 내부값으로 보존하는 것이 가장 안전하다.
+
+### BPC_ReactivePoint
+
+16개 변수를 다음 영어 카테고리로 정리했다.
+
+- `Reactive Surface|Source|Direct Controls`: `bReactivePointEnabled`, `ChannelMask`
+- `Reactive Surface|Radius|Direct Controls`: `GrassRadius`, `GroundRadius`, `WaterRadius`
+- `Reactive Surface|Source|Advanced Controls`: `bRequiresGrounded`, `SourceIndex`
+- `Reactive Surface|Ground & Snow|Advanced Controls`: `FootprintMaskIndex`
+- `Reactive Surface|Trail|Advanced Controls`: `RS_TrailTeleportResetDistance`
+- `Runtime Internal`: Grass/Water 이전 위치와 Ground 접촉·스탬프 상태
+
+Grass, Ground, Water 반경은 서로 합치지 않았다. 각 BPC 인스턴스가 세 반경을 독립적으로 가지며, 같은 캐릭터의 여러 BPC도 각 컴포넌트 값을 따로 전달한다.
+
+보호값은 그대로다.
+
+- BPC CDO: `60 / 0 / 15`
+- Piper L/R: 각각 `50 / 0 / 15`, `SourceIndex 0 / 1`, `ChannelMask 7`
+- 데모 Sphere: `200 / 0 / 15`, `ChannelMask 2`
+
+### BP_ReactiveSurfaceRegistry
+
+- `RegisteredComponents`를 `Reactive Surface|Registry|Runtime Internal`로 분류했다.
+- 외부 편집 노출은 만들지 않았다.
+- 나중에 스폰되는 BPC의 BeginPlay 등록과 EndPlay 해제 경로는 유지했다.
+
+### 툴팁
+
+- 92개 선언 전부에 비어 있지 않은 한국어 툴팁이 있는 것을 에디터 persisted readback으로 확인했다.
+- 카테고리를 영어로 바꿔도 툴팁은 한국어로 유지했다. 실제 변수명과 Friendly/Display Name에는 한글이 없다.
+- 이전 정리에서 17개 핵심 변수의 툴팁을 보강했고, 이번에는 `RS_Water_V4DemoLastVelocity` 설명에 단위, 소유 주체, 직접 수정 금지 이유를 추가했다.
+- 내부 상태 변수에는 직접 수정 금지 이유와 대신 조정할 공개 변수를 명시했다.
+- `RS_Water_DefaultStrength`는 높이장 입력 강도, `RS_Water_NormalStrength`는 최종 노말 변환 강도라는 차이를 명시했다.
+
+## MPC 통합
+
+### 판단
+
+`MPC_RS_GrassGroundWindows`와 `MPC_RS_RuntimeWindows`는 같은 Controller Event Tick에서 갱신되는 월드 윈도우 좌표 버스였다. 수명주기나 갱신 주체가 달라 분리해야 할 이유가 없었으므로 이름과 역할이 더 일반적인 `MPC_RS_RuntimeWindows`를 생존 에셋으로 선택했다.
+
+`MPC_RS_Weather`는 날씨·퍼들 정책값용이며 갱신 주기와 역할이 달라 통합 대상에서 제외했다.
+
+### 보존한 계약
+
+통합 MPC에는 다음 3 Scalar와 3 Vector가 독립 파라미터로 남는다.
+
+- Scalar: `RS_Grass_WindowSizeWS`, `RS_Ground_WindowSizeWS`, `RS_Water_WindowSizeWS`
+- Vector: `RS_Grass_WindowOriginWS`, `RS_Ground_WindowOriginWS`, `RS_Water_WindowOriginWS`
+
+Grass/Ground 파라미터의 이름, 타입, GUID, 저장 기본값을 원본 MPC에서 그대로 복사했다. 기존 Water 파라미터도 이름, 타입, GUID, 기본값을 유지했다. 따라서 반경이나 윈도우 크기를 공용값으로 합친 것이 아니며, Controller는 런타임에 Grass `3000`, Ground `4000`, Water `4000`을 각각 기록한다.
+
+다음 소비 경로를 같은 단계에서 재지정했다.
+
+- Controller MPC Setter 4개
+- `MF_RS_GrassSample`, `M_RS_StylizedGrassModule`, `MF_RS_GroundSample`, `MF_RS_SnowSurface`의 Collection Parameter 노드 각 2개
+- 간접 의존성을 가진 `M_RS_Demo_GrassZone`, `M_RS_Demo_Snow` 재저장
+
+콜드 검증에서 구 MPC 참조 0, 파라미터 ID 불일치 0, redirector 0을 확인한 뒤 `MPC_RS_GrassGroundWindows`를 삭제했다. 통합 전 바이너리는 `MCPGameProject/Saved/MCP/ReactiveSurfaceMPCUnification/backups/20260717T234412.9929926Z`에 보존되어 있다.
+
+성능 차이는 매우 작다. 상시 2개 버퍼 80바이트가 1개 64바이트로 줄고 같은 Tick의 업데이트도 2회에서 1회가 되지만, 핵심 이점은 성능보다 참조·유지보수 단순화다.
+
+## 통합하지 않은 변수와 이유
+
+### Water 강도와 NormalStrength
+
+통합하지 않았다. `RS_Water_DefaultStrength`는 파동을 높이장에 주입하는 입력이고, `RS_Water_NormalStrength`는 이미 계산된 높이 기울기를 노말로 바꾸는 출력 보정이다. 둘을 하나로 묶으면 반응이 곱셈 형태로 변해 현재 룩을 유지하기 어렵다.
+
+### 채널별 반경
+
+Grass, Ground, Water 반경은 소비 경로와 단위 효과가 다르므로 통합하지 않았다. Controller 기본 반경과 각 BPC 반경도 fallback과 실제 source override라는 역할이 다르다.
+
+### 접촉·해제·펄스·감쇠 값
+
+Ground 접촉/해제 히스테리시스, Water 펄스 간격/최소 속도, Grass 주파수/감쇠는 서로 다른 상태 전이를 제어한다. 숫자가 비슷해 보여도 고정값 또는 공용 변수로 바꾸지 않았다.
+
+## 보류한 정리와 수동 수정 절차
+
+### RS_Water_WindowSize
+
+현재는 호환용 dead 변수로 판단되지만, Controller에 getter/setter 3쌍과 Niagara의 비연결 User parameter가 남아 있어 자동 삭제를 보류했다.
+
+수동 정리 순서는 다음과 같다.
+
+1. Controller exec 선을 각 Setter 앞뒤로 bypass한다.
+2. 다음 Getter/Setter를 제거한다.
+   - `60B6F77E43890ACDD5B262B9240E0DF2` / `8E7B77F84225C2EAF8A41CA314812428`
+   - `8551140C45FB04FE258533881726CEE7` / `BE88B5D644B59C5F9EAE2D880F5C3218`
+   - `C6DDE76B46040B4130328088CEE77BA4` / `A2DE548C4C08416685662AAD8593FF0D`
+3. Controller 변수 `RS_Water_WindowSize`를 삭제한다.
+4. Niagara의 비연결 User parameter를 제거하고 `RS_Water_WindowSizeWS`만 유지한다.
+5. 콜드 에디터에서 compile, SIE, RT 비교를 다시 실행한다.
+
+### RS_Ground_Persistence
+
+Controller와 Niagara Scratch Pad 입력 양쪽에 흔적이 있지만 현재 HLSL 본문은 값을 읽지 않는다. Scratch Pad signature pin 제거가 필요해 이번에는 호환 값으로 보존했다.
+
+수동 정리 시 Controller의 Getter `0987E1384034CF5CE1ACDF9DE8C49254`, Setter `8074D6024C2381CE83B7F9976240FA3`, `EB450E944C4CA8FC38888CBA115D4BCE`를 exec bypass 후 제거하고, Niagara Get/Set/HLSL signature의 Persistence 입력을 함께 제거해야 한다. 한쪽만 지우면 compile 계약이 깨질 수 있다.
+
+### Water 기본값의 다중 권한
+
+현재 다음 불일치가 있으나, 런타임 룩을 바꿀 위험 때문에 자동 동기화하지 않았다.
+
+- `DefaultStrength`: Controller `0.50`, Niagara/SCS 계열 `0.18`
+- `WaveSpeed`: Controller `0.70`, Niagara default `0.34`, SCS override `0.28`
+- `ImpulseClamp`: Controller `1.50`, Niagara default `0.72`
+- `SpongeDamping`: Controller `0.05`, Niagara default `0.10`
+
+수동 수정 시 먼저 런타임 권한을 Controller CDO 또는 Niagara default 중 하나로 결정해야 한다. 그 뒤 Controller CDO, Controller SCS Niagara override, Niagara User default, Piper ChildActor template, 레벨 인스턴스를 한 번에 맞추고 콜드 재시작 visual gate를 실행한다. 현재 BeginPlay는 Controller 값을 전달하므로, 승인 없이 `0.70→0.34` 같은 변경을 하면 안 된다.
+
+## C++ 디버거 제거
+
+사용자 결정에 따라 다음을 제거했다.
+
+- `Private/UI/ReactiveSurfaceDebugger.cpp`
+- `Private/UI/ReactiveSurfaceDebugger.h`
+- `UnrealMCPModule.cpp`의 include, `Startup()`, `Shutdown()` 호출
+- `Docs/Tools/reactive_surface_debugger.md`
+- 비어 있던 `Saved/UnrealMCP/ReactiveSurfaceDebugger` 디렉터리
+
+`UnrealMCP.Build.cs` 의존성은 다른 MCP UI/명령에서도 사용하므로 변경하지 않았다. 새 DLL의 ASCII/UTF-16 문자열 검사에서 `debug.reactive`, `FReactiveSurfaceDebugger`, `ReactiveSurfaceDebugger`는 모두 0건이다. 새 에디터에서 `debug.reactive status` 입력은 콘솔 echo만 남고 예전 handler 응답은 발생하지 않았다.
+
+삭제로 뷰포트 overlay, RT 미리보기, live parameter 저장/rollback, `owner-save-smoke`는 의도적으로 사라졌다. Blueprint의 `bDebugDraw`, 데모 debug material, RT/Niagara 기능은 이 C++ 디버거와 별개이므로 유지했다.
+
+## 검증
+
+- 변수 persisted audit: PASS
+  - evidence: `MCPGameProject/Saved/MCP/ReactiveSurfaceCategoryCleanup/runs/20260718T000118.385874Z-expect_applied.json`
+  - Controller 75/75, BPC 16/16, Registry 1/1 declaration exact
+  - 변수 식별자 한글 0, Friendly/Display Name 한글 0, 영어 카테고리 92/92, 한국어 툴팁 92/92
+- Controller EventGraph: 1161 nodes, MPC Collection pin 4개만 의도적으로 재지정, topology SHA-256 `22c1ad6cd7eb4af08058f5dada52c6ea125b638933c984b74864d4ac748cda62`
+- MPC 통합 apply/cold verify/runtime readback: PASS
+  - apply: `MCPGameProject/Saved/MCP/ReactiveSurfaceMPCUnification/runs/20260717T234420.083709Z-apply.json`
+  - source delete: `MCPGameProject/Saved/MCP/ReactiveSurfaceMPCUnification/runs/20260717T235148.168728Z-delete_source.json`
+  - cold verify: `MCPGameProject/Saved/MCP/ReactiveSurfaceMPCUnification/runs/20260718T000124.888711Z-verify.json`
+  - runtime verify: `MCPGameProject/Saved/MCP/ReactiveSurfaceMPCUnification/runs/20260718T000132.306259Z-runtime_verify.json`
+- 생산 레벨 `L_RS_Demo`는 작업 전 백업으로 byte-exact 복원했고 SHA-256 `1C09AE93CFA43E270DD348D14B4B30D3FA78B4EAFE23B6349E820FD28C619067`을 유지했다.
+- C++ 변경이 없어 이번 단계에서는 프로젝트 빌드를 다시 실행하지 않았다.
+- live bridge smoke: PASS
+- `/Game/ReactiveSurface` Asset Registry audit: 41 assets, forbidden UnrealMCP dependency 0, redirector 0, dirty package 0
+- schema 13 최종 콜드 verify: 기능 48/48 gates와 exact contract PASS
+  - dynamic BPC live 값 `2 / 137 / 31 / 23`, Registry `3→4→3`
+  - Grass/Ground RT 비교 PASS
+  - Water RT exact-frame 비교만 BLOCKED
+  - evidence: `MCPGameProject/Saved/MCP/ReactiveSurfaceCleanup/runs/20260717T235801.075594Z-verify.json`
+
+## Water 자동 룩 게이트 한계
+
+`t.MaxFPS=30`과 warmup은 상한과 초기화 보조일 뿐 정확한 simulation frame 수를 고정하지 않는다. UE 5.6의 SIE single-frame advance는 C++ editor callback에는 있지만 Unreal Python UFUNCTION으로 노출되지 않는다. 따라서 Water만 프로세스 간 결과가 다르면 허용 오차를 확대해 PASS시키지 않고 BLOCKED로 분리한다.
+
+이번 생산 변경은 변수 metadata/category, MPC Collection 참조, 통합 MPC와 의존 에셋 재저장뿐이다. Water Niagara, Water 파라미터 기본값과 런타임 readback은 바뀌지 않았다. 정확한 자동 Water visual gate가 필요하면 향후 UnrealMCP editor-only API에 `pause → N회 single-frame request → tick-complete handshake`를 별도 구현해야 한다.
+
+## 작업 트리 주의
+
+다음 기존 사용자 또는 병렬 작업 변경은 이번 작업에서 수정·되돌림·스테이징하지 않았다.
+
+- `MCPGameProject/Content/Template/Empty.umap`
+- `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-water-v28-clean-single-impulse-results-2026-07-10.json`
+- `MCPGameProject/Content/Python/init_unreal.py`
+- `MCPGameProject/MCPGameProject.uproject`
+- `MCPGameProject/Content/Python/mini_content_browser/`
+- `MCPGameProject/Content/UMG/`
+
+이 보고서 작성 시점에는 commit과 push를 수행하지 않았다.

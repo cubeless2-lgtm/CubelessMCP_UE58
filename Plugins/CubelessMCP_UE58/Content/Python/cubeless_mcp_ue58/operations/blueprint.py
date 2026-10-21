@@ -36,6 +36,14 @@ def create_blueprint_action(result, name, parent_class, package_path, checkpoint
         raise OperationError("asset_already_exists", f"An asset or directory already exists at {path}; nothing was overwritten")
     policy = api.creation_policy()
     result["data"]["creation_policy"] = policy
+    function_library = parent_class == "/Script/Engine.BlueprintFunctionLibrary"
+    if function_library:
+        result["data"]["function_library_creation"] = {
+            "requested": True, "factory_class_path": "/Script/UnrealEd.BlueprintFunctionLibraryFactory",
+            "expected_parent_class": parent_class, "factory_returned": False,
+            "returned_identity_observed": False, "postcondition_passed": False,
+            "function_definition_supported_by_creation": False, "external_call_supported_by_creation": False,
+            "runtime_execution_verified": False}
     generated_parent = parent_class.strip().startswith("/Game/")
     parent_load_before = api.parent_reference_state(parent_class) if generated_parent else None
     if parent_load_before is not None:
@@ -89,18 +97,44 @@ def create_blueprint_action(result, name, parent_class, package_path, checkpoint
         result["compile"]["implicit_factory_compile"].update(
             attempted=True if blueprint is not None else None, factory_returned=True,
             status="factory_returned" if blueprint is not None else "factory_returned_without_asset")
+        if function_library:
+            api.function_library_return_identity(blueprint, result["data"]["function_library_creation"])
         observe_parent("after_factory")
 
     try:
-        blueprint = api.create(name, path, parent, before_factory, after_factory)
-    except Exception:
+        if function_library:
+            blueprint = api.create_function_library(name, path, parent, before_factory, after_factory)
+        else:
+            blueprint = api.create(name, path, parent, before_factory, after_factory)
+    except Exception as error:
+        if function_library and hasattr(error, "native_function_library_result"):
+            result["data"]["function_library_creation"]["native_observation_failure"] = copy.deepcopy(error.native_function_library_result)
+        if function_library and change["attempted"]:
+            result["data"]["mutation_state_unknown"] = True
         observe_parent("after_factory_failure")
         raise
     if blueprint is None:
+        if function_library:
+            result["data"]["mutation_state_unknown"] = True
         raise OperationError("create_failed", f"Blueprint factory failed at {path}; inspect package state before retry")
     result["stage"] = "readback"
-    change["asset_path"] = blueprint.get_path_name()
-    result["data"].update(api.snapshot(blueprint))
+    if function_library:
+        change["asset_path"] = result["data"]["function_library_creation"]["returned_object_path"]
+    else:
+        change["asset_path"] = blueprint.get_path_name()
+    if function_library:
+        try:
+            result["data"].update(api.function_library_creation_snapshot(
+                blueprint, path, parent, result["data"]["function_library_creation"]))
+        except Exception as error:
+            if hasattr(error, "native_function_library_result"):
+                result["data"]["function_library_creation"]["native_observation_failure"] = copy.deepcopy(error.native_function_library_result)
+            result["data"]["mutation_state_unknown"] = True
+            result["validation"]["function_library_creation_verified"] = False
+            raise
+        result["validation"]["function_library_creation_verified"] = True
+    else:
+        result["data"].update(api.snapshot(blueprint))
     result["compile"]["implicit_factory_compile"].update(
         engine_status=result["data"]["status"], status="status_observed")
     result["data"]["requested_parent_class"] = parent_class

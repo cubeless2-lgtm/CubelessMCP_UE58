@@ -1,0 +1,4 @@
+#include "CubelessNiagaraScratchStackAuthoringAsyncLibrary.h"
+#include "Compatibility/UE58/CubelessNiagaraScratchStackAuthoringApi.h"
+UCubelessNiagaraScratchStackAuthoringJob* UCubelessNiagaraScratchStackAuthoringAsyncLibrary::StartAddNiagaraScratchPadModuleInputJob(const FString& ParamsJson)
+{return Cubeless::UE58::NiagaraScratchStackAuthoringAsync::StartModuleInput(ParamsJson);}

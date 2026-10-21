@@ -1,8 +1,0 @@
-{
-  "status": "pass",
-  "build_reused": "build-functions-U1.log",
-  "registered_snapshot": "registered-schemas-and-diagnostics-U.json",
-  "source_binary_descriptor_files_checked": 66,
-  "mismatches": [],
-  "reason": "V changes Python only; native source, DLL and descriptor unchanged"
-}

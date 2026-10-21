@@ -1,9 +1,0 @@
-# Reference Aspect v37
-
-Deterministic UV reprojection of ../ReferencePlanes_v36/Planar_Master.png, no generative repainting. Source 2144x733, output 4096x4096 (resampled, not native 4K artwork).
-
-90 degree sector centered at 3 o'clock. Source x maps clockwise-reversed angle, y maps increasing radius. Equal tangential/radial scale at source midheight: reference radius 1364.91279195609 source pixels. Scale 1.08822113868717. Other 270 degrees empty. Crowns inward, bases outward, horizontal tails become circular arcs.
-
-Polar coordinates necessarily alter tangential scale across radius: approximately 0.7315 to 1.2685 relative to radial scale over the full source height. Therefore this is not a claim of globally distortion-free projection. No independent aspect stretch to fill the circle. Source edge cropping remains visible at both angular endpoints; no inferred extension or fade added. Review concept only, not packed alpha. Existing level unchanged.
-
-Reproduction: tmp/AnimeCloud360_Blender/project_reference_v37.ps1.

@@ -1,7 +1,0 @@
-# V08 Crown Clean v49
-
-Source: v48 packed texture. Built-in image generation shading donor prompt: preserve exact polar layout and silhouette; clean isolated dark dots, mottled pits and awkward shadows in center-facing illuminated crowns; connect protrusions to broad white planes; retain deep interior and outward underside shading.
-
-Donor transfer uses radial crown weighting and only raises R, with corresponding B shade-term adjustment. 2,830,905 shade pixels brightened. G unchanged. Original alpha retained except seven enclosed low-alpha components (649 pixels total), each <=512 pixels and surrounded by bright shade. Exterior-connected alpha is untouched.
-
-Generated donor and Final_Review.png visually inspected before import. Imported and saved in Altitude/Rejected as T_CloudLook_V08CrownClean_v49. No level reassignment in this turn; in-engine visual review remains outstanding.

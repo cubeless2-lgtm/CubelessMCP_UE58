@@ -14,3 +14,8 @@ FString SetBlueprintComponentPhysics(const FString& BlueprintPath, const FString
 FString SetBlueprintStaticMeshProperties(const FString& BlueprintPath, const FString& ComponentName,
     const FString& StaticMeshPath, const FString& MaterialPath);
 }
+
+namespace Cubeless::Operations
+{
+FString ConfigureBlueprintPCGTemplate(const FString& ParamsJson);
+}

@@ -1,5 +1,0 @@
-# Hero shade calibration
-
-The six module exports were calibrated before polar projection to the opaque-core R distribution of `T_PaintedCloud_Hero_v04`. Original `_Source.png` files are retained. `hero_shade_calibration.json` records the monotonic luminance mapping and measured quantiles. Native module alpha and final packed texture alpha are unchanged. Placement and Blueprint settings are preserved.
-
-Reimported `T_PaintedCloud_ReferenceSoft_Combined_v01`, which was selected on the live sky actor during verification. The Scatter20 texture was also calibrated separately. Review screenshots and pre-edit module/texture backups: `MCPGameProject/Saved/PaintedAltitudeV04/Soft_HeroShade/`.

@@ -1,0 +1,7 @@
+#include "Registration/CubelessAnimGraphInspectionLibrary.h"
+#include "Compatibility/UE58/CubelessAnimGraphInspectionApi.h"
+#include "Operations/CubelessVariableOperations.h"
+FString UCubelessAnimGraphInspectionLibrary::InspectAnimGraphNodeSettings(const FString& BlueprintName,const FString& NodeId,const FString& NodeType,const FString& TitleContains,bool bIncludePins,int64 MaxDepth,const FString& GraphName,const FString& GraphId,const FString& GraphType)
+{ return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::AnimGraphInspection::Settings(BlueprintName,NodeId,NodeType,TitleContains,bIncludePins,MaxDepth,GraphName,GraphId,GraphType),TEXT("inspect_anim_graph_node_settings")); }
+FString UCubelessAnimGraphInspectionLibrary::InspectAnimGraphProtectedTopology(const FString& BlueprintName,const FString& NodeId,const FString& NodeType,const FString& TitleContains,bool bIncludePins,bool bIncludePosePins,bool bIncludeLinks,bool bIncludeNonPoseLinks,bool bIncludeSettings,int64 MaxDepth,int64 MaxNodes,int64 MaxLinks,const FString& GraphName,const FString& GraphId,const FString& GraphType)
+{ return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::AnimGraphInspection::Topology(BlueprintName,NodeId,NodeType,TitleContains,bIncludePins,bIncludePosePins,bIncludeLinks,bIncludeNonPoseLinks,bIncludeSettings,MaxDepth,MaxNodes,MaxLinks,GraphName,GraphId,GraphType),TEXT("inspect_anim_graph_protected_topology")); }

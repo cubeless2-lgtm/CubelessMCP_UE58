@@ -22,3 +22,8 @@ FMutationResult SetLocalPhysicsProperties(const FString& BlueprintPath, const FS
 FMutationResult SetLocalStaticMeshProperties(const FString& BlueprintPath, const FString& ComponentName,
     const FString& StaticMeshPath, const FString& MaterialPath);
 }
+
+namespace Cubeless::UE58::Component
+{
+FMutationResult ConfigureBlueprintPCGTemplate(const FString& ParamsJson);
+}

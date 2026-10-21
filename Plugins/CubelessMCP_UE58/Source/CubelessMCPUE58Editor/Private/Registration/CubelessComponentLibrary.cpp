@@ -35,3 +35,8 @@ FString UCubelessComponentLibrary::SetStaticMeshProperties(const FString& Bluepr
 {
     return Cubeless::Operations::SetBlueprintStaticMeshProperties(BlueprintPath, ComponentName, StaticMeshPath, MaterialPath);
 }
+
+FString UCubelessComponentLibrary::ConfigureBlueprintPCGTemplate(const FString& ParamsJson)
+{
+    return Cubeless::Operations::ConfigureBlueprintPCGTemplate(ParamsJson);
+}

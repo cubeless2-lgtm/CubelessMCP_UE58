@@ -1,0 +1,11 @@
+#include "CubelessNiagaraEmitterEventAuthoringAsyncLibrary.h"
+#include "Compatibility/UE58/CubelessNiagaraEmitterEventAuthoringAsyncApi.h"
+UCubelessNiagaraEmitterEventAuthoringJob* UCubelessNiagaraEmitterEventAuthoringAsyncLibrary::StartSetNiagaraEmitterPersistentIdsJob(const FString& ParamsJson)
+{return Cubeless::UE58::NiagaraEmitterEventAuthoringAsync::StartPersistentIds(ParamsJson);}
+UCubelessNiagaraEmitterEventAuthoringJob* UCubelessNiagaraEmitterEventAuthoringAsyncLibrary::StartAddNiagaraEventHandlerJob(const FString& ParamsJson)
+{return Cubeless::UE58::NiagaraEmitterEventAuthoringAsync::StartEventHandler(ParamsJson);}
+
+UCubelessNiagaraEmitterEventAuthoringJob* UCubelessNiagaraEmitterEventAuthoringAsyncLibrary::StartAddNiagaraGridSimulationStageJob(const FString& ParamsJson)
+{return Cubeless::UE58::NiagaraEmitterEventAuthoringAsync::StartSimulationStageAdd(ParamsJson);}
+UCubelessNiagaraEmitterEventAuthoringJob* UCubelessNiagaraEmitterEventAuthoringAsyncLibrary::StartSetNiagaraSimulationStageSettingsJob(const FString& ParamsJson)
+{return Cubeless::UE58::NiagaraEmitterEventAuthoringAsync::StartSimulationStageSettings(ParamsJson);}

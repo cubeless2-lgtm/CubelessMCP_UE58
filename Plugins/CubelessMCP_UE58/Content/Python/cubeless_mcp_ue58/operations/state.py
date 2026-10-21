@@ -83,7 +83,18 @@ def _write_record(path, record):
         stream.write(encoded)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    # Retry only Windows sharing/access contention for this already flushed
+    # temp file. The engine action, JSON payload and temp creation are never
+    # repeated. Exhaustion retains the prior journal and the same temp evidence.
+    retry_delays = (0.01, 0.02, 0.04, 0.08, 0.16)  # 0.31 s total sleep, six calls.
+    for attempt in range(len(retry_delays) + 1):
+        try:
+            os.replace(temporary, path)
+            return
+        except OSError as error:
+            if getattr(error, "winerror", None) not in (5, 32) or attempt == len(retry_delays):
+                raise
+            time.sleep(retry_delays[attempt])
 
 
 def checkpoint(result):

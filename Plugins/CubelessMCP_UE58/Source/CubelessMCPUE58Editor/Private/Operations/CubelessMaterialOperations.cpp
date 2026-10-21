@@ -40,6 +40,12 @@ FString RunMaterialOperation(UE58::Material::EOperation Operation, const TShared
     auto Limits = MakeShared<FJsonObject>();
     Limits->SetNumberField(TEXT("max_graph_nodes"), MaxGraphNodes);
     Result->SetObjectField(TEXT("limits"), Limits);
+    if (Operation == Api::EOperation::GetCollectionValues)
+    {
+        Result->SetStringField(TEXT("mutation_attempted_scope"), TEXT("explicit asset/parameter value writes only; runtime getter initialization is reported separately"));
+        Result->SetStringField(TEXT("changed_scope"), TEXT("observed collection dirty/value payload after first runtime getter; pre-getter world instances/render resources excluded"));
+        Result->SetStringField(TEXT("validation_scope"), TEXT("collection dirty/value payload only; public runtime getter can lazily initialize world instances/render resources; no renderer proof"));
+    }
 
     auto Fail = [&](const FString& Code, const FString& Message)
     {
@@ -73,6 +79,15 @@ FString RunMaterialOperation(UE58::Material::EOperation Operation, const TShared
     Result->SetStringField(TEXT("asset_path"), Before.AssetPath);
     Result->SetBoolField(TEXT("dirty_before"), Before.bDirty);
     Result->SetObjectField(TEXT("before"), Before.Snapshot);
+    if (Operation == Api::EOperation::GetCollectionValues)
+    {
+        bool bGetterDispatched = false;
+        Before.Snapshot->TryGetBoolField(TEXT("runtime_instance_getter_dispatched"), bGetterDispatched);
+        Result->SetBoolField(TEXT("runtime_instance_getter_dispatched"), bGetterDispatched);
+        Result->SetBoolField(TEXT("runtime_instance_creation_possible"), bGetterDispatched);
+        Result->SetStringField(TEXT("runtime_instance_creation_observed"), TEXT("not_measured"));
+        Result->SetBoolField(TEXT("runtime_render_resource_side_effects_possible"), bGetterDispatched);
+    }
     if (bMutation && (!Api::ValidateMutationTarget(Before, Error) || !Api::ValidateMutationInputs(Operation, Params, Before, MaxGraphNodes, Error)))
     {
         Result->SetBoolField(TEXT("dirty_after"), Before.bDirty);
@@ -127,6 +142,10 @@ FString RunMaterialOperation(UE58::Material::EOperation Operation, const TShared
     Result->SetObjectField(TEXT("delta"), Api::DescribeDelta(Before, After));
 
     FString VerificationMethod = TEXT("read_only_snapshot_unchanged");
+    if (Operation == Api::EOperation::GetCollectionValues)
+    {
+        VerificationMethod = TEXT("collection_payload_unchanged_after_initial_runtime_getter");
+    }
     bool bVerified = !bChanged;
     if (bMutation)
     {
@@ -138,6 +157,10 @@ FString RunMaterialOperation(UE58::Material::EOperation Operation, const TShared
     Verification->SetStringField(TEXT("scope"), Operation == Api::EOperation::LayoutNodes
         ? TEXT("coordinates observed and topology preserved; aesthetic layout quality is not evaluated")
         : TEXT("loaded graph state only; shader/render behavior is not evaluated"));
+    if (Operation == Api::EOperation::GetCollectionValues)
+    {
+        Verification->SetStringField(TEXT("scope"), TEXT("collection dirty/value payload only; no pre-getter world instance inventory or render-resource/GPU verification"));
+    }
     Result->SetObjectField(TEXT("verification"), Verification);
     Result->SetBoolField(TEXT("postcondition_passed"), bVerified);
     if (!bSucceeded)

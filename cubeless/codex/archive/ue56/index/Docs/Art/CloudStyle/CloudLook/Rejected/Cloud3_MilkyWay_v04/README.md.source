@@ -1,5 +1,0 @@
-# Softer Milky Way RGB v04
-
-`T_Cloud3_MilkyWay_CloudMask_v04` replaces harsh dark fissures and bright central highlights with gentler dusty midtones. Alpha is byte-identical to v03; user BP control values were preserved. Packed linear half-float EXR is 4096 x 2048, resampled from generated artwork. Assigned to the live sky and BP default Cloud3Texture.
-
-Built-in imagegen edit prompt: Edit only the tonal rendering of the Milky Way texture, greatly reducing harsh local contrast. Keep overall upper-half band position and size, pure black empty lower half and seam/pole black margins. Dark fissures become gentle muted dusty midtones, not black cracks; brightest cream core subdued pale grey lavender, no blown highlights. Soft continuous luminous density with fine subtle detail, not blur or dramatic astrophotography. Lower saturation. No added clouds, planets, text or borders. Full 2:1 image.

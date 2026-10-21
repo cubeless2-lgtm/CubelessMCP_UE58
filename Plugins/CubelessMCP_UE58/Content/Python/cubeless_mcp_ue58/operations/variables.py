@@ -31,7 +31,7 @@ def _path(blueprint_name, *, write=False):
     return _text(value, "resolved_blueprint_path")
 
 
-def _json_value(text, field):
+def _json_value(text, field, *, allow_finite_double=False):
     if type(text) is not str or len(text.encode("utf-16-le", errors="surrogatepass")) // 2 > 65536:
         raise OperationError("variable_json_invalid", field + " must be a JSON string of at most 65536 UTF-16 units")
 
@@ -65,8 +65,16 @@ def _json_value(text, field):
             elif type(item) is str:
                 if "\x00" in item or any(0xD800 <= ord(c) <= 0xDFFF for c in item):
                     raise ValueError("JSON strings cannot contain NUL or unpaired surrogates")
-            elif type(item) in (int, float) and (abs(item) > 2**53 - 1 or not math.isfinite(item)):
-                raise ValueError("JSON numbers must be finite with magnitude at most 2^53-1")
+            elif type(item) in (int, float):
+                if allow_finite_double:
+                    try:
+                        finite = math.isfinite(item)
+                    except OverflowError:
+                        finite = False
+                    if not finite:
+                        raise ValueError("JSON numbers must be finite representable doubles")
+                elif abs(item) > 2**53 - 1 or not math.isfinite(item):
+                    raise ValueError("JSON numbers must be finite with magnitude at most 2^53-1")
 
         visit(value, 0)
         return value
@@ -85,7 +93,7 @@ def _boolean(value, field):
 
 
 def _add_arguments(blueprint_name, variable_name, variable_type, is_exposed, default_value_json,
-        category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable):
+        category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable, is_transient=False):
     name = _text(variable_name, "variable_name")
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,99}", name) is None or name.lower() == "none":
         raise OperationError("variable_name_invalid", "New variable names must be ASCII identifiers of 1..100 characters and cannot be None")
@@ -109,7 +117,7 @@ def _add_arguments(blueprint_name, variable_name, variable_type, is_exposed, def
             guid = guid_value.hex
         except ValueError as error:
             raise OperationError("variable_guid_invalid", "variable_guid must be a nonzero GUID; native also rejects collisions") from error
-    return {"blueprint_path": _path(blueprint_name, write=True), "variable_name": name,
+    result = {"blueprint_path": _path(blueprint_name, write=True), "variable_name": name,
         "variable_type": _text(variable_type, "variable_type"), "is_exposed": _boolean(is_exposed, "is_exposed"),
         # Legacy public Any=None omits the default entirely, including explicit JSON null.
         "default_value_json": "" if default is None else _json_text(default),
@@ -119,6 +127,10 @@ def _add_arguments(blueprint_name, variable_name, variable_type, is_exposed, def
         "type_object": _text("" if type_object is None else type_object, "type_object", empty=True),
         "is_array": _boolean(is_array, "is_array"), "metadata_json": _json_text(metadata),
         "variable_guid": guid, "is_editable": False if is_editable is None else _boolean(is_editable, "is_editable")}
+    # A false additive option preserves every pre-AB durable request fingerprint.
+    if _boolean(is_transient, "is_transient"):
+        result["is_transient"] = True
+    return result
 
 
 def _set_arguments(blueprint_name, variable_name, default_value_json, compile, save, dry_run):
@@ -144,7 +156,8 @@ def _apply_native(result, identity, arguments, native, *, read=False):
                 ("compile_warning_count", "warning_count"), ("diagnostics", "diagnostics")):
             if source in compiler:
                 result["compile"][target] = copy.deepcopy(compiler[source])
-    result["save"].update(requested=native["save_requested"], attempted=native["save_attempted"], saved=native["saved"])
+    result["save"].update(requested=native["save_requested"], attempted=native["save_attempted"], saved=native["saved"],
+        status="saved" if native["saved"] else "failed" if native["save_attempted"] else "not_attempted" if native["save_requested"] else "not_requested")
     result["changes"] = [] if native["change_state_known"] and native.get("changed") is False and not native["mutation_attempted"] else [{
         "kind": identity, "asset_path": arguments["blueprint_path"], "variable_name": arguments.get("variable_name"),
         "explicit_mutation_requested": not read and not arguments.get("dry_run", False),
@@ -215,16 +228,18 @@ def _mutate_prepared(identity, prepare, operation_id):
 
 def add_blueprint_variable(blueprint_name, variable_name, variable_type, is_exposed=False, default_value_json=None,
         category=None, tooltip=None, friendly_name=None, type_object=None, is_array=False, metadata_json="{}",
-        operation_id=None, variable_guid=None, is_editable=None):
+        operation_id=None, variable_guid=None, is_editable=None, is_transient=False):
     return _mutate_prepared("add_blueprint_variable", lambda: _add_arguments(blueprint_name, variable_name, variable_type,
-        is_exposed, default_value_json, category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable), operation_id)
+        is_exposed, default_value_json, category, tooltip, friendly_name, type_object, is_array, metadata_json,
+        variable_guid, is_editable, is_transient), operation_id)
 
 
 def add_blueprint_variable_action(result, blueprint_name, variable_name, variable_type, is_exposed=False, default_value_json=None,
         category=None, tooltip=None, friendly_name=None, type_object=None, is_array=False, metadata_json="{}",
-        variable_guid=None, is_editable=None, checkpoint_callback=None):
+        variable_guid=None, is_editable=None, checkpoint_callback=None, is_transient=False):
     _run_action(result, "add_blueprint_variable", _add_arguments(blueprint_name, variable_name, variable_type,
-        is_exposed, default_value_json, category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable), checkpoint_callback)
+        is_exposed, default_value_json, category, tooltip, friendly_name, type_object, is_array, metadata_json,
+        variable_guid, is_editable, is_transient), checkpoint_callback)
 
 
 def set_blueprint_variable_default(blueprint_name, variable_name, default_value_json, compile=True, save=True, dry_run=False, operation_id=None):

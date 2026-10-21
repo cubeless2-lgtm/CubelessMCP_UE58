@@ -1,9 +1,0 @@
-#include "Registration/CubelessGraphLibrary.h"
-#include "Operations/CubelessGraphOperations.h"
-FString UCubelessGraphLibrary::ReadNodeIdentities(const FString& GraphPath)
-{ return Cubeless::Operations::ReadGraphNodeIdentities(GraphPath); }
-FString UCubelessGraphLibrary::ReadMemberVariablePlan(const FString& GraphPath, const FString& VariableName, bool bSetter)
-{ return Cubeless::Operations::ReadGraphMemberVariablePlan(GraphPath, VariableName, bSetter); }
-FString UCubelessGraphLibrary::ReadConnectionPlan(const FString& GraphPath, const FString& SourceNodePath,
-    const FString& SourcePinName, const FString& TargetNodePath, const FString& TargetPinName)
-{ return Cubeless::Operations::ReadGraphConnectionPlan(GraphPath, SourceNodePath, SourcePinName, TargetNodePath, TargetPinName); }

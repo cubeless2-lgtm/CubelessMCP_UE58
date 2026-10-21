@@ -1,9 +1,0 @@
-# V03 grayscale reference revision
-
-최신 사용자 기준은 codex-clipboard-fd831795-2956-480d-899c-2badde92634e.png의 흑백 원화다. 이전 컬러 파노라마와 패킹은 승인된 최종 결과가 아니다.
-
-Cloud360_Grayscale_ReferenceMatch.png는 built-in imagegen으로 생성한 새 아트 검수 원본이다. 검정 배경은 Coverage가 아니며 아직 채널 패킹이나 360도 UV 연결 검증을 완료하지 않았다. 어두운 음영을 알파로 직접 변환하면 안 된다. 언리얼 변경 없음.
-
-## Prompt
-
-Create a wide 2:1 panoramic cloud painting using the attached GRAYSCALE CLOUD as the exact visual reference. This is a strict style and value match, not a pretty anime cloud reinterpretation. Preserve the reference's rough opaque gouache brush blocks, muted MID-GRAY highlights, charcoal shadow masses, broad diagonal strokes, low asymmetric triangular silhouette, flattened sloping lobes and subtle soft broken outer contour. NO white luminous edging, NO blue or cream color, NO bright silver lining, NO tiny scallops, NO fluffy cauliflower, NO wispy lace everywhere, NO glossy 3D volume, NO increased contrast beyond reference. Black background, grayscale only. Treat the reference cloud almost as a direct painted motif: broad dark underside and medium-gray planes. Design a 360-degree equirectangular cloud-layer panorama 2:1. Horizon at vertical center, clouds in upper half, lower half black, top10% black. Arrange 4 distinct separated cloud groups around horizontal panorama, all matching EXACT reference brush scale and value distribution: main original-shaped low triangular cloud near25%, wider flatter variant near60%, modest small group near82%, small low distant group near8%. Natural gaps, no continuous mountain band. Clouds should be wide not towering. No labels, no text, no sun, no sky gradient, no ground. Left/right border black for clean wrap. Crucially keep the original dark understated painted look; do not beautify into bright white anime clouds. Output one grayscale panorama, not a comparison sheet.

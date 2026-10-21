@@ -1,4 +1,0 @@
-interface:
-  display_name: "MCP Release Gate"
-  short_description: "Pre-push MCP verification and commit labeling"
-  default_prompt: "Use $mcp-release-gate to verify MCP changes before commit or push."

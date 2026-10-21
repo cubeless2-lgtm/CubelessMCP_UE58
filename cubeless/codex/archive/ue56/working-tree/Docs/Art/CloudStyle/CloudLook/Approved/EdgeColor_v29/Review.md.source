@@ -1,5 +1,0 @@
-# EdgeColor v29
-
-Extend v28 color padding to the upper-right polar region x2400–3900, y100–1100 containing the reported remaining distant crown. Preserve the entire v28 alpha channel byte-for-byte and G density. Only local R shade and B midtone color padding change. Existing source textures remain intact.
-
-Applied and saved in L_CloudReview_FarEdge_v26. Fixed-camera comparison in Saved/PaintedAltitudeV04/EdgeColor_v29 uses yaw 25, pitch 15, FOV 85 to include the right bank. The correction is regional; other azimuths are not claimed fully reviewed.

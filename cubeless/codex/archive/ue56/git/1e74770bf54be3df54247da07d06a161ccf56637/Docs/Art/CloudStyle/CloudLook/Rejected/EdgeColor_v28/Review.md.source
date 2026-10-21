@@ -1,9 +1,0 @@
-# EdgeColor v28
-
-Base is HeroLower_v22. Preserve alpha byte-for-byte, including rounded distant silhouettes and hero underside coverage. Repair R shade and B midtone padding in packed region x1250–2850, y100–750. Extend coherent interior color 32 pixels along the opacity inward normal, with local sampling smoothing and a feathered region mask. G density is unchanged. No material code or BP parameter changes.
-
-Fixed-camera evidence in MCPGameProject/Saved/PaintedAltitudeV04/EdgeColor_v28 shows the central distant cloud's broad gray doubled rim removed without the silhouette contraction of rejected FarEdge_v26. This is a regional correction; no claim of full-sky clearance at every angle. Original textures retained.
-
-Applied texture: /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/EdgeColor_v28/T_CloudLook_EdgeColor_v28
-
-Saved current map: /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/L_CloudReview_FarEdge_v26. Its existing name is retained although the texture is now v28. CloudCompositeBlend remains 0. Catalog approval is pending.

@@ -294,7 +294,72 @@ bool PrepareMaterialProperty(UObject* Object, UObject* Target, const FString& Na
     Property->CopyCompleteValue(Address, Property->ContainerPtrToValuePtr<void>(Object));
     if (!Value.IsValid()) { Error = TEXT("Missing JSON value."); return false; }
     if (!ValidateJsonReferenceText(Value, Error)) { return false; }
-    if (FBoolProperty* Bool = CastField<FBoolProperty>(Property))
+    // JT: this exact two-FString native array has no authored FName tokens.
+    // Build scratch directly; all other raw importer NAME_SIZE guards stay below.
+    const bool TypedCustomDefines=Value->Type==EJson::Array&&Object->GetClass()==UMaterialExpressionCustom::StaticClass()
+        &&Property==FindFProperty<FArrayProperty>(UMaterialExpressionCustom::StaticClass(),GET_MEMBER_NAME_CHECKED(UMaterialExpressionCustom,AdditionalDefines));
+    if(TypedCustomDefines)
+    {
+        const FArrayProperty* Array=CastFieldChecked<FArrayProperty>(Property);const FStructProperty* Inner=CastField<FStructProperty>(Array->Inner);
+        const UScriptStruct* Struct=Inner?Inner->Struct.Get():nullptr;
+        const FStrProperty* DefineName=Struct?FindFProperty<FStrProperty>(Struct,TEXT("DefineName")):nullptr;
+        const FStrProperty* DefineValue=Struct?FindFProperty<FStrProperty>(Struct,TEXT("DefineValue")):nullptr;
+        int32 Fields=0;bool ExactFields=true;
+        if(Struct){for(TFieldIterator<FProperty> It(Struct,EFieldIteratorFlags::IncludeSuper);It;++It){++Fields;ExactFields&=*It==DefineName||*It==DefineValue;}}
+        if(!Struct||Struct->GetClass()!=UScriptStruct::StaticClass()||Struct->GetPathName()!=TEXT("/Script/Engine.CustomDefine")||!(Struct->StructFlags&STRUCT_Native)||Struct->GetSuperStruct()
+            ||Struct->GetStructureSize()!=sizeof(FCustomDefine)||Struct->GetMinAlignment()!=alignof(FCustomDefine)||Inner->ArrayDim!=1||Inner->GetElementSize()!=sizeof(FCustomDefine)
+            ||Fields!=2||!ExactFields||!DefineName||!DefineValue||DefineName->GetOwnerStruct()!=Struct||DefineValue->GetOwnerStruct()!=Struct||DefineName->ArrayDim!=1||DefineValue->ArrayDim!=1
+            ||DefineName->GetOffset_ForInternal()!=STRUCT_OFFSET(FCustomDefine,DefineName)||DefineValue->GetOffset_ForInternal()!=STRUCT_OFFSET(FCustomDefine,DefineValue)
+            ||DefineName->GetElementSize()!=sizeof(FString)||DefineValue->GetElementSize()!=sizeof(FString)
+            ||Property->ContainerPtrToValuePtr<void>(Object)!=&static_cast<UMaterialExpressionCustom*>(Object)->AdditionalDefines)
+        {Error=TEXT("Exact native Custom.AdditionalDefines two-FString array layout required for typed conversion.");return false;}
+        const auto& Rows=Value->AsArray();if(Rows.Num()>64){Error=TEXT("Typed AdditionalDefines accepts at most 64 canonical objects.");return false;}
+        TArray<FCustomDefine> Defines;Defines.Reserve(Rows.Num());
+        for(int32 Index=0;Index<Rows.Num();++Index)
+        {
+            if(!Rows[Index].IsValid()||Rows[Index]->Type!=EJson::Object){Error=TEXT("Typed AdditionalDefines entries must be canonical objects with exactly DefineName and DefineValue strings.");return false;}
+            const auto Row=Rows[Index]->AsObject();TSharedPtr<FJsonValue> NameValue,TextValue;
+            if(Row.IsValid()){NameValue=Row->TryGetField(TEXT("DefineName"));TextValue=Row->TryGetField(TEXT("DefineValue"));}
+            if(!Row.IsValid()||Row->Values.Num()!=2||!NameValue.IsValid()||!TextValue.IsValid()||NameValue->Type!=EJson::String||TextValue->Type!=EJson::String)
+            {Error=TEXT("Typed AdditionalDefines requires exactly case-sensitive DefineName and DefineValue string fields; aliases, missing/unknown fields and other value types are not admitted.");return false;}
+            FCustomDefine& Define=Defines.AddDefaulted_GetRef();Define.DefineName=NameValue->AsString();Define.DefineValue=TextValue->AsString();
+        }
+        *static_cast<TArray<FCustomDefine>*>(Address)=MoveTemp(Defines);
+        // Fall through to the same shader/directive/reference/export audits.
+    }
+    else if (Value->Type == EJson::Array && Object->GetClass() == UMaterialExpressionCustom::StaticClass()
+        && Property == FindFProperty<FArrayProperty>(UMaterialExpressionCustom::StaticClass(),
+            GET_MEMBER_NAME_CHECKED(UMaterialExpressionCustom, IncludeFilePaths)))
+    {
+        // JSON array spelling is not UE ImportText array spelling. Build only this
+        // exact native FString array in scratch; raw string imports keep the old path.
+        const FArrayProperty* Array = CastFieldChecked<FArrayProperty>(Property);
+        const FProperty* Inner = Array->Inner;
+        if (Array->GetClass() != FArrayProperty::StaticClass() || !Inner || Inner->GetClass() != FStrProperty::StaticClass()
+            || Array->GetOwnerStruct() != UMaterialExpressionCustom::StaticClass()
+            || EnumHasAnyFlags(Array->ArrayFlags, EArrayPropertyFlags::UsesMemoryImageAllocator)
+            || Array->GetElementSize() != sizeof(TArray<FString>) || Array->GetMinAlignment() != alignof(TArray<FString>)
+            || Inner->GetOwnerProperty() != Array || Inner->ArrayDim != 1 || Inner->GetOffset_ForInternal() != 0
+            || Inner->GetElementSize() != sizeof(FString) || Inner->GetMinAlignment() != alignof(FString)
+            || Property->ContainerPtrToValuePtr<void>(Object) != &static_cast<UMaterialExpressionCustom*>(Object)->IncludeFilePaths)
+        { Error = TEXT("Exact native Custom.IncludeFilePaths FString array layout required for typed conversion."); return false; }
+        const auto& Rows = Value->AsArray();
+        TArray<FString> IncludePaths;
+        IncludePaths.Reserve(Rows.Num());
+        for (int32 Index = 0; Index < Rows.Num(); ++Index)
+        {
+            if (!Rows[Index].IsValid() || Rows[Index]->Type != EJson::String)
+            {
+                Error = FString::Printf(TEXT("Typed IncludeFilePaths entry at index %d must be a JSON string."), Index);
+                return false;
+            }
+            // Preserve actual order, duplicates and string payload; shared shader
+            // admission below decides whether each unchanged virtual path is supported.
+            IncludePaths.Add(Rows[Index]->AsString());
+        }
+        *static_cast<TArray<FString>*>(Address) = MoveTemp(IncludePaths);
+    }
+    else if (FBoolProperty* Bool = CastField<FBoolProperty>(Property))
     {
         if (Value->Type != EJson::Boolean) { Error = TEXT("Boolean property requires JSON true/false."); return false; }
         Bool->SetPropertyValue(Address, Value->AsBool());
@@ -558,7 +623,7 @@ TSharedPtr<FJsonObject> HandleCubelessAddMaterialNode(const TSharedPtr<FJsonObje
         Result->SetStringField(TEXT("requested_output_type"), Params->GetStringField(TEXT("output_type")));
         Result->SetBoolField(TEXT("custom_outputs_rebuilt"), true);
         Result->SetBoolField(TEXT("custom_graph_node_reconstructed"), bCustomGraphReconstructed);
-        Result->SetStringField(TEXT("custom_shader_include_scope"), TEXT("empty include paths and no preprocessor directive markers only; shader include/preprocessor support incomplete"));
+        Result->SetStringField(TEXT("custom_shader_include_scope"), TEXT("bounded literal shader include DAG in Code/IncludeFilePaths via RenderCore mapping and nonfatal load; child-relative literals and exact file-side pragma once supported without changing authored text; computed/generated/platform/future files, guarded cycles, alternate/import/embed and other pragmas remain valid incomplete; authoring only, shader compilation/rendering and complete cache effects not verified"));
         Result->SetBoolField(TEXT("custom_shader_code_compiled"), false);
     }
     return Result;

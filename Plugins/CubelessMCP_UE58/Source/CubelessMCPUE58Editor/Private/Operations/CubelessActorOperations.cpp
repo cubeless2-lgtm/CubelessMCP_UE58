@@ -4,6 +4,35 @@
 
 namespace Cubeless::Operations
 {
+namespace
+{
+// Original wire values are projected only from the already copied snapshots.
+// This helper never re-enters Unreal to decorate a known/unknown result.
+TSharedRef<FJsonObject> OriginalActor(const UE58::Actor::FState& State)
+{
+    auto Actor=MakeShared<FJsonObject>();if(!State.TargetSnapshot.IsValid())return Actor;
+    for(const TCHAR* Key:{TEXT("name"),TEXT("class"),TEXT("location"),TEXT("rotation"),TEXT("scale")})Actor->SetField(Key,State.TargetSnapshot->Values.FindChecked(Key));
+    return Actor;
+}
+TSharedRef<FJsonObject> OriginalExistence(const UE58::Actor::FState& State)
+{
+    auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("exists"),State.TargetSnapshot.IsValid());if(State.TargetSnapshot.IsValid())J->SetObjectField(TEXT("actor"),OriginalActor(State));return J;
+}
+TSharedRef<FJsonObject> OriginalTransformResult(const UE58::Actor::FState& Before,const UE58::Actor::FState& After,bool Accepted,bool Verified)
+{
+    auto Result=OriginalActor(After);const bool Changed=After.TargetSnapshot.IsValid()&&!After.TargetTransform.Equals(Before.TargetTransform,0.01f);
+    Result->SetBoolField(TEXT("set_accepted"),Accepted);Result->SetBoolField(TEXT("postcondition_verified"),Verified);
+    Result->SetStringField(TEXT("contract_version"),TEXT("mutation_result_v1"));Result->SetStringField(TEXT("mode"),TEXT("apply"));Result->SetBoolField(TEXT("dry_run"),false);Result->SetBoolField(TEXT("DRY_RUN"),false);Result->SetBoolField(TEXT("changed"),Changed);Result->SetBoolField(TEXT("mutation_performed"),Accepted);
+    auto Mutation=MakeShared<FJsonObject>();Mutation->SetBoolField(TEXT("attempted"),true);Mutation->SetBoolField(TEXT("performed"),Accepted);Mutation->SetStringField(TEXT("state"),Accepted?TEXT("performed"):TEXT("not_performed"));Result->SetObjectField(TEXT("mutation"),Mutation);
+    Result->SetObjectField(TEXT("before"),OriginalExistence(Before));Result->SetObjectField(TEXT("after"),OriginalExistence(After));
+    auto Delta=MakeShared<FJsonObject>();Delta->SetNumberField(TEXT("affected_count"),1);Delta->SetNumberField(TEXT("created_count"),0);Delta->SetNumberField(TEXT("updated_count"),Changed?1:0);Delta->SetNumberField(TEXT("removed_count"),0);Delta->SetNumberField(TEXT("skipped_count"),Changed?0:1);Delta->SetNumberField(TEXT("failed_count"),Verified?0:1);Result->SetObjectField(TEXT("delta"),Delta);
+    auto Verification=MakeShared<FJsonObject>();Verification->SetStringField(TEXT("status"),Verified?TEXT("passed"):TEXT("failed"));Verification->SetStringField(TEXT("method"),TEXT("editor_world_actor_relookup"));Verification->SetBoolField(TEXT("before_observed"),true);Verification->SetBoolField(TEXT("after_observed"),true);Verification->SetBoolField(TEXT("strict"),true);Verification->SetArrayField(TEXT("checks"),{MakeShared<FJsonValueString>(TEXT("actor_resolved_after")),MakeShared<FJsonValueString>(TEXT("transform_matches_request"))});Result->SetObjectField(TEXT("verification"),Verification);
+    Result->SetBoolField(TEXT("verified_success"),Verified);Result->SetBoolField(TEXT("success"),Verified);Result->SetStringField(TEXT("success_semantics"),Verified?TEXT("verified_postcondition"):TEXT("postcondition_failed"));
+    if(!Verified){Result->SetBoolField(TEXT("legacy_success"),true);Result->SetStringField(TEXT("error_code"),TEXT("mutation_postcondition_failed"));Result->SetStringField(TEXT("error"),TEXT("Mutation postcondition failed independent readback"));}
+    return Result;
+}
+}
+
 FString RunActorOperation(const UE58::Actor::FRequest& Request)
 {
     namespace Api = UE58::Actor;
@@ -11,7 +40,7 @@ FString RunActorOperation(const UE58::Actor::FRequest& Request)
     const bool bMutation = Api::IsMutation(Request.Operation);
     auto Result = MakeShared<FJsonObject>();
     Result->SetBoolField(TEXT("success"), false);
-    Result->SetStringField(TEXT("operation"), Request.BlueprintPath.IsEmpty() ? Api::OperationName(Request.Operation) : TEXT("spawn_blueprint_actor"));
+    Result->SetStringField(TEXT("operation"), Request.bOriginalTransformContract ? TEXT("set_actor_transform_original") : Request.BlueprintPath.IsEmpty() ? Api::OperationName(Request.Operation) : TEXT("spawn_blueprint_actor"));
     Result->SetStringField(TEXT("stage"), TEXT("preflight"));
     Result->SetBoolField(TEXT("mutation_attempted"), false);
     Result->SetBoolField(TEXT("changed"), false);
@@ -39,6 +68,10 @@ FString RunActorOperation(const UE58::Actor::FRequest& Request)
     };
     auto Fail = [&](const FString& Code, const FString& Error)
     {
+        if(Request.bOriginalTransformContract&&Code==TEXT("actor_not_found")&&Result->GetBoolField(TEXT("change_state_known")))
+        {
+            auto Legacy=MakeShared<FJsonObject>();Legacy->SetBoolField(TEXT("success"),false);Legacy->SetStringField(TEXT("error"),TEXT("Actor not found: ")+Request.Name);Result->GetObjectField(TEXT("data"))->SetObjectField(TEXT("legacy_result"),Legacy);
+        }
         Result->SetStringField(TEXT("error_code"), Code);
         Result->SetStringField(TEXT("error"), Error);
         return Finish();
@@ -72,8 +105,16 @@ FString RunActorOperation(const UE58::Actor::FRequest& Request)
         return Finish();
     }
     Api::FPreparedMutation Prepared;
+    auto CheckTargetPoint=[&]()
+    {
+        if(Api::CheckTargetPointScope(Prepared,Code,Error)){return true;}
+        Result->SetBoolField(TEXT("change_state_known"),false);Result->RemoveField(TEXT("changed"));Result->RemoveField(TEXT("dirty_after"));Result->SetStringField(TEXT("stage"),TEXT("target_point_guard_failed"));
+        Result->GetObjectField(TEXT("data"))->SetObjectField(TEXT("target_point_scope"),Api::TargetPointDiagnostics(Prepared));return false;
+    };
+
     if (!Api::PrepareMutation(Request, Before, Prepared, Code, Error))
     {
+        if(!CheckTargetPoint()){return Fail(Code,Error);}
         if (Prepared.bBlueprintLoadAttempted)
         {
             Api::FState AfterLoad; FString ReadCode, ReadError; ++CaptureCalls;
@@ -102,10 +143,12 @@ FString RunActorOperation(const UE58::Actor::FRequest& Request)
     Result->SetBoolField(TEXT("skipped_noop"), Prepared.bNoOp);
     const bool bAccepted = Api::ExecuteMutation(Request, Before, Prepared);
     Result->SetBoolField(TEXT("engine_api_accepted"), bAccepted);
+    if(!CheckTargetPoint()){return Fail(Code,Error);}
     Api::FState After;
     ++CaptureCalls;
     const bool bReadback = Api::Capture(Request, After, Code, Error);
     ActorVisits += After.ActorVisits;
+    if(!CheckTargetPoint()){return Fail(Code,Error);}
     Result->SetStringField(TEXT("stage"), TEXT("readback"));
     if (After.Snapshot.IsValid()) { Result->SetObjectField(TEXT("after"), After.Snapshot); }
     const bool bSameWorld = Before.World == After.World && Before.Level == After.Level;
@@ -122,8 +165,10 @@ FString RunActorOperation(const UE58::Actor::FRequest& Request)
     Result->SetBoolField(TEXT("changed"), bChanged);
     Result->SetObjectField(TEXT("actor_changes"), Changes);
     const bool bVerified = Api::VerifyMutation(Request, Before, After, Prepared, bAccepted);
+    if(!CheckTargetPoint()){return Fail(Code,Error);}
     Result->SetBoolField(TEXT("postcondition_passed"), bVerified);
     auto Data = Api::ReadPayload(Request, After);
+    if(auto Marker=Api::TargetPointDiagnostics(Prepared)){Data->SetObjectField(TEXT("target_point_scope"),Marker);}
     if (!Request.BlueprintPath.IsEmpty())
     {
         Data->SetStringField(TEXT("blueprint_input"), Request.BlueprintPath);
@@ -184,6 +229,12 @@ FString RunActorOperation(const UE58::Actor::FRequest& Request)
     Data->SetBoolField(TEXT("verified_success"), bVerified);
     Data->SetBoolField(TEXT("success"), bVerified);
     Data->SetStringField(TEXT("success_semantics"), bVerified ? TEXT("verified_postcondition") : bAccepted ? TEXT("postcondition_failed") : TEXT("failed_execution"));
+    if(Request.bOriginalTransformContract)
+    {
+        const bool OriginalVerified=bAccepted&&After.TargetSnapshot.IsValid()&&After.TargetTransform.Equals(Prepared.DesiredTransform,0.01f);
+        if(bVerified||!OriginalVerified)Data->SetObjectField(TEXT("legacy_result"),OriginalTransformResult(Before,After,bAccepted,OriginalVerified));
+        else Data->SetBoolField(TEXT("legacy_projection_suppressed_by_current_guard"),true);
+    }
     if (!bVerified)
     {
         return Fail(bAccepted ? TEXT("actor_postcondition_failed") : TEXT("actor_engine_operation_rejected"), TEXT("Inspect before/after and actor_changes. No automatic retry or rollback was performed."));

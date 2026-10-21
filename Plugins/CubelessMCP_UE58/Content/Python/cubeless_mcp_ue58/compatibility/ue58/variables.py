@@ -26,9 +26,13 @@ def _invoke(method, *arguments):
 
 
 def add_blueprint_variable(blueprint_path, variable_name, variable_type, is_exposed, default_value_json,
-        category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable):
-    return _invoke("add_blueprint_variable", blueprint_path, variable_name, variable_type, is_exposed,
+        category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable, is_transient=False):
+    arguments = (blueprint_path, variable_name, variable_type, is_exposed,
         default_value_json, category, tooltip, friendly_name, type_object, is_array, metadata_json, variable_guid, is_editable)
+    # Keep the old binding call shape when the native additive default applies.
+    if is_transient:
+        arguments += (True,)
+    return _invoke("add_blueprint_variable", *arguments)
 
 
 def inspect_blueprint_variables(blueprint_path):

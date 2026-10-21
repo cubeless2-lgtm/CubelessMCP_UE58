@@ -1,7 +1,0 @@
-# RadialUnified_v14
-
-Built-in image generation, single aligned RGBA source. Preview candidate, not catalog approval.
-
-Prompt: Preserve v13 interior detail and polar center-outward lighting. Make visible RGB and real independent opacity share one silhouette, no doubled edge or matte fringe. Distant outer banks retain dense bodies and clearly readable outward underside shapes with about 75% narrower fade. Inward crowns crisp and filled. Two hero banks retain broad outward underside transparency fade, moderate side fade. Upper-right hero lower-left edge faces center and stays crisp; upper-right outward edge fades. No thin highlight outlines.
-
-Original and alpha are generated together; coverage is not derived from luminance. Bilinear channel packing to 4096 square from native 1254 square. Existing v11 material residue cleanup and CloudCompositeBlend=0 preserved. Previous textures are not overwritten.

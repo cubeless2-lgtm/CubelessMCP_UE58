@@ -1,7 +1,0 @@
-# V08 Horizon Mass v51
-
-User rejected repeated tangential shading bands in v50 as screw-like. Built-in image edit prompt replaces outer right/bottom bands with broad irregular cloud masses matching accepted upper-left/left banks; no spiral, rope, concentric lines or directional brush strokes. Inward crowns remain bright, outward bases shaded.
-
-Donor transfer is restricted to outer radius >1680px with 110px transition, and right/bottom region weighting. Upper-left/left reference region is preserved. A/G differences from v50: zero. Changed shade pixels: 1,644,290. Original silhouettes and density preserved. Generated donor visually reviewed; engine review pending.
-
-New asset: Altitude/Rejected/T_CloudLook_V08HorizonMass_v51. No level reassignment requested or performed this turn.

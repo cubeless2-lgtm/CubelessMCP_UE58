@@ -30,4 +30,7 @@ public:
 
     UFUNCTION(BlueprintCallable, Category="Cubeless|Actor", meta=(AIIgnore))
     static FString SetActorTransform(const FString& Name, const FString& LocationJson, const FString& RotationJson, const FString& ScaleJson, const FString& ExpectedLevelPath, int32 MaxActors);
+    // UC: explicit original public4 semantics; never selected by existing6.
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Actor", meta=(AIIgnore))
+    static FString SetActorTransformOriginal(const FString& Name, const FString& LocationJson, const FString& RotationJson, const FString& ScaleJson, const FString& ExpectedLevelPath, int32 MaxActors);
 };

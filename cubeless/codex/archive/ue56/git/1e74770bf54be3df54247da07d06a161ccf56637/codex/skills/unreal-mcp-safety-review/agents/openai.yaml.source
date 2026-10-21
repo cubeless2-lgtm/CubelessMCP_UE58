@@ -1,4 +1,0 @@
-interface:
-  display_name: "Unreal MCP Safety Review"
-  short_description: "MCP dependency and editor safety gates"
-  default_prompt: "Use $unreal-mcp-safety-review to audit Unreal MCP changes for unsafe dependencies."

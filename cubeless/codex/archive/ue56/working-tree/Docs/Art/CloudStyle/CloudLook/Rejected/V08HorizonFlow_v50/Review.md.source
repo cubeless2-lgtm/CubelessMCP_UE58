@@ -1,7 +1,0 @@
-# V08 Horizon Flow v50
-
-Based on v49. Built-in image generation prompt: edit outermost distant cloud banks only; replace radial downward streaks with broad overlapping planes following the circular tangent; retain inward bright crowns, outward undersides, exact silhouette and layout. No concentric lines or new puffs.
-
-Generated shading donor is transferred only outside radius 1680 px, transitioning to full weight at 1790 px on the 4096 texture. Inner region remains unchanged. A and G are byte-identical to v49, including its repaired pinholes. R/B shading changes affect 2,484,173 pixels. Source preview visually reviewed before import.
-
-Imported and saved to Altitude/Rejected/T_CloudLook_V08HorizonFlow_v50. No level reassignment in this turn. Engine appearance remains to be reviewed.

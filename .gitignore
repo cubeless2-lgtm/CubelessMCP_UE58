@@ -1,15 +1,17 @@
-# This repository distributes the editor extension and its operating material.
-# The existing host game's content and configuration are not distribution files.
+# Publish only the source editor plugin and installation notes.
 /*
 !/.gitignore
 !/.gitattributes
-!/AGENTS.md
 !/README.md
 !/Plugins/
-!/cubeless/
 /Plugins/*
 !/Plugins/CubelessMCP_UE58/
 
+# Local Unreal projects, migration records, pipelines and verification evidence.
+/cubeless/
+/AGENTS.md
+
+# Generated build/runtime state is never distribution source.
 **/Binaries/
 **/Intermediate/
 **/DerivedDataCache/
@@ -18,7 +20,9 @@
 **/*.py[cod]
 **/.venv/
 **/.vs/
-/cubeless/workspaces/
-/cubeless/build/
 **/*.pdb
 **/*.obj
+
+# Development-only tests and owned verification fixture sources.
+/Plugins/CubelessMCP_UE58/Content/Python/tests/
+/Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Tests/

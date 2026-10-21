@@ -35,7 +35,10 @@ def _invoke_mutation(method, *arguments):
     function = getattr(library, method, None) if library is not None else None
     if function is None:
         raise OperationError("native_component_api_unavailable", "Build/load the named CubelessComponentLibrary mutation helper; no fallback executed")
-    raw = function(*arguments)
+    try:
+        raw = function(*arguments)
+    finally:
+        function = None
     try:
         value = json.loads(raw)
     except (TypeError, ValueError) as error:

@@ -10,4 +10,10 @@ def set_blueprint_pin_default(blueprint_path, graph_path, node_path, pin_name, v
     function = getattr(getattr(unreal, "CubelessGraphLibrary", None), "set_blueprint_pin_default", None)
     if not callable(function):
         raise OperationError("native_pin_api_unavailable", "Build/load the named pin-default helper; no generic property fallback executed")
+    if pin_name.casefold() in ("addressx", "addressy", "filter", "lodgroup"):
+        try:
+            raw = function(graph_path, node_path, pin_name, value_json, direction)
+        finally:
+            function = None  # RC-release before JSON/exception allocation; Native exact-member admission remains authoritative.
+        return _decode_result(raw)
     return _decode_result(function(graph_path, node_path, pin_name, value_json, direction))

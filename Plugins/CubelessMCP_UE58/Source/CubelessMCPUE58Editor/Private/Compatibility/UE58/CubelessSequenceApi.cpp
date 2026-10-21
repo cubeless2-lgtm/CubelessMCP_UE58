@@ -7,6 +7,7 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
 #include "K2Node_ExecutionSequence.h"
+#include "BlueprintNodeSpawner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
@@ -27,7 +28,7 @@ FString Kind(UBlueprint* BP, UEdGraph* G)
 }
 }
 
-TSharedRef<FJsonObject> Add(const FString& GraphPath, int32 X, int32 Y, int32 OutputCount)
+static TSharedRef<FJsonObject> AddWork(const FString& GraphPath, int32 X, int32 Y, int32 OutputCount,const TFunction<bool(UEdGraphNode*)>& Guard,const TFunction<bool(UEdGraphNode*)>& FreezePins)
 {
     auto R = MakeShared<FJsonObject>(); auto Data = MakeShared<FJsonObject>();
     R->SetObjectField(TEXT("data"), Data); R->SetBoolField(TEXT("success"), false);
@@ -38,12 +39,15 @@ TSharedRef<FJsonObject> Add(const FString& GraphPath, int32 X, int32 Y, int32 Ou
     R->SetBoolField(TEXT("loaded_during_operation"), false);
     Data->SetBoolField(TEXT("implicit_compile_requested"), false);
     Data->SetStringField(TEXT("observation_scope"), TEXT("native loaded graph identities, new exec pins and dirty/status; Python additionally compares existing node/pin/link snapshots; arbitrary callbacks are not completely audited"));
+    TStrongObjectPtr<UK2Node_ExecutionSequence> ReturnedGuardNode;
+    auto Fence=[&](){if(!Guard||Guard(ReturnedGuardNode.Get()))return true;R->SetBoolField(TEXT("success"),false);R->SetBoolField(TEXT("postcondition_passed"),false);R->SetBoolField(TEXT("change_state_known"),false);R->SetField(TEXT("changed"),MakeShared<FJsonValueNull>());Fail(R,TEXT("sequence_current_unknown"),TEXT("Guarded source/current failed; no next SDK or cleanup."));return false;};
+    if(!Fence())return R;
     if (OutputCount < 2 || OutputCount > 64 || X < -1000000 || X > 1000000 || Y < -1000000 || Y > 1000000)
     { Fail(R, TEXT("sequence_argument_out_of_range"), TEXT("output_count must be 2..64 and coordinates -1000000..1000000; no clamp is applied.")); return R; }
     // Reuse the existing bounds, editor thread/PIE, loaded /Game K2 ownership,
     // GUID uniqueness and dirty-state read guards without copying their logic.
     const auto Before = Graph::ReadNodeIdentities(GraphPath);
-    Data->SetObjectField(TEXT("before"), Before);
+    Data->SetObjectField(TEXT("before"), Before);if(!Fence())return R;
     if (!Before->GetBoolField(TEXT("success")))
     { Fail(R, TEXT("sequence_graph_preflight_failed"), TEXT("Existing graph identity preflight failed; inspect data.before.")); return R; }
     UEdGraph* G = FindObject<UEdGraph>(nullptr, *GraphPath);
@@ -57,7 +61,7 @@ TSharedRef<FJsonObject> Add(const FString& GraphPath, int32 X, int32 Y, int32 Ou
         || !Schema->DoesGraphSupportImpureFunctions(G) || !G->GraphGuid.IsValid())
     { Fail(R, TEXT("sequence_graph_scope_unsupported"), TEXT("Requires an existing directly owned standard K2 event/function/macro graph permitting execution flow.")); return R; }
     const auto Parent = InspectBlueprintParent(BP->ParentClass ? BP->ParentClass->GetPathName() : FString());
-    Data->SetObjectField(TEXT("parent_inspection"), Parent);
+    Data->SetObjectField(TEXT("parent_inspection"), Parent);if(!Fence())return R;
     if (!Parent->GetBoolField(TEXT("success")))
     { Fail(R, TEXT("sequence_parent_unsupported"), TEXT("Blueprint parent failed the common runtime-class dependency guard.")); return R; }
     const TStrongObjectPtr<UBlueprint> KeepBP(BP); const TStrongObjectPtr<UEdGraph> KeepGraph(G);
@@ -66,20 +70,26 @@ TSharedRef<FJsonObject> Add(const FString& GraphPath, int32 X, int32 Y, int32 Ou
     R->SetBoolField(TEXT("dirty_before"), WasDirty); Data->SetNumberField(TEXT("blueprint_status_before"), static_cast<int32>(OldStatus));
     R->SetStringField(TEXT("stage"), TEXT("add_sequence")); R->SetBoolField(TEXT("mutation_attempted"), true);
     R->SetBoolField(TEXT("change_state_known"), false); R->SetField(TEXT("changed"), MakeShared<FJsonValueNull>());
-    BP->Modify(); G->Modify();
-    FGraphNodeCreator<UK2Node_ExecutionSequence> Creator(*G);
-    UK2Node_ExecutionSequence* Node = Creator.CreateNode(false);
-    Node->NodePosX = X; Node->NodePosY = Y; Creator.Finalize();
+    BP->Modify();if(!Fence())return R;G->Modify();if(!Fence())return R;
+    UK2Node_ExecutionSequence* Node=nullptr;
+    if(Guard){
+        Data->SetBoolField(TEXT("guarded_spawner_create_entered"),true);auto* Spawner=UBlueprintNodeSpawner::Create(UK2Node_ExecutionSequence::StaticClass());TStrongObjectPtr<UBlueprintNodeSpawner> HeldSpawner(Spawner);Data->SetBoolField(TEXT("guarded_spawner_create_returned"),true);if(!Fence()||!IsValid(Spawner))return R;
+        Data->SetBoolField(TEXT("guarded_spawner_invoke_entered"),true);UEdGraphNode* Returned=Spawner->Invoke(G,{},FVector2D(X,Y));TStrongObjectPtr<UEdGraphNode> HeldReturned(Returned);Data->SetBoolField(TEXT("guarded_spawner_invoke_returned"),true);Node=Cast<UK2Node_ExecutionSequence>(Returned);if(Node)ReturnedGuardNode.Reset(Node);if(!Fence()||!Node)return R;
+    }else{
+        // Original False/GraphPath writer stays on its original Creator path.
+        FGraphNodeCreator<UK2Node_ExecutionSequence> Creator(*G);
+        Node=Creator.CreateNode(false);Node->NodePosX=X;Node->NodePosY=Y;Creator.Finalize();
+    }
     bool Applied = true;
     for (int32 Index = 2; Index < OutputCount; ++Index)
     {
         UEdGraphPin* Last = Node->GetThenPinGivenIndex(Index - 1);
         if (!Last) { Applied = false; break; }
         // Both calls are exported public APIs on the MinimalAPI Sequence class.
-        Node->InsertPinIntoExecutionNode(Last, EPinInsertPosition::After);
+        Node->InsertPinIntoExecutionNode(Last, EPinInsertPosition::After);if(!Fence())return R;
     }
-    Node->ReconstructNode();
-    FBlueprintEditorUtils::MarkBlueprintAsModified(BP);
+    Node->ReconstructNode();if(!Fence())return R;if(FreezePins&&!FreezePins(Node))return R;
+    FBlueprintEditorUtils::MarkBlueprintAsModified(BP);if(!Fence())return R;
     Data->SetStringField(TEXT("node_id"), Node->NodeGuid.ToString(EGuidFormats::Digits));
     Data->SetStringField(TEXT("node_guid"), Node->NodeGuid.ToString(EGuidFormats::Digits));
     Data->SetStringField(TEXT("object_path"), Node->GetPathName());
@@ -109,13 +119,14 @@ TSharedRef<FJsonObject> Add(const FString& GraphPath, int32 X, int32 Y, int32 Ou
         Row->SetArrayField(TEXT("linked_to"), Links); Pins.Add(MakeShared<FJsonValueObject>(Row));
         PinsValid &= Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec && !Pin->bOrphanedPin
             && Pin->LinkedTo.IsEmpty() && Pin->PinId.IsValid() && !PinGuids.Contains(Pin->PinId);
+        if(Guard){FEdGraphPinType Expected;Expected.PinCategory=UEdGraphSchema_K2::PC_Exec;PinsValid &= Pin->PinType==Expected&&!Pin->PinType.bIsUObjectWrapper&&!Pin->PinType.bSerializeAsSinglePrecisionFloat&&!Pin->PinType.PinValueType.bTerminalIsUObjectWrapper;}
         PinGuids.Add(Pin->PinId);
         if (Pin->Direction == EGPD_Input) { ++Inputs; PinsValid &= Pin->PinName == UEdGraphSchema_K2::PN_Execute; }
         else { PinsValid &= Pin->PinName.ToString() == FString::Printf(TEXT("then_%d"), Outputs); ++Outputs; }
     }
     Data->SetArrayField(TEXT("pins"), Pins); Data->SetNumberField(TEXT("output_count"), Outputs);
     Data->SetNumberField(TEXT("requested_output_count"), OutputCount);
-    const auto After = Graph::ReadNodeIdentities(GraphPath); Data->SetObjectField(TEXT("after"), After);
+    const auto After = Graph::ReadNodeIdentities(GraphPath); Data->SetObjectField(TEXT("after"), After);if(!Fence())return R;
     R->SetBoolField(TEXT("dirty_after"), BP->GetOutermost()->IsDirty());
     Data->SetNumberField(TEXT("blueprint_status_after"), static_cast<int32>(BP->Status.GetValue()));
     bool Known = After->GetBoolField(TEXT("success")) && G->GetPathName() == GraphPath
@@ -142,4 +153,6 @@ TSharedRef<FJsonObject> Add(const FString& GraphPath, int32 X, int32 Y, int32 Ou
     if (!Passed) { Fail(R, TEXT("sequence_postcondition_failed"), TEXT("Sequence identity/pins or existing graph identity verification failed; inspect retained partial observations without retry.")); }
     return R;
 }
+TSharedRef<FJsonObject> Add(const FString& Path,int32 X,int32 Y,int32 Count){return AddWork(Path,X,Y,Count,{},{});}
+TSharedRef<FJsonObject> AddGuarded(const FString& Path,int32 X,int32 Y,int32 Count,const TFunction<bool(UEdGraphNode*)>& Guard,const TFunction<bool(UEdGraphNode*)>& FreezePins){return AddWork(Path,X,Y,Count,Guard,FreezePins);}
 }

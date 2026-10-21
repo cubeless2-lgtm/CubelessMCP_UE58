@@ -199,27 +199,42 @@ def create_actor(name, type, location_json="[0,0,0]", rotation_json="[0,0,0]", s
     return _spawn("create_actor", name, type, location_json, rotation_json, scale_json, expected_level_path, operation_id)
 
 
+def _spawn_blueprint_arguments(blueprint_name, actor_name, location_json, rotation_json, scale_json, expected_level_path):
+    path = _string(blueprint_name, "blueprint_name")
+    if not path.startswith("/"):
+        if "/" in path or "." in path:
+            raise OperationError("blueprint_path_invalid", "Use a simple /Game/Blueprints name or exact /Game asset path")
+        path = "/Game/Blueprints/" + path
+    if not path.startswith("/Game/") or any(ord(c) < 32 or ord(c) == 127 for c in path):
+        raise OperationError("blueprint_path_invalid", "Only persistent /Game Blueprint assets are supported")
+    if "." not in path:
+        path += "." + path.rsplit("/", 1)[-1]
+    return {"blueprint_path": _string(path, "blueprint_path"), "name": _string(actor_name, "actor_name"),
+        "location_json": _vector_json(location_json, "location_json"),
+        "rotation_json": _vector_json(rotation_json, "rotation_json"),
+        "scale_json": _vector_json(scale_json, "scale_json"), "expected_level_path": _guard(expected_level_path)}
+
+
+def _spawn_blueprint_action_from_arguments(result, arguments, checkpoint_callback=None):
+    _mutation_action(result, "spawn_blueprint_actor", arguments,
+        lambda guard: api.spawn_blueprint_actor(arguments["blueprint_path"], arguments["name"],
+            arguments["location_json"], arguments["rotation_json"], arguments["scale_json"], guard),
+        checkpoint_callback, spawning=True)
+
+
+def spawn_blueprint_actor_action(result, blueprint_name, actor_name, location_json="[0,0,0]", rotation_json="[0,0,0]", scale_json="[1,1,1]", expected_level_path=None, checkpoint_callback=None):
+    arguments = _spawn_blueprint_arguments(blueprint_name, actor_name, location_json, rotation_json, scale_json, expected_level_path)
+    _spawn_blueprint_action_from_arguments(result, arguments, checkpoint_callback)
+
+
 def spawn_blueprint_actor(blueprint_name, actor_name, location_json="[0,0,0]", rotation_json="[0,0,0]", scale_json="[1,1,1]", expected_level_path=None, operation_id=None):
     """Legacy exact UObject-name spawn, sharing the native Actor mutation core."""
     try:
-        path = _string(blueprint_name, "blueprint_name")
-        if not path.startswith("/"):
-            if "/" in path or "." in path:
-                raise OperationError("blueprint_path_invalid", "Use a simple /Game/Blueprints name or exact /Game asset path")
-            path = "/Game/Blueprints/" + path
-        if not path.startswith("/Game/") or any(ord(c) < 32 or ord(c) == 127 for c in path):
-            raise OperationError("blueprint_path_invalid", "Only persistent /Game Blueprint assets are supported")
-        if "." not in path:
-            path += "." + path.rsplit("/", 1)[-1]
-        arguments = {"blueprint_path": _string(path, "blueprint_path"), "name": _string(actor_name, "actor_name"),
-            "location_json": _vector_json(location_json, "location_json"),
-            "rotation_json": _vector_json(rotation_json, "rotation_json"),
-            "scale_json": _vector_json(scale_json, "scale_json"), "expected_level_path": _guard(expected_level_path)}
+        arguments = _spawn_blueprint_arguments(blueprint_name, actor_name, location_json, rotation_json, scale_json, expected_level_path)
     except Exception as error:
         return fail(new_result(operation_id), error)
-    return mutate("spawn_blueprint_actor", arguments, operation_id, lambda result: _mutation_action(result,
-        "spawn_blueprint_actor", arguments, lambda guard: api.spawn_blueprint_actor(arguments["blueprint_path"],
-            arguments["name"], arguments["location_json"], arguments["rotation_json"], arguments["scale_json"], guard), spawning=True))
+    return mutate("spawn_blueprint_actor", arguments, operation_id,
+        lambda result: _spawn_blueprint_action_from_arguments(result, arguments))
 
 
 def delete_actor_action(result, name, expected_level_path=None, checkpoint_callback=None):
@@ -262,3 +277,49 @@ def set_actor_transform(name, location_json="null", rotation_json="null", scale_
     except Exception as error:
         return fail(new_result(operation_id), error)
     return mutate("set_actor_transform", arguments, operation_id, lambda result: _transform_action_from_arguments(result, arguments))
+
+
+def _original_transform_vector_json(value, field):
+    """Preserve nullable, short and long original arrays; Native owns front-three float32/short-zero parsing."""
+    if value is not None and type(value) is not list:
+        raise OperationError("invalid_actor_original_vector", field + " must be an array or null")
+    try:
+        return json.dumps(value, allow_nan=False, separators=(",", ":"))
+    except (TypeError, ValueError, OverflowError, RecursionError) as error:
+        raise OperationError("invalid_actor_original_vector", field + ": " + str(error)) from error
+
+
+def _original_transform_arguments(name, location, rotation, scale):
+    return {"name": _string(name, "name"), "expected_level_path": "",
+            "location_json": _original_transform_vector_json(location, "location"),
+            "rotation_json": _original_transform_vector_json(rotation, "rotation"),
+            "scale_json": _original_transform_vector_json(scale, "scale")}
+
+
+def _original_transform_action_from_arguments(result, arguments, checkpoint_callback=None):
+    # Existing guarded before-read/checkpoint/adopt-current preserves full Native failure/unknown and legacy payload.
+    # A missing legacy_result is not synthesized here or promoted to an original success.
+    _mutation_action(result, "set_actor_transform_original", arguments,
+        lambda guard: api.set_actor_transform_original(arguments["name"], arguments["location_json"],
+            arguments["rotation_json"], arguments["scale_json"], guard), checkpoint_callback)
+
+
+def set_actor_transform_original_action(result, name, location=None, rotation=None, scale=None, checkpoint_callback=None):
+    arguments = _original_transform_arguments(name, location, rotation, scale)
+    _original_transform_action_from_arguments(result, arguments, checkpoint_callback)
+
+
+def set_actor_transform_original(name, location=None, rotation=None, scale=None):
+    """Exact original four-input Actor transform route; returns standard internal receipt plus actual Native legacy_result.
+
+    The Raw Toolset publishes only Native's known legacy_result when present. Before-dispatch Python failures
+    and unknown Native outcomes retain their real standard receipt. The existing six-input transform route
+    stays separate. Native always dispatches its original setter once even for name-only/no-op requests;
+    this layer adds no compile/save, mutation retry, array-length-three gate or float64 replacement parser.
+    """
+    try:
+        arguments = _original_transform_arguments(name, location, rotation, scale)
+    except Exception as error:
+        return fail(new_result(), error)
+    return mutate("set_actor_transform_original", arguments, None,
+        lambda result: _original_transform_action_from_arguments(result, arguments))

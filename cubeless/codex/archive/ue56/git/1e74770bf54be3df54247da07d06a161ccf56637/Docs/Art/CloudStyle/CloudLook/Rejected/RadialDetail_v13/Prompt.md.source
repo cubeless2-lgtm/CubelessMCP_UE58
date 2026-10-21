@@ -1,7 +1,0 @@
-# RadialDetail_v13
-
-Built-in image generation. Preview candidate, not catalog approval.
-
-Prompt: Use RadialInward_v12 as exact edit target, RadialCrisp_v08 as internal detail reference only. Bring back moderately richer layered middle-gray volumes, about 40% reference influence as artistic direction, not a numerical pixel blend. Lock placement, silhouettes and fade. Preserve inward-facing illumination, especially corrected top distant clouds. Broad filled light planes, no narrow white contour lines, repetitive scales, jagged scraps or holes. Detail strongest near inner crowns, quieter outward density.
-
-Reuse RadialInward_v12 independent alpha exactly, preserving the current silhouette and directional fade. Bilinear packing 4096 square from 1254 square generation (upscaled). CloudCompositeBlend=0 and coverage-residue cleanup unchanged. Original assets preserved.

@@ -1,1 +1,0 @@
-{"status": "static_pass", "static_status": "pass", "violations": 0, "runtime": "not_run", "packaging_independence_proven": false}

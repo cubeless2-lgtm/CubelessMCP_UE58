@@ -15,8 +15,8 @@ from cubeless_mcp_ue58.compatibility.ue58 import component as api
 from . import state
 from .state import OperationError, fail, mutate, new_result
 
-_COMPONENT_TYPES = ("SceneComponent", "StaticMeshComponent", "CameraComponent", "SpringArmComponent",
-                    "SphereComponent", "BoxComponent", "CapsuleComponent")
+_COMPONENT_TYPES = ("SceneComponent", "ChildActorComponent", "StaticMeshComponent", "CameraComponent", "SpringArmComponent",
+                    "SphereComponent", "BoxComponent", "CapsuleComponent", "SplineComponent", "InstancedStaticMeshComponent", "HierarchicalInstancedStaticMeshComponent", "SkeletalMeshComponent", "PointLightComponent", "SpotLightComponent", "RectLightComponent", "DirectionalLightComponent")
 
 
 def _selector(value, field, *, empty=False):
@@ -196,12 +196,17 @@ def _add_arguments(blueprint_name, component_type, component_name, location_json
     path = _mutation_path(blueprint_name)
     kind = _selector(component_type, "component_type")
     generated = kind.startswith("/Game/")
+    pcg_native = kind in ("PCGComponent", "UPCGComponent", "PCG", "/Script/PCG.PCGComponent")
     if generated:
         package, separator, class_name = kind.partition(".")
         if (not separator or class_name != package.rsplit("/", 1)[-1] + "_C"
                 or any(not segment or segment in (".", "..") for segment in package[1:].split("/"))
                 or any(c.isspace() or c in "\\:'\"" for c in kind)):
             raise OperationError("component_type_unsupported", "Use the exact /Game/Package.Package_C generated class path; native inspection must also prove a saved clean runtime non-scene ActorComponent")
+    elif pcg_native:
+        kind = "/Script/PCG.PCGComponent"
+    elif kind in ("NiagaraComponent", "UNiagaraComponent", "Niagara", "/Script/Niagara.NiagaraComponent"):
+        kind = "/Script/Niagara.NiagaraComponent"
     else:
         kind = next((name for name in _COMPONENT_TYPES
             if kind in (name, "U" + name, "/Script/Engine." + name, name.removesuffix("Component"))), None)
@@ -223,6 +228,11 @@ def _add_arguments(blueprint_name, component_type, component_name, location_json
     if type(properties) is not dict or len(properties) > 64:
         raise OperationError("component_properties_invalid", "component_properties_json must be an object with at most 64 properties")
     parent = _selector("" if parent_component is None else parent_component, "parent_component", empty=True)
+    if pcg_native and parent:
+        raise OperationError("component_pcg_parent_unsupported", "PCGComponent is a non-scene ActorComponent and cannot attach to a scene parent; no native call dispatched")
+    # The old non-scene Add accepts transform inputs but does not apply them.
+    # Preserve their normalized values for the native receipt; do not impose the
+    # separate generated-component identity-transform restriction on native PCG.
     if generated and (properties or parent or transform != {"location": [0, 0, 0], "rotation": [0, 0, 0], "scale": [1, 1, 1]}):
         raise OperationError("generated_component_options_unsupported", "Generated non-scene ActorComponents currently require identity transforms, no parent and empty initial properties; saved component defaults are retained")
     return {"blueprint_path": path, "component_type": kind, "component_name": name,

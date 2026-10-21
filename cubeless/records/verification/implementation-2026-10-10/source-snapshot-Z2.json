@@ -1,8 +1,0 @@
-{
-  "schema": "cubeless_source_snapshot_v1",
-  "status": "pass",
-  "checked": 133,
-  "binary_copy": "not_copied_hash_only",
-  "archive": "source-snapshots/plugin-Z2",
-  "source": "registered-schemas-and-diagnostics-Z2.json"
-}

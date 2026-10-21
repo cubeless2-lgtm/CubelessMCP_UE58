@@ -1,9 +1,0 @@
-# Independent cloud placement
-
-- Pushed the four-stage sky-colour remap to `main` as `744b167b9` before changing the level.
-- In `/Game/RXSkySystem/CloudAuthoring/Studies/Study_03_AnvilCrown/L_Study_03_AnvilCrown`, detached 28 placement controls and 28 archived VDB actors using Keep World for translation, rotation and scale.
-- Cleared placement actors' `ParentCloudGroup` references and the former groups' `Clouds` arrays so group construction no longer updates detached clouds.
-- Preserved archived actors' editor-hidden state. Empty parent actors were retained; no assets were deleted.
-- Verified every attachment was removed and the maximum world-transform component difference was below 0.000000001. Confirmed all 28 controls remained independent after editor updates and captured the rendered sky.
-- Saved the source level. Select an individual `CLOUD_...` actor to adjust its placement; the existing volumetric-cloud synchronization remains active.
-- Evidence: `MCPGameProject/Saved/RXFourStage_20260917/Detach/`.

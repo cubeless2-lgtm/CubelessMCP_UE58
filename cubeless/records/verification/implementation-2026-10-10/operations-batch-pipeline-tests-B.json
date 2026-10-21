@@ -1,7 +1,0 @@
-{
-  "schema": "cubeless_batch_pipeline_offline_tests_v1",
-  "passed": true,
-  "tests_run": 9,
-  "scope": "Synthetic official client with source-derived signatures; no Unreal/native execution",
-  "details": "test_author_and_distinct_process_reload_pass (__main__.BatchPipelineTests.test_author_and_distinct_process_reload_pass) ... ok\ntest_compile_or_save_contradictions_cannot_pass (__main__.BatchPipelineTests.test_compile_or_save_contradictions_cannot_pass) ... ok\ntest_failed_or_missing_stage_cannot_pass (__main__.BatchPipelineTests.test_failed_or_missing_stage_cannot_pass) ... ok\ntest_one_way_or_dangling_graph_links_are_rejected (__main__.BatchPipelineTests.test_one_way_or_dangling_graph_links_are_rejected) ... ok\ntest_replay_and_compile_workload_cannot_be_counterfeited (__main__.BatchPipelineTests.test_replay_and_compile_workload_cannot_be_counterfeited) ... ok\ntest_same_process_reload_is_rejected (__main__.BatchPipelineTests.test_same_process_reload_is_rejected) ... ok\ntest_saved_graph_cannot_change_after_independent_readback (__main__.BatchPipelineTests.test_saved_graph_cannot_change_after_independent_readback) ... ok\ntest_verifier_rechecks_failure_readback_and_saved_graph (__main__.BatchPipelineTests.test_verifier_rechecks_failure_readback_and_saved_graph) ... ok\ntest_verifier_rejects_fake_counts_and_wrong_child_order (__main__.BatchPipelineTests.test_verifier_rejects_fake_counts_and_wrong_child_order) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 1.236s\n\nOK\n"
-}

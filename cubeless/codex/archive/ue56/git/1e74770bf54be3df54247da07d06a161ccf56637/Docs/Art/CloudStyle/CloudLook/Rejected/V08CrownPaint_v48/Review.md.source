@@ -1,7 +1,0 @@
-# V08 Crown Paint v48
-
-New asset based on v47. Built-in image generation produced Edited_Shading.png as a shading donor. Original alpha and G density are copied exactly; zero differences verified. 2,005,443 R pixels brightened, none darkened. Radial crown mask limits donor transfer; B follows the original shade-derived term. No silhouette regeneration in the final packed asset.
-
-Prompt: Preserve exact polar layout and silhouette; incorporate dark patches immediately inside center-facing crowns into neighboring bright white illuminated planes, with natural internal transitions. Preserve deep interiors and outward-facing undersides. No outline, new shapes, or edge blur.
-
-Imported and saved as /Game/RXSkySystem/Cubeless/PaintedCloud/v04/Altitude/Rejected/T_CloudLook_V08CrownPaint_v48. Level binding remains v47; this request creates a separate asset for review.

@@ -1,9 +1,0 @@
-# Evolution V03 normal-map replacement
-
-The user-selected CloudBasis remains T_PaintedCloud_Evolution_v03. Converted the approved height source into a smooth UV-space normal map using normal_convert.py; conversion details are in conversion.json. Imported T_CloudNormal_Evolution_v03 as linear uncompressed vector data with explicit shader decode, not UE automatic normal-map unpacking.
-
-Removed the POM ray march, extra initial coverage sample, height-gradient samples, CloudHeight and DomeNormal inputs and their nodes. Removed BP CloudPOMStrength, CloudPOMSteps and CloudHeightLightStrength variables and material-setting nodes. Height texture is retained only as an unused source asset; it is no longer a dependency of the cloud material.
-
-Added instance-editable CloudNormalStrength under Clouds|Relief, default 0.5 and range 0–2. One normal texture sample modifies the existing shade according to the light direction in rotated cloud space. Polar UV tangent directions match the current mapping; coverage fades the response at thin boundaries. Existing sky-colour floor, lunar background reconstruction and celestial occlusion remain intact. Height source alignment remains approximate from image generation.
-
-Validation: BP compiled with zero errors/warnings; material zero errors. Shader readback confirms no POM/height sampler and exactly one normal sample. Instance-editable metadata and removal of the three old controls verified. Direct dependency audit found no MCP-only references. Same-pose normal off/on captures: Saved/PaintedEvolutionV03/Normal_Compare.png. Live cloud motion restored afterward. GPU frame-time improvement not measured; no new PIE/full-repository pass is claimed (earlier full verification failed unrelated Niagara gates). Backups in Saved/PaintedEvolutionV03/BeforeNormal_*.

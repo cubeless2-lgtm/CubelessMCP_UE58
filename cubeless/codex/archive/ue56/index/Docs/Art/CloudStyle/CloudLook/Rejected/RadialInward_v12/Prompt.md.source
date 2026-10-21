@@ -1,9 +1,0 @@
-# RadialInward_v12
-
-Built-in image generation; preview candidate, not approved catalog entry.
-
-Art prompt: Preserve RadialClean_v11 hero banks and layout. Correct outer distant banks from 10 through 2 o'clock so light originates at UV center. At 12 o'clock, bright crisp filled rounded crowns face DOWN toward image center; dark undersides fade UP toward outer border. At 10 and 2, crowns face down-right and down-left respectively. No contour lines or serrated brush pattern. Broad middletones and soft outward fade.
-
-Coverage prompt: Opaque RGB grayscale mask. Preserve lower cloud banks. Match corrected upper banks exactly: white crisp inward crowns, soft outward gray-to-black fades. No detached flecks, double outlines or background residue. Alpha is independent of artistic illumination.
-
-Source 1254 square, packed 4096 square with bilinear resampling; upscaled, not native 4K. Retains existing material coverage cleanup and CloudCompositeBlend=0. Previous assets preserved.

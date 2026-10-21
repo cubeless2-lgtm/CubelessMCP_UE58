@@ -11,6 +11,9 @@ class UCubelessComponentLibrary : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 public:
     UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore))
+    static FString ConfigureBlueprintPCGTemplate(const FString& ParamsJson);
+
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore))
     static FString ListBlueprintComponents(const FString& BlueprintPath, const FString& ComponentName, int32 MaxComponents);
 
     UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore))

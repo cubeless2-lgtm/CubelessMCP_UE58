@@ -7,6 +7,10 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
+#include "Engine/Texture.h"
+#include "Engine/TextureRenderTarget2D.h"
+#include "Engine/World.h"
+#include "Editor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_VariableSet.h"
@@ -59,11 +63,110 @@ bool CaptureNode(const UK2Node* Node, const TSharedRef<FJsonObject>& J)
     }
     J->SetArrayField(TEXT("pins"), Pins); return true;
 }
+// LV: one exact native setter input; global primitive/enum parsing stays unchanged.
+bool TextureSetterClass(const UK2Node* Node,FString& Path)
+{
+    if(!IsValid(Node)||Node->GetClass()!=UK2Node_VariableSet::StaticClass())return false;
+    const auto* V=static_cast<const UK2Node_VariableSet*>(Node);const FName Name=V->VariableReference.GetMemberName();
+    UClass* C=(Name==TEXT("AddressX")||Name==TEXT("AddressY"))?UTextureRenderTarget2D::StaticClass():(Name==TEXT("Filter")||Name==TEXT("LODGroup"))?UTexture::StaticClass():nullptr;
+    if(!C)return false;FMemberReference E;E.SetExternalMember(Name,C);if(!V->VariableReference.IsSameReference(E)||V->VariableReference.IsDeprecated())return false;
+    Path=C==UTexture::StaticClass()?TEXT("/Script/Engine.Texture"):TEXT("/Script/Engine.TextureRenderTarget2D");return true;
+}
+Function::FResult SetTextureEnum(UEdGraph* G,UBlueprint* BP,UK2Node* Node,const FString& ClassPath,const FString& PinName,const FString& ValueJson,const TSharedRef<FJsonObject>& Identities)
+{
+    Function::FResult R;R.Data->SetBoolField(TEXT("native_texture_enum_pin_default"),true);R.Data->SetObjectField(TEXT("graph_identity_before"),Identities);
+    const auto Loaded=[](const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);};
+    TStrongObjectPtr<UBlueprint> KeepBP(BP);TStrongObjectPtr<UEdGraph> KeepGraph(G);TStrongObjectPtr<UK2Node> KeepNode(Node);TStrongObjectPtr<UEditorEngine> Editor(GEditor);TStrongObjectPtr<UWorld> World(GWorld);auto* Undo=GUndo;
+    const FString GraphPath=G->GetPathName(),NodePath=Node->GetPathName();const FGuid Guid=Node->NodeGuid;const FMemberReference Reference=static_cast<UK2Node_VariableSet*>(Node)->VariableReference;const FName Variable=Reference.GetMemberName();
+    auto Stop=[&](const TCHAR* M){R.bSuccess=R.bPostconditionPassed=false;R.bChangeStateKnown=false;Fail(R,TEXT("pin_default_texture_scope_changed"),M);return false;};
+    const auto ParentHandle=BP->ParentClass.GetGCPtr(),GeneratedHandle=BP->GeneratedClass.GetGCPtr(),SkeletonHandle=BP->SkeletonGeneratedClass.GetGCPtr(),GraphSchemaHandle=G->Schema.GetGCPtr();
+    UClass* SchemaClass=UEdGraphSchema_K2::StaticClass();
+    PRAGMA_DISABLE_DEPRECATION_WARNINGS
+    const auto SchemaCDOHandle=SchemaClass->ClassDefaultObject;
+    PRAGMA_ENABLE_DEPRECATION_WARNINGS
+    TArray<TStrongObjectPtr<UObject>> ClassHolds;ClassHolds.Emplace(SchemaClass);
+    const auto ClassFromHandle=[&](const TObjectPtr<UClass>& H)->UClass*{if(!H.IsResolved()||H==nullptr)return nullptr;UClass* C=FindObject<UClass>(nullptr,*H.GetPathName());if(!Loaded(C)||H!=C)return nullptr;ClassHolds.Emplace(C);return C;};
+    UClass* Parent=ClassFromHandle(ParentHandle);UClass* Generated=ClassFromHandle(GeneratedHandle);UClass* Skeleton=ClassFromHandle(SkeletonHandle);
+    UObject* SchemaObject=SchemaCDOHandle.IsResolved()&&SchemaCDOHandle!=nullptr?FindObject<UObject>(nullptr,*SchemaCDOHandle.GetPathName()):nullptr;
+    if(Loaded(SchemaObject))ClassHolds.Emplace(SchemaObject);
+    if(!Parent||!Generated||!Skeleton||!GraphSchemaHandle.IsResolved()||GraphSchemaHandle!=SchemaClass||!SchemaCDOHandle.IsResolved()||SchemaCDOHandle!=SchemaObject||!Loaded(SchemaObject)||SchemaObject->GetClass()!=SchemaClass||!SchemaObject->HasAnyFlags(RF_ClassDefaultObject)||!SchemaObject->GetPathName().Equals(TEXT("/Script/BlueprintGraph.Default__EdGraphSchema_K2"),ESearchCase::CaseSensitive)){Stop(TEXT("Existing exact target classes and schema CDO required before enum-default SDK."));return R;}
+    struct FRole{TStrongObjectPtr<UObject> Held;UClass* Class;UObject* Outer;UPackage* Package;FString Path;EObjectFlags Flags;UClass* NativeClass;uint32 ClassFlags;int32 Size;};TArray<FRole> Roles;
+    const auto HoldRole=[&](UObject* O,UClass* K){Roles.Add({TStrongObjectPtr<UObject>(O),O->GetClass(),O->GetOuter(),O->GetPackage(),O->GetPathName(),O->GetFlags(),K,K?uint32(K->GetClassFlags()):0,K?K->GetStructureSize():0});};
+    HoldRole(Parent,Parent);HoldRole(Generated,Generated);HoldRole(Skeleton,Skeleton);HoldRole(SchemaClass,SchemaClass);HoldRole(SchemaObject,nullptr);const auto* Schema=static_cast<const UEdGraphSchema_K2*>(SchemaObject);
+    auto Basic=[&](){
+        if(!IsEditorGameThread()||IsPlaySessionActive()||GIsImportingT3D||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!Loaded(Editor.Get())||GEditor!=Editor.Get()||!Loaded(World.Get())||GWorld!=World.Get()||World->WorldType!=EWorldType::Editor||World->bIsTearingDown||GUndo!=Undo||!Loaded(BP)||!Loaded(G)||!Loaded(Node)||Node->GetClass()!=UK2Node_VariableSet::StaticClass()||Node->GetOuter()!=G||Node->NodeGuid!=Guid||!Node->GetPathName().Equals(NodePath,ESearchCase::CaseSensitive)||!G->GetPathName().Equals(GraphPath,ESearchCase::CaseSensitive)||!G->Nodes.Contains(Node)||!static_cast<UK2Node_VariableSet*>(Node)->VariableReference.IsSameReference(Reference)||static_cast<UK2Node_VariableSet*>(Node)->VariableReference.IsDeprecated())return false;
+        for(const auto& A:Roles){const UObject* O=A.Held.Get();if(!Loaded(O)||O->GetClass()!=A.Class||O->GetOuter()!=A.Outer||O->GetPackage()!=A.Package||!O->GetPathName().Equals(A.Path,ESearchCase::CaseSensitive)||O->GetFlags()!=A.Flags||(A.NativeClass&&(uint32(A.NativeClass->GetClassFlags())!=A.ClassFlags||A.NativeClass->GetStructureSize()!=A.Size)))return false;}
+        PRAGMA_DISABLE_DEPRECATION_WARNINGS
+        const auto CurrentCDO=SchemaClass->ClassDefaultObject;
+        PRAGMA_ENABLE_DEPRECATION_WARNINGS
+        return BP->ParentClass.GetGCPtr().IsResolved()&&BP->ParentClass.GetGCPtr()==Parent&&BP->GeneratedClass.GetGCPtr().IsResolved()&&BP->GeneratedClass.GetGCPtr()==Generated&&BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()&&BP->SkeletonGeneratedClass.GetGCPtr()==Skeleton&&G->Schema.GetGCPtr().IsResolved()&&G->Schema.GetGCPtr()==SchemaClass&&CurrentCDO.IsResolved()&&CurrentCDO==SchemaObject;
+    };
+    if(!Basic()){Stop(TEXT("Exact idle held native setter roles required."));return R;}
+    if(FName(*PinName)!=Variable){Fail(R,TEXT("pin_default_texture_input_unsupported"),TEXT("Only the exact property value input is admitted; output/self/other native inputs remain unsupported."));return R;}
+    TSharedPtr<FJsonObject> Baseline,BeforeRow,LastRow;FGuid ValueId;bool AllowDefault=false;
+    auto Normalize=[&](const TSharedRef<FJsonObject>& Row,TSharedPtr<FJsonObject>& Copy)->bool
+    {if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text(Row)),Copy)||!Copy.IsValid())return false;int32 Count=0;for(const auto& V:Copy->GetArrayField(TEXT("pins"))){auto P=V->AsObject();if(P->GetStringField(TEXT("id"))==ValueId.ToString(EGuidFormats::Digits)&&P->GetStringField(TEXT("name")).Equals(Variable.ToString(),ESearchCase::CaseSensitive)&&P->GetStringField(TEXT("direction"))==TEXT("input")){P->RemoveField(TEXT("default"));++Count;}}return Count==1;};
+    auto Current=[&]()->bool
+    {
+        if(!Basic())return Stop(TEXT("Editor/Undo/held setter role changed; no further SDK."));
+        auto Plan=Graph::ReadExternalMemberVariablePlan(GraphPath,Variable.ToString(),true,ClassPath);R.Data->SetObjectField(TEXT("native_texture_last_plan"),Plan);
+        if(!Plan->GetBoolField(TEXT("success"))||!Basic())return Stop(TEXT("Native source/current plan failed; actual prefix retained without another SDK or retry."));
+        if(Plan->GetStringField(TEXT("member_scope"))!=TEXT("external_native_texture_enum_setter"))return Stop(TEXT("Native member scope differs."));
+        if(Baseline.IsValid())
+        {
+            for(const TCHAR* K:{TEXT("property_path"),TEXT("expected_pin_type_text"),TEXT("expected_self_pin_type_text"),TEXT("enum_path"),TEXT("target_class_path"),TEXT("declaring_class_path")})if(!Plan->GetStringField(K).Equals(Baseline->GetStringField(K),ESearchCase::CaseSensitive))return Stop(TEXT("Captured native identity/type changed."));
+            if(!Text(Plan->GetObjectField(TEXT("native_source_before")).ToSharedRef()).Equals(Text(Baseline->GetObjectField(TEXT("native_source_before")).ToSharedRef()),ESearchCase::CaseSensitive))return Stop(TEXT("Native enum/property/source metadata changed."));
+        }
+        TSharedPtr<FJsonObject> Row;int32 Count=0;for(const auto& V:Plan->GetArrayField(TEXT("native_texture_member_nodes")))if(V->AsObject()->GetStringField(TEXT("object_path")).Equals(NodePath,ESearchCase::CaseSensitive)){Row=V->AsObject();++Count;}
+        if(Count!=1||!Row.IsValid())return Stop(TEXT("Actual held setter has no unique current role."));
+        if(BeforeRow.IsValid())
+        {
+            if(AllowDefault){TSharedPtr<FJsonObject> A,B;if(!Normalize(BeforeRow.ToSharedRef(),A)||!Normalize(Row.ToSharedRef(),B)||!Text(A.ToSharedRef()).Equals(Text(B.ToSharedRef()),ESearchCase::CaseSensitive))return Stop(TEXT("Non-default setter role/pin/link/identity changed."));}
+            else if(!Text(BeforeRow.ToSharedRef()).Equals(Text(Row.ToSharedRef()),ESearchCase::CaseSensitive))return Stop(TEXT("Setter changed before the selected default writer."));
+        }
+        if(!Baseline.IsValid())Baseline=Plan;LastRow=Row;return true;
+    };
+    if(!Current())return R;
+    TSharedPtr<FJsonObject> ValueRow;for(const auto& V:LastRow->GetArrayField(TEXT("pins"))){auto P=V->AsObject();if(P->GetStringField(TEXT("name")).Equals(Variable.ToString(),ESearchCase::CaseSensitive)&&P->GetStringField(TEXT("direction"))==TEXT("input")){if(ValueRow.IsValid()){Fail(R,TEXT("pin_default_ambiguous"),TEXT("Native input is ambiguous."));return R;}ValueRow=P;}}
+    if(!ValueRow.IsValid()||!ValueRow->GetArrayField(TEXT("links")).IsEmpty()||!FGuid::ParseExact(ValueRow->GetStringField(TEXT("id")),EGuidFormats::Digits,ValueId)){Fail(R,TEXT("pin_default_input_unsupported"),TEXT("The exact native enum value input must be unlinked and have a persistent ID."));return R;}BeforeRow=LastRow;
+    auto Acquire=[&]()->UEdGraphPin*{UEdGraphPin* P=nullptr;for(auto* Q:Node->Pins)if(Q&&Q->PinId==ValueId){if(P)return nullptr;P=Q;}return P&&!P->WasTrashed()&&P->GetOwningNodeUnchecked()==Node&&P->PinName==Variable&&P->Direction==EGPD_Input&&!P->bHidden&&!P->bOrphanedPin&&!P->bDeprecated&&!P->bDefaultValueIsIgnored&&!P->bDefaultValueIsReadOnly&&!P->bNotConnectable&&!P->ParentPin&&P->SubPins.IsEmpty()&&P->LinkedTo.IsEmpty()?P:nullptr;};
+    TSharedPtr<FJsonValue> Requested;FString Token;if(!Pin::ParseJson(ValueJson,Requested,R))return R;
+    if(!Requested.IsValid()||Requested->Type!=EJson::String||!Pin::SafeName(Requested->AsString())){Fail(R,TEXT("pin_default_texture_enum_invalid"),TEXT("Provide one exact canonical enum entry name; numeric/null/object defaults remain unsupported."));return R;}Token=Requested->AsString();
+    int32 Allowed=0;for(const auto& V:Baseline->GetObjectField(TEXT("native_source_before"))->GetArrayField(TEXT("enum_entries"))){auto E=V->AsObject();if(E->GetStringField(TEXT("name")).Equals(Token,ESearchCase::CaseSensitive)&&!E->GetBoolField(TEXT("hidden"))&&!E->GetBoolField(TEXT("sentinel"))){const int64 N=FCString::Atoi64(*E->GetStringField(TEXT("value_string")));if(N>=0&&N<=255)++Allowed;}}
+    if(Allowed!=1){Fail(R,TEXT("pin_default_texture_enum_invalid"),TEXT("Token must exactly name one defined visible non-MAX entry of this property enum."));return R;}
+    auto PinJson=[&](const TSharedRef<FJsonObject>& P)->TSharedRef<FJsonObject>
+    {auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),P->GetStringField(TEXT("name")));J->SetStringField(TEXT("pin_id"),P->GetStringField(TEXT("id")));J->SetStringField(TEXT("direction"),P->GetStringField(TEXT("direction")));auto T=P->GetObjectField(TEXT("type"));auto PT=MakeShared<FJsonObject>();PT->SetStringField(TEXT("category"),T->GetStringField(TEXT("category")));PT->SetStringField(TEXT("subcategory"),T->GetStringField(TEXT("subcategory")));PT->SetStringField(TEXT("subcategory_object"),T->GetStringField(TEXT("type_object")));PT->SetBoolField(TEXT("is_array"),T->GetIntegerField(TEXT("container_type"))==1);PT->SetBoolField(TEXT("is_reference"),T->GetBoolField(TEXT("is_reference")));J->SetObjectField(TEXT("pin_type"),PT);J->SetStringField(TEXT("pin_type_text"),P->GetStringField(TEXT("type_text")));J->SetStringField(TEXT("default_value"),P->GetStringField(TEXT("default")));J->SetStringField(TEXT("default_text"),P->GetStringField(TEXT("default_text")));J->SetStringField(TEXT("default_object"),P->GetStringField(TEXT("default_object")));const uint32 F=uint32(P->GetIntegerField(TEXT("flags")));J->SetBoolField(TEXT("hidden"),(F&1)!=0);J->SetBoolField(TEXT("default_ignored"),(F&8)!=0);J->SetArrayField(TEXT("linked_to"),P->GetArrayField(TEXT("links")));return J;};
+    auto NodeJson=[&](const TSharedRef<FJsonObject>& Row)->TSharedRef<FJsonObject>{auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("object_path"),NodePath);J->SetStringField(TEXT("node_id"),Row->GetStringField(TEXT("node_guid")));J->SetStringField(TEXT("node_class"),Row->GetStringField(TEXT("node_class_path")));J->SetNumberField(TEXT("x"),Row->GetNumberField(TEXT("x")));J->SetNumberField(TEXT("y"),Row->GetNumberField(TEXT("y")));TArray<TSharedPtr<FJsonValue>> Pins;for(const auto& V:Row->GetArrayField(TEXT("pins")))Pins.Add(MakeShared<FJsonValueObject>(PinJson(V->AsObject().ToSharedRef())));J->SetArrayField(TEXT("pins"),Pins);return J;};
+    const bool DirtyBefore=BP->GetPackage()->IsDirty();auto Before=NodeJson(BeforeRow.ToSharedRef());R.Data->SetObjectField(TEXT("before"),Before);R.Data->SetObjectField(TEXT("previous"),PinJson(ValueRow.ToSharedRef()));R.Data->SetField(TEXT("requested_value"),Requested);R.Data->SetStringField(TEXT("requested_default_value"),Token);R.Data->SetBoolField(TEXT("dirty_before"),DirtyBefore);R.Data->SetStringField(TEXT("object_path"),NodePath);R.Data->SetStringField(TEXT("node_id"),Guid.ToString(EGuidFormats::Digits));auto GI=MakeShared<FJsonObject>();GI->SetStringField(TEXT("path"),GraphPath);GI->SetStringField(TEXT("name"),G->GetName());GI->SetStringField(TEXT("guid"),G->GraphGuid.ToString(EGuidFormats::Digits));R.Data->SetObjectField(TEXT("graph"),GI);
+    if(!Current())return R;auto* Selected=Acquire();if(!Selected){Stop(TEXT("Current selected input unavailable."));return R;}
+    FString Canonical;TObjectPtr<UObject> Object;FText Localized;Schema->GetPinDefaultValuesFromString(Selected->PinType,Node,Token,Canonical,Object,Localized,false);R.Data->SetBoolField(TEXT("native_texture_canonical_parse_returned"),true);if(!Current())return R;Selected=Acquire();if(!Selected){Stop(TEXT("Input changed after canonical parse."));return R;}
+    if(!Object.IsResolved()||Object!=nullptr||!Localized.IsEmpty()){Fail(R,TEXT("pin_default_value_rejected"),TEXT("Native enum defaults must not resolve an object or localized text."));return R;}
+    const FString Error=Schema->IsPinDefaultValid(Selected,Canonical,nullptr,Localized);if(!Current())return R;if(!Error.IsEmpty()){Fail(R,TEXT("pin_default_value_rejected"),TEXT("K2 schema rejected the native enum token."));return R;}
+    Selected=Acquire();if(!Selected){Stop(TEXT("Input changed before comparison."));return R;}const bool WasMatching=Schema->DoesDefaultValueMatch(*Selected,Token);if(!Current())return R;
+    if(!WasMatching)
+    {
+        R.Stage=TEXT("set_pin_default");R.bMutationAttempted=true;R.bChangeStateKnown=false;
+        R.Data->SetNumberField(TEXT("native_texture_modify_attempted"),1);const bool B=BP->Modify();R.Data->SetBoolField(TEXT("native_texture_bp_modify_returned"),B);if(!Current())return R;
+        R.Data->SetNumberField(TEXT("native_texture_modify_attempted"),2);const bool D=G->Modify();R.Data->SetBoolField(TEXT("native_texture_graph_modify_returned"),D);if(!Current())return R;
+        R.Data->SetNumberField(TEXT("native_texture_modify_attempted"),3);const bool N=Node->Modify();R.Data->SetBoolField(TEXT("native_texture_node_modify_returned"),N);if(!Current())return R;
+        Selected=Acquire();if(!Selected){Stop(TEXT("Input changed after Modify."));return R;}R.Data->SetBoolField(TEXT("native_texture_default_sdk_attempted"),true);AllowDefault=true;Schema->TrySetDefaultValue(*Selected,Token,true);R.Data->SetBoolField(TEXT("native_texture_default_sdk_returned"),true);if(!Current())return R;
+    }
+    Selected=Acquire();if(!Selected){Stop(TEXT("Input unavailable after default SDK."));return R;}const bool Matches=Schema->DoesDefaultValueMatch(*Selected,Token);if(!Current())return R;Selected=Acquire();if(!Selected){Stop(TEXT("Input unavailable after match callback."));return R;}const FString Validation=Schema->IsCurrentPinDefaultValid(Selected);if(!Current())return R;
+    auto AfterIds=Graph::ReadNodeIdentities(GraphPath);R.Data->SetObjectField(TEXT("graph_identity_after"),AfterIds);if(!AfterIds->GetBoolField(TEXT("success"))){Stop(TEXT("Final graph identity observation failed; no further SDK."));return R;}if(!Current())return R;auto A=MakeShared<FJsonObject>(),B=MakeShared<FJsonObject>();A->SetArrayField(TEXT("nodes"),Identities->GetArrayField(TEXT("nodes")));B->SetArrayField(TEXT("nodes"),AfterIds->GetArrayField(TEXT("nodes")));const bool Ids=AfterIds->GetBoolField(TEXT("success"))&&Text(A).Equals(Text(B),ESearchCase::CaseSensitive)&&Identities->GetIntegerField(TEXT("total_node_count"))==AfterIds->GetIntegerField(TEXT("total_node_count"));if(!Ids){Stop(TEXT("Graph identities changed during enum default authoring."));return R;}
+    auto After=NodeJson(LastRow.ToSharedRef());R.Data->SetObjectField(TEXT("after"),After);R.Data->SetBoolField(TEXT("dirty_after"),BP->GetPackage()->IsDirty());R.bChangeStateKnown=true;R.bChanged=!Text(Before).Equals(Text(After),ESearchCase::CaseSensitive)||BP->GetPackage()->IsDirty()!=DirtyBefore;
+    for(const auto& V:LastRow->GetArrayField(TEXT("pins")))if(V->AsObject()->GetStringField(TEXT("id"))==ValueId.ToString(EGuidFormats::Digits))R.Data->SetObjectField(TEXT("pin"),PinJson(V->AsObject().ToSharedRef()));
+    const bool Applied=Matches&&Validation.IsEmpty();R.Data->SetBoolField(TEXT("requested_value_applied"),Applied);R.Data->SetBoolField(TEXT("already_matching"),WasMatching);R.Data->SetBoolField(TEXT("other_node_pins_preserved"),true);R.Data->SetBoolField(TEXT("graph_identities_preserved"),Ids);R.Data->SetBoolField(TEXT("legacy_float_serialization_flag_cleared"),false);R.Data->SetBoolField(TEXT("native_texture_runtime_property_written"),false);R.Data->SetStringField(TEXT("change_observation_scope"),TEXT("exact native setter physical pins, current native property/source roles, graph identities and target dirty state; Python verifies the complete graph delta"));
+    if(!Applied){Fail(R,TEXT("pin_default_postcondition_failed"),TEXT("Native enum default did not match; actual prefix retained without retry."));return R;}R.bSuccess=R.bPostconditionPassed=true;R.Stage=TEXT("complete");return R;
+}
+// LV NativeTextureDefault_End
 }
 Function::FResult Set(const FString& GraphPath, const FString& NodePath, const FString& PinName,
     const FString& ValueJson, const FString& Direction)
 {
     Function::FResult R;
+    // First lookup cannot yet classify its node: block unsafe lookup contexts before dispatch.
+    if(!IsEditorGameThread()||IsPlaySessionActive()||GIsImportingT3D||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage())
+    {Fail(R,TEXT("pin_default_editor_state_invalid"),TEXT("Idle game-thread authoring outside import/GC/save/exit required before lookup."));return R;}
     if (!Pin::SafeName(GraphPath) || !Pin::SafeName(NodePath) || !Pin::SafeName(PinName)
         || (!Direction.IsEmpty() && !Direction.Equals(TEXT("input"), ESearchCase::IgnoreCase)))
     { Fail(R, TEXT("pin_default_selector_unsupported"), TEXT("Use exact bounded graph/node/pin selectors and input direction; output defaults remain pending.")); return R; }
@@ -71,6 +174,7 @@ Function::FResult Set(const FString& GraphPath, const FString& NodePath, const F
     if (!Identities->GetBoolField(TEXT("success"))) { Fail(R, TEXT("pin_default_graph_invalid"), TEXT("Loaded graph failed the common editor identity guard.")); return R; }
     UEdGraph* G = FindObject<UEdGraph>(nullptr, *GraphPath); UBlueprint* BP = FBlueprintEditorUtils::FindBlueprintForGraph(G);
     UK2Node* Node = FindObject<UK2Node>(nullptr, *NodePath);
+    FString TextureClass;if(IsValid(G)&&IsValid(BP)&&TextureSetterClass(Node,TextureClass))return SetTextureEnum(G,BP,Node,TextureClass,PinName,ValueJson,Identities);
     if (!IsValid(BP) || !IsValid(Node) || Node->GetPathName() != NodePath || Node->GetGraph() != G || !G->Nodes.Contains(Node)
         || G->GetSchema()->GetClass() != UEdGraphSchema_K2::StaticClass() || BP->BlueprintType != BPTYPE_Normal
         || BP->bBeingCompiled || BP->bQueuedForCompilation || BP->bIsRegeneratingOnLoad || BP->bSuppressStructurallyModified)

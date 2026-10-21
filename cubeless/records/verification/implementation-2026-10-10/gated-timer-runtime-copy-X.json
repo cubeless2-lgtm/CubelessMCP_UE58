@@ -1,8 +1,0 @@
-{
-  "source": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58Verification\\Content\\CubelessMCPTests\\GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e\\BP_GatedTimer.uasset",
-  "destination": "C:\\Git\\UnrealMCP5_8_3\\UnrealMCP5_8_3\\cubeless\\workspaces\\UE58RuntimeProof\\Content\\CubelessMCPTests\\GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e\\BP_GatedTimer.uasset",
-  "sha256": "7d99275c2e0d544f4037b624f8f06f04b27d2835671c77098de09aee6d9f8115",
-  "package": "/Game/CubelessMCPTests/GatedTimer_f0ae3ba58ebf484d91f252c55100fe3e/BP_GatedTimer",
-  "author": "blueprint-guarded-links-X.json",
-  "status": "pass"
-}

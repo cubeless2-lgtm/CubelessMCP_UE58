@@ -37,6 +37,17 @@ public:
     static FString GetSkeletalMeshSections(const FString& SkeletalMeshPath, int32 LODIndex = 0);
 
     /**
+     * Set one parent skeletal mesh section and all of its child chunks, preserving the original source-section identity.
+     * The default dry run reports the proposed change without editing or saving. Same-value apply with bSave=true still saves.
+     * Actual edits use editor post-edit/rebuild scopes and synchronous skinned-asset compilation; these SDK calls may block.
+     * Returns standard result JSON with the original SetSectionEnabled payload in data.legacy_result and actual partial effects separately.
+     * Rejects PIE/SIE. The operation is not atomic, never retries automatically, and must not be replayed after an uncertain failure.
+     */
+    UFUNCTION(BlueprintCallable, Category = "Cubeless|Editor", meta = (AICallable))
+    static FString SetSkeletalMeshSectionEnabled(const FString& SkeletalMeshPath, int32 LODIndex, int32 SectionIndex,
+        bool bEnabled, bool bSave = true, bool bDryRun = true);
+
+    /**
      * Internal Python helper: compile a Blueprint with actual compiler errors, warnings and tokenized messages.
      * Official MCP callers use CubelessBlueprintTools compile wrappers, which own the durable mutation journal.
      * BlueprintPath is the asset object path. Optional node refresh occurs before compilation; optional save occurs only after compilation passes.
@@ -49,4 +60,8 @@ public:
     /** Python helper: inspect native superclass chain, package flags and existing CDO editor-only state. No asset creation or saving. */
     UFUNCTION(BlueprintCallable, Category = "Cubeless|Editor", meta = (AIIgnore))
     static FString InspectBlueprintParent(const FString& ClassPath);
+    /** Python-only read leaf for exact BFL factory/returned asset public fields; no load, creation, compile or save. */
+    UFUNCTION(BlueprintCallable, Category = "Cubeless|Editor", meta = (AIIgnore))
+    static FString InspectBlueprintFunctionLibraryCreation(UObject* FactoryObject, UObject* BlueprintObject, const FString& ExpectedObjectPath);
+
 };

@@ -130,6 +130,129 @@ def create(name, path, parent, before_factory=None, after_factory=None):
     return blueprint
 
 
+_FUNCTION_LIBRARY_PARENT = "/Script/Engine.BlueprintFunctionLibrary"
+
+
+def _function_library_native_observation(factory, blueprint, path):
+    native = getattr(getattr(unreal, "CubelessNativeToolset", None), "inspect_blueprint_function_library_creation", None)
+    if not callable(native):
+        raise OperationError("function_library_creation_observer_unavailable", "Load the exact read-only BFL creation observer; no protected property fallback is used")
+    try:
+        raw = native(factory, blueprint, path + "." + path.rsplit("/", 1)[-1])
+    finally:
+        native = None
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError) as error:
+        failure = OperationError("function_library_creation_observation_invalid", "Native BFL observer returned invalid JSON")
+        failure.native_function_library_result = {"raw_json": raw, "decode_failed": True}
+        raise failure from error
+    if (type(value) is not dict or value.get("success") is not True
+            or value.get("observations_complete") is not True or value.get("current_identity_verified") is not True
+            or value.get("read_only") is not True or value.get("mutation_performed") is not False
+            or any(value.get(key) is not False for key in ("load_requested", "creation_requested", "compile_requested", "save_requested", "cdo_creation_requested", "cdo_values_sampled"))):
+        code = value.get("error_code") or "function_library_creation_observation_failed" if type(value) is dict else "function_library_creation_observation_invalid"
+        message = value.get("error") or "Incomplete exact native BFL creation observation" if type(value) is dict else "Native BFL observer result is not an object"
+        failure = OperationError(code, message)
+        failure.native_function_library_result = value
+        raise failure
+    return value
+
+
+def create_function_library(name, path, parent, before_factory=None, after_factory=None):
+    """Exact stock BFL factory; native public-field observer replaces protected Python reads."""
+    creation_policy()
+    factory_type = getattr(unreal, "BlueprintFunctionLibraryFactory", None)
+    if factory_type is None:
+        raise OperationError("function_library_factory_unavailable", "The installed public BlueprintFunctionLibrary factory is unavailable; no factory dispatch")
+    native_parent = unreal.BlueprintFunctionLibrary.static_class()
+    if parent != native_parent or parent.get_path_name() != _FUNCTION_LIBRARY_PARENT:
+        raise OperationError("function_library_parent_changed", "Requires the exact already resolved native BlueprintFunctionLibrary parent")
+    factory = factory_type()
+    asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
+    blueprint_class = unreal.Blueprint.static_class()
+    observation = _function_library_native_observation(factory, None, path)
+    if (observation.get("observation_kind") != "factory"
+            or observation.get("factory_class_path") != "/Script/UnrealEd.BlueprintFunctionLibraryFactory"
+            or observation.get("parent_class_path") != _FUNCTION_LIBRARY_PARENT
+            or observation.get("blueprint_type") != "BPTYPE_FunctionLibrary"
+            or observation.get("target_loaded_before_factory") is not False):
+        failure = OperationError("function_library_factory_changed", "Native stock BFL factory fields/current observation differ; no asset creation dispatch")
+        failure.native_function_library_result = observation
+        raise failure
+    if before_factory is not None:
+        before_factory()
+    create_asset = asset_tools.create_asset
+    try:
+        blueprint = create_asset(name, path.rsplit("/", 1)[0], blueprint_class, factory)
+    finally:
+        create_asset = None
+    if after_factory is not None:
+        after_factory(blueprint)
+    return blueprint
+
+
+def function_library_return_identity(blueprint, observation):
+    """Actual return prefix only; broad BFL admission is performed afterwards."""
+    observation.update(factory_returned=True, returned_nonnull=blueprint is not None,
+                       returned_identity_observed=False)
+    if blueprint is None:
+        return
+    if not unreal.SystemLibrary.is_valid(blueprint):
+        raise OperationError("function_library_return_unavailable", "Factory returned an unavailable object; inspect the retained creation prefix")
+    observation["returned_object_path"] = blueprint.get_path_name()
+    observation["returned_class_path"] = blueprint.get_class().get_path_name()
+    observation["returned_identity_observed"] = True
+
+
+def _function_library_metadata(blueprint, path, parent, observation):
+    value = _function_library_native_observation(None, blueprint, path)
+    observation["native_metadata"] = value
+    if (value.get("observation_kind") != "blueprint" or value.get("observed_object_path") != path + "." + path.rsplit("/", 1)[-1]
+            or value.get("observed_class_path") != "/Script/Engine.Blueprint"
+            or value.get("blueprint_type") != "BPTYPE_FunctionLibrary"
+            or value.get("parent_class_path") != _FUNCTION_LIBRARY_PARENT
+            or value.get("parent_resolved") is not True or value.get("scs_resolved") is not True
+            or value.get("simple_construction_script_is_null") is not True
+            or type(value.get("own_member_count")) is not int or value["own_member_count"] != 0
+            or value.get("own_member_names") != [] or value.get("no_scs_verified") is not True
+            or value.get("no_own_members_verified") is not True or value.get("native_parent_verified") is not True):
+        failure = OperationError("function_library_creation_readback_changed", "Native BFL type/parent/no-SCS/member-free observation did not match")
+        failure.native_function_library_result = value
+        raise failure
+    name = path.rsplit("/", 1)[-1]
+    for role, expected in (("generated_class", path + "." + name + "_C"),
+                           ("skeleton_class", path + ".SKEL_" + name + "_C")):
+        available = value.get(role + "_available")
+        if type(available) is not bool or value.get(role + "_path") != (expected if available else ""):
+            failure = OperationError("function_library_class_changed", "Native optional BFL class observation differs from the exact target path")
+            failure.native_function_library_result = value
+            raise failure
+        observation[role + "_available"] = available
+        observation[role + "_path"] = value[role + "_path"]
+    observation.update(blueprint_type=value["blueprint_type"], scs_observed_none=True, own_member_names=[])
+    return value
+
+
+def function_library_creation_snapshot(blueprint, path, parent, observation):
+    """Compare fresh native JSON role observations around the existing public snapshot."""
+    before = _function_library_metadata(blueprint, path, parent, observation)
+    observation["before_readback"] = before
+    value = snapshot(blueprint)
+    after = _function_library_metadata(blueprint, path, parent, observation)
+    observation["after_readback"] = after
+    if (before != after or value["path"] != path or value["asset_path"] != observation["returned_object_path"]
+            or value["parent_class"] != _FUNCTION_LIBRARY_PARENT or value["variable_names"]
+            or value["generated_class"] != after["generated_class_path"]):
+        raise OperationError("function_library_creation_readback_changed", "Native BFL roles or existing snapshot changed during readback")
+    observation.update(postcondition_passed=True, native_parent_verified=True,
+                       no_scs_verified=True, no_own_members_verified=True,
+                       existing_class_roles_preserved=True, cdo_creation_requested=False,
+                       cdo_values_sampled=False,
+                       scope="fresh exact native BFL public C++ field observation only; no protected Python property bypass, function definition/call/runtime or global callback/GC purity proof")
+    return value
+
+
 def resolve_blueprint(name):
     requested = name.strip()
     if not requested:

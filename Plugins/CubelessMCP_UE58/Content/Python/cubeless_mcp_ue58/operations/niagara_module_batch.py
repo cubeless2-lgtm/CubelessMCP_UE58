@@ -1,0 +1,667 @@
+"""Original ordered module inputs batch11 on one named or parent journal.
+
+The native operation owns each RapidIteration write and final compile/save.
+Whole per-row requests, partial results and actual counts precede errors.
+"""
+import copy
+import hashlib
+import os
+import time
+import uuid
+import unreal
+from cubeless_mcp_ue58.registration.async_interop_toolset import CubelessPythonAsyncOperationResult
+from cubeless_mcp_ue58.registration.results import reflected_result
+import json
+import math
+from cubeless_mcp_ue58.compatibility.ue58 import niagara_module_batch as api
+from . import state
+from .state import OperationError
+
+IDENTITY = "set_niagara_module_inputs_batch"
+RETURNED_STAGE = "returned_niagara_module_inputs_batch_operation"
+
+
+def _edits_json(edits):
+    if type(edits) is not list:
+        raise OperationError("niagara_module_batch_input_invalid", "edits must be a JSON array")
+    count = 0
+
+    def visit(value, depth):
+        nonlocal count
+        count += 1
+        if depth > 32 or count > 16384:
+            raise OperationError("niagara_module_batch_input_bound_exceeded", "Edit JSON depth32/value16384 bound exceeded")
+        if value is None or type(value) is bool:
+            return
+        if type(value) in (int, float):
+            try:
+                finite = math.isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise OperationError("niagara_module_batch_input_invalid", "Edit numbers must be finite")
+        elif type(value) is str:
+            if len(value.encode("utf-16-le", errors="surrogatepass")) // 2 > 8192:
+                raise OperationError("niagara_module_batch_input_bound_exceeded", "Edit string bound8192 exceeded")
+        elif type(value) is list:
+            for child in value:
+                visit(child, depth + 1)
+        elif type(value) is dict:
+            for key, child in value.items():
+                if type(key) is not str or len(key.encode("utf-16-le", errors="surrogatepass")) // 2 > 1024:
+                    raise OperationError("niagara_module_batch_input_invalid", "Edit object keys must be bounded strings")
+                visit(child, depth + 1)
+        else:
+            raise OperationError("niagara_module_batch_input_invalid", "Only actual JSON values are accepted")
+
+    # Native owns nonobject-row errors, selectors, value conversion and ordering.
+    # Public Array(JsonObjectWrapper) is array<object>; direct domain/batch JSON
+    # retains malformed rows so they can become native ordered partial failures.
+    for edit in edits:
+        visit(edit, 0)
+    encoded = json.dumps(edits, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
+    if len(encoded.encode("utf-16-le")) // 2 > 1048576:
+        raise OperationError("niagara_module_batch_input_bound_exceeded", "Edit JSON bound1MiB UTF16 exceeded")
+    return encoded
+
+
+def _arguments(system_path, edits, operation, overwrite_existing, continue_on_error,
+        allow_source_edit, save, request_compile, wait_for_completion, timeout_seconds, poll_interval_seconds):
+    if type(system_path) is not str or type(operation) is not str:
+        raise OperationError("niagara_module_batch_input_invalid", "system_path and operation must be literal strings")
+    flags = {"overwrite_existing": overwrite_existing, "continue_on_error": continue_on_error,
+        "allow_source_edit": allow_source_edit, "save": save, "request_compile": request_compile,
+        "wait_for_completion": wait_for_completion}
+    if any(type(value) is not bool for value in flags.values()):
+        raise OperationError("niagara_module_batch_input_invalid", "Original six flags require exact booleans")
+    numbers = {}
+    for name, value in (("timeout_seconds", timeout_seconds), ("poll_interval_seconds", poll_interval_seconds)):
+        if type(value) not in (int, float):
+            raise OperationError("niagara_module_batch_input_invalid", name + " must be numeric")
+        try:
+            number = float(value)
+        except OverflowError as error:
+            raise OperationError("niagara_module_batch_input_invalid", name + " must be finite") from error
+        if not math.isfinite(number):
+            raise OperationError("niagara_module_batch_input_invalid", name + " must be finite")
+        numbers[name] = number
+    return {"system_path": system_path, "edits_json": _edits_json(edits), "operation": operation,
+        **flags, **numbers}
+
+
+def _context(result, arguments):
+    result["data"].update(operation=IDENTITY, requested_arguments=copy.deepcopy(arguments),
+        adapter_explicit_asset_load_calls=0, adapter_explicit_compile_calls=0, adapter_explicit_save_calls=0,
+        automatic_action_retry=False, full_original_niagara_module_batch_parity=False,
+        actual_work_counts_authority="returned_native_ordered_rows_counts_and_compile_save_prefix",
+        implicit_niagara_callback_cache_compile_work_exhaustively_instrumented=False,
+        runtime_niagara_simulation_verified=False, cold_reload_verified=False)
+
+
+def _apply_native(result, arguments, native):
+    result["data"].update(copy.deepcopy(native["data"]))
+    known = native["change_state_known"]
+    result["data"].update(native_result=copy.deepcopy(native), native_raw_result=native["_raw_native_json"],
+        native_outcome={key: copy.deepcopy(value) for key, value in native.items() if key not in ("data", "_raw_native_json")},
+        native_result_returned=True, native_mutation_attempted=native["mutation_attempted"],
+        mutation_state_unknown=not known, mutation_performed=native["changed"] if known else None)
+    _context(result, arguments)
+    result["compile"].update(requested=native["compile_requested"], attempted=native["compile_attempted"], compiled=native["compiled"],
+        kind="niagara_request", status="native_terminal_status_verified" if native["compiled"] is True else
+        "native_async_or_unobservable" if native["compiled"] is None and native["compile_attempted"] else
+        "native_terminal_status_failed" if native["compile_attempted"] else "native_not_attempted")
+    result["save"].update(requested=native["save_requested"], attempted=native["save_attempted"], saved=native["saved"],
+        status="native_returned_saved" if native["saved"] else "native_returned_failed" if native["save_attempted"] else "native_not_attempted")
+    no_work = known and native["changed"] is False and not native["mutation_attempted"] and not native["compile_attempted"] and not native["save_attempted"]
+    result["changes"] = [] if no_work else [{"kind": IDENTITY, "asset_path": arguments["system_path"],
+        "attempted": native["mutation_attempted"], "change_state_known": known, "changed": native["changed"] if known else None,
+        "outcome": "native_scoped_observation" if known else "unknown_after_native_dispatch"}]
+    result["validation"].update(status="native_rapid_iteration_batch_postcondition" if native["postcondition_passed"] else "native_rapid_iteration_batch_postcondition_failed",
+        native_postcondition_passed=native["postcondition_passed"], disk_reload="not_run", runtime="not_run")
+    result["stage"] = RETURNED_STAGE
+
+
+def _action(result, arguments, checkpoint_callback=None):
+    _context(result, arguments)
+    result["compile"].update(requested=arguments["request_compile"], attempted=False, compiled=None, status="intent_prepared_not_dispatched")
+    result["save"].update(requested=arguments["save"], attempted=False, saved=False, status="intent_prepared_not_dispatched")
+    result["data"]["pending_mutation"] = {"operation": IDENTITY, **arguments, "dispatch_state_at_checkpoint": "not_yet_dispatched"}
+    callback = checkpoint_callback or state.checkpoint
+    result["stage"] = "before_mutation_checkpoint"
+    callback(result)
+    result["data"].update(native_dispatched=True, native_result_returned=False, mutation_state_unknown=True, mutation_performed=None)
+    result["stage"] = "native_niagara_module_inputs_batch_operation"
+    result["changes"] = [{"kind": IDENTITY, "asset_path": arguments["system_path"], "attempted": None,
+        "changed": None, "change_state_known": False, "outcome": "unknown_until_native_response"}]
+    result["compile"].update(attempted=None, compiled=None, status="unknown_until_native_returns")
+    result["save"].update(attempted=None, saved=None, status="unknown_until_native_returns")
+    try:
+        native = api.set_niagara_module_inputs_batch(**arguments)
+    except Exception as error:
+        if getattr(error, "native_call_returned", False):
+            result["data"].update(native_result_returned=True, native_raw_result=getattr(error, "native_raw_result", None))
+            result["stage"] = RETURNED_STAGE
+            callback(result)
+        if getattr(error, "code", "") == "native_niagara_module_batch_api_unavailable":
+            result["data"].update(native_dispatched=False, native_mutation_attempted=False, mutation_state_unknown=False, mutation_performed=False)
+            result["changes"] = []
+            result["compile"].update(attempted=False, compiled=None, status="native_not_dispatched")
+            result["save"].update(attempted=False, saved=False, status="native_not_dispatched")
+        raise
+    _apply_native(result, arguments, native)
+    callback(result)
+    if not native["success"]:
+        raise OperationError(native.get("error_code") or "native_niagara_module_batch_failed",
+            native.get("error") or "Actual ordered partial edit/compile/save prefix retained; no retry")
+    if not (native["change_state_known"] and native["postcondition_passed"]):
+        raise OperationError("niagara_module_batch_result_unverified", "Native success lacks known scoped postconditions; do not replay")
+    result.update(success=True, stage="complete")
+    result["retry"]["duplicate_risk"] = "repeat_rapid_iteration_writes_or_compile_save"
+
+
+def set_niagara_module_inputs_batch(system_path, edits, operation="set_existing", overwrite_existing=False,
+        continue_on_error=False, allow_source_edit=False, save=True, request_compile=True,
+        wait_for_completion=False, timeout_seconds=10.0, poll_interval_seconds=0.1):
+    try:
+        arguments = _arguments(system_path, edits, operation, overwrite_existing, continue_on_error,
+            allow_source_edit, save, request_compile, wait_for_completion, timeout_seconds, poll_interval_seconds)
+    except Exception as error:
+        result = state.fail(state.new_result(), error)
+        result["data"].update(operation=IDENTITY, admission_rejected=True, native_dispatched=False,
+            native_mutation_attempted=False, mutation_state_unknown=False, mutation_performed=False)
+        return result
+    return state.mutate(IDENTITY, arguments, None, lambda result: _action(result, arguments))
+
+
+def set_niagara_module_inputs_batch_action(result, system_path, edits, operation="set_existing", overwrite_existing=False,
+        continue_on_error=False, allow_source_edit=False, save=True, request_compile=True,
+        wait_for_completion=False, timeout_seconds=10.0, poll_interval_seconds=0.1, checkpoint_callback=None):
+    _action(result, _arguments(system_path, edits, operation, overwrite_existing, continue_on_error,
+        allow_source_edit, save, request_compile, wait_for_completion, timeout_seconds, poll_interval_seconds), checkpoint_callback)
+
+
+# HX: concrete Named continuation only; existing Direct/action paths stay synchronous.
+ASYNC_METHODS=[IDENTITY]
+_ACTIVE=False
+_TICKER_HANDLE=None
+_SHUTDOWN_HANDLE=None
+_PENDING={}
+_QUARANTINED={}
+_LAST_TERMINAL={}
+_LIFECYCLE_ERRORS=[]
+
+def _async_arguments(method,public):
+    if method not in ASYNC_METHODS:raise OperationError("niagara_module_batch_async_method_invalid","Only the original module inputs batch Named job is admitted")
+    args=_arguments(**public)
+    return dict(arguments=copy.deepcopy(public),args=args)
+
+def _async_context(result,method,public):
+    _context(result,public["args"])
+    result["data"].update(async_native_job=True,async_entry="Named_official_MCP_only",direct_Python_dict_contract_preserved=True,Raw_Batch_async_continuation_implemented=False,mandatory_wait_not_bypassed=True,
+        no_Python_asset_mutation_compile_or_save=True,global_compiler_cancel_attempted=False,actual_official_async_wire_verified=False)
+
+class _ModuleInputsBatchJournal:
+    def __init__(self, method, public, run_id):
+        self.result = state.new_result(run_id)
+        _async_context(self.result, method, public)
+        self.result["stage"] = "before_native_niagara_module_batch_async_start"
+        self.result["data"].update(native_start_dispatched=False, native_start_returned=False,
+            native_snapshot_returned=False, mutation_performed=False, mutation_state_unknown=False,
+            pending_native_intent={"method": method, "arguments": copy.deepcopy(public),
+                "scope": "future native phases unverified until returned snapshots"})
+        self.path = state._journal_path(run_id)
+        self.started = time.perf_counter()
+        self.owned = False
+        if self.path.exists():
+            raise state.OperationError("operation_incomplete", "Niagara module inputs batch IDs are not replayed; inspect the journal")
+        if state._active_operation is not None:
+            raise state.OperationError("mutation_busy", "Another operation owns the project slot")
+        fingerprint = hashlib.sha256(json.dumps({"name": method, "arguments": public},
+            sort_keys=True, allow_nan=False).encode("utf-8")).hexdigest()
+        record = {"schema_version": 1, "operation_id": run_id, "operation": method,
+            "arguments": copy.deepcopy(public), "fingerprint": fingerprint, "state": "started",
+            "result": self.result, "engine_version": unreal.SystemLibrary.get_engine_version(), "process_id": os.getpid()}
+        encoded = json.dumps(record, ensure_ascii=False, sort_keys=True, allow_nan=False)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        with self.path.open("x", encoding="utf-8") as stream:
+            stream.write(encoded); stream.flush(); os.fsync(stream.fileno())
+        state._active_operation = run_id
+        self.owned = True
+
+    def checkpoint(self):
+        if not self.owned or state._active_operation != self.result["operation_id"]:
+            raise state.OperationError("journal_checkpoint_not_owned", "Niagara module inputs batch ownership changed; no replay")
+        state.checkpoint(self.result)
+
+    def finish(self, recovery):
+        if not self.owned or state._active_operation != self.result["operation_id"]:
+            raise state.OperationError("journal_finalize_not_owned", "Niagara module inputs batch ownership changed before finalization")
+        with self.path.open("r", encoding="utf-8") as stream:
+            record = json.load(stream)
+        if (record.get("operation_id") != self.result["operation_id"] or record.get("state") != "started"
+                or record.get("process_id") != os.getpid()):
+            raise state.OperationError("journal_finalize_not_owned", "Niagara module inputs batch started journal ownership differs")
+        record["result"] = copy.deepcopy(self.result)
+        record["state"] = "started" if recovery else "complete"
+        state._write_record(self.path, record)
+        if not recovery:
+            state._active_operation = None
+            self.owned = False
+
+
+def _async_adopt(entry,native):
+    result=entry['journal'].result;was_saved=result['save'].get('saved') is True
+    job_id=native['data'].get('native_job_id');prior_id=entry.get('native_job_id')
+    if prior_id is not None and job_id!=prior_id:raise state.OperationError('niagara_module_batch_job_identity_changed','Snapshot belongs to another job; do not repeat start')
+    entry['native_job_id']=job_id
+    _apply_native(result,entry['public']['args'],native)
+    result['save']['saved']=was_saved or native['saved']
+    _async_context(result,entry['method'],entry['public'])
+    result['data'].update(native_snapshot_returned=True,native_terminal_observed=native['data']['native_job_terminal'],adapter_snapshot_calls=entry['snapshot_calls'],adapter_tick_callbacks=entry['tick_callbacks'],command_may_still_be_in_flight=not native['data']['native_job_terminal'],native_job_id=job_id)
+    result['data']['deferred_terminal_wait_completion_unverified']=not (native['data']['native_job_terminal'] and native['success'] and native['postcondition_passed'])
+    result['stage']=native['stage']
+    result['validation'].update(native_terminal_observed=native['data']['native_job_terminal'],niagara_module_batch_save_wait_proof_native_authoritative=True)
+    result['retry'].update(automatic_retry=False,duplicate_risk='held_niagara_module_batch_job_and_journal_no_replay')
+    entry['last_native']=copy.deepcopy(native)
+
+def _checkpoint_native(entry, native, force=False):
+    revision = native["data"].get("native_checkpoint_revision")
+    if type(revision) not in (int,float) or revision<0 or revision!=int(revision):
+        raise state.OperationError("niagara_module_batch_async_revision_invalid", "Native meaningful snapshot revision required")
+    previous = entry.get("last_checkpoint_revision")
+    if previous is not None and revision < previous:
+        raise state.OperationError("niagara_module_batch_async_revision_regressed", "Native snapshot revision regressed; no replay")
+    if force or previous != revision:
+        entry["native_checkpoint_attempts"] = entry.get("native_checkpoint_attempts", 0) + 1
+        entry["journal"].result["data"]["adapter_native_checkpoint_attempts"] = entry["native_checkpoint_attempts"]
+        entry["journal"].checkpoint()
+        entry["last_checkpoint_revision"] = revision
+
+
+def _delivery_error(entry, message):
+    return (str(message)[:700] + "; operation_id=" + entry["run_id"]
+        + "; stage=" + str(entry["journal"].result["stage"])
+        + "; journal=" + str(entry["journal"].path))
+
+
+def _cancel_once(entry, reason):
+    if entry.get("finalization_attempted"):
+        return None
+    result = entry["journal"].result
+    if not entry.get("job_reference_verified"):
+        result["data"]["owned_cancel_not_attempted_unverified_job_reference"] = True
+        return None
+    if not entry.get("cancel_attempted"):
+        entry["cancel_attempted"] = True
+        result["data"]["adapter_owned_cancel_attempt_count"] = 1
+        try:
+            acknowledgement = entry["job"].cancel_job(str(reason)[:1024])
+            result["data"].update(cancel_call_returned=True,
+                cancel_acknowledgement=acknowledgement if type(acknowledgement) is bool else None,
+                cancel_acknowledgement_is_not_shared_compiler_stop=True)
+        except Exception as error:
+            result["data"]["owned_cancel_error"] = str(error)[:700]
+    # One best-effort read remains safe even if cancellation acknowledgement failed.
+    entry["snapshot_calls"] += 1
+    try:
+        native = api.snapshot(entry["job"],entry["method"])
+        _async_adopt(entry, native)
+        return native
+    except Exception as error:
+        if getattr(error, "native_snapshot_returned", False):
+            result["data"]["cancel_snapshot_undecoded_raw_result"] = getattr(error, "native_raw_result", None)
+        _preserve_snapshot_error(entry,error)
+        result["data"]["cancel_snapshot_error"] = str(error)[:700]
+        return None
+
+
+def _seal(entry, recovery):
+    """Prepare all result data before the one durable finalization attempt."""
+    if entry.get("finalization_attempted"):
+        raise state.OperationError("niagara_module_batch_async_finalize_already_attempted", "Finalization is not replayed")
+    result = entry["journal"].result
+    result["data"]["elapsed_seconds"] = round(time.perf_counter() - entry["journal"].started, 6)
+    entry["sealed_result"] = copy.deepcopy(result)
+    entry["finalization_attempted"] = True
+    entry["journal"].finish(recovery)
+    entry["journal_finalized"] = True
+
+
+def _delivery_failed(entry, error):
+    # A finalization/write may already have committed. Do not mutate the sealed
+    # result/journal or observe/cancel/restart the Job after this boundary.
+    entry["delivery_error"] = str(error)[:1024]
+    entry["observation_only_quarantine"] = False
+    _QUARANTINED[entry["run_id"]] = entry
+    _PENDING.pop(entry["run_id"], None)
+    if (not entry.get("cu_completed") and not entry.get("cu_error_attempted")
+            and not entry.get("cu_completion_call_entered")):
+        entry["cu_error_attempted"] = True
+        try:
+            entry["result_object"].set_error(_delivery_error(entry, "Final receipt/durable delivery is uncertain; no replay: " + str(error)))
+        except Exception as delivery_error:
+            entry["delivery_error"] = str(delivery_error)[:1024]
+
+
+def _deliver(entry):
+    if entry.get("cu_delivery_attempted"):
+        raise state.OperationError("niagara_module_batch_async_delivery_already_attempted", "CU delivery already attempted; no second final")
+    if not entry.get("journal_finalized") or type(entry.get("sealed_result")) is not dict:
+        raise state.OperationError("niagara_module_batch_async_final_not_sealed", "Durable final result is required before typed final delivery")
+    entry["cu_delivery_attempted"] = True
+    entry["result_object"].set_editor_property("value", reflected_result(copy.deepcopy(entry["sealed_result"])))
+    # CompleteValue may itself call SetError and return False. Once entered,
+    # no fallback completion is safe, even when its return/publication is uncertain.
+    entry["cu_completion_call_entered"] = True
+    if entry["result_object"].complete_value() is not True:
+        raise state.OperationError("niagara_module_batch_async_delivery_failed", "CU completion refused; no retry or result mutation")
+    entry["cu_completed"] = True
+
+
+def _terminal(entry, native):
+    global _LAST_TERMINAL
+    if entry.get("finalization_attempted"):
+        return
+    result = entry["journal"].result
+    _async_adopt(entry, native)
+    _checkpoint_native(entry, native, force=True)
+    result.update(success=native["success"], error_code=native.get("error_code", ""), error=native.get("error", ""))
+    if native["success"] and (not native["change_state_known"] or not native["postcondition_passed"] or not native["data"]["operation_complete"]):
+        state.fail(result, state.OperationError("niagara_module_batch_async_result_unverified", "Native success lacks terminal known Niagara module inputs batch/save/wait postconditions"))
+    recovery = not native["change_state_known"]
+    result["data"].update(native_terminal_observed=True, workflow_recovery_required=recovery,
+        cancel_acknowledgement_is_not_shared_compiler_stop=True,
+        final_receipt_sealed_before_delivery=True)
+    try:
+        _seal(entry, recovery)
+        if recovery:
+            _QUARANTINED[entry["run_id"]] = entry
+        _deliver(entry)
+    except Exception as error:
+        _delivery_failed(entry, error)
+    _LAST_TERMINAL = {"operation_id": entry["run_id"], "success": result["success"],
+        "native_terminal_observed": True, "recovery_required": recovery,
+        "delivery_error": entry.get("delivery_error", "")}
+    _PENDING.pop(entry["run_id"], None)
+
+
+def _preserve_snapshot_error(entry,error):
+    result=entry['journal'].result
+    if getattr(error,'native_snapshot_returned',False):result['data'].update(native_snapshot_returned=True,undecoded_native_raw_result=getattr(error,'native_raw_result',None))
+    if getattr(error,'native_unsafe_publication_quarantined',False):
+        entry['native_publication_quarantined']=True
+        result['data'].update(unsafe_job_publication_quarantined=True,native_writers_stopped=True)
+    native=getattr(error,'native_decoded_result',None)
+    if type(native) is not dict or native.get('operation')!=entry['method'] or type(native.get('data')) is not dict:return
+    job_id=native['data'].get('native_job_id');prior=entry.get('native_job_id')
+    if (not entry.get('job_reference_verified') or type(job_id) is not str or not job_id or prior is not None and prior!=job_id):return
+    # Even the first typed same-UObject receipt can prove a save before safe
+    # terminal publication fails. Adopt its actual prefix, never its finality.
+    entry['native_job_id']=job_id
+    result['data']['same_job_snapshot_at_adapter_failure']=copy.deepcopy(native)
+    result['save']['saved']=result['save'].get('saved') is True or native.get('saved') is True
+    result['data'].update(native_mutation_attempted=native['mutation_attempted'],execution_mutation_attempted=native['mutation_attempted'])
+    result['compile'].update(requested=native['compile_requested'],attempted=native['compile_attempted'],compiled=native['compiled'])
+    result['save'].update(requested=native['save_requested'],attempted=native['save_attempted'])
+
+
+def _uncertain(entry, error):
+    if entry.get("finalization_attempted"):
+        _delivery_failed(entry, error)
+        return
+    result = entry["journal"].result
+    failure_stage = result["stage"]
+    _preserve_snapshot_error(entry,error)
+    if getattr(error, "native_snapshot_returned", False):
+        result["data"].update(native_snapshot_returned=True, undecoded_native_raw_result=getattr(error, "native_raw_result", None))
+    last = entry.get("last_native")
+    terminal = last is not None and last["data"]["native_job_terminal"]
+    if not terminal and entry.get("job_reference_verified") and not entry.get("native_publication_quarantined"):
+        native = _cancel_once(entry, "Stop owned next writers after observer/journal failure: " + str(error))
+        if native is not None:
+            last = native
+            terminal = native["data"]["native_job_terminal"]
+    state.fail(result, error)  # Preserve the triggering failure; never promote late success.
+    no_dispatch = not entry.get("native_start_call_entered")
+    recovery = not no_dispatch and (not terminal or not last["change_state_known"] or entry.get("lifecycle_interrupted") and entry.get("cu_delivery_attempted"))
+    result["data"].update(adapter_failure_stage_before_cancel=failure_stage,
+        native_terminal_observed=terminal, workflow_recovery_required=recovery,
+        last_returned_native_prefix_retained=True)
+    if no_dispatch:
+        result["data"].update(native_start_dispatched=False, mutation_state_unknown=False, mutation_performed=False)
+        result["compile"].update(requested=False, attempted=False, compiled=None)
+        result["save"].update(requested=False, attempted=False, saved=False)
+    elif not terminal:
+        result["data"].update(mutation_state_unknown=True, mutation_performed=None)
+        for change in result["changes"]:
+            change.update(change_state_known=False, changed=None)
+    try:
+        entry["journal"].checkpoint()
+        if no_dispatch or terminal:
+            _seal(entry, recovery)
+    except Exception as checkpoint_error:
+        if entry.get("finalization_attempted"):
+            _delivery_failed(entry, checkpoint_error)
+            return
+        result["data"].update(checkpoint_error=str(checkpoint_error)[:700], workflow_recovery_required=True)
+        recovery = True
+    if recovery:
+        entry["observation_only_quarantine"] = bool(entry.get("job_reference_verified") and not terminal and not entry.get("native_publication_quarantined"))
+        _QUARANTINED[entry["run_id"]] = entry
+    _PENDING.pop(entry["run_id"], None)
+    if entry.get("cu_delivery_attempted"):
+        entry["late_native_observation_after_delivery_attempt_retained"] = True
+        return
+    try:
+        if no_dispatch or terminal:_deliver(entry)
+        else:
+            entry["cu_delivery_attempted"]=True
+            entry["cu_error_attempted"]=True
+            entry["result_object"].set_error(_delivery_error(entry,"Native terminal is unverified; started journal and ownership retained, no retry"))
+    except Exception as delivery_error:
+        _delivery_failed(entry, delivery_error)
+
+
+def _observe_quarantined(entry):
+    # If the one owned cancellation could not certify terminal, retain only read
+    # observation. No second cancel, writers, saves or second CU delivery occurs.
+    try:
+        entry["snapshot_calls"] += 1
+        native = api.snapshot(entry["job"],entry["method"])
+        failure = {k: entry["journal"].result[k] for k in ("success", "error_code", "error")}
+        _async_adopt(entry, native)
+        entry["journal"].result.update(failure)
+        entry["journal"].result["data"].update(workflow_recovery_required=True,
+            quarantine_later_native_terminal=native["data"]["native_job_terminal"])
+        revision = native["data"].get("native_checkpoint_revision")
+        if ("quarantine_checkpoint_attempt_revision" not in entry
+                or entry["quarantine_checkpoint_attempt_revision"] != revision):
+            # A failed durable write is not retried each frame for the same
+            # observed revision. A later actual phase/terminal prefix may be recorded.
+            entry["quarantine_checkpoint_attempt_revision"] = revision
+            _checkpoint_native(entry, native)
+        if native["data"]["native_job_terminal"]:
+            entry["observation_only_quarantine"] = False
+    except Exception as error:
+        _preserve_snapshot_error(entry,error)
+        entry["last_quarantine_observation_error"] = str(error)[:700]
+
+
+def _tick_all(delta_seconds):
+    if not _ACTIVE:
+        return False
+    for entry in tuple(_PENDING.values()):
+        if entry.get("finalization_attempted"):
+            continue
+        try:
+            entry["tick_callbacks"] += 1
+            entry["snapshot_calls"] += 1
+            native = api.snapshot(entry["job"],entry["method"])
+            if native["data"]["native_job_terminal"]:
+                _terminal(entry, native)
+            else:
+                _async_adopt(entry, native)
+                _checkpoint_native(entry, native)
+        except Exception as error:
+            _uncertain(entry, error)
+    for entry in tuple(_QUARANTINED.values()):
+        if entry.get("observation_only_quarantine"):
+            _observe_quarantined(entry)
+    return True
+
+
+def _shutdown():
+    # Native module owns teardown. No late asset/job/save/cleanup method here.
+    global _ACTIVE
+    _ACTIVE = False
+    for entry in tuple(_PENDING.values()):
+        if entry.get("finalization_attempted"):
+            continue
+        entry["lifecycle_interrupted"] = True
+        result = entry["journal"].result
+        state.fail(result, state.OperationError("niagara_module_batch_async_shutdown_unknown", "Shutdown before verified Native terminal; no late work attempted"))
+        result["data"].update(mutation_state_unknown=True, mutation_performed=None,
+            native_terminal_observed=False, workflow_recovery_required=True)
+        try:
+            entry["journal"].checkpoint()
+        except Exception:
+            pass  # Started journal remains; no repeated write or Engine work.
+        _QUARANTINED[entry["run_id"]] = entry
+        _PENDING.pop(entry["run_id"], None)
+
+
+def binding_status():
+    return {"active": _ACTIVE, "pending_count": len(_PENDING), "quarantined_count": len(_QUARANTINED),
+        "ticker_handle_present": _TICKER_HANDLE is not None, "shutdown_handle_present": _SHUTDOWN_HANDLE is not None,
+        "last_terminal": copy.deepcopy(_LAST_TERMINAL), "lifecycle_errors": list(_LIFECYCLE_ERRORS),
+        "quarantined_operation_ids": sorted(_QUARANTINED),
+        "quarantined_journal_paths": {run_id: str(entry["journal"].path) for run_id, entry in _QUARANTINED.items()},
+        "observation_only_quarantine_count": sum(bool(entry.get("observation_only_quarantine")) for entry in _QUARANTINED.values()),
+        "native_handle_membership_verified": False, "ordinary_async_Batch_integration_verified": False, "Native_bindings": api.async_binding_status()}
+
+
+def activate():
+    global _ACTIVE, _TICKER_HANDLE, _SHUTDOWN_HANDLE
+    status=api.async_binding_status()
+    if not all(value is True for value in status.values()):raise state.OperationError("niagara_module_batch_async_native_jobs_unavailable","Exact dedicated Native start/Job bindings are required")
+    if not _ACTIVE:
+        if _PENDING or _QUARANTINED or _TICKER_HANDLE is not None or _SHUTDOWN_HANDLE is not None:
+            raise state.OperationError("niagara_module_batch_async_ownership_retained", "Prior retained ownership requires Root reconciliation")
+        _SHUTDOWN_HANDLE = unreal.register_python_shutdown_callback(_shutdown)
+        try:
+            _TICKER_HANDLE = unreal.register_ticker_callback(_tick_all, delay=0.0)
+        except Exception:
+            unreal.unregister_python_shutdown_callback(_SHUTDOWN_HANDLE)
+            _SHUTDOWN_HANDLE = None
+            raise
+        _ACTIVE = True
+    return binding_status()
+
+
+def deactivate(reason="Niagara module inputs batch toolset deactivated"):
+    global _ACTIVE, _TICKER_HANDLE, _SHUTDOWN_HANDLE
+    _ACTIVE = False
+    for name, handle, remover in (("ticker", _TICKER_HANDLE, unreal.unregister_ticker_callback),
+            ("shutdown", _SHUTDOWN_HANDLE, unreal.unregister_python_shutdown_callback)):
+        if handle is not None:
+            try:
+                remover(handle)
+                if name == "ticker":
+                    _TICKER_HANDLE = None
+                else:
+                    _SHUTDOWN_HANDLE = None
+            except Exception as error:
+                _LIFECYCLE_ERRORS.append({"handle": name, "error": str(error)[:700]})
+    for entry in tuple(_PENDING.values()):
+        if entry.get("finalization_attempted"):
+            continue
+        entry["lifecycle_interrupted"] = True
+        native = _cancel_once(entry, reason)
+        if native is not None and native["data"]["native_job_terminal"]:
+            try:
+                _terminal(entry, native)
+            except Exception as error:
+                _uncertain(entry, error)
+        else:
+            _uncertain(entry, state.OperationError("niagara_module_batch_async_cancel_terminal_unverified", "Owned cancellation not terminal verified; no repeat"))
+    return binding_status()
+
+
+def _begin(method,public):
+    result_object = CubelessPythonAsyncOperationResult()
+    run_id = uuid.uuid4().hex
+    journal = None
+    entry = None
+    try:
+        arguments = _async_arguments(method, public)
+        if not _ACTIVE:
+            raise state.OperationError("niagara_module_batch_async_domain_inactive", "Root registration has not activated the Niagara module inputs batch domain")
+        if _QUARANTINED:
+            raise state.OperationError("niagara_module_batch_async_workflow_quarantined", "Retained prior Niagara module inputs batch outcome requires Root reconciliation")
+        journal = _ModuleInputsBatchJournal(method, arguments, run_id)
+        entry = {"run_id": run_id, "method": method, "public": arguments, "journal": journal,
+            "result_object": result_object, "job": None, "tick_callbacks": 0, "snapshot_calls": 0,
+            "native_start_call_entered": False, "job_reference_verified": False,
+            "cancel_attempted": False, "last_checkpoint_revision": None}
+        _PENDING[run_id] = entry
+        journal.result["data"].update(native_start_dispatched=True, native_mutation_attempted=None,
+            mutation_performed=None, mutation_state_unknown=True)
+        journal.result["compile"].update(requested=None, attempted=None, compiled=None, status="native_start_outcome_unverified")
+        journal.result["save"].update(requested=None, attempted=None, saved=None, status="native_start_outcome_unverified")
+        journal.checkpoint()  # Covers all future Native phases BEFORE start.
+        entry["native_start_call_entered"] = True
+        entry["job"] = api.start_job(method,arguments["args"])
+        entry["job_reference_verified"] = True
+        journal.result["data"].update(native_start_returned=True)
+        if not _ACTIVE or entry.get("lifecycle_interrupted") or _PENDING.get(run_id) is not entry:
+            raise state.OperationError("niagara_module_batch_async_start_interrupted","Native start returned after lifecycle interruption; stop only this returned Job and retain started ownership")
+        entry["snapshot_calls"] += 1
+        native = api.snapshot(entry["job"],entry["method"])
+        if native["data"]["native_job_terminal"]:
+            _terminal(entry, native)
+        else:
+            _async_adopt(entry, native)
+            _checkpoint_native(entry, native)
+    except Exception as error:
+        if entry is not None:
+            if getattr(error, "native_start_returned", False):
+                entry["job"] = getattr(error, "native_returned_job", None)
+                journal.result["data"]["native_start_returned"] = True
+            if getattr(error, "native_start_dispatched", None) is False:
+                entry["native_start_call_entered"] = False
+                journal.result["data"].update(native_start_dispatched=False, mutation_state_unknown=False, mutation_performed=False)
+                journal.result["compile"].update(requested=False, attempted=False, compiled=None)
+                journal.result["save"].update(requested=False, attempted=False, saved=False)
+                state.fail(journal.result, error)
+                try:
+                    _seal(entry, False)
+                    _deliver(entry)
+                except Exception as delivery_error:
+                    _uncertain(entry, delivery_error)
+                _PENDING.pop(run_id, None)
+            else:
+                _uncertain(entry, error)
+        else:
+            record = _rejected(method,error);record["operation_id"]=run_id
+            record["data"].update(operation=method, admission_rejected=True, native_start_dispatched=False,
+                native_mutation_attempted=False, mutation_performed=False, mutation_state_unknown=False)
+            result_object.set_editor_property("value", reflected_result(record))
+            result_object.complete_value()  # Official CU Reject may already SetError; never complete twice.
+    return result_object
+
+
+def completed_result(record):
+    """Typed async final for pre-dispatch admission rejection only; no journal or Native job."""
+    value=CubelessPythonAsyncOperationResult();value.set_editor_property('value',reflected_result(record))
+    value.complete_value()  # Reject already ends the official future; no second SetError.
+    return value
+
+
+def _rejected(method,error):
+    result=state.fail(state.new_result(),error)
+    result['data'].update(operation=method,admission_rejected=True,native_dispatched=False,
+        native_mutation_attempted=False,mutation_state_unknown=False,mutation_performed=False,journal_created=False)
+    return result
+
+def _named_mcp(arguments):
+    return _begin(IDENTITY,arguments)

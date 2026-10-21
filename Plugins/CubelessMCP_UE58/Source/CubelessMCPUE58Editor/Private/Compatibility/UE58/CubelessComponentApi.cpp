@@ -10,6 +10,9 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "PhysicsEngine/BodyInstance.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "Serialization/JsonSerializer.h"
@@ -63,7 +66,256 @@ bool HasValidScalarMetadata(const FProperty* Property, FString& Error)
     return true;
 }
 
-bool ReadValue(const FProperty* Property, const void* Address, int32 MaxChars, TSharedPtr<FJsonValue>& Out, FString& Encoding, FString& Error)
+// JI admits only two additional native struct text exports. This is a bounded
+// preflight/return fence, not a replacement serializer or a physics-body copy.
+bool LegacyStructTextType(const FProperty* P)
+{
+    const auto* S=CastField<FStructProperty>(P);if(!S||!IsValid(S->Struct))return false;
+    const FName N=S->Struct->GetFName();
+    return (N==TEXT("Color")&&S->Struct==TBaseStructure<FColor>::Get())||(N==TEXT("BodyInstance")&&S->Struct==FBodyInstance::StaticStruct());
+}
+struct FLegacyStructTextRead
+{
+    struct FHeld{TStrongObjectPtr<UObject> Object;UClass* Class=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Path;EObjectFlags Flags=RF_NoFlags;bool Dirty=false;uint32 PackageFlags=0;bool IsStruct=false;EStructFlags StructFlags=STRUCT_NoFlags;int32 StructSize=0;UStruct* StructSuper=nullptr;};
+    TArray<FHeld> Held;UBlueprint* BP=nullptr;USimpleConstructionScript* SCS=nullptr;USCS_Node* Node=nullptr;UActorComponent* Template=nullptr;UClass* Generated=nullptr;FGuid Guid;FName Name;
+    TWeakObjectPtr<UEditorEngine> Editor;TWeakObjectPtr<UWorld> World;bool Unsafe=false;int32 Count=0;int64 Budget=0;
+    bool Loaded(const UObject* O)const{return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
+    bool Context()
+    {if(Unsafe)return false;if(!IsInGameThread()||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!GEditor||GEditor!=Editor.Get()||!World.IsValid()||World->bIsTearingDown||GEditor->GetEditorWorldContext().World()!=World.Get()){Unsafe=true;return false;}return true;}
+    bool Pin(UObject* O)
+    {
+        if(!Context()||!Loaded(O)||!Loaded(O->GetClass())||!Loaded(O->GetPackage())||(O->GetOuter()&&!Loaded(O->GetOuter()))){Unsafe=true;return false;}
+        for(const auto& I:Held)if(I.Object.Get()==O)return true;
+        FHeld I;I.Object.Reset(O);I.Class=O->GetClass();I.Outer=O->GetOuter();I.Package=O->GetPackage();I.Path=O->GetPathName();I.Flags=O->GetFlags();I.Dirty=I.Package->IsDirty();I.PackageFlags=I.Package->GetPackageFlags();if(auto* S=Cast<UScriptStruct>(O)){I.IsStruct=true;I.StructFlags=S->StructFlags;I.StructSize=S->GetStructureSize();I.StructSuper=S->GetSuperStruct();}Held.Add(MoveTemp(I));return true;
+    }
+    bool Check()
+    {
+        if(!Context())return false;
+        for(const auto& I:Held){auto* O=I.Object.Get();if(!Loaded(O)||!Loaded(I.Class)||!Loaded(I.Package)||(I.Outer&&!Loaded(I.Outer))||O->GetClass()!=I.Class||O->GetOuter()!=I.Outer||O->GetPackage()!=I.Package||O->GetFlags()!=I.Flags||!O->GetPathName().Equals(I.Path,ESearchCase::CaseSensitive)||I.Package->IsDirty()!=I.Dirty||I.Package->GetPackageFlags()!=I.PackageFlags){Unsafe=true;return false;}if(I.IsStruct){auto* S=Cast<UScriptStruct>(O);if(!S||S->StructFlags!=I.StructFlags||S->GetStructureSize()!=I.StructSize||S->GetSuperStruct()!=I.StructSuper){Unsafe=true;return false;}}}
+        if(BP->SimpleConstructionScript!=SCS||BP->GeneratedClass!=Generated||Node->GetOuter()!=SCS||!SCS->GetAllNodes().Contains(Node)||Node->ComponentTemplate!=Template||Node->ComponentClass!=Template->GetClass()||Node->VariableGuid!=Guid||Node->GetVariableName()!=Name){Unsafe=true;return false;}
+        return true;
+    }
+    bool Bind(UBlueprint* B,USCS_Node* N,UActorComponent* T)
+    {
+        Editor=GEditor;World=GEditor?GEditor->GetEditorWorldContext().World():nullptr;if(!Context())return false;
+        BP=B;Node=N;Template=T;if(!Pin(B)||!Pin(N)||!Pin(T))return false;SCS=B->SimpleConstructionScript;Generated=B->GeneratedClass;
+        if(!Pin(SCS)||!Pin(Generated))return false;Guid=N->VariableGuid;Name=N->GetVariableName();return Check();
+    }
+    bool NativeStruct(UScriptStruct* S)
+    {
+        if(!Loaded(S)||!Loaded(S->GetPackage())||S->GetClass()!=UScriptStruct::StaticClass()||!(S->StructFlags&STRUCT_Native)||(S->StructFlags&STRUCT_ExportTextItemNative)||!S->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn))return false;
+        return Pin(S);
+    }
+    bool ValueBudget(const FProperty* P,const void* A,int32 Depth)
+    {
+        if(!Check()||!P||!A||Depth>8||++Count>4096||P->ArrayDim<1||P->ArrayDim>64||P->HasGetter())return false;
+        Budget+=static_cast<int64>(P->GetName().Len())*6+32;if(Budget>1048576)return false;
+        if(const auto* S=CastField<FStructProperty>(P))
+        {
+            if(!NativeStruct(S->Struct))return false;
+            for(TFieldIterator<FProperty> It(S->Struct);It;++It)if(It->ShouldPort(PPF_None))for(int32 I=0;I<It->ArrayDim;++I)if(!ValueBudget(*It,It->ContainerPtrToValuePtr<void>(A,I),Depth+1))return false;
+        }
+        else if(const auto* ArrayMeta=CastField<FArrayProperty>(P))
+        {FScriptArrayHelper H(ArrayMeta,A);if(H.Num()>256)return false;for(int32 I=0;I<H.Num();++I)if(!ValueBudget(ArrayMeta->Inner,H.GetRawPtr(I),Depth+1))return false;}
+        else if(const auto* ObjectMeta=CastField<FObjectProperty>(P))
+        {
+            const TObjectPtr<UObject> ObjectValue=ObjectMeta->GetObjectPtrPropertyValue(A);if(!ObjectValue.IsResolved())return false;
+            if(UObject* R=ObjectValue.Get()){if(!Pin(R)||!Pin(R->GetClass()))return false;Budget+=(static_cast<int64>(R->GetPathName().Len())+R->GetClass()->GetPathName().Len())*6+32;}else Budget+=8;
+        }
+        else if(const auto* N=CastField<FNameProperty>(P)){Budget+=static_cast<int64>(N->GetPropertyValue(A).ToString().Len())*6+32;}
+        else if(const auto* StringMeta=CastField<FStrProperty>(P)){Budget+=static_cast<int64>(StringMeta->GetPropertyValue(A).Len())*6+32;}
+        else if(const auto* E=CastField<FEnumProperty>(P))
+        {if(!Loaded(E->GetEnum())||!E->GetUnderlyingProperty()||E->GetEnum()->NumEnums()<1||E->GetEnum()->NumEnums()>1024||!Pin(E->GetEnum()))return false;int32 Longest=0;for(int32 I=0;I<E->GetEnum()->NumEnums();++I)Longest=FMath::Max(Longest,E->GetEnum()->GetNameByIndex(I).ToString().Len());Budget+=static_cast<int64>(Longest)*6+128;}
+        else if(const auto* B=CastField<FByteProperty>(P);B&&B->Enum)
+        {if(!Loaded(B->Enum)||B->Enum->NumEnums()<1||B->Enum->NumEnums()>1024||!Pin(B->Enum))return false;int32 Longest=0;for(int32 I=0;I<B->Enum->NumEnums();++I)Longest=FMath::Max(Longest,B->Enum->GetNameByIndex(I).ToString().Len());Budget+=static_cast<int64>(Longest)*6+128;}
+        else if(CastField<FBoolProperty>(P)||CastField<FNumericProperty>(P)){Budget+=128;}
+        else return false;
+        return Budget<=1048576&&Check();
+    }
+};
+
+// KI is deliberately local-SCS-only. The shared scope-free value reader below
+// retains its old single-object/scalar-array behavior and grants no array token.
+struct FAssetObjectArrayRead
+{
+    struct FHeld
+    {
+        TStrongObjectPtr<UObject> Object; UClass* Class=nullptr; UObject* Outer=nullptr; UPackage* Package=nullptr;
+        FString Path; EObjectFlags Flags=RF_NoFlags; bool Dirty=false, FullyLoaded=false; uint32 PackageFlags=0;
+        bool IsClass=false; EClassFlags ClassFlags=CLASS_None; int32 ClassSize=0;
+    };
+    TArray<FHeld> Held; TArray<UObject*> Slots;
+    TStrongObjectPtr<UEditorEngine> Editor; TStrongObjectPtr<UWorld> World; decltype(GUndo) Undo=nullptr;
+    UBlueprint* BP=nullptr; USimpleConstructionScript* SCS=nullptr; USCS_Node* Node=nullptr;
+    UActorComponent* Template=nullptr; UClass* Generated=nullptr; UClass* TemplateClass=nullptr;
+    UClass* OwnerClass=nullptr; UClass* DeclaredClass=nullptr;
+    const FArrayProperty* Array=nullptr; const FObjectProperty* Inner=nullptr;
+    FName PropertyName, VariableName; FGuid Guid; EBlueprintStatus Status=BS_Unknown;
+    uint64 ArrayFlags=0, InnerFlags=0; int32 ArrayOffset=0, ArraySize=0, InnerSize=0;
+    int64 Budget=2; bool Unsafe=false;
+    TSharedRef<FJsonObject> Receipt=MakeShared<FJsonObject>();
+
+    bool Loaded(const UObject* O) const
+    { return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed); }
+    bool Context()
+    {
+        if(Unsafe)return false;
+        if(!IsInGameThread()||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()
+            ||GIsImportingT3D||!Editor.IsValid()||!Loaded(Editor.Get())||GEditor!=Editor.Get()||GUndo!=Undo||!World.IsValid()||!Loaded(World.Get())||World->bIsTearingDown
+            ||World->WorldType!=EWorldType::Editor||static_cast<UWorld*>(GWorld)!=World.Get()) { Unsafe=true; return false; }
+        return true;
+    }
+    // Public UE58 Editor late-resolve path lookup avoids tracked Get(). The
+    // pointer equality operator is a shallow no-read comparison in this SDK.
+    // No internal handle layout/private raw accessor is consumed by the plugin.
+    UObject* FindResolved(const TObjectPtr<UObject>& Ref)
+    {
+#if UE_WITH_OBJECT_HANDLE_LATE_RESOLVE
+        if(!Context()||!Ref.IsResolved()||Ref==nullptr)return nullptr;
+        const FString Path=Ref.GetPathName();
+        UObject* Found=StaticFindObject(nullptr,nullptr,*Path);
+        return Ref==Found?Found:nullptr;
+#else
+        // The audited public no-read path is absent; do not add a resolving or
+        // tracking fallback in this editor-only migration implementation.
+        return nullptr;
+#endif
+    }
+    bool Pin(UObject* O)
+    {
+        if(!Context()||!Loaded(O)||!Loaded(O->GetClass())||!Loaded(O->GetPackage())||(O->GetOuter()&&!Loaded(O->GetOuter()))) { Unsafe=true; return false; }
+        for(const auto& I:Held)if(I.Object.Get()==O)return true;
+        FHeld I; I.Object.Reset(O); I.Class=O->GetClass(); I.Outer=O->GetOuter(); I.Package=O->GetPackage();
+        I.Path=O->GetPathName(); I.Flags=O->GetFlags(); I.Dirty=I.Package->IsDirty(); I.PackageFlags=I.Package->GetPackageFlags(); I.FullyLoaded=I.Package->IsFullyLoaded();
+        if(auto* C=Cast<UClass>(O)){I.IsClass=true;I.ClassFlags=C->ClassFlags;I.ClassSize=C->GetStructureSize();}
+        Held.Add(MoveTemp(I));return true;
+    }
+    bool NativeClass(UClass* C)
+    {
+        return Loaded(C)&&Loaded(C->GetPackage())&&C->HasAnyClassFlags(CLASS_Native)
+            &&!C->HasAnyClassFlags(CLASS_CompiledFromBlueprint)&&C->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)
+            &&C->GetPackage()->GetName()==TEXT("/Script/Engine")&&Pin(C);
+    }
+    bool Check()
+    {
+        if(!Context())return false;
+        for(const auto& I:Held)
+        {
+            UObject* O=I.Object.Get();
+            if(!Loaded(O)||!Loaded(I.Class)||!Loaded(I.Package)||(I.Outer&&!Loaded(I.Outer))
+                ||O->GetClass()!=I.Class||O->GetOuter()!=I.Outer||O->GetPackage()!=I.Package||O->GetFlags()!=I.Flags
+                ||!O->GetPathName().Equals(I.Path,ESearchCase::CaseSensitive)||I.Package->IsDirty()!=I.Dirty
+                ||I.Package->GetPackageFlags()!=I.PackageFlags||I.Package->IsFullyLoaded()!=I.FullyLoaded) { Unsafe=true;return false; }
+            if(I.IsClass){auto* C=Cast<UClass>(O);if(!C||C->ClassFlags!=I.ClassFlags||C->GetStructureSize()!=I.ClassSize){Unsafe=true;return false;}}
+        }
+        if(BP->SimpleConstructionScript!=SCS||BP->GeneratedClass.GetGCPtr()!=Generated||BP->Status!=Status
+            ||Node->GetOuter()!=SCS||!SCS->GetAllNodes().Contains(Node)||Node->ComponentTemplate!=Template
+            ||Node->ComponentClass!=TemplateClass||Template->GetClass()!=TemplateClass
+            ||Node->VariableGuid!=Guid||Node->GetVariableName()!=VariableName) { Unsafe=true;return false; }
+        const FProperty* Current=nullptr;
+        for(TFieldIterator<FProperty> It(OwnerClass,EFieldIteratorFlags::ExcludeSuper);It;++It)
+            if(It->GetFName()==PropertyName){Current=*It;break;}
+        if(Current!=Array||!Current||Current->GetClass()!=FArrayProperty::StaticClass()) { Unsafe=true;return false; }
+        if(Array->Inner!=Inner||Array->GetOwnerClass()!=OwnerClass||Array->GetPropertyFlags()!=ArrayFlags
+            ||Array->ArrayDim!=1||Array->GetOffset_ForInternal()!=ArrayOffset||Array->GetElementSize()!=ArraySize||Array->HasGetter()
+            ||Inner->GetClass()!=FObjectProperty::StaticClass()||Inner->PropertyClass!=DeclaredClass
+            ||Inner->ArrayDim!=1||Inner->GetElementSize()!=InnerSize||Inner->GetPropertyFlags()!=InnerFlags||Inner->HasGetter()) { Unsafe=true;return false; }
+        FScriptArrayHelper H(Array,Array->ContainerPtrToValuePtr<void>(Template));
+        if(H.Num()!=Slots.Num()) { Unsafe=true;return false; }
+        for(int32 I=0;I<H.Num();++I)
+        {
+            const TObjectPtr<UObject> Value=Inner->GetObjectPtrPropertyValue(H.GetRawPtr(I));
+            if(!Value.IsResolved()||Value!=Slots[I]) { Unsafe=true;return false; }
+        }
+        return true;
+    }
+    bool Bind(UBlueprint* B,USCS_Node* N,UActorComponent* T,const FArrayProperty* P,int32 MaxChars,FString& Error,const TSharedRef<FJsonObject>& Data)
+    {
+        Data->SetObjectField(TEXT("asset_object_array_read"),Receipt);
+        Receipt->SetNumberField(TEXT("max_elements"),256);Receipt->SetNumberField(TEXT("explicit_reference_load_calls"),0);
+        Receipt->SetBoolField(TEXT("preflight_complete"),false);Receipt->SetBoolField(TEXT("export_attempted"),false);
+        Receipt->SetBoolField(TEXT("export_returned"),false);Receipt->SetBoolField(TEXT("readonly_fence_passed"),false);
+        Receipt->SetBoolField(TEXT("arbitrary_asset_fields_verified"),false);Receipt->SetBoolField(TEXT("disk_sha_verified"),false);
+        Receipt->SetStringField(TEXT("context_scope"),TEXT("same game-thread GWorld with Editor WorldType; no FWorldContext::World tracked getter"));
+        Receipt->SetStringField(TEXT("class_scope"),TEXT("retained native identity/flags/size and exact finite declaration compatibility; superclass fields are unobserved"));
+        Editor.Reset(GEditor);World.Reset(static_cast<UWorld*>(GWorld));Undo=GUndo;
+        if(!Context()){Error=TEXT("Current editor array-read context is unavailable.");return false;}
+        BP=B;Node=N;Template=T;Array=P;
+        if(!Pin(B)||!Pin(N)||!Pin(T)){Error=TEXT("Current local array-read owner is unavailable.");return false;}
+        UObject* SCSObject=FindResolved(B->SimpleConstructionScript);
+        SCS=Loaded(SCSObject)&&SCSObject->GetClass()->GetPathName()==TEXT("/Script/Engine.SimpleConstructionScript")?static_cast<USimpleConstructionScript*>(SCSObject):nullptr;
+        Generated=Cast<UClass>(FindResolved(B->GeneratedClass.GetGCPtr()));TemplateClass=T->GetClass();Status=B->Status;
+        if(!Pin(SCS)||!Pin(Generated)||!Pin(TemplateClass)){Error=TEXT("Current local SCS/class roles are unavailable.");return false;}
+        Guid=N->VariableGuid;VariableName=N->GetVariableName();PropertyName=P->GetFName();OwnerClass=P->GetOwnerClass();
+        Inner=CastField<FObjectProperty>(P->Inner);
+        constexpr EPropertyFlags InstancedFlags=CPF_InstancedReference|CPF_ContainsInstancedReference|CPF_PersistentInstance|CPF_ExportObject;
+        if(P->GetClass()!=FArrayProperty::StaticClass()||P->ArrayDim!=1||P->HasGetter()||!Inner
+            ||Inner->GetClass()!=FObjectProperty::StaticClass()||Inner->ArrayDim!=1||Inner->HasGetter()
+            ||P->HasAnyPropertyFlags(InstancedFlags)||Inner->HasAnyPropertyFlags(InstancedFlags)||!NativeClass(OwnerClass))
+        {Error=TEXT("Only direct native Engine non-instanced hard-object material arrays are admitted; class/soft/weak/nested/custom fields remain unsupported.");return false;}
+        DeclaredClass=Cast<UClass>(FindResolved(Inner->PropertyClass));
+        if(!NativeClass(DeclaredClass)||(DeclaredClass->GetPathName()!=TEXT("/Script/Engine.MaterialInterface")
+            &&DeclaredClass->GetPathName()!=TEXT("/Script/Engine.Material")&&DeclaredClass->GetPathName()!=TEXT("/Script/Engine.MaterialInstanceConstant")))
+        {Error=TEXT("Array declaration must be an already-loaded exact native MaterialInterface, Material or MaterialInstanceConstant.");return false;}
+        ArrayFlags=P->GetPropertyFlags();InnerFlags=Inner->GetPropertyFlags();ArrayOffset=P->GetOffset_ForInternal();ArraySize=P->GetElementSize();InnerSize=Inner->GetElementSize();
+        FScriptArrayHelper H(P,P->ContainerPtrToValuePtr<void>(T));
+        if(H.Num()>256){Error=TEXT("Asset-object arrays have at most 256 elements.");return false;}
+        TArray<TSharedPtr<FJsonValue>> Observed;TSet<UObject*> AssetFilesObserved;
+        for(int32 I=0;I<H.Num();++I)
+        {
+            const TObjectPtr<UObject> Ref=Inner->GetObjectPtrPropertyValue(H.GetRawPtr(I));
+            if(!Ref.IsResolved()){Error=TEXT("An unresolved object handle would allow implicit reference loading; no exporter was called.");return false;}
+            UObject* O=Ref==nullptr?nullptr:FindResolved(Ref);
+            if(Ref!=O){Error=TEXT("An already-resolved reference could not be found at its exact loaded object path; no exporter was called.");return false;}
+            Slots.Add(O);auto J=MakeShared<FJsonObject>();J->SetNumberField(TEXT("index"),I);J->SetBoolField(TEXT("is_null"),O==nullptr);
+            if(O)
+            {
+                if(!Loaded(O)||!Loaded(O->GetClass())||!Loaded(O->GetPackage())){Unsafe=true;Error=TEXT("An array asset reference is no longer fully loaded.");return false;}
+                UClass* C=O->GetClass();UPackage* Package=O->GetPackage();const FString ClassPath=C->GetPathName(),PackageName=Package->GetName();
+                if((ClassPath!=TEXT("/Script/Engine.Material")&&ClassPath!=TEXT("/Script/Engine.MaterialInstanceConstant"))
+                    ||(DeclaredClass->GetPathName()==TEXT("/Script/Engine.Material")&&ClassPath!=TEXT("/Script/Engine.Material"))
+                    ||(DeclaredClass->GetPathName()==TEXT("/Script/Engine.MaterialInstanceConstant")&&ClassPath!=TEXT("/Script/Engine.MaterialInstanceConstant"))
+                    ||O->GetOuter()!=Package||!O->HasAllFlags(RF_Public|RF_Standalone)
+                    ||O->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject|RF_DefaultSubObject)
+                    ||Package->IsDirty()||!Package->IsFullyLoaded()||Package->HasAnyFlags(RF_Transient)||Package->HasAnyPackageFlags(PKG_CompiledIn|PKG_EditorOnly)
+                    ||(!PackageName.StartsWith(TEXT("/Game/"),ESearchCase::CaseSensitive)&&!PackageName.StartsWith(TEXT("/Engine/"),ESearchCase::CaseSensitive))
+                    ||!FPackageName::IsValidObjectPath(O->GetPathName())||!NativeClass(C)||!Pin(O))
+                {Error=TEXT("References must be null or saved-clean direct Game/Engine exact native Material or MaterialInstanceConstant assets; runtime/foreign/custom/instanced objects are unsupported.");return false;}
+                AssetFilesObserved.Add(O);
+                J->SetStringField(TEXT("path"),O->GetPathName());J->SetStringField(TEXT("class"),ClassPath);
+                Budget+=(static_cast<int64>(O->GetPathName().Len())+ClassPath.Len()+6)*6+3;
+            }
+            else {J->SetField(TEXT("path"),MakeShared<FJsonValueNull>());Budget+=5;}
+            Observed.Add(MakeShared<FJsonValueObject>(J));Receipt->SetArrayField(TEXT("ordered_references"),Observed);
+            if(Budget>MaxChars){Error=TEXT("Asset-object array text may exceed the bounded export budget.");return false;}
+        }
+        Receipt->SetNumberField(TEXT("element_count"),Slots.Num());Receipt->SetNumberField(TEXT("preflight_chars"),Budget);
+        if(!Check()){Error=TEXT("Current local array/source roles changed during preflight.");return false;}
+        // Retain every reference and freeze the whole array before any filesystem
+        // query. Recheck the complete scope after each query, not just context.
+        for(UObject* O:AssetFilesObserved)
+        {
+            const bool Exists=FPackageName::DoesPackageExist(O->GetPackage()->GetName());
+            if(!Check()){Error=TEXT("Current array/source roles changed during the package-existence query.");return false;}
+            if(!Exists){Error=TEXT("A referenced material package has no existing package file.");return false;}
+        }
+        Receipt->SetBoolField(TEXT("preflight_complete"),true);return true;
+    }
+    bool Export(int32 MaxChars,TSharedPtr<FJsonValue>& Out,FString& Encoding,FString& Error)
+    {
+        if(!Check()){Error=TEXT("Current local array/source roles changed before export.");return false;}
+        FString Text;Receipt->SetBoolField(TEXT("export_attempted"),true);
+        // Exact original SDK contract. This exports strings, never refPath JSON.
+        Array->ExportTextItem_Direct(Text,Array->ContainerPtrToValuePtr<void>(Template),nullptr,nullptr,PPF_None);
+        Receipt->SetBoolField(TEXT("export_returned"),true);
+        if(!Check()){Error=TEXT("Array export changed retained source/current identities or readonly package roles.");return false;}
+        Receipt->SetBoolField(TEXT("readonly_fence_passed"),true);Receipt->SetBoolField(TEXT("export_owner_is_null"),true);
+        if(Text.Len()>MaxChars){Error=TEXT("Property text exceeds max_value_chars.");return false;}
+        Out=MakeShared<FJsonValueString>(Text);Encoding=TEXT("legacy_ue_export_text_bounded_asset_object_array");return true;
+    }
+};
+
+bool ReadValue(const FProperty* Property, const void* Address, int32 MaxChars, TSharedPtr<FJsonValue>& Out, FString& Encoding, FString& Error, FLegacyStructTextRead* TextScope = nullptr)
 {
     if (!HasValidScalarMetadata(Property, Error)) { return false; }
     Encoding = TEXT("legacy_typed_json");
@@ -108,7 +360,17 @@ bool ReadValue(const FProperty* Property, const void* Address, int32 MaxChars, T
             { Error = TEXT("Linear color property is nonfinite."); return false; }
             Out = MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{MakeShared<FJsonValueNumber>(Value.R), MakeShared<FJsonValueNumber>(Value.G), MakeShared<FJsonValueNumber>(Value.B), MakeShared<FJsonValueNumber>(Value.A)});
         }
-        else { Error = TEXT("This struct's arbitrary native export is not audited; only FVector/FRotator/FLinearColor are supported in this slice."); return false; }
+        else if(LegacyStructTextType(Property))
+        {
+            if(!TextScope||!TextScope->ValueBudget(Property,Address,0)){Error=TEXT("Native struct export preflight is incomplete or exceeds the bounded reflected-value budget; unresolved references/custom exporters remain unsupported.");return false;}
+            FString Exported;
+            // Exact UE56 context: defaults=nullptr, Owner=nullptr, PPF_None.
+            // Do not pass the observed owner into the SDK or copy FBodyInstance.
+            Property->ExportTextItem_Direct(Exported,Address,nullptr,nullptr,PPF_None);
+            if(!TextScope->Check()){Error=TEXT("Native struct text export changed current object/package/dirty roles.");return false;}
+            Out=MakeShared<FJsonValueString>(Exported);Encoding=TEXT("legacy_ue_export_text_native_struct");
+        }
+        else { Error = TEXT("This struct's arbitrary native export is not audited; only FVector/FRotator/FLinearColor and bounded native FColor/FBodyInstance text are supported in this slice."); return false; }
     }
     else if (const FObjectPropertyBase* Object = CastField<FObjectPropertyBase>(Property))
     {
@@ -175,10 +437,10 @@ bool ReadLocalComponents(const FString& BlueprintPath, const FString& ComponentN
     Out.bDirtyAfter = Out.bDirtyBefore;
     Out.StatusBefore = static_cast<int32>(Blueprint->Status);
     Out.StatusAfter = Out.StatusBefore;
-    const TWeakObjectPtr<UBlueprint> ObservedBlueprint = Blueprint;
+    const TWeakObjectPtr<UBlueprint> ObservedBlueprint = Blueprint;bool SkipFinalDirtyObservation=false;
     ON_SCOPE_EXIT
     {
-        if (ObservedBlueprint.IsValid())
+        if (!SkipFinalDirtyObservation && ObservedBlueprint.IsValid())
         {
             Out.bDirtyAfter = ObservedBlueprint->GetOutermost()->IsDirty();
             Out.StatusAfter = static_cast<int32>(ObservedBlueprint->Status);
@@ -265,9 +527,24 @@ bool ReadLocalComponents(const FString& BlueprintPath, const FString& ComponentN
             if (It->GetName().Equals(PropertyName, ESearchCase::IgnoreCase)) { Property = *It; break; }
         }
         if (!Property || Property->ArrayDim != 1) { return Reject(Code, Error, TEXT("component_property_not_found"), TEXT("Property was not found or is a fixed-size native array, which is unsupported.")); }
-        TSharedPtr<FJsonValue> Value; FString Encoding;
-        if (!ReadValue(Property, Property->ContainerPtrToValuePtr<void>(Template), MaxValueChars, Value, Encoding, Error))
-        { Code = TEXT("component_property_type_unsupported"); return false; }
+        TSharedPtr<FJsonValue> Value; FString Encoding;TUniquePtr<FLegacyStructTextRead> TextScope;TUniquePtr<FAssetObjectArrayRead> AssetArrayScope;
+        const auto* ObjectArray=CastField<FArrayProperty>(Property);
+        bool ReadOK=false;
+        if(ObjectArray&&ObjectArray->Inner&&CastField<FObjectPropertyBase>(ObjectArray->Inner))
+        {
+            AssetArrayScope=MakeUnique<FAssetObjectArrayRead>();
+            ReadOK=AssetArrayScope->Bind(Blueprint,Match,Template,ObjectArray,MaxValueChars,Error,Data.ToSharedRef())
+                &&AssetArrayScope->Export(MaxValueChars,Value,Encoding,Error);
+            if(AssetArrayScope->Unsafe){SkipFinalDirtyObservation=true;return Reject(Code,Error,TEXT("component_read_state_changed"),TEXT("Asset-object array read lost retained source/current roles; no further UObject observation."));}
+        }
+        else if(LegacyStructTextType(Property))
+        {
+            TextScope=MakeUnique<FLegacyStructTextRead>();if(!TextScope->Bind(Blueprint,Match,Template)){SkipFinalDirtyObservation=true;return Reject(Code,Error,TEXT("component_read_state_changed"),TEXT("Current local SCS struct-read scope is unreadable."));}
+        }
+        if(!AssetArrayScope){ReadOK=ReadValue(Property, Property->ContainerPtrToValuePtr<void>(Template), MaxValueChars, Value, Encoding, Error,TextScope.Get());}
+        if(TextScope&&(!TextScope->Check()||TextScope->Unsafe)){SkipFinalDirtyObservation=true;return Reject(Code,Error,TEXT("component_read_state_changed"),TEXT("Native struct export lost its retained source/current identity or readonly package roles; no further observation."));}
+        if(!ReadOK){Code=TEXT("component_property_type_unsupported");return false;}
+        if(TextScope){Data->SetBoolField(TEXT("native_struct_export_owner_is_null"),true);Data->SetBoolField(TEXT("native_struct_scoped_identity_verified"),true);Data->SetNumberField(TEXT("native_struct_export_preflight_chars"),TextScope->Budget);}
         Data->SetStringField(TEXT("component_name"), ComponentName);
         Data->SetStringField(TEXT("component_class"), Template->GetClass()->GetName());
         Data->SetStringField(TEXT("property_name"), PropertyName);

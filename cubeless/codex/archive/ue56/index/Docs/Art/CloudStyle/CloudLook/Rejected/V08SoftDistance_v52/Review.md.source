@@ -1,7 +1,0 @@
-# V08 Soft Distance v52
-
-Built-in image edit: keep outer distant silhouettes sharp, simplify their internal shadows into soft natural broad volume; no stripes or sharp small patches. Gently soften only the outward underside of the inner upper-right hero cloud. Preserve left hero.
-
-Packed from v51. Outer shading donor blend uses radial transition 1680–1790px. Original outer alpha retained. Upper-right hero alpha softness is limited to x>2100, y<1900, radius<1620 and outward-facing alpha gradient. 51,807 alpha pixels changed in that region; G unchanged. Shading changed at 2,604,529 pixels. No global silhouette blur.
-
-Saved/imported as Altitude/Rejected/T_CloudLook_V08SoftDistance_v52. Not applied to level; in-engine review pending.

@@ -175,6 +175,14 @@ TSharedPtr<FJsonObject> ReadEffectiveCollectionValues(const TSharedPtr<FJsonObje
     Result->SetStringField(TEXT("world_type"), GetWorldTypeName(World));
     Result->SetStringField(TEXT("world_path"), World ? World->GetPathName() : FString());
     Result->SetBoolField(TEXT("has_runtime_instance"), Instance != nullptr);
+    // UE58's exported world getter may allocate an instance and update render
+    // resources before this payload is captured. No pre-getter inventory is read.
+    Result->SetBoolField(TEXT("runtime_instance_getter_dispatched"), World != nullptr);
+    Result->SetBoolField(TEXT("runtime_instance_creation_possible"), World != nullptr);
+    Result->SetStringField(TEXT("runtime_instance_creation_observed"), TEXT("not_measured"));
+    Result->SetBoolField(TEXT("runtime_render_resource_side_effects_possible"), World != nullptr);
+    Result->SetBoolField(TEXT("explicit_parameter_value_write_attempted"), false);
+    Result->SetStringField(TEXT("runtime_observation_scope"), TEXT("value reads after public world getter; pre-getter world instance/resource changes are not observed"));
     Result->SetArrayField(TEXT("scalars"), Scalars);
     Result->SetArrayField(TEXT("vectors"), Vectors);
     Result->SetNumberField(TEXT("scalar_count"), Scalars.Num());

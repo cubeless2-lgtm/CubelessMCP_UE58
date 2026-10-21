@@ -1,7 +1,0 @@
-{
-  "schema": "cubeless_material_add_set_edges_offline_tests_v1",
-  "passed": true,
-  "tests_run": 9,
-  "scope": "Synthetic source-derived tool signatures; no Unreal/native converter execution",
-  "details": "test_author_and_new_process_reload (__main__.EdgeTests.test_author_and_new_process_reload) ... ok\ntest_changed_defaults_positions_and_raw_evidence_rejected (__main__.EdgeTests.test_changed_defaults_positions_and_raw_evidence_rejected) ... ok\ntest_direct_converter_error_is_exact_and_preserved (__main__.EdgeTests.test_direct_converter_error_is_exact_and_preserved) ... ok\ntest_null_skipped_by_engine_is_only_an_observation (__main__.EdgeTests.test_null_skipped_by_engine_is_only_an_observation) ... ok\ntest_official_converter_decline_is_preserved (__main__.EdgeTests.test_official_converter_decline_is_preserved) ... ok\ntest_same_process_reload_rejected (__main__.EdgeTests.test_same_process_reload_rejected) ... ok\ntest_unexpected_type_acceptance_reads_actual_then_stops (__main__.EdgeTests.test_unexpected_type_acceptance_reads_actual_then_stops) ... ok\ntest_wrong_failure_kind_and_string_array_cannot_pass (__main__.EdgeTests.test_wrong_failure_kind_and_string_array_cannot_pass) ... ok\ntest_wrong_project_blocked_before_client (__main__.EdgeTests.test_wrong_project_blocked_before_client) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 2.596s\n\nOK\n"
-}

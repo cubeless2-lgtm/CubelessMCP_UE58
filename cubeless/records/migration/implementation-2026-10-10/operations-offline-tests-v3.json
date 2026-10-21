@@ -1,9 +1,0 @@
-{
-  "schema": "cubeless_external_pipeline_offline_tests_v1",
-  "scope": "Synthetic report counterexamples and timeout handling; no engine calls/assets",
-  "tests_run": 13,
-  "passed": true,
-  "failures": 0,
-  "errors": 0,
-  "details": "test_author_cannot_claim_reload_or_package (__main__.ContractTests.test_author_cannot_claim_reload_or_package) ... ok\ntest_complete_synthetic_fixture (__main__.ContractTests.test_complete_synthetic_fixture) ... ok\ntest_false_boolean_is_preserved (__main__.ContractTests.test_false_boolean_is_preserved) ... ok\ntest_forged_save_summary_does_not_mask_stage_failure (__main__.ContractTests.test_forged_save_summary_does_not_mask_stage_failure) ... ok\ntest_missing_compile_stage_rejected (__main__.ContractTests.test_missing_compile_stage_rejected) ... ok\ntest_missing_delta_contract_rejected (__main__.ContractTests.test_missing_delta_contract_rejected) ... ok\ntest_missing_independent_readback_fails (__main__.ContractTests.test_missing_independent_readback_fails) ... ok\ntest_same_editor_cannot_be_cold_reload (__main__.ContractTests.test_same_editor_cannot_be_cold_reload) ... ok\ntest_stale_input_fingerprint_rejected (__main__.ContractTests.test_stale_input_fingerprint_rejected) ... ok\ntest_timeout_mutation_not_retried (__main__.ContractTests.test_timeout_mutation_not_retried) ... ok\ntest_tool_error_is_not_empty_success (__main__.ContractTests.test_tool_error_is_not_empty_success) ... ok\ntest_unknown_outcome_is_not_pass (__main__.ContractTests.test_unknown_outcome_is_not_pass) ... ok\ntest_unsaved_fails (__main__.ContractTests.test_unsaved_fails) ... ok\n\n----------------------------------------------------------------------\nRan 13 tests in 0.018s\n\nOK\n"
-}

@@ -6,6 +6,12 @@
 #include "Editor.h"
 #include "EditorAssetLibrary.h"
 #include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/World.h"
+#include "Factories/BlueprintFunctionLibraryFactory.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "Serialization/JsonSerializer.h"
+#include "UObject/StrongObjectPtr.h"
 #include "Engine/SkeletalMesh.h"
 #include "FileHelpers.h"
 #include "HAL/PlatformProcess.h"
@@ -403,4 +409,108 @@ namespace Cubeless::UE58
         if (!Reasons.IsEmpty()) { Result->SetStringField(TEXT("error"), FString::Join(Reasons, TEXT("; "))); }
         return Result;
     }
+    // CreationFix1: public C++ fields only; Python property protection is not bypassed.
+    FString InspectBlueprintFunctionLibraryCreation(UObject* FactoryObject, UObject* BlueprintObject, const FString& ExpectedObjectPath)
+    {
+        auto Result = MakeShared<FJsonObject>();
+        Result->SetBoolField(TEXT("success"), false);Result->SetBoolField(TEXT("read_only"), true);
+        Result->SetBoolField(TEXT("mutation_performed"), false);Result->SetBoolField(TEXT("observations_complete"), false);
+        Result->SetBoolField(TEXT("load_requested"), false);Result->SetBoolField(TEXT("creation_requested"), false);
+        Result->SetBoolField(TEXT("compile_requested"), false);Result->SetBoolField(TEXT("save_requested"), false);
+        Result->SetBoolField(TEXT("cdo_creation_requested"), false);Result->SetBoolField(TEXT("cdo_values_sampled"), false);
+        const auto Encode = [&]() { FString Text;FJsonSerializer::Serialize(Result,TJsonWriterFactory<>::Create(&Text));return Text; };
+        const auto Bad = [&](const TCHAR* Boundary,const TCHAR* Message)
+        {Result->SetStringField(TEXT("stage"),Boundary);Result->SetStringField(TEXT("error_code"),TEXT("function_library_creation_observation_failed"));Result->SetStringField(TEXT("error"),Message);return Encode();};
+        const auto Loaded = [](const UObject* Object)
+        {return IsValid(Object)&&!Object->HasAnyFlags(RF_BeginDestroyed|RF_FinishDestroyed|RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects);};
+        if(!IsEditorGameThread()||GIsImportingT3D||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!Loaded(GEditor)||!GEditor->PlayWorld.IsResolved()||IsPlaySessionActive())
+            return Bad(TEXT("context"),TEXT("Read-only BFL creation observation requires the current idle editor outside import, exit, GC or saving."));
+        UWorld* const WorldBefore=GWorld;if(WorldBefore&&!Loaded(WorldBefore))return Bad(TEXT("context"),TEXT("Current optional editor world is unavailable."));
+        TStrongObjectPtr<UEditorEngine> EditorHold(GEditor);TStrongObjectPtr<UWorld> WorldHold(WorldBefore);auto* const UndoBefore=GUndo;
+        const auto Context = [&]()
+        {return IsEditorGameThread()&&!GIsImportingT3D&&!GExitPurge&&!IsEngineExitRequested()&&!IsGarbageCollecting()&&!UE::IsSavingPackage()&&Loaded(EditorHold.Get())&&EditorHold->PlayWorld.IsResolved()&&GEditor==EditorHold.Get()&&GUndo==UndoBefore&&GWorld==WorldHold.Get()&&(!WorldHold.IsValid()||(Loaded(WorldHold.Get())&&WorldHold->WorldType==EWorldType::Editor&&!WorldHold->bIsTearingDown))&&!IsPlaySessionActive();};
+        if(!Context())return Bad(TEXT("context"),TEXT("Captured editor/world/transaction role is not current."));
+        if(ExpectedObjectPath.IsEmpty()||ExpectedObjectPath.Len()>=NAME_SIZE||ExpectedObjectPath.Contains(TEXT(":"))||!ExpectedObjectPath.StartsWith(TEXT("/Game/")))
+            return Bad(TEXT("selector"),TEXT("Use an exact bounded /Game Blueprint object path, not an alias or subobject."));
+        for(TCHAR Character:ExpectedObjectPath)if(Character==0||FChar::IsControl(Character))return Bad(TEXT("selector"),TEXT("Object path contains control/NUL data."));
+        if(!FPackageName::IsValidObjectPath(ExpectedObjectPath))return Bad(TEXT("selector"),TEXT("Expected object path is invalid."));
+        const FString PackagePath=FPackageName::ObjectPathToPackageName(ExpectedObjectPath);const FString AssetName=FPackageName::GetShortName(PackagePath);
+        if(!ExpectedObjectPath.Equals(PackagePath+TEXT(".")+AssetName,ESearchCase::CaseSensitive)||(FactoryObject==nullptr)==(BlueprintObject==nullptr))
+            return Bad(TEXT("selector"),TEXT("Exactly one factory or Blueprint pointer and a canonical Package.Asset target are required."));
+        UClass* const FactoryClass=FindObject<UClass>(nullptr,TEXT("/Script/UnrealEd.BlueprintFunctionLibraryFactory"));
+        UClass* const ParentClass=FindObject<UClass>(nullptr,TEXT("/Script/Engine.BlueprintFunctionLibrary"));
+        UClass* const BlueprintClass=FindObject<UClass>(nullptr,TEXT("/Script/Engine.Blueprint"));
+        if(!Context()||!Loaded(FactoryClass)||!Loaded(ParentClass)||!Loaded(BlueprintClass)||FactoryClass!=UBlueprintFunctionLibraryFactory::StaticClass()||ParentClass!=UBlueprintFunctionLibrary::StaticClass()||BlueprintClass!=UBlueprint::StaticClass())
+            return Bad(TEXT("native_class"),TEXT("Exact already registered stock factory/BFL/Blueprint classes are required; no class load was requested."));
+        struct FRole
+        {TStrongObjectPtr<UObject> Hold;UClass* Class=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Path;EObjectFlags Flags=RF_NoFlags;uint32 PackageFlags=0;bool Dirty=false,IsClass=false;uint32 ClassFlags=0;int32 ClassSize=0;const UStruct* Super=nullptr;TObjectPtr<UObject> GeneratedBy;};
+        TArray<FRole> Roles;
+        const auto HoldRole = [&](UObject* Object,bool IsClass=false)
+        {
+            if(!Context()||!Loaded(Object)||!Loaded(Object->GetClass())||!Loaded(Object->GetPackage()))return false;
+            for(const auto& Role:Roles)if(Role.Hold.Get()==Object)return true;
+            FRole Role;Role.Hold.Reset(Object);Role.Class=Object->GetClass();Role.Outer=Object->GetOuter();Role.Package=Object->GetPackage();Role.Path=Object->GetPathName();Role.Flags=Object->GetFlags();Role.PackageFlags=uint32(Role.Package->GetPackageFlags());Role.Dirty=Role.Package->IsDirty();Role.IsClass=IsClass;
+            if(IsClass){auto* Class=static_cast<UClass*>(Object);if(!Class->ClassGeneratedBy.IsResolved())return false;Role.GeneratedBy=Class->ClassGeneratedBy;Role.ClassFlags=uint32(Class->GetClassFlags());Role.ClassSize=Class->GetStructureSize();auto Super=Class->GetSuperStructIterator();++Super;Role.Super=Super?*Super:nullptr;}
+            Roles.Add(MoveTemp(Role));return true;
+        };
+        const auto Current = [&]()
+        {
+            if(!Context())return false;
+            for(const auto& Role:Roles)
+            {const UObject* Object=Role.Hold.Get();if(!Loaded(Object)||Object->GetClass()!=Role.Class||Object->GetOuter()!=Role.Outer||Object->GetPackage()!=Role.Package||!Loaded(Role.Package)||!Object->GetPathName().Equals(Role.Path,ESearchCase::CaseSensitive)||Object->GetFlags()!=Role.Flags||uint32(Role.Package->GetPackageFlags())!=Role.PackageFlags||Role.Package->IsDirty()!=Role.Dirty||FindObject<UObject>(nullptr,*Role.Path)!=Object)return false;
+                if(Role.IsClass){const auto* Class=static_cast<const UClass*>(Object);auto Super=Class->GetSuperStructIterator();++Super;if(!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=Role.GeneratedBy||uint32(Class->GetClassFlags())!=Role.ClassFlags||Class->GetStructureSize()!=Role.ClassSize||(Super?*Super:nullptr)!=Role.Super)return false;}}
+            return Context();
+        };
+        for(UClass* Class:{FactoryClass,ParentClass,BlueprintClass})if(!Class->HasAnyClassFlags(CLASS_Native)||!HoldRole(Class,true)||!HoldRole(Class->GetPackage()))return Bad(TEXT("native_class"),TEXT("Current loaded stock native identity is unavailable."));
+        UObject* const Selected=FactoryObject?FactoryObject:BlueprintObject;
+        if(!HoldRole(Selected)||!Current())return Bad(TEXT("input_identity"),TEXT("Passed factory/Blueprint object identity is unavailable; no lookup fallback was used."));
+        Result->SetStringField(TEXT("observed_object_path"),Selected->GetPathName());Result->SetStringField(TEXT("observed_class_path"),Selected->GetClass()->GetPathName());
+        if(FactoryObject)
+        {
+            Result->SetStringField(TEXT("observation_kind"),TEXT("factory"));
+            if(FactoryObject->GetClass()!=FactoryClass)return Bad(TEXT("factory_class"),TEXT("Only the exact stock BlueprintFunctionLibraryFactory is admitted."));
+            auto* Factory=static_cast<UBlueprintFunctionLibraryFactory*>(FactoryObject);const auto ParentHandle=Factory->ParentClass.GetGCPtr();const EBlueprintType Type=Factory->BlueprintType;
+            Result->SetNumberField(TEXT("blueprint_type_value"),int32(Type));Result->SetBoolField(TEXT("parent_resolved"),ParentHandle.IsResolved());
+            if(!ParentHandle.IsResolved()||ParentHandle!=ParentClass||Type!=BPTYPE_FunctionLibrary||!Current())return Bad(TEXT("factory_fields"),TEXT("Stock factory public parent/type fields or current identity differ."));
+            if(FindObject<UObject>(nullptr,*ExpectedObjectPath)!=nullptr||!Current())return Bad(TEXT("fresh_target"),TEXT("Expected fresh target is already loaded, or current factory state changed."));
+            Result->SetStringField(TEXT("factory_class_path"),TEXT("/Script/UnrealEd.BlueprintFunctionLibraryFactory"));Result->SetStringField(TEXT("parent_class_path"),TEXT("/Script/Engine.BlueprintFunctionLibrary"));
+            Result->SetStringField(TEXT("blueprint_type"),TEXT("BPTYPE_FunctionLibrary"));Result->SetBoolField(TEXT("target_loaded_before_factory"),false);
+        }
+        else
+        {
+            Result->SetStringField(TEXT("observation_kind"),TEXT("blueprint"));
+            if(BlueprintObject->GetClass()!=BlueprintClass||!BlueprintObject->GetPathName().Equals(ExpectedObjectPath,ESearchCase::CaseSensitive)||FindObject<UObject>(nullptr,*ExpectedObjectPath)!=BlueprintObject)
+                return Bad(TEXT("blueprint_identity"),TEXT("Passed Blueprint is not the exact current returned object."));
+            auto* Blueprint=static_cast<UBlueprint*>(BlueprintObject);UPackage* const Package=Blueprint->GetPackage();
+            if(Blueprint->GetOuter()!=Package||!Package->GetName().Equals(PackagePath,ESearchCase::CaseSensitive)||Package->HasAnyPackageFlags(PKG_CompiledIn|PKG_PlayInEditor|PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly)||!HoldRole(Package))
+                return Bad(TEXT("blueprint_package"),TEXT("Returned Blueprint package/outer must remain the exact runtime target."));
+            const auto ParentHandle=Blueprint->ParentClass.GetGCPtr();const auto GeneratedHandle=Blueprint->GeneratedClass.GetGCPtr();const auto SkeletonHandle=Blueprint->SkeletonGeneratedClass.GetGCPtr();
+            const EBlueprintType Type=Blueprint->BlueprintType;const auto Status=Blueprint->Status;Result->SetNumberField(TEXT("blueprint_status_value"),int32(Status.GetValue()));
+            Result->SetNumberField(TEXT("blueprint_type_value"),int32(Type));Result->SetBoolField(TEXT("parent_resolved"),ParentHandle.IsResolved());Result->SetBoolField(TEXT("scs_resolved"),Blueprint->SimpleConstructionScript.IsResolved());
+            Result->SetBoolField(TEXT("simple_construction_script_is_null"),Blueprint->SimpleConstructionScript.IsResolved()&&Blueprint->SimpleConstructionScript==nullptr);Result->SetNumberField(TEXT("own_member_count"),Blueprint->NewVariables.Num());
+            if(!Current()||!ParentHandle.IsResolved()||ParentHandle!=ParentClass||Type!=BPTYPE_FunctionLibrary||Blueprint->bBeingCompiled||Blueprint->bQueuedForCompilation||Blueprint->bIsRegeneratingOnLoad||Blueprint->bSuppressStructurallyModified||Status==BS_BeingCreated||!Blueprint->SimpleConstructionScript.IsResolved()||Blueprint->SimpleConstructionScript!=nullptr||!Blueprint->NewVariables.IsEmpty()||!GeneratedHandle.IsResolved()||!SkeletonHandle.IsResolved())
+                return Bad(TEXT("blueprint_fields"),TEXT("Exact idle BFL parent/type, null SCS, member-free and resolved optional class fields are required."));
+            const auto ObserveClass = [&](const TCHAR* RoleName,const auto& Handle,const FString& ClassPath)
+            {
+                const bool Available=Handle!=nullptr;Result->SetBoolField(FString(RoleName)+TEXT("_available"),Available);Result->SetStringField(FString(RoleName)+TEXT("_path"),Available?ClassPath:FString());
+                if(!Available)return Current();
+                UClass* Class=FindObject<UClass>(nullptr,*ClassPath);
+                if(!Current()||!Loaded(Class)||Handle!=Class||Class->GetClass()!=UBlueprintGeneratedClass::StaticClass()||Class->GetOuter()!=Package||Class->GetPackage()!=Package||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=Blueprint||Class->HasAnyClassFlags(CLASS_Native|CLASS_Interface|CLASS_Deprecated|CLASS_NewerVersionExists)||!HoldRole(Class,true))return false;
+                auto Super=Class->GetSuperStructIterator();++Super;if(!Super||*Super!=ParentClass)return false;
+                Result->SetStringField(FString(RoleName)+TEXT("_pointer"),FString::Printf(TEXT("%p"),Class));return Current();
+            };
+            if(!ObserveClass(TEXT("generated_class"),GeneratedHandle,ExpectedObjectPath+TEXT("_C"))||!ObserveClass(TEXT("skeleton_class"),SkeletonHandle,PackagePath+TEXT(".SKEL_")+AssetName+TEXT("_C")))
+                return Bad(TEXT("blueprint_classes"),TEXT("Optional generated/skeleton role is not the exact currently held target class; no class/CDO load or creation was requested."));
+            if(!Current()||!Blueprint->ParentClass.GetGCPtr().IsResolved()||Blueprint->ParentClass.GetGCPtr()!=ParentHandle||!Blueprint->GeneratedClass.GetGCPtr().IsResolved()||Blueprint->GeneratedClass.GetGCPtr()!=GeneratedHandle||!Blueprint->SkeletonGeneratedClass.GetGCPtr().IsResolved()||Blueprint->SkeletonGeneratedClass.GetGCPtr()!=SkeletonHandle||Blueprint->BlueprintType!=Type||Blueprint->Status!=Status||!Blueprint->SimpleConstructionScript.IsResolved()||Blueprint->SimpleConstructionScript!=nullptr||!Blueprint->NewVariables.IsEmpty())
+                return Bad(TEXT("blueprint_current_fields"),TEXT("Public BFL roles changed during read-only observation."));
+            Result->SetStringField(TEXT("parent_class_path"),TEXT("/Script/Engine.BlueprintFunctionLibrary"));Result->SetStringField(TEXT("blueprint_type"),TEXT("BPTYPE_FunctionLibrary"));TArray<TSharedPtr<FJsonValue>> NoMembers;Result->SetArrayField(TEXT("own_member_names"),NoMembers);
+            Result->SetBoolField(TEXT("no_scs_verified"),true);Result->SetBoolField(TEXT("no_own_members_verified"),true);Result->SetBoolField(TEXT("native_parent_verified"),true);
+        }
+        if(!Current())return Bad(TEXT("final_current"),TEXT("Held target/native/context roles changed; no follow-up action was performed."));
+        TArray<TSharedPtr<FJsonValue>> RoleRows;
+        for(const auto& Role:Roles){auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("path"),Role.Path);Row->SetStringField(TEXT("pointer"),FString::Printf(TEXT("%p"),Role.Hold.Get()));Row->SetStringField(TEXT("class_pointer"),FString::Printf(TEXT("%p"),Role.Class));Row->SetStringField(TEXT("outer_pointer"),FString::Printf(TEXT("%p"),Role.Outer));Row->SetStringField(TEXT("package_pointer"),FString::Printf(TEXT("%p"),Role.Package));Row->SetStringField(TEXT("object_flags"),LexToString(uint32(Role.Flags)));Row->SetNumberField(TEXT("package_flags"),Role.PackageFlags);Row->SetBoolField(TEXT("package_dirty"),Role.Dirty);Row->SetBoolField(TEXT("is_class"),Role.IsClass);if(Role.IsClass){Row->SetNumberField(TEXT("class_flags"),Role.ClassFlags);Row->SetNumberField(TEXT("class_size"),Role.ClassSize);Row->SetStringField(TEXT("super_pointer"),FString::Printf(TEXT("%p"),Role.Super));}RoleRows.Add(MakeShared<FJsonValueObject>(Row));}Result->SetArrayField(TEXT("identity_roles"),RoleRows);
+        Result->SetStringField(TEXT("expected_object_path"),ExpectedObjectPath);Result->SetBoolField(TEXT("current_identity_verified"),true);Result->SetBoolField(TEXT("observations_complete"),true);Result->SetBoolField(TEXT("success"),true);Result->SetStringField(TEXT("stage"),TEXT("complete"));
+        Result->SetStringField(TEXT("scope"),TEXT("Read-only exact BFL factory/returned asset public fields and held identity; no private reflection, loaders, constructors, CDO reads, compiler, save or runtime execution. Not global callback/GC purity proof."));return Encode();
+    }
+
 }

@@ -1,0 +1,527 @@
+{
+  "schema_version": 1,
+  "knowledge_id": "unreal_mcp_niagara_diagnostics",
+  "description": "Deterministic symptom-cause-fix knowledge for grounded Niagara planning and refinement.",
+  "entries": [
+    {
+      "diagnosis_id": "collision_secondary_effect_missing",
+      "title": "Collision does not spawn a secondary effect",
+      "patterns": [
+        "collision event missing",
+        "secondary effect does not spawn",
+        "ripple does not appear",
+        "충돌 후 파문이 안 보임",
+        "충돌 이벤트가 발생하지 않음",
+        "바닥에 닿아도 이차 효과가 없음"
+      ],
+      "keywords": [
+        "collision",
+        "event",
+        "ripple",
+        "secondary",
+        "velocity",
+        "threshold",
+        "충돌",
+        "파문",
+        "물결",
+        "이벤트",
+        "속도",
+        "임계값"
+      ],
+      "related_modules": [
+        "Collision",
+        "Generate Collision Event",
+        "Receive Collision Event",
+        "Event Handler"
+      ],
+      "causes": [
+        "Collision resets or changes particle velocity before the event velocity threshold is evaluated.",
+        "The event generator or receiver is placed in the wrong script usage or event handler.",
+        "The receiver emitter, renderer, or event handler is disabled.",
+        "The source emitter is using GPU simulation while the selected event route requires CPU support."
+      ],
+      "fixes": [
+        "Inspect module order and the collision-event threshold before changing spawn rate or scale.",
+        "Inspect source and receiver emitter enabled state, Persistent IDs, exact event-generator name, and event-handler configuration.",
+        "Preserve pre-collision velocity or use a compatible trigger condition.",
+        "Keep unrelated visibility and scale adjustments in separate objectives so they can roll back independently."
+      ],
+      "evidence_tools": [
+        "analyze_niagara_system",
+        "inspect_niagara_stack",
+        "inspect_niagara_module_inputs",
+        "inspect_niagara_emitter_properties",
+        "inspect_niagara_event_handlers",
+        "inspect_niagara_compile_status"
+      ],
+      "source_refs": [
+        "https://arxiv.org/abs/2608.00629",
+        "codex/docs/projects/cubeless-stylized/systems/mcpweather.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "event_location_overwritten",
+      "title": "Event data overwrites the intended spawn location",
+      "patterns": [
+        "secondary particles spawn at the wrong position",
+        "shape location has no effect",
+        "event particles appear at origin",
+        "이벤트 파티클 위치가 틀림",
+        "Shape Location이 적용되지 않음",
+        "이차 파티클이 원점에 생성됨"
+      ],
+      "keywords": [
+        "event",
+        "location",
+        "position",
+        "origin",
+        "shape",
+        "이벤트",
+        "위치",
+        "원점",
+        "스폰"
+      ],
+      "related_modules": [
+        "Shape Location",
+        "Receive Location Event",
+        "Receive Collision Event",
+        "Set Variables"
+      ],
+      "causes": [
+        "Event payload position is applied after Shape Location and overwrites the earlier position.",
+        "The event receiver is bound to the wrong source emitter or event payload attribute.",
+        "A later Set Variables module overwrites Particles.Position."
+      ],
+      "fixes": [
+        "Inspect parameter-map order and identify the final writer of Particles.Position.",
+        "Use event position as the base and apply the desired local offset afterward.",
+        "Verify source-emitter and event-payload bindings before adjusting random shape parameters."
+      ],
+      "evidence_tools": [
+        "inspect_niagara_stack",
+        "inspect_niagara_graph",
+        "inspect_niagara_module_inputs"
+      ],
+      "source_refs": [
+        "https://arxiv.org/abs/2608.00629"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "camera_follow_world_space_lag",
+      "title": "Camera-following particles trail behind or refill slowly",
+      "patterns": [
+        "particles lag behind the camera",
+        "weather field refills after camera movement",
+        "camera follow lag",
+        "카메라를 따라올 때 지연",
+        "카메라 이동 후 파티클이 다시 채워짐",
+        "강수가 끌려옴"
+      ],
+      "keywords": [
+        "camera",
+        "follow",
+        "lag",
+        "world",
+        "local",
+        "weather",
+        "카메라",
+        "지연",
+        "월드",
+        "로컬",
+        "강수"
+      ],
+      "related_modules": [
+        "Emitter Properties",
+        "Shape Location",
+        "Initialize Particle"
+      ],
+      "causes": [
+        "The emitter is in world space, so existing particles remain at their old world positions when the component moves.",
+        "The spawn volume is too small or particle lifetime is too long for a camera-following field.",
+        "A camera offset moves the component outside the reviewed view while the effect itself remains healthy."
+      ],
+      "fixes": [
+        "Inspect local-space state before increasing spawn rate.",
+        "For camera-following weather, prefer local space and a bounded spawn volume sized to the view.",
+        "Review lifetime, spawn volume, and camera offset together; keep density tuning as a separate objective."
+      ],
+      "evidence_tools": [
+        "inspect_niagara_emitter_properties",
+        "inspect_niagara_stack",
+        "inspect_niagara_module_inputs"
+      ],
+      "source_refs": [
+        "codex/docs/projects/cubeless-stylized/systems/mcpweather.md",
+        "codex/docs/projects/cubeless-stylized/tooling/niagara-mcp-authoring-extension.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "standalone_visibility_dependency",
+      "title": "Effect is invisible without its source runtime controller",
+      "patterns": [
+        "effect is invisible standalone",
+        "works only with the original weather actor",
+        "missing runtime user data",
+        "단독으로 실행하면 안 보임",
+        "원본 액터가 없으면 파티클이 사라짐",
+        "런타임 데이터가 없으면 컬링됨"
+      ],
+      "keywords": [
+        "standalone",
+        "dependency",
+        "controller",
+        "userdata",
+        "kill",
+        "visibility",
+        "단독",
+        "의존",
+        "원본",
+        "컬링",
+        "가시성"
+      ],
+      "related_modules": [
+        "Kill Particles",
+        "Visibility",
+        "User Parameters",
+        "Data Interface"
+      ],
+      "causes": [
+        "A source weather/controller actor normally supplies user parameters, arrays, textures, or kill volumes.",
+        "A copied emitter still references source materials, Niagara parameter collections, scripts, or data interfaces.",
+        "A visibility or kill module treats missing user data as a condition that removes every particle."
+      ],
+      "fixes": [
+        "Inspect user parameters, data-interface overrides, and dependency audit before changing visual values.",
+        "Recreate the required behavior with project-owned or engine assets and stable defaults.",
+        "Run promotion audit and plugin/source-independence checks before treating the effect as durable content."
+      ],
+      "evidence_tools": [
+        "analyze_niagara_system",
+        "inspect_niagara_user_parameters",
+        "inspect_niagara_data_interface_overrides",
+        "audit_niagara_promotion_candidate"
+      ],
+      "source_refs": [
+        "codex/docs/projects/cubeless-stylized/systems/mcpweather.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "particles_invisible_generic",
+      "title": "Particles compile but are not visible",
+      "patterns": [
+        "particles are invisible",
+        "nothing renders",
+        "effect is not visible",
+        "파티클이 안 보임",
+        "아무것도 렌더되지 않음",
+        "이펙트가 보이지 않음"
+      ],
+      "keywords": [
+        "invisible",
+        "render",
+        "spawn",
+        "alpha",
+        "material",
+        "bounds",
+        "보이지",
+        "렌더",
+        "스폰",
+        "알파",
+        "머티리얼",
+        "바운드"
+      ],
+      "related_modules": [
+        "Spawn Rate",
+        "Initialize Particle",
+        "Scale Color",
+        "Sprite Renderer",
+        "Emitter Properties"
+      ],
+      "causes": [
+        "Spawn rate, lifetime, scale, or alpha is zero or effectively zero.",
+        "The emitter or renderer is disabled, or the renderer has no usable material.",
+        "Fixed bounds cull the particles, especially for GPU simulation.",
+        "A material, texture, or source dependency is missing."
+      ],
+      "fixes": [
+        "Inspect compile state, enabled state, spawn/lifetime values, renderer material, and bounds in that order.",
+        "Capture runtime particle counts before compensating with larger scale or spawn rate.",
+        "Separate logic restoration from aesthetic tuning so visibility compensations can roll back."
+      ],
+      "evidence_tools": [
+        "analyze_niagara_system",
+        "inspect_niagara_renderers",
+        "inspect_niagara_emitter_properties",
+        "inspect_niagara_rapid_iteration_parameters",
+        "inspect_niagara_compile_status"
+      ],
+      "source_refs": [
+        "Docs/Tools/niagara_tools.md",
+        "codex/docs/projects/cubeless-stylized/systems/mcpweather.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "gpu_bounds_culling",
+      "title": "GPU particles are clipped or disappear because of bounds",
+      "patterns": [
+        "gpu particles disappear",
+        "particles pop at the edge",
+        "fixed bounds too small",
+        "GPU 파티클이 사라짐",
+        "화면 가장자리에서 팝핑",
+        "고정 바운드가 작음"
+      ],
+      "keywords": [
+        "gpu",
+        "bounds",
+        "cull",
+        "clip",
+        "fixed",
+        "바운드",
+        "컬링",
+        "클리핑",
+        "사라짐"
+      ],
+      "related_modules": [
+        "Emitter Properties",
+        "Fixed Bounds",
+        "GPU Compute Sim"
+      ],
+      "causes": [
+        "GPU simulation uses fixed bounds that do not cover the authored motion volume.",
+        "Bounds were copied from a template with a different coordinate scale or local-space policy.",
+        "The component moves while world-space particles extend beyond the fixed box."
+      ],
+      "fixes": [
+        "Inspect sim target, local space, and fixed bounds as one contract.",
+        "Size bounds from the intended spawn and motion envelope, then re-run visual review.",
+        "Avoid using an oversized bounds change to mask a world/local-space design error."
+      ],
+      "evidence_tools": [
+        "inspect_niagara_emitter_properties",
+        "analyze_niagara_system",
+        "inspect_niagara_compile_status"
+      ],
+      "source_refs": [
+        "codex/docs/projects/cubeless-stylized/tooling/niagara-mcp-authoring-extension.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "rain_streak_orientation",
+      "title": "Rain sprites look like blobs instead of velocity-aligned streaks",
+      "patterns": [
+        "rain looks like blobs",
+        "sprites do not align to velocity",
+        "rain streak is horizontal",
+        "비가 점처럼 보임",
+        "빗줄기가 속도 방향으로 정렬되지 않음",
+        "빗줄기 방향이 틀림"
+      ],
+      "keywords": [
+        "rain",
+        "streak",
+        "sprite",
+        "velocity",
+        "alignment",
+        "size",
+        "비",
+        "빗줄기",
+        "스프라이트",
+        "속도",
+        "정렬"
+      ],
+      "related_modules": [
+        "Initialize Particle",
+        "Add Velocity",
+        "Sprite Renderer"
+      ],
+      "causes": [
+        "Sprite Size Mode is uniform instead of non-uniform.",
+        "Sprite renderer alignment is not VelocityAligned.",
+        "Velocity or sprite rotation conflicts with the intended streak direction."
+      ],
+      "fixes": [
+        "Inspect the Initialize Particle static switch and Sprite Size input.",
+        "Use velocity-aligned sprite rendering for directional streaks.",
+        "Tune width, length, velocity, and material silhouette as separate objectives."
+      ],
+      "evidence_tools": [
+        "inspect_niagara_stack",
+        "inspect_niagara_module_inputs",
+        "inspect_niagara_renderers"
+      ],
+      "source_refs": [
+        "codex/docs/projects/cubeless-stylized/tooling/niagara-mcp-authoring-extension.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "spawn_distribution_axis",
+      "title": "Particles spawn on the wrong axis or in the wrong volume",
+      "patterns": [
+        "particles spread vertically instead of horizontally",
+        "spawn box axis is wrong",
+        "effect remains clustered at origin",
+        "파티클이 잘못된 축으로 퍼짐",
+        "스폰 박스 축이 틀림",
+        "원점에 뭉쳐 있음"
+      ],
+      "keywords": [
+        "spawn",
+        "shape",
+        "axis",
+        "box",
+        "sphere",
+        "origin",
+        "스폰",
+        "형상",
+        "축",
+        "박스",
+        "원점"
+      ],
+      "related_modules": [
+        "Shape Location",
+        "Box Location",
+        "Sphere Location",
+        "Add Velocity"
+      ],
+      "causes": [
+        "Shape Location dimensions or axis masks do not match the intended world/local orientation.",
+        "Velocity direction is being mistaken for spawn-distribution direction.",
+        "The emitter local-space setting changes how the authored axis is interpreted."
+      ],
+      "fixes": [
+        "Inspect Shape Location inputs and emitter local-space state together.",
+        "Separate spawn-volume correction from velocity correction.",
+        "Use a deterministic preview camera and compare spatial coverage before and after the patch."
+      ],
+      "evidence_tools": [
+        "inspect_niagara_module_inputs",
+        "inspect_niagara_emitter_properties",
+        "inspect_niagara_stack"
+      ],
+      "source_refs": [
+        "https://arxiv.org/abs/2608.00629",
+        "codex/docs/projects/cubeless-stylized/systems/mcpweather.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "compile_or_static_switch_failure",
+      "title": "Compile failure after module or static-switch edits",
+      "patterns": [
+        "niagara compile failed",
+        "static switch broke the module",
+        "type mismatch after edit",
+        "나이아가라 컴파일 실패",
+        "정적 스위치 변경 후 오류",
+        "입력 타입 불일치"
+      ],
+      "keywords": [
+        "compile",
+        "error",
+        "static",
+        "switch",
+        "type",
+        "mismatch",
+        "컴파일",
+        "오류",
+        "정적",
+        "스위치",
+        "타입"
+      ],
+      "related_modules": [
+        "Static Switch",
+        "Module Input",
+        "Rapid Iteration Parameter",
+        "Data Interface"
+      ],
+      "causes": [
+        "A static switch activates inputs that have incompatible or missing overrides.",
+        "A literal or RapidIteration value does not match the resolved Niagara input type.",
+        "GPU simulation is incompatible with a selected module or data interface.",
+        "A stale module selector targeted a different stack function after graph changes."
+      ],
+      "fixes": [
+        "Inspect current static-switch options and module-input candidates before writing.",
+        "Use node GUID or exact module selectors and stale-value guards where available.",
+        "Compile and inspect after each objective; roll back the objective that introduced the error."
+      ],
+      "evidence_tools": [
+        "inspect_niagara_compile_status",
+        "inspect_niagara_module_inputs",
+        "inspect_niagara_stack",
+        "inspect_niagara_emitter_properties"
+      ],
+      "source_refs": [
+        "Docs/Tools/niagara_tools.md",
+        "codex/docs/projects/cubeless-stylized/tooling/niagara-mcp-authoring-extension.md"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    },
+    {
+      "diagnosis_id": "iterative_parameter_drift",
+      "title": "Repeated tuning accumulates compensating parameter drift",
+      "patterns": [
+        "spawn rate keeps increasing",
+        "scale became too large after iterations",
+        "later fix leaves earlier compensation",
+        "반복 수정 후 스폰레이트가 과도함",
+        "이전 보정값이 남아 있음",
+        "반복할수록 크기가 커짐"
+      ],
+      "keywords": [
+        "iteration",
+        "drift",
+        "rollback",
+        "spawnrate",
+        "scale",
+        "compensation",
+        "반복",
+        "드리프트",
+        "롤백",
+        "보정",
+        "크기"
+      ],
+      "related_modules": [
+        "Spawn Rate",
+        "Initialize Particle",
+        "Scale Sprite Size",
+        "Scale Color"
+      ],
+      "causes": [
+        "Visibility symptoms were compensated with spawn rate or scale before the underlying logic error was fixed.",
+        "Multiple unrelated changes were grouped into one patch and could not be rolled back selectively.",
+        "The latest state was accepted even though an earlier iteration scored better."
+      ],
+      "fixes": [
+        "Group operations by explicit visual objective and expected observation.",
+        "Roll back only failed objectives while preserving independently successful objectives.",
+        "Store every scored state and select the best historical state rather than the final iteration."
+      ],
+      "evidence_tools": [
+        "analyze_niagara_system",
+        "inspect_niagara_rapid_iteration_parameters",
+        "inspect_niagara_module_inputs"
+      ],
+      "source_refs": [
+        "https://arxiv.org/abs/2608.00629"
+      ],
+      "evidence_scope": "historical UE56 diagnosis hypothesis; not independently validated in UE58"
+    }
+  ],
+  "migration_provenance": {
+    "source_path": "Python/services/niagara_diagnostic_knowledge_v1.json",
+    "source_sha256": "5570b11f0e202bc99521fe1bce3abfa9caf139aa1d5a25ed1a9f85bd7f5d179c",
+    "source_engine_context": "UE 5.6",
+    "target_engine": "UE 5.8.3",
+    "engine_behavior_verified_in_target": false,
+    "evidence_scope": "historical symptom/cause/fix hypotheses; current engine observation required"
+  }
+}

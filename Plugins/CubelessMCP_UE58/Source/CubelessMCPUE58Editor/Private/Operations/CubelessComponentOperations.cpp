@@ -111,3 +111,12 @@ FString SetBlueprintStaticMeshProperties(const FString& BlueprintPath, const FSt
         StaticMeshPath, MaterialPath), TEXT("set_static_mesh_properties"), Start);
 }
 }
+
+namespace Cubeless::Operations
+{
+FString ConfigureBlueprintPCGTemplate(const FString& ParamsJson)
+{
+    const double Start = FPlatformTime::Seconds();
+    return EncodeComponentMutation(UE58::Component::ConfigureBlueprintPCGTemplate(ParamsJson), TEXT("configure_blueprint_pcg_template"), Start);
+}
+}

@@ -13,7 +13,15 @@ def _invoke(method, *arguments):
     function = getattr(library, method, None) if library is not None else None
     if function is None:
         raise OperationError("native_actor_api_unavailable", "Build/load CubelessActorLibrary for UE58 before using Actor tools; no fallback executed")
-    raw = function(*arguments)
+    # PO/PQ lifetime only: existing before-read, transform and delete calls.
+    # Native independently owns actor/parent/attachment admission and retirement.
+    if method in ("get_actor_properties", "set_actor_transform", "delete_actor"):
+        try:
+            raw = function(*arguments)
+        finally:
+            function = None
+    else:
+        raw = function(*arguments)
     try:
         result = json.loads(raw)
     except (TypeError, ValueError) as error:
@@ -50,3 +58,23 @@ def spawn_blueprint_actor(blueprint_path, name, location_json, rotation_json, sc
 
 def set_actor_transform(name, location_json, rotation_json, scale_json, expected_level_path):
     return _invoke("set_actor_transform", name, location_json, rotation_json, scale_json, expected_level_path, MAX_ACTORS)
+
+
+def set_actor_transform_original(name, location_json, rotation_json, scale_json, expected_level_path):
+    """Private exact-original-contract dispatch; Native owns array parsing and actual result projection."""
+    library = getattr(unreal, "CubelessActorLibrary", None)
+    function = getattr(library, "set_actor_transform_original", None) if library is not None else None
+    if function is None:
+        raise OperationError("native_actor_api_unavailable", "Build/load the original-contract CubelessActorLibrary helper before using this Actor tool; no fallback executed")
+    try:
+        raw = function(name, location_json, rotation_json, scale_json, expected_level_path, MAX_ACTORS)
+    finally:
+        function = None
+    try:
+        result = json.loads(raw)
+    except (TypeError, ValueError) as error:
+        raise OperationError("invalid_native_actor_result", "Native original-contract Actor result was not valid JSON; inspect the level before retrying a mutation") from error
+    if (type(result) is not dict or type(result.get("success")) is not bool
+            or type(result.get("data")) is not dict or type(result.get("mutation_attempted")) is not bool):
+        raise OperationError("invalid_native_actor_result", "Native original-contract Actor result lacks its success/data/mutation_attempted envelope")
+    return result

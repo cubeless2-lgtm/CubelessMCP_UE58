@@ -61,3 +61,11 @@ FString UCubelessActorLibrary::SetActorTransform(const FString& Name, const FStr
     Request.Name = Name; Request.LocationJson = LocationJson; Request.RotationJson = RotationJson; Request.ScaleJson = ScaleJson;
     return RunActorOperation(Request);
 }
+
+FString UCubelessActorLibrary::SetActorTransformOriginal(const FString& Name, const FString& LocationJson, const FString& RotationJson, const FString& ScaleJson, const FString& ExpectedLevelPath, int32 MaxActors)
+{
+    FRequest Request = MakeRequest(EOperation::SetTransform, ExpectedLevelPath, MaxActors);
+    Request.Name = Name; Request.LocationJson = LocationJson; Request.RotationJson = RotationJson; Request.ScaleJson = ScaleJson;
+    Request.bOriginalTransformContract = true;
+    return RunActorOperation(Request);
+}

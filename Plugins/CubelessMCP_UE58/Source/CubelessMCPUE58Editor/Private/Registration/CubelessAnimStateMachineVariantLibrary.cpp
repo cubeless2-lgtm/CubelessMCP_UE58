@@ -1,0 +1,7 @@
+#include "Registration/CubelessAnimStateMachineVariantLibrary.h"
+#include "Compatibility/UE58/CubelessAnimStateMachineVariantApi.h"
+#include "Operations/CubelessVariableOperations.h"
+FString UCubelessAnimStateMachineVariantLibrary::EnsureAnimStateMachineSampleVariant(FString SourceAnimBPPath,FString StatesProjectionJson,FString TransitionsProjectionJson,FString TargetAnimBPPath,FString TargetRoot,FString VariantName,FString StateMachineName,FString EntryState,FString AnimationAssetPath,bool bConnectDemoMachineToOutput,bool bReplaceExistingRootLink,bool bReplaceExistingEntryLink,bool bAllowExistingTargetReuse,bool bOverwriteExisting,bool bCompile,bool bSaveAsset,bool bDryRun,bool bValidateOnly,int64 MaxStates,int64 MaxTransitions,FString PrivateContextJson)
+{
+    return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::AnimStateMachineVariant::Ensure(SourceAnimBPPath,StatesProjectionJson,TransitionsProjectionJson,TargetAnimBPPath,TargetRoot,VariantName,StateMachineName,EntryState,AnimationAssetPath,bConnectDemoMachineToOutput,bReplaceExistingRootLink,bReplaceExistingEntryLink,bAllowExistingTargetReuse,bOverwriteExisting,bCompile,bSaveAsset,bDryRun,bValidateOnly,MaxStates,MaxTransitions,PrivateContextJson),TEXT("ensure_anim_state_machine_sample_variant"));
+}

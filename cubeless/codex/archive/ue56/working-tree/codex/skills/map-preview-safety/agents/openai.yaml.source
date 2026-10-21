@@ -1,4 +1,0 @@
-interface:
-  display_name: "Map Preview Safety"
-  short_description: "Safe Unreal map opens and preview captures"
-  default_prompt: "Use $map-preview-safety to open maps or run previews safely."

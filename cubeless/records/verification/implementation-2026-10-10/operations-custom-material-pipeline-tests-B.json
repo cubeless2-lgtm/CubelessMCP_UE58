@@ -1,7 +1,0 @@
-{
-  "schema": "cubeless_custom_material_offline_tests_v1",
-  "passed": true,
-  "tests_run": 9,
-  "scope": "Synthetic source-derived schemas and return shapes; no native Custom creation, shader compile or Unreal execution",
-  "details": "test_author_then_fresh_process_cold_readback (__main__.CustomTests.test_author_then_fresh_process_cold_readback) ... ok\ntest_changed_disk_blocks_reload_before_client (__main__.CustomTests.test_changed_disk_blocks_reload_before_client) ... ok\ntest_coherently_tampered_property_and_wiring_rejected (__main__.CustomTests.test_coherently_tampered_property_and_wiring_rejected) ... ok\ntest_coherently_wrong_negative_category_rejected (__main__.CustomTests.test_coherently_wrong_negative_category_rejected) ... ok\ntest_missing_native_proof_and_wrong_toolset_rejected (__main__.CustomTests.test_missing_native_proof_and_wrong_toolset_rejected) ... ok\ntest_raw_readback_mutation_and_scope_tampering_fails (__main__.CustomTests.test_raw_readback_mutation_and_scope_tampering_fails) ... ok\ntest_same_process_reload_blocked (__main__.CustomTests.test_same_process_reload_blocked) ... ok\ntest_unexpected_negative_acceptance_reads_then_stops_without_retry (__main__.CustomTests.test_unexpected_negative_acceptance_reads_then_stops_without_retry) ... ok\ntest_wrong_project_rejected_before_client (__main__.CustomTests.test_wrong_project_rejected_before_client) ... ok\n\n----------------------------------------------------------------------\nRan 9 tests in 3.859s\n\nOK\n"
-}

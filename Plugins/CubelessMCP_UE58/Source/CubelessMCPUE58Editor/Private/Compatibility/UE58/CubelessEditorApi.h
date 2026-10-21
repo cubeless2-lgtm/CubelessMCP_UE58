@@ -13,4 +13,5 @@ namespace Cubeless::UE58
     TSharedRef<FJsonObject> ReadSkeletalMeshSections(const FString& SkeletalMeshPath, int32 LODIndex);
     TSharedRef<FJsonObject> CompileBlueprint(const FString& BlueprintPath, bool bSave, bool bRefreshNodes);
     TSharedRef<FJsonObject> InspectBlueprintParent(const FString& ClassPath);
+    FString InspectBlueprintFunctionLibraryCreation(UObject* FactoryObject, UObject* BlueprintObject, const FString& ExpectedObjectPath);
 }

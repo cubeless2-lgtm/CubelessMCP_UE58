@@ -52,20 +52,23 @@ bool PrepareCustomNodeRequestImpl(const TSharedPtr<FJsonObject>& Input, TSharedP
         || !ParseCustomInputNames(Parsed, InputNames, Error)
         || !ParseCustomDefines(Parsed, Defines, Error)
         || !ParseIncludeFilePaths(Parsed, Includes, Error)) { return false; }
-    bool bHasInclude = !Includes.IsEmpty() || ContainsCustomIncludeDirective(Code);
-    for (const FCustomDefine& Define : Defines) { bHasInclude |= ContainsCustomIncludeDirective(Define.DefineValue); }
+    bool bHasInclude = ContainsCustomIncludeDirective(Code, true, &Error);
+    for (const FCustomDefine& Define : Defines)
+    { bHasInclude |= ContainsCustomIncludeDirective(Define.DefineValue, true, &Error, false); }
+    for (const FString& IncludePath : Includes)
+    { if (!ValidateCustomShaderFilePath(IncludePath, Error)) { bHasInclude = true; break; } }
     if (bHasInclude)
     {
         ErrorCode = TEXT("custom_shader_includes_unsupported");
-        Error = TEXT("Shader include/preprocessor dependency validation is incomplete. Nonempty include_file_paths or directive markers anywhere in code/define values, including comments/strings, are not admitted; no expression was created.");
+        if (Error.IsEmpty())
+        { Error = TEXT("Custom shader dependencies outside the checked literal leaf-file scope remain incomplete; no expression was created for this refused request."); }
         return false;
     }
 
     TArray<FCustomInput> Inputs;
     for (FName Name : InputNames) { FCustomInput& Item = Inputs.AddDefaulted_GetRef(); Item.InputName = Name; }
-    FString InputsText, DefinesText, IncludesText;
+    FString InputsText, IncludesText;
     if (!ExportCustomArrayDefault(TEXT("Inputs"), &Inputs, InputsText, Error)
-        || !ExportCustomArrayDefault(TEXT("AdditionalDefines"), &Defines, DefinesText, Error)
         || !ExportCustomArrayDefault(TEXT("IncludeFilePaths"), &Includes, IncludesText, Error)) { return false; }
     auto Properties = MakeShared<FJsonObject>();
     Properties->SetStringField(TEXT("Code"), Code);
@@ -73,7 +76,15 @@ bool PrepareCustomNodeRequestImpl(const TSharedPtr<FJsonObject>& Input, TSharedP
     Properties->SetStringField(TEXT("Description"), Description);
     Properties->SetStringField(TEXT("Desc"), Description);
     Properties->SetStringField(TEXT("Inputs"), InputsText);
-    Properties->SetStringField(TEXT("AdditionalDefines"), DefinesText);
+    // Preserve legacy parser aliases/default/value text, then use the exact
+    // shared typed scratch path rather than export-to-raw-import roundtripping.
+    TArray<TSharedPtr<FJsonValue>> DefineRows;
+    for(const FCustomDefine& Define:Defines)
+    {
+        auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("DefineName"),Define.DefineName);Row->SetStringField(TEXT("DefineValue"),Define.DefineValue);
+        DefineRows.Add(MakeShared<FJsonValueObject>(Row));
+    }
+    Properties->SetArrayField(TEXT("AdditionalDefines"),DefineRows);
     Properties->SetStringField(TEXT("IncludeFilePaths"), IncludesText);
     const FString PropertiesText = ToJson(Properties);
     if (PropertiesText.Len() > 65536)

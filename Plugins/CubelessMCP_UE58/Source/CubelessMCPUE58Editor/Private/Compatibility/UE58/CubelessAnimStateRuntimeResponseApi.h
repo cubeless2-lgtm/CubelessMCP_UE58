@@ -1,0 +1,68 @@
+#pragma once
+#include "CoreMinimal.h"
+#include "Compatibility/UE58/CubelessVariableApi.h"
+namespace Cubeless::UE58::AnimStateRuntimeResponse
+{
+Variable::FResult Sample(const FString& ActorLabel,
+    const FString& ActorName,
+    const FString& ActorPath,
+    const FString& ComponentName,
+    const FString& CasesJson,
+    const FString& PropertiesJson,
+    const FString& Name,
+    int64 TickCount,
+    double TickDeltaTime,
+    bool bRefreshBoneTransforms,
+    bool bRestoreAfterCase,
+    bool bIncludeBaseline,
+    const FString& StateMachineName,
+    bool bIncludeStates,
+    bool bIncludeStateWeights,
+    bool bIncludeRelevantAnimTimes,
+    bool bIncludeTransitionProgress,
+    bool bIncludeInactiveTransitionProgress,
+    bool bIncludeMontages,
+    bool bIncludeCurves,
+    const FString& CurveNamesJson,
+    int64 MaxStateMachines,
+    int64 MaxStateMachineInstancesToProbe,
+    int64 MaxStatesPerMachine,
+    int64 MaxTransitionsPerMachine,
+    int64 MaxCurves,
+    bool bPreferPIEWorld,
+    bool bRequirePIEWorld,
+    const FString& AnimInstanceSource);
+}
+// Specific shared-TU entry; implemented once by the FA inl appended to the EZ TU.
+namespace Cubeless::UE58::AnimInstanceRuntimePropertyProbe
+{
+Variable::FResult SampleCases(const FString& ActorLabel,
+    const FString& ActorName,
+    const FString& ActorPath,
+    const FString& ComponentName,
+    const FString& CasesJson,
+    const FString& PropertiesJson,
+    const FString& Name,
+    int64 TickCount,
+    double TickDeltaTime,
+    bool bRefreshBoneTransforms,
+    bool bRestoreAfterCase,
+    bool bIncludeBaseline,
+    const FString& StateMachineName,
+    bool bIncludeStates,
+    bool bIncludeStateWeights,
+    bool bIncludeRelevantAnimTimes,
+    bool bIncludeTransitionProgress,
+    bool bIncludeInactiveTransitionProgress,
+    bool bIncludeMontages,
+    bool bIncludeCurves,
+    const FString& CurveNamesJson,
+    int64 MaxStateMachines,
+    int64 MaxStateMachineInstancesToProbe,
+    int64 MaxStatesPerMachine,
+    int64 MaxTransitionsPerMachine,
+    int64 MaxCurves,
+    bool bPreferPIEWorld,
+    bool bRequirePIEWorld,
+    const FString& AnimInstanceSource);
+}

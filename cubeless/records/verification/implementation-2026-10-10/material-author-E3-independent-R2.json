@@ -1,8 +1,0 @@
-{
-  "schema": "cubeless_material_report_verification_v1",
-  "passed": true,
-  "errors": [],
-  "phase": "author",
-  "scope": "Independent report consistency/required-stage checks; execution authenticity requires attached live official-MCP evidence",
-  "full_material_migration_complete": false
-}

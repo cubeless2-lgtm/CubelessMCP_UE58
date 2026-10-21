@@ -1,9 +1,0 @@
-# Reactive Surface Phase 7-A Test Materials Report
-
-- Verdict: **PASS**
-- Grass zone consumes `MF_RS_GrassSample` through world-space sampling.
-- Snow consumes `MF_RS_GroundSample` through world-space sampling.
-- Puddle consumes the Water normal RT with V45 continuous window origin.
-- `L_RS_Demo` keeps the three production test-material asset paths.
-
-Evidence: `codex/docs/projects/cubeless-stylized/systems/evidence/reactive-surface-phase7a-materials-results-2026-07-11.json`

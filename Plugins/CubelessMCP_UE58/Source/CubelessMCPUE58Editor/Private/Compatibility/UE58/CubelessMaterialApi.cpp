@@ -43,6 +43,10 @@
 #include "RHIFeatureLevel.h"
 #include "RHIShaderPlatform.h"
 #include "RHIGlobals.h"
+#include "ShaderCore.h"
+#include "ShaderCompilerCore.h"
+#include "Misc/Paths.h"
+#include "Interfaces/IPluginManager.h"
 #include "SceneTypes.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
@@ -154,8 +158,9 @@ TSharedPtr<FJsonObject> AnalyzeWithCompileObservation(const TSharedPtr<FJsonObje
     Observation->SetField(TEXT("compiled"), MakeShared<FJsonValueNull>());
     Observation->SetField(TEXT("compilation_finished"), MakeShared<FJsonValueNull>());
     Observation->SetField(TEXT("game_thread_shader_map_complete"), MakeShared<FJsonValueNull>());
+    for (const TCHAR* Key : { TEXT("game_thread_shader_map_present"), TEXT("has_valid_game_thread_shader_map"), TEXT("shader_map_compilation_finalized"), TEXT("shader_map_compiled_successfully") }) { Observation->SetField(Key, MakeShared<FJsonValueNull>()); }
     Observation->SetField(TEXT("compile_errors"), MakeShared<FJsonValueNull>());
-    Observation->SetStringField(TEXT("scope"), TEXT("current editor shader platform/default active quality only; no save/reload/cook/render proof"));
+    Observation->SetStringField(TEXT("scope"), TEXT("current editor shader platform/default active quality point samples; cached completeness, current map presence, finalization and success are distinct observations. No Engine cause or save/reload/cook/render proof is inferred"));
     Observation->SetBoolField(TEXT("compile_submitted"), false);
     Observation->SetStringField(TEXT("poll_side_effect"), TEXT("IsCompilationFinished may finalize ready cache work; no explicit compile submission or blocking finish call"));
     FString Path;
@@ -169,6 +174,15 @@ TSharedPtr<FJsonObject> AnalyzeWithCompileObservation(const TSharedPtr<FJsonObje
             const bool bFinished = Resource->IsCompilationFinished();
             const bool bCompleteMap = Resource->IsGameThreadShaderMapComplete();
             const TArray<FString>& Errors = Resource->GetCompileErrors();
+            const bool bHasValidMap = Resource->HasValidGameThreadShaderMap();
+            const FMaterialShaderMap* ShaderMap = Resource->GetGameThreadShaderMap(); const bool bHasMap = ShaderMap != nullptr;
+            const bool bFinalized = ShaderMap && ShaderMap->IsCompilationFinalized(); const bool bShaderSuccess = ShaderMap && ShaderMap->CompiledSuccessfully();
+            Observation->SetBoolField(TEXT("game_thread_shader_map_present"), bHasMap); Observation->SetBoolField(TEXT("has_valid_game_thread_shader_map"), bHasValidMap);
+            if (ShaderMap)
+            {
+                Observation->SetBoolField(TEXT("shader_map_compilation_finalized"), bFinalized);
+                Observation->SetBoolField(TEXT("shader_map_compiled_successfully"), bShaderSuccess);
+            }
             Observation->SetBoolField(TEXT("resource_available"), true);
             Observation->SetBoolField(TEXT("compilation_finished"), bFinished);
             Observation->SetBoolField(TEXT("game_thread_shader_map_complete"), bCompleteMap);
@@ -176,7 +190,7 @@ TSharedPtr<FJsonObject> AnalyzeWithCompileObservation(const TSharedPtr<FJsonObje
             for (const FString& Error : Errors) { ErrorValues.Add(MakeShared<FJsonValueString>(Error)); }
             Observation->SetArrayField(TEXT("compile_errors"), ErrorValues);
             Observation->SetNumberField(TEXT("compile_error_count"), Errors.Num());
-            const bool bCompiled = bFinished && bCompleteMap && Resource->HasValidGameThreadShaderMap() && Errors.IsEmpty();
+            const bool bCompiled = bFinished && bCompleteMap && bHasValidMap && bHasMap && bFinalized && bShaderSuccess && Errors.IsEmpty();
             Observation->SetBoolField(TEXT("compiled"), bCompiled);
             Observation->SetStringField(TEXT("status"), !bFinished ? TEXT("pending") : bCompiled ? TEXT("current_resource_complete") : Errors.IsEmpty() ? TEXT("resource_incomplete") : TEXT("compile_errors"));
         }

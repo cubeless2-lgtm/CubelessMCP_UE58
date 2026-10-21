@@ -1,8 +1,0 @@
-{
-  "schema": "cubeless_batch_pipeline_verification_v1",
-  "passed": true,
-  "errors": [],
-  "phase": "reload",
-  "full_legacy_batch_parity": false,
-  "scope": "Independent stage/child/readback contract; execution authenticity requires original live MCP evidence"
-}

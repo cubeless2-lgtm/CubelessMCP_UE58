@@ -1,9 +1,0 @@
-# RadialPilot_v15 single-bank review
-
-Built-in imagegen generated a localized coverage patch. v13 is the immutable baseline.
-
-Prompt: Edit only the 12 o'clock distant cloud opacity. Preserve footprint and inward-facing crown. Reduce broad outward underside fade about 65%, keep body coverage, a narrow soft fringe and no outlines. All other banks unchanged. Opaque grayscale coverage mask, no internal illumination.
-
-Assembly: Only generated alpha inside source window (450,0)-(810,95) is admitted to existing support. Existing packed RGB is preserved byte-for-byte. All packed pixels outside (1500,108)-(2614,402) are unchanged; verified in manifest.json. Other generated pixels are ignored. Baseline 4096 packing/UV fit is unchanged. The pilot is a local fade study, not an approved catalog version or a completed double-contour fix.
-
-Review: fixed camera pitch15 yaw0 FOV65, same actor time. Transient MID motion/evolution disabled for both captures within one batch and restored with UpdateSky. Before.jpg and After.jpg are opaque review images. Alpha change improves lower density modestly; double contour at the inward crown remains for a separate bounded correction.

@@ -275,3 +275,53 @@ def add_level_sequence_transform_keys(sequence_path, keys, binding_id="", actor_
 def add_level_sequence_transform_keys_action(result, sequence_path, keys,
         binding_id="", actor_label="", save=True, checkpoint_callback=None):
     _run_action(result, KEYS, _key_arguments(sequence_path, keys, binding_id, actor_label, save), checkpoint_callback)
+
+
+
+def _raw_ordered_key_arguments(command, arguments, method):
+    """Private original-command lane; public Named normalization stays strict."""
+    from . import batch
+    from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+    canonical = "CubelessSequencerTools." + method
+    raw = command.get("legacy_original_params") if type(command) is dict else None
+    if (method not in (KEYS, "add_level_sequence_float_property_keys")
+            or type(command) is not dict or command.get("type") != canonical
+            or command.get("legacy_original_command") != method
+            or command.get("legacy_sequencer_ordered_keys") != method or type(raw) is not dict):
+        raise OperationError("sequencer_raw_key_provenance_invalid", "Exact normalized original Sequencer key command required")
+    _reject_legacy_command_dependency_refs(raw)
+    expected = batch._sequencer_legacy_params(method, raw)
+    if type(arguments) is not dict or arguments != expected:
+        raise OperationError("sequencer_raw_key_arguments_changed", "Original key command arguments changed before dispatch; no writer")
+    rows = expected["keys"]
+    if type(rows) is not list or not 1 <= len(rows) <= 512:
+        raise OperationError("sequencer_invalid_keys", "Original keys requires a nonempty array within the existing512-row profile")
+    try:
+        material._json_input(json.dumps(rows, ensure_ascii=False, allow_nan=False, separators=(",", ":")))
+    except (TypeError, ValueError, OverflowError, RecursionError) as error:
+        raise OperationError("sequencer_invalid_keys", "Bounded finite original key JSON required") from error
+    # Validate selectors/save using the established Named argument functions,
+    # with a harmless never-dispatched row. Do not normalize raw row contents.
+    if method == KEYS:
+        prepared = _key_arguments(expected["sequence_path"], [{"frame": 0}],
+            expected["binding_id"], expected["actor_label"], expected["save"])
+        kind = "transform"
+    else:
+        from . import sequencer_float
+        prepared = sequencer_float._arguments(expected["sequence_path"], expected["property_path"],
+            [{"frame": 0, "value": 0}], expected["binding_id"], expected["actor_label"], expected["save"])
+        kind = "float"
+    prepared["keys"] = copy.deepcopy(rows)
+    # Same array length/order; the exact internal first row has no frame and
+    # therefore cannot pass either public Named key validator.
+    prepared["keys"][0] = {"__cubeless_original_sequence_keys_v1": kind,
+        "first": prepared["keys"][0]}
+    return prepared
+
+
+def _raw_ordered_key_action(result, command, arguments, checkpoint_callback=None):
+    prepared = _raw_ordered_key_arguments(command, arguments, KEYS)
+    result["data"].update(legacy_original_command=KEYS,
+        legacy_original_params=copy.deepcopy(command["legacy_original_params"]),
+        raw_ordered_key_rows_preserved=True, full_original_sequencer_scope_complete=False)
+    return _run_action(result, KEYS, prepared, checkpoint_callback)

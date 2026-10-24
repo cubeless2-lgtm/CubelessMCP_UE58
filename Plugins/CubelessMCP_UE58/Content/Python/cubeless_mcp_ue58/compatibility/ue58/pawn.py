@@ -28,3 +28,18 @@ def set_pawn_properties(blueprint_path,auto_possess_player,use_controller_rotati
         raise
     native["_raw_native_json"]=raw
     return native
+
+
+
+def set_pawn_properties_raw(blueprint_path,params_json):
+    function=getattr(getattr(unreal,LIBRARY,None),'set_pawn_properties_raw',None)
+    if not callable(function):raise OperationError('native_pawn_api_unavailable','Exact original raw Pawn helper unavailable; no fallback or dispatch')
+    raw=function(blueprint_path,params_json)
+    try:
+        native=_decode_result(raw)
+        if native.get('operation')!='set_pawn_properties' or 'changed' not in native or native['changed'] is not None and type(native['changed']) is not bool:
+            raise OperationError('invalid_native_pawn_result','Wrong raw Pawn operation/changed type; full raw prefix retained')
+    except Exception as error:
+        error.native_call_returned=True;error.native_raw_result=raw;raise
+    native['_raw_native_json']=raw
+    return native

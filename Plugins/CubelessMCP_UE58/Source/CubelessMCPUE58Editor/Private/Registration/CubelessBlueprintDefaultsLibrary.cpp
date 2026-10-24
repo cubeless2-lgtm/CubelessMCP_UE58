@@ -81,3 +81,6 @@ FString UCubelessBlueprintDefaultsLibrary::PrepareBlueprintDefaultsToolset(UClas
     FString Json; FJsonSerializer::Serialize(Report, TJsonWriterFactory<>::Create(&Json)); return Json;
 }
 
+
+FString UCubelessBlueprintDefaultsLibrary::SetBlueprintActorTickSettingsRaw(const FString& BlueprintPath,const FString& SettingsJson)
+{return Cubeless::UE58::BlueprintDefaults::SetActorTickSettingsRaw(BlueprintPath,SettingsJson);}

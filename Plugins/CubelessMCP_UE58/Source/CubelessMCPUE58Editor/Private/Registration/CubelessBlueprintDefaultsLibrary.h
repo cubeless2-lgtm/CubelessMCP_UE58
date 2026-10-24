@@ -16,6 +16,9 @@ public:
         bool bCanEverTick, bool bStartWithTickEnabled, bool bAllowTickOnDedicatedServer,
         bool bTickEvenWhenPaused, bool bDryRun, bool bCompile, bool bSave);
 
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Internal", meta=(AIIgnore, ScriptName="set_blueprint_actor_tick_settings_raw"))
+    static FString SetBlueprintActorTickSettingsRaw(const FString& BlueprintPath,const FString& SettingsJson);
+
     UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore, ScriptName="set_skeletal_mesh_component_anim_defaults"))
     static FString SetSkeletalMeshComponentAnimDefaults(const FString& BlueprintPath, const FString& ComponentName,
         const FString& SkeletalMesh, const FString& AnimClass, const FString& PhysicsAssetJson,

@@ -34,7 +34,10 @@ TSharedPtr<FPresetLoaderNameArrayScope> HoldPresetLoaderNameArrayConnection(FRes
 // PT concrete node-only missing function creation; no loader, public selector or explicit compile/save.
 bool CreateFunctionGraphForNode(UBlueprint* Blueprint,const FString& Name,FResult& Result,UEdGraph*& Graph,
     TFunction<bool(UEdGraphNode*)>& Current,UBlueprint* ReadonlySource=nullptr);
-FResult Resolve(const FString& BlueprintPath, const FString& GraphName, const FString& GraphId, const FString& GraphType, bool bCreate);
+// Internal original default EventGraph continuation; no new public selector.
+bool CreateEventGraphForNode(UBlueprint* Blueprint,FResult& Result,UEdGraph*& Graph,TFunction<bool(UEdGraphNode*)>& Current,bool bRequestedCreate,bool bDefaultSelector);
+// Branch/Sequence defer only the default allocation to keep their R/lease alive.
+FResult Resolve(const FString& BlueprintPath, const FString& GraphName, const FString& GraphId, const FString& GraphType, bool bCreate,bool bDeferDefaultEventCreation=false);
 FResult InspectCompiledFunction(const FString& BlueprintPath, const FString& FunctionClass, const FString& FunctionName);
 FResult AddParameter(const FString& BlueprintPath, const FString& Name, const FString& Type, const FString& Direction,
     const FString& DefaultJson, const FString& TypeObject, bool bArray, const FString& GraphName, const FString& GraphId,

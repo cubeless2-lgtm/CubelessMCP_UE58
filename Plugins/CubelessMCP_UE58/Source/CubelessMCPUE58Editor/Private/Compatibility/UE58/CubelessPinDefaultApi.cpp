@@ -14,9 +14,16 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_VariableSet.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_MakeSet.h"
+#include "K2Node_MakeMap.h"
+#include "K2Node_Select.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_BreakStruct.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
+#include "UObject/Class.h"
 #include "UObject/StrongObjectPtr.h"
 
 namespace Cubeless::UE58::PinDefault
@@ -179,9 +186,23 @@ Function::FResult Set(const FString& GraphPath, const FString& NodePath, const F
         || G->GetSchema()->GetClass() != UEdGraphSchema_K2::StaticClass() || BP->BlueprintType != BPTYPE_Normal
         || BP->bBeingCompiled || BP->bQueuedForCompilation || BP->bIsRegeneratingOnLoad || BP->bSuppressStructurallyModified)
     { Fail(R, TEXT("pin_default_scope_unsupported"), TEXT("Requires an exact loaded node on an idle normal Blueprint's standard K2 graph.")); return R; }
-    if (Node->GetClass() != UK2Node_VariableSet::StaticClass() && Node->GetClass() != UK2Node_CallFunction::StaticClass()
-        && Node->GetClass() != UK2Node_IfThenElse::StaticClass())
-    { Fail(R, TEXT("pin_default_node_pending"), TEXT("Current default changes support exact standard VariableSet, CallFunction and Branch nodes; other node callbacks remain pending.")); return R; }
+    // AAS: these six concrete authoring nodes inherit the empty
+    // UEdGraphNode::PinDefaultValueChanged (EdGraphNode.h827). Installed
+    // MakeContainer/StructMemberSet/StructMemberGet/StructOperation and their
+    // concrete classes do not replace that callback. Do not admit subclasses:
+    // custom callbacks, pin topology/type changes and node creation are separate.
+    const UClass* NodeClass=Node->GetClass();
+    const bool PassiveDefault=NodeClass==UK2Node_MakeArray::StaticClass()||NodeClass==UK2Node_MakeSet::StaticClass()
+        ||NodeClass==UK2Node_MakeMap::StaticClass()||NodeClass==UK2Node_Select::StaticClass()
+        ||NodeClass==UK2Node_MakeStruct::StaticClass()||NodeClass==UK2Node_BreakStruct::StaticClass();
+    if (NodeClass != UK2Node_VariableSet::StaticClass() && NodeClass != UK2Node_CallFunction::StaticClass()
+        && NodeClass != UK2Node_IfThenElse::StaticClass()&&!PassiveDefault)
+    { Fail(R, TEXT("pin_default_node_pending"), TEXT("Exact standard VariableSet/CallFunction/Branch or passive MakeArray/MakeSet/MakeMap/Select/MakeStruct/BreakStruct required; other node callbacks remain pending.")); return R; }
+    if(PassiveDefault)
+    {
+        R.Data->SetBoolField(TEXT("stock_passive_pin_default"),true);
+        R.Data->SetStringField(TEXT("stock_passive_pin_default_scope"),TEXT("Existing typed unlinked visible input defaults on exact stock MakeArray/MakeSet/MakeMap/Select/MakeStruct/BreakStruct. Existing common primitive/null-object conversion and exact saved-clean runtime Vector/Rotator/Transform scalar converter, schema validation, idempotent matching, exact selected pin/readback and other-pin/whole-graph preservation apply. No node/type creation, topology or array resize, object/class loading or arbitrary struct source expansion. Stock BreakStruct whole const-reference inputs still require a connection under both original and current schema; their rejection is preserved, while eligible existing split scalar leaves use the common input path. Wider original malformed/short-array/coercion variants remain incomplete. Explicit compile/save0; actual per-node authoring and persistence usage validation pending."));
+    }
     const auto Parent = InspectBlueprintParent(BP->ParentClass ? BP->ParentClass->GetPathName() : FString());
     R.Data->SetObjectField(TEXT("parent_inspection"), Parent);
     if (!Parent->GetBoolField(TEXT("success"))) { Fail(R, TEXT("pin_default_parent_unsupported"), TEXT("Blueprint parent failed the runtime-class guard.")); return R; }
@@ -195,18 +216,80 @@ Function::FResult Set(const FString& GraphPath, const FString& NodePath, const F
         || Selected->bHidden || Selected->bDefaultValueIsIgnored || Selected->PinName == UEdGraphSchema_K2::PN_Self || !Selected->LinkedTo.IsEmpty())
     { Fail(R, TEXT("pin_default_input_unsupported"), TEXT("Requires one visible non-orphaned unlinked input whose default is used; self/hidden/ignored/connected inputs are not modified.")); return R; }
     TSharedPtr<FJsonValue> Requested; FString RequestedText;
-    if (!Pin::ParseJson(ValueJson, Requested, R) || !Pin::DefaultText(Selected->PinType, Requested, RequestedText, R)) { return R; }
+    if (!Pin::ParseJson(ValueJson, Requested, R)) { return R; }
+    // Reuse the established exact runtime value-struct converter. The original
+    // CommandsShared.h530 names these Vector/Rotator/Transform value families.
+    // Installed BreakStruct199 creates its whole input as const-reference. A
+    // conversion-only copy may describe its value, but the actual pin flags stay
+    // untouched and the schema still requires an incoming connection (UE58
+    // Schema2991, same UE56 Schema3028). This is an intentional rejection, not
+    // evidence that whole-struct BreakStruct default editing is implemented.
+    FEdGraphPinType ConversionType=Selected->PinType;bool BreakValueView=false;
+    if(PassiveDefault&&NodeClass==UK2Node_BreakStruct::StaticClass()&&ConversionType.bIsConst&&ConversionType.bIsReference)
+    {
+        auto* Break=static_cast<UK2Node_BreakStruct*>(Node);auto View=ConversionType;View.bIsConst=false;View.bIsReference=false;
+        if(Pin::IsScalarValueStruct(View)&&Break->StructType.IsResolved()
+            &&Break->StructType.Get()==View.PinSubCategoryObject.Get()&&Selected->PinName==Break->StructType->GetFName())
+        {ConversionType=View;BreakValueView=true;}
+    }
+    const bool PassiveValueStruct=PassiveDefault&&Pin::IsScalarValueStruct(ConversionType);
+    if(BreakValueView)
+    {
+        R.Data->SetBoolField(TEXT("break_struct_conversion_view_only"),true);
+        R.Data->SetBoolField(TEXT("actual_const_reference_flags_preserved"),Selected->PinType.bIsConst&&Selected->PinType.bIsReference);
+    }
+    if(PassiveValueStruct)
+    {
+        if(!Pin::ScalarValueDefaultText(ConversionType,Requested,RequestedText,R))return R;
+        R.Data->SetObjectField(TEXT("passive_value_struct_source_before"),Pin::ScalarValueStructSource(Selected->PinType));
+    }
+    else if(!Pin::DefaultText(Selected->PinType,Requested,RequestedText,R))return R;
     const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
     FString CanonicalText; TObjectPtr<UObject> CanonicalObject = nullptr; FText CanonicalLocalized;
     Schema->GetPinDefaultValuesFromString(Selected->PinType, Node, RequestedText, CanonicalText, CanonicalObject, CanonicalLocalized, false);
-    if (CanonicalObject || !Schema->IsPinDefaultValid(Selected, CanonicalText, CanonicalObject, CanonicalLocalized).IsEmpty())
-    { Fail(R, TEXT("pin_default_value_rejected"), TEXT("The public schema rejected this typed default before modification; concrete object literals are not loaded.")); return R; }
+    const FString SchemaError=CanonicalObject?FString():Schema->IsPinDefaultValid(Selected,CanonicalText,CanonicalObject,CanonicalLocalized);
+    if (CanonicalObject || !SchemaError.IsEmpty())
+    {
+        R.Data->SetStringField(TEXT("schema_default_validation_error"),SchemaError);
+        R.Data->SetBoolField(TEXT("stock_break_struct_const_reference_rejected"),BreakValueView&&!SchemaError.IsEmpty());
+        Fail(R, TEXT("pin_default_value_rejected"), TEXT("The public schema rejected this typed default before modification; concrete object literals are not loaded. A stock BreakStruct whole input retains its SDK const-reference connection requirement.")); return R;
+    }
     const TStrongObjectPtr<UBlueprint> KeepBP(BP); const TStrongObjectPtr<UK2Node> KeepNode(Node);
+    const TStrongObjectPtr<UEdGraph> KeepGraph(G);
+    const TStrongObjectPtr<UObject> KeepValueStruct(PassiveValueStruct?Selected->PinType.PinSubCategoryObject.Get():nullptr);
     auto Before = MakeShared<FJsonObject>(); if (!CaptureNode(Node, Before))
     { Fail(R, TEXT("pin_default_observation_incomplete"), TEXT("Node pins could not be captured within the 4096-pin bound.")); return R; }
     const bool DirtyBefore = BP->GetOutermost()->IsDirty(); const FGuid SelectedId = Selected->PinId;
     const bool LegacyFloatBefore = Selected->PinType.bSerializeAsSinglePrecisionFloat;
     FEdGraphPinType ExpectedType = Selected->PinType;
+    const FGuid GraphGuid=G->GraphGuid,NodeGuid=Node->NodeGuid;
+    auto PassiveCurrent=[&]()
+    {
+        if(!PassiveDefault)return true;
+        UEdGraphPin* Found=nullptr;int32 Matches=0;
+        const bool Context=IsEditorGameThread()&&!IsPlaySessionActive()&&!GIsImportingT3D&&!GExitPurge
+            &&!IsEngineExitRequested()&&!IsGarbageCollecting()&&!UE::IsSavingPackage();
+        const bool Owner=Context&&IsValid(BP)&&IsValid(G)&&IsValid(Node)&&Node->GetClass()==NodeClass
+            &&Node->GetPathName()==NodePath&&G->GetPathName()==GraphPath&&Node->GetOuter()==G
+            &&G->GetOuter()==BP&&G->Nodes.Contains(Node)&&G->GraphGuid==GraphGuid&&Node->NodeGuid==NodeGuid
+            &&!BP->bBeingCompiled&&!BP->bQueuedForCompilation&&!BP->bIsRegeneratingOnLoad&&!BP->bSuppressStructurallyModified;
+        if(Owner)for(auto* P:Node->Pins)if(P&&P->PinId==SelectedId){Found=P;++Matches;}
+        if(Owner&&Matches==1&&Found==Selected&&!Found->WasTrashed()&&!Found->bOrphanedPin
+            &&Found->GetOwningNodeUnchecked()==Node&&Found->PinName.ToString()==PinName&&Found->Direction==EGPD_Input
+            &&Found->PinType==ExpectedType&&!Found->bHidden&&!Found->bDefaultValueIsIgnored&&Found->LinkedTo.IsEmpty())
+        {
+            if(!PassiveValueStruct)return true;
+            const auto Source=Pin::ScalarValueStructSource(Found->PinType);R.Data->SetObjectField(TEXT("passive_value_struct_source_current"),Source);
+            if(Found->PinType.PinSubCategoryObject.Get()==KeepValueStruct.Get()&&Pin::IsScalarValueStruct(Found->PinType)
+                &&Text(Source)==Text(R.Data->GetObjectField(TEXT("passive_value_struct_source_before")).ToSharedRef()))return true;
+        }
+        R.bChangeStateKnown=false;
+        R.Data->SetStringField(TEXT("first_mismatch"),Owner?TEXT("selected_passive_input_identity_type_or_role"):TEXT("passive_node_graph_or_editor_owner"));
+        R.Data->SetStringField(TEXT("expected"),TEXT("same current stock node/graph and unlinked typed input at the next SDK boundary"));
+        R.Data->SetStringField(TEXT("actual"),Owner?FString::Printf(TEXT("matching_pin_ids=%d; same_pointer=%s"),Matches,Found==Selected?TEXT("true"):TEXT("false")):TEXT("owner/context changed"));
+        return Fail(R,TEXT("pin_default_passive_current_lost"),TEXT("Current passive input/owner changed at an engine boundary; actual prefix retained without following callback, cleanup, save or retry."));
+    };
+    if(!PassiveCurrent())return R;
     R.Data->SetObjectField(TEXT("before"), Before); R.Data->SetObjectField(TEXT("previous"), ObservePin(Selected));
     R.Data->SetField(TEXT("requested_value"), Requested); R.Data->SetStringField(TEXT("requested_default_value"), RequestedText);
     R.Data->SetBoolField(TEXT("dirty_before"), DirtyBefore); R.Data->SetStringField(TEXT("object_path"), NodePath);
@@ -217,11 +300,14 @@ Function::FResult Set(const FString& GraphPath, const FString& NodePath, const F
     if (!WasMatching)
     {
         R.Stage = TEXT("set_pin_default"); R.bMutationAttempted = true; R.bChangeStateKnown = false;
-        BP->Modify(); G->Modify(); Node->Modify();
+        BP->Modify();if(!PassiveCurrent())return R;
+        G->Modify();if(!PassiveCurrent())return R;
+        Node->Modify();if(!PassiveCurrent())return R;
         // This API already emits PinDefaultValueChanged exactly once. Do not
         // repeat the legacy explicit callback or attempt an incomplete rollback.
         Schema->TrySetDefaultValue(*Selected, RequestedText, true);
         if (ExpectedType.PinCategory == UEdGraphSchema_K2::PC_Real) { ExpectedType.bSerializeAsSinglePrecisionFloat = false; }
+        if(!PassiveCurrent())return R;
     }
     auto After = MakeShared<FJsonObject>(); const auto AfterIds = Graph::ReadNodeIdentities(GraphPath);
     R.Data->SetObjectField(TEXT("after"), After); R.Data->SetObjectField(TEXT("graph_identity_after"), AfterIds);

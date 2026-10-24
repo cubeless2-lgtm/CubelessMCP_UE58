@@ -29,7 +29,7 @@ def binding_status(toolset_class):
         "hidden_input_counts": {BINDINGS[0]: 14, BINDINGS[1]: 18}, "native_jobs": jobs, "domain": local,
         "preparation_required": False, "readonly_defaults_verification_required": True,
         "schema_verified": False, "default_verified": False, "actual_official_async_wire_verified": False,
-        "async_standard11_Value": True, "ordinary_Batch_integration_ready": False, "error": error}
+        "async_standard11_Value": True, "ordinary_Batch_integration_ready": bool(ready and local.get("batch_volume_texture", {}).get("active") is True), "error": error}
 
 
 def _required(names, value):

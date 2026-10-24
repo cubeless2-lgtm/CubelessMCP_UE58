@@ -314,10 +314,14 @@ def _prepare(identity, arguments, resolution):
         (b for b in bindings if unreal.MovieSceneBindingExtensions.get_name(b) == arguments["actor_label"]), None)
     _require(binding is not None, "sequencer_binding_not_found", "No supplied GUID or first matching binding name found")
     context.update(binding=binding)
+    first = arguments["keys"][0] if arguments["keys"] else None
+    pending_original_keys = (type(first) is dict and set(first) == {"__cubeless_original_sequence_keys_v1", "first"}
+        and first.get("__cubeless_original_sequence_keys_v1") == "transform")
     context["public"].update(binding_id=_guid(binding), requested_key_rows=len(arguments["keys"]),
         axis_order=list(CHANNELS), rotation_component_order=["roll", "pitch", "yaw"],
         fractional_key_floor_conversion=True, duplicate_tick_insertion_supported=True,
-        whole_request_key_prevalidation=True, original_invalid_late_row_prefix_semantics_preserved=False)
+        whole_request_key_prevalidation=None if pending_original_keys else True,
+        original_invalid_late_row_prefix_semantics_preserved=None if pending_original_keys else False)
 
     return context
 
@@ -370,6 +374,13 @@ def execute(identity, context, arguments, notify):
                 if key in data:
                     output[key] = copy.deepcopy(data[key])
             output["channel_writes_returned"] = data.get("scalar_keys_added", 0)
+            # Replace pending/raw diagnostics only from a returned native receipt,
+            # before notify checkpoints the actual partial/unknown prefix.
+            if data.get("original_raw_ordered_keys") is True and data.get("raw_key_rows_prevalidated") is False:
+                output.update(whole_request_key_prevalidation=False,
+                    original_invalid_late_row_prefix_semantics_preserved=True,
+                    raw_key_diagnostic_basis="returned_native_original_raw_ordered_keys_and_no_row_prevalidation",
+                    raw_key_diagnostic_scope="admitted finite native row/group/axis path; wider original source/type/time/section bounds remain incomplete")
         else:
             for key in ("requested_start_frame", "requested_end_frame", "start_tick", "end_tick",
                     "playback_floor_verified", "playback_editor_ranges_verified", "nonselected_state_preserved"):

@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessBlueprintGraphTransferApi.h"
+#include "Internationalization/Text.h"
 #include "Compatibility/UE58/CubelessFunctionApi.h"
 #include "Compatibility/UE58/CubelessFunctionPinApi.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
@@ -13,11 +14,20 @@
 #include "K2Node.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_Composite.h"
+#include "K2Node_MacroInstance.h"
 #include "K2Node_Tunnel.h"
 #include "K2Node_Event.h"
 #include "K2Node_CustomEvent.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_Select.h"
+#include "K2Node_Knot.h"
+#include "K2Node_Switch.h"
+#include "K2Node_SwitchInteger.h"
+#include "K2Node_SwitchName.h"
+#include "K2Node_SwitchString.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "K2Node_Self.h"
@@ -28,8 +38,11 @@
 #include "GameFramework/Actor.h"
 #include "Editor.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_EditablePinBase.h"
+#include "UObject/Interface.h"
 #include "K2Node_FunctionResult.h"
 #include "Kismet2/BlueprintEditorUtils.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/CompilerResultsLog.h"
 #include "EditorAssetLibrary.h"
@@ -100,10 +113,104 @@ void Init(FResult& R,bool Compile,bool Save)
     R.Data->SetStringField(TEXT("count_scope"),TEXT("Direct API calls only; SDK paste/reconstruct/global-pin-resolution/structural compiler callbacks are transitive effects, not fabricated zero counts."));
     R.Data->SetStringField(TEXT("finite_scope"),TEXT("Bounded idle owned ordinary Blueprint graphs/current allocated owning pin arrays. Null/duplicate/self/external/asymmetric links are observable. Dangling memory in an owning pin array, custom graph/node classes, nested text objects and larger inputs remain incomplete."));
 }
-bool Scope(UBlueprint* BP,FResult& R)
+// YE: Macro libraries are authoring containers. No generated class/CDO or
+// physical tunnel-pin cache is assumed necessary or stable for their graph work.
+bool MacroLibraryRole(UBlueprint* BP,FResult& R)
+{
+    if(!Loaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()||BP->BlueprintType!=BPTYPE_MacroLibrary
+        ||BP->GetOuter()!=BP->GetPackage()||!BP->GetPackage()->GetName().StartsWith(TEXT("/Game/"))
+        ||!ReferenceGuard(BP->GetPathName())||BP->bBeingCompiled||BP->bQueuedForCompilation
+        ||BP->bIsRegeneratingOnLoad||BP->bSuppressStructurallyModified||BP->Status==BS_BeingCreated
+        ||!BP->ParentClass.GetGCPtr().IsResolved()
+        ||(BP->ParentClass.GetGCPtr()!=UObject::StaticClass()&&BP->ParentClass.GetGCPtr()!=AActor::StaticClass())
+        ||!BP->NewVariables.IsEmpty()||!BP->FunctionGraphs.IsEmpty()||!BP->UbergraphPages.IsEmpty()
+        ||!BP->EventGraphs.IsEmpty()||!BP->DelegateSignatureGraphs.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()
+        ||!BP->ComponentTemplates.IsEmpty()||!BP->Timelines.IsEmpty()||!BP->SimpleConstructionScript.IsResolved()
+        ||BP->SimpleConstructionScript!=nullptr||BP->MacroGraphs.Num()>MaxGraphs)
+        return Fail(R,TEXT("graph_transfer_macro_library_scope_pending"),TEXT("Direct native Object/Actor MacroLibrary with existing own macro graphs and no other authoring roles required; generated/custom parents and wider source shapes remain incomplete."));
+    TSet<UEdGraph*> Seen;
+    for(const auto& Slot:BP->MacroGraphs)
+    {
+        if(!Slot.IsResolved()||Slot==nullptr)return Fail(R,TEXT("graph_transfer_macro_library_graph_unresolved"),TEXT("Resolved existing macro graph slots required; no graph loading or creation."));
+        const FString Path=Slot.GetPathName();auto* G=Cast<UEdGraph>(StaticFindObject(nullptr,nullptr,*Path));
+        if(!Loaded(G)||Slot!=G||Seen.Contains(G)||G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=BP
+            ||G->GetPackage()!=BP->GetPackage()||!G->Schema.GetGCPtr().IsResolved()
+            ||G->Schema.GetGCPtr()!=UEdGraphSchema_K2::StaticClass()||!G->SubGraphs.IsEmpty())
+            return Fail(R,TEXT("graph_transfer_macro_library_graph_pending"),TEXT("Exact directly owned existing stock K2 macro graphs required; nested/specialized graph source variants remain incomplete."));
+        Seen.Add(G);
+    }
+    return true;
+}
+// ADF: an operation-specific existing BPI signature owner for repair only.
+// No Import permission, CDO request or generated/skeleton cache identity gate.
+bool InterfaceRepairRole(UBlueprint* BP,FResult& R)
+{
+    if(!Loaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()||BP->GetOuter()!=BP->GetPackage()||BP->BlueprintType!=BPTYPE_Interface||!BP->GetExtensions().IsEmpty()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=UInterface::StaticClass()||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||BP->bSuppressStructurallyModified||BP->Status==BS_BeingCreated||BP->FunctionGraphs.Num()>MaxGraphs||!BP->NewVariables.IsEmpty()||!BP->MacroGraphs.IsEmpty()||!BP->UbergraphPages.IsEmpty()||!BP->EventGraphs.IsEmpty()||!BP->DelegateSignatureGraphs.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->ComponentTemplates.IsEmpty()||!BP->Timelines.IsEmpty()||!BP->SimpleConstructionScript.IsResolved()||BP->SimpleConstructionScript!=nullptr)
+        return Fail(R,TEXT("graph_transfer_interface_repair_scope_pending"),TEXT("Direct native Interface Blueprint with existing own signature graphs and no actor/widget/component/inherited-interface roles required; wider original owners remain incomplete."));
+    TSet<UEdGraph*> Seen;
+    for(const auto& Slot:BP->FunctionGraphs)
+    {
+        if(!Slot.IsResolved()||Slot==nullptr)return Fail(R,TEXT("graph_transfer_interface_graph_pending"),TEXT("Existing resolved interface signature graphs required; no graph loading or creation."));
+        auto* G=Cast<UEdGraph>(StaticFindObject(nullptr,nullptr,*Slot.GetPathName()));
+        if(!Loaded(G)||Slot!=G||Seen.Contains(G)||G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=BP||G->GetPackage()!=BP->GetPackage()||!G->Schema.GetGCPtr().IsResolved()||G->Schema.GetGCPtr()!=UEdGraphSchema_K2::StaticClass()||!G->SubGraphs.IsEmpty()||G->Nodes.Num()>MaxNodes)
+            return Fail(R,TEXT("graph_transfer_interface_graph_pending"),TEXT("Existing directly owned native K2 interface signature graphs required; nested/specialized bodies remain incomplete."));
+        Seen.Add(G);int32 Entry=0,Result=0;
+        for(const auto& NodeSlot:G->Nodes)
+        {
+            if(!NodeSlot.IsResolved()||NodeSlot==nullptr)return Fail(R,TEXT("graph_transfer_interface_node_pending"),TEXT("Existing resolved signature nodes required."));
+            auto* N=Cast<UEdGraphNode>(StaticFindObject(nullptr,nullptr,*NodeSlot.GetPathName()));
+            if(!Loaded(N)||NodeSlot!=N||N->GetOuter()!=G||N->GetPackage()!=BP->GetPackage())return Fail(R,TEXT("graph_transfer_interface_node_pending"),TEXT("Actual interface signature node ownership unavailable."));
+            if(N->GetClass()==UK2Node_FunctionEntry::StaticClass())++Entry;else if(N->GetClass()==UK2Node_FunctionResult::StaticClass())++Result;else return Fail(R,TEXT("graph_transfer_interface_node_pending"),TEXT("Stock FunctionEntry and optional FunctionResult signature nodes only; executable/custom interface graph bodies remain incomplete."));
+        }
+        if(Entry!=1||Result>1)return Fail(R,TEXT("graph_transfer_interface_node_pending"),TEXT("One source Entry and at most one Result required for the existing interface signature profile."));
+    }
+    return true;
+}
+bool MacroLibraryCurrent(UBlueprint* BP,FResult& R)
+{
+    bool Interface=false;R.Data->TryGetBoolField(TEXT("native_interface_pin_link_repair"),Interface);
+    if(Interface)
+    {
+        FString Path;R.Data->TryGetStringField(TEXT("interface_repair_blueprint_path"),Path);
+        if(!IsEditorGameThread()||IsPlaySessionActive()||!InterfaceRepairRole(BP,R)||BP->GetPathName()!=Path){R.bChangeStateKnown=false;if(R.ErrorCode.IsEmpty())Fail(R,TEXT("graph_transfer_interface_current_lost"),TEXT("Interface repair owner/source role changed; accepted prefix retained, no following compile/save or retry."));return false;}
+        return true;
+    }
+    bool Active=false;R.Data->TryGetBoolField(TEXT("native_macro_library_graph_transfer"),Active);
+    if(!Active)return true;
+    bool ActorParent=false;R.Data->TryGetBoolField(TEXT("macro_library_parent_is_actor"),ActorParent);
+    FString ExpectedPath;R.Data->TryGetStringField(TEXT("macro_library_blueprint_path"),ExpectedPath);
+    if(!IsEditorGameThread()||IsPlaySessionActive()||!MacroLibraryRole(BP,R)||BP->GetPathName()!=ExpectedPath
+        ||BP->ParentClass.GetGCPtr()!=(ActorParent?AActor::StaticClass():UObject::StaticClass()))
+    {if(R.ErrorCode.IsEmpty())Fail(R,TEXT("graph_transfer_macro_library_current_lost"),TEXT("MacroLibrary context/owner role changed; accepted prefix retained, no following compile/save or retry."));if(R.bMutationAttempted)R.bChangeStateKnown=false;return false;}
+    return true;
+}
+bool Scope(UBlueprint* BP,FResult& R,bool AllowFunctionLibrary=false,bool AllowInterfaceRepair=false)
 {
     if(!Loaded(BP)||!BP->GetOutermost()->GetName().StartsWith(TEXT("/Game/"))||!ReferenceGuard(BP->GetPathName())||!Loaded(BP->ParentClass)||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||BP->bSuppressStructurallyModified) { return Fail(R,TEXT("graph_transfer_owner_pending"),TEXT("Current owned loaded /Game Blueprint, parent and idle compiler state required.")); }
-    if(BP->BlueprintType!=BPTYPE_Normal||BP->NewVariables.Num()>512||BP->Status==BS_BeingCreated) { return Fail(R,TEXT("graph_transfer_blueprint_type_pending"),TEXT("Initial ordinary Blueprint scope; interface/macro/other Blueprint owners remain original variants.")); }
+    const bool Library=BP->BlueprintType==BPTYPE_FunctionLibrary;
+    const bool Macro=AllowFunctionLibrary&&BP->BlueprintType==BPTYPE_MacroLibrary;
+    const bool Interface=AllowInterfaceRepair&&BP->BlueprintType==BPTYPE_Interface;
+    if((BP->BlueprintType!=BPTYPE_Normal&&!(AllowFunctionLibrary&&Library)&&!Macro&&!Interface)||BP->NewVariables.Num()>512||BP->Status==BS_BeingCreated) { return Fail(R,TEXT("graph_transfer_blueprint_type_pending"),TEXT("Ordinary Blueprint or operation-opted direct native FunctionLibrary/MacroLibrary required; interface and other Blueprint owners remain original variants.")); }
+    if(Interface)
+    {
+        if(!InterfaceRepairRole(BP,R))return false;
+        R.Data->SetBoolField(TEXT("native_interface_pin_link_repair"),true);R.Data->SetStringField(TEXT("interface_repair_blueprint_path"),BP->GetPathName());R.Data->SetBoolField(TEXT("interface_repair_cdo_requested"),false);
+        R.Data->SetStringField(TEXT("interface_repair_scope"),TEXT("Original validate/dry-run/apply, link cleanup/reciprocal repair and optional compile/save on existing direct Interface signature graphs. Held source graph/node roles, authored user-pin name/type/direction/default preservation and borrowed repair-pin lifetime protection reuse the existing lease. Compiler-generated class/CDO/skeleton and physical reconstructed pins/order are not authored invariants. Import, inherited interfaces, custom/executable bodies and generated class type descriptors remain incomplete; actual usage validation pending."));
+    }
+    if(Macro)
+    {
+        if(!MacroLibraryRole(BP,R))return false;
+        R.Data->SetBoolField(TEXT("native_macro_library_graph_transfer"),true);R.Data->SetBoolField(TEXT("macro_library_cdo_requested"),false);R.Data->SetBoolField(TEXT("macro_library_parent_is_actor"),BP->ParentClass.GetGCPtr()==AActor::StaticClass());R.Data->SetStringField(TEXT("macro_library_blueprint_path"),BP->GetPathName());
+        R.Data->SetStringField(TEXT("macro_library_scope"),TEXT("Explicit existing own stock K2 MacroGraphs of direct native Object/Actor MacroLibrary, generic flat import and common pin-link repair only. No implicit EventGraph, nested Timeline/Collapsed path, loader, CDO creation or consumer expansion/runtime proof; compile/save and actual usage validation pending."));
+    }
+    if(Library)
+    {
+        if(BP->GetClass()!=UBlueprint::StaticClass()||BP->GetOuter()!=BP->GetPackage()||BP->FunctionGraphs.Num()>MaxGraphs||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.Get()!=UBlueprintFunctionLibrary::StaticClass()||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!Loaded(BP->GeneratedClass.Get())||!Loaded(BP->SkeletonGeneratedClass.Get())||BP->GeneratedClass->ClassGeneratedBy!=BP||BP->SkeletonGeneratedClass->ClassGeneratedBy!=BP||BP->GeneratedClass->GetSuperClass()!=UBlueprintFunctionLibrary::StaticClass()||!BP->NewVariables.IsEmpty()||!BP->MacroGraphs.IsEmpty()||!BP->UbergraphPages.IsEmpty()||!BP->EventGraphs.IsEmpty()||!BP->DelegateSignatureGraphs.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->ComponentTemplates.IsEmpty()||!BP->Timelines.IsEmpty()||!BP->SimpleConstructionScript.IsResolved()||BP->SimpleConstructionScript.Get()!=nullptr)
+            return Fail(R,TEXT("graph_transfer_function_library_scope_pending"),TEXT("Current ordinary direct native BlueprintFunctionLibrary with existing classes, own functions only and no actor/widget/event/component roles required; generated parents and wider source shapes remain incomplete. No CDO is requested."));
+        for(const auto& Slot:BP->FunctionGraphs)
+        {if(!Slot.IsResolved())return Fail(R,TEXT("graph_transfer_function_library_graph_unresolved"),TEXT("Existing resolved function-graph slots required; no graph loader."));auto* G=Slot.Get();if(!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=BP||!G->Schema.GetGCPtr().IsResolved()||G->Schema.Get()!=UEdGraphSchema_K2::StaticClass())return Fail(R,TEXT("graph_transfer_function_library_graph_pending"),TEXT("Existing directly owned native K2 function graphs required."));}
+        R.Data->SetBoolField(TEXT("native_function_library_graph_transfer"),true);R.Data->SetBoolField(TEXT("function_library_cdo_requested"),false);R.Data->SetStringField(TEXT("function_library_scope"),TEXT("Direct native BlueprintFunctionLibrary import into an explicitly selected existing own function; common pin-link repair of existing K2 function graphs. No implicit EventGraph, graph creation, generated parent, MacroLibrary or specialized Timeline/Collapsed Actor-profile expansion. Existing node/type/reference budgets, partial mutation and requested compiler/save contracts apply; actual BFL paste/repair/compile/save usage validation is pending."));
+    }
     return true;
 }
 bool Sample(UBlueprint* BP,bool Allow,FResult& R)
@@ -111,18 +218,89 @@ bool Sample(UBlueprint* BP,bool Allow,FResult& R)
     const FString P=BP->GetOutermost()->GetName();bool B=false;for(const TCHAR* Root:{TEXT("/Game/_MCP_Sample"),TEXT("/Game/_MCP_Temp")}) { B|=P.Equals(Root,ESearchCase::IgnoreCase)||P.StartsWith(FString(Root)+TEXT("/"),ESearchCase::IgnoreCase); }
     R.Data->SetBoolField(TEXT("sample_or_temp_target"),B);R.Data->SetBoolField(TEXT("allow_non_sample"),Allow);return B||Allow||Fail(R,TEXT("graph_transfer_non_sample_refused"),TEXT("Original sample/temp target guard requires allow_non_sample=True elsewhere."));
 }
-UBlueprint* Load(const FString& P,FResult& R)
+UBlueprint* Load(const FString& P,FResult& R,bool AllowFunctionLibrary=false,bool AllowInterfaceRepair=false)
 {
     if(!Text(P,2048,R)||!ReferenceGuard(P)) { Fail(R,TEXT("graph_transfer_path_invalid"),TEXT("Invalid Blueprint path or tooling runtime dependency."));return nullptr; }
-    FString ObjectPath=P;if(P.StartsWith(TEXT("/Game/"))&&!P.Contains(TEXT("."))) { ObjectPath+=TEXT(".")+FPackageName::GetShortName(P); }if(!ObjectPath.StartsWith(TEXT("/Game/"))) { Fail(R,TEXT("graph_transfer_path_pending"),TEXT("Initial exact /Game object/package path scope; original bare-name lookup remains pending."));return nullptr; }const bool WasLoaded=FindObject<UBlueprint>(nullptr,*ObjectPath)!=nullptr;R.Data->SetBoolField(TEXT("implicit_postload_work_possible"),!WasLoaded);Count(R,TEXT("asset_load_calls"));auto* BP=LoadObject<UBlueprint>(nullptr,*ObjectPath);Count(R,TEXT("asset_load_returns"));R.Data->SetStringField(TEXT("returned_blueprint_path"),GetPathNameSafe(BP));if(!Scope(BP,R)) { if(!WasLoaded) { R.bChangeStateKnown=false; }return nullptr; }return BP;
+    FString ObjectPath=P;if(P.StartsWith(TEXT("/Game/"))&&!P.Contains(TEXT("."))) { ObjectPath+=TEXT(".")+FPackageName::GetShortName(P); }if(!ObjectPath.StartsWith(TEXT("/Game/"))) { Fail(R,TEXT("graph_transfer_path_pending"),TEXT("Initial exact /Game object/package path scope; original bare-name lookup remains pending."));return nullptr; }const bool WasLoaded=FindObject<UBlueprint>(nullptr,*ObjectPath)!=nullptr;R.Data->SetBoolField(TEXT("implicit_postload_work_possible"),!WasLoaded);Count(R,TEXT("asset_load_calls"));auto* BP=LoadObject<UBlueprint>(nullptr,*ObjectPath);Count(R,TEXT("asset_load_returns"));R.Data->SetStringField(TEXT("returned_blueprint_path"),GetPathNameSafe(BP));if(!Scope(BP,R,AllowFunctionLibrary,AllowInterfaceRepair)) { if(!WasLoaded) { R.bChangeStateKnown=false; }return nullptr; }return BP;
 }
 struct FIndex
 {
     TArray<UEdGraph*> Graphs;TSet<UEdGraphNode*> Nodes;TSet<UEdGraphPin*> Pins;TMap<UEdGraphPin*,UEdGraphNode*> Owners;int32 NodeEntries=0,PinEntries=0,Links=0;
 };
+// Request-local roles only for the newly admitted macro path. Pin addresses are
+// guarded while repair uses borrowed storage, then released before notify/compile.
+struct FMacroGraphLease
+{
+    struct FGraphRole{TStrongObjectPtr<UEdGraph> Graph;TStrongObjectPtr<UClass> Class;TStrongObjectPtr<UObject> Outer;TStrongObjectPtr<UPackage> Package;FString Path;FGuid Guid;int32 InterfaceNodeCount=0;};
+    struct FNodeRole{TStrongObjectPtr<UEdGraphNode> Node;TStrongObjectPtr<UClass> Class;UEdGraph* Graph=nullptr;FGuid Guid;TSet<UEdGraphPin*> Pins;int32 Count=0;};
+    FResult& R;TStrongObjectPtr<UBlueprint> Blueprint;TArray<FGraphRole> Graphs;TArray<FNodeRole> Nodes;bool Active=false,Stopped=false,Interface=false;
+    struct FSignatureRole{TStrongObjectPtr<UK2Node_EditablePinBase> Node;UEdGraph* Graph=nullptr;UClass* Class=nullptr;FGuid Guid;TArray<FUserPinInfo> Pins;};
+    TArray<FSignatureRole> InterfaceSignatures;TArray<TStrongObjectPtr<UObject>> InterfaceTypes;
+    explicit FMacroGraphLease(FResult& In):R(In){}
+    bool Stop(const TCHAR* Why)
+    {if(!Stopped){Stopped=true;if(R.ErrorCode.IsEmpty())Fail(R,Interface?TEXT("graph_transfer_interface_current_lost"):TEXT("graph_transfer_macro_library_current_lost"),Why);if(Interface||R.bMutationAttempted)R.bChangeStateKnown=false;}return false;}
+    bool Bind(UBlueprint* BP)
+    {
+        R.Data->TryGetBoolField(TEXT("native_macro_library_graph_transfer"),Active);R.Data->TryGetBoolField(TEXT("native_interface_pin_link_repair"),Interface);Active|=Interface;if(!Active)return true;
+        if(!MacroLibraryCurrent(BP,R))return Stop(TEXT("Macro source context changed before graph role binding."));Blueprint.Reset(BP);
+        const auto& Slots=Interface?BP->FunctionGraphs:BP->MacroGraphs;
+        for(const auto& Slot:Slots)
+        {auto* G=Cast<UEdGraph>(StaticFindObject(nullptr,nullptr,*Slot.GetPathName()));if(!Loaded(G)||Slot!=G)return Stop(TEXT("Macro graph slot changed during binding."));FGraphRole V;V.Graph.Reset(G);V.Class.Reset(G->GetClass());V.Outer.Reset(G->GetOuter());V.Package.Reset(G->GetPackage());V.Path=G->GetPathName();V.Guid=G->GraphGuid;V.InterfaceNodeCount=Interface?G->Nodes.Num():0;Graphs.Add(MoveTemp(V));}
+        if(Interface)
+        {
+            for(const auto& Graph:Graphs)for(const auto& Slot:Graph.Graph->Nodes)
+            {
+                auto* N=Cast<UK2Node_EditablePinBase>(StaticFindObject(nullptr,nullptr,*Slot.GetPathName()));if(!Loaded(N)||Slot!=N||N->UserDefinedPins.Num()>512)return Stop(TEXT("Current bounded interface signature declarations required before observer callbacks."));
+                FSignatureRole V;V.Node.Reset(N);V.Graph=Graph.Graph.Get();V.Class=N->GetClass();V.Guid=N->NodeGuid;
+                for(const auto& Definition:N->UserDefinedPins)
+                {
+                    if(!Definition.IsValid())return Stop(TEXT("Null source interface user-pin declaration."));V.Pins.Add(*Definition);
+                    const auto& T=Definition->PinType;
+                    for(UObject* O:{T.PinSubCategoryObject.Get(),T.PinValueType.TerminalSubCategoryObject.Get()})if(O){if(!Loaded(O))return Stop(TEXT("Interface type object unavailable."));if(auto* C=Cast<UClass>(O))if(!C->HasAnyClassFlags(CLASS_Native))return Fail(R,TEXT("graph_transfer_interface_type_pending"),TEXT("Generated/self class descriptors require a separate compiler-aware source role; valid original type remains incomplete, no repair writer dispatched."));InterfaceTypes.Emplace(O);}
+                    const auto& Ref=T.PinSubCategoryMemberReference.MemberParent;if(!Ref.IsResolved())return Stop(TEXT("Interface member-reference type source is unresolved."));if(Ref!=nullptr){UObject* O=StaticFindObject(nullptr,nullptr,*Ref.GetPathName());if(!Loaded(O)||Ref!=O)return Stop(TEXT("Interface member-reference source unavailable."));if(auto* C=Cast<UClass>(O))if(!C->HasAnyClassFlags(CLASS_Native))return Fail(R,TEXT("graph_transfer_interface_type_pending"),TEXT("Generated member-reference type source remains incomplete."));InterfaceTypes.Emplace(O);}
+                }
+                InterfaceSignatures.Add(MoveTemp(V));
+            }
+        }
+        return Current();
+    }
+    bool Current()
+    {
+        if(!Active)return true;if(Stopped)return false;auto* BP=Blueprint.Get();
+        if(!MacroLibraryCurrent(BP,R)||(Interface?BP->FunctionGraphs.Num():BP->MacroGraphs.Num())!=Graphs.Num())return Stop(TEXT("Macro source context or graph inventory changed after a callback."));
+        for(const auto& V:Graphs)
+        {auto* G=V.Graph.Get();if(!Loaded(G)||!Loaded(V.Class.Get())||!Loaded(V.Outer.Get())||!Loaded(V.Package.Get())||!(Interface?BP->FunctionGraphs.Contains(G):BP->MacroGraphs.Contains(G))||G->GetClass()!=V.Class.Get()||G->GetOuter()!=V.Outer.Get()||G->GetOuter()!=BP||G->GetPackage()!=V.Package.Get()||G->GetPathName()!=V.Path||G->GraphGuid!=V.Guid)return Stop(TEXT("Held macro graph identity/owner/membership changed; no following SDK or retry."));}
+        if(Interface)
+        {
+            for(const auto& H:InterfaceTypes)if(!Loaded(H.Get()))return Stop(TEXT("Held authored interface type object retired."));
+            for(const auto& V:Graphs)if(V.Graph->Nodes.Num()!=V.InterfaceNodeCount)return Stop(TEXT("Authored interface signature node inventory changed."));
+            for(const auto& V:InterfaceSignatures)
+            {
+                auto* N=V.Node.Get();if(!Loaded(N)||N->GetClass()!=V.Class||N->GetOuter()!=V.Graph||!V.Graph->Nodes.Contains(N)||N->NodeGuid!=V.Guid||N->UserDefinedPins.Num()!=V.Pins.Num())return Stop(TEXT("Held interface source declaration role changed."));
+                for(int32 I=0;I<V.Pins.Num();++I){const auto& Actual=N->UserDefinedPins[I];const auto& Expected=V.Pins[I];if(!Actual.IsValid()||Actual->PinName!=Expected.PinName||Actual->DesiredPinDirection!=Expected.DesiredPinDirection||!Actual->PinDefaultValue.Equals(Expected.PinDefaultValue,ESearchCase::CaseSensitive)||Actual->PinType!=Expected.PinType||Actual->PinType.bIsUObjectWrapper!=Expected.PinType.bIsUObjectWrapper||Actual->PinType.PinValueType.bTerminalIsUObjectWrapper!=Expected.PinType.PinValueType.bTerminalIsUObjectWrapper||Actual->PinType.bSerializeAsSinglePrecisionFloat!=Expected.PinType.bSerializeAsSinglePrecisionFloat)return Stop(TEXT("Authored interface user-pin name/type/direction/default changed; cache reconstruction is separate."));}
+            }
+        }
+        return true;
+    }
+    bool BindPins(const FIndex& I)
+    {
+        if(!Active)return true;if(!Current())return false;
+        for(auto* N:I.Nodes)
+        {if(!Loaded(N)||!Graphs.ContainsByPredicate([&](const FGraphRole& V){return N->GetOuter()==V.Graph.Get()&&V.Graph->Nodes.Contains(N);}))return Stop(TEXT("Repair node role changed before binding."));FNodeRole V;V.Node.Reset(N);V.Class.Reset(N->GetClass());V.Graph=N->GetGraph();V.Guid=N->NodeGuid;V.Count=N->Pins.Num();for(auto* P:N->Pins)V.Pins.Add(P);Nodes.Add(MoveTemp(V));}
+        return PinsCurrent();
+    }
+    bool PinsCurrent()
+    {
+        if(!Active)return true;if(!Current())return false;
+        for(const auto& V:Nodes)
+        {auto* N=V.Node.Get();if(!Loaded(N)||!Loaded(V.Class.Get())||N->GetClass()!=V.Class.Get()||N->GetOuter()!=V.Graph||!V.Graph->Nodes.Contains(N)||N->GetGraph()!=V.Graph||N->NodeGuid!=V.Guid||N->Pins.Num()!=V.Count)return Stop(TEXT("Repair node owner/membership or owning pin inventory changed after a callback."));TSet<UEdGraphPin*> ActualPins;for(auto* P:N->Pins){if(!V.Pins.Contains(P))return Stop(TEXT("Borrowed repair pin address retired after a callback; no old pin is dereferenced."));ActualPins.Add(P);}if(ActualPins.Num()!=V.Pins.Num())return Stop(TEXT("Owning pin-address set changed after a callback; no old pin is dereferenced."));}
+        return true;
+    }
+};
 bool Index(UBlueprint* BP,FIndex& I,FResult& R)
 {
-    Count(R,TEXT("get_all_graphs_calls"));BP->GetAllGraphs(I.Graphs);if(I.Graphs.Num()>MaxGraphs) { return Fail(R,TEXT("graph_transfer_graph_bound"),TEXT("Graph bound exceeded before further traversal.")); }
+    if(!MacroLibraryCurrent(BP,R))return false;
+    Count(R,TEXT("get_all_graphs_calls"));BP->GetAllGraphs(I.Graphs);if(!MacroLibraryCurrent(BP,R))return false;if(I.Graphs.Num()>MaxGraphs) { return Fail(R,TEXT("graph_transfer_graph_bound"),TEXT("Graph bound exceeded before further traversal.")); }
     for(UEdGraph* G:I.Graphs)
     {
         if(!G) { continue; }if(!Loaded(G)||!Loaded(G->GetSchema())||G->GetSchema()->GetClass()!=UEdGraphSchema_K2::StaticClass()) { return Fail(R,TEXT("graph_transfer_schema_pending"),TEXT("Current allocated K2 graphs required; animation/ControlRig/other schema contracts remain tracked.")); }
@@ -174,6 +352,7 @@ TSharedRef<FJsonObject> Variables(UBlueprint* BP)
 }
 bool Capture(UBlueprint* BP,const TCHAR* Phase,FResult& R,TSharedRef<FJsonObject>& Out)
 {
+    if(!MacroLibraryCurrent(BP,R))return false;
     Count(R,TEXT("capture_calls"));FIndex I;auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("complete"),false);J->SetStringField(TEXT("blueprint_path"),BP->GetPathName());J->SetStringField(TEXT("parent_class"),GetPathNameSafe(BP->ParentClass));J->SetObjectField(TEXT("member_declarations"),Variables(BP));J->SetBoolField(TEXT("package_dirty"),BP->GetOutermost()->IsDirty());J->SetStringField(TEXT("compiler_status"),LexToString(static_cast<int32>(BP->Status)));R.Data->SetObjectField(Phase,J);Out=J;
     if(!Index(BP,I,R)) { return false; }TArray<TSharedPtr<FJsonValue>> A;for(UEdGraph* G:I.Graphs) { auto Q=MakeShared<FJsonObject>();if(!G) { Q->SetBoolField(TEXT("is_null"),true);A.Add(MakeShared<FJsonValueObject>(Q));continue; }Q->SetStringField(TEXT("graph_id"),G->GraphGuid.ToString());Q->SetStringField(TEXT("name"),G->GetName());Q->SetStringField(TEXT("class"),G->GetClass()->GetPathName());Q->SetStringField(TEXT("schema"),G->GetSchema()->GetClass()->GetPathName());TArray<TSharedPtr<FJsonValue>> N;for(UEdGraphNode* P:G->Nodes) { N.Add(MakeShared<FJsonValueObject>(Node(P,I))); }Q->SetArrayField(TEXT("nodes"),N);A.Add(MakeShared<FJsonValueObject>(Q)); }J->SetArrayField(TEXT("graphs"),A);J->SetNumberField(TEXT("node_count"),I.NodeEntries);J->SetNumberField(TEXT("pin_count"),I.PinEntries);J->SetNumberField(TEXT("link_count"),I.Links);if(Json(J).Len()>2097152) { return Fail(R,TEXT("graph_transfer_capture_bound"),TEXT("Snapshot payload bound exceeded; actual prefix retained.")); }J->SetBoolField(TEXT("complete"),true);return true;
 }
@@ -213,10 +392,10 @@ bool LiteralReferences(const FString& S,FResult& R,TArray<TSharedPtr<FJsonValue>
     }
     return true;
 }
-bool Admission(UBlueprint* BP,const FString& S,FResult& R)
+bool Admission(UBlueprint* BP,const FString& S,FResult& R,bool SelectKnotPlanned=false,bool OwnMacroPlanned=false)
 {
     R.Stage=TEXT("text_reference_admission");R.Data->SetBoolField(TEXT("runtime_reference_admission_passed"),false);if(!Text(S,MaxText,R)) { return false; }
-    TArray<TSharedPtr<FJsonValue>> Refs,Classes;R.Data->SetArrayField(TEXT("reference_observations"),Refs);if(!LiteralReferences(S,R,Refs)) { return false; }const TCHAR* Stream=*S;FString Line;int32 Depth=0,Objects=0;UClass* C=nullptr;
+    TArray<TSharedPtr<FJsonValue>> Refs,Classes;int32 StockFlowNodes=0;R.Data->SetNumberField(TEXT("flat_stock_flow_node_count"),StockFlowNodes);R.Data->SetArrayField(TEXT("reference_observations"),Refs);if(!LiteralReferences(S,R,Refs)) { return false; }const TCHAR* Stream=*S;FString Line;int32 Depth=0,Objects=0;UClass* C=nullptr;
     while(FParse::Line(&Stream,Line))
     {
         FString T=Line.TrimStartAndEnd();if(T.StartsWith(TEXT("CustomProperties Pin "),ESearchCase::IgnoreCase))
@@ -229,7 +408,17 @@ bool Admission(UBlueprint* BP,const FString& S,FResult& R)
         if(T.StartsWith(TEXT("Begin Object"),ESearchCase::IgnoreCase))
         {
             if(++Depth!=1||++Objects>128||T.Contains(TEXT("Archetype="),ESearchCase::IgnoreCase)) { return Fail(R,TEXT("graph_transfer_nested_text_pending"),TEXT("Initial simple native node blocks only; nested/archetype paste contracts remain explicit variants.")); }FString CP;if(!FParse::Value(*T,TEXT("Class="),CP)||!CP.StartsWith(TEXT("/Script/BlueprintGraph."))) { return Fail(R,TEXT("graph_transfer_node_class_pending"),TEXT("Explicit loaded native BlueprintGraph node class required; broader valid node classes remain pending.")); }
-            Count(R,TEXT("reference_lookup_calls"));C=FindObject<UClass>(nullptr,*CP);Count(R,TEXT("reference_lookup_returns"));auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("requested_class"),CP);J->SetStringField(TEXT("returned_class"),GetPathNameSafe(C));Classes.Add(MakeShared<FJsonValueObject>(J));R.Data->SetArrayField(TEXT("node_class_observations"),Classes);const bool Supported=C&&(C->GetName()==TEXT("K2Node_InputTouch")||C->GetName()==TEXT("K2Node_InputKey")||C->GetName()==TEXT("K2Node_InputAction")||C->GetName()==TEXT("K2Node_InputAxisEvent")||C->GetName()==TEXT("K2Node_Self")||C->GetName()==TEXT("K2Node_LiteralEnum")||C->GetName()==TEXT("K2Node_CallFunction")||C->GetName()==TEXT("K2Node_VariableGet")||C->GetName()==TEXT("K2Node_VariableSet"));if(!Supported||!Loaded(C)||!C->HasAnyClassFlags(CLASS_Native)||!C->IsChildOf(UK2Node::StaticClass())||!ReferenceGuard(CP)||!C->GetPathName().Equals(CP,ESearchCase::CaseSensitive)) { return Fail(R,TEXT("graph_transfer_node_class_pending"),TEXT("Initial loaded native input/self/literal/call/variable node serializer scope unavailable; other valid native node classes remain explicit pending variants.")); }
+            Count(R,TEXT("reference_lookup_calls"));C=FindObject<UClass>(nullptr,*CP);Count(R,TEXT("reference_lookup_returns"));auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("requested_class"),CP);J->SetStringField(TEXT("returned_class"),GetPathNameSafe(C));Classes.Add(MakeShared<FJsonValueObject>(J));R.Data->SetArrayField(TEXT("node_class_observations"),Classes);const bool Supported=C&&(C->GetName()==TEXT("K2Node_InputTouch")||C->GetName()==TEXT("K2Node_InputKey")||C->GetName()==TEXT("K2Node_InputAction")||C->GetName()==TEXT("K2Node_InputAxisEvent")||C->GetName()==TEXT("K2Node_Self")||C->GetName()==TEXT("K2Node_LiteralEnum")||C->GetName()==TEXT("K2Node_CallFunction")||C->GetName()==TEXT("K2Node_VariableGet")||C->GetName()==TEXT("K2Node_VariableSet")||C==UK2Node_IfThenElse::StaticClass()||C==UK2Node_ExecutionSequence::StaticClass()||C==UK2Node_SwitchInteger::StaticClass()||C==UK2Node_SwitchName::StaticClass()||C==UK2Node_SwitchString::StaticClass()||(SelectKnotPlanned&&(C==UK2Node_Select::StaticClass()||C==UK2Node_Knot::StaticClass()))||(OwnMacroPlanned&&C==UK2Node_MacroInstance::StaticClass()));if(!Supported||!Loaded(C)||!C->HasAnyClassFlags(CLASS_Native)||!C->IsChildOf(UK2Node::StaticClass())||!ReferenceGuard(CP)||!C->GetPathName().Equals(CP,ESearchCase::CaseSensitive)) { return Fail(R,TEXT("graph_transfer_node_class_pending"),TEXT("Loaded native input/self/literal/call/variable/Branch/Sequence/guarded Switch node serializer scope unavailable; other valid native node classes remain explicit pending variants.")); }
+            // These stock flow nodes have no authored class-specific source objects.
+            // Installed IfThenElse AllocateDefaultPins108 supplies four stock
+            // ports; ExecutionSequence AllocateDefaultPins154/Reallocate281
+            // reconstructs its ordered outputs. The original importer owns
+            // PostPaste/Reconstruct and current physical pins are observed only
+            // after it returns. Do not freeze serialized pin order/default cache
+            // or bypass the separate Select/Knot closed-data plan. AAO admits the
+            // three concrete Switch classes only with the separate bounded comparator plan.
+            if(C==UK2Node_IfThenElse::StaticClass()||C==UK2Node_ExecutionSequence::StaticClass())
+            { ++StockFlowNodes;R.Data->SetNumberField(TEXT("flat_stock_flow_node_count"),StockFlowNodes);J->SetBoolField(TEXT("stock_flat_flow_control"),true);R.Data->SetStringField(TEXT("flat_stock_flow_scope"),TEXT("Standalone or mixed flat native Branch/Sequence, using the unchanged original generic CanImport/clear/ImportNodesFromText/GUID/structural notification/requested compile/forced save path. Serialized pin physical order/default caches are not invariants. Wider Select/Knot clusters, custom/enum Switch, macros and additional native classes remain incomplete; actual usage validation pending.")); }
         }
         else if(T.StartsWith(TEXT("End Object"),ESearchCase::IgnoreCase)) { if(Depth!=1) { return Fail(R,TEXT("graph_transfer_text_structure_invalid"),TEXT("Unbalanced node block.")); }Depth=0;C=nullptr; }
         else if(!T.IsEmpty())
@@ -241,23 +430,25 @@ bool Admission(UBlueprint* BP,const FString& S,FResult& R)
             }
         }
     }
-    if(Depth!=0||Objects==0) { return Fail(R,TEXT("graph_transfer_text_structure_invalid"),TEXT("Complete nonempty node text required.")); }R.Data->SetBoolField(TEXT("runtime_reference_admission_passed"),true);R.Data->SetStringField(TEXT("reference_admission_scope"),TEXT("Loaded native K2 classes, typed object literals, serialized pin DefaultObject and reflected member/property types with exact runtime package/class hierarchy identities; simple node blocks only. Broader runtime packages, soft/custom reference schemas remain pending."));return true;
+    if(Depth!=0||Objects==0) { return Fail(R,TEXT("graph_transfer_text_structure_invalid"),TEXT("Complete nonempty node text required.")); }R.Data->SetBoolField(TEXT("runtime_reference_admission_passed"),true);R.Data->SetStringField(TEXT("reference_admission_scope"),TEXT("Loaded native K2 classes, typed object literals, serialized pin DefaultObject and reflected member/property types with exact runtime package/class hierarchy identities; simple node blocks including flat Branch/Sequence plus separately guarded integer/name/string Switch and closed no-enum Select/Knot data clusters. Broader runtime packages, soft/custom reference schemas remain pending."));return true;
 }
 bool Disallowed(const UEdGraphSchema* S,UEdGraphPin* A,UEdGraphPin* B,FResult& R)
 {
     if(!S||!A||!B) { return false; }if(A->Direction==B->Direction) { return true; }UEdGraphPin* Out=A->Direction==EGPD_Output?A:B;UEdGraphPin* In=A->Direction==EGPD_Output?B:A;Count(R,TEXT("schema_connection_calls"));const auto Response=S->CanCreateConnection(Out,In);Count(R,TEXT("schema_connection_returns"));return Response.Response==CONNECT_RESPONSE_DISALLOW;
 }
-void Finish(UBlueprint* BP,bool Validate,FResult& R,const TSharedRef<FJsonObject>& Legacy)
+void Finish(UBlueprint* BP,bool Validate,FResult& R,const TSharedRef<FJsonObject>& Legacy,const TFunction<bool()>& GraphCurrent={})
 {
+    if((GraphCurrent&&!GraphCurrent())||!MacroLibraryCurrent(BP,R))return;
     Legacy->SetBoolField(TEXT("compiled"),false);Legacy->SetBoolField(TEXT("saved"),false);if(Validate) { R.Data->SetObjectField(TEXT("legacy_result"),Legacy);return; }
     if(R.bCompileRequested)
     {
-        R.Stage=TEXT("compile");R.bMutationAttempted=R.bChanged=true;R.bCompileAttempted=true;Count(R,TEXT("full_compile_calls"));FCompilerResultsLog Log;FKismetEditorUtilities::CompileBlueprint(BP,EBlueprintCompileOptions::None,&Log);Count(R,TEXT("full_compile_returns"));const bool Old=BP->GeneratedClass!=nullptr;Legacy->SetBoolField(TEXT("compiled"),Old);R.Data->SetBoolField(TEXT("legacy_generated_class_compile_predicate"),Old);R.Compiled=Log.NumErrors==0&&(BP->Status==BS_UpToDate||BP->Status==BS_UpToDateWithWarnings)&&Loaded(BP->GeneratedClass);auto J=MakeShared<FJsonObject>();J->SetNumberField(TEXT("error_count"),Log.NumErrors);J->SetNumberField(TEXT("warning_count"),Log.NumWarnings);J->SetStringField(TEXT("status"),LexToString(static_cast<int32>(BP->Status)));J->SetStringField(TEXT("generated_class"),GetPathNameSafe(BP->GeneratedClass));J->SetBoolField(TEXT("success"),R.Compiled.GetValue());J->SetBoolField(TEXT("legacy_success"),Old);J->SetStringField(TEXT("option"),TEXT("Original default None; implicit compiler/editor delegates are separate from direct counters."));J->SetBoolField(TEXT("requested"),true);J->SetStringField(TEXT("blueprint"),BP->GetPathName());auto OldResult=MakeShared<FJsonObject>();OldResult->SetBoolField(TEXT("requested"),true);OldResult->SetBoolField(TEXT("success"),Old);OldResult->SetStringField(TEXT("blueprint"),BP->GetPathName());OldResult->SetStringField(TEXT("generated_class"),GetPathNameSafe(BP->GeneratedClass));Legacy->SetObjectField(TEXT("compile_result"),OldResult);R.Data->SetObjectField(TEXT("compile_result"),J);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
+        R.Stage=TEXT("compile");R.bMutationAttempted=R.bChanged=true;R.bCompileAttempted=true;Count(R,TEXT("full_compile_calls"));FCompilerResultsLog Log;FKismetEditorUtilities::CompileBlueprint(BP,EBlueprintCompileOptions::None,&Log);Count(R,TEXT("full_compile_returns"));if((GraphCurrent&&!GraphCurrent())||!MacroLibraryCurrent(BP,R))return;const bool Old=BP->GeneratedClass!=nullptr;Legacy->SetBoolField(TEXT("compiled"),Old);R.Data->SetBoolField(TEXT("legacy_generated_class_compile_predicate"),Old);R.Compiled=Log.NumErrors==0&&(BP->Status==BS_UpToDate||BP->Status==BS_UpToDateWithWarnings)&&Loaded(BP->GeneratedClass);auto J=MakeShared<FJsonObject>();J->SetNumberField(TEXT("error_count"),Log.NumErrors);J->SetNumberField(TEXT("warning_count"),Log.NumWarnings);J->SetStringField(TEXT("status"),LexToString(static_cast<int32>(BP->Status)));J->SetStringField(TEXT("generated_class"),GetPathNameSafe(BP->GeneratedClass));J->SetBoolField(TEXT("success"),R.Compiled.GetValue());J->SetBoolField(TEXT("legacy_success"),Old);J->SetStringField(TEXT("option"),TEXT("Original default None; implicit compiler/editor delegates are separate from direct counters."));J->SetBoolField(TEXT("requested"),true);J->SetStringField(TEXT("blueprint"),BP->GetPathName());auto OldResult=MakeShared<FJsonObject>();OldResult->SetBoolField(TEXT("requested"),true);OldResult->SetBoolField(TEXT("success"),Old);OldResult->SetStringField(TEXT("blueprint"),BP->GetPathName());OldResult->SetStringField(TEXT("generated_class"),GetPathNameSafe(BP->GeneratedClass));Legacy->SetObjectField(TEXT("compile_result"),OldResult);R.Data->SetObjectField(TEXT("compile_result"),J);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
         TSharedRef<FJsonObject> Observed=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_compile"),R,Observed)) { R.bChangeStateKnown=false; }
     }
+    if((GraphCurrent&&!GraphCurrent())||!MacroLibraryCurrent(BP,R))return;
     if(R.bSaveRequested)
     {
-        R.Stage=TEXT("save");R.bMutationAttempted=R.bChanged=true;R.bSaveAttempted=true;Count(R,TEXT("forced_save_calls"));R.bSaved=UEditorAssetLibrary::SaveLoadedAsset(BP,false);Count(R,TEXT("forced_save_returns"));Legacy->SetBoolField(TEXT("saved"),R.bSaved);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);R.Data->SetBoolField(TEXT("forced_save_returned"),R.bSaved);TSharedRef<FJsonObject> Observed=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_save"),R,Observed)) { R.bChangeStateKnown=false; }
+        R.Stage=TEXT("save");R.bMutationAttempted=R.bChanged=true;R.bSaveAttempted=true;Count(R,TEXT("forced_save_calls"));R.bSaved=UEditorAssetLibrary::SaveLoadedAsset(BP,false);Count(R,TEXT("forced_save_returns"));Legacy->SetBoolField(TEXT("saved"),R.bSaved);if((GraphCurrent&&!GraphCurrent())||!MacroLibraryCurrent(BP,R))return;R.Data->SetObjectField(TEXT("legacy_result"),Legacy);R.Data->SetBoolField(TEXT("forced_save_returned"),R.bSaved);TSharedRef<FJsonObject> Observed=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_save"),R,Observed)) { R.bChangeStateKnown=false; }
     }
     Legacy->SetBoolField(TEXT("dirty_after"),BP->GetOutermost()->IsDirty());R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
 }
@@ -586,6 +777,672 @@ struct FCollapsedTextPlan
     }
 };
 
+// AAO: original generic graph import includes stock Switch nodes. Their
+// serialized comparator is compiler input (K2Node_Switch.cpp104 checks a resolved
+// UFunction), not arbitrary node metadata. Installed SwitchInteger100 performs
+// StartIndex++ for each old execution output; Name/String rebuild from PinNames.
+struct FStockSwitchImport
+{
+    struct FComparator
+    {
+        TStrongObjectPtr<UClass> Class;TStrongObjectPtr<UFunction> Function;TStrongObjectPtr<UObject> CDO;
+        TStrongObjectPtr<UPackage> Package;FString ClassPath,FunctionPath,CDOPath;FName Name;
+        EFunctionFlags Flags=FUNC_None;TArray<FProperty*> Fields;TArray<FName> FieldNames;
+        TArray<const FFieldClass*> Types;TArray<EPropertyFlags> PropertyFlags;
+    };
+    struct FPlan
+    {
+        FString Name;UClass* NodeClass=nullptr;FName Function;int32 Source=INDEX_NONE,Start=0;
+        bool Sensitive=false,Default=true;TArray<FName> Names;FGuid Id;int32 OldCases=0,OldPins=0;
+    };
+    struct FNode
+    {
+        TStrongObjectPtr<UK2Node_Switch> Node;int32 Plan=INDEX_NONE;
+    };
+    FResult& R;TArray<TUniquePtr<FComparator>> Sources;TArray<FPlan> Plans;TArray<FNode> Nodes;
+    TStrongObjectPtr<UEdGraph> Graph;
+    explicit FStockSwitchImport(FResult& In):R(In){}
+    bool Bad(const FString& Why,const TCHAR* Code=TEXT("graph_transfer_stock_switch_pending"))
+    {if(R.bMutationAttempted)R.bChangeStateKnown=false;return Fail(R,Code,Why);}
+    bool Lost(const FString& Role,const FString& Expected,const FString& Actual)
+    {R.Data->SetStringField(TEXT("stock_switch_first_mismatch"),Role);R.Data->SetStringField(TEXT("stock_switch_expected"),Expected);R.Data->SetStringField(TEXT("stock_switch_actual"),Actual);return Bad(TEXT("Stock Switch source/current role changed; actual import prefix retained, no following compiler/save or replay."),TEXT("graph_transfer_stock_switch_current_lost"));}
+    bool SourceCurrent(FComparator& S)
+    {
+        auto* C=S.Class.Get();auto* F=S.Function.Get();auto* D=S.CDO.Get();auto* P=S.Package.Get();
+        if(!Loaded(C)||!Loaded(F)||!Loaded(D)||!Loaded(P)||C->GetPathName()!=S.ClassPath
+            ||F->GetPathName()!=S.FunctionPath||D->GetPathName()!=S.CDOPath||C->GetPackage()!=P
+            ||F->GetOuter()!=C||D->GetClass()!=C||D->GetOuter()!=P||!D->HasAnyFlags(RF_ClassDefaultObject)
+            ||C->GetDefaultObject(false)!=D||!C->HasAnyClassFlags(CLASS_Native)
+            ||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)
+            ||F->FunctionFlags!=S.Flags||FindUField<UFunction>(C,S.Name)!=F)
+            return Lost(TEXT("native_comparator_identity"),S.FunctionPath,GetPathNameSafe(F));
+        // Compare the entire current field inventory before borrowing old fields.
+        TArray<FProperty*> Current;for(TFieldIterator<FProperty> It(F,EFieldIteratorFlags::ExcludeSuper);It;++It)Current.Add(*It);
+        if(Current!=S.Fields)return Lost(TEXT("comparator_field_inventory"),LexToString(S.Fields.Num()),LexToString(Current.Num()));
+        for(int32 I=0;I<Current.Num();++I)if(Current[I]->GetOwner<UFunction>()!=F
+            ||Current[I]->GetFName()!=S.FieldNames[I]||Current[I]->GetClass()!=S.Types[I]
+            ||Current[I]->GetPropertyFlags()!=S.PropertyFlags[I]||Current[I]->ArrayDim!=1)
+            return Lost(TEXT("comparator_field_role"),S.FieldNames[I].ToString(),Current[I]->GetName());
+        return true;
+    }
+    bool BindComparator(FPlan& Plan)
+    {
+        UClass* C=Plan.NodeClass==UK2Node_SwitchString::StaticClass()?UKismetStringLibrary::StaticClass():UKismetMathLibrary::StaticClass();
+        for(int32 I=0;I<Sources.Num();++I)if(Sources[I]->Class.Get()==C&&Sources[I]->Name==Plan.Function){Plan.Source=I;return SourceCurrent(*Sources[I]);}
+        auto S=MakeUnique<FComparator>();auto* F=FindUField<UFunction>(C,Plan.Function);auto* D=C->GetDefaultObject(false);
+        if(!RuntimeObject(C)||!RuntimeObject(F)||!Loaded(D)||D->GetClass()!=C||F->GetOuter()!=C
+            ||!F->HasAllFunctionFlags(FUNC_Native|FUNC_Static|FUNC_BlueprintPure)||F->NumParms!=3)
+            return Bad(TEXT("Existing exact native comparator, three-parameter signature and already created runtime library CDO required; no CDO creation or source loader."));
+        S->Class.Reset(C);S->Function.Reset(F);S->CDO.Reset(D);S->Package.Reset(C->GetPackage());
+        S->ClassPath=C->GetPathName();S->FunctionPath=F->GetPathName();S->CDOPath=D->GetPathName();S->Name=Plan.Function;S->Flags=F->FunctionFlags;
+        TSet<FName> Seen;
+        for(TFieldIterator<FProperty> It(F,EFieldIteratorFlags::ExcludeSuper);It;++It)
+        {
+            auto* P=*It;const FName N=P->GetFName();const bool Return=N==TEXT("ReturnValue");
+            const bool Input=N==TEXT("A")||N==TEXT("B");
+            const bool Type=Return?P->IsA<FBoolProperty>():Plan.NodeClass==UK2Node_SwitchInteger::StaticClass()?P->IsA<FIntProperty>():Plan.NodeClass==UK2Node_SwitchName::StaticClass()?P->IsA<FNameProperty>():P->IsA<FStrProperty>();
+            if((!Return&&!Input)||Seen.Contains(N)||P->GetOwner<UFunction>()!=F||P->ArrayDim!=1
+                ||!P->HasAnyPropertyFlags(CPF_Parm)||P->HasAnyPropertyFlags(CPF_ReturnParm)!=Return||!Type)
+                return Bad(TEXT("Only the installed exact primitive A/B/ReturnValue comparator signature is admitted; complex or changed function descriptors remain incomplete."));
+            Seen.Add(N);S->Fields.Add(P);S->FieldNames.Add(N);S->Types.Add(P->GetClass());S->PropertyFlags.Add(P->GetPropertyFlags());
+        }
+        if(Seen.Num()!=3)return Bad(TEXT("Native comparator field inventory differs from its three public parameters."));
+        Plan.Source=Sources.Num();Sources.Add(MoveTemp(S));return SourceCurrent(*Sources.Last());
+    }
+    static bool Scalar(const FString& Raw,FString& Value)
+    {
+        Value=FCollapsedTextPlan::Unquote(Raw);if(Value.Len()>256||Value.Contains(TEXT("\n"))||Value.Contains(TEXT("\r")))return false;
+        // Quoted values may contain commas/Unicode/spaces. Unquoted values must
+        // be a single token so a second assignment cannot bypass admission.
+        const FString Trimmed=Raw.TrimStartAndEnd();if(Trimmed.StartsWith(TEXT("\""))){TArray<FString> Parts;return Trimmed.EndsWith(TEXT("\""))&&FCollapsedTextPlan::Pieces(TEXT("(")+Trimmed+TEXT(")"),Parts)&&Parts.Num()==1;}
+        return !Value.Contains(TEXT("\""))&&(!Value.Contains(TEXT("="))&&!Value.Contains(TEXT(","))&&!Value.Contains(TEXT("("))&&!Value.Contains(TEXT(")")));
+    }
+    bool Admit(const FString& Text)
+    {
+        const TCHAR* Stream=*Text;FString Line;FPlan P;bool Active=false;TMap<FString,FString> Fields;TMap<int32,FString> Indexed;bool Whole=false;
+        auto Complete=[&]()
+        {
+            bool Sensitive=false,Default=true;
+            if(!FGuid::Parse(Fields.FindRef(TEXT("nodeguid")),P.Id)||!P.Id.IsValid())return Bad(TEXT("Explicit valid source Switch NodeGuid required for rename-independent returned-node matching."));
+            for(const auto& Old:Plans)if(Old.Id==P.Id)return Bad(TEXT("Unique source Switch NodeGuid required."));
+            if(Fields.Contains(TEXT("biscasesensitive"))&&(!FCollapsedTextPlan::Boolean(Fields.FindRef(TEXT("biscasesensitive")),Sensitive)||P.NodeClass!=UK2Node_SwitchString::StaticClass()))return Bad(TEXT("String Switch case sensitivity must be an exact boolean."));
+            if(Fields.Contains(TEXT("bhasdefaultpin"))&&!FCollapsedTextPlan::Boolean(Fields.FindRef(TEXT("bhasdefaultpin")),Default))return Bad(TEXT("Stock Switch default-pin toggle must be an exact boolean."));
+            P.Sensitive=Sensitive;P.Default=Default;
+            if(Sensitive&&!Fields.Contains(TEXT("functionname")))return Bad(TEXT("Case-sensitive string Switch requires its matching explicit serialized FunctionName; importing a bool alone does not call PostEditChangeProperty."));
+            P.Function=P.NodeClass==UK2Node_SwitchInteger::StaticClass()?TEXT("NotEqual_IntInt"):P.NodeClass==UK2Node_SwitchName::StaticClass()?TEXT("NotEqual_NameName"):Sensitive?TEXT("NotEqual_StrStr"):TEXT("NotEqual_StriStri");
+            FString Value;if(Fields.Contains(TEXT("functionname"))&&(!Scalar(Fields.FindRef(TEXT("functionname")),Value)||FName(*Value)!=P.Function))return Bad(TEXT("Serialized Switch FunctionName must match its installed concrete comparator and string case-sensitivity mode."));
+            const FString Expected=P.NodeClass==UK2Node_SwitchString::StaticClass()?TEXT("/Script/Engine.KismetStringLibrary"):TEXT("/Script/Engine.KismetMathLibrary");
+            if(Fields.Contains(TEXT("functionclass"))&&FPackageName::ExportTextPathToObjectPath(FCollapsedTextPlan::Unquote(Fields.FindRef(TEXT("functionclass"))))!=Expected)return Bad(TEXT("Serialized Switch FunctionClass must be the exact native runtime library, never an arbitrary compiler callable."));
+            if(Fields.Contains(TEXT("startindex")))
+            {const FString V=Fields.FindRef(TEXT("startindex"));if(P.NodeClass!=UK2Node_SwitchInteger::StaticClass()||!LexTryParseString(P.Start,*V)||LexToString(P.Start)!=V)return Bad(TEXT("Integer Switch StartIndex must be a canonical signed int32."));}
+            if(P.NodeClass==UK2Node_SwitchInteger::StaticClass())
+            {if(Whole||!Indexed.IsEmpty()||int64(P.Start)+P.OldCases>MAX_int32)return Bad(TEXT("Integer Switch reconstructed case counter must not overflow; name/string PinNames fields do not apply."));}
+            else
+            {
+                TArray<FString> Values;
+                if(Whole&&!FCollapsedTextPlan::Pieces(Fields.FindRef(TEXT("pinnames")),Values))return Bad(TEXT("Bounded whole PinNames tuple required."));
+                if(!Indexed.IsEmpty()){if(Whole)return Bad(TEXT("Mixed whole/indexed PinNames is not admitted."));for(int32 I=0;I<Indexed.Num();++I){const auto* V=Indexed.Find(I);if(!V)return Bad(TEXT("Contiguous bounded PinNames indices required."));Values.Add(*V);}}
+                if(Values.Num()>128)return Bad(TEXT("Stock Switch case inventory exceeds the existing flat-node pin budget."));
+                TSet<FName> Seen;for(const FString& Raw:Values)
+                {if(!Scalar(Raw,Value))return Bad(TEXT("Single bounded serialized Switch case name required."));const FName N(*Value);if(N.IsNone()||N==TEXT("execute")||N==TEXT("Selection")||N==TEXT("Default")||N==P.Function||Seen.Contains(N))return Bad(TEXT("Unique nonreserved Switch case names required; ambiguous function/selection/default collisions remain incomplete."));Seen.Add(N);P.Names.Add(N);}
+            }
+            if(!BindComparator(P))return false;Plans.Add(P);return true;
+        };
+        while(FParse::Line(&Stream,Line))
+        {
+            const FString T=Line.TrimStartAndEnd();
+            if(T.StartsWith(TEXT("Begin Object"),ESearchCase::IgnoreCase))
+            {
+                if(Active)return Bad(TEXT("Nested Switch objects remain incomplete."));FString C;FParse::Value(*T,TEXT("Class="),C);
+                P=FPlan();P.NodeClass=C==TEXT("/Script/BlueprintGraph.K2Node_SwitchInteger")?UK2Node_SwitchInteger::StaticClass():C==TEXT("/Script/BlueprintGraph.K2Node_SwitchName")?UK2Node_SwitchName::StaticClass():C==TEXT("/Script/BlueprintGraph.K2Node_SwitchString")?UK2Node_SwitchString::StaticClass():nullptr;
+                Active=P.NodeClass!=nullptr;Fields.Empty();Indexed.Empty();Whole=false;if(Active&&(!FParse::Value(*T,TEXT("Name="),P.Name)||P.Name.IsEmpty()))return Bad(TEXT("Explicit Switch node object name required."));continue;
+            }
+            if(!Active)continue;
+            if(T.Equals(TEXT("End Object"),ESearchCase::IgnoreCase)){if(!Complete())return false;Active=false;continue;}
+            if(T.StartsWith(TEXT("CustomProperties Pin "),ESearchCase::IgnoreCase))
+            {
+                if(++P.OldPins>128)return Bad(TEXT("Bounded stock Switch source pin inventory required."));TMap<FString,FString> Pin;
+                if(!FCollapsedTextPlan::Map(T.Mid(21),Pin))return Bad(TEXT("Unambiguous serialized Switch pin tuple required."));
+                const FString Direction=FCollapsedTextPlan::Unquote(Pin.FindRef(TEXT("Direction")));
+                if(Direction==TEXT("EGPD_Output")&&FCollapsedTextPlan::Unquote(Pin.FindRef(TEXT("PinType.PinCategory")))==TEXT("exec")&&FName(*FCollapsedTextPlan::Unquote(Pin.FindRef(TEXT("PinName"))))!=TEXT("Default"))++P.OldCases;
+                continue;
+            }
+            FString K,V;if(!T.Split(TEXT("="),&K,&V))continue;K=K.TrimStartAndEnd().ToLower();V.TrimStartAndEndInline();
+            if(K.StartsWith(TEXT("pinnames(")))
+            {int32 I;const FString Digits=K.Mid(9,K.Len()-10);if(!K.EndsWith(TEXT(")"))||!LexTryParseString(I,*Digits)||I<0||I>=128||LexToString(I)!=Digits||Indexed.Contains(I))return Bad(TEXT("Bounded unique canonical PinNames index required before engine deserialization."));Indexed.Add(I,V);continue;}
+            if(K==TEXT("functionname")||K==TEXT("functionclass")||K==TEXT("biscasesensitive")||K==TEXT("bhasdefaultpin")||K==TEXT("startindex")||K==TEXT("pinnames")||K==TEXT("nodeguid"))
+            {if(Fields.Contains(K))return Bad(TEXT("Duplicate critical Switch field is ambiguous."));Fields.Add(K,V);if(K==TEXT("pinnames"))Whole=true;continue;}
+            // Qualified/array mutation spellings of these scalar fields must
+            // not slip past the same admission used for their canonical forms.
+            for(const TCHAR* Critical:{TEXT("functionname"),TEXT("functionclass"),TEXT("biscasesensitive"),TEXT("bhasdefaultpin"),TEXT("startindex"),TEXT("pinnames")})if(K.StartsWith(Critical))return Bad(TEXT("Alternate critical Switch property mutation syntax remains incomplete."));
+        }
+        if(Active)return Bad(TEXT("Unclosed Switch object block."));
+        R.Data->SetNumberField(TEXT("flat_stock_switch_node_count"),Plans.Num());
+        if(!Plans.IsEmpty())R.Data->SetStringField(TEXT("flat_stock_switch_scope"),TEXT("Flat stock SwitchInteger/Name/String with exact loaded native comparators, existing CDO identity, bounded cases and integer reconstruction counter. Original paste/GUID/structural notification/compiler/forced-save flow retained. Pin cache/order reconstruction is allowed. Wider custom/enum Switch, ambiguous names and larger inputs remain incomplete; actual paste/connection/save usage validation pending."));
+        return Current();
+    }
+    bool Current()
+    {
+        for(const auto& S:Sources)if(!SourceCurrent(*S))return false;
+        if(Nodes.IsEmpty())return true;auto* G=Graph.Get();if(!Loaded(G))return Lost(TEXT("target_graph"),TEXT("loaded selected graph"),GetPathNameSafe(G));
+        for(const auto& Held:Nodes)
+        {
+            auto* N=Held.Node.Get();const auto& P=Plans[Held.Plan];const auto& S=*Sources[P.Source];
+            if(!Loaded(N)||N->GetOuter()!=G||!G->Nodes.Contains(N)||N->GetClass()!=P.NodeClass)return Lost(TEXT("imported_switch_owner"),P.Name,GetPathNameSafe(N));
+            if(N->FunctionName!=P.Function||!N->FunctionClass.GetGCPtr().IsResolved()||N->FunctionClass.GetGCPtr()!=S.Class.Get()||bool(N->bHasDefaultPin)!=P.Default)return Lost(TEXT("imported_switch_comparator"),P.Function.ToString(),N->FunctionName.ToString());
+            if(auto* I=Cast<UK2Node_SwitchInteger>(N)){if(I->StartIndex!=P.Start)return Lost(TEXT("switch_start_index"),LexToString(P.Start),LexToString(I->StartIndex));}
+            if(auto* Name=Cast<UK2Node_SwitchName>(N)){if(Name->PinNames!=P.Names)return Lost(TEXT("switch_case_names"),TEXT("admitted authored names"),TEXT("changed"));}
+            if(auto* String=Cast<UK2Node_SwitchString>(N)){if(String->PinNames!=P.Names||bool(String->bIsCaseSensitive)!=P.Sensitive)return Lost(TEXT("switch_string_cases"),TEXT("admitted authored names/case sensitivity"),TEXT("changed"));}
+            auto* OwnerBP=Cast<UBlueprint>(G->GetOuter());
+            if(!Loaded(OwnerBP)||!OwnerBP->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Lost(TEXT("switch_target_skeleton"),TEXT("resolved current owner skeleton slot"),TEXT("unresolved"));
+            auto* Skeleton=OwnerBP->SkeletonGeneratedClass.Get();const bool OwnComparator=Skeleton&&Loaded(Skeleton)&&Skeleton->IsChildOf(S.Class.Get());
+            UObject* ExpectedDefault=OwnComparator?nullptr:S.CDO.Get();
+            UEdGraphPin* FunctionPin=nullptr;int32 Found=0;
+            for(auto* Pin:N->Pins)if(Pin&&Pin->PinName==P.Function){FunctionPin=Pin;++Found;}
+            if(Found!=1||!FunctionPin||FunctionPin->GetOwningNode()!=N||FunctionPin->Direction!=EGPD_Input
+                ||FunctionPin->PinType.PinCategory!=UEdGraphSchema_K2::PC_Object||!FunctionPin->PinType.PinSubCategoryObject.IsValid()
+                ||FunctionPin->PinType.PinSubCategoryObject.Get()!=S.Class.Get()||FunctionPin->DefaultObject!=ExpectedDefault
+                ||!FunctionPin->bHidden||!FunctionPin->bNotConnectable||!FunctionPin->bDefaultValueIsReadOnly||!FunctionPin->LinkedTo.IsEmpty())
+                return Lost(TEXT("switch_compiler_function_pin"),S.FunctionPath,TEXT("missing, ambiguous or altered current hidden comparator pin"));
+        }
+        return true;
+    }
+    bool Adopt(UEdGraph* G,const TSet<UEdGraphNode*>& Imported)
+    {
+        if(Plans.IsEmpty())return true;Graph.Reset(G);TSet<int32> Seen;
+        for(auto* N:Imported)
+        {
+            if(!Loaded(N)||N->GetOuter()!=G||!G->Nodes.Contains(N))return Lost(TEXT("import_returned_node"),TEXT("current selected graph member"),GetPathNameSafe(N));
+            if(N->GetClass()!=UK2Node_SwitchInteger::StaticClass()&&N->GetClass()!=UK2Node_SwitchName::StaticClass()&&N->GetClass()!=UK2Node_SwitchString::StaticClass())continue;
+            const int32 I=Plans.IndexOfByPredicate([&](const FPlan& P){return N->NodeGuid==P.Id&&N->GetClass()==P.NodeClass;});
+            if(I==INDEX_NONE||Seen.Contains(I))return Lost(TEXT("imported_switch_plan"),TEXT("one returned node per source GUID/class"),N->GetName());
+            Seen.Add(I);FNode H;H.Node.Reset(CastChecked<UK2Node_Switch>(N));H.Plan=I;Nodes.Add(MoveTemp(H));
+        }
+        if(Seen.Num()!=Plans.Num())return Lost(TEXT("imported_switch_count"),LexToString(Plans.Num()),LexToString(Seen.Num()));
+        return Current();
+    }
+};
+// ABB: the original generic clipboard importer also accepts Select and reroute.
+// These are callback-bearing nodes: Knot indexes Pins[0/1], Select consults its
+// authored option count/index/enum before rebuilding pins. Plan the finite closed
+// source ports before calling the SDK; reacquire logical ports after SDK return.
+struct FSelectKnotImport
+{
+    struct FPinPlan
+    {
+        FGuid Id;FName Name;EEdGraphPinDirection Direction=EGPD_Input;FEdGraphPinType Type,Expected;
+        FString Raw;TArray<FString> Links;
+    };
+    struct FPlan
+    {
+        FString Name;FGuid Id;bool Select=false;int32 Options=2;FEdGraphPinType Index;
+        TArray<FPinPlan> Pins;TMap<FString,FString> Fields;
+    };
+    struct FHeld{TStrongObjectPtr<UEdGraphNode> Node;int32 Plan=INDEX_NONE;};
+    FResult& R;bool Active=false;TArray<FPlan> Plans;TArray<FHeld> Nodes;TStrongObjectPtr<UEdGraph> Graph;
+    TStrongObjectPtr<UClass> SelectClass,KnotClass;TArray<FProperty*> SelectFields;TArray<FName> FieldNames;TArray<FFieldClass*> FieldClasses;TArray<EPropertyFlags> FieldFlags;TArray<int32> FieldDims,FieldSizes,FieldOffsets;
+    FProperty* EntryInner=nullptr;int32 EntryInnerSize=0;EPropertyFlags EntryInnerFlags=CPF_None;
+    FIntProperty* CountProperty=nullptr;FStructProperty* IndexProperty=nullptr;FObjectProperty* EnumProperty=nullptr;FArrayProperty* EntriesProperty=nullptr;
+    explicit FSelectKnotImport(FResult& In):R(In){}
+    bool Bad(const FString& Why,bool Current=false)
+    {if(R.bMutationAttempted)R.bChangeStateKnown=false;return Fail(R,Current?TEXT("graph_transfer_select_knot_current_lost"):TEXT("graph_transfer_select_knot_pending"),Why);}
+    static FString U(const FString& V){return FCollapsedTextPlan::Unquote(V);}
+    static bool Type(const TMap<FString,FString>& M,FEdGraphPinType& Out,const FString& Prefix)
+    {
+        const FString C=U(M.FindRef(Prefix+TEXT("PinCategory"))),Sub=U(M.FindRef(Prefix+TEXT("PinSubCategory")));
+        if(C!=TEXT("wildcard")&&C!=TEXT("bool")&&C!=TEXT("int")&&C!=TEXT("int64")&&C!=TEXT("real")&&C!=TEXT("string")&&C!=TEXT("name")&&C!=TEXT("text"))return false;
+        if((C==TEXT("real")&&(Sub!=TEXT("float")&&Sub!=TEXT("double")))||(C!=TEXT("real")&&!Sub.IsEmpty()))return false;
+        for(const auto& P:M)if(P.Key.StartsWith(Prefix))
+        {
+            const FString K=P.Key.Mid(Prefix.Len()),V=U(P.Value);
+            if(K==TEXT("PinCategory")||K==TEXT("PinSubCategory"))continue;
+            if(K==TEXT("PinSubCategoryObject")&&(V==TEXT("None")||V.IsEmpty()))continue;
+            if(K==TEXT("ContainerType")&&V==TEXT("None"))continue;
+            if(K==TEXT("PinValueType")&&V==TEXT("()"))continue;
+            if((K==TEXT("bIsReference")||K==TEXT("bIsConst")||K==TEXT("bIsWeakPointer")||K==TEXT("bIsUObjectWrapper")||K==TEXT("bSerializeAsSinglePrecisionFloat"))&&V==TEXT("False"))continue;
+            return false;
+        }
+        Out.PinCategory=FName(*C);Out.PinSubCategory=FName(*Sub);return true;
+    }
+    bool Pin(const FString& Text,FPlan& O)
+    {
+        TMap<FString,FString> M;if(O.Pins.Num()>=34||!FCollapsedTextPlan::Map(Text,M))return Bad(TEXT("Select/Knot needs bounded unambiguous serialized pin tuples."));
+        FPinPlan P;P.Name=FName(*U(M.FindRef(TEXT("PinName"))));const FString D=U(M.FindRef(TEXT("Direction")));
+        if(P.Name.IsNone()||!FGuid::Parse(M.FindRef(TEXT("PinId")),P.Id)||!P.Id.IsValid()||(!D.IsEmpty()&&D!=TEXT("EGPD_Input")&&D!=TEXT("EGPD_Output"))||!Type(M,P.Type,TEXT("PinType.")))return Bad(TEXT("Exact primitive/wildcard non-container data pin/name/GUID/direction required."));
+        P.Direction=D==TEXT("EGPD_Output")?EGPD_Output:EGPD_Input;P.Expected=P.Type;P.Raw=U(M.FindRef(TEXT("DefaultValue")));
+        if(P.Raw.Len()>4096)return Bad(TEXT("Bounded primitive serialized defaults required."));
+        for(const auto& V:M)
+        {
+            if(V.Key.StartsWith(TEXT("PinType."))||V.Key==TEXT("PinId")||V.Key==TEXT("PinName")||V.Key==TEXT("Direction")||V.Key==TEXT("DefaultValue")||V.Key==TEXT("AutogeneratedDefaultValue")||V.Key==TEXT("PinFriendlyName")||V.Key==TEXT("PinToolTip"))continue;
+            if(V.Key==TEXT("LinkedTo"))
+            {if(!FCollapsedTextPlan::Pieces(V.Value,P.Links)||P.Links.Num()>64||(P.Direction==EGPD_Input&&P.Links.Num()>1))return Bad(TEXT("Closed scalar clipboard links with at most one input source required."));TSet<FString> Seen;for(const auto& L:P.Links){if(Seen.Contains(L))return Bad(TEXT("Duplicate source link."));Seen.Add(L);}continue;}
+            if(V.Key==TEXT("PersistentGuid")){FGuid Id;if(!FGuid::Parse(V.Value,Id)||Id.IsValid())return Bad(TEXT("Persistent user-defined pin variants remain incomplete."));continue;}
+            const FString X=U(V.Value);
+            if((V.Key==TEXT("DefaultObject")&&(X.IsEmpty()||X==TEXT("None")))||(V.Key==TEXT("DefaultTextValue")&&X.IsEmpty()))continue;
+            if((V.Key==TEXT("bHidden")||V.Key==TEXT("bNotConnectable")||V.Key==TEXT("bDefaultValueIsReadOnly")||V.Key==TEXT("bOrphanedPin")||V.Key==TEXT("bAdvancedView"))&&X==TEXT("False"))continue;
+            if((V.Key==TEXT("bDisplayAsMutableRef")||V.Key==TEXT("bDefaultValueIsIgnored"))&&(X==TEXT("True")||X==TEXT("False")))continue;
+            return Bad(TEXT("Other serialized pin ownership/subpins/default objects/flags remain incomplete."));
+        }
+        for(const auto& Old:O.Pins)if(Old.Name==P.Name||Old.Id==P.Id)return Bad(TEXT("Unique logical source ports and source pin IDs required."));
+        O.Pins.Add(MoveTemp(P));return true;
+    }
+    bool Complete(FPlan& O)
+    {
+        if(!FGuid::Parse(O.Fields.FindRef(TEXT("nodeguid")),O.Id)||!O.Id.IsValid())return Bad(TEXT("Valid unique source NodeGuid required for initial SDK-return adoption."));
+        for(const auto& Old:Plans)if(Old.Id==O.Id||Old.Name==O.Name)return Bad(TEXT("Unique source node object names and GUIDs required."));
+        if(!O.Select)
+        {
+            if(O.Pins.Num()!=2||O.Pins[0].Name!=TEXT("InputPin")||O.Pins[0].Direction!=EGPD_Input||O.Pins[1].Name!=TEXT("OutputPin")||O.Pins[1].Direction!=EGPD_Output)return Bad(TEXT("Knot SDK requires exactly InputPin then OutputPin before its indexing callbacks."));
+            for(const auto& F:O.Fields)if(F.Key!=TEXT("nodeguid")&&F.Key!=TEXT("nodeposx")&&F.Key!=TEXT("nodeposy")&&F.Key!=TEXT("nodecomment")&&F.Key!=TEXT("bcommentbubblevisible")&&F.Key!=TEXT("bcommentbubblepinned")&&F.Key!=TEXT("enabledstate")&&F.Key!=TEXT("advancedpindisplay"))return Bad(TEXT("Other reroute authored fields remain incomplete."));
+        }
+        else
+        {
+            if(O.Fields.Contains(TEXT("numoptionpins"))){const FString V=O.Fields.FindRef(TEXT("numoptionpins"));if(!LexTryParseString(O.Options,*V)||LexToString(O.Options)!=V)return Bad(TEXT("Canonical Select option count required."));}
+            if(O.Options<2||O.Options>32||O.Pins.Num()!=O.Options+2)return Bad(TEXT("Select options2..32 with exact Index/ReturnValue/Option N pin shape required."));
+            if((O.Fields.Contains(TEXT("enum"))&&O.Fields.FindRef(TEXT("enum"))!=TEXT("None"))||(O.Fields.Contains(TEXT("enumentries"))&&O.Fields.FindRef(TEXT("enumentries"))!=TEXT("()")))return Bad(TEXT("Enum Select remains an explicit valid incomplete source variant."));
+            auto* Index=O.Pins.FindByPredicate([](const FPinPlan& P){return P.Name==TEXT("Index");});auto* Return=O.Pins.FindByPredicate([](const FPinPlan& P){return P.Name==UEdGraphSchema_K2::PN_ReturnValue;});
+            if(!Index||!Return||Index->Direction!=EGPD_Input||Return->Direction!=EGPD_Output||(Index->Type.PinCategory!=UEdGraphSchema_K2::PC_Boolean&&Index->Type.PinCategory!=UEdGraphSchema_K2::PC_Int)||Return->Type.PinCategory==UEdGraphSchema_K2::PC_Wildcard||(Index->Type.PinCategory==UEdGraphSchema_K2::PC_Boolean&&O.Options!=2))return Bad(TEXT("Select needs bool/int Index and an already typed primitive ReturnValue; wildcard inference/enum index remain incomplete."));
+            O.Index=Index->Type;
+            if(O.Fields.Contains(TEXT("indexpintype"))){TMap<FString,FString> M;FEdGraphPinType T;if(!FCollapsedTextPlan::Map(O.Fields.FindRef(TEXT("indexpintype")),M)||!Type(M,T,TEXT(""))||T!=O.Index)return Bad(TEXT("Authored IndexPinType must match its actual serialized bool/int Index port."));}
+            for(int32 I=0;I<O.Options;++I){const FName Name(*FString::Printf(TEXT("Option %d"),I));auto* P=O.Pins.FindByPredicate([&](const FPinPlan& V){return V.Name==Name;});if(!P||P->Direction!=EGPD_Input||P->Type!=Return->Type)return Bad(TEXT("All Select Option N ports need the same complete primitive value type as ReturnValue."));}
+            for(const auto& F:O.Fields)if(F.Key!=TEXT("nodeguid")&&F.Key!=TEXT("numoptionpins")&&F.Key!=TEXT("indexpintype")&&F.Key!=TEXT("enum")&&F.Key!=TEXT("enumentries")&&F.Key!=TEXT("nodeposx")&&F.Key!=TEXT("nodeposy")&&F.Key!=TEXT("nodecomment")&&F.Key!=TEXT("bcommentbubblevisible")&&F.Key!=TEXT("bcommentbubblepinned")&&F.Key!=TEXT("enabledstate")&&F.Key!=TEXT("advancedpindisplay"))return Bad(TEXT("Select transient reconstruction caches and alternate/unknown authored fields are not import inputs in this slice."));
+        }
+        Plans.Add(MoveTemp(O));return true;
+    }
+    // These stock logical roles are ASCII; FName matching is case-insensitive,
+    // and reconstruction can restore canonical display spelling.
+    static FString Key(int32 Node,FName Pin){return LexToString(Node)+TEXT("/")+Pin.ToString().ToLower();}
+    static bool SameType(const FEdGraphPinType& A,const FEdGraphPinType& B)
+    {return A==B&&A.bIsUObjectWrapper==B.bIsUObjectWrapper&&A.bSerializeAsSinglePrecisionFloat==B.bSerializeAsSinglePrecisionFloat&&A.PinValueType.bTerminalIsUObjectWrapper==B.PinValueType.bTerminalIsUObjectWrapper;}
+    bool BindSource()
+    {
+        SelectClass.Reset(UK2Node_Select::StaticClass());KnotClass.Reset(UK2Node_Knot::StaticClass());
+        for(TFieldIterator<FProperty> It(SelectClass.Get(),EFieldIteratorFlags::ExcludeSuper);It;++It){SelectFields.Add(*It);FieldNames.Add(It->GetFName());FieldClasses.Add(It->GetClass());FieldFlags.Add(It->GetPropertyFlags());FieldDims.Add(It->ArrayDim);FieldSizes.Add(It->GetSize());FieldOffsets.Add(It->GetOffset_ForInternal());}
+        CountProperty=FindFProperty<FIntProperty>(SelectClass.Get(),TEXT("NumOptionPins"));IndexProperty=FindFProperty<FStructProperty>(SelectClass.Get(),TEXT("IndexPinType"));EnumProperty=FindFProperty<FObjectProperty>(SelectClass.Get(),TEXT("Enum"));EntriesProperty=FindFProperty<FArrayProperty>(SelectClass.Get(),TEXT("EnumEntries"));
+        if(!CountProperty||!IndexProperty||IndexProperty->Struct!=FEdGraphPinType::StaticStruct()||!EnumProperty||!EntriesProperty||!EntriesProperty->Inner||EntriesProperty->Inner->GetClass()!=FNameProperty::StaticClass()||EntriesProperty->Inner->GetOwner<FProperty>()!=EntriesProperty||EntriesProperty->Inner->ArrayDim!=1)return Bad(TEXT("Installed Select authored field descriptors unavailable."));EntryInner=EntriesProperty->Inner;EntryInnerSize=EntryInner->GetSize();EntryInnerFlags=EntryInner->GetPropertyFlags();return Current();
+    }
+    bool Admit(const FString& Text)
+    {
+        const TCHAR* Probe=*Text;FString ProbeLine;while(FParse::Line(&Probe,ProbeLine)){const FString T=ProbeLine.TrimStartAndEnd();FString C;if(T.StartsWith(TEXT("Begin Object"),ESearchCase::IgnoreCase)&&FParse::Value(*T,TEXT("Class="),C)&&(C==TEXT("/Script/BlueprintGraph.K2Node_Select")||C==TEXT("/Script/BlueprintGraph.K2Node_Knot"))){Active=true;break;}}if(!Active)return true;
+        const TCHAR* Stream=*Text;FString Line;bool Open=false;FPlan ParsedRow;
+        while(FParse::Line(&Stream,Line))
+        {
+            const FString T=Line.TrimStartAndEnd();if(T.IsEmpty())continue;
+            if(T.StartsWith(TEXT("Begin Object"),ESearchCase::IgnoreCase))
+            {FString C,N;if(Open||Plans.Num()>=64||!FParse::Value(*T,TEXT("Class="),C)||!FParse::Value(*T,TEXT("Name="),N)||!FCollapsedTextPlan::Name(N)||(C!=TEXT("/Script/BlueprintGraph.K2Node_Select")&&C!=TEXT("/Script/BlueprintGraph.K2Node_Knot")))return Bad(TEXT("Closed flat Select/Knot-only data clusters up to64 nodes; mixed other callbacks/nested/enum/container source variants remain incomplete."));ParsedRow=FPlan();ParsedRow.Name=N;ParsedRow.Select=C==TEXT("/Script/BlueprintGraph.K2Node_Select");Open=true;continue;}
+            if(T.Equals(TEXT("End Object"),ESearchCase::IgnoreCase)){if(!Open||!Complete(ParsedRow))return false;Open=false;continue;}
+            if(!Open)return Bad(TEXT("Complete Select/Knot object blocks required."));
+            if(T.StartsWith(TEXT("CustomProperties Pin "),ESearchCase::IgnoreCase)){if(!Pin(T.Mid(21),ParsedRow))return false;continue;}
+            FString K,V;if(!T.Split(TEXT("="),&K,&V))return Bad(TEXT("Ordinary bounded clipboard assignments required."));K=K.TrimStartAndEnd().ToLower();V.TrimStartAndEndInline();if(ParsedRow.Fields.Contains(K))return Bad(TEXT("Duplicate Select/Knot authored assignment."));ParsedRow.Fields.Add(K,V);
+        }
+        if(Open||Plans.IsEmpty())return Bad(TEXT("Nonempty complete Select/Knot clipboard required."));
+        // Resolve every serialized edge before SDK callbacks. Logical components
+        // join both Knot ports, and all Select value ports, but not its Index.
+        TMap<FString,int32> Port;TArray<TPair<int32,int32>> Locations;TArray<TArray<int32>> Adj;
+        for(int32 I=0;I<Plans.Num();++I)for(int32 J=0;J<Plans[I].Pins.Num();++J){Port.Add(Key(I,Plans[I].Pins[J].Name),Locations.Num());Locations.Emplace(I,J);Adj.Emplace();}
+        auto Join=[&](int32 A,int32 B){Adj[A].AddUnique(B);Adj[B].AddUnique(A);};
+        for(int32 I=0;I<Plans.Num();++I)
+        {
+            const auto& O=Plans[I];int32 First=INDEX_NONE;
+            for(int32 J=0;J<O.Pins.Num();++J){const auto& P=O.Pins[J];const int32 A=Port.FindChecked(Key(I,P.Name));if(!O.Select||P.Name!=TEXT("Index")){if(First!=INDEX_NONE)Join(First,A);else First=A;}
+                for(const auto& L:P.Links){FString N,G;if(!L.Split(TEXT(" "),&N,&G))return Bad(TEXT("Closed source node-name/pin-GUID link required."));G.TrimStartAndEndInline();FGuid Id;if(!FGuid::Parse(G,Id)||!Id.IsValid())return Bad(TEXT("Valid peer GUID required."));const int32 K=Plans.IndexOfByPredicate([&](const FPlan& V){return V.Name==N;});if(K==INDEX_NONE||K==I)return Bad(TEXT("External and same-node clipboard links remain incomplete."));const auto* Q=Plans[K].Pins.FindByPredicate([&](const FPinPlan& V){return V.Id==Id;});if(!Q||Q->Direction==P.Direction||!Q->Links.Contains(O.Name+TEXT(" ")+P.Id.ToString(EGuidFormats::Digits)))return Bad(TEXT("Every clipboard edge needs one opposite-direction reciprocal peer with canonical source GUID."));Join(A,Port.FindChecked(Key(K,Q->Name)));}
+            }
+        }
+        TSet<int32> Visited;for(int32 Start=0;Start<Locations.Num();++Start)
+        {
+            if(Visited.Contains(Start))continue;TArray<int32> Work{Start},Group;FEdGraphPinType Anchor;bool Anchored=false,Linked=false;
+            while(!Work.IsEmpty()){const int32 A=Work.Pop(EAllowShrinking::No);if(Visited.Contains(A))continue;Visited.Add(A);Group.Add(A);const auto L=Locations[A];const auto& O=Plans[L.Key];const auto& P=O.Pins[L.Value];Linked|=!P.Links.IsEmpty();if(O.Select){if(Anchored&&Anchor!=P.Type)return Bad(TEXT("Incompatible primitive Select anchors in a reroute component."));Anchor=P.Type;Anchored=true;}for(int32 B:Adj[A])if(!Visited.Contains(B))Work.Add(B);}
+            if(!Anchored){if(Linked)return Bad(TEXT("Linked Knot-only components without typed Select anchors remain incomplete; unlinked reroutes reset to wildcard by SDK."));Anchor.PinCategory=UEdGraphSchema_K2::PC_Wildcard;}
+            for(int32 A:Group){const auto L=Locations[A];auto& P=Plans[L.Key].Pins[L.Value];if(Linked&&P.Type.PinCategory!=UEdGraphSchema_K2::PC_Wildcard&&P.Type!=Anchor)return Bad(TEXT("Serialized reroute concrete type disagrees with its anchored primitive component."));P.Expected=Anchor;}
+        }
+        R.Data->SetNumberField(TEXT("select_knot_planned_node_count"),Plans.Num());R.Data->SetStringField(TEXT("select_knot_scope"),TEXT("Closed flat Select(no enum,2..32 same primitive options,bool/int Index)/Knot clusters; unlinked Knot resets to wildcard and linked reroutes adopt typed Select components. Source input/output shape and reciprocal links are checked before SDK. Logical ports/types/authored defaults are reacquired after paste; reconstruction cache/physical pin identity/order is not frozen. Wider enum/container/reference/mixed producer/linked knot-only variants remain incomplete; actual paste/compile/save usage validation pending."));return BindSource();
+    }
+    bool Current()
+    {
+        if(!Active)return true;if(!Loaded(SelectClass.Get())||!Loaded(KnotClass.Get())||SelectClass.Get()!=UK2Node_Select::StaticClass()||KnotClass.Get()!=UK2Node_Knot::StaticClass())return Bad(TEXT("Held native Select/Knot class role changed."),true);
+        TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(SelectClass.Get(),EFieldIteratorFlags::ExcludeSuper);It;++It)Now.Add(*It);if(Now!=SelectFields)return Bad(TEXT("Select authored field inventory changed before borrowing captured descriptors."),true);
+        for(int32 I=0;I<Now.Num();++I)if(Now[I]->GetOwnerStruct()!=SelectClass.Get()||Now[I]->GetFName()!=FieldNames[I]||Now[I]->GetClass()!=FieldClasses[I]||Now[I]->GetPropertyFlags()!=FieldFlags[I]||Now[I]->ArrayDim!=FieldDims[I]||Now[I]->GetSize()!=FieldSizes[I]||Now[I]->GetOffset_ForInternal()!=FieldOffsets[I]||Now[I]->HasSetterOrGetter())return Bad(TEXT("Select current field role changed."),true);
+        if(!IndexProperty||IndexProperty->Struct!=FEdGraphPinType::StaticStruct()||!EntriesProperty||EntriesProperty->Inner!=EntryInner)return Bad(TEXT("Select current index/enum entry descriptor changed."),true);
+        if(!EntryInner||EntryInner->GetClass()!=FNameProperty::StaticClass()||EntryInner->GetOwner<FProperty>()!=EntriesProperty||EntryInner->GetOwnerStruct()!=SelectClass.Get()||EntryInner->ArrayDim!=1||EntryInner->GetSize()!=EntryInnerSize||EntryInner->GetPropertyFlags()!=EntryInnerFlags||EntryInner->HasSetterOrGetter())return Bad(TEXT("Select current enum entry Inner role changed."),true);
+        if(Nodes.IsEmpty())return true;if(!Loaded(Graph.Get()))return Bad(TEXT("Imported cluster graph role lost."),true);
+        TMap<FString,UEdGraphPin*> Actual;
+        for(const auto& H:Nodes)
+        {
+            auto* N=H.Node.Get();const auto& O=Plans[H.Plan];if(!Loaded(N)||N->GetOuter()!=Graph.Get()||!Graph->Nodes.Contains(N)||N->GetClass()!=(O.Select?SelectClass.Get():KnotClass.Get())||N->Pins.Num()!=O.Pins.Num())return Bad(TEXT("Imported cluster node owner/class/current pin inventory changed."),true);
+            if(!O.Select&&(!N->Pins[0]||!N->Pins[1]||N->Pins[0]->WasTrashed()||N->Pins[1]->WasTrashed()||N->Pins[0]->PinName!=TEXT("InputPin")||N->Pins[1]->PinName!=TEXT("OutputPin")))return Bad(TEXT("Current Knot SDK port-index roles changed."),true);
+            if(O.Select){const auto EnumSlot=EnumProperty->GetObjectPtrPropertyValue(EnumProperty->ContainerPtrToValuePtr<void>(N));if(!EnumSlot.IsResolved()||EnumSlot.Get()!=nullptr||CountProperty->GetPropertyValue_InContainer(N)!=O.Options||!SameType(*IndexProperty->ContainerPtrToValuePtr<FEdGraphPinType>(N),O.Index)||FScriptArrayHelper(EntriesProperty,EntriesProperty->ContainerPtrToValuePtr<void>(N)).Num()!=0)return Bad(TEXT("Imported Select authored count/index/enum differs from admitted source."),true);}
+            TSet<FGuid> Ids;for(auto* P:N->Pins){if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||!P->PinId.IsValid()||Ids.Contains(P->PinId)||P->ParentPin||!P->SubPins.IsEmpty()||P->bHidden||P->bOrphanedPin||P->bNotConnectable||P->DefaultObject||!P->DefaultTextValue.IsEmpty())return Bad(TEXT("Imported cluster current pin identity/default/ownership role lost."),true);Ids.Add(P->PinId);const auto* E=O.Pins.FindByPredicate([&](const FPinPlan& V){return V.Name==P->PinName;});if(!E||Actual.Contains(Key(H.Plan,P->PinName))||P->Direction!=E->Direction||!SameType(P->PinType,E->Expected)||(O.Select&&P->Direction==EGPD_Input&&!E->Raw.IsEmpty()&&P->DefaultValue!=E->Raw))return Bad(TEXT("Imported logical port direction/type/authored default differs; actual SDK prefix retained."),true);Actual.Add(Key(H.Plan,P->PinName),P);}
+        }
+        // Compare current logical connectivity, never the pre-paste pin address,
+        // pin GUID, object name or transient reconstruction metadata.
+        for(const auto& H:Nodes)for(const auto& E:Plans[H.Plan].Pins){auto* P=Actual.FindRef(Key(H.Plan,E.Name));if(!P||P->LinkedTo.Num()!=E.Links.Num())return Bad(TEXT("Imported cluster link count changed."),true);for(const auto& L:E.Links){FString N,G;L.Split(TEXT(" "),&N,&G);G.TrimStartAndEndInline();FGuid Id;FGuid::Parse(G,Id);const int32 I=Plans.IndexOfByPredicate([&](const FPlan& V){return V.Name==N;});const auto* Q=I==INDEX_NONE?nullptr:Plans[I].Pins.FindByPredicate([&](const FPinPlan& V){return V.Id==Id;});auto* Peer=Q?Actual.FindRef(Key(I,Q->Name)):nullptr;if(!Peer||!P->LinkedTo.Contains(Peer)||!Peer->LinkedTo.Contains(P))return Bad(TEXT("Imported cluster logical reciprocal link differs."),true);}}
+        return true;
+    }
+    bool Adopt(UEdGraph* G,const TSet<UEdGraphNode*>& Imported)
+    {
+        if(!Active)return true;Graph.Reset(G);TSet<int32> Seen;for(auto* N:Imported){if(!Loaded(N)||N->GetOuter()!=G||!G->Nodes.Contains(N))return Bad(TEXT("Returned cluster node has no current target owner."),true);const int32 I=Plans.IndexOfByPredicate([&](const FPlan& O){return O.Id==N->NodeGuid&&N->GetClass()==(O.Select?SelectClass.Get():KnotClass.Get());});if(I==INDEX_NONE||Seen.Contains(I))return Bad(TEXT("Expected exactly one returned cluster node per source class/GUID."),true);Seen.Add(I);FHeld H;H.Node.Reset(N);H.Plan=I;Nodes.Add(MoveTemp(H));}if(Seen.Num()!=Plans.Num())return Bad(TEXT("Imported cluster count does not cover source nodes."),true);return Current();
+    }
+};
+
+// ACN: original Part3:489 macro-node paste, not MacroLibrary container admission.
+// EdGraphUtilities.cpp232/484 owns PostPaste/Reconstruct and global pin fixup.
+// MacroInstance.cpp72/109/514 owns local macro references, port allocation and
+// paste eligibility. Its resolved wildcard type and physical pins are caches.
+struct FOwnMacroInstanceImport
+{
+    struct FPort
+    {
+        FGuid Id;FName Name;EEdGraphPinDirection Direction=EGPD_Input;FEdGraphPinType Type;
+        FString Raw,Auto;bool HasRaw=false,HasAuto=false;TArray<FString> Links;
+    };
+    struct FPlan
+    {
+        FString Name,Reference;FGuid Id;TArray<FPort> Ports;TMap<FString,FString> Fields;int32 Source=INDEX_NONE;
+    };
+    struct FSource
+    {
+        TStrongObjectPtr<UEdGraph> Graph;FGuid Guid;FString Path,Projection;
+        TArray<TStrongObjectPtr<UEdGraphNode>> Nodes;TArray<UEdGraphNode*> Slots;
+        // ADO: saved external source roles are held before any importer/observer SDK.
+        bool External=false,BaselineEstablished=false;TStrongObjectPtr<UBlueprint> Owner;TStrongObjectPtr<UPackage> OwnerPackage;TStrongObjectPtr<UClass> NativeParent;
+        FString OwnerPath,PackagePath,File,FileHash;int64 FileBytes=0;
+        TArray<TStrongObjectPtr<UEdGraph>> MacroGraphs;
+        TArray<FGuid> NodeIds;TArray<UClass*> NodeClasses;
+    };
+    struct FHeld{TStrongObjectPtr<UK2Node_MacroInstance> Node;int32 Plan=INDEX_NONE;};
+    struct FFieldRole{FProperty* Field=nullptr;UStruct* Owner=nullptr;FName Name;FFieldClass* Class=nullptr;EPropertyFlags Flags=CPF_None;int32 Offset=0,Size=0,Dim=0;};
+    FResult& R;bool Active=false,Stopped=false,Adopted=false;
+    TStrongObjectPtr<UBlueprint> Blueprint;TStrongObjectPtr<UEdGraph> Target;TStrongObjectPtr<UClass> Parent,MacroClass;
+    TStrongObjectPtr<UPackage> Package;TStrongObjectPtr<UScriptStruct> ReferenceStruct;
+    FString BPPath,TargetPath;FGuid TargetId;TArray<UEdGraph*> MacroSlots;
+    TArray<FPlan> Plans;TArray<FSource> Sources;TArray<FHeld> Nodes;TArray<FFieldRole> Fields;
+    FStructProperty* ReferenceProperty=nullptr;FObjectProperty* GraphProperty=nullptr;FObjectProperty* BlueprintProperty=nullptr;FStructProperty* GuidProperty=nullptr;
+    TSharedPtr<FJsonObject> ProtectedBefore;
+    explicit FOwnMacroInstanceImport(FResult& In):R(In){}
+    bool Bad(const FString& Why,const FString& Object=FString(),const FString& Property=FString(),const FString& Expected=FString(),const FString& Actual=FString())
+    {
+        if(!Stopped)
+        {
+            Stopped=true;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),R.Stage);J->SetStringField(TEXT("object"),Object);J->SetStringField(TEXT("property"),Property);J->SetStringField(TEXT("expected"),Expected);J->SetStringField(TEXT("actual"),Actual);J->SetStringField(TEXT("detail"),Why);R.Data->SetObjectField(TEXT("own_macro_first_mismatch"),J);
+            if(R.ErrorCode.IsEmpty())Fail(R,R.bMutationAttempted?TEXT("graph_transfer_own_macro_current_lost"):TEXT("graph_transfer_own_macro_pending"),Why);
+        }
+        if(R.bMutationAttempted)R.bChangeStateKnown=false;return false;
+    }
+    static FString U(const FString& S){return FCollapsedTextPlan::Unquote(S);}
+    static bool SameType(const FEdGraphPinType& A,const FEdGraphPinType& B){return FSelectKnotImport::SameType(A,B);}
+    static bool Primitive(const FEdGraphPinType& T)
+    {
+        const FName C=T.PinCategory;
+        return (C==UEdGraphSchema_K2::PC_Exec||C==UEdGraphSchema_K2::PC_Wildcard||C==UEdGraphSchema_K2::PC_Boolean||C==UEdGraphSchema_K2::PC_Int||C==UEdGraphSchema_K2::PC_Int64||C==UEdGraphSchema_K2::PC_Real||C==UEdGraphSchema_K2::PC_Name||C==UEdGraphSchema_K2::PC_String)
+            &&T.ContainerType==EPinContainerType::None&&!T.bIsReference&&!T.bIsConst&&!T.bIsWeakPointer&&!T.bIsUObjectWrapper&&!T.bSerializeAsSinglePrecisionFloat&&T.PinSubCategoryObject.IsExplicitlyNull()&&T.PinSubCategoryMemberReference.MemberName.IsNone()
+            &&T.PinValueType.TerminalCategory.IsNone()&&T.PinValueType.TerminalSubCategory.IsNone()&&T.PinValueType.TerminalSubCategoryObject.IsExplicitlyNull()&&!T.PinValueType.bTerminalIsConst&&!T.PinValueType.bTerminalIsWeakPointer&&!T.PinValueType.bTerminalIsUObjectWrapper
+            &&((C==UEdGraphSchema_K2::PC_Real&&(T.PinSubCategory==TEXT("float")||T.PinSubCategory==TEXT("double")))||(C!=UEdGraphSchema_K2::PC_Real&&T.PinSubCategory.IsNone()));
+    }
+    bool Schema()
+    {
+        if(!Loaded(MacroClass.Get())||MacroClass.Get()!=UK2Node_MacroInstance::StaticClass()||!Loaded(ReferenceStruct.Get())||ReferenceStruct.Get()!=FGraphReference::StaticStruct())return Bad(TEXT("Native macro/reference schema identity changed."));
+        for(const auto& V:Fields)
+        {
+            if(!Loaded(V.Owner))return Bad(TEXT("Native descriptor owner is not current."));auto* P=FindFProperty<FProperty>(V.Owner,V.Name);
+            if(P!=V.Field||P->GetOwnerStruct()!=V.Owner||P->GetClass()!=V.Class||P->GetPropertyFlags()!=V.Flags||P->GetOffset_ForInternal()!=V.Offset||P->GetSize()!=V.Size||P->ArrayDim!=V.Dim||P->HasSetterOrGetter())return Bad(TEXT("Macro/reference descriptor owner/layout changed."),V.Owner->GetPathName(),V.Name.ToString());
+        }
+        return (ReferenceProperty&&ReferenceProperty->Struct.IsResolved()&&ReferenceProperty->Struct.Get()==ReferenceStruct.Get()&&GraphProperty&&GraphProperty->PropertyClass.IsResolved()&&GraphProperty->PropertyClass.Get()==UEdGraph::StaticClass()&&BlueprintProperty&&BlueprintProperty->PropertyClass.IsResolved()&&BlueprintProperty->PropertyClass.Get()==UBlueprint::StaticClass()&&GuidProperty&&GuidProperty->Struct.IsResolved()&&GuidProperty->Struct.Get()==TBaseStructure<FGuid>::Get())||Bad(TEXT("Current native macro/reference descriptor types differ."));
+    }
+    bool BindSchema()
+    {
+        MacroClass.Reset(UK2Node_MacroInstance::StaticClass());ReferenceStruct.Reset(FGraphReference::StaticStruct());
+        ReferenceProperty=FindFProperty<FStructProperty>(MacroClass.Get(),TEXT("MacroGraphReference"));GraphProperty=FindFProperty<FObjectProperty>(ReferenceStruct.Get(),TEXT("MacroGraph"));BlueprintProperty=FindFProperty<FObjectProperty>(ReferenceStruct.Get(),TEXT("GraphBlueprint"));GuidProperty=FindFProperty<FStructProperty>(ReferenceStruct.Get(),TEXT("GraphGuid"));
+        for(FProperty* P:{static_cast<FProperty*>(ReferenceProperty),static_cast<FProperty*>(GraphProperty),static_cast<FProperty*>(BlueprintProperty),static_cast<FProperty*>(GuidProperty)})
+        {
+            if(!P||P->ArrayDim!=1||P->HasSetterOrGetter())return Bad(TEXT("Exact native macro/reference fields are required."));FFieldRole V;V.Field=P;V.Owner=P->GetOwnerStruct();V.Name=P->GetFName();V.Class=P->GetClass();V.Flags=P->GetPropertyFlags();V.Offset=P->GetOffset_ForInternal();V.Size=P->GetSize();V.Dim=P->ArrayDim;Fields.Add(V);
+        }
+        return Schema()||Bad(TEXT("Native macro/reference field types differ."));
+    }
+    bool Base()
+    {
+        if(!Active)return true;if(Stopped)return false;auto* BP=Blueprint.Get();auto* G=Target.Get();
+        if(!IsEditorGameThread()||IsPlaySessionActive()||!Loaded(BP)||!Loaded(G)||!Loaded(Package.Get())||!Loaded(Parent.Get())||BP->GetClass()!=UBlueprint::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||BP->GetPathName()!=BPPath||BP->GetPackage()!=Package.Get()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.Get()!=Parent.Get()||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||BP->bSuppressStructurallyModified||G->GetPathName()!=TargetPath||G->GraphGuid!=TargetId||G->GetOuter()!=BP||G->GetClass()!=UEdGraph::StaticClass()||!G->Schema.GetGCPtr().IsResolved()||G->Schema.Get()!=UEdGraphSchema_K2::StaticClass()||BP->MacroGraphs.Num()!=MacroSlots.Num())return Bad(TEXT("Own macro target/source Blueprint, graph or compiler context changed."),BPPath,TEXT("owner/current"));
+        for(int32 I=0;I<MacroSlots.Num();++I)if(!BP->MacroGraphs[I].IsResolved()||BP->MacroGraphs[I].Get()!=MacroSlots[I])return Bad(TEXT("Own macro graph inventory changed."),BPPath,TEXT("MacroGraphs"));
+        return Schema();
+    }
+    bool GraphProjection(FSource& S,const FIndex& I,FString& Out)
+    {
+        auto* G=S.Graph.Get();if(!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=Blueprint.Get()||G->GetPackage()!=Package.Get()||G->GraphGuid!=S.Guid||G->GetPathName()!=S.Path||!G->Schema.GetGCPtr().IsResolved()||G->Schema.Get()!=UEdGraphSchema_K2::StaticClass()||!G->SubGraphs.IsEmpty()||G->Nodes.Num()!=S.Slots.Num())return Bad(TEXT("Referenced own macro graph role or node inventory changed."),S.Path,TEXT("graph role"));
+        auto J=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Rows;
+        for(int32 K=0;K<S.Slots.Num();++K)
+        {
+            if(!G->Nodes[K].IsResolved()||G->Nodes[K].Get()!=S.Slots[K])return Bad(TEXT("Referenced macro node slot changed."),S.Path,TEXT("Nodes"));auto* N=S.Nodes[K].Get();
+            if(!Loaded(N)||!I.Nodes.Contains(N)||N->GetOuter()!=G||!N->NodeGuid.IsValid())return Bad(TEXT("Referenced macro node owner/lifetime changed."),S.Path,TEXT("node"));
+            UClass* C=N->GetClass();if(C!=UK2Node_Tunnel::StaticClass()&&C!=UK2Node_IfThenElse::StaticClass()&&C!=UK2Node_ExecutionSequence::StaticClass()&&C!=UK2Node_Knot::StaticClass())return Bad(TEXT("Flat stock Tunnel/Branch/Sequence/Knot source bodies required; other valid macros remain incomplete."),N->GetPathName(),TEXT("class"));
+            auto Q=Node(N,I);Q->SetNumberField(TEXT("desired_enabled_state"),static_cast<int32>(N->GetDesiredEnabledState()));TArray<TSharedPtr<FJsonValue>> Pins;TSet<FString> Keys;
+            for(auto* P:N->Pins)
+            {
+                if(!P||!I.Pins.Contains(P)||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||P->ParentPin||!P->SubPins.IsEmpty()||!Primitive(P->PinType)||!P->DefaultObject.IsResolved()||P->DefaultObject.Get()||!P->DefaultTextValue.IsEmpty()||P->bOrphanedPin||P->bNotConnectable)return Bad(TEXT("Source macro has an unsupported/noncurrent logical port."),N->GetPathName(),TEXT("pins"));
+                const FString Key=P->PinName.ToString()+LexToString(static_cast<int32>(P->Direction));if(Keys.Contains(Key))return Bad(TEXT("Ambiguous source logical port."),N->GetPathName(),Key);Keys.Add(Key);
+                auto V=Pin(P,I);V->RemoveField(TEXT("pin_id"));TArray<TSharedPtr<FJsonValue>> Links;
+                for(auto* L:P->LinkedTo){if(!L||!I.Pins.Contains(L)||L->GetOwningNodeUnchecked()->GetGraph()!=G||!L->LinkedTo.Contains(P))return Bad(TEXT("Source macro link is not a current reciprocal own-graph edge."),N->GetPathName(),Key);Links.Add(MakeShared<FJsonValueString>(L->GetOwningNodeUnchecked()->NodeGuid.ToString()+TEXT(":")+L->PinName.ToString()+TEXT(":")+LexToString(static_cast<int32>(L->Direction))));}
+                Links.Sort([](const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B){return A->AsString()<B->AsString();});V->SetArrayField(TEXT("linked_to"),Links);Pins.Add(MakeShared<FJsonValueObject>(V));
+            }
+            Pins.Sort([](const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B){return A->AsObject()->GetStringField(TEXT("name"))+A->AsObject()->GetStringField(TEXT("direction"))<B->AsObject()->GetStringField(TEXT("name"))+B->AsObject()->GetStringField(TEXT("direction"));});Q->SetArrayField(TEXT("pins"),Pins);
+            if(auto* T=Cast<UK2Node_Tunnel>(N))
+            {
+                Q->SetBoolField(TEXT("can_have_inputs"),T->bCanHaveInputs);Q->SetBoolField(TEXT("can_have_outputs"),T->bCanHaveOutputs);TArray<TSharedPtr<FJsonValue>> User;
+                for(const auto& V:T->UserDefinedPins){if(!V||!Primitive(V->PinType))return Bad(TEXT("Source tunnel user-pin descriptor is unsupported."),N->GetPathName(),TEXT("UserDefinedPins"));auto P=MakeShared<FJsonObject>();P->SetStringField(TEXT("name"),V->PinName.ToString());P->SetNumberField(TEXT("direction"),static_cast<int32>(V->DesiredPinDirection));P->SetStringField(TEXT("default"),V->PinDefaultValue);P->SetObjectField(TEXT("type"),Function::Pin::Describe(V->PinType));User.Add(MakeShared<FJsonValueObject>(P));}Q->SetArrayField(TEXT("user_pins"),User);
+                auto* Meta=FindFProperty<FStructProperty>(UK2Node_Tunnel::StaticClass(),TEXT("MetaData"));if(!Meta||Meta->GetOwnerStruct()!=UK2Node_Tunnel::StaticClass()||Meta->HasSetterOrGetter())return Bad(TEXT("Source tunnel metadata descriptor unavailable."));FString Value;Meta->ExportText_InContainer(0,Value,T,nullptr,T,PPF_None);if(!Base()||Value.Len()>65536)return Bad(TEXT("Source tunnel metadata export/current boundary failed."));Q->SetStringField(TEXT("metadata"),Value);
+            }
+            Rows.Add(MakeShared<FJsonValueObject>(Q));
+        }
+        J->SetArrayField(TEXT("nodes"),Rows);Out=Json(J);return Out.Len()<=1048576||Bad(TEXT("Source macro projection bound exceeded."));
+    }
+    // ADO source: node_tools.py861 -> Part3.cpp489; the original importer has
+    // no same-owner macro restriction. SDK MacroInstance.cpp72/514 preserves
+    // MacroLibrary references; EdGraph.cpp54 lazily fills the nullable graph cache.
+    // This observation contains no virtual getter, tracked object read, text rebuild,
+    // load or exporter. Physical pins are reacquired per observation, never frozen.
+    static TSharedRef<FJsonObject> PureType(const FEdGraphPinType& T)
+    {
+        auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("category"),T.PinCategory.ToString());J->SetStringField(TEXT("subcategory"),T.PinSubCategory.ToString());return J;
+    }
+    static bool ExternalPrimitive(const FEdGraphPinType& T)
+    {
+        return Primitive(T)&&T.PinSubCategoryMemberReference.MemberParent.IsResolved()&&T.PinSubCategoryMemberReference.MemberParent.GetHandle()==TObjectPtr<UObject>().GetHandle()&&!T.PinSubCategoryMemberReference.MemberGuid.IsValid();
+    }
+    static FString TextIdentity(const FText& T)
+    {
+        return LexToString(reinterpret_cast<UPTRINT>(FTextInspector::GetSharedDataId(T)))+TEXT(":")+LexToString(FTextInspector::GetFlags(T));
+    }
+    bool SourceBad(FSource& S,const FString& Why,const FString& Object=FString(),const FString& Property=FString(),const FString& Expected=FString(),const FString& Actual=FString())
+    {
+        // CanImport/PostPaste/observer callbacks can mutate source even before our writer.
+        if(S.BaselineEstablished){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("external_macro_source_change_uncertain"),true);}return Bad(Why,Object,Property,Expected,Actual);
+    }
+    bool ExternalRole(FSource& S)
+    {
+        auto* B=S.Owner.Get();auto* P=S.OwnerPackage.Get();auto* G=S.Graph.Get();
+        if(!IsEditorGameThread()||IsPlaySessionActive()||!Loaded(B)||!Loaded(P)||!Loaded(G)||!Loaded(S.NativeParent.Get())||B->GetClass()!=UBlueprint::StaticClass()||B->BlueprintType!=BPTYPE_MacroLibrary||B->GetOuter()!=P||B->GetPackage()!=P||!B->GetPathName().Equals(S.OwnerPath,ESearchCase::CaseSensitive)||!P->GetPathName().Equals(S.PackagePath,ESearchCase::CaseSensitive)||P->IsDirty()||!P->IsFullyLoaded()||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified||B->Status==BS_BeingCreated||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().GetHandle()!=TObjectPtr<UClass>(S.NativeParent.Get()).GetHandle()||B->NewVariables.Num()||B->FunctionGraphs.Num()||B->UbergraphPages.Num()||B->EventGraphs.Num()||B->DelegateSignatureGraphs.Num()||B->ImplementedInterfaces.Num()||B->ComponentTemplates.Num()||B->Timelines.Num()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.GetHandle()!=TObjectPtr<USimpleConstructionScript>().GetHandle()||B->MacroGraphs.Num()!=S.MacroGraphs.Num())return SourceBad(S,TEXT("External saved MacroLibrary owner/current role changed."),S.OwnerPath,TEXT("owner/package/parent"));
+        for(int32 K=0;K<S.MacroGraphs.Num();++K){auto* M=S.MacroGraphs[K].Get();if(!B->MacroGraphs[K].IsResolved()||B->MacroGraphs[K].GetHandle()!=TObjectPtr<UEdGraph>(M).GetHandle()||!Loaded(M)||M->GetClass()!=UEdGraph::StaticClass()||M->GetOuter()!=B||M->GetPackage()!=P)return SourceBad(S,TEXT("External MacroGraphs ownership/inventory changed."),S.OwnerPath,TEXT("MacroGraphs"));}
+        if(G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=B||G->GetPackage()!=P||G->GraphGuid!=S.Guid||!G->GetPathName().Equals(S.Path,ESearchCase::CaseSensitive)||!G->Schema.GetGCPtr().IsResolved()||G->Schema.GetGCPtr().GetHandle()!=TObjectPtr<UClass>(UEdGraphSchema_K2::StaticClass()).GetHandle()||G->SubGraphs.Num()||G->Nodes.Num()!=S.Nodes.Num())return SourceBad(S,TEXT("External source graph ownership/GUID/schema changed."),S.Path,TEXT("graph role"));
+        for(int32 K=0;K<S.Nodes.Num();++K){auto* N=S.Nodes[K].Get();if(!G->Nodes[K].IsResolved()||G->Nodes[K].GetHandle()!=TObjectPtr<UEdGraphNode>(N).GetHandle()||!Loaded(N)||N->GetOuter()!=G||N->GetPackage()!=P||N->NodeGuid!=S.NodeIds[K]||N->GetClass()!=S.NodeClasses[K])return SourceBad(S,TEXT("External source node ownership/GUID/class changed."),S.Path,TEXT("Nodes"));}
+        return true;
+    }
+    bool ExternalProjection(FSource& S,FString& Out)
+    {
+        if(!ExternalRole(S))return false;TSet<UEdGraphPin*> Live;TMap<UEdGraphPin*,UEdGraphNode*> Owners;
+        for(const auto& H:S.Nodes)for(auto* P:H->Pins){if(!P||Live.Contains(P)||P->WasTrashed()||P->GetOwningNodeUnchecked()!=H.Get()||P->ParentPin||P->SubPins.Num()||!ExternalPrimitive(P->PinType)||!P->DefaultObject.IsResolved()||P->DefaultObject.GetHandle()!=TObjectPtr<UObject>().GetHandle()||TextIdentity(P->DefaultTextValue)!=TextIdentity(FText::GetEmpty())||P->bOrphanedPin||P->bNotConnectable)return SourceBad(S,TEXT("External macro source requires current primitive/exec unsplit logical pins."),S.Path,TEXT("pins"));Live.Add(P);Owners.Add(P,H.Get());}
+        auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("editable"),S.Graph->bEditable);J->SetBoolField(TEXT("deletion"),S.Graph->bAllowDeletion);J->SetBoolField(TEXT("renaming"),S.Graph->bAllowRenaming);TArray<TSharedPtr<FJsonValue>> Rows;
+        for(const auto& H:S.Nodes)
+        {
+            auto* N=H.Get();UClass* C=N->GetClass();if(C!=UK2Node_Tunnel::StaticClass()&&C!=UK2Node_IfThenElse::StaticClass()&&C!=UK2Node_ExecutionSequence::StaticClass()&&C!=UK2Node_Knot::StaticClass())return SourceBad(S,TEXT("External source body outside finite stock Tunnel/Branch/Sequence/Knot support."),N->GetPathName(),TEXT("class"));
+            auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("id"),N->NodeGuid.ToString());Q->SetStringField(TEXT("name"),N->GetName());Q->SetStringField(TEXT("class"),C->GetPathName());Q->SetNumberField(TEXT("x"),N->NodePosX);Q->SetNumberField(TEXT("y"),N->NodePosY);Q->SetStringField(TEXT("comment"),N->NodeComment);Q->SetBoolField(TEXT("comment_visible"),N->bCommentBubbleVisible);Q->SetBoolField(TEXT("comment_pinned"),N->bCommentBubblePinned);Q->SetNumberField(TEXT("enabled"),static_cast<int32>(N->GetDesiredEnabledState()));TArray<TSharedPtr<FJsonValue>> Pins;TSet<FString> Keys;
+            for(auto* P:N->Pins)
+            {
+                const FString Key=P->PinName.ToString()+TEXT(":")+LexToString(static_cast<int32>(P->Direction));if(Keys.Contains(Key))return SourceBad(S,TEXT("External source logical pins must be unique."),N->GetPathName(),Key);Keys.Add(Key);auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("key"),Key);V->SetObjectField(TEXT("type"),PureType(P->PinType));V->SetStringField(TEXT("default"),P->DefaultValue);V->SetStringField(TEXT("auto"),P->AutogeneratedDefaultValue);V->SetStringField(TEXT("text_identity"),TextIdentity(P->DefaultTextValue));V->SetStringField(TEXT("friendly_identity"),TextIdentity(P->PinFriendlyName));V->SetBoolField(TEXT("ignored"),P->bDefaultValueIsIgnored);V->SetBoolField(TEXT("readonly"),P->bDefaultValueIsReadOnly);V->SetBoolField(TEXT("hidden"),P->bHidden);V->SetBoolField(TEXT("advanced"),P->bAdvancedView);TArray<TSharedPtr<FJsonValue>> Links;TSet<UEdGraphPin*> Seen;
+                for(auto* L:P->LinkedTo){auto* Owner=Owners.FindRef(L);if(!Live.Contains(L)||!Owner||Seen.Contains(L)||!L->LinkedTo.Contains(P))return SourceBad(S,TEXT("External source links must be closed reciprocal logical edges."),N->GetPathName(),Key);Seen.Add(L);Links.Add(MakeShared<FJsonValueString>(Owner->NodeGuid.ToString()+TEXT(":")+L->PinName.ToString()+TEXT(":")+LexToString(static_cast<int32>(L->Direction))));}
+                Links.Sort([](const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B){return A->AsString()<B->AsString();});V->SetArrayField(TEXT("links"),Links);Pins.Add(MakeShared<FJsonValueObject>(V));
+            }
+            Pins.Sort([](const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B){return A->AsObject()->GetStringField(TEXT("key"))<B->AsObject()->GetStringField(TEXT("key"));});Q->SetArrayField(TEXT("pins"),Pins);
+            if(C==UK2Node_Tunnel::StaticClass())
+            {
+                auto* T=static_cast<UK2Node_Tunnel*>(N);auto Binding=[&](const TObjectPtr<UK2Node_Tunnel>& Slot,FString& Value){if(!Slot.IsResolved())return false;if(Slot.GetHandle()==TObjectPtr<UK2Node_Tunnel>().GetHandle()){Value=TEXT("null");return true;}for(const auto& X:S.Nodes)if(X->GetClass()==UK2Node_Tunnel::StaticClass()&&Slot.GetHandle()==TObjectPtr<UK2Node_Tunnel>(static_cast<UK2Node_Tunnel*>(X.Get())).GetHandle()){Value=X->NodeGuid.ToString();return true;}return false;};FString Input,Output;if(!Binding(T->InputSinkNode,Input)||!Binding(T->OutputSourceNode,Output))return SourceBad(S,TEXT("External tunnel bindings leave the held source graph."));Q->SetStringField(TEXT("input_sink"),Input);Q->SetStringField(TEXT("output_source"),Output);Q->SetBoolField(TEXT("can_inputs"),T->bCanHaveInputs);Q->SetBoolField(TEXT("can_outputs"),T->bCanHaveOutputs);TArray<TSharedPtr<FJsonValue>> User;
+                for(const auto& V:T->UserDefinedPins){if(!V||!ExternalPrimitive(V->PinType))return SourceBad(S,TEXT("External tunnel user-pin type is unsupported."));auto P=MakeShared<FJsonObject>();P->SetStringField(TEXT("name"),V->PinName.ToString());P->SetNumberField(TEXT("direction"),static_cast<int32>(V->DesiredPinDirection));P->SetStringField(TEXT("default"),V->PinDefaultValue);P->SetObjectField(TEXT("type"),PureType(V->PinType));User.Add(MakeShared<FJsonValueObject>(P));}Q->SetArrayField(TEXT("user_pins"),User);
+                // HasLatentFunctions is an SDK-populated transient cache, not authored metadata.
+                const auto Meta=T->MetaData;auto D=MakeShared<FJsonObject>();D->SetStringField(TEXT("tooltip"),TextIdentity(Meta.ToolTip));D->SetStringField(TEXT("category"),TextIdentity(Meta.Category));D->SetStringField(TEXT("keywords"),TextIdentity(Meta.Keywords));D->SetStringField(TEXT("compact_title"),TextIdentity(Meta.CompactNodeTitle));D->SetStringField(TEXT("deprecation"),Meta.DeprecationMessage);D->SetBoolField(TEXT("deprecated"),Meta.bIsDeprecated);D->SetBoolField(TEXT("call_in_editor"),Meta.bCallInEditor);D->SetBoolField(TEXT("thread_safe"),Meta.bThreadSafe);D->SetBoolField(TEXT("unsafe_construction"),Meta.bIsUnsafeDuringActorConstruction);D->SetStringField(TEXT("color"),Meta.InstanceTitleColor.ToString());auto Map=MakeShared<FJsonObject>();for(const auto& Pair:Meta.GetMetaDataMap())Map->SetStringField(Pair.Key.ToString(),Pair.Value);D->SetObjectField(TEXT("map"),Map);Q->SetObjectField(TEXT("metadata"),D);
+            }
+            Rows.Add(MakeShared<FJsonValueObject>(Q));
+        }
+        J->SetArrayField(TEXT("nodes"),Rows);Out=Json(J);return Out.Len()<=1048576||SourceBad(S,TEXT("External source logical projection bound exceeded."));
+    }
+    bool ExternalCurrent()
+    {
+        for(auto& S:Sources)if(S.External){FString Now;if(!ExternalProjection(S,Now))return false;if(!Now.Equals(S.Projection,ESearchCase::CaseSensitive))return SourceBad(S,TEXT("External source authored logical state changed across an SDK boundary."),S.Path,TEXT("authored projection"),S.Projection,Now);}return true;
+    }
+    bool FinalFiles()
+    {
+        if(!Active)return true;if(Stopped||!ExternalCurrent())return false;TSet<FString> Seen;TArray<TSharedPtr<FJsonValue>> Files;
+        for(auto& S:Sources)if(S.External&&!Seen.Contains(S.File)){Seen.Add(S.File);if(IFileManager::Get().FileSize(*S.File)!=S.FileBytes)return SourceBad(S,TEXT("External source saved file size changed."),S.File,TEXT("bytes"));const FMD5Hash ActualHash=FMD5Hash::HashFile(*S.File);if(!ActualHash.IsValid())return SourceBad(S,TEXT("External source file hash read failed."),S.File);const FString Hash=LexToString(ActualHash);if(!ExternalCurrent()||!Hash.Equals(S.FileHash,ESearchCase::CaseSensitive))return SourceBad(S,TEXT("External source saved file bytes changed."),S.File,TEXT("hash"),S.FileHash,Hash);auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("file"),S.File);J->SetStringField(TEXT("md5"),Hash);J->SetNumberField(TEXT("bytes"),S.FileBytes);Files.Add(MakeShared<FJsonValueObject>(J));}R.Data->SetArrayField(TEXT("external_macro_source_files_preserved"),Files);return true;
+    }
+    bool SourceCurrent()
+    {
+        if(!Base())return false;FIndex I;if(!Index(Blueprint.Get(),I,R))return Bad(TEXT("Current source graph inventory could not be observed."));
+        for(auto& S:Sources){if(S.External)continue;FString Now;if(!GraphProjection(S,I,Now))return false;if(!Now.Equals(S.Projection,ESearchCase::CaseSensitive))return Bad(TEXT("Referenced own macro authored body differs after an SDK boundary."),S.Path,TEXT("authored graph projection"),S.Projection,Now);}
+        return ExternalCurrent();
+    }
+    bool ActualReference(UK2Node_MacroInstance* N,const FSource& S)
+    {
+        if(!Schema())return false;const void* Address=ReferenceProperty->ContainerPtrToValuePtr<void>(N);
+        const auto G=GraphProperty->GetObjectPtrPropertyValue(GraphProperty->ContainerPtrToValuePtr<void>(Address));const auto B=BlueprintProperty->GetObjectPtrPropertyValue(BlueprintProperty->ContainerPtrToValuePtr<void>(Address));const FGuid Id=*GuidProperty->ContainerPtrToValuePtr<FGuid>(Address);
+        if(!G.IsResolved()||!B.IsResolved())return Bad(TEXT("Actual imported graph-reference handle became unresolved; no getter/resolve follows."),N->GetPathName(),!B.IsResolved()?TEXT("MacroGraphReference.GraphBlueprint"):TEXT("MacroGraphReference.MacroGraph"),TEXT("resolved"),TEXT("unresolved"));
+        if(B.GetHandle()!=TObjectPtr<UBlueprint>(S.Owner.Get()).GetHandle())return Bad(TEXT("Actual imported source Blueprint changed."),N->GetPathName(),TEXT("MacroGraphReference.GraphBlueprint"),S.OwnerPath,TEXT("different resolved handle"));
+        if(Id!=S.Guid)return Bad(TEXT("Actual imported source graph GUID changed."),N->GetPathName(),TEXT("MacroGraphReference.GraphGuid"),S.Guid.ToString(),Id.ToString());
+        const bool NullCache=G.GetHandle()==TObjectPtr<UObject>().GetHandle();if(!NullCache&&G.GetHandle()!=TObjectPtr<UEdGraph>(S.Graph.Get()).GetHandle())return Bad(TEXT("Actual imported graph cache points outside the admitted source."),N->GetPathName(),TEXT("MacroGraphReference.MacroGraph"),S.Path,TEXT("different resolved handle"));
+        auto Receipt=MakeShared<FJsonObject>();Receipt->SetStringField(TEXT("instance"),N->GetPathName());Receipt->SetStringField(TEXT("source_blueprint"),S.OwnerPath);Receipt->SetStringField(TEXT("source_graph"),S.Path);Receipt->SetStringField(TEXT("source_guid"),Id.ToString());Receipt->SetBoolField(TEXT("lookup_cache_null"),NullCache);R.Data->SetObjectField(TEXT("own_macro_last_observed_reference"),Receipt);return true;
+    }
+    bool Current()
+    {
+        if(!Active)return true;if(Stopped||!SourceCurrent())return false;
+        if(ProtectedBefore){TSharedRef<FJsonObject> Now=MakeShared<FJsonObject>();if(!Capture(Blueprint.Get(),TEXT("own_macro_current"),R,Now)||!Protected(ProtectedBefore.ToSharedRef(),Now,TargetId,R))return Bad(TEXT("Other authored graphs/member declarations changed across the macro paste boundary."));}
+        if(!Adopted)return ExternalCurrent();
+        TMap<FString,UEdGraphPin*> Ports;
+        for(const auto& H:Nodes)
+        {
+            auto* N=H.Node.Get();const auto& O=Plans[H.Plan];if(!Target->Nodes.Contains(N)||!Loaded(N)||N->GetOuter()!=Target.Get()||N->GetClass()!=MacroClass.Get()||N->GetDesiredEnabledState()!=ENodeEnabledState::Enabled||N->Pins.Num()!=O.Ports.Num()||!ActualReference(N,Sources[O.Source]))return Bad(TEXT("Imported macro node/port/reference role changed."),GetPathNameSafe(N));
+            for(const TCHAR* Key:{TEXT("NodePosX"),TEXT("NodePosY")})if(const auto* V=O.Fields.Find(Key)){int32 Expected=0;LexTryParseString(Expected,**V);const int32 Actual=FCString::Strcmp(Key,TEXT("NodePosX"))==0?N->NodePosX:N->NodePosY;if(Actual!=Expected)return Bad(TEXT("Imported macro authored position differs."),N->GetPathName(),Key,LexToString(Expected),LexToString(Actual));}
+            if(const auto* V=O.Fields.Find(TEXT("NodeComment")))if(!N->NodeComment.Equals(U(*V),ESearchCase::CaseSensitive))return Bad(TEXT("Imported macro authored comment differs."),N->GetPathName(),TEXT("NodeComment"),U(*V),N->NodeComment);
+            for(const TCHAR* Key:{TEXT("bCommentBubbleVisible"),TEXT("bCommentBubblePinned"),TEXT("bCanRenameNode")})if(const auto* V=O.Fields.Find(Key)){bool Expected=false;FCollapsedTextPlan::Boolean(*V,Expected);auto* F=FindFProperty<FBoolProperty>(UEdGraphNode::StaticClass(),Key);if(!F||F->GetOwnerStruct()!=UEdGraphNode::StaticClass()||F->HasSetterOrGetter()||F->GetPropertyValue_InContainer(N)!=Expected)return Bad(TEXT("Imported macro authored Boolean annotation differs."),N->GetPathName(),Key,*V);}
+            for(auto* P:N->Pins)
+            {
+                if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||!P->PinId.IsValid()||P->ParentPin||!P->SubPins.IsEmpty()||!P->DefaultObject.IsResolved()||P->DefaultObject.Get()||!P->DefaultTextValue.IsEmpty()||P->bOrphanedPin||P->bNotConnectable)return Bad(TEXT("Imported macro logical pin is not current."),N->GetPathName());
+                const auto* E=O.Ports.FindByPredicate([&](const FPort& V){return V.Name==P->PinName&&V.Direction==P->Direction;});const FString Key=LexToString(H.Plan)+TEXT(":")+P->PinName.ToString()+TEXT(":")+LexToString(static_cast<int32>(P->Direction));
+                if(!E||Ports.Contains(Key)||!SameType(P->PinType,E->Type)||(E->HasRaw&&!P->DefaultValue.Equals(E->Raw,ESearchCase::CaseSensitive)))return Bad(TEXT("Imported macro logical port/type/authored default differs after PostPaste/Reconstruct."),N->GetPathName(),P->PinName.ToString(),E?E->Raw:TEXT("known source port"),P->DefaultValue);Ports.Add(Key,P);
+            }
+        }
+        for(const auto& H:Nodes)for(const auto& E:Plans[H.Plan].Ports)
+        {
+            auto* P=Ports.FindRef(LexToString(H.Plan)+TEXT(":")+E.Name.ToString()+TEXT(":")+LexToString(static_cast<int32>(E.Direction)));if(!P||P->LinkedTo.Num()!=E.Links.Num())return Bad(TEXT("Imported macro logical link count differs."));
+            for(const FString& L:E.Links){FString Name,Id;L.Split(TEXT(" "),&Name,&Id);FGuid Guid;FGuid::Parse(Id.TrimStartAndEnd(),Guid);const int32 Peer=Plans.IndexOfByPredicate([&](const FPlan& V){return V.Name==Name;});const auto* Q=Peer==INDEX_NONE?nullptr:Plans[Peer].Ports.FindByPredicate([&](const FPort& V){return V.Id==Guid;});auto* Actual=Q?Ports.FindRef(LexToString(Peer)+TEXT(":")+Q->Name.ToString()+TEXT(":")+LexToString(static_cast<int32>(Q->Direction))):nullptr;if(!Actual||!P->LinkedTo.Contains(Actual)||!Actual->LinkedTo.Contains(P))return Bad(TEXT("Imported macro reciprocal logical edge differs."));}
+        }
+        R.Data->SetBoolField(TEXT("own_macro_actual_logical_ports_verified"),true);return ExternalCurrent();
+    }
+    bool ParsePort(const FString& Text,FPlan& O)
+    {
+        TMap<FString,FString> M;if(O.Ports.Num()>=64||!FCollapsedTextPlan::Map(Text,M))return Bad(TEXT("Bounded unambiguous macro pin tuple required."));FPort P;P.Name=FName(*U(M.FindRef(TEXT("PinName"))));const FString Direction=U(M.FindRef(TEXT("Direction")));
+        if(P.Name.IsNone()||!FGuid::Parse(M.FindRef(TEXT("PinId")),P.Id)||!P.Id.IsValid()||(!Direction.IsEmpty()&&Direction!=TEXT("EGPD_Input")&&Direction!=TEXT("EGPD_Output")))return Bad(TEXT("Macro source logical pin/GUID/direction invalid."));P.Direction=Direction==TEXT("EGPD_Output")?EGPD_Output:EGPD_Input;
+        const bool Exec=U(M.FindRef(TEXT("PinType.PinCategory")))==TEXT("exec");auto Type=M;if(Type.FindRef(TEXT("PinType.PinSubCategoryMemberReference"))==TEXT("()"))Type.Remove(TEXT("PinType.PinSubCategoryMemberReference"));if(Exec)Type[TEXT("PinType.PinCategory")]=TEXT("\"bool\"");if(!FSelectKnotImport::Type(Type,P.Type,TEXT("PinType.")))return Bad(TEXT("Primitive/exec/unsplit wildcard non-container macro ports required; wider types remain incomplete."));if(Exec)P.Type.PinCategory=UEdGraphSchema_K2::PC_Exec;if(!Primitive(P.Type))return Bad(TEXT("Unsupported macro pin type."));
+        for(const auto& Pair:M)
+        {
+            const auto& K=Pair.Key;const FString V=U(Pair.Value);if(K==TEXT("PinId")||K==TEXT("PinName")||K==TEXT("Direction")||K.StartsWith(TEXT("PinType.")))continue;
+            if(K==TEXT("DefaultValue")){P.HasRaw=true;P.Raw=V;continue;}if(K==TEXT("AutogeneratedDefaultValue")){P.HasAuto=true;P.Auto=V;continue;}
+            if(K==TEXT("LinkedTo")){if(!FCollapsedTextPlan::Pieces(Pair.Value,P.Links)||P.Links.Num()>16)return Bad(TEXT("Bounded closed macro links required."));TSet<FString> SeenLinks;for(const auto& Link:P.Links){if(SeenLinks.Contains(Link))return Bad(TEXT("Duplicate serialized macro peer links are not admitted."));SeenLinks.Add(Link);}continue;}
+            if(K==TEXT("PersistentGuid")){FGuid G;if(FGuid::Parse(V,G)&&!G.IsValid())continue;}
+            if(K==TEXT("DefaultObject")&&(V.IsEmpty()||V==TEXT("None")))continue;
+            if(K==TEXT("bDefaultValueIsIgnored")||K==TEXT("bDefaultValueIsReadOnly")||K==TEXT("bAdvancedView")){bool B;if(FCollapsedTextPlan::Boolean(V,B))continue;}
+            if(K==TEXT("bHidden")||K==TEXT("bOrphanedPin")||K==TEXT("bNotConnectable")){if(V==TEXT("False"))continue;}
+            return Bad(TEXT("Additional serialized macro pin fields remain incomplete."),O.Name,K);
+        }
+        if(P.Raw.Len()>4096||P.Auto.Len()>4096||O.Ports.ContainsByPredicate([&](const FPort& E){return E.Id==P.Id||(E.Name==P.Name&&E.Direction==P.Direction);}))return Bad(TEXT("Ambiguous/beyond-bound macro logical pin."));O.Ports.Add(MoveTemp(P));return true;
+    }
+    static bool ObjectPath(const FString& Text,const TCHAR* Short,const TCHAR* Long,FString& Out)
+    {
+        FString S=U(Text);if(S==TEXT("None")){Out.Reset();return true;}int32 Quote=S.Find(TEXT("'"));if(Quote==INDEX_NONE||!S.EndsWith(TEXT("'")))return false;const FString C=S.Left(Quote);if(C!=Short&&C!=Long)return false;Out=FPackageName::ExportTextPathToObjectPath(S);Out.TrimQuotesInline();return Out.StartsWith(TEXT("/"))&&ReferenceGuard(Out);
+    }
+    bool Admit(UBlueprint* BP,UEdGraph* G,const FString& S,FString& AdmissionText)
+    {
+        AdmissionText=S;const TCHAR* Scan=*S;FString L;while(FParse::Line(&Scan,L)){FString C;if(L.TrimStartAndEnd().StartsWith(TEXT("Begin Object "))&&FParse::Value(*L,TEXT("Class="),C)&&C==TEXT("/Script/BlueprintGraph.K2Node_MacroInstance")){Active=true;break;}}
+        if(!Active)return true;
+        if(!BP->ParentClass.GetGCPtr().IsResolved())return Bad(TEXT("Own macro parent class must already be resolved; no source resolution."));Blueprint.Reset(BP);Target.Reset(G);Parent.Reset(BP->ParentClass.Get());Package.Reset(BP->GetPackage());BPPath=BP->GetPathName();TargetPath=G->GetPathName();TargetId=G->GraphGuid;
+        if(BP->GetClass()!=UBlueprint::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||BP->MacroGraphs.Num()>8||G->GetOuter()!=BP||!BindSchema())return Bad(TEXT("Existing ordinary Blueprint target and finite already-loaded macro source required; generated/library targets remain incomplete."));
+        for(const auto& Slot:BP->MacroGraphs){if(!Slot.IsResolved()||!Loaded(Slot.Get()))return Bad(TEXT("Own macro graph slots must already be loaded/resolved."));MacroSlots.Add(Slot.Get());}
+        const TCHAR* Stream=*S;int32 CurrentPlan=INDEX_NONE;AdmissionText.Reset();
+        while(FParse::Line(&Stream,L))
+        {
+            FString T=L.TrimStartAndEnd();if(T.IsEmpty())continue;
+            if(T.StartsWith(TEXT("Begin Object ")))
+            {
+                FString C,N;if(CurrentPlan!=INDEX_NONE||Plans.Num()>=16||!FParse::Value(*T,TEXT("Class="),C)||C!=TEXT("/Script/BlueprintGraph.K2Node_MacroInstance")||!FParse::Value(*T,TEXT("Name="),N)||!FCollapsedTextPlan::Name(N)||Plans.ContainsByPredicate([&](const FPlan& P){return P.Name==N;}))return Bad(TEXT("First own-macro import admits only complete flat stock MacroInstance blocks; mixed or nested clipboard forms remain incomplete."));FPlan O;O.Name=N;CurrentPlan=Plans.Add(MoveTemp(O));
+            }
+            else if(T==TEXT("End Object")){if(CurrentPlan==INDEX_NONE)return Bad(TEXT("Unbalanced macro node block."));CurrentPlan=INDEX_NONE;}
+            else
+            {
+                if(CurrentPlan==INDEX_NONE)return Bad(TEXT("Unexpected text outside macro node blocks."));auto& O=Plans[CurrentPlan];
+                if(T.StartsWith(TEXT("CustomProperties Pin "))){if(!ParsePort(T.Mid(21).TrimStartAndEnd(),O))return false;}
+                else
+                {
+                    FString K,V;if(!T.Split(TEXT("="),&K,&V)||O.Fields.Contains(K))return Bad(TEXT("Duplicate/unsupported macro field."));O.Fields.Add(K,V);
+                    if(K==TEXT("MacroGraphReference")){O.Reference=V;AdmissionText+=TEXT("MacroGraphReference=()\n");continue;}
+                    if(K==TEXT("ResolvedWildcardType")){TMap<FString,FString> Type;FEdGraphPinType Ignore;if(!FCollapsedTextPlan::Map(V,Type))return Bad(TEXT("Unambiguous resolved wildcard cache tuple required."));if(!Type.IsEmpty()){if(Type.FindRef(TEXT("PinSubCategoryMemberReference"))==TEXT("()"))Type.Remove(TEXT("PinSubCategoryMemberReference"));const FString Category=U(Type.FindRef(TEXT("PinCategory")));if(Category.IsEmpty()||Category==TEXT("None"))Type.Add(TEXT("PinCategory"),TEXT("\"wildcard\""));if(!FSelectKnotImport::Type(Type,Ignore,TEXT("")))return Bad(TEXT("Only no-reference primitive resolved wildcard cache is admitted; cache is not a preservation invariant."));}}
+                    else if(K==TEXT("MacroGraph")||K==TEXT("MacroGraph_DEPRECATED")){if(U(V)!=TEXT("None"))return Bad(TEXT("Legacy nonempty macro-reference cache input remains incomplete."));}
+                    else if(K==TEXT("NodeGuid")){if(!FGuid::Parse(V,O.Id)||!O.Id.IsValid())return Bad(TEXT("Valid source macro NodeGuid required."));}
+                    else if(K==TEXT("NodePosX")||K==TEXT("NodePosY")){int32 X;if(!LexTryParseString(X,*V))return Bad(TEXT("Bounded int32 macro node position required."));}
+                    else if(K==TEXT("NodeComment")){if(U(V).Len()>65536)return Bad(TEXT("Macro node comment bound exceeded."));}
+                    else if(K==TEXT("bCommentBubbleVisible")||K==TEXT("bCommentBubblePinned")||K==TEXT("bCanRenameNode")){bool B;if(!FCollapsedTextPlan::Boolean(V,B))return Bad(TEXT("Exact Boolean macro annotation field required."));}
+                    else if(K==TEXT("EnabledState")){if(V!=TEXT("Enabled"))return Bad(TEXT("Disabled/development-only macro node states remain incomplete."));}
+                    else if(K==TEXT("AdvancedPinDisplay")){if(V!=TEXT("NoPins")&&V!=TEXT("Hidden")&&V!=TEXT("Shown"))return Bad(TEXT("Unknown stock pin display state."));}
+                    else return Bad(TEXT("Additional authored or compiler-cache macro fields remain incomplete."),O.Name,K);
+                }
+            }
+            AdmissionText+=L+TEXT("\n");
+        }
+        if(CurrentPlan!=INDEX_NONE||Plans.IsEmpty()||!Base())return Bad(TEXT("Complete macro blocks and current source required."));
+        FIndex I;if(!Index(BP,I,R))return Bad(TEXT("Source graph inventory could not be captured."));
+        for(auto& O:Plans)
+        {
+            if(!O.Id.IsValid()||Plans.FilterByPredicate([&](const FPlan& P){return P.Id==O.Id;}).Num()!=1||O.Reference.IsEmpty())return Bad(TEXT("Unique source macro node GUID and explicit graph reference required."));TMap<FString,FString> Ref;if(!FCollapsedTextPlan::Map(O.Reference,Ref)||(Ref.Num()!=2&&Ref.Num()!=3)||!Ref.Contains(TEXT("GraphBlueprint"))||!Ref.Contains(TEXT("GraphGuid"))||(Ref.Num()==3&&!Ref.Contains(TEXT("MacroGraph"))))return Bad(TEXT("Exact Blueprint/GUID reference with optional nullable graph lookup cache required."));
+            FString GraphPath,OwnerPath;FGuid Id;if(!ObjectPath(Ref.Contains(TEXT("MacroGraph"))?Ref[TEXT("MacroGraph")]:FString(TEXT("None")),TEXT("EdGraph"),TEXT("/Script/Engine.EdGraph"),GraphPath)||!ObjectPath(Ref[TEXT("GraphBlueprint")],TEXT("Blueprint"),TEXT("/Script/Engine.Blueprint"),OwnerPath)||!FGuid::Parse(Ref[TEXT("GraphGuid")],Id)||!Id.IsValid())return Bad(TEXT("Loaded source Blueprint and a valid owned macro graph GUID required."));
+            const bool External=!OwnerPath.Equals(BPPath,ESearchCase::CaseSensitive);auto* Owner=External?FindObject<UBlueprint>(nullptr,*OwnerPath):BP;TStrongObjectPtr<UBlueprint> KeepOwner(Owner);if(!Loaded(Owner)||Owner->GetClass()!=UBlueprint::StaticClass())return Bad(TEXT("Source Blueprint must already be resident; no load or fallback follows."),OwnerPath);auto* OwnerPackage=Owner->GetPackage();TStrongObjectPtr<UPackage> KeepPackage(OwnerPackage);TArray<TStrongObjectPtr<UEdGraph>> SourceGraphs;
+            if(External&&(OwnerPackage==Package.Get()||Owner->GetOuter()!=OwnerPackage||Owner->BlueprintType!=BPTYPE_MacroLibrary||!OwnerPackage->GetName().StartsWith(TEXT("/Game/"))||!ReferenceGuard(OwnerPath)||!Owner->ParentClass.GetGCPtr().IsResolved()||Owner->MacroGraphs.IsEmpty()||Owner->MacroGraphs.Num()>8))return Bad(TEXT("External source requires a distinct saved resident finite native Object/Actor MacroLibrary."),OwnerPath);
+            for(const auto& Slot:Owner->MacroGraphs){if(!Slot.IsResolved())return Bad(TEXT("Source graph handle unresolved; no tracked read/resolve follows."));auto* M=static_cast<UEdGraph*>(StaticFindObject(UEdGraph::StaticClass(),nullptr,*Slot.GetPathName(),true));TStrongObjectPtr<UEdGraph> Hold(M);if(!Loaded(M)||Slot.GetHandle()!=TObjectPtr<UEdGraph>(M).GetHandle()||M->GetOuter()!=Owner||M->GetClass()!=UEdGraph::StaticClass())return Bad(TEXT("Source graph resident identity/owner differs."),OwnerPath);SourceGraphs.Add(MoveTemp(Hold));}
+            UEdGraph* M=nullptr;for(const auto& Held:SourceGraphs)if(Held->GraphGuid==Id){if(M)return Bad(TEXT("Source macro GUID ambiguous."));M=Held.Get();}
+            if(!M||M==G||(!GraphPath.IsEmpty()&&!GraphPath.Equals(M->GetPathName(),ESearchCase::CaseSensitive))||!M->SubGraphs.IsEmpty()||M->Nodes.Num()>128)return Bad(TEXT("Referenced source requires a distinct existing flat macro graph; deeper variants remain incomplete."));
+            O.Source=Sources.IndexOfByPredicate([&](const FSource& V){return V.Graph.Get()==M;});
+            if(O.Source==INDEX_NONE)
+            {
+                FSource V;V.External=External;V.Owner.Reset(Owner);V.OwnerPackage.Reset(OwnerPackage);V.OwnerPath=OwnerPath;V.PackagePath=OwnerPackage->GetName();V.MacroGraphs=MoveTemp(SourceGraphs);V.Graph.Reset(M);V.Guid=Id;V.Path=M->GetPathName();
+                if(External){const auto ParentSlot=Owner->ParentClass.GetGCPtr();auto* Native=static_cast<UClass*>(StaticFindObject(UClass::StaticClass(),nullptr,*ParentSlot.GetPathName(),true));V.NativeParent.Reset(Native);if((Native!=UObject::StaticClass()&&Native!=AActor::StaticClass())||ParentSlot.GetHandle()!=TObjectPtr<UClass>(Native).GetHandle())return Bad(TEXT("External source parent must already be exact native Object or Actor."),OwnerPath);}
+                for(const auto& Slot:M->Nodes){if(!Slot.IsResolved())return Bad(TEXT("Source node handle unresolved; no getter follows."));auto* N=static_cast<UEdGraphNode*>(StaticFindObject(UEdGraphNode::StaticClass(),nullptr,*Slot.GetPathName(),false));TStrongObjectPtr<UEdGraphNode> Hold(N);if(!Loaded(N)||Slot.GetHandle()!=TObjectPtr<UEdGraphNode>(N).GetHandle()||N->GetOuter()!=M||!N->NodeGuid.IsValid()||V.NodeIds.Contains(N->NodeGuid))return Bad(TEXT("Source node resident identity/owner/GUID differs."));V.Slots.Add(N);V.NodeIds.Add(N->NodeGuid);V.NodeClasses.Add(N->GetClass());V.Nodes.Add(MoveTemp(Hold));}
+                O.Source=Sources.Add(MoveTemp(V));auto& Source=Sources[O.Source];if(External){if(!ExternalProjection(Source,Source.Projection))return false;Source.BaselineEstablished=true;if(!FPackageName::DoesPackageExist(Source.PackagePath,&Source.File))return Bad(TEXT("External source has no saved package file."),OwnerPath);Source.FileBytes=IFileManager::Get().FileSize(*Source.File);if(Source.FileBytes<=0||Source.FileBytes>67108864)return Bad(TEXT("External saved source file bound exceeded."),Source.File);const FMD5Hash InitialHash=FMD5Hash::HashFile(*Source.File);if(!InitialHash.IsValid())return Bad(TEXT("External source file hash read failed."),Source.File);Source.FileHash=LexToString(InitialHash);if(!ExternalCurrent())return false;}else if(!GraphProjection(Source,I,Source.Projection))return false;
+            }
+            TArray<UEdGraphPin*> SourcePorts;int32 Tunnels=0;for(const auto& Held:Sources[O.Source].Nodes){auto* N=Held.Get();if(N->GetClass()!=UK2Node_Tunnel::StaticClass())continue;++Tunnels;for(auto* P:N->Pins)SourcePorts.Add(P);}if(Tunnels!=2||SourcePorts.Num()!=O.Ports.Num()||SourcePorts.Num()>64)return Bad(TEXT("Two exact source tunnel gateways and matching complete instance port inventory required."));
+            for(auto& P:O.Ports){UEdGraphPin** Match=SourcePorts.FindByPredicate([&](const UEdGraphPin* Q){return Q->PinName==P.Name&&Q->Direction!=P.Direction;});if(!Match||!SameType((*Match)->PinType,P.Type))return Bad(TEXT("Serialized macro logical ports/types differ from actual own tunnel ports."),O.Name,P.Name.ToString());if(!P.HasRaw&&P.Direction==EGPD_Input&&P.Type.PinCategory!=UEdGraphSchema_K2::PC_Exec){P.HasRaw=true;P.Raw=External?(*Match)->DefaultValue:(*Match)->GetDefaultAsString();}if(P.Type.PinCategory==UEdGraphSchema_K2::PC_Wildcard&&!P.Links.IsEmpty())return Bad(TEXT("Connected wildcard inference and concrete serialized wildcard specializations remain incomplete."));}
+        }
+        for(const auto& O:Plans)for(const auto& P:O.Ports)for(const auto& PeerLink:P.Links)
+        {
+            FString N,PeerGuidText;FGuid Id;if(!PeerLink.Split(TEXT(" "),&N,&PeerGuidText)||!FGuid::Parse(PeerGuidText.TrimStartAndEnd(),Id))return Bad(TEXT("Closed canonical macro peer link required."));const auto* Peer=Plans.FindByPredicate([&](const FPlan& P){return P.Name==N;});const auto* Q=Peer?Peer->Ports.FindByPredicate([&](const FPort& V){return V.Id==Id;}):nullptr;
+            if(!Q||Peer==&O||Q->Direction==P.Direction||!SameType(P.Type,Q->Type)||!Q->Links.Contains(O.Name+TEXT(" ")+P.Id.ToString(EGuidFormats::Digits)))return Bad(TEXT("Original macro clipboard links must be closed, reciprocal and exactly typed."));
+        }
+        TSharedRef<FJsonObject> ProtectedState=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("own_macro_source_before"),R,ProtectedState))return false;ProtectedBefore=ProtectedState;
+        R.Data->SetStringField(TEXT("own_macro_scope"),TEXT("Original generic importer, same ordinary Blueprint's own macros or an already-loaded saved-clean distinct exact MacroLibrary with native Object/Actor parent and flat stock Tunnel/Branch/Sequence/Knot macros, exact source Blueprint/GUID plus nullable graph cache roles, primitive/exec logical ports and unlinked wildcards. MacroGraph lookup cache, ResolvedWildcardType, physical pin address/order and reconstruction caches are not frozen. Other source owners/cold loads, mixed node clipboard, nested/latent/custom bodies, containers/object/text pins, linked wildcard inference and full original/runtime parity remain incomplete; actual paste/compiler/save usage pending."));R.Data->SetNumberField(TEXT("own_macro_planned_nodes"),Plans.Num());R.Data->SetBoolField(TEXT("own_macro_references_prevalidated"),true);return Current();
+    }
+    bool Adopt(UEdGraph* G,const TSet<UEdGraphNode*>& Imported)
+    {
+        if(!Active)return true;if(!Current()||G!=Target.Get())return false;TSet<int32> Seen;
+        for(auto* N:Imported)
+        {
+            if(!G->Nodes.Contains(N)||!Loaded(N)||N->GetOuter()!=G||N->GetClass()!=MacroClass.Get())return Bad(TEXT("Returned imported macro object is not in the current selected owner graph."));const int32 P=Plans.IndexOfByPredicate([&](const FPlan& O){return O.Id==N->NodeGuid;});if(P==INDEX_NONE||Seen.Contains(P))return Bad(TEXT("Returned macro nodes do not cover unique original source GUIDs."));Seen.Add(P);FHeld H;H.Node.Reset(static_cast<UK2Node_MacroInstance*>(N));H.Plan=P;Nodes.Add(MoveTemp(H));
+        }
+        if(Seen.Num()!=Plans.Num())return Bad(TEXT("Returned macro node count differs from the admitted source."));Adopted=true;return Current();
+    }
+};
+
 bool CollapsedTypeSame(const FEdGraphPinType& A,const FEdGraphPinType& B)
 {
     return A==B&&A.bIsUObjectWrapper==B.bIsUObjectWrapper&&A.bSerializeAsSinglePrecisionFloat==B.bSerializeAsSinglePrecisionFloat
@@ -631,7 +1488,7 @@ struct FCollapsedTarget
     USCS_Node* RootNode=nullptr;USceneComponent* RootTemplate=nullptr;FGuid RootGuid;FName RootName;FTransform RootRelative;EComponentMobility::Type RootMobility;
     UEdGraph* Selected=nullptr;UK2Node_Composite* Composite=nullptr;UEdGraph* Bound=nullptr;
     UClass* ReturnedEditorClass=nullptr;UClass* ReturnedWorldClass=nullptr;
-    bool Stopped=false,Acquired=false,Rebinding=false;TArray<FNode> Candidate;TArray<UEdGraphNode*> ExpectedAdded;
+    bool LogicalPinOrder=false;bool Stopped=false,Acquired=false,Rebinding=false;TArray<FNode> Candidate;TArray<UEdGraphNode*> ExpectedAdded;
     explicit FCollapsedTarget(FResult& In):R(In) {}
     void Hold(UObject* O) { if(O) { Holds.Emplace(O); } }
     bool Bad(const TCHAR* Why,const FString& Object=FString())
@@ -667,12 +1524,12 @@ struct FCollapsedTarget
     }
     bool PinCopy(UEdGraphNode* N,TArray<FPin>& Out)
     {
-        if(N->Pins.Num()>128) { return Bad(TEXT("pin_bound")); }TSet<UEdGraphPin*> Unique;
+        if(N->Pins.Num()>128) { return Bad(TEXT("pin_bound")); }TSet<UEdGraphPin*> Unique;TSet<FGuid> LogicalIds;
         for(UEdGraphPin* P:N->Pins)
         {
             if(!P||Unique.Contains(P)||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||!P->PinId.IsValid()||P->ParentPin||!P->SubPins.IsEmpty()||P->IsSnapped()
                 ||!P->DefaultObject.IsResolved()) { return Bad(TEXT("owning_pin_role")); }
-            Unique.Add(P);FPin V;V.Address=P;V.Id=P->PinId;V.Name=P->PinName;V.Direction=P->Direction;V.Type=P->PinType;V.Raw=P->DefaultValue;V.Auto=P->AutogeneratedDefaultValue;
+            if(LogicalPinOrder&&LogicalIds.Contains(P->PinId))return Bad(TEXT("duplicate_logical_pin_guid"));LogicalIds.Add(P->PinId);Unique.Add(P);FPin V;V.Address=P;V.Id=P->PinId;V.Name=P->PinName;V.Direction=P->Direction;V.Type=P->PinType;V.Raw=P->DefaultValue;V.Auto=P->AutogeneratedDefaultValue;
             V.Text=P->DefaultTextValue;V.Friendly=P->PinFriendlyName;V.Default=P->DefaultObject.Get();Hold(V.Default);Hold(V.Type.PinSubCategoryObject.Get());Hold(V.Type.PinValueType.TerminalSubCategoryObject.Get());
             V.Links=P->LinkedTo;V.Bits=Bits(P);Out.Add(MoveTemp(V));
         }
@@ -713,7 +1570,7 @@ struct FCollapsedTarget
         auto* N=V.Object;if(N->Pins.Num()!=Pins.Num()) { return Bad(TEXT("pin_inventory"),V.Path); }
         for(int32 I=0;I<Pins.Num();++I)
         {
-            const auto& E=Pins[I];if(N->Pins[I]!=E.Address) { return Bad(TEXT("pin_slot"),V.Path); }const auto* P=E.Address;
+            const auto& E=Pins[I];if(LogicalPinOrder?!N->Pins.Contains(E.Address):N->Pins[I]!=E.Address) { return Bad(TEXT("pin_slot"),V.Path); }const auto* P=E.Address;
             if(P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||P->PinId!=E.Id||P->PinName!=E.Name||P->Direction!=E.Direction||!CollapsedTypeSame(P->PinType,E.Type)
                 ||P->ParentPin||!P->SubPins.IsEmpty()||P->IsSnapped()||Bits(P)!=E.Bits||!P->DefaultValue.Equals(E.Raw,ESearchCase::CaseSensitive)||!P->AutogeneratedDefaultValue.Equals(E.Auto,ESearchCase::CaseSensitive)
                 ||!P->DefaultObject.IsResolved()||P->DefaultObject.Get()!=E.Default||P->LinkedTo!=E.Links
@@ -978,8 +1835,8 @@ struct FCollapsedTarget
             const auto& E=Nodes[I];auto& A=Candidate[I];if(A.Pins.Num()!=E.Pins.Num()) { return Bad(TEXT("reconstructed_pin_count")); }
             for(int32 J=0;J<E.Pins.Num();++J)
             {
-                const auto& P=E.Pins[J];auto& Q=A.Pins[J];const FText Copy=Q.Text;Q.TextDisplay=Copy.ToString();if(!Plain()) { return false; }const FText Friendly=Q.Friendly;Q.FriendlyDisplay=Friendly.ToString();if(!Plain()) { return false; }
-                if(Q.Id!=P.Id||Q.Name!=P.Name||Q.Direction!=P.Direction||!CollapsedTypeSame(Q.Type,P.Type)||Q.Default!=P.Default||Q.Bits!=P.Bits||Q.LinkIds!=P.LinkIds
+                const auto& P=E.Pins[J];auto* Match=LogicalPinOrder?A.Pins.FindByPredicate([&](const FPin& V){return V.Id==P.Id&&V.Name==P.Name&&V.Direction==P.Direction;}):&A.Pins[J];if(!Match)return Bad(TEXT("reconstructed_logical_pin_missing"),E.Path);auto& Q=*Match;const FText Copy=Q.Text;Q.TextDisplay=Copy.ToString();if(!Plain()) { return false; }const FText Friendly=Q.Friendly;Q.FriendlyDisplay=Friendly.ToString();if(!Plain()) { return false; }
+                if(Q.Id!=P.Id||Q.Name!=P.Name||Q.Direction!=P.Direction||!CollapsedTypeSame(Q.Type,P.Type)||Q.Default!=P.Default||Q.Bits!=P.Bits||(LogicalPinOrder?(Q.LinkIds.Num()!=P.LinkIds.Num()||Q.LinkIds.ContainsByPredicate([&](const FString& L){return !P.LinkIds.Contains(L);})):Q.LinkIds!=P.LinkIds)
                     ||!Q.Raw.Equals(P.Raw,ESearchCase::CaseSensitive)||!Q.Auto.Equals(P.Auto,ESearchCase::CaseSensitive)||!Q.TextDisplay.Equals(P.TextDisplay,ESearchCase::CaseSensitive)||FTextInspector::GetFlags(Q.Text)!=FTextInspector::GetFlags(P.Text)||!Q.FriendlyDisplay.Equals(P.FriendlyDisplay,ESearchCase::CaseSensitive)||FTextInspector::GetFlags(Q.Friendly)!=FTextInspector::GetFlags(P.Friendly)) { return Bad(TEXT("reconstructed_logical_pin"),E.Path); }
             }
         }
@@ -1165,7 +2022,67 @@ struct FTITimelineText
 {
     FString Name,TimelineName,Comment;FGuid NodeGuid,Selector;int32 X=0,Y=0;bool Visible=false,Pinned=false;
     TArray<TMap<FString,FString>> Pins;
+    FCollapsedObjectPlan TimelinePlan;TArray<FCollapsedObjectPlan> Companions;
+    static FString PinKey(const FString& Node,const FGuid& Id){return Node+TEXT(":")+Id.ToString();}
+    static bool LinkKey(const FString& Link,FString& Out)
+    {TArray<FString> Parts;Link.ParseIntoArrayWS(Parts);FGuid Id;if(Parts.Num()!=2||!FCollapsedTextPlan::Name(Parts[0])||!FGuid::Parse(Parts[1],Id)||!Id.IsValid())return false;Out=PinKey(Parts[0],Id);return true;}
+    bool ClosedLinks(FResult& R)
+    {
+        TMap<FString,const FCollapsedPinPlan*> Index;TArray<const FCollapsedObjectPlan*> Objects{&TimelinePlan};for(const auto& O:Companions)Objects.Add(&O);
+        TSet<FString> NodeNames;TSet<FGuid> NodeIds;
+        for(const auto* O:Objects)
+        {
+            if(NodeNames.Contains(O->Name)||NodeIds.Contains(O->Guid))return Fail(R,TEXT("timeline_clipboard_identity_pending"),TEXT("Unique copied node names/GUIDs required."));NodeNames.Add(O->Name);NodeIds.Add(O->Guid);TSet<FName> Names;
+            for(const auto& P:O->Pins){const FString K=PinKey(O->Name,P.Id);if(!P.Id.IsValid()||Names.Contains(FName(*P.Name))||Index.Contains(K))return Fail(R,TEXT("timeline_clipboard_pin_pending"),TEXT("Unique copied pin names/GUIDs required."));Names.Add(FName(*P.Name));Index.Add(K,&P);}
+        }
+        for(const auto* O:Objects)for(const auto& P:O->Pins)
+        {
+            if(P.Links.Num()>64||((P.Category==TEXT("exec")&&P.Direction==EGPD_Output)||(P.Category!=TEXT("exec")&&P.Direction==EGPD_Input))&&P.Links.Num()>1)return Fail(R,TEXT("timeline_clipboard_link_pending"),TEXT("Bounded stock exec/scalar fanout required."));
+            TSet<FString> Seen;for(const auto& L:P.Links)
+            {
+                FString K;if(!LinkKey(L,K)||Seen.Contains(K))return Fail(R,TEXT("timeline_clipboard_link_pending"),TEXT("Canonical unique clipboard peer references required."));Seen.Add(K);const auto* Slot=Index.Find(K);const auto* Q=Slot?*Slot:nullptr;
+                if(!Q||Q==&P||Q->Direction==P.Direction||Q->Category!=P.Category||Q->SubCategory!=P.SubCategory||Q->TypeObject!=P.TypeObject)return Fail(R,TEXT("timeline_clipboard_link_pending"),TEXT("Closed internal reciprocal links with identical native pin types are required; external/dangling/implicit conversion variants remain incomplete."));
+                const FString Own=PinKey(O->Name,P.Id);int32 Back=0;for(const auto& B:Q->Links){FString Peer;if(!LinkKey(B,Peer))return Fail(R,TEXT("timeline_clipboard_link_pending"),TEXT("Invalid reciprocal clipboard peer."));if(Peer==Own)++Back;}if(Back!=1)return Fail(R,TEXT("timeline_clipboard_link_pending"),TEXT("Exact reciprocal clipboard links required before target/source lookup."));
+            }
+        }return true;
+    }
     bool Parse(const FString& S,FResult& R)
+    {
+        if(!Text(S,MaxText,R))return false;const TCHAR* Stream=*S;FString Line,Block,Class,NodeName;bool Open=false,TimelineSeen=false;TArray<FString> Bodies;
+        while(FParse::Line(&Stream,Line))
+        {
+            const FString L=Line.TrimStartAndEnd();if(L.IsEmpty())continue;
+            if(L.StartsWith(TEXT("Begin Object "),ESearchCase::CaseSensitive))
+            {
+                FString Export;if(Open||Bodies.Num()>=64||!FParse::Value(*L,TEXT("Class="),Class)||!FParse::Value(*L,TEXT("Name="),NodeName)||!FCollapsedTextPlan::Name(NodeName)||(Class!=TEXT("/Script/BlueprintGraph.K2Node_Timeline")&&Class!=TEXT("/Script/BlueprintGraph.K2Node_IfThenElse")&&Class!=TEXT("/Script/BlueprintGraph.K2Node_ExecutionSequence")))return Fail(R,TEXT("timeline_clipboard_text_pending"),TEXT("One Timeline with up to63 flat stock Branch/Sequence siblings is implemented; nested/custom/multiple Timeline variants remain incomplete."));
+                FString Header=TEXT("Begin Object Class=")+Class+TEXT(" Name=\"")+NodeName+TEXT("\"");if(FParse::Value(*L,TEXT("ExportPath="),Export))Header+=TEXT(" ExportPath=\"")+Export+TEXT("\"");if(Header!=L)return Fail(R,TEXT("timeline_clipboard_header_pending"),TEXT("Canonical Class/Name/optional ExportPath header required."));Open=true;Block=L+TEXT("\n");continue;
+            }
+            if(!Open)return Fail(R,TEXT("timeline_clipboard_text_pending"),TEXT("Clipboard fields must belong to flat declared nodes."));Block+=L+TEXT("\n");if(L!=TEXT("End Object"))continue;Open=false;
+            if(Class==TEXT("/Script/BlueprintGraph.K2Node_Timeline"))
+            {if(TimelineSeen)return Fail(R,TEXT("timeline_clipboard_text_pending"),TEXT("Exactly one Timeline is implemented; additional Timeline objects remain incomplete."));if(!ParseSingle(Block,R))return false;TimelineSeen=true;}
+            else
+            {
+                FCollapsedObjectPlan O;O.Name=NodeName;O.Class=Class;FCollapsedTextPlan Parser;const TCHAR* Body=*Block;FString Row;
+                while(FParse::Line(&Body,Row))
+                {
+                    if(Row.StartsWith(TEXT("Begin Object "))||Row==TEXT("End Object"))continue;
+                    if(Row.StartsWith(TEXT("CustomProperties Pin "))){if(O.Pins.Num()>=128||!Parser.Pin(Row.Mid(21),O,R,false))return false;continue;}
+                    FString K,V;if(!Row.Split(TEXT("="),&K,&V)||O.Fields.Contains(K)||(K!=TEXT("NodeGuid")&&K!=TEXT("NodePosX")&&K!=TEXT("NodePosY")&&K!=TEXT("NodeComment")&&K!=TEXT("bCommentBubbleVisible")&&K!=TEXT("bCommentBubblePinned")&&K!=TEXT("bCanRenameNode")&&K!=TEXT("ErrorType")))return Fail(R,TEXT("timeline_clipboard_stock_field_pending"),TEXT("Only bounded stock sibling authored node fields are implemented."));O.Fields.Add(K,V);
+                }
+                if(!FGuid::Parse(O.Fields.FindRef(TEXT("NodeGuid")),O.Guid)||!O.Guid.IsValid())return Fail(R,TEXT("timeline_clipboard_guid_pending"),TEXT("Valid sibling node GUID required."));O.Comment=FCollapsedTextPlan::Unquote(O.Fields.FindRef(TEXT("NodeComment")));
+                for(const TCHAR* K:{TEXT("NodePosX"),TEXT("NodePosY"),TEXT("ErrorType")})if(const auto* V=O.Fields.Find(K)){int32 N=0;if(!LexTryParseString(N,**V)||LexToString(N)!=*V)return Fail(R,TEXT("timeline_clipboard_integer_pending"),TEXT("Canonical stock int32 coordinate/error type required."));if(FString(K)==TEXT("NodePosX"))O.X=N;else if(FString(K)==TEXT("NodePosY"))O.Y=N;}
+                for(const TCHAR* K:{TEXT("bCommentBubbleVisible"),TEXT("bCommentBubblePinned"),TEXT("bCanRenameNode")})if(const auto* V=O.Fields.Find(K)){bool B=false;if(!FCollapsedTextPlan::Boolean(*V,B))return Fail(R,TEXT("timeline_clipboard_bool_pending"),TEXT("Canonical stock node bool required."));}
+                const bool Branch=Class==TEXT("/Script/BlueprintGraph.K2Node_IfThenElse");if((Branch&&O.Pins.Num()!=4)||(!Branch&&(O.Pins.Num()<3||O.Pins.Num()>65)))return Fail(R,TEXT("timeline_clipboard_stock_shape_pending"),TEXT("Stock Branch4 or Sequence execute/then_0..then_N required."));
+                TSet<FString> Names;for(const auto& P:O.Pins){const bool Condition=Branch&&P.Name==TEXT("Condition");const bool Input=Condition||P.Name==TEXT("execute");if(Names.Contains(P.Name)||P.Category!=(Condition?TEXT("bool"):TEXT("exec"))||!P.SubCategory.IsEmpty()||P.Direction!=(Input?EGPD_Input:EGPD_Output)||(Branch&&!Condition&&P.Name!=TEXT("execute")&&P.Name!=TEXT("then")&&P.Name!=TEXT("else")))return Fail(R,TEXT("timeline_clipboard_stock_shape_pending"),TEXT("Exact stock sibling named/type/direction pin roles required."));Names.Add(P.Name);}
+                if(!Names.Contains(TEXT("execute"))||(Branch&&(!Names.Contains(TEXT("Condition"))||!Names.Contains(TEXT("then"))||!Names.Contains(TEXT("else")))))return Fail(R,TEXT("timeline_clipboard_stock_shape_pending"),TEXT("Missing stock Branch/Sequence roles."));if(!Branch)for(int32 I=0;I<O.Pins.Num()-1;++I)if(!Names.Contains(TEXT("then_")+LexToString(I)))return Fail(R,TEXT("timeline_clipboard_stock_shape_pending"),TEXT("Contiguous Sequence then_N logical names required."));Companions.Add(MoveTemp(O));
+            }
+            Bodies.Add(Block);Block.Reset();
+        }
+        if(Open||!TimelineSeen)return Fail(R,TEXT("timeline_clipboard_text_pending"),TEXT("Balanced flat objects including one Timeline required."));TimelinePlan.Name=Name;TimelinePlan.Class=TEXT("/Script/BlueprintGraph.K2Node_Timeline");TimelinePlan.Guid=NodeGuid;TimelinePlan.X=X;TimelinePlan.Y=Y;TimelinePlan.Comment=Comment;
+        for(const auto& M:Pins){FCollapsedPinPlan P;P.Name=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("PinName")));if(!FCollapsedTextPlan::Name(P.Name)||!FGuid::Parse(M.FindRef(TEXT("PinId")),P.Id))return Fail(R,TEXT("timeline_clipboard_pin_pending"),TEXT("Valid Timeline pin name/GUID required."));P.Category=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("PinType.PinCategory")));P.SubCategory=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("PinType.PinSubCategory")));P.Direction=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("Direction")))==TEXT("EGPD_Output")?EGPD_Output:EGPD_Input;P.Raw=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("DefaultValue")));P.Auto=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("AutogeneratedDefaultValue")));P.TypeObject=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("PinType.PinSubCategoryObject")));if(P.TypeObject==TEXT("None"))P.TypeObject.Reset();if(M.Contains(TEXT("LinkedTo"))&&!FCollapsedTextPlan::Pieces(M.FindRef(TEXT("LinkedTo")),P.Links))return Fail(R,TEXT("timeline_clipboard_link_pending"),TEXT("Bounded closed Timeline links required."));TimelinePlan.Pins.Add(MoveTemp(P));}
+        return ClosedLinks(R);
+    }
+    bool ParseSingle(const FString& S,FResult& R)
     {
         if(!Text(S,MaxText,R))return false;bool Open=false,Closed=false;TMap<FString,FString> Fields;
         const TCHAR* Stream=*S;FString Line;
@@ -1202,6 +2119,11 @@ struct FTITimelineImport
     TStrongObjectPtr<UTimelineTemplate> Origin,Created;TStrongObjectPtr<UK2Node_Timeline> Pasted;
     TArray<TObjectPtr<UTimelineTemplate>> SourceSlots,SourceGenerated,SourceSkeleton;
     struct FObject{TStrongObjectPtr<UObject> Hold,Outer;TStrongObjectPtr<UClass> Class;FString Path;};
+    // PostPasteNode's no-loaded-GUID branch constructs from the existing native
+    // CDO, rather than duplicating an authored source Blueprint/template.
+    bool OriginChecked=false,MissingOrigin=false;FObject FallbackDefault;
+    TStrongObjectPtr<UClass> FallbackClass;TStrongObjectPtr<UPackage> FallbackPackage;
+    uint32 FallbackClassFlags=0,FallbackObjectFlags=0;bool FallbackPackageDirty=false;
     struct FSourceTemplate{FObject Role;FString Value;};TArray<FSourceTemplate> SourceTemplates;
     struct FSourceCurve{FObject Role;TStrongObjectPtr<UObject> Import;TStrongObjectPtr<UPackage> Package;FString Value;};TArray<FSourceCurve> SourceCurves;
     struct FDisk{TStrongObjectPtr<UPackage> Package;FString File;int64 Bytes=-1;FMD5Hash Hash;bool Dirty=false;};TArray<FDisk> Disks;
@@ -1280,7 +2202,8 @@ struct FTITimelineImport
     static uint32 NodeFlags(const UK2Node_Timeline* N){return uint32(N->bAutoPlay)|(uint32(N->bLoop)<<1)|(uint32(N->bReplicated)<<2)|(uint32(N->bIgnoreTimeDilation)<<3);}
     bool SourceCurrent(bool Files=false)
     {
-        if(!Context()||!Source.Plain())return false;auto* B=Source.BP.Get();if(B->Timelines!=SourceSlots||static_cast<UBlueprintGeneratedClass*>(Source.Generated.Get())->Timelines!=SourceGenerated||static_cast<UBlueprintGeneratedClass*>(Source.Skeleton.Get())->Timelines!=SourceSkeleton)return Bad(TEXT("readonly_timeline_inventory"),TEXT("captured Blueprint/Gen/Skel arrays"),TEXT("changed"));
+        if(!Context())return false;if(MissingOrigin)return FallbackCurrent()&&FindOrigin();
+        if(!Source.Plain())return false;auto* B=Source.BP.Get();if(B->Timelines!=SourceSlots||static_cast<UBlueprintGeneratedClass*>(Source.Generated.Get())->Timelines!=SourceGenerated||static_cast<UBlueprintGeneratedClass*>(Source.Skeleton.Get())->Timelines!=SourceSkeleton)return Bad(TEXT("readonly_timeline_inventory"),TEXT("captured Blueprint/Gen/Skel arrays"),TEXT("changed"));
         // Close all retained curve identities before any track's content/path getter.
         for(const auto& E:SourceCurves){if(!ObjectCurrent(E.Role))return false;if(!Loaded(E.Package.Get())||(E.Import.Get()&&!Loaded(E.Import.Get())))return Bad(TEXT("readonly_curve_anchors"),E.Role.Path,TEXT("package/import unavailable"));auto* C=static_cast<UCurveBase*>(E.Role.Hold.Get());if(C->GetPackage()!=E.Package.Get()||!C->AssetImportData.IsResolved()||C->AssetImportData.Get()!=E.Import.Get())return Bad(TEXT("readonly_curve_roles"),E.Role.Path,TEXT("changed"));const FString A=CurveValue(C);if(A!=E.Value)return Bad(TEXT("readonly_curve_values"),E.Value,A);}
         for(const auto& E:SourceTemplates){if(!ObjectCurrent(E.Role))return false;FString A;if(!Values(static_cast<UTimelineTemplate*>(E.Role.Hold.Get()),A,true,false))return false;if(A!=E.Value)return Bad(TEXT("readonly_template_values"),E.Value,A);}
@@ -1290,8 +2213,54 @@ struct FTITimelineImport
     bool FindOrigin()
     {
         UTimelineTemplate* First=nullptr;int32 Matches=0;for(TObjectIterator<UTimelineTemplate> It;It;++It){auto* T=*It;if(T->TimelineGuid==TextPlan.Selector){if(!First)First=T;++Matches;}}
-        if(!Origin.Get()){Origin.Reset(First);if(Matches!=1||!Loaded(First)||First->GetClass()!=UTimelineTemplate::StaticClass())return Pending(TEXT("Exactly one live native source template matching the installed global GUID lookup is required; missing/ambiguous loaded sources remain incomplete."));}
+        R.Data->SetNumberField(TEXT("timeline_loaded_matching_guid_count"),Matches);
+        if(!OriginChecked)
+        {
+            OriginChecked=true;MissingOrigin=Matches==0;
+            R.Data->SetBoolField(TEXT("timeline_source_absent_fallback"),MissingOrigin);
+            R.Data->SetStringField(TEXT("timeline_guid_lookup_scope"),TEXT("Current loaded UObject iterator, matching installed Timeline PostPasteNode; not a search of all saved assets or a claim that no disk source exists."));
+            if(MissingOrigin)return true;
+            Origin.Reset(First);if(Matches!=1||!Loaded(First)||First->GetClass()!=UTimelineTemplate::StaticClass())return Pending(TEXT("An existing source requires one live native template matching the installed global GUID lookup; ambiguous/non-native loaded sources remain incomplete."));
+        }
+        if(MissingOrigin)return Matches==0||Bad(TEXT("global_template_selector"),TEXT("no loaded matching source throughout fallback"),FString::FromInt(Matches));
         return (First==Origin.Get()&&Matches==1)||Bad(TEXT("global_template_selector"),TEXT("same unique loaded source"),FString::FromInt(Matches));
+    }
+    bool FallbackCurrent()
+    {
+        if(!Context()||!ObjectCurrent(FallbackDefault))return false;auto* Class=FallbackClass.Get();
+        if(!Loaded(Class)||Class!=UTimelineTemplate::StaticClass()||Class!=FallbackDefault.Class.Get()
+            ||FallbackDefault.Outer.Get()!=Class->GetOuter()||!Loaded(FallbackPackage.Get())||Class->GetPackage()!=FallbackPackage.Get()
+            ||Class->GetOutermost()->IsDirty()!=FallbackPackageDirty||static_cast<uint32>(Class->ClassFlags)!=FallbackClassFlags
+            ||!Class->HasAnyClassFlags(CLASS_Native)||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=nullptr
+            ||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject!=FallbackDefault.Hold.Get()
+            ||FallbackDefault.Hold->GetPackage()!=FallbackPackage.Get()||static_cast<uint32>(FallbackDefault.Hold->GetFlags())!=FallbackObjectFlags)
+            return Bad(TEXT("fallback_native_default_roles"),TEXT("same held native class/CDO/package and flags"),TEXT("changed/unavailable"));
+        FString Actual;if(!Values(static_cast<UTimelineTemplate*>(FallbackDefault.Hold.Get()),Actual,false,false))return false;
+        return Actual==Semantic||Bad(TEXT("fallback_native_default_values"),Semantic,Actual);
+    }
+    bool BindFallback()
+    {
+        auto* Class=UTimelineTemplate::StaticClass();FallbackClass.Reset(Class);
+        if(!Loaded(Class)||!Class->HasAnyClassFlags(CLASS_Native)||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=nullptr
+            ||!Class->ClassDefaultObject.IsResolved())return Pending(TEXT("Missing-source fallback requires an already resolved loaded native TimelineTemplate class/CDO; no default object is created or loaded by preflight."));
+        auto* Default=Class->ClassDefaultObject.Get();FallbackPackage.Reset(Class->GetPackage());
+        if(!Loaded(Default)||Default->GetClass()!=Class||Default->GetOuter()!=Class->GetOuter()||!Default->HasAnyFlags(RF_ClassDefaultObject)
+            ||!Loaded(FallbackPackage.Get())||Default->GetPackage()!=FallbackPackage.Get()||!Object(Default,FallbackDefault))return Pending(TEXT("Missing-source fallback requires the actual existing native TimelineTemplate CDO ownership roles."));
+        const auto* Template=static_cast<UTimelineTemplate*>(Default);
+        if(!Template->EventTracks.IsEmpty()||!Template->FloatTracks.IsEmpty()||!Template->VectorTracks.IsEmpty()||!Template->LinearColorTracks.IsEmpty()
+            ||!Template->MetaDataArray.IsEmpty()||Template->GetNumDisplayTracks()!=0)
+            return Pending(TEXT("Fallback currently admits native empty-track/metadata defaults; a modified CDO with authored tracks remains a valid incomplete variant."));
+        // A missing source legitimately loses old authored tracks in the SDK. Do
+        // not apply and then reject their stale serialized pins as an invariant.
+        TSet<FName> Names;for(const TCHAR* Name:{TEXT("Play"),TEXT("PlayFromStart"),TEXT("Stop"),TEXT("Reverse"),TEXT("ReverseFromEnd"),TEXT("SetNewTime"),TEXT("Update"),TEXT("Finished"),TEXT("NewTime"),TEXT("Direction")})Names.Add(FName(Name));
+        if(TextPlan.TimelinePlan.Pins.Num()!=Names.Num())return Pending(TEXT("Missing-source fallback currently accepts exactly the ten native base Timeline pin roles; stale authored-track pin removal/relink variants remain incomplete before mutation."));
+        for(const auto& P:TextPlan.TimelinePlan.Pins)if(Names.Remove(FName(*P.Name))!=1)return Pending(TEXT("Missing-source fallback requires unique native base Timeline pin names."));
+        FallbackClassFlags=static_cast<uint32>(Class->ClassFlags);FallbackObjectFlags=static_cast<uint32>(Default->GetFlags());FallbackPackageDirty=FallbackPackage->IsDirty();
+        if(!Values(static_cast<UTimelineTemplate*>(Default),Semantic,false,false))return false;
+        R.Data->SetStringField(TEXT("timeline_source_template"),FString());R.Data->SetStringField(TEXT("timeline_source_blueprint"),FString());
+        R.Data->SetStringField(TEXT("timeline_source_selector_guid"),TextPlan.Selector.ToString());R.Data->SetStringField(TEXT("timeline_fallback_default_object"),FallbackDefault.Path);
+        R.Data->SetStringField(TEXT("timeline_fallback_scope"),TEXT("Installed PostPasteNode no-loaded-GUID branch and AddNewTimeline; native empty default template is created under the target GeneratedClass with a fresh GUID/name. No authored source tracks are recovered. The existing native CDO is only observed, never created or mutated by preflight; stale authored-track pins/wider defaults remain incomplete."));
+        return SourceCurrent(true);
     }
     static FString TimelineKey(UTimelineTemplate* T){return T->TimelineGuid.ToString()+TEXT(":")+T->GetVariableName().ToString();}
     bool OldIdentity(UTimelineTemplate* T,FString& Out)
@@ -1367,7 +2336,8 @@ struct FTITimelineImport
     {
         if(!Target.BP->ComponentTemplates.IsEmpty()||!Target.BP->ImplementedInterfaces.IsEmpty()||!Target.BP->NewVariables.IsEmpty())return Pending(TEXT("Timeline destination own declarations/component templates/interfaces remain incomplete."));
         if(!Target.BP->UbergraphPages.Contains(Target.Selected))return Pending(TEXT("An existing direct EventGraph is required for Timeline append/clear; function/Anim root variants remain incomplete."));if(!BindOldTarget())return false;
-        if(!FindOrigin())return false;auto* O=Origin.Get();Target.Hold(O);Target.Hold(O->GetOuter());auto* GC=Cast<UBlueprintGeneratedClass>(O->GetOuter());if(!Loaded(GC)||!GC->ClassGeneratedBy.IsResolved())return Pending(TEXT("Source Timeline must belong to a resolved generated Blueprint class."));auto* B=Cast<UBlueprint>(GC->ClassGeneratedBy.Get());Target.Hold(B);
+        if(!FindOrigin())return false;if(MissingOrigin)return BindFallback();
+        auto* O=Origin.Get();Target.Hold(O);Target.Hold(O->GetOuter());auto* GC=Cast<UBlueprintGeneratedClass>(O->GetOuter());if(!Loaded(GC)||!GC->ClassGeneratedBy.IsResolved())return Pending(TEXT("Source Timeline must belong to a resolved generated Blueprint class."));auto* B=Cast<UBlueprint>(GC->ClassGeneratedBy.Get());Target.Hold(B);
         if(!Loaded(B)||B==Target.BP.Get()||!Scope(B,R)||!B->Timelines.Contains(O))return Pending(TEXT("Loaded distinct ordinary source Blueprint with actual template membership required."));
         UEdGraph* SG=nullptr;for(const auto& G:B->UbergraphPages){if(!G.IsResolved())return Pending(TEXT("Source graph slots must be resolved."));if(Loaded(G.Get())){SG=G.Get();break;}}if(!SG)return Pending(TEXT("Source requires a current direct EventGraph."));if(!Source.Bind(B,SG)||!Disk(B->GetOutermost()))return false;
         SourceSlots=B->Timelines;SourceGenerated=static_cast<UBlueprintGeneratedClass*>(Source.Generated.Get())->Timelines;SourceSkeleton=static_cast<UBlueprintGeneratedClass*>(Source.Skeleton.Get())->Timelines;if(SourceSlots.Num()>64||SourceGenerated.Num()>64||SourceSkeleton.Num()>64)return Pending(TEXT("Bounded source template inventories required."));
@@ -1380,7 +2350,7 @@ struct FTITimelineImport
         TSet<FGuid> Ids;TSet<FString> Names;
         for(const auto& M:TextPlan.Pins){FGuid Id;const FString Name=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("PinName")));if(!FCollapsedTextPlan::Name(Name)||!FGuid::Parse(M.FindRef(TEXT("PinId")),Id)||!Id.IsValid()||Ids.Contains(Id)||Names.Contains(Name))return Pending(TEXT("Unique copied pin names and valid GUIDs required."));Ids.Add(Id);Names.Add(Name);
             for(const auto& P:M){const FString V=FCollapsedTextPlan::Unquote(P.Value);const auto& K=P.Key;if(K==TEXT("PinId")||K==TEXT("PinName"))continue;
-                if(K==TEXT("LinkedTo")){TArray<FString> L;if(!FCollapsedTextPlan::Pieces(P.Value,L)||!L.IsEmpty())return Pending(TEXT("Single Timeline paste currently requires no input/external pin links."));continue;}
+                if(K==TEXT("LinkedTo")){TArray<FString> L;if(!FCollapsedTextPlan::Pieces(P.Value,L)||L.Num()>64)return Pending(TEXT("Bounded closed Timeline pin links required; external/dangling references were refused before lookup."));continue;}
                 if(K==TEXT("Direction")&&(V==TEXT("EGPD_Input")||V==TEXT("EGPD_Output")))continue;
                 if(K==TEXT("PinType.PinCategory")&&(V==TEXT("exec")||V==TEXT("real")||V==TEXT("byte")||V==TEXT("struct")))continue;
                 if(K==TEXT("PinType.PinSubCategory")&&(V.IsEmpty()||V==TEXT("float")))continue;
@@ -1408,7 +2378,7 @@ struct FTITimelineImport
         if(!Context()||!SourceCurrent()||!OldTargetCurrent(Rebind))return false;auto* B=Target.BP.Get();const int32 AddedIndex=OldTemplates.Num();if(B->Timelines.Num()!=AddedIndex+1||!B->Timelines[AddedIndex].IsResolved())return Bad(TEXT("returned_blueprint_timelines"),FString::FromInt(AddedIndex+1),FString::FromInt(B->Timelines.Num()));
         auto* T=B->Timelines[AddedIndex].Get();TStrongObjectPtr<UTimelineTemplate> HoldT(T);if(!Loaded(T)||T==Origin.Get()||T->GetClass()!=UTimelineTemplate::StaticClass()||T->GetOuter()!=Target.Generated.Get()||T->GetPackage()!=Target.Package.Get()||!T->HasAnyFlags(RF_Transactional))return Bad(TEXT("returned_template_owner"),TEXT("new exact template owned by actual generated class"),TEXT("different/unavailable"));
         if(!Loaded(Pasted.Get())||Pasted->TimelineGuid!=TextPlan.Selector||Pasted->TimelineName!=NewName||T->GetVariableName()!=NewName||NodeFlags(Pasted.Get())!=(uint32(T->bAutoPlay)|(uint32(T->bLoop)<<1)|(uint32(T->bReplicated)<<2)|(uint32(T->bIgnoreTimeDilation)<<3)))return Bad(TEXT("pasted_timeline_role"),TEXT("selector GUID and planned unique variable/flags"),TEXT("changed"));
-        FString A;if(!Values(T,A,false,false))return false;if(A!=Semantic)return Bad(TEXT("duplicated_authored_values"),Semantic,A);
+        FString A;if(!Values(T,A,false,false))return false;if(A!=Semantic)return Bad(MissingOrigin?TEXT("fallback_default_authored_values"):TEXT("duplicated_authored_values"),Semantic,A);
         if(!T->TimelineGuid.IsValid()||T->TimelineGuid==TextPlan.Selector||T->GetFName()!=FName(*UTimelineTemplate::TimelineVariableNameToTemplateName(NewName))||!Caches(T))return Bad(TEXT("new_template_guid_name"),TEXT("new valid template GUID and canonical object/cache names"),T->TimelineGuid.ToString());
         FString Cache;if(!Values(T,Cache,true,false))return false;if(!Created.Get()){CreatedGuid=T->TimelineGuid;CreatedIdentity=Cache;}else if(T->TimelineGuid!=CreatedGuid||Cache!=CreatedIdentity)return Bad(TEXT("returned_timeline_logical_identity"),CreatedIdentity,Cache);
         if(!Rebind&&(T!=Created.Get()||!ObjectCurrent(FreshTemplate)))return Bad(TEXT("returned_template_slot"),FreshTemplate.Path,TEXT("unexpected replacement"));
@@ -1420,10 +2390,13 @@ struct FTITimelineImport
             else if(Actual==Original||Actual->GetOuter()!=Target.Generated.Get()||Actual->GetPackage()!=Target.Package.Get())return Bad(TEXT("owned_curve_clone"),TEXT("distinct clone under actual target generated class"),Actual->GetPathName());
             FObject Role;if(!Object(Actual,Role))return false;NewCurves.Add(MoveTemp(Role));return true;
         };
-        for(int32 I=0;I<T->EventTracks.Num();++I)if(!CheckCurve(T->EventTracks[I].CurveKeys.Get(),Origin->EventTracks[I].CurveKeys.Get(),T->EventTracks[I].bIsExternalCurve))return false;
-        for(int32 I=0;I<T->FloatTracks.Num();++I)if(!CheckCurve(T->FloatTracks[I].CurveFloat.Get(),Origin->FloatTracks[I].CurveFloat.Get(),T->FloatTracks[I].bIsExternalCurve))return false;
-        for(int32 I=0;I<T->VectorTracks.Num();++I)if(!CheckCurve(T->VectorTracks[I].CurveVector.Get(),Origin->VectorTracks[I].CurveVector.Get(),T->VectorTracks[I].bIsExternalCurve))return false;
-        for(int32 I=0;I<T->LinearColorTracks.Num();++I)if(!CheckCurve(T->LinearColorTracks[I].CurveLinearColor.Get(),Origin->LinearColorTracks[I].CurveLinearColor.Get(),T->LinearColorTracks[I].bIsExternalCurve))return false;
+        if(!MissingOrigin)
+        {
+            for(int32 I=0;I<T->EventTracks.Num();++I)if(!CheckCurve(T->EventTracks[I].CurveKeys.Get(),Origin->EventTracks[I].CurveKeys.Get(),T->EventTracks[I].bIsExternalCurve))return false;
+            for(int32 I=0;I<T->FloatTracks.Num();++I)if(!CheckCurve(T->FloatTracks[I].CurveFloat.Get(),Origin->FloatTracks[I].CurveFloat.Get(),T->FloatTracks[I].bIsExternalCurve))return false;
+            for(int32 I=0;I<T->VectorTracks.Num();++I)if(!CheckCurve(T->VectorTracks[I].CurveVector.Get(),Origin->VectorTracks[I].CurveVector.Get(),T->VectorTracks[I].bIsExternalCurve))return false;
+            for(int32 I=0;I<T->LinearColorTracks.Num();++I)if(!CheckCurve(T->LinearColorTracks[I].CurveLinearColor.Get(),Origin->LinearColorTracks[I].CurveLinearColor.Get(),T->LinearColorTracks[I].bIsExternalCurve))return false;
+        }
         if(!Rebind){if(NewCurves.Num()!=FreshCurves.Num())return Bad(TEXT("new_curve_inventory"),FString::FromInt(FreshCurves.Num()),FString::FromInt(NewCurves.Num()));for(int32 I=0;I<FreshCurves.Num();++I)if(NewCurves[I].Hold.Get()!=FreshCurves[I].Hold.Get())return Bad(TEXT("new_curve_identity"),FreshCurves[I].Path,TEXT("unexpected slot replacement"));else if(!ObjectCurrent(FreshCurves[I]))return false;}
         Created.Reset(T);if(!Object(T,FreshTemplate))return false;FreshCurves=MoveTemp(NewCurves);return true;
     }
@@ -1437,20 +2410,51 @@ struct FTITimelineImport
         TMap<FName,UObject*> Types;for(const auto& E:Created->EventTracks)Expected.Add(E.GetTrackName(),{UEdGraphSchema_K2::PC_Exec,NAME_None});for(const auto& E:Created->FloatTracks)Expected.Add(E.GetTrackName(),{UEdGraphSchema_K2::PC_Real,UEdGraphSchema_K2::PC_Float});for(const auto& E:Created->VectorTracks){Expected.Add(E.GetTrackName(),{UEdGraphSchema_K2::PC_Struct,NAME_None});Types.Add(E.GetTrackName(),TBaseStructure<FVector>::Get());}for(const auto& E:Created->LinearColorTracks){Expected.Add(E.GetTrackName(),{UEdGraphSchema_K2::PC_Struct,NAME_None});Types.Add(E.GetTrackName(),TBaseStructure<FLinearColor>::Get());}
         if(Expected.Num()!=Pins.Num())return Bad(TEXT("allocated_timeline_pin_count"),FString::FromInt(Expected.Num()),FString::FromInt(Pins.Num()));TSet<FName> Seen;
         for(const auto& P:Pins){const auto* E=Expected.Find(P.Name);bool Output=P.Name==TEXT("Update")||P.Name==TEXT("Finished")||P.Name==TEXT("Direction")||Types.Contains(P.Name);for(const auto& Track:Created->EventTracks)Output|=Track.GetTrackName()==P.Name;for(const auto& Track:Created->FloatTracks)Output|=Track.GetTrackName()==P.Name;
-            if(!E||Seen.Contains(P.Name)||!P.Links.IsEmpty()||P.Type.PinCategory!=E->Key||P.Type.PinSubCategory!=E->Value||P.Direction!=(Output?EGPD_Output:EGPD_Input)||P.Type.ContainerType!=EPinContainerType::None||P.Type.bIsReference||P.Type.bIsConst||P.Default||P.Type.PinSubCategoryObject.IsStale()||P.Type.PinValueType.TerminalSubCategoryObject.IsStale())return Bad(TEXT("allocated_pin_role"),TEXT("canonical unique unlinked plain Timeline pins"),P.Name.ToString());Seen.Add(P.Name);
+            if(!E||Seen.Contains(P.Name)||P.Type.PinCategory!=E->Key||P.Type.PinSubCategory!=E->Value||P.Direction!=(Output?EGPD_Output:EGPD_Input)||P.Type.ContainerType!=EPinContainerType::None||P.Type.bIsReference||P.Type.bIsConst||P.Default||P.Type.PinSubCategoryObject.IsStale()||P.Type.PinValueType.TerminalSubCategoryObject.IsStale())return Bad(TEXT("allocated_pin_role"),TEXT("canonical unique plain Timeline pins with independently checked closed links"),P.Name.ToString());Seen.Add(P.Name);
             UObject* Type=P.Type.PinSubCategoryObject.Get();if(P.Name==TEXT("Direction")){if(!Loaded(Type)||Type->GetClass()!=UEnum::StaticClass()||Type->GetPathName()!=TEXT("/Script/Engine.ETimelineDirection"))return Bad(TEXT("direction_enum"),TEXT("native ETimelineDirection"),GetPathNameSafe(Type));}else if(Type!=Types.FindRef(P.Name))return Bad(TEXT("track_pin_type"),TEXT("native declared track type"),GetPathNameSafe(Type));
         }return true;
     }
     bool Returned(const TSet<UEdGraphNode*>& Imported)
     {
         if(!Context()||!SourceCurrent(true))return false;for(auto* N:Imported)Target.Hold(N);
-        if(Imported.Num()!=1)return Bad(TEXT("paste_returned_count"),TEXT("1"),FString::FromInt(Imported.Num()));auto* N=*Imported.CreateConstIterator();if(!Loaded(N)||N->GetClass()!=UK2Node_Timeline::StaticClass()||N->GetGraph()!=Target.Selected||N->GetOuter()!=Target.Selected||!Target.Selected->Nodes.Contains(N))return Bad(TEXT("paste_returned_node"),TEXT("held native Timeline member of selected graph"),TEXT("other/unavailable"));Pasted.Reset(static_cast<UK2Node_Timeline*>(N));
-        if(N->NodeGuid!=TextPlan.NodeGuid||N->NodePosX!=TextPlan.X||N->NodePosY!=TextPlan.Y||N->NodeComment!=TextPlan.Comment||bool(N->bCommentBubbleVisible)!=TextPlan.Visible||bool(N->bCommentBubblePinned)!=TextPlan.Pinned)return Bad(TEXT("paste_node_authored_fields"),TEXT("copied input GUID/coordinates/comment"),TEXT("changed"));
-        PasteReturned=true;Target.ExpectedAdded.Add(N);if(!Target.Reacquire()||!NewTemplate(true))return false;
-        FCollapsedTarget::FNode Row;if(!Target.NodeCopy(N,Row)||!PinTypes(Row.Pins))return false;
-        TMap<FString,const FCollapsedTarget::FPin*> ByName;for(const auto& P:Row.Pins)ByName.Add(P.Name.ToString(),&P);
-        for(const auto& M:TextPlan.Pins){const FString Name=FCollapsedTextPlan::Unquote(M.FindRef(TEXT("PinName")));const auto* Slot=ByName.Find(Name);if(!Slot)return Bad(TEXT("copied_pin_name"),Name,TEXT("missing"));const auto& P=**Slot;FGuid Id;FGuid::Parse(M.FindRef(TEXT("PinId")),Id);const auto Raw=[&](const TCHAR* K){return FCollapsedTextPlan::Unquote(M.FindRef(K));};if(P.Id!=Id||P.Type.PinCategory!=FName(*Raw(TEXT("PinType.PinCategory")))||P.Type.PinSubCategory!=FName(*Raw(TEXT("PinType.PinSubCategory")))||(P.Direction==EGPD_Output)!=(Raw(TEXT("Direction"))==TEXT("EGPD_Output"))||P.Raw!=Raw(TEXT("DefaultValue"))||P.Auto!=Raw(TEXT("AutogeneratedDefaultValue")))return Bad(TEXT("copied_pin_values"),Name,TEXT("GUID/type/direction/default changed"));}
-        Target.Nodes.Add(MoveTemp(Row));if(!Target.SealLinks(Target.Nodes))return false;Ready=true;return Current(true);
+        TArray<const FCollapsedObjectPlan*> Plans{&TextPlan.TimelinePlan};for(const auto& E:TextPlan.Companions)Plans.Add(&E);
+        if(Imported.Num()!=Plans.Num())return Bad(TEXT("paste_returned_count"),FString::FromInt(Plans.Num()),FString::FromInt(Imported.Num()));
+        TMap<FString,UEdGraphNode*> ByName;TMap<FString,UEdGraphPin*> Pins;
+        for(const auto* E:Plans)
+        {
+            UEdGraphNode* N=nullptr;for(auto* O:Imported)if(Loaded(O)&&O->NodeGuid==E->Guid){if(N)return Bad(TEXT("paste_ambiguous_guid"),E->Guid.ToString(),TEXT("multiple returned nodes"));N=O;}
+            if(!Loaded(N)||N->GetClass()->GetPathName()!=E->Class||N->GetGraph()!=Target.Selected||N->GetOuter()!=Target.Selected||!Target.Selected->Nodes.Contains(N))return Bad(TEXT("paste_returned_node"),E->Name,TEXT("missing/wrong native class or graph role"));
+            const bool Timeline=E==&TextPlan.TimelinePlan;bool Visible=false,Pinned=false;if(Timeline){Visible=TextPlan.Visible;Pinned=TextPlan.Pinned;Pasted.Reset(static_cast<UK2Node_Timeline*>(N));}else{if(const auto* V=E->Fields.Find(TEXT("bCommentBubbleVisible")))FCollapsedTextPlan::Boolean(*V,Visible);if(const auto* V=E->Fields.Find(TEXT("bCommentBubblePinned")))FCollapsedTextPlan::Boolean(*V,Pinned);}
+            if(N->NodePosX!=E->X||N->NodePosY!=E->Y||N->NodeComment!=E->Comment||bool(N->bCommentBubbleVisible)!=Visible||bool(N->bCommentBubblePinned)!=Pinned)return Bad(TEXT("paste_node_authored_fields"),E->Name,TEXT("coordinates/comment/bubble changed"));ByName.Add(E->Name,N);Target.ExpectedAdded.Add(N);
+        }
+        PasteReturned=true;if(!Target.Reacquire()||!NewTemplate(true))return false;
+        TArray<FCollapsedTarget::FNode> Rows;
+        for(const auto* E:Plans)
+        {
+            auto* N=ByName.FindChecked(E->Name);
+            // Reacquire observes old-node FText callbacks before incoming nodes have a full snapshot.
+            // Their copied roles remain authoritative; never accept callback changes as the first baseline.
+            if(!Context()||!SourceCurrent())return false;
+            if(!Loaded(N)||N->NodeGuid!=E->Guid||N->GetClass()->GetPathName()!=E->Class||N->GetGraph()!=Target.Selected||N->GetOuter()!=Target.Selected||!Target.Selected->Nodes.Contains(N))return Bad(TEXT("paste_incoming_role_after_reacquire"),E->Name,TEXT("copied GUID/exact class/graph role changed"));
+            const bool Timeline=E==&TextPlan.TimelinePlan;bool Visible=false,Pinned=false;if(Timeline){Visible=TextPlan.Visible;Pinned=TextPlan.Pinned;}else{if(const auto* V=E->Fields.Find(TEXT("bCommentBubbleVisible")))FCollapsedTextPlan::Boolean(*V,Visible);if(const auto* V=E->Fields.Find(TEXT("bCommentBubblePinned")))FCollapsedTextPlan::Boolean(*V,Pinned);}
+            if(N->NodePosX!=E->X||N->NodePosY!=E->Y||N->NodeComment!=E->Comment||bool(N->bCommentBubbleVisible)!=Visible||bool(N->bCommentBubblePinned)!=Pinned)return Bad(TEXT("paste_incoming_authored_after_reacquire"),E->Name,TEXT("copied coordinates/comment/bubble changed"));
+            FCollapsedTarget::FNode Row;if(!Target.NodeCopy(N,Row)||(N==Pasted.Get()&&!PinTypes(Row.Pins)))return false;
+            if(Row.Pins.Num()!=E->Pins.Num())return Bad(TEXT("copied_pin_count"),FString::FromInt(E->Pins.Num()),FString::FromInt(Row.Pins.Num()));
+            for(const auto& P:E->Pins)
+            {
+                const auto* A=Row.Pins.FindByPredicate([&](const FCollapsedTarget::FPin& Q){return Q.Id==P.Id&&Q.Name==FName(*P.Name);});
+                FString Auto=P.Auto,Raw=P.Raw;if(E!=&TextPlan.TimelinePlan&&P.Category==TEXT("bool")){if(Auto.IsEmpty())Auto=TEXT("true");if(Raw.IsEmpty())Raw=Auto;}
+                if(!A||A->Type.PinCategory!=FName(*P.Category)||A->Type.PinSubCategory!=FName(*P.SubCategory)||A->Direction!=P.Direction||A->Raw!=Raw||A->Auto!=Auto||A->Default||A->Bits!=0||A->Type.ContainerType!=EPinContainerType::None||A->Type.bIsReference||A->Type.bIsConst)return Bad(TEXT("copied_pin_values"),E->Name+TEXT(".")+P.Name,TEXT("GUID/type/direction/default/flags changed"));if(E!=&TextPlan.TimelinePlan&&(!A->Type.PinSubCategoryObject.IsExplicitlyNull()||!A->Type.PinValueType.TerminalSubCategoryObject.IsExplicitlyNull()||A->Type.bIsWeakPointer||A->Type.bIsUObjectWrapper||A->Type.bSerializeAsSinglePrecisionFloat))return Bad(TEXT("copied_stock_pin_type"),E->Name+TEXT(".")+P.Name,TEXT("unexpected native type/object flags"));Pins.Add(FTITimelineText::PinKey(E->Name,P.Id),A->Address);
+            }Rows.Add(MoveTemp(Row));
+        }
+        for(const auto* E:Plans)for(const auto& P:E->Pins)
+        {
+            auto* A=Pins.FindChecked(FTITimelineText::PinKey(E->Name,P.Id));if(A->LinkedTo.Num()!=P.Links.Num())return Bad(TEXT("copied_link_count"),FString::FromInt(P.Links.Num()),FString::FromInt(A->LinkedTo.Num()));
+            for(const auto& L:P.Links){FString K;if(!FTITimelineText::LinkKey(L,K))return Bad(TEXT("copied_link_key"),L,TEXT("invalid"));auto* const* Q=Pins.Find(K);if(!Q||!A->LinkedTo.Contains(*Q)||!(*Q)->LinkedTo.Contains(A))return Bad(TEXT("copied_reciprocal_link"),L,TEXT("missing/substituted peer"));}
+        }
+        for(auto& Row:Rows)Target.Nodes.Add(MoveTemp(Row));if(!Target.SealLinks(Target.Nodes))return false;Ready=true;if(!Current())return false;
+        for(auto& E:Target.Nodes)if(Imported.Contains(E.Object))for(auto& P:E.Pins){const FText Text=P.Text;const FString Display=Text.ToString();if(!Current())return false;const FText Friendly=P.Friendly;const FString FriendlyDisplay=Friendly.ToString();if(!Current())return false;P.TextDisplay=Display;P.FriendlyDisplay=FriendlyDisplay;}
+        return Current(true);
     }
     bool Reacquire(){if(!Context()||!SourceCurrent(true)||!Target.Reacquire()||!NewTemplate(true))return false;return Current(true);}
 };
@@ -1458,16 +2462,16 @@ struct FTITimelineImport
 Variable::FResult ImportTimeline(const FString& Path,const FString& TextToImport,const FString& FilePath,const FString& GraphName,const FString& GraphId,const FString& GraphType,bool Clear,bool KeepRoot,bool Allow,bool ValidateOnly,bool DryRun,bool Compile,bool Save)
 {
     FResult R;Init(R,Compile,Save);R.Data->SetBoolField(TEXT("native_timeline_clipboard_import"),true);R.Data->SetBoolField(TEXT("runtime_execution_verified"),false);R.Data->SetBoolField(TEXT("opaque_paste_callback_intermediates_verified"),false);
-    R.Data->SetStringField(TEXT("finite_scope"),TEXT("Inline single unlinked native Timeline into a direct Actor EventGraph, including bounded existing Timelines and clear_graph using original Node.Modify/Graph.RemoveNode. Prior authored templates/curves remain even when their Timeline nodes are removed. Existing nodes/peers use QZ stock callbacks plus exact Timeline; keep_root_node applies only to admitted root roles (no function/Anim root in this EventGraph profile). Source is a unique loaded distinct saved-clean native template. Implicit compile reacquires survivor classes/pins/templates/curves; file/mixed/linked/nested/missing-source and wider owners remain incomplete."));
+    R.Data->SetStringField(TEXT("finite_scope"),TEXT("Inline or once-read file source with one native Timeline plus up to63 flat stock Branch/ordered Sequence siblings with closed reciprocal same-type links into a direct Actor EventGraph, including bounded existing Timelines and clear_graph using original Node.Modify/Graph.RemoveNode. Prior authored templates/curves remain even when their Timeline nodes are removed. Existing nodes/peers use QZ stock callbacks plus exact Timeline; keep_root_node applies only to admitted root roles (no function/Anim root in this EventGraph profile). A matching loaded source uses the existing unique distinct saved-clean native template duplication path; zero loaded matching GUID uses the installed empty native CDO/AddNewTimeline fallback with exactly ten copied base pins. Absence only describes loaded UObjects, not all disk assets; no source tracks are recovered. Implicit compile reacquires survivor classes/pins/templates/curves; external links/nested/additional Timeline/custom nodes/stale authored-track pins/modified CDO/wider owners remain incomplete; actual fallback/mixed paste/save/runtime usage validation is pending."));
     if(!IsEditorGameThread()||IsPlaySessionActive()){Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Idle Editor game thread required."));return R;}
-    if(!FilePath.IsEmpty()){Fail(R,TEXT("timeline_clipboard_profile_pending"),TEXT("Timeline file input remains incomplete; inline append and admitted clear are supported."));return R;}
-    FTITimelineText Plan;if(!Plan.Parse(TextToImport,R))return R;
+    // FilePath is provenance only here: Import already selected inline text or read the file once.
+    FTITimelineText Plan;if(!Plan.Parse(TextToImport,R))return R;R.Data->SetBoolField(TEXT("timeline_closed_link_preflight_passed"),true);R.Data->SetNumberField(TEXT("timeline_clipboard_planned_node_count"),1+Plan.Companions.Num());R.Data->SetBoolField(TEXT("mixed_timeline_stock_profile"),!Plan.Companions.IsEmpty());
     FString ObjectPath=Path;if(ObjectPath.StartsWith(TEXT("/Game/"))&&!ObjectPath.Contains(TEXT(".")))ObjectPath+=TEXT(".")+FPackageName::GetShortName(Path);
     Count(R,TEXT("reference_lookup_calls"));auto* B=FindObject<UBlueprint>(nullptr,*ObjectPath);TStrongObjectPtr<UBlueprint> Held(B);Count(R,TEXT("reference_lookup_returns"));if(!Scope(B,R)||!Sample(B,Allow,R))return R;
     UEdGraph* G=nullptr;FGuid Requested;const bool HasId=!GraphId.IsEmpty();if(HasId&&!FGuid::Parse(GraphId,Requested)){Fail(R,TEXT("graph_transfer_graph_unavailable"),TEXT("Invalid graph GUID."));return R;}const FString Type=Normalize(GraphType);
     Count(R,TEXT("get_all_graphs_calls"));TArray<UEdGraph*> All;B->GetAllGraphs(All);for(auto* Row:All){if(!Loaded(Row)||(HasId&&Row->GraphGuid!=Requested)||(!GraphName.IsEmpty()&&!Row->GetName().Equals(GraphName,ESearchCase::IgnoreCase))||(!Type.IsEmpty()&&Kind(B,Row)!=Type))continue;if(GraphName.IsEmpty()&&!HasId&&Type.IsEmpty()&&(!B->UbergraphPages.Contains(Row)||!Row->GetName().Contains(TEXT("EventGraph"))))continue;G=Row;break;}
     TStrongObjectPtr<UEdGraph> HeldGraph(G);if(!Loaded(G)){Fail(R,TEXT("graph_transfer_graph_unavailable"),TEXT("Existing EventGraph required; implicit missing-graph creation remains incomplete for Timeline profile."));return R;}
-    FCollapsedTarget Lease(R);if(!Lease.Bind(B,G))return R;FTITimelineImport TI(R,Lease,Plan);if(!TI.CheckPinText()||!TI.Bind()||!TI.Current(true)||!TI.FindOrigin())return R;
+    FCollapsedTarget Lease(R);Lease.LogicalPinOrder=!Plan.Companions.IsEmpty();if(!Lease.Bind(B,G))return R;FTITimelineImport TI(R,Lease,Plan);if(!TI.CheckPinText()||!TI.Bind()||!TI.Current(true)||!TI.FindOrigin())return R;
     if(Clear&&!Lease.PrepareClear(true))return R;R.Data->SetBoolField(TEXT("native_timeline_clear_import"),Clear);
     TI.NewName=FBlueprintEditorUtils::FindUniqueTimelineName(B);if(!TI.Current(true))return R;
     auto Legacy=MakeShared<FJsonObject>();R.Data->SetObjectField(TEXT("legacy_result"),Legacy);Legacy->SetStringField(TEXT("command"),TEXT("import_blueprint_graph_nodes_from_text"));Legacy->SetStringField(TEXT("blueprint_name"),Path);Legacy->SetStringField(TEXT("blueprint_path"),B->GetPathName());Legacy->SetStringField(TEXT("blueprint_package_path"),B->GetOutermost()->GetName());Legacy->SetStringField(TEXT("graph_name"),G->GetName());Legacy->SetStringField(TEXT("graph_id"),G->GraphGuid.ToString());Legacy->SetStringField(TEXT("graph_schema"),TEXT("EdGraphSchema_K2"));Legacy->SetStringField(TEXT("text_file_path"),FilePath);Legacy->SetNumberField(TEXT("text_length"),TextToImport.Len());const bool Validate=ValidateOnly||DryRun;Legacy->SetBoolField(TEXT("validate_only"),Validate);Legacy->SetBoolField(TEXT("clear_graph"),Clear);Legacy->SetBoolField(TEXT("keep_root_node"),KeepRoot);Legacy->SetBoolField(TEXT("allow_non_sample"),Allow);Legacy->SetBoolField(TEXT("sample_or_temp_target"),R.Data->GetBoolField(TEXT("sample_or_temp_target")));Legacy->SetBoolField(TEXT("compile_requested"),Compile);Legacy->SetBoolField(TEXT("save_requested"),Save);Legacy->SetBoolField(TEXT("compiled"),false);Legacy->SetBoolField(TEXT("saved"),false);Legacy->SetNumberField(TEXT("removed_node_count"),0);Legacy->SetNumberField(TEXT("imported_node_count"),0);
@@ -1492,16 +2496,26 @@ Variable::FResult ImportTimeline(const FString& Path,const FString& TextToImport
             if(!TI.Current(true))return;R.Stage=TEXT("timeline_apply_import");R.bChangeStateKnown=false;
         }
         TSet<UEdGraphNode*> Imported;Count(R,TEXT("import_nodes_calls"));FEdGraphUtilities::ImportNodesFromText(G,TextToImport,Imported);for(auto* N:Imported)Lease.Hold(N);Count(R,TEXT("import_nodes_returns"));Legacy->SetNumberField(TEXT("imported_node_count"),Imported.Num());R.Data->SetNumberField(TEXT("imported_returned_count"),Imported.Num());R.Data->SetBoolField(TEXT("implicit_skeleton_regeneration_possible"),true);if(!TI.Returned(Imported))return;
-        auto* N=TI.Pasted.Get();Count(R,TEXT("new_guid_calls"));N->CreateNewGuid();if(!N->NodeGuid.IsValid()){TI.Bad(TEXT("new_node_guid"),TEXT("valid unique GUID"),TEXT("invalid"));return;}for(const auto& E:Lease.Nodes)if(E.Object!=N&&E.Guid==N->NodeGuid){TI.Bad(TEXT("new_node_guid"),TEXT("unique GUID"),N->NodeGuid.ToString());return;}for(auto& E:Lease.Nodes)if(E.Object==N)E.Guid=N->NodeGuid;
+        // CreateNewGuid is a pure GUID assignment (EdGraphNode.cpp); change all copied GUIDs
+        // before one shared logical-link reseal, never accept a new topology baseline.
+        for(auto* N:Imported)
+        {
+            Count(R,TEXT("new_guid_calls"));N->CreateNewGuid();if(!TI.Context())return;
+            if(!N->NodeGuid.IsValid()){TI.Bad(TEXT("new_node_guid"),TEXT("valid unique GUID"),TEXT("invalid"));return;}for(const auto& E:Lease.Nodes)if(E.Object!=N&&E.Guid==N->NodeGuid){TI.Bad(TEXT("new_node_guid"),TEXT("unique GUID"),N->NodeGuid.ToString());return;}for(auto& E:Lease.Nodes)if(E.Object==N)E.Guid=N->NodeGuid;
+        }
         for(auto& E:Lease.Nodes)for(auto& P:E.Pins)P.LinkIds.Reset();if(!Lease.SealLinks(Lease.Nodes)||!TI.Current(true))return;
         Count(R,TEXT("notify_graph_calls"));G->NotifyGraphChanged();if(!TI.Current(true))return;R.Stage=TEXT("timeline_structural");Count(R,TEXT("mark_structural_calls"));FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(B);if(!TI.Reacquire())return;R.bChangeStateKnown=true;
         // Copy original NodeToJson(false) before the optional compiler/save prefix.
-        const FText Title=N->GetNodeTitle(ENodeTitleType::FullTitle);if(!TI.Current())return;const FString TitleString=Title.ToString();if(!TI.Current())return;
-        TArray<TSharedPtr<FJsonValue>> Rows;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("node_id"),N->NodeGuid.ToString());J->SetStringField(TEXT("name"),N->GetName());J->SetStringField(TEXT("class"),N->GetClass()->GetName());J->SetStringField(TEXT("node_class"),N->GetClass()->GetPathName());J->SetStringField(TEXT("title"),TitleString);J->SetNumberField(TEXT("x"),N->NodePosX);J->SetNumberField(TEXT("y"),N->NodePosY);J->SetStringField(TEXT("node_comment"),N->NodeComment);J->SetBoolField(TEXT("comment_bubble_visible"),N->bCommentBubbleVisible);J->SetBoolField(TEXT("comment_bubble_pinned"),N->bCommentBubblePinned);Rows.Add(MakeShared<FJsonValueObject>(J));Legacy->SetArrayField(TEXT("imported_nodes"),Rows);
+        TArray<TSharedPtr<FJsonValue>> Rows;
+        for(auto* N:Imported)
+        {
+            if(!TI.Current())return;const FText Title=N->GetNodeTitle(ENodeTitleType::FullTitle);if(!TI.Current())return;const FString TitleString=Title.ToString();if(!TI.Current())return;
+            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("node_id"),N->NodeGuid.ToString());J->SetStringField(TEXT("name"),N->GetName());J->SetStringField(TEXT("class"),N->GetClass()->GetName());J->SetStringField(TEXT("node_class"),N->GetClass()->GetPathName());J->SetStringField(TEXT("title"),TitleString);J->SetNumberField(TEXT("x"),N->NodePosX);J->SetNumberField(TEXT("y"),N->NodePosY);J->SetStringField(TEXT("node_comment"),N->NodeComment);J->SetBoolField(TEXT("comment_bubble_visible"),N->bCommentBubbleVisible);J->SetBoolField(TEXT("comment_bubble_pinned"),N->bCommentBubblePinned);Rows.Add(MakeShared<FJsonValueObject>(J));Legacy->SetArrayField(TEXT("imported_nodes"),Rows);
+        }
         if(Compile){R.Stage=TEXT("timeline_compile");R.bCompileAttempted=true;R.bChangeStateKnown=false;FCompilerResultsLog Log;Count(R,TEXT("full_compile_calls"));FKismetEditorUtilities::CompileBlueprint(B,EBlueprintCompileOptions::None,&Log);Count(R,TEXT("full_compile_returns"));R.Data->SetNumberField(TEXT("compiler_errors"),Log.NumErrors);R.Data->SetNumberField(TEXT("compiler_warnings"),Log.NumWarnings);if(!TI.Context())return;R.Compiled=Log.NumErrors==0&&B->Status!=BS_Error;auto Generated=B->GeneratedClass;const bool LegacyCompiled=Generated.GetGCPtr().IsResolved()&&Generated.GetGCPtr().Get()!=nullptr;Legacy->SetBoolField(TEXT("compiled"),LegacyCompiled);auto CR=MakeShared<FJsonObject>();CR->SetBoolField(TEXT("requested"),true);CR->SetBoolField(TEXT("success"),LegacyCompiled);CR->SetStringField(TEXT("blueprint"),Lease.BPPath);TStrongObjectPtr<UClass> HeldClass(Generated.GetGCPtr().IsResolved()?Generated.GetGCPtr().Get():nullptr);CR->SetStringField(TEXT("generated_class"),Loaded(HeldClass.Get())?HeldClass->GetPathName():FString());Legacy->SetObjectField(TEXT("compile_result"),CR);if(!TI.Reacquire())return;R.bChangeStateKnown=true;}
         // Preserve original requested save after a known failed compile; never after unknown.
         if(Save){R.Stage=TEXT("timeline_save");R.bSaveAttempted=true;R.bChangeStateKnown=false;Count(R,TEXT("forced_save_calls"));const bool Saved=UEditorAssetLibrary::SaveLoadedAsset(B,false);Count(R,TEXT("forced_save_returns"));R.bSaved=Saved;Legacy->SetBoolField(TEXT("saved"),Saved);if(!Saved){Lease.Stopped=true;Fail(R,TEXT("graph_transfer_save_failed"),TEXT("Forced SaveLoadedAsset returnedFalse; returned receipt retained, no further source SDK."));return;}if(!TI.Current(true))return;R.bChangeStateKnown=true;}
-        Legacy->SetBoolField(TEXT("dirty_after"),B->GetOutermost()->IsDirty());R.Data->SetStringField(TEXT("new_template_guid"),TI.CreatedGuid.ToString());R.Data->SetStringField(TEXT("new_timeline_variable"),TI.NewName.ToString());R.Data->SetBoolField(TEXT("current_imported_nodes_verified"),true);R.Data->SetBoolField(TEXT("readonly_timeline_source_preserved"),true);Terminal(R);
+        Legacy->SetBoolField(TEXT("dirty_after"),B->GetOutermost()->IsDirty());R.Data->SetStringField(TEXT("new_template_guid"),TI.CreatedGuid.ToString());R.Data->SetStringField(TEXT("new_timeline_variable"),TI.NewName.ToString());R.Data->SetBoolField(TEXT("current_imported_nodes_verified"),true);R.Data->SetBoolField(TEXT("readonly_timeline_source_preserved"),!TI.MissingOrigin);R.Data->SetBoolField(TEXT("readonly_timeline_source_preservation_applicable"),!TI.MissingOrigin);R.Data->SetBoolField(TEXT("timeline_fallback_default_preserved"),TI.MissingOrigin);Terminal(R);
     };
     Apply();if(!Lease.Stopped&&R.bChangeStateKnown){const FString Stage=R.Stage;R.Stage=TEXT("timeline_transaction_publication");if(!TI.Current(true))return R;R.Data->SetBoolField(TEXT("transaction_publication_current_verified"),true);R.Stage=Stage;}return R;
 }
@@ -1509,7 +2523,7 @@ Variable::FResult ImportTimeline(const FString& Path,const FString& TextToImport
 Variable::FResult ImportCollapsed(const FString& Path,const FString& TextToImport,const FString& FilePath,const FString& GraphName,const FString& GraphId,const FString& GraphType,bool Clear,bool KeepRoot,bool Allow,bool ValidateOnly,bool DryRun,bool Compile,bool Save)
 {
     FResult R;Init(R,Compile,Save);R.Data->SetBoolField(TEXT("native_collapsed_graph_import"),true);
-    R.Data->SetStringField(TEXT("finite_scope"),TEXT("Inline recursively owned Composite/BoundGraph tree (up to eight graph levels, 32 graphs, 256 objects), exact complementary Tunnel2 per graph with bounded exec/int32/bool ports, optional unlinked Self, multiple exact plain CallFunction nodes from loaded native KismetMathLibrary static pure callable by-value int32/bool signatures, stock Branch and ordered Sequence. Actual reciprocal topology includes scalar output fanout; function parameter/default/storage sources are checked before paste and after each callback. Loaded direct Actor K2 target/native Scene root and existing original clear/keep-root/partial/compile/save paths are preserved. Other function owners/types/ref/container/metadata expansion, larger trees or mixed top-level objects, file input, custom sources and runtime execution remain valid incomplete scope."));
+    R.Data->SetStringField(TEXT("finite_scope"),TEXT("Inline or once-read file source containing recursively owned Composite/BoundGraph tree (up to eight graph levels, 32 graphs, 256 objects), exact complementary Tunnel2 per graph with bounded exec/int32/bool ports, optional unlinked Self, multiple exact plain CallFunction nodes from loaded native KismetMathLibrary static pure callable by-value int32/bool signatures, stock Branch and ordered Sequence. Actual reciprocal topology includes scalar output fanout; function parameter/default/storage sources are checked before paste and after each callback. Loaded direct Actor K2 target/native Scene root and existing original clear/keep-root/partial/compile/save paths are preserved. Other function owners/types/ref/container/metadata expansion, larger trees or mixed top-level objects, custom sources and runtime execution remain valid incomplete scope."));
     if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Idle Editor game thread required."));return R; }
     if(Clear&&!KeepRoot) { Fail(R,TEXT("graph_transfer_collapsed_profile_pending"),TEXT("Collapsed clear first supports keep_root_node=True only; keepFalse and old nested removal remain incomplete."));return R; }
     R.Data->SetBoolField(TEXT("native_collapsed_clear_replace"),Clear);
@@ -1646,47 +2660,92 @@ Variable::FResult ImportCollapsed(const FString& Path,const FString& TextToImpor
 
 }
 
+// Concrete import source selection only; no second paste, journal or transaction.
+// A file's copied text is authoritative for this request and is never reread.
+bool ReadImportFileSource(const FString& FilePath,FString& TextToImport,FResult& R)
+{
+    R.Stage=TEXT("read_import_file");R.Data->SetBoolField(TEXT("input_file_selected"),true);R.Data->SetStringField(TEXT("input_file_path"),FilePath);
+    R.Data->SetStringField(TEXT("input_file_resolution_order"),TEXT("Physical file read occurs once before profile selection. Specialized successful text retains parse-before-target safety; generic cached file failures are returned only after original target/graph resolution, preserving generic error precedence."));
+    if(!Text(FilePath,4096,R))return false;
+    Count(R,TEXT("file_size_query_calls"));const int64 Bytes=IFileManager::Get().FileSize(*FilePath);R.Data->SetStringField(TEXT("file_size_bytes"),LexToString(Bytes));
+    if(Bytes>static_cast<int64>(MaxText)*4)return Fail(R,TEXT("graph_transfer_file_bound"),TEXT("File byte bound exceeded before whole-file read; larger original files remain pending."));
+    Count(R,TEXT("file_read_calls"));const bool Read=FFileHelper::LoadFileToString(TextToImport,*FilePath);Count(R,TEXT("file_read_returns"));R.Data->SetBoolField(TEXT("file_read_returned"),Read);R.Data->SetNumberField(TEXT("file_text_length"),TextToImport.Len());
+    if(!Read)return Fail(R,TEXT("graph_transfer_file_read_failed"),TEXT("Original text_file_path read failed."));
+    if(!Text(TextToImport,MaxText,R))return false;
+    if(TextToImport.IsEmpty())return Fail(R,TEXT("graph_transfer_text_missing"),TEXT("Provide either text or text_file_path."));
+    return true;
+}
+void AdoptImportFileSource(FResult& Target,const FResult& Source)
+{
+    auto Counts=Target.Data->GetObjectField(TEXT("native_call_counts"));const auto Before=Source.Data->GetObjectField(TEXT("native_call_counts"));
+    for(const TCHAR* Key:{TEXT("file_size_query_calls"),TEXT("file_read_calls"),TEXT("file_read_returns")})Counts->SetNumberField(Key,Counts->GetNumberField(Key)+Before->GetNumberField(Key));
+    for(const TCHAR* Key:{TEXT("input_file_selected"),TEXT("input_file_path"),TEXT("input_file_resolution_order"),TEXT("file_size_bytes"),TEXT("file_read_returned"),TEXT("file_text_length")})if(auto Value=Source.Data->TryGetField(Key))Target.Data->SetField(Key,Value);
+    Target.Data->SetStringField(TEXT("input_file_stage"),Source.Stage);
+    Target.Data->SetStringField(TEXT("input_file_error_code"),Source.ErrorCode);
+    Target.Data->SetStringField(TEXT("input_file_error"),Source.Error);
+    Target.Data->SetBoolField(TEXT("input_file_reread"),false);
+}
 Variable::FResult Import(const FString& Path,const FString& InlineText,const FString& FilePath,const FString& GraphName,const FString& GraphId,const FString& GraphType,bool Clear,bool KeepRoot,bool Allow,bool ValidateOnly,bool DryRun,bool Compile,bool Save)
 {
-    if(IsTimelineText(InlineText)) { return ImportTimeline(Path,InlineText,FilePath,GraphName,GraphId,GraphType,Clear,KeepRoot,Allow,ValidateOnly,DryRun,Compile,Save); }
-    if(IsCollapsedText(InlineText)) { return ImportCollapsed(Path,InlineText,FilePath,GraphName,GraphId,GraphType,Clear,KeepRoot,Allow,ValidateOnly,DryRun,Compile,Save); }
-    FResult R;Init(R,Compile,Save);if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Original graph import requires idle Editor game thread, no PIE/SIE."));return R; }
-    Count(R,TEXT("outer_transaction_calls"));FScopedTransaction Tx(NSLOCTEXT("CubelessMCP","ImportBlueprintGraphText","Import Blueprint Graph Text"));UBlueprint* BP=Load(Path,R);if(!BP) { return R; }const TStrongObjectPtr<UBlueprint> KeepBP(BP);TSharedRef<FJsonObject> BeforeResolve=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("before_resolution"),R,BeforeResolve)) { return R; }UEdGraph* G=Resolve(BP,GraphName,GraphId,GraphType,R);if(!G) { return R; }const TStrongObjectPtr<UEdGraph> KeepGraph(G);const FGuid Guid=G->GraphGuid;
-    FString TextToImport=InlineText;if(!Text(TextToImport,MaxText,R)||!Text(FilePath,4096,R)) { return R; }if(TextToImport.IsEmpty()&&!FilePath.IsEmpty()) { Count(R,TEXT("file_size_query_calls"));const int64 Bytes=IFileManager::Get().FileSize(*FilePath);R.Data->SetStringField(TEXT("file_size_bytes"),LexToString(Bytes));if(Bytes>static_cast<int64>(MaxText)*4) { Fail(R,TEXT("graph_transfer_file_bound"),TEXT("File byte bound exceeded before whole-file read; larger original files remain pending."));return R; }Count(R,TEXT("file_read_calls"));const bool Read=FFileHelper::LoadFileToString(TextToImport,*FilePath);Count(R,TEXT("file_read_returns"));R.Data->SetBoolField(TEXT("file_read_returned"),Read);if(!Read) { Fail(R,TEXT("graph_transfer_file_read_failed"),TEXT("Original text_file_path read failed."));return R; }if(!Text(TextToImport,MaxText,R)) { return R; } }if(TextToImport.IsEmpty()) { Fail(R,TEXT("graph_transfer_text_missing"),TEXT("Provide either text or text_file_path."));return R; }if(!Sample(BP,Allow,R)) { return R; }
+    FResult R;Init(R,Compile,Save);FString SelectedText=InlineText;
+    const bool FileSelected=SelectedText.IsEmpty()&&!FilePath.IsEmpty();bool FileReady=true;
+    FResult FileSource;
+    if(FileSelected)
+    {
+        if(!IsEditorGameThread()||IsPlaySessionActive()){Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Original graph import requires idle Editor game thread, no PIE/SIE."));return R;}
+        Init(FileSource,Compile,Save);FileReady=ReadImportFileSource(FilePath,SelectedText,FileSource);
+        // Cache both success and failure. A failed read does not establish a specialized profile.
+        AdoptImportFileSource(R,FileSource);R.Data->SetBoolField(TEXT("input_file_source_ready"),FileReady);
+    }
+    // The original nonempty inline value always wins, even when a file path is supplied.
+    if(FileReady&&IsTimelineText(SelectedText)){auto Result=ImportTimeline(Path,SelectedText,FilePath,GraphName,GraphId,GraphType,Clear,KeepRoot,Allow,ValidateOnly,DryRun,Compile,Save);if(FileSelected){AdoptImportFileSource(Result,FileSource);Result.Data->SetBoolField(TEXT("input_file_source_ready"),true);}return Result;}
+    if(FileReady&&IsCollapsedText(SelectedText)){auto Result=ImportCollapsed(Path,SelectedText,FilePath,GraphName,GraphId,GraphType,Clear,KeepRoot,Allow,ValidateOnly,DryRun,Compile,Save);if(FileSelected){AdoptImportFileSource(Result,FileSource);Result.Data->SetBoolField(TEXT("input_file_source_ready"),true);}return Result;}
+    if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Original graph import requires idle Editor game thread, no PIE/SIE."));return R; }
+    Count(R,TEXT("outer_transaction_calls"));FScopedTransaction Tx(NSLOCTEXT("CubelessMCP","ImportBlueprintGraphText","Import Blueprint Graph Text"));UBlueprint* BP=Load(Path,R,true);if(!BP) { return R; }const TStrongObjectPtr<UBlueprint> KeepBP(BP);FMacroGraphLease Macro(R);if(!Macro.Bind(BP))return R;
+    if(BP->BlueprintType==BPTYPE_FunctionLibrary&&GraphName.IsEmpty()&&GraphId.IsEmpty()&&Normalize(GraphType).IsEmpty()){Fail(R,TEXT("graph_transfer_function_library_selector_required"),TEXT("FunctionLibrary import requires an explicit existing function selector; implicit EventGraph creation remains incomplete and was not attempted."));return R;}
+    if(BP->BlueprintType==BPTYPE_MacroLibrary&&GraphName.IsEmpty()&&GraphId.IsEmpty()&&Normalize(GraphType).IsEmpty()){Fail(R,TEXT("graph_transfer_macro_library_selector_required"),TEXT("MacroLibrary import requires an explicit existing macro graph selector; implicit EventGraph creation remains incomplete and was not attempted."));return R;}
+    TSharedRef<FJsonObject> BeforeResolve=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("before_resolution"),R,BeforeResolve)) { return R; }UEdGraph* G=Resolve(BP,GraphName,GraphId,GraphType,R);if(!Macro.Current())return R;if(!G) { return R; }const TStrongObjectPtr<UEdGraph> KeepGraph(G);
+    if(BP->BlueprintType==BPTYPE_FunctionLibrary&&!BP->FunctionGraphs.Contains(G)){Fail(R,TEXT("graph_transfer_function_library_target_pending"),TEXT("Only an explicitly resolved existing own FunctionGraphs member is admitted; no EventGraph/macro/delegate creation."));return R;}
+    if(BP->BlueprintType==BPTYPE_MacroLibrary&&(!BP->MacroGraphs.Contains(G)||G->GetOuter()!=BP)){Fail(R,TEXT("graph_transfer_macro_library_target_pending"),TEXT("Only an explicitly resolved existing own MacroGraphs member is admitted; no implicit graph creation."));return R;}
+    const FGuid Guid=G->GraphGuid;
+    if(FileSelected&&!FileReady){R.Stage=FileSource.Stage;Fail(R,*FileSource.ErrorCode,FileSource.Error);return R;}
+    FString TextToImport=SelectedText;if(!Text(TextToImport,MaxText,R)||!Text(FilePath,4096,R)) { return R; }if(TextToImport.IsEmpty()) { Fail(R,TEXT("graph_transfer_text_missing"),TEXT("Provide either text or text_file_path."));return R; }if(!Sample(BP,Allow,R)) { return R; }
     const bool Validate=ValidateOnly||DryRun;auto Legacy=MakeShared<FJsonObject>();Legacy->SetStringField(TEXT("command"),TEXT("import_blueprint_graph_nodes_from_text"));Legacy->SetStringField(TEXT("blueprint_name"),Path);Legacy->SetStringField(TEXT("blueprint_path"),BP->GetPathName());Legacy->SetStringField(TEXT("blueprint_package_path"),BP->GetOutermost()->GetName());Legacy->SetStringField(TEXT("graph_name"),G->GetName());Legacy->SetStringField(TEXT("graph_id"),Guid.ToString());Legacy->SetStringField(TEXT("graph_schema"),G->GetSchema()->GetClass()->GetName());Legacy->SetStringField(TEXT("text_file_path"),FilePath);Legacy->SetNumberField(TEXT("text_length"),TextToImport.Len());Legacy->SetBoolField(TEXT("validate_only"),Validate);Legacy->SetBoolField(TEXT("sample_or_temp_target"),R.Data->GetBoolField(TEXT("sample_or_temp_target")));Legacy->SetBoolField(TEXT("allow_non_sample"),Allow);Legacy->SetBoolField(TEXT("clear_graph"),Clear);Legacy->SetBoolField(TEXT("keep_root_node"),KeepRoot);Legacy->SetBoolField(TEXT("compile_requested"),Compile);Legacy->SetBoolField(TEXT("save_requested"),Save);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
-    if(!Admission(BP,TextToImport,R)) { return R; }R.Stage=TEXT("can_import");Count(R,TEXT("can_import_calls"));const bool Can=FEdGraphUtilities::CanImportNodesFromText(G,TextToImport);Count(R,TEXT("can_import_returns"));Legacy->SetBoolField(TEXT("success"),Can);Legacy->SetBoolField(TEXT("can_import"),Can);R.Data->SetBoolField(TEXT("can_import_preflight_side_effect_free"),false);if(!Can) { Legacy->SetStringField(TEXT("error"),TEXT("FEdGraphUtilities::CanImportNodesFromText returned false"));Fail(R,TEXT("graph_transfer_cannot_import"),Legacy->GetStringField(TEXT("error")));return R; }
-    TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("before_import"),R,Before)) { return R; }if(Validate) { Legacy->SetNumberField(TEXT("imported_node_count"),0);Finish(BP,true,R,Legacy);Terminal(R);return R; }
-    R.Stage=TEXT("apply_import");R.bMutationAttempted=true;R.bChangeStateKnown=false;R.bChanged=true;Count(R,TEXT("blueprint_modify_calls"));BP->Modify();Count(R,TEXT("graph_modify_calls"));G->Modify();int32 Removed=0;TArray<TSharedPtr<FJsonValue>> Removal;
+    FStockSwitchImport Switch(R);FSelectKnotImport DataCluster(R);FOwnMacroInstanceImport OwnMacro(R);FString MacroAdmissionText;auto GraphSourcesCurrent=[&](){return Macro.Current()&&Switch.Current()&&DataCluster.Current()&&OwnMacro.Current();};
+    if(!OwnMacro.Admit(BP,G,TextToImport,MacroAdmissionText)||!DataCluster.Admit(TextToImport)||!Switch.Admit(TextToImport)||!Admission(BP,OwnMacro.Active?MacroAdmissionText:TextToImport,R,DataCluster.Active,OwnMacro.Active)||!GraphSourcesCurrent()) { return R; }R.Stage=TEXT("can_import");Count(R,TEXT("can_import_calls"));const bool Can=FEdGraphUtilities::CanImportNodesFromText(G,TextToImport);Count(R,TEXT("can_import_returns"));if(!GraphSourcesCurrent())return R;Legacy->SetBoolField(TEXT("success"),Can);Legacy->SetBoolField(TEXT("can_import"),Can);R.Data->SetBoolField(TEXT("can_import_preflight_side_effect_free"),false);if(!Can) { Legacy->SetStringField(TEXT("error"),TEXT("FEdGraphUtilities::CanImportNodesFromText returned false"));Fail(R,TEXT("graph_transfer_cannot_import"),Legacy->GetStringField(TEXT("error")));return R; }
+    TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("before_import"),R,Before)||!GraphSourcesCurrent()) { return R; }if(Validate) { Legacy->SetNumberField(TEXT("imported_node_count"),0);Finish(BP,true,R,Legacy,[&](){return GraphSourcesCurrent();});if(R.ErrorCode.IsEmpty()&&!OwnMacro.FinalFiles())return R;Terminal(R);return R; }
+    R.Stage=TEXT("apply_import");R.bMutationAttempted=true;R.bChangeStateKnown=false;R.bChanged=true;Count(R,TEXT("blueprint_modify_calls"));BP->Modify();if(!GraphSourcesCurrent())return R;Count(R,TEXT("graph_modify_calls"));G->Modify();if(!GraphSourcesCurrent())return R;int32 Removed=0;TArray<TSharedPtr<FJsonValue>> Removal;
     if(Clear)
     {
         TArray<TStrongObjectPtr<UEdGraphNode>> Old;for(UEdGraphNode* N:G->Nodes) { if(N) { Old.Emplace(N); } }
-        UClass* AnimRoot=FindObject<UClass>(nullptr,TEXT("/Script/AnimGraph.AnimGraphNode_Root"));for(const auto& Held:Old) { auto* N=Held.Get();if(KeepRoot&&(N->IsA(UK2Node_FunctionEntry::StaticClass())||N->IsA(UK2Node_FunctionResult::StaticClass())||(Loaded(AnimRoot)&&N->IsA(AnimRoot)))) { continue; }auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("node_id"),N->NodeGuid.ToString());Q->SetStringField(TEXT("node_path"),N->GetPathName());Count(R,TEXT("node_modify_calls"));N->Modify();Count(R,TEXT("remove_node_calls"));const bool Returned=G->RemoveNode(N);Count(R,TEXT("remove_node_returns"));Q->SetBoolField(TEXT("returned"),Returned);Removal.Add(MakeShared<FJsonValueObject>(Q));R.Data->SetArrayField(TEXT("removal_receipts"),Removal);++Removed; }
+        UClass* AnimRoot=FindObject<UClass>(nullptr,TEXT("/Script/AnimGraph.AnimGraphNode_Root"));for(const auto& Held:Old) { auto* N=Held.Get();if(!GraphSourcesCurrent())return R;if(Macro.Active&&(!Loaded(N)||N->GetOuter()!=G||!G->Nodes.Contains(N)))return Macro.Stop(TEXT("Selected clear node owner/membership changed before its next getter.")),R;if(KeepRoot&&(N->IsA(UK2Node_FunctionEntry::StaticClass())||N->IsA(UK2Node_FunctionResult::StaticClass())||(Loaded(AnimRoot)&&N->IsA(AnimRoot)))) { continue; }auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("node_id"),N->NodeGuid.ToString());Q->SetStringField(TEXT("node_path"),N->GetPathName());Count(R,TEXT("node_modify_calls"));N->Modify();if(!GraphSourcesCurrent())return R;if(Macro.Active&&(!Loaded(N)||N->GetOuter()!=G||!G->Nodes.Contains(N)))return Macro.Stop(TEXT("Selected clear node changed owner/membership after Modify.")),R;Count(R,TEXT("remove_node_calls"));const bool Returned=G->RemoveNode(N);Count(R,TEXT("remove_node_returns"));Q->SetBoolField(TEXT("returned"),Returned);Removal.Add(MakeShared<FJsonValueObject>(Q));R.Data->SetArrayField(TEXT("removal_receipts"),Removal);++Removed;if(!GraphSourcesCurrent())return R; }
     }
-    Legacy->SetNumberField(TEXT("removed_node_count"),Removed);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);TSet<UEdGraphNode*> Imported;Count(R,TEXT("import_nodes_calls"));FEdGraphUtilities::ImportNodesFromText(G,TextToImport,Imported);Count(R,TEXT("import_nodes_returns"));R.Data->SetNumberField(TEXT("imported_returned_count"),Imported.Num());TArray<TStrongObjectPtr<UEdGraphNode>> HoldImported;TArray<TSharedPtr<FJsonValue>> Returned;
-    for(UEdGraphNode* N:Imported) { auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("returned_node_path"),GetPathNameSafe(N));Returned.Add(MakeShared<FJsonValueObject>(Q));R.Data->SetArrayField(TEXT("import_returned_prefix"),Returned);if(N) { HoldImported.Emplace(N);Count(R,TEXT("new_guid_calls"));N->CreateNewGuid();Q->SetStringField(TEXT("new_node_id"),N->NodeGuid.ToString()); } }
-    Legacy->SetNumberField(TEXT("imported_node_count"),Imported.Num());Count(R,TEXT("notify_graph_calls"));G->NotifyGraphChanged();Count(R,TEXT("mark_structural_calls"));FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);R.Data->SetBoolField(TEXT("implicit_skeleton_regeneration_possible"),true);
-    TSharedRef<FJsonObject> After=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_import"),R,After)) { return R; }R.bChangeStateKnown=true;FIndex Current;if(!Index(BP,Current,R)) { R.bChangeStateKnown=false;return R; }TArray<TSharedPtr<FJsonValue>> Rows;bool Good=Imported.Num()>0;TSet<FGuid> NewIds;
+    Legacy->SetNumberField(TEXT("removed_node_count"),Removed);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);TSet<UEdGraphNode*> Imported;Count(R,TEXT("import_nodes_calls"));FEdGraphUtilities::ImportNodesFromText(G,TextToImport,Imported);Count(R,TEXT("import_nodes_returns"));R.Data->SetNumberField(TEXT("imported_returned_count"),Imported.Num());if(Macro.Active){TArray<TSharedPtr<FJsonValue>> RawAddresses;for(auto* N:Imported)RawAddresses.Add(MakeShared<FJsonValueString>(LexToString(reinterpret_cast<UPTRINT>(N))));R.Data->SetArrayField(TEXT("macro_import_returned_addresses_unadopted"),RawAddresses);}if(!GraphSourcesCurrent())return R;if(!Switch.Adopt(G,Imported)||!DataCluster.Adopt(G,Imported)||!OwnMacro.Adopt(G,Imported))return R;TArray<TStrongObjectPtr<UEdGraphNode>> HoldImported;TArray<TSharedPtr<FJsonValue>> Returned;
+    for(UEdGraphNode* N:Imported) { if(Macro.Active&&(!Loaded(N)||N->GetOuter()!=G||!G->Nodes.Contains(N)))return Macro.Stop(TEXT("Returned imported node no longer has the selected macro owner/membership; raw addresses retained without dereference.")),R;auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("returned_node_path"),GetPathNameSafe(N));Returned.Add(MakeShared<FJsonValueObject>(Q));R.Data->SetArrayField(TEXT("import_returned_prefix"),Returned);if(N) { HoldImported.Emplace(N);Count(R,TEXT("new_guid_calls"));N->CreateNewGuid();Q->SetStringField(TEXT("new_node_id"),N->NodeGuid.ToString()); } }
+    Legacy->SetNumberField(TEXT("imported_node_count"),Imported.Num());Count(R,TEXT("notify_graph_calls"));G->NotifyGraphChanged();if(!GraphSourcesCurrent())return R;Count(R,TEXT("mark_structural_calls"));FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);if(!GraphSourcesCurrent())return R;R.Data->SetBoolField(TEXT("implicit_skeleton_regeneration_possible"),true);
+    TSharedRef<FJsonObject> After=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_import"),R,After)||!GraphSourcesCurrent()) { return R; }R.bChangeStateKnown=true;FIndex Current;if(!Index(BP,Current,R)) { R.bChangeStateKnown=false;return R; }TArray<TSharedPtr<FJsonValue>> Rows;bool Good=Imported.Num()>0;TSet<FGuid> NewIds;
     for(UEdGraphNode* N:Imported) { if(!N||!Current.Nodes.Contains(N)||N->GetGraph()!=G||!N->NodeGuid.IsValid()||NewIds.Contains(N->NodeGuid)) { Good=false;continue; }NewIds.Add(N->NodeGuid);Rows.Add(MakeShared<FJsonValueObject>(Node(N,Current)));if(!N->HasAnyFlags(RF_Transactional)||!N->GetClass()->HasAnyClassFlags(CLASS_Native)||!N->GetClass()->GetPathName().StartsWith(TEXT("/Script/BlueprintGraph."))) { Good=false; }for(UEdGraphPin* P:N->Pins) { if(!P) { continue; }if((P->DefaultObject&&!RuntimeObject(P->DefaultObject))||(P->PinType.PinSubCategoryObject.Get()&&!RuntimeObject(P->PinType.PinSubCategoryObject.Get()))) { Good=false; } }if(auto* Call=Cast<UK2Node_CallFunction>(N)) { Good&=RuntimeObject(Call->GetTargetFunction()); } }
     Legacy->SetArrayField(TEXT("imported_nodes"),Rows);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);R.Data->SetBoolField(TEXT("current_imported_nodes_verified"),Good);if(!Protected(Before,After,Guid,R)||!Good) { if(R.ErrorCode.IsEmpty()) { Fail(R,TEXT("graph_transfer_import_postcondition_failed"),TEXT("Returned imported node/class/type/reference/current graph proof incomplete; accepted clear/paste prefix retained, no rollback or compiler/save replay.")); }return R; }
-    Finish(BP,false,R,Legacy);Terminal(R);return R;
+    Finish(BP,false,R,Legacy,[&](){return GraphSourcesCurrent();});if(R.ErrorCode.IsEmpty()&&!OwnMacro.FinalFiles())return R;Terminal(R);return R;
 }
 Variable::FResult Repair(const FString& Path,bool Allow,bool ValidateOnly,bool DryRun,bool Compile,bool Save)
 {
-    FResult R;Init(R,Compile,Save);if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Original repair requires idle Editor game thread, no PIE/SIE."));return R; }Count(R,TEXT("outer_transaction_calls"));FScopedTransaction Tx(NSLOCTEXT("CubelessMCP","RepairBlueprintPinLinks","Repair Blueprint Pin Links"));UBlueprint* BP=Load(Path,R);if(!BP) { return R; }const TStrongObjectPtr<UBlueprint> KeepBP(BP);if(!Sample(BP,Allow,R)) { return R; }const bool Validate=ValidateOnly||DryRun;TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("before_repair"),R,Before)) { return R; }FIndex I;if(!Index(BP,I,R)) { return R; }
+    FResult R;Init(R,Compile,Save);if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("graph_transfer_editor_invalid"),TEXT("Original repair requires idle Editor game thread, no PIE/SIE."));return R; }Count(R,TEXT("outer_transaction_calls"));FScopedTransaction Tx(NSLOCTEXT("CubelessMCP","RepairBlueprintPinLinks","Repair Blueprint Pin Links"));UBlueprint* BP=Load(Path,R,true,true);if(!BP) { return R; }const TStrongObjectPtr<UBlueprint> KeepBP(BP);FMacroGraphLease Macro(R);if(!Macro.Bind(BP))return R;if(!Sample(BP,Allow,R)) { return R; }const bool Validate=ValidateOnly||DryRun;TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("before_repair"),R,Before)) { return R; }FIndex I;if(!Index(BP,I,R)||!Macro.BindPins(I)) { return R; }
     TArray<TStrongObjectPtr<UEdGraph>> KeepGraphs;TArray<TStrongObjectPtr<UEdGraphNode>> KeepNodes;for(UEdGraph* G:I.Graphs) { if(G) { KeepGraphs.Emplace(G); } }for(UEdGraphNode* N:I.Nodes) { KeepNodes.Emplace(N); }
     TMap<UEdGraph*,int32> GraphChanges;int32 Null=0,Duplicate=0,Self=0,External=0,Schema=0,Reciprocal=0,Skipped=0,ChangedPins=0;TArray<TSharedPtr<FJsonValue>> Summaries;auto MarkGraph=[&](UEdGraph* G){ if(G) { ++GraphChanges.FindOrAdd(G); } };
     R.Stage=Validate?TEXT("validate_links"):TEXT("repair_links");
     for(UEdGraph* G:I.Graphs)
     {
-        if(!G) { continue; }int32 Visited=0,Changes=0;for(UEdGraphNode* N:G->Nodes)
+        if(!G) { continue; }int32 Visited=0,Changes=0;TArray<TObjectPtr<UEdGraphNode>> VisitNodes;if(Macro.Active)VisitNodes=G->Nodes;const auto& CurrentNodes=Macro.Active?VisitNodes:G->Nodes;for(const auto& Slot:CurrentNodes)
         {
-            if(!N) { continue; }for(UEdGraphPin* P:N->Pins)
+            if(Macro.Active&&!Slot.IsResolved())return Macro.Stop(TEXT("Repair node slot became unresolved; no source loader.")),R;UEdGraphNode* N=Macro.Active?Cast<UEdGraphNode>(StaticFindObject(nullptr,nullptr,*Slot.GetPathName())):Slot.Get();if(Macro.Active&&(!Loaded(N)||Slot!=N))return Macro.Stop(TEXT("Repair node slot no longer matches its resolved held receiver.")),R;
+            if(!N) { continue; }TArray<UEdGraphPin*> VisitPins;if(Macro.Active)VisitPins=N->Pins;const auto& CurrentPins=Macro.Active?VisitPins:N->Pins;for(UEdGraphPin* P:CurrentPins)
             {
-                if(!P) { continue; }++Visited;bool Change=false;TSet<UEdGraphPin*> Seen;TArray<UEdGraphPin*> Clean;Clean.Reserve(P->LinkedTo.Num());for(UEdGraphPin* L:P->LinkedTo)
+                if(!P) { continue; }++Visited;bool Change=false;TSet<UEdGraphPin*> Seen;TArray<UEdGraphPin*> Clean;Clean.Reserve(P->LinkedTo.Num());TArray<UEdGraphPin*> VisitLinks;if(Macro.Active)VisitLinks=P->LinkedTo;const auto& CurrentLinks=Macro.Active?VisitLinks:P->LinkedTo;for(UEdGraphPin* L:CurrentLinks)
                 {
-                    if(!L) { ++Null;Change=true;continue; }if(L==P) { ++Self;Change=true;continue; }if(!I.Pins.Contains(L)) { ++External;Change=true;continue; }if(Disallowed(G->GetSchema(),P,L,R)) { ++Schema;Change=true;continue; }if(Seen.Contains(L)) { ++Duplicate;Change=true;continue; }Seen.Add(L);Clean.Add(L);
+                    if(!L) { ++Null;Change=true;continue; }if(L==P) { ++Self;Change=true;continue; }if(!I.Pins.Contains(L)) { ++External;Change=true;continue; }const UEdGraphSchema* ConnectionSchema=G->GetSchema();if(!Macro.PinsCurrent())return R;const bool Refused=Disallowed(ConnectionSchema,P,L,R);if(!Macro.PinsCurrent())return R;if(Refused) { ++Schema;Change=true;continue; }if(Seen.Contains(L)) { ++Duplicate;Change=true;continue; }Seen.Add(L);Clean.Add(L);
                 }
-                if(Change&&!Validate) { R.bMutationAttempted=R.bChanged=true;R.bChangeStateKnown=false;Count(R,TEXT("pin_modify_calls"));P->Modify();Count(R,TEXT("link_array_write_calls"));P->LinkedTo=Clean;MarkGraph(G);++Changes;++ChangedPins; }else if(Change) { ++Changes;++ChangedPins; }
+                if(Change&&!Validate) { R.bMutationAttempted=R.bChanged=true;R.bChangeStateKnown=false;Count(R,TEXT("pin_modify_calls"));P->Modify();if(!Macro.PinsCurrent())return R;Count(R,TEXT("link_array_write_calls"));P->LinkedTo=Clean;MarkGraph(G);++Changes;++ChangedPins; }else if(Change) { ++Changes;++ChangedPins; }
             }
         }
         auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("graph_name"),G->GetName());J->SetStringField(TEXT("graph_id"),G->GraphGuid.ToString());J->SetNumberField(TEXT("pins_visited"),Visited);J->SetNumberField(TEXT("first_pass_changes"),Changes);Summaries.Add(MakeShared<FJsonValueObject>(J));
@@ -1694,15 +2753,15 @@ Variable::FResult Repair(const FString& Path,bool Allow,bool ValidateOnly,bool D
     // Original set iteration and dry-run reading of unmodified first-pass arrays are retained.
     for(UEdGraphPin* P:I.Pins)
     {
-        UEdGraph* PG=I.Owners.FindChecked(P)->GetGraph();for(UEdGraphPin* L:P->LinkedTo)
+        UEdGraph* PG=I.Owners.FindChecked(P)->GetGraph();TArray<UEdGraphPin*> VisitLinks;if(Macro.Active)VisitLinks=P->LinkedTo;const auto& CurrentLinks=Macro.Active?VisitLinks:P->LinkedTo;for(UEdGraphPin* L:CurrentLinks)
         {
-            if(!L||!I.Pins.Contains(L)) { continue; }UEdGraph* LG=I.Owners.FindChecked(L)->GetGraph();if(!L->LinkedTo.Contains(P)) { const auto* S=PG?PG->GetSchema():LG->GetSchema();if(Disallowed(S,P,L,R)) { ++Skipped;continue; }++Reciprocal;MarkGraph(LG);if(!Validate) { R.bMutationAttempted=R.bChanged=true;R.bChangeStateKnown=false;Count(R,TEXT("pin_modify_calls"));L->Modify();Count(R,TEXT("reciprocal_add_calls"));L->LinkedTo.Add(P); }++ChangedPins; }if(LG!=PG) { MarkGraph(PG);MarkGraph(LG); }
+            if(!L||!I.Pins.Contains(L)) { continue; }UEdGraph* LG=I.Owners.FindChecked(L)->GetGraph();if(!L->LinkedTo.Contains(P)) { const auto* S=PG?PG->GetSchema():LG->GetSchema();if(!Macro.PinsCurrent())return R;const bool Refused=Disallowed(S,P,L,R);if(!Macro.PinsCurrent())return R;if(Refused) { ++Skipped;continue; }++Reciprocal;MarkGraph(LG);if(!Validate) { R.bMutationAttempted=R.bChanged=true;R.bChangeStateKnown=false;Count(R,TEXT("pin_modify_calls"));L->Modify();if(!Macro.PinsCurrent())return R;Count(R,TEXT("reciprocal_add_calls"));L->LinkedTo.Add(P); }++ChangedPins; }if(LG!=PG) { MarkGraph(PG);MarkGraph(LG); }
         }
     }
-    const bool Had=Null>0||Duplicate>0||Self>0||External>0||Schema>0||Reciprocal>0;if(Had&&!Validate) { Count(R,TEXT("blueprint_modify_calls"));BP->Modify();for(const auto& Pair:GraphChanges) { if(Pair.Key) { Count(R,TEXT("graph_modify_calls"));Pair.Key->Modify();Count(R,TEXT("notify_graph_calls"));Pair.Key->NotifyGraphChanged(); } }Count(R,TEXT("mark_modified_calls"));FBlueprintEditorUtils::MarkBlueprintAsModified(BP); }
+    const bool Had=Null>0||Duplicate>0||Self>0||External>0||Schema>0||Reciprocal>0;if(Had&&!Validate) { Count(R,TEXT("blueprint_modify_calls"));BP->Modify();if(!Macro.Current())return R;for(const auto& Pair:GraphChanges) { if(Pair.Key) { Count(R,TEXT("graph_modify_calls"));Pair.Key->Modify();if(!Macro.Current())return R;Count(R,TEXT("notify_graph_calls"));Pair.Key->NotifyGraphChanged();if(!Macro.Current())return R; } }Count(R,TEXT("mark_modified_calls"));FBlueprintEditorUtils::MarkBlueprintAsModified(BP);if(!Macro.Current())return R; }
     auto Legacy=MakeShared<FJsonObject>();Legacy->SetBoolField(TEXT("success"),true);Legacy->SetStringField(TEXT("command"),TEXT("repair_blueprint_pin_links"));Legacy->SetBoolField(TEXT("validate_only"),Validate);Legacy->SetStringField(TEXT("blueprint_name"),Path);Legacy->SetStringField(TEXT("blueprint_path"),BP->GetPathName());Legacy->SetStringField(TEXT("blueprint_package_path"),BP->GetOutermost()->GetName());Legacy->SetBoolField(TEXT("sample_or_temp_target"),R.Data->GetBoolField(TEXT("sample_or_temp_target")));Legacy->SetBoolField(TEXT("allow_non_sample"),Allow);Legacy->SetBoolField(TEXT("compile_requested"),Compile);Legacy->SetBoolField(TEXT("save_requested"),Save);Legacy->SetNumberField(TEXT("graph_count"),I.Graphs.Num());Legacy->SetNumberField(TEXT("node_count"),I.NodeEntries);Legacy->SetNumberField(TEXT("pin_count"),I.PinEntries);Legacy->SetNumberField(TEXT("changed_pin_count"),ChangedPins);Legacy->SetNumberField(TEXT("removed_null_links"),Null);Legacy->SetNumberField(TEXT("removed_duplicate_links"),Duplicate);Legacy->SetNumberField(TEXT("removed_self_links"),Self);Legacy->SetNumberField(TEXT("removed_external_links"),External);Legacy->SetNumberField(TEXT("removed_schema_disallowed_links"),Schema);Legacy->SetNumberField(TEXT("added_reciprocal_links"),Reciprocal);Legacy->SetNumberField(TEXT("skipped_schema_disallowed_reciprocal_links"),Skipped);Legacy->SetBoolField(TEXT("had_changes"),Had);Legacy->SetArrayField(TEXT("graphs"),Summaries);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
-    TSharedRef<FJsonObject> After=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_repair"),R,After)) { return R; }R.bChangeStateKnown=true;if(Validate) { const bool Same=Equal(Before,After);R.Data->SetBoolField(TEXT("validation_owned_state_preserved"),Same);if(!Same) { Fail(R,TEXT("graph_transfer_validation_state_changed"),TEXT("Schema validation/current owned state differs; no apply, no fake known-zero total effect claim."));return R; }Finish(BP,true,R,Legacy);Terminal(R);return R; }
+    TSharedRef<FJsonObject> After=MakeShared<FJsonObject>();if(!Capture(BP,TEXT("after_repair"),R,After)) { return R; }R.bChangeStateKnown=true;if(Validate) { const bool Same=Equal(Before,After);R.Data->SetBoolField(TEXT("validation_owned_state_preserved"),Same);if(!Same) { Fail(R,TEXT("graph_transfer_validation_state_changed"),TEXT("Schema validation/current owned state differs; no apply, no fake known-zero total effect claim."));return R; }Finish(BP,true,R,Legacy,[&](){return Macro.Current();});Terminal(R);return R; }
     FIndex Current;if(!Index(BP,Current,R)||!HealthyLinks(Current,R)) { Fail(R,TEXT("graph_transfer_repair_postcondition_failed"),TEXT("Current owned link arrays still malformed; accepted repair prefix retained without retry."));return R; }if(!Before->GetStringField(TEXT("parent_class")).Equals(After->GetStringField(TEXT("parent_class")),ESearchCase::CaseSensitive)||!Equal(Before->GetObjectField(TEXT("member_declarations")).ToSharedRef(),After->GetObjectField(TEXT("member_declarations")).ToSharedRef())) { Fail(R,TEXT("graph_transfer_repair_source_changed"),TEXT("Member declarations/parent changed during repair callbacks; accepted prefix retained."));return R; }
-    Finish(BP,false,R,Legacy);Terminal(R);return R;
+    Finish(BP,false,R,Legacy,[&](){return Macro.Current();});Terminal(R);return R;
 }
 }

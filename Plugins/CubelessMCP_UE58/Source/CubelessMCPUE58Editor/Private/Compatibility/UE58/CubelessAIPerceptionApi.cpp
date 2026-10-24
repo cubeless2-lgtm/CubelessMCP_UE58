@@ -9,6 +9,8 @@
 #include "EditorAssetLibrary.h"
 #include "Editor.h"
 #include "Engine/World.h"
+#include "Engine/Level.h"
+#include "Components/ActorComponent.h"
 #include "UObject/UObjectHash.h"
 #include "UObject/UObjectGlobals.h"
 #include "Engine/Blueprint.h"
@@ -76,6 +78,19 @@ FString Encode(FResult& R)
 }
 bool Loaded(const UObject* O)
 { return IsValid(O) && !O->HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad | RF_NeedPostLoadSubobjects | RF_BeginDestroyed | RF_FinishDestroyed); }
+// YO: use only installed public resolved-path/shallow equality APIs. Get()
+// is a tracked read; it is not a raw/no-callback pointer extraction operation.
+template<typename T>
+UObject* PerceptionObservedPointer(const TObjectPtr<T>& Ref)
+{
+#if UE_WITH_OBJECT_HANDLE_LATE_RESOLVE
+    if(!IsEditorGameThread()||!Ref.IsResolved()||Ref==nullptr)return nullptr;
+    const FString ObjectPath=Ref.GetPathName();UObject* Found=StaticFindObject(nullptr,nullptr,*ObjectPath);
+    return Loaded(Found)&&Ref==Found?Found:nullptr;
+#else
+    return nullptr;
+#endif
+}
 TSharedRef<FJsonObject> Identity(const UObject* O)
 {
     auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("path"), O ? O->GetPathName() : TEXT("")); J->SetStringField(TEXT("class"), O ? O->GetClass()->GetPathName() : TEXT(""));
@@ -145,16 +160,127 @@ bool ReadComponent(UAIPerceptionComponent* C, TSharedRef<FJsonObject>& J)
     if (!Loaded(C) || C->GetClass() != UAIPerceptionComponent::StaticClass() || C->IsRegistered() || C->GetOwner() || C->GetWorld()) { return false; }
     J->SetObjectField(TEXT("identity"), Identity(C)); J->SetBoolField(TEXT("registered"), false); J->SetStringField(TEXT("dominant_sense"), C->GetDominantSense() ? C->GetDominantSense()->GetPathName() : TEXT(""));
     TArray<TSharedPtr<FJsonValue>> Rows; TSet<const UAISenseConfig*> Unique; int32 SightCount = 0; J->SetArrayField(TEXT("sense_configs"), Rows);
-    for (auto It = C->GetSensesConfigIterator(); It; ++It)
+    // No live sense-array iterator spans reflected ExportText/read callbacks.
+    // Strong holds protect copied entries; actual ordered membership is checked
+    // again before the observation is accepted, not fixed across compilation.
+    // GetSensesConfigIterator itself uses the SDK ToRawPtrTArrayUnsafe view:
+    // its internal tracked reads/callback atomicity are not proven by this copy.
+    TStrongObjectPtr<UAIPerceptionComponent> KeepComponent(C);TArray<TStrongObjectPtr<const UAISenseConfig>> SenseHolds;
+    TArray<const UAISenseConfig*> SenseRows;
+    for(auto It=C->GetSensesConfigIterator();It;++It)
+    {if(SenseRows.Num()>=MaxSenses)return false;SenseRows.Add(*It);}
+    for(const auto* Sense:SenseRows){if(!Loaded(Sense))return false;SenseHolds.Emplace(Sense);}
+    for (const UAISenseConfig* S:SenseRows)
     {
-        const UAISenseConfig* S = *It; auto Row = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("identity"), Identity(S)); Rows.Add(MakeShared<FJsonValueObject>(Row)); J->SetArrayField(TEXT("sense_configs"), Rows);
+        auto Row = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("identity"), Identity(S)); Rows.Add(MakeShared<FJsonValueObject>(Row)); J->SetArrayField(TEXT("sense_configs"), Rows);
         if (!Loaded(S) || S->GetOuter() != C || Unique.Contains(S) || Unique.Num() >= MaxSenses || S->GetClass()->GetOutermost()->GetName() != TEXT("/Script/AIModule") || !S->GetClass()->HasAnyClassFlags(CLASS_Native)) { return false; } Unique.Add(S);
         if (S->GetClass() == UAISenseConfig_Sight::StaticClass()) { if (++SightCount > 1 || !ReadSight(CastChecked<UAISenseConfig_Sight>(S), Row)) { return false; } }
         else { auto Props = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("properties"), Props); if (!Properties(const_cast<UAISenseConfig*>(S), {}, Props) || !CleanDependencyText(Text(Props))) { return false; } }
     }
     J->SetNumberField(TEXT("sense_config_count"), Rows.Num()); J->SetBoolField(TEXT("sight_exists"), SightCount == 1);
-    auto Props = MakeShared<FJsonObject>(); if (!Properties(C, { TEXT("SensesConfig"), TEXT("DominantSense") }, Props)) { return false; } J->SetObjectField(TEXT("unselected_properties"), Props); return true;
+    auto Props = MakeShared<FJsonObject>(); if (!Properties(C, { TEXT("SensesConfig"), TEXT("DominantSense") }, Props)) { return false; } J->SetObjectField(TEXT("unselected_properties"), Props);
+    if(!Loaded(C)||C->GetClass()!=UAIPerceptionComponent::StaticClass()||C->IsRegistered()||C->GetOwner()||C->GetWorld())return false;
+    int32 At=0;for(auto It=C->GetSensesConfigIterator();It;++It,++At)
+    {if(!SenseRows.IsValidIndex(At)||*It!=SenseRows[At]||!Loaded(SenseRows[At])||SenseRows[At]->GetOuter()!=C)return false;}
+    return At==SenseRows.Num();
 }
+// XA: request-local observation of ordinary editor instances affected by the original compiler.
+// No live setting writer, construction override, level save or runtime helper class is introduced.
+struct FLivePerceptionInstances
+{
+    struct FActorRole{TStrongObjectPtr<UObject> Current;TStrongObjectPtr<ULevel> Level;TStrongObjectPtr<UPackage> Package,External,LevelPackage;FName Name;FString Path,LevelPath;FGuid Guid;FTransform Transform;TSharedPtr<FJsonObject> Authored;};
+    FResult& R;TStrongObjectPtr<UBlueprint> Blueprint;TStrongObjectPtr<UClass> CurrentClass;TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;
+    TArray<FActorRole> Actors;TArray<TStrongObjectPtr<UObject>> Watched,Retained;TSet<UObject*> KnownKeys;TStrongObjectPtr<UPackage> BlueprintPackage;TStrongObjectPtr<UClass> BlueprintParent;FString BlueprintPath;TSet<FString> DirtyPackages;FDelegateHandle ReplacedHandle,ReinstancedHandle;TAtomic<bool> Lost{false};bool CompilerWindow=false,FailureReported=false;int32 ReplacementCount=0,ReinstancedCount=0,RetiredChildCount=0;FString ComponentVariable;
+    explicit FLivePerceptionInstances(FResult& In):R(In){}
+    ~FLivePerceptionInstances(){if(ReplacedHandle.IsValid())FCoreUObjectDelegates::OnObjectsReplaced.Remove(ReplacedHandle);if(ReinstancedHandle.IsValid())FCoreUObjectDelegates::OnObjectsReinstanced.Remove(ReinstancedHandle);}
+    bool Stop(const TCHAR* Why)
+    {if(!FailureReported){FailureReported=true;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),R.Stage);J->SetStringField(TEXT("reason"),Why);R.Data->SetObjectField(TEXT("live_instance_first_failure"),J);}Lost.Store(true);R.Data->SetNumberField(TEXT("live_instance_replacement_map_entries"),ReplacementCount);R.Data->SetNumberField(TEXT("live_instance_reinstanced_notifications"),ReinstancedCount);R.Data->SetNumberField(TEXT("live_instance_retired_child_map_entries"),RetiredChildCount);R.Data->SetBoolField(TEXT("live_instance_followup_stopped"),true);return Fail(R,TEXT("perception_live_instance_current_lost"),Why,R.bAttempted);}
+    bool Context()
+    {return IsEditorGameThread()&&!IsGarbageCollecting()&&!GExitPurge&&!IsEngineExitRequested()&&!UE::IsSavingPackage()&&!IsPlaySessionActive()&&Loaded(Editor.Get())&&GEditor==Editor.Get()&&Loaded(World.Get())&&World->WorldType==EWorldType::Editor&&!World->bIsTearingDown&&GEditor->GetEditorWorldContext().World()==World.Get()&&Loaded(Blueprint.Get())&&Blueprint->GetClass()==UBlueprint::StaticClass()&&Loaded(BlueprintPackage.Get())&&Loaded(BlueprintParent.Get())&&Blueprint->GetOutermost()==BlueprintPackage.Get()&&Blueprint->GetPathName()==BlueprintPath&&Blueprint->ParentClass==BlueprintParent.Get()&&!Blueprint->bBeingCompiled&&!Blueprint->bQueuedForCompilation&&!Blueprint->bIsRegeneratingOnLoad;}
+    bool KeepMapped(UObject* O)
+    {if(!O||KnownKeys.Contains(O))return true;if(Retained.Num()>=8192){Lost.Store(true);return false;}KnownKeys.Add(O);Retained.Emplace(O);return true;}
+    void Map(const FCoreUObjectDelegates::FReplacementObjectMap& Pairs,bool Reinstanced)
+    {
+        if(!IsInGameThread()){Lost.Store(true);return;} // No UObject queries on an unexpected callback thread.
+        bool Relevant=false;for(auto* Key:KnownKeys)if(const auto* Next=Pairs.Find(Key))Relevant|=*Next!=Key;
+        if(!Relevant)return;if(!CompilerWindow){Lost.Store(true);return;}if(Reinstanced)++ReinstancedCount;
+        // Map collection/strong holds only: replaced notifications precede external reference fixup.
+        for(auto& A:Actors)if(const auto* Next=Pairs.Find(A.Current.Get()))if(*Next!=A.Current.Get())
+        {if(!*Next||!KeepMapped(*Next)){Lost.Store(true);return;}A.Current.Reset(*Next);++ReplacementCount;}
+        for(auto& O:Watched)if(O.Get())if(const auto* Next=Pairs.Find(O.Get()))if(*Next!=O.Get())
+        {if(!*Next){++RetiredChildCount;O.Reset();continue;}if(!KeepMapped(*Next))return;O.Reset(*Next);++ReplacementCount;}
+    }
+    bool Current()
+    {
+        if(Lost.Load())return Stop(TEXT("Replacement was null/outside the admitted compiler window or callback thread."));
+        if(!Context()||!Loaded(CurrentClass.Get())||!Blueprint->GeneratedClass.GetGCPtr().IsResolved()||Blueprint->GeneratedClass.GetGCPtr().Get()!=CurrentClass.Get()||!CurrentClass->ClassGeneratedBy.IsResolved()||CurrentClass->ClassGeneratedBy.Get()!=Blueprint.Get()||CurrentClass->GetSuperClass()!=BlueprintParent.Get())return Stop(TEXT("Editor/world/selected Blueprint generated class role changed."));
+        for(const auto& E:Actors)
+        {
+            auto* O=E.Current.Get();if(!Loaded(O)||O->GetClass()!=CurrentClass.Get()||O->GetOuter()!=E.Level.Get()||O->GetFName()!=E.Name||O->GetPathName()!=E.Path||O->GetPackage()!=E.Package.Get()||!Loaded(E.Level.Get())||!Loaded(E.LevelPackage.Get())||E.Level->GetPackage()!=E.LevelPackage.Get()||E.Level->GetPathName()!=E.LevelPath||!Loaded(E.Package.Get())||(E.External.IsValid()&&!Loaded(E.External.Get())))return Stop(TEXT("Observed current instance class/name/path/level/package changed outside the original replacement role."));
+            auto* A=static_cast<AAIController*>(O);if(A->IsActorBeingDestroyed()||!E.Level->Actors.Contains(A)||A->IsTemplate()||A->GetWorld()!=World.Get()||A->GetLevel()!=E.Level.Get()||E.Level->GetWorld()!=World.Get()||A->GetExternalPackage()!=E.External.Get()||A->GetActorGuid()!=E.Guid||A->GetPawn()||A->GetOwner()||A->GetInstigator()||A->GetAttachParentActor()||A->IsChildActor()||!static_cast<AActor*>(A)->GetActorTransform().Equals(E.Transform,0))return Stop(TEXT("Editor AIController authored placement/possession/ownership role changed; no further SDK."));
+        }return true;
+    }
+    bool CompilerReturned()
+    {
+        if(Lost.Load()||!Context())return Stop(TEXT("Compiler returned without the captured live instance context."));auto Handle=Blueprint->GeneratedClass;if(!Handle.GetGCPtr().IsResolved())return Stop(TEXT("Compiler generated class slot is unresolved."));auto* K=Handle.GetGCPtr().Get();
+        if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=Blueprint.Get()||K->GetOuter()!=Blueprint->GetOutermost()||K->GetSuperClass()!=BlueprintParent.Get())return Stop(TEXT("Compiler returned class is not the selected Blueprint's generated role."));CurrentClass.Reset(K);return Current();
+    }
+    bool Authored(AAIController* A,TSharedRef<FJsonObject>& Out)
+    {
+        if(!Current())return false;TStrongObjectPtr<UClass> Type(A->GetClass());TArray<FProperty*> Fields;for(TFieldIterator<FProperty> It(Type.Get(),EFieldIteratorFlags::IncludeSuper);It;++It)Fields.Add(*It);if(Fields.Num()>MaxProperties)return Stop(TEXT("Instance property inventory exceeds the existing finite bound."));int32 Chars=0;
+        for(auto* P:Fields)
+        {
+            if(!Current())return false;
+            if(!P->HasAnyPropertyFlags(CPF_Edit|CPF_BlueprintVisible)||P->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_EditConst|CPF_InstancedReference|CPF_ContainsInstancedReference)||CastField<FObjectPropertyBase>(P)||P->GetFName()==FName(*ComponentVariable)||(P->GetOwnerStruct()==AAIController::StaticClass()&&P->GetFName()==TEXT("PerceptionComponent")))continue;
+            if(P->ArrayDim<1||P->ArrayDim>64||P->HasSetterOrGetter())return Stop(TEXT("Instance authored property layout/accessor is outside this profile."));const FString Key=P->GetName();TArray<TSharedPtr<FJsonValue>> Values;
+            const int32 Dim=P->ArrayDim,Offset=P->GetOffset_ForInternal(),Size=P->GetSize();const auto Flags=P->GetPropertyFlags();const auto* Kind=P->GetClass();
+            for(int32 I=0;I<Dim;++I)
+            {
+                FString Value;const bool OK=P->ExportText_Direct(Value,P->ContainerPtrToValuePtr<void>(A,I),nullptr,A,PPF_None);if(!Current())return false;
+                TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(Type.Get(),EFieldIteratorFlags::IncludeSuper);It;++It)Now.Add(*It);if(Now!=Fields)return Stop(TEXT("Instance authored descriptor inventory changed during export."));
+                if(P->ArrayDim!=Dim||P->GetOffset_ForInternal()!=Offset||P->GetSize()!=Size||P->GetClass()!=Kind||P->GetPropertyFlags()!=Flags||P->HasSetterOrGetter())return Stop(TEXT("Instance authored descriptor role changed during export."));
+                if(!OK||(Chars+=Value.Len())>MaxText)return Stop(TEXT("Instance authored property export is incomplete."));Values.Add(MakeShared<FJsonValueString>(Value));
+            }Out->SetArrayField(Key,Values);
+        }return Current();
+    }
+    bool Observe(const TCHAR* Phase)
+    {
+        if(Actors.IsEmpty())return true;if(!Current())return false;TArray<TSharedPtr<FJsonValue>> Rows;
+        for(auto& E:Actors)
+        {
+            auto* A=static_cast<AAIController*>(E.Current.Get());auto Properties=MakeShared<FJsonObject>();if(!Authored(A,Properties))return false;
+            if(E.Authored.IsValid()&&Text(E.Authored.ToSharedRef())!=Text(Properties))
+            {
+                auto M=MakeShared<FJsonObject>();M->SetStringField(TEXT("actor"),E.Path);M->SetStringField(TEXT("stage"),R.Stage);
+                for(const auto& P:E.Authored->Values){const auto Actual=Properties->TryGetField(FString(P.Key));if(!Actual||!FJsonValue::CompareEqual(*P.Value,*Actual)){M->SetStringField(TEXT("property"),FString(P.Key));M->SetField(TEXT("expected"),P.Value);M->SetField(TEXT("actual"),Actual?Actual:MakeShared<FJsonValueNull>());break;}}R.Data->SetObjectField(TEXT("live_instance_first_authored_mismatch"),M);return Stop(TEXT("Instance authored properties changed outside the selected perception/compiler-derived roles."));
+            }if(!E.Authored.IsValid())E.Authored=Properties;
+            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("actor"),E.Path);J->SetStringField(TEXT("level"),E.Level->GetPathName());J->SetStringField(TEXT("package"),E.Package->GetName());J->SetBoolField(TEXT("package_dirty"),E.Package->IsDirty());J->SetBoolField(TEXT("level_package_dirty"),E.Level->GetPackage()->IsDirty());J->SetObjectField(TEXT("unselected_authored_properties"),Properties);
+            TInlineComponentArray<UActorComponent*> Components(A);TArray<TSharedPtr<FJsonValue>> Perceptions;for(auto* C:Components)if(Loaded(C)&&C->GetClass()==UAIPerceptionComponent::StaticClass()){auto P=MakeShared<FJsonObject>();P->SetStringField(TEXT("name"),C->GetName());P->SetBoolField(TEXT("sight_observed"),false);P->SetStringField(TEXT("sight_observation_scope"),TEXT("Optional live Sight values are not exported or required for success; original template/SCS readback remains authoritative. Per-instance overrides and sensing behavior require usage validation."));Perceptions.Add(MakeShared<FJsonValueObject>(P));}if(!Current())return false;J->SetArrayField(TEXT("actual_perception_components"),Perceptions);J->SetBoolField(TEXT("live_values_forced_to_template"),false);Rows.Add(MakeShared<FJsonValueObject>(J));
+        }
+        const TSharedPtr<FJsonObject>* Existing=nullptr;TSharedPtr<FJsonObject> Reports=R.Data->TryGetObjectField(TEXT("live_instance_observations"),Existing)?*Existing:MakeShared<FJsonObject>();Reports->SetArrayField(Phase,Rows);R.Data->SetObjectField(TEXT("live_instance_observations"),Reports);R.Data->SetNumberField(TEXT("live_instance_replacement_map_entries"),ReplacementCount);R.Data->SetNumberField(TEXT("live_instance_reinstanced_notifications"),ReinstancedCount);R.Data->SetNumberField(TEXT("live_instance_retired_child_map_entries"),RetiredChildCount);return true;
+    }
+    bool Bind(UBlueprint* B,const FString& Variable)
+    {
+        Blueprint.Reset(B);BlueprintPackage.Reset(B->GetOutermost());BlueprintParent.Reset(B->ParentClass);BlueprintPath=B->GetPathName();CurrentClass.Reset(B->GeneratedClass);Editor.Reset(GEditor);World.Reset(GEditor?GEditor->GetEditorWorldContext().World():nullptr);ComponentVariable=Variable;
+        for(TObjectIterator<AActor> It;It;++It)
+        {
+            auto* A=*It;if(!Loaded(A)||A->IsTemplate()||!A->IsA(CurrentClass.Get()))continue;
+            if(Actors.Num()>=32||A->GetClass()!=CurrentClass.Get()||!Context()||A->IsActorBeingDestroyed()||A->GetWorld()!=World.Get()||!Loaded(A->GetLevel())||A->GetOuter()!=A->GetLevel()||!A->GetLevel()->Actors.Contains(A))return Stop(TEXT("Live actor must be an exact selected-class ordinary current Editor-world AIController; broader contexts remain incomplete."));
+            auto* Controller=static_cast<AAIController*>(A);if(Controller->GetPawn()||A->GetOwner()||A->GetInstigator()||A->GetAttachParentActor()||A->IsChildActor()||!A->GetActorGuid().IsValid())return Stop(TEXT("Possessed/owned/attached/child-actor instance profiles remain incomplete."));
+            FActorRole E;E.Current.Reset(A);E.Level.Reset(A->GetLevel());E.LevelPackage.Reset(E.Level->GetPackage());E.LevelPath=E.Level->GetPathName();E.Package.Reset(A->GetPackage());E.External.Reset(A->GetExternalPackage());if(!Loaded(E.Package.Get())||(E.External.IsValid()&&!Loaded(E.External.Get())))return Stop(TEXT("Loaded actor/level/external package roles required."));E.Name=A->GetFName();E.Path=A->GetPathName();E.Guid=A->GetActorGuid();E.Transform=A->GetActorTransform();DirtyPackages.Add(E.Package->GetName());DirtyPackages.Add(E.Level->GetPackage()->GetName());if(E.External.IsValid())DirtyPackages.Add(E.External->GetName());Actors.Add(MoveTemp(E));if(!KeepMapped(A))return Stop(TEXT("Live instance replacement hold bound exceeded."));
+            TArray<UObject*> Children;GetObjectsWithOuter(A,Children,EGetObjectsFlags::IncludeNestedObjects);if(Watched.Num()+Children.Num()>4096)return Stop(TEXT("Live instance subobject observation exceeds4096."));for(auto* O:Children){if(!Loaded(O))return Stop(TEXT("Live instance nested object is unavailable."));Watched.Emplace(O);if(!KeepMapped(O))return Stop(TEXT("Live instance replacement hold bound exceeded."));}
+        }
+        if(!Actors.IsEmpty()){ReplacedHandle=FCoreUObjectDelegates::OnObjectsReplaced.AddRaw(this,&FLivePerceptionInstances::Replaced);ReinstancedHandle=FCoreUObjectDelegates::OnObjectsReinstanced.AddRaw(this,&FLivePerceptionInstances::Reinstanced);R.Data->SetNumberField(TEXT("live_instance_count"),Actors.Num());R.Data->SetStringField(TEXT("live_instance_scope"),TEXT("Up to32 exact selected-class unpossessed/unowned/unattached ordinary current Editor-world AIControllers. Compiler replacement maps and authored placement/properties are observed; caches/component addresses and equal-to-template live overrides are not invariants. Object-reference/instanced-subobject override values are observed only through compiler maps, not certified by the non-object authored projection. Other contexts/types/custom instance effects remain incomplete. Blueprint save only; level/instance packages are not saved."));}
+        return Actors.IsEmpty()||Current();
+    }
+    void Replaced(const FCoreUObjectDelegates::FReplacementObjectMap& P){Map(P,false);}void Reinstanced(const FCoreUObjectDelegates::FReplacementObjectMap& P){Map(P,true);}
+    bool DirtyEqual(const TSharedRef<FJsonObject>& Before,const TSharedRef<FJsonObject>& After,const TCHAR* Phase)
+    {
+        if(Actors.IsEmpty())return Text(Before)==Text(After);if(!Current()||Before->Values.Num()!=After->Values.Num())return false;TArray<TSharedPtr<FJsonValue>> Changes;
+        for(const auto& P:Before->Values){const auto V=After->TryGetField(FString(P.Key));if(!V||P.Value->Type!=EJson::Boolean||V->Type!=EJson::Boolean)return false;if(P.Value->AsBool()!=V->AsBool()){if(!DirtyPackages.Contains(FString(P.Key)))return false;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("package"),FString(P.Key));J->SetBoolField(TEXT("before"),P.Value->AsBool());J->SetBoolField(TEXT("after"),V->AsBool());J->SetBoolField(TEXT("saved_by_plugin"),false);Changes.Add(MakeShared<FJsonValueObject>(J));}}
+        const TSharedPtr<FJsonObject>* Existing=nullptr;TSharedPtr<FJsonObject> Reports=R.Data->TryGetObjectField(TEXT("live_instance_package_dirty_transitions"),Existing)?*Existing:MakeShared<FJsonObject>();Reports->SetArrayField(Phase,Changes);R.Data->SetObjectField(TEXT("live_instance_package_dirty_transitions"),Reports);return true;
+    }
+};
 struct FParentIdentity
 {
     TStrongObjectPtr<UObject> Object;
@@ -176,6 +302,7 @@ struct FParentRole
 struct FContext
 {
     TStrongObjectPtr<UBlueprint> Blueprint; USCS_Node* Selected = nullptr; FString Package, RequestedName;
+    TSharedPtr<FLivePerceptionInstances> LiveInstances;
     bool GeneratedParents = false;
     TWeakObjectPtr<UEditorEngine> Editor; TWeakObjectPtr<UWorld> World;
     UClass* NativeRoot = nullptr;
@@ -366,7 +493,7 @@ bool ChildAdmission(FContext& C, FResult& R)
     return true;
 }
 
-bool Prepare(const FString& InputPath, const FString& ComponentName, FContext& C, FResult& R)
+bool Prepare(const FString& InputPath, const FString& ComponentName, FContext& C, FResult& R,const TSharedPtr<FLivePerceptionInstances>& ExistingLive=nullptr)
 {
     if (!IsEditorGameThread() || IsPlaySessionActive()) { return Fail(R, TEXT("perception_editor_context_required"), TEXT("Editor game thread without PIE/SIE is required; no mutation or hidden load.")); }
     const FString ObjectPath = Path(InputPath); C.Package = FPackageName::ObjectPathToPackageName(ObjectPath); C.RequestedName = ComponentName;
@@ -378,7 +505,7 @@ bool Prepare(const FString& InputPath, const FString& ComponentName, FContext& C
         || !Loaded(B->SimpleConstructionScript) || B->SimpleConstructionScript->GetOuter() != B->GeneratedClass || B->Status == BS_Error || B->bBeingCompiled || B->bQueuedForCompilation || B->bSuppressStructurallyModified)
     { return Fail(R, TEXT("perception_blueprint_unsupported"), TEXT("Loaded normal AIController Blueprint/current classes/own local SCS required; inherited template editing/custom/unfinished variants remain incomplete.")); }
     if (!PrepareParents(C, R)) { return false; }
-    for (TObjectIterator<AActor> It; It; ++It) { if (Loaded(*It) && !It->IsTemplate() && It->IsA(B->GeneratedClass)) { return Fail(R, TEXT("perception_live_instance_unsupported"), TEXT("Selected Blueprint has a loaded actor instance; this template-only compile scope does not certify instance propagation.")); } }
+    if(ExistingLive.IsValid()){C.LiveInstances=ExistingLive;if(!C.LiveInstances->Current())return false;}
     for (TObjectIterator<UBlueprintGeneratedClass> It; It; ++It) { if (Loaded(*It) && *It != B->GeneratedClass && *It != B->SkeletonGeneratedClass && It->IsChildOf(B->GeneratedClass)) { return Fail(R, TEXT("perception_derived_blueprint_unsupported"), TEXT("Loaded derived Blueprint classes are outside the finite compile/propagation scope.")); } }
     USimpleConstructionScript* SCS = B->SimpleConstructionScript.Get(); const auto& Nodes = SCS->GetAllNodes(); if (Nodes.Num() > MaxNodes) { return Fail(R, TEXT("perception_scs_bound"), TEXT("Local SCS exceeds the finite node bound.")); }
     USCS_Node* Named = SCS->FindSCSNode(FName(*ComponentName)); TArray<USCS_Node*> Matching; TSet<USCS_Node*> Seen;
@@ -389,9 +516,15 @@ bool Prepare(const FString& InputPath, const FString& ComponentName, FContext& C
         if (N->ComponentClass->IsChildOf(UAIPerceptionComponent::StaticClass())) { Matching.Add(N); }
     }
     if (Named && (!Seen.Contains(Named) || Named->ComponentClass != UAIPerceptionComponent::StaticClass())) { return Fail(R, TEXT("perception_named_component_wrong_class"), TEXT("Original named-node priority selected an unsupported/non-native perception component; no fallback mutation.")); }
-    if (Matching.Num() > 1 || (Matching.Num() == 1 && Matching[0]->ComponentClass != UAIPerceptionComponent::StaticClass())) { return Fail(R, TEXT("perception_component_selection_unsupported"), TEXT("Ambiguous/custom component class fallback is outside this exact native slice.")); }
-    C.Selected = Named ? Named : Matching.Num() == 1 ? Matching[0] : nullptr;
+    // YO: UE56 selects by explicit name first, otherwise the first matching
+    // local node in the original physical SCS inventory; multiplicity is valid.
+    for(auto* Match:Matching)if(Match->ComponentClass!=UAIPerceptionComponent::StaticClass())
+        return Fail(R,TEXT("perception_component_selection_unsupported"),TEXT("Custom native perception templates remain outside the exact native observation profile."));
+    C.Selected = Named ? Named : !Matching.IsEmpty() ? Matching[0] : nullptr;
+    R.Data->SetNumberField(TEXT("matching_perception_component_count"),Matching.Num());
+    R.Data->SetStringField(TEXT("perception_component_selection"),Named?TEXT("requested_local_name"):C.Selected?TEXT("first_matching_physical_local_scs_node"):TEXT("create_missing_local_component"));
     if (!C.Selected && FindFProperty<FProperty>(B->GeneratedClass, FName(*ComponentName))) { return Fail(R, TEXT("perception_component_name_collision"), TEXT("Existing generated member collision is outside this finite creation slice; original auto-renaming remains incomplete.")); }
+    if(!ExistingLive.IsValid()){C.LiveInstances=MakeShared<FLivePerceptionInstances>(R);if(!C.LiveInstances->Bind(B,C.Selected?C.Selected->GetVariableName().ToString():ComponentName))return false;if(C.LiveInstances->Actors.IsEmpty())C.LiveInstances.Reset();}
     return FreezeChild(C, R);
 }
 bool Graphs(UBlueprint* B, TSharedRef<FJsonObject>& J)
@@ -488,7 +621,9 @@ bool ParentFence(FContext& C, FResult& R)
 }
 bool GeneratedGuard(FContext& C, FResult& R)
 {
-    return !C.GeneratedParents || (ParentFence(C, R) && ChildAdmission(C, R));
+    if(C.LiveInstances.IsValid()&&!C.LiveInstances->Current())return false;
+    const bool Good=!C.GeneratedParents || (ParentFence(C, R) && ChildAdmission(C, R));
+    return Good&&(!C.LiveInstances.IsValid()||C.LiveInstances->Current());
 }
 bool CompilerReturnedAsset(FContext& C, FResult& R)
 {
@@ -499,7 +634,7 @@ bool AdoptCompilerChild(FContext& C, FResult& R, const FGuid& Guid)
     if (!C.GeneratedParents) { return true; }
     if (!CompilerReturnedAsset(C, R)) { return false; }
     FContext Current;
-    if (!Prepare(C.Blueprint->GetPathName(), C.RequestedName, Current, R) || Current.Blueprint.Get() != C.Blueprint.Get() || !Current.Selected || Current.Selected->VariableGuid != Guid || Current.Selected->GetVariableName() != C.ExpectedNodeName)
+    if (!Prepare(C.Blueprint->GetPathName(), C.RequestedName, Current, R,C.LiveInstances) || Current.Blueprint.Get() != C.Blueprint.Get() || !Current.Selected || Current.Selected->VariableGuid != Guid || Current.Selected->GetVariableName() != C.ExpectedNodeName)
     { return Fail(R, TEXT("perception_postcompile_child_unobservable"), TEXT("Explicit compiler returned but current selected child class/CDO/local SCS GUID/name cannot be reacquired; no stale template observation/save/retry."), true); }
     // Keep the original parent identities and original source baseline; no parent
     // replacement is accepted by creating a fresh child context.
@@ -518,7 +653,10 @@ bool Observe(FContext& C, TSharedRef<FJsonObject>& J)
     if (VarArray.Num() > MaxNodes || !Variables->ExportText_Direct(VariableText, VariableData, VariableData, B, PPF_None) || VariableText.Len() > MaxText) { return false; }
     J->SetNumberField(TEXT("declared_variable_count"), VarArray.Num()); J->SetStringField(TEXT("declared_variables"), VariableText); if (!CleanDependencyText(VariableText)) { return false; }
     TArray<TSharedPtr<FJsonValue>> Nodes; TSet<FGuid> Guids; USimpleConstructionScript* SCS = B->SimpleConstructionScript;
-    for (USCS_Node* N : SCS->GetAllNodes())
+    TStrongObjectPtr<USimpleConstructionScript> KeepSCS(SCS);const auto NodeRows=SCS->GetAllNodes();TArray<TStrongObjectPtr<USCS_Node>> NodeHolds;
+    if(NodeRows.Num()>MaxNodes)return false;for(auto* Node:NodeRows){if(!Loaded(Node))return false;NodeHolds.Emplace(Node);}
+    // Snapshot iteration owns its local node list across reflected read callbacks.
+    for (USCS_Node* N : NodeRows)
     {
         auto Row = Identity(N); Nodes.Add(MakeShared<FJsonValueObject>(Row)); J->SetArrayField(TEXT("scs_nodes"), Nodes);
         if (!Loaded(N) || N->GetOuter() != SCS || !N->VariableGuid.IsValid() || Guids.Contains(N->VariableGuid) || !Loaded(N->ComponentTemplate) || N->ComponentTemplate->GetClass() != N->ComponentClass || N->ComponentTemplate->GetOuter() != B->GeneratedClass || Nodes.Num() > MaxNodes) { return false; }
@@ -529,12 +667,45 @@ bool Observe(FContext& C, TSharedRef<FJsonObject>& J)
             auto Component = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("perception"), Component); if (!ReadComponent(Cast<UAIPerceptionComponent>(N->ComponentTemplate), Component)) { return false; }
             J->SetStringField(TEXT("selected_node_guid"), N->VariableGuid.ToString()); J->SetStringField(TEXT("selected_component_name"), N->GetVariableName().ToString()); J->SetObjectField(TEXT("selected_perception"), Component);
         }
-        else { auto P = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("template_properties"), P); if (!Properties(N->ComponentTemplate, {}, P) || !CleanDependencyText(Text(P))) { return false; } }
+        else
+        {
+            // Preserve every unselected template as before. Perception configs
+            // also need authored nested values, rather than reference text only.
+            const auto TemplateSlot=N->ComponentTemplate;const auto ClassSlot=N->ComponentClass;
+            UActorComponent* Template=static_cast<UActorComponent*>(PerceptionObservedPointer(TemplateSlot));
+            UClass* TemplateClass=static_cast<UClass*>(PerceptionObservedPointer(ClassSlot));
+            UClass* GeneratedClass=static_cast<UClass*>(PerceptionObservedPointer(B->GeneratedClass.GetGCPtr()));
+            TStrongObjectPtr<USCS_Node> KeepNode(N);TStrongObjectPtr<UActorComponent> KeepTemplate(Template);
+            TStrongObjectPtr<UClass> KeepClass(TemplateClass),KeepGeneratedClass(GeneratedClass);
+            const FGuid NodeGuid=N->VariableGuid;const FName VariableName=N->GetVariableName();
+            const auto CurrentTemplate=[&]()->bool
+            {
+                return Loaded(B)&&Loaded(SCS)&&B->SimpleConstructionScript.IsResolved()&&B->SimpleConstructionScript==SCS
+                    &&Loaded(N)&&N->GetOuter()==SCS&&SCS->GetAllNodes().Contains(N)&&N->VariableGuid==NodeGuid&&N->GetVariableName()==VariableName
+                    &&N->ComponentTemplate.IsResolved()&&N->ComponentTemplate==Template&&N->ComponentClass.IsResolved()&&N->ComponentClass==TemplateClass
+                    &&B->GeneratedClass.GetGCPtr().IsResolved()&&B->GeneratedClass.GetGCPtr()==GeneratedClass&&Loaded(GeneratedClass)&&Loaded(TemplateClass)
+                    &&Loaded(Template)&&Template->GetClass()==TemplateClass&&Template->GetOuter()==GeneratedClass
+                    &&B->SimpleConstructionScript.IsResolved()&&B->SimpleConstructionScript==SCS;
+            };
+            // Fence every unselected template before the first reflected export,
+            // including ordinary non-Perception components, and again on return.
+            if(!CurrentTemplate())return false;
+            auto P = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("template_properties"), P);
+            if (!Properties(Template, {}, P) || !CurrentTemplate() || !CleanDependencyText(Text(P))) { return false; }
+            if(TemplateClass==UAIPerceptionComponent::StaticClass())
+            {
+                if(!CurrentTemplate())return false;
+                auto Other=MakeShared<FJsonObject>();Row->SetObjectField(TEXT("unselected_perception"),Other);
+                if(!ReadComponent(static_cast<UAIPerceptionComponent*>(Template),Other)||!CurrentTemplate())return false;
+            }
+        }
     }
     J->SetArrayField(TEXT("scs_nodes"), Nodes); TArray<TSharedPtr<FJsonValue>> Roots; for (USCS_Node* N : SCS->GetRootNodes()) { if (!Loaded(N) || N->GetOuter() != SCS || !Guids.Contains(N->VariableGuid)) { return false; } Roots.Add(MakeShared<FJsonValueString>(N->VariableGuid.ToString())); } J->SetArrayField(TEXT("scs_roots"), Roots);
     UObject* CDO = B->GeneratedClass->GetDefaultObject(false); J->SetObjectField(TEXT("existing_generated_cdo"), Identity(CDO)); auto P = MakeShared<FJsonObject>(); J->SetObjectField(TEXT("unselected_generated_cdo_properties"), P);
     const FName SelectedName = C.Selected ? C.Selected->GetVariableName() : FName(*C.RequestedName);
     if (!Loaded(CDO) || !CDO->HasAnyFlags(RF_ClassDefaultObject) || CDO->GetClass() != B->GeneratedClass || CDO->GetOuter() != B->GeneratedClass->GetOuter() || !Properties(CDO, { SelectedName }, P) || !CleanDependencyText(Text(P))) { return false; }
+    if(!Loaded(SCS)||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript!=SCS||SCS->GetAllNodes()!=NodeRows
+        ||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript!=SCS)return false;
     J->SetBoolField(TEXT("complete"), true); return true;
 }
 const TSharedPtr<FJsonObject> SelectedSight(const TSharedRef<FJsonObject>& State)
@@ -603,7 +774,7 @@ bool Capture(FContext& C, FObservation& O, FResult& R, const TCHAR* Key)
         auto J = MakeShared<FJsonObject>(); J->SetObjectField(TEXT("state"), O.State); J->SetObjectField(TEXT("native_sources"), O.NativeSources); J->SetObjectField(TEXT("other_package_dirty"), O.OtherDirty); J->SetObjectField(TEXT("disk"), O.DiskState); R.Data->SetObjectField(Key, J);
         const bool StateOK = Observe(C, O.State), SourceOK = Sources(O.NativeSources), DirtyOK = Dirty(C.Package, O.OtherDirty), DiskOK = Disk(C.Package, O.DiskState);
         J->SetBoolField(TEXT("state_complete"), StateOK); J->SetBoolField(TEXT("native_sources_complete"), SourceOK); J->SetBoolField(TEXT("other_dirty_complete"), DirtyOK); J->SetBoolField(TEXT("disk_complete"), DiskOK);
-        O.bComplete = StateOK && SourceOK && DirtyOK && DiskOK; J->SetBoolField(TEXT("complete"), O.bComplete); return O.bComplete;
+        O.bComplete = StateOK && SourceOK && DirtyOK && DiskOK&&(!C.LiveInstances.IsValid()||C.LiveInstances->Observe(Key));if(O.bComplete&&C.LiveInstances.IsValid())R.bKnown=true;J->SetBoolField(TEXT("complete"), O.bComplete); return O.bComplete;
     
     }
     auto J = MakeShared<FJsonObject>(); J->SetObjectField(TEXT("state"), O.State); J->SetObjectField(TEXT("native_sources"), O.NativeSources); J->SetObjectField(TEXT("other_package_dirty"), O.OtherDirty); J->SetObjectField(TEXT("disk"), O.DiskState); R.Data->SetObjectField(Key, J);
@@ -615,7 +786,8 @@ bool Capture(FContext& C, FObservation& O, FResult& R, const TCHAR* Key)
     const bool ParentOK = DiskOK && ParentSources(C, O.ParentState, R) && GeneratedGuard(C, R);
     J->SetBoolField(TEXT("state_complete"), StateOK); J->SetBoolField(TEXT("native_sources_complete"), SourceOK); J->SetBoolField(TEXT("other_dirty_complete"), DirtyOK); J->SetBoolField(TEXT("disk_complete"), DiskOK);
     if (C.GeneratedParents) { J->SetObjectField(TEXT("generated_parent_sources"), O.ParentState); J->SetBoolField(TEXT("generated_parent_sources_complete"), ParentOK); }
-    O.bComplete = StateOK && SourceOK && DirtyOK && DiskOK && ParentOK; J->SetBoolField(TEXT("complete"), O.bComplete);
+    O.bComplete = StateOK && SourceOK && DirtyOK && DiskOK && ParentOK&&(!C.LiveInstances.IsValid()||C.LiveInstances->Observe(Key)); J->SetBoolField(TEXT("complete"), O.bComplete);
+    if(O.bComplete&&C.LiveInstances.IsValid())R.bKnown=true;
     if (O.bComplete && C.GeneratedParents) { if (!C.ParentBaseline.IsValid()) { C.ParentBaseline = O.ParentState; } R.bKnown = true; }
     return O.bComplete;
 }
@@ -650,12 +822,14 @@ bool SelectedIdentityPreserved(const TSharedRef<FJsonObject>& Before, const TSha
 bool Fences(FContext& C, const FObservation& Before, const FObservation& After, FResult& R, const FGuid Guid, bool bCreated)
 {
     R.bChanged = Text(Before.State) != Text(After.State) || Text(Before.DiskState) != Text(After.DiskState) || Text(Before.OtherDirty) != Text(After.OtherDirty) || Text(Before.NativeSources) != Text(After.NativeSources) || Text(Before.ParentState) != Text(After.ParentState);
+    if(C.LiveInstances.IsValid()){const bool Replaced=C.LiveInstances->ReplacementCount>0||C.LiveInstances->RetiredChildCount>0;R.bChanged|=Replaced;R.Data->SetBoolField(TEXT("live_instance_engine_replacement_observed"),Replaced);}
     const bool ParentOK = Text(Before.ParentState) == Text(After.ParentState); if (C.GeneratedParents) { R.Data->SetBoolField(TEXT("generated_parent_sources_preserved"), ParentOK); }
     TArray<TSharedPtr<FJsonValue>> CreatedCDOs; const bool SourceOK = ProtectSources(Before.NativeSources, After.NativeSources, CreatedCDOs);
     const bool StateOK = Preserved(Before.State, After.State, Guid, bCreated) && SelectedIdentityPreserved(Before.State, After.State, Guid, bCreated);
     R.Data->SetArrayField(TEXT("implicit_native_cdo_creation_observed"), CreatedCDOs); R.Data->SetBoolField(TEXT("source_preserved"), SourceOK); R.Data->SetBoolField(TEXT("unselected_state_preserved"), StateOK);
-    R.Data->SetBoolField(TEXT("other_package_dirty_preserved"), Text(Before.OtherDirty) == Text(After.OtherDirty)); R.Data->SetBoolField(TEXT("disk_preserved_before_save"), Text(Before.DiskState) == Text(After.DiskState)); R.Data->SetBoolField(TEXT("observations_complete"), true);
-    if (!ParentOK || !SourceOK || !StateOK || Text(Before.OtherDirty) != Text(After.OtherDirty) || Text(Before.DiskState) != Text(After.DiskState)) { return Fail(R, TEXT("perception_preservation_failed"), TEXT("Complete actual retained observations failed native source/unselected state/disk/other dirty preservation; save suppressed.")); }
+    const bool OtherOK=C.LiveInstances.IsValid()?C.LiveInstances->DirtyEqual(Before.OtherDirty,After.OtherDirty,TEXT("before_to_retained")):Text(Before.OtherDirty)==Text(After.OtherDirty);
+    R.Data->SetBoolField(TEXT("other_package_dirty_preserved"), OtherOK); R.Data->SetBoolField(TEXT("disk_preserved_before_save"), Text(Before.DiskState) == Text(After.DiskState)); R.Data->SetBoolField(TEXT("observations_complete"), true);
+    if (!ParentOK || !SourceOK || !StateOK || !OtherOK || Text(Before.DiskState) != Text(After.DiskState)) { return Fail(R, TEXT("perception_preservation_failed"), TEXT("Complete actual retained observations failed native source/unselected state/disk/other dirty preservation; save suppressed.")); }
     LegacyFields(R, C, After.State); return true;
 }
 bool Retained(FContext& C, const FObservation& Before, FObservation& After, FResult& R, const FGuid Guid, bool bCreated)
@@ -713,7 +887,7 @@ bool Save(FContext& C, const FObservation& Expected, FResult& R)
     if (!Complete) { return Fail(R, TEXT("perception_save_state_unobservable"), TEXT("Actual exact save result is retained; post-save observer incomplete, no writer retry."), true); }
     if (!Saved) { return Fail(R, TEXT("perception_save_failed"), TEXT("Exact forced Blueprint save returned false; disk prefix retained and no save retry is permitted."), true); }
     TArray<TSharedPtr<FJsonValue>> Transitions; const bool StateOK = SavedEqual(MakeShared<FJsonValueObject>(Expected.State), MakeShared<FJsonValueObject>(AfterSave.State), C.Package, TEXT(""), Transitions);
-    const bool SourceOK = Text(Expected.NativeSources) == Text(AfterSave.NativeSources) && Text(Expected.ParentState) == Text(AfterSave.ParentState), OtherOK = Text(Expected.OtherDirty) == Text(AfterSave.OtherDirty);
+    const bool SourceOK = Text(Expected.NativeSources) == Text(AfterSave.NativeSources) && Text(Expected.ParentState) == Text(AfterSave.ParentState), OtherOK = C.LiveInstances.IsValid()?C.LiveInstances->DirtyEqual(Expected.OtherDirty,AfterSave.OtherDirty,TEXT("retained_to_save")):Text(Expected.OtherDirty)==Text(AfterSave.OtherDirty);
     const bool DiskOK = AfterSave.DiskState->GetBoolField(TEXT("exists")) && AfterSave.DiskState->GetNumberField(TEXT("bytes")) > 0 && !C.Blueprint->GetOutermost()->IsDirty();
     R.Data->SetArrayField(TEXT("save_flag_transitions"), Transitions); R.Data->SetBoolField(TEXT("save_state_preserved"), StateOK); R.Data->SetBoolField(TEXT("save_sources_preserved"), SourceOK); R.Data->SetBoolField(TEXT("save_other_dirty_preserved"), OtherOK); R.Data->SetBoolField(TEXT("persistence_verified"), DiskOK);
     R.Data->SetBoolField(TEXT("source_preserved"), SourceOK); R.Data->SetBoolField(TEXT("unselected_state_preserved"), StateOK); R.Data->SetBoolField(TEXT("other_package_dirty_preserved"), OtherOK); R.Data->SetBoolField(TEXT("readback_confirmed"), StateOK && Prefix->GetBoolField(TEXT("readback_confirmed")));
@@ -739,10 +913,11 @@ FString Inspect(const FString& ControllerBlueprintPath, const FString& Component
     if (!Same) { Fail(R, TEXT("perception_inspection_changed"), TEXT("Repeated find-only same-reader observations differ; no configuration/compile/save was dispatched.")); return Encode(R); }
     R.Stage = TEXT("complete"); R.bSuccess = true; R.bPost = true; return Encode(R);
 }
+bool ConfigureBusy=false;
 FString Configure(const FString& ControllerBlueprintPath, const FString& ComponentName, double SightRadius, double LoseSightRadius,
     double PeripheralVisionAngleDegrees, double MaxAge, bool bDetectEnemies, bool bDetectNeutrals, bool bDetectFriendlies, bool bReplaceExistingConfig, bool bSaveBlueprint)
 {
-    FResult R; Init(R, true, bSaveBlueprint); R.Data->SetBoolField(TEXT("replace_existing_config"), bReplaceExistingConfig);
+    FResult R; Init(R, true, bSaveBlueprint);if(ConfigureBusy){Fail(R,TEXT("perception_configuration_reentrant"),TEXT("A perception configuration request is already executing; no nested writer/retry."));return Encode(R);}TGuardValue<bool> ConfigureGuard(ConfigureBusy,true); R.Data->SetBoolField(TEXT("replace_existing_config"), bReplaceExistingConfig);
     for (const double Number : { SightRadius, LoseSightRadius, PeripheralVisionAngleDegrees, MaxAge }) { if (!FMath::IsFinite(Number) || FMath::Abs(Number) > static_cast<double>(MAX_flt)) { Fail(R, TEXT("perception_numeric_inputs_invalid"), TEXT("Finite values representable by original native float fields are required before mutation.")); return Encode(R); } }
     const float Radius = FMath::Max(0.f, static_cast<float>(SightRadius)), LoseRadius = FMath::Max(Radius, static_cast<float>(LoseSightRadius)), Angle = FMath::Clamp(static_cast<float>(PeripheralVisionAngleDegrees), 0.f, 180.f), Age = FMath::Max(0.f, static_cast<float>(MaxAge));
     auto Requested = MakeShared<FJsonObject>(); Requested->SetNumberField(TEXT("sight_radius"), Radius); Requested->SetNumberField(TEXT("lose_sight_radius"), LoseRadius); Requested->SetNumberField(TEXT("peripheral_vision_angle_degrees"), Angle); Requested->SetNumberField(TEXT("stored_max_age"), Age); Requested->SetBoolField(TEXT("detect_enemies"), bDetectEnemies); Requested->SetBoolField(TEXT("detect_neutrals"), bDetectNeutrals); Requested->SetBoolField(TEXT("detect_friendlies"), bDetectFriendlies); R.Data->SetObjectField(TEXT("requested_config"), Requested);
@@ -751,7 +926,7 @@ FString Configure(const FString& ControllerBlueprintPath, const FString& Compone
     if (!EditableFields()) { Fail(R, TEXT("perception_editable_fields_unsupported"), TEXT("Exact original editable native Sight field permission metadata is required before mutation.")); return Encode(R); }
     if (!bReplaceExistingConfig && SelectedSight(Before.State).IsValid()) { Fail(R, TEXT("perception_sight_config_exists"), TEXT("Sight configuration exists and replace_existing_config is false; known prewrite refusal.")); return Encode(R); }
     R.Stage = TEXT("configure_perception"); UBlueprint* B = C.Blueprint.Get(); USimpleConstructionScript* SCS = B->SimpleConstructionScript;
-    if (!GeneratedGuard(C, R)) { return Encode(R); } R.bAttempted = true; if (C.GeneratedParents) { R.bKnown = false; }
+    if (!GeneratedGuard(C, R)) { return Encode(R); } R.bAttempted = true; if (C.LiveInstances.IsValid())R.bKnown=false;if (C.GeneratedParents) { R.bKnown = false; }
     B->Modify(); R.Data->SetNumberField(TEXT("modify_calls"), 1); if (!GeneratedGuard(C, R)) { return Encode(R); }
     SCS->Modify(); R.Data->SetNumberField(TEXT("modify_calls"), 2); if (!GeneratedGuard(C, R)) { return Encode(R); }
     const bool bCreated = C.Selected == nullptr;
@@ -796,18 +971,20 @@ FString Configure(const FString& ControllerBlueprintPath, const FString& Compone
     for (const TCHAR* K : { TEXT("source_preserved"), TEXT("unselected_state_preserved"), TEXT("observations_complete"), TEXT("other_package_dirty_preserved"), TEXT("disk_preserved_before_save") }) { R.Data->SetBoolField(K, false); } R.Data->SetArrayField(TEXT("implicit_native_cdo_creation_observed"), {});
     R.Stage = TEXT("structural_refresh"); R.Data->SetNumberField(TEXT("structural_refresh_calls"), 1); R.Data->SetBoolField(TEXT("implicit_skeleton_compile_possible"), true);
     if (!GeneratedGuard(C, R)) { return Encode(R); } if (C.GeneratedParents) { R.bKnown = false; }
-    FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(B);
+    {bool NoLiveWindow=false;TGuardValue<bool> Window(C.LiveInstances.IsValid()?C.LiveInstances->CompilerWindow:NoLiveWindow,true);if(C.LiveInstances.IsValid())R.bKnown=false;FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(B);}
+    if(C.LiveInstances.IsValid()&&!C.LiveInstances->CompilerReturned())return Encode(R);
     if (!AdoptCompilerChild(C, R, Guid)) { return Encode(R); }
     R.Stage = TEXT("compile_blueprint"); FCompilerResultsLog Log;
     if (!GeneratedGuard(C, R)) { return Encode(R); }
     R.bCompileAttempted = true; R.Data->SetNumberField(TEXT("full_compile_attempts"), 1);
-    FKismetEditorUtilities::CompileBlueprint(B, EBlueprintCompileOptions::None, &Log);
+    {bool NoLiveWindow=false;TGuardValue<bool> Window(C.LiveInstances.IsValid()?C.LiveInstances->CompilerWindow:NoLiveWindow,true);if(C.LiveInstances.IsValid())R.bKnown=false;FKismetEditorUtilities::CompileBlueprint(B, EBlueprintCompileOptions::None, &Log);}
+    if(C.LiveInstances.IsValid()&&!C.LiveInstances->CompilerReturned())return Encode(R);
     R.Data->SetNumberField(TEXT("compile_error_count"), Log.NumErrors); R.Data->SetNumberField(TEXT("compile_warning_count"), Log.NumWarnings);
     if (!AdoptCompilerChild(C, R, Guid)) { return Encode(R); }
     R.Data->SetNumberField(TEXT("compile_error_count"), Log.NumErrors); R.Data->SetNumberField(TEXT("compile_warning_count"), Log.NumWarnings); TArray<TSharedPtr<FJsonValue>> Messages; for (const auto& Message : Log.Messages) { if (Messages.Num() >= 128) { break; } Messages.Add(MakeShared<FJsonValueString>(Message->ToText().ToString())); } R.Data->SetArrayField(TEXT("compile_messages"), Messages);
     R.bCompileKnown = Loaded(B) && !B->bBeingCompiled && !B->bQueuedForCompilation; R.bCompiled = R.bCompileKnown && Log.NumErrors == 0 && (B->Status == BS_UpToDate || B->Status == BS_UpToDateWithWarnings);
     if (R.bCompiled) { B->MarkPackageDirty(); R.Data->SetNumberField(TEXT("package_dirty_mark_calls"), 1); if (!GeneratedGuard(C, R)) { return Encode(R); } }
-    FContext Current; if (C.GeneratedParents) { Current = MoveTemp(C); } else if (!Prepare(ControllerBlueprintPath, ComponentName, Current, R)) { FObservation Partial; Capture(C, Partial, R, TEXT("after")); Fail(R, TEXT("perception_postcompile_context_unobservable"), TEXT("One explicit full compile returned but current generated classes/SCS selection could not be admitted; actual prefix retained, no save/retry."), true); return Encode(R); }
+    FContext Current; if (C.GeneratedParents) { Current = MoveTemp(C); } else if (!Prepare(ControllerBlueprintPath, ComponentName, Current, R,C.LiveInstances)) { FObservation Partial; Capture(C, Partial, R, TEXT("after")); Fail(R, TEXT("perception_postcompile_context_unobservable"), TEXT("One explicit full compile returned but current generated classes/SCS selection could not be admitted; actual prefix retained, no save/retry."), true); return Encode(R); }
     FObservation After; if (!Retained(Current, Before, After, R, Guid, bCreated)) { return Encode(R); }
     if (!R.bCompileKnown) { Fail(R, TEXT("perception_compile_outcome_unobservable"), TEXT("Compile was attempted once; final compile state remains unobserved, no save/retry."), true); return Encode(R); }
     if (!R.bCompiled) { Fail(R, TEXT("perception_compile_failed"), TEXT("One explicit full compile reported errors or a nonready status; complete retained state and compiler messages remain, no save.")); return Encode(R); }

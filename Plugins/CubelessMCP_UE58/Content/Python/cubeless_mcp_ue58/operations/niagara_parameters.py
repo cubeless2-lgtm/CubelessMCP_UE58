@@ -23,7 +23,7 @@ def _bool(value, field):
 
 def _json(value, field, *, array=False):
     try:
-        parsed = variables._json_value(value, field)
+        parsed = variables._json_value(value, field, allow_finite_double=True)
     except OperationError as error:
         raise OperationError("niagara_parameter_json_invalid", str(error)) from error
     if array and type(parsed) is not list:

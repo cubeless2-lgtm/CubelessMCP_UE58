@@ -3685,6 +3685,16 @@ bool CheckNewName(UBlueprint* BP, const FString& Name, FResult& R)
 // or a general callable policy. Existing zero-parameter/external routes stay unchanged.
 struct FOwnPrimitiveEventSource
 {
+    // ADH: Blueprint-authored RPC flags only. This authors a CallFunction node;
+    // it neither executes an RPC nor changes replication/settings.
+    static bool AuthoredRPCFlags(uint32 Flags)
+    {
+        constexpr uint32 Base=FUNC_BlueprintCallable|FUNC_BlueprintEvent|FUNC_Public;
+        constexpr uint32 Mask=uint32(FUNC_NetFuncFlags);
+        const uint32 Direction=Flags&(FUNC_NetServer|FUNC_NetClient|FUNC_NetMulticast);
+        return (Flags&Base)==Base && (Flags&FUNC_Net)!=0 && (Flags&~(Base|Mask))==0
+            && (Direction==FUNC_NetServer||Direction==FUNC_NetClient||Direction==FUNC_NetMulticast);
+    }
     FResult* Reply=nullptr;bool Stopped=false,Ready=false,Attached=false,Bound=false,GuidFixed=false,PinsFixed=false;
     TStrongObjectPtr<UBlueprint> BP;TStrongObjectPtr<UK2Node_CustomEvent> Event;TStrongObjectPtr<UClass> Generated,Skeleton;
     TStrongObjectPtr<UFunction> Compiled,Function;TStrongObjectPtr<UEdGraphSchema_K2> Schema;TStrongObjectPtr<UK2Node_CallFunction> Call;
@@ -3789,7 +3799,7 @@ struct FOwnPrimitiveEventSource
         Reply=&R;BP.Reset(B);Event.Reset(E);Generated.Reset(G);Skeleton.Reset(S);Compiled.Reset(C);Function.Reset(F);Editor.Reset(GEditor);World.Reset(GWorld);Undo=GUndo;
         EventPath=E->GetPathName();EventGuid=E->NodeGuid;GraphGuid=E->GetGraph()->GraphGuid;Name=E->CustomFunctionName;EventFlags=E->FunctionFlags;InEditor=E->bCallInEditor;EventReference=E->EventReference;
         GeneratedHandle=B->GeneratedClass.GetGCPtr();SkeletonHandle=B->SkeletonGeneratedClass.GetGCPtr();GeneratedCDO=G->ClassDefaultObject;SkeletonCDO=S->ClassDefaultObject;
-        for(const auto& U:E->UserDefinedPins){if(!U||U->DesiredPinDirection!=EGPD_Output||!Type(U->PinType)||U->PinName==UEdGraphSchema_K2::PN_Then||U->PinName==UK2Node_Event::DelegateOutputName||U->PinName==UEdGraphSchema_K2::PN_Self||U->PinName==UEdGraphSchema_K2::PN_Execute)return Fail(R,TEXT("function_custom_event_parameter_unsupported"),TEXT("Own event calls admit only unique by-value primitive output descriptors; ref/container/struct/RPC/reserved variants remain pending."));Descriptors.Add(*U);}
+        for(const auto& U:E->UserDefinedPins){if(!U||U->DesiredPinDirection!=EGPD_Output||!Type(U->PinType)||U->PinName==UEdGraphSchema_K2::PN_Then||U->PinName==UK2Node_Event::DelegateOutputName||U->PinName==UEdGraphSchema_K2::PN_Self||U->PinName==UEdGraphSchema_K2::PN_Execute)return Fail(R,TEXT("function_custom_event_parameter_unsupported"),TEXT("Own event calls admit only unique by-value primitive output descriptors; ref/container/struct/reserved variants and wider RPC signatures remain pending."));Descriptors.Add(*U);}
         if(Descriptors.Num()>MaxParameters)return Fail(R,TEXT("function_custom_event_parameter_unsupported"),TEXT("Own event parameter bound is 128."));
         if(!Raw())return false;
         for(auto* Target:{C,F})
@@ -3887,6 +3897,7 @@ FORCENOINLINE bool ResolveOwnCompiledFunction(UBlueprint* BP, const FString& Cla
     // UE58 resolves custom event callable identity from the event NodeGuid,
     // unlike ordinary functions whose callable identity is the graph GUID.
     UK2Node_CustomEvent* Event = nullptr;
+    bool bOwnRPCEvent = false;
     for (UEdGraph* Candidate : AllGraphs)
     {
         if (!IsValid(Candidate) || Candidate->Nodes.Num() > MaxNodes)
@@ -3904,14 +3915,17 @@ FORCENOINLINE bool ResolveOwnCompiledFunction(UBlueprint* BP, const FString& Cla
     if (Event)
     {
         Callee = Event->GetGraph(); CallableGuid = Event->NodeGuid; bCustomEvent = true;
+        bOwnRPCEvent = FOwnPrimitiveEventSource::AuthoredRPCFlags(Event->FunctionFlags);
         if (Event->GetClass() != UK2Node_CustomEvent::StaticClass() || Event->CustomFunctionName.ToString() != Name
             || !Callee || (!BP->UbergraphPages.Contains(Callee) && !BP->EventGraphs.Contains(Callee))
             || FBlueprintEditorUtils::FindBlueprintForGraph(Callee) != BP || !Callee->GetSchema()
             || Callee->GetSchema()->GetClass() != UEdGraphSchema_K2::StaticClass() || Event->bOverrideFunction || Event->bIsDeprecated
             || Event->bInternalEvent || (!PrimitiveEvent&&!Event->UserDefinedPins.IsEmpty())
-            || Event->FunctionFlags != (FUNC_BlueprintCallable | FUNC_BlueprintEvent | FUNC_Public))
-        { return Fail(R, TEXT("function_custom_event_pending"), TEXT("Only exact own non-RPC events are callable; parameter events additionally require the finite own primitive source guard. Other signature/override/deprecated variants remain pending.")); }
+            || (Event->FunctionFlags != (FUNC_BlueprintCallable | FUNC_BlueprintEvent | FUNC_Public) && !bOwnRPCEvent))
+        { return Fail(R, TEXT("function_custom_event_pending"), TEXT("Own non-RPC or exact one-direction server/client/multicast events with optional Reliable are admitted; RPC and primitive parameter events require the finite own source guard. Wider signatures/flags/overrides remain pending.")); }
     }
+    if(bOwnRPCEvent && !PrimitiveEvent)
+    { return Fail(R,TEXT("function_custom_event_rpc_pending"),TEXT("RPC extension requires the own event source lease; external RPC targets remain tracked, not silently widened.")); }
     FGuid GeneratedGuid, SkeletonGuid;
     if (!Callee || !Callee->GraphGuid.IsValid() || !CallableGuid.IsValid()
         || !UBlueprint::GetGuidFromClassByFieldName<UFunction>(Generated, FunctionFName, GeneratedGuid)
@@ -3919,7 +3933,8 @@ FORCENOINLINE bool ResolveOwnCompiledFunction(UBlueprint* BP, const FString& Cla
         || GeneratedGuid != CallableGuid || SkeletonGuid != CallableGuid)
     { return Fail(R, TEXT("function_self_identity_invalid"), TEXT("Compiled/skeleton function must resolve to the exact owned function GraphGuid or custom-event NodeGuid.")); }
     const EFunctionFlags SemanticFlags = FUNC_Static | FUNC_Public | FUNC_Private | FUNC_Protected | FUNC_BlueprintCallable
-        | FUNC_BlueprintPure | FUNC_Const | FUNC_EditorOnly | FUNC_Delegate | FUNC_Native | FUNC_Net;
+        | FUNC_BlueprintPure | FUNC_Const | FUNC_EditorOnly | FUNC_Delegate | FUNC_Native | FUNC_Net
+        | (bOwnRPCEvent ? FUNC_NetFuncFlags : FUNC_None);
     R.Data->SetStringField(TEXT("compiled_function_path"), Compiled->GetPathName());
     R.Data->SetStringField(TEXT("skeleton_function_path"), Function->GetPathName());
     R.Data->SetStringField(TEXT("compiled_function_flags_string"), LexToString(static_cast<uint32>(Compiled->FunctionFlags)));
@@ -3930,6 +3945,16 @@ FORCENOINLINE bool ResolveOwnCompiledFunction(UBlueprint* BP, const FString& Cla
     R.Data->SetStringField(TEXT("function_member_guid"), CallableGuid.ToString(EGuidFormats::Digits));
     R.Data->SetStringField(TEXT("function_graph_guid"), Callee->GraphGuid.ToString(EGuidFormats::Digits));
     if (Event) { R.Data->SetStringField(TEXT("custom_event_node_flags_string"), LexToString(Event->FunctionFlags));R.Data->SetStringField(TEXT("custom_event_node_path"),Event->GetPathName()); }
+    // UE58 full event stubs and fast skeletons retain the same authored net
+    // mask; their pre-existing sole Public access-bit normalization is separate.
+    const uint32 EventRPCFlags = Event ? (Event->FunctionFlags & uint32(FUNC_NetFuncFlags)) : 0U;
+    const bool bRPCFlagsMatch = !bOwnRPCEvent ||
+        ((uint32(Compiled->FunctionFlags)&uint32(FUNC_NetFuncFlags))==EventRPCFlags
+        && (uint32(Function->FunctionFlags)&uint32(FUNC_NetFuncFlags))==EventRPCFlags);
+    R.Data->SetBoolField(TEXT("own_custom_event_rpc_authoring"),bOwnRPCEvent);
+    R.Data->SetBoolField(TEXT("own_custom_event_rpc_flags_match"),bRPCFlagsMatch);
+    R.Data->SetBoolField(TEXT("rpc_execution_verified"),false);
+    R.Data->SetStringField(TEXT("authored_rpc_flags_string"),LexToString(EventRPCFlags));
     const bool bExactFlags = (Compiled->FunctionFlags & SemanticFlags) == (Function->FunctionFlags & SemanticFlags);
     const bool bCustomAccessNormalization = bCustomEvent && Event && !Event->bInternalEvent
         && (Compiled->FunctionFlags & FUNC_AccessSpecifiers) == 0
@@ -3937,7 +3962,9 @@ FORCENOINLINE bool ResolveOwnCompiledFunction(UBlueprint* BP, const FString& Cla
         && (Compiled->FunctionFlags ^ Function->FunctionFlags) == FUNC_Public
         && Compiled->HasAllFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintEvent)
         && Function->HasAllFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintEvent)
-        && !Compiled->HasAnyFunctionFlags(FUNC_Static | FUNC_Native | FUNC_Net | FUNC_Private | FUNC_Protected | FUNC_EditorOnly | FUNC_Delegate | FUNC_BlueprintPure | FUNC_Const);
+        && bRPCFlagsMatch
+        && !Compiled->HasAnyFunctionFlags(FUNC_Static | FUNC_Native | FUNC_Private | FUNC_Protected | FUNC_EditorOnly | FUNC_Delegate | FUNC_BlueprintPure | FUNC_Const)
+        && (bOwnRPCEvent || !Compiled->HasAnyFunctionFlags(FUNC_Net));
     R.Data->SetBoolField(TEXT("compiled_signature_flags_exact"), Compiled->FunctionFlags == Function->FunctionFlags);
     R.Data->SetBoolField(TEXT("compiled_signature_semantic_flags_exact"), bExactFlags);
     R.Data->SetBoolField(TEXT("custom_event_access_normalized"), bCustomAccessNormalization);
@@ -3945,14 +3972,15 @@ FORCENOINLINE bool ResolveOwnCompiledFunction(UBlueprint* BP, const FString& Cla
         ? TEXT("exact own custom event: compiled stub has zero access bits, fast skeleton has Public, sole raw flag difference is Public; UE58 CreateFunctionStubForEvent versus FastGenerateSkeletonClass")
         : TEXT("exact existing semantic mask comparison; no flag normalization applied"));
     if ((!bExactFlags && !bCustomAccessNormalization)
-        || Function->HasAnyFunctionFlags(FUNC_Static | FUNC_Native | FUNC_Net))
-    { return Fail(R, TEXT("function_self_signature_mismatch"), TEXT("Compiled/current signature flags differ, or the generated function is static, native or networked.")); }
+        || Function->HasAnyFunctionFlags(FUNC_Static | FUNC_Native) || !bRPCFlagsMatch
+        || (!bOwnRPCEvent && Function->HasAnyFunctionFlags(FUNC_Net)))
+    { return Fail(R, TEXT("function_self_signature_mismatch"), TEXT("Compiled/current signature flags differ, the generated function is static/native, or the authored RPC mask is not admitted and preserved.")); }
     TArray<FProperty*> CompiledParams, CurrentParams;
     for (TFieldIterator<FProperty> It(Compiled); It && It->HasAnyPropertyFlags(CPF_Parm); ++It) { CompiledParams.Add(*It); }
     for (TFieldIterator<FProperty> It(Function); It && It->HasAnyPropertyFlags(CPF_Parm); ++It) { CurrentParams.Add(*It); }
     if (CompiledParams.Num() != CurrentParams.Num() || CurrentParams.Num() > MaxParameters)
     { return Fail(R, TEXT("function_self_signature_mismatch"), TEXT("Compiled/current parameter counts differ or exceed 128.")); }
-    if(bCustomEvent&&(!CurrentParams.IsEmpty()||!Event->UserDefinedPins.IsEmpty()))
+    if(bCustomEvent&&(bOwnRPCEvent||!CurrentParams.IsEmpty()||!Event->UserDefinedPins.IsEmpty()))
     {
         if(!PrimitiveEvent)return Fail(R,TEXT("function_custom_event_pending"),TEXT("External parameter-event calls remain pending; finite expansion is own primitive events only."));
         auto Scope=MakeShared<FOwnPrimitiveEventSource>();*PrimitiveEvent=Scope;if(!Scope->Begin(BP,Event,Generated,Owner,Compiled,Function,R)){if(!Scope->Stopped)PrimitiveEvent->Reset();return false;}
@@ -4055,11 +4083,30 @@ FResult ResolveGenericLibrary(UBlueprint*,const FString&,const FString&,const FS
 FResult AddGenericLibraryParameter(const FString&,const FString&,const FString&,const FString&,const FString&,const FString&,bool,const FString&,const FString&,const FString&,bool);
 bool GenericLibraryLoadedRequest(const FString&,const FString&,const FString&);
 }
-FResult Resolve(const FString& Path, const FString& Name, const FString& Id, const FString& Type, bool bCreate)
+FResult Resolve(const FString& Path, const FString& Name, const FString& Id, const FString& Type, bool bCreate,bool bDeferDefaultEventCreation)
 {
     FResult R; R.Data->SetBoolField(TEXT("resolved"), false); R.Data->SetBoolField(TEXT("created"), false);
     UBlueprint* BP = Load(Path, R); if (!BP) { return R; } R.Data->SetStringField(TEXT("blueprint"), BP->GetPathName());
-    UEdGraph* G = FindGraph(BP, Name, Id, Type, R, bCreate); if (!R.ErrorCode.IsEmpty()) { return R; }
+    // UE56 Shared9606 creates the default EventGraph even when create=false.
+    // Node continuations defer this allocation to keep their result/lease alive.
+    const bool DefaultEvent=Name.IsEmpty()&&Id.IsEmpty()&&NormalizeType(Type).IsEmpty();
+    const bool ExplicitMissingEvent=bCreate&&Name.IsEmpty()&&Id.IsEmpty()&&NormalizeType(Type)==TEXT("event");
+    UEdGraph* G = FindGraph(BP, Name, Id, Type, R, bCreate||DefaultEvent); if (!R.ErrorCode.IsEmpty()) { return R; }
+    if(!G&&((DefaultEvent&&!bDeferDefaultEventCreation)||ExplicitMissingEvent))
+    {
+        TFunction<bool(UEdGraphNode*)> Creation;if(!CreateEventGraphForNode(BP,R,G,Creation,bCreate,DefaultEvent))return R;
+        TFunction<bool()> Fence=[&](){return Creation(nullptr);};if(!Fence())return R;
+        const auto Receipt=R.Data->GetObjectField(TEXT("graph_resolution"));
+        Receipt->SetBoolField(TEXT("requested_create_if_missing"),bCreate);
+        Receipt->SetBoolField(TEXT("default_selector_ignores_create_flag_as_original"),DefaultEvent);
+        // UE56 leaves bOutCreated=false in its selector-free early return.
+        R.Data->SetBoolField(TEXT("created"),!DefaultEvent);R.Data->SetBoolField(TEXT("actual_event_graph_created"),true);
+        R.Data->SetBoolField(TEXT("legacy_created_is_actual_mutation_indicator"),!DefaultEvent);
+        R.Data->SetBoolField(TEXT("resolved"),true);R.Data->SetObjectField(TEXT("before"),R.Data->GetObjectField(TEXT("graph_resolution_before")));
+        R.Data->SetObjectField(TEXT("after"),R.Data->GetObjectField(TEXT("graph_resolution_after")));
+        auto GraphInfo=DescribeGraph(BP,G,&Fence);if(!Fence())return R;R.Data->SetObjectField(TEXT("graph"),GraphInfo);
+        R.bSuccess=R.bPostconditionPassed=R.bChangeStateKnown;R.Stage=R.bSuccess?TEXT("complete"):TEXT("verification");return R;
+    }
     if(!G&&bCreate&&BP->BlueprintType==BPTYPE_FunctionLibrary&&!Name.Equals(TEXT("CameraFacing"),ESearchCase::CaseSensitive)&&!Name.Equals(TEXT("PresetLoader"),ESearchCase::CaseSensitive))return ResolveGenericLibrary(BP,Name,Id,Type,MoveTemp(R));
     TSharedPtr<FDeclarationEnumScope> LibraryScope;
     if(BP->BlueprintType==BPTYPE_FunctionLibrary&&((G&&(G->GetFName()==TEXT("CameraFacing")||G->GetFName()==TEXT("PresetLoader")))||(!G&&bCreate&&(Name.Equals(TEXT("CameraFacing"),ESearchCase::CaseSensitive)||Name.Equals(TEXT("PresetLoader"),ESearchCase::CaseSensitive)))))
@@ -4097,6 +4144,30 @@ namespace
 {
 // PT: one request-local lifetime fence for the existing function-graph creation
 // sequence used by Array/Loop. It is not a public graph service or a new writer.
+// YF: existing public resolved-path/shallow-pointer pattern for Component creation.
+UObject* FunctionCreationPointer(const TObjectPtr<UObject>& Ref)
+{
+#if UE_WITH_OBJECT_HANDLE_LATE_RESOLVE
+    if(!MaterialGraphLookupReady()||!Ref.IsResolved()||Ref==nullptr)return nullptr;
+    const FString Path=Ref.GetPathName();UObject* Found=StaticFindObject(nullptr,nullptr,*Path);
+    return DeclarationEnumLoaded(Found)&&Ref==Found?Found:nullptr;
+#else
+    return nullptr;
+#endif
+}
+bool FunctionCreationSuper(UClass* Class,UClass*& Out)
+{
+    Out=nullptr;if(!DeclarationEnumLoaded(Class))return false;
+    static FObjectProperty* const P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
+    if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()
+        ||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UStruct>)
+        ||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)
+        ||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()
+        ||P->HasSetterOrGetter()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UStruct::StaticClass())return false;
+    const TObjectPtr<UObject> Slot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(Class));
+    if(!Slot.IsResolved())return false;if(Slot==nullptr)return true;
+    Out=Cast<UClass>(FunctionCreationPointer(Slot));return Out!=nullptr;
+}
 struct FNodeFunctionCreation
 {
     FResult* Reply=nullptr;bool Stopped=false,Attached=false,Rebinding=false,ExistingGraphInsertion=false,RetiringExistingAdded=false;
@@ -4105,6 +4176,45 @@ struct FNodeFunctionCreation
     TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;
     TStrongObjectPtr<UEdGraph> Created;TStrongObjectPtr<UEdGraphNode> Added;
     TArray<TStrongObjectPtr<UObject>> Holds;FString BPPath,GeneratedPath,SkeletonPath,Name;
+    bool NativeComponentCreation=false,ComponentRolesReady=false,EventGraphCreation=false;
+    TStrongObjectPtr<UObject> ComponentSCS,ComponentGeneratedCDO,ComponentSkeletonCDO,NativeComponentCDO;
+    UObject* ComponentSCSOuter=nullptr;UPackage* ComponentSCSPackage=nullptr;UClass* ComponentSCSClass=nullptr;
+    bool ComponentRoles(UClass* G,UClass* S,bool Adopt=false)
+    {
+        if(!NativeComponentCreation)return true;auto* B=BP.Get();
+        if(!DeclarationEnumLoaded(B)||!DeclarationEnumLoaded(Parent.Get())
+            ||(Parent.Get()!=UActorComponent::StaticClass()&&Parent.Get()!=USceneComponent::StaticClass())
+            ||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()!=Parent.Get()
+            ||!B->SimpleConstructionScript.IsResolved()||!Parent->ClassDefaultObject.IsResolved())return Bad(TEXT("component_creation_parent_roles"),BPPath);
+        UClass* GS=nullptr;UClass* SS=nullptr;
+        if(!FunctionCreationSuper(G,GS)||!FunctionCreationSuper(S,SS)||GS!=Parent.Get()||SS!=Parent.Get()
+            ||!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()
+            ||B->GeneratedClass.GetGCPtr()!=G||B->SkeletonGeneratedClass.GetGCPtr()!=S
+            ||G->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)||S->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)
+            ||G==S||G->GetClass()!=UBlueprintGeneratedClass::StaticClass()||S->GetClass()!=UBlueprintGeneratedClass::StaticClass()
+            ||!G->ClassGeneratedBy.IsResolved()||G->ClassGeneratedBy!=B||!S->ClassGeneratedBy.IsResolved()||S->ClassGeneratedBy!=B
+            ||G->GetOuter()!=B->GetOuter()||S->GetOuter()!=B->GetOuter()||G->GetPackage()!=Package.Get()||S->GetPackage()!=Package.Get()
+            ||!G->ClassDefaultObject.IsResolved()||!S->ClassDefaultObject.IsResolved())return Bad(TEXT("component_creation_class_roles"),BPPath);
+        UObject* NativeDefault=FunctionCreationPointer(Parent->ClassDefaultObject);
+        UObject* ActualSCS=FunctionCreationPointer(B->SimpleConstructionScript);
+        UObject* GD=FunctionCreationPointer(G->ClassDefaultObject);UObject* SD=FunctionCreationPointer(S->ClassDefaultObject);
+        if(Parent->ClassDefaultObject!=NativeDefault||B->SimpleConstructionScript!=ActualSCS
+            ||G->ClassDefaultObject!=GD||S->ClassDefaultObject!=SD)return Bad(TEXT("component_creation_resolved_roles"),BPPath);
+        for(auto Pair:{TPair<UClass*,UObject*>(G,GD),TPair<UClass*,UObject*>(S,SD),TPair<UClass*,UObject*>(Parent.Get(),NativeDefault)})
+            if(Pair.Value&&(!DeclarationEnumLoaded(Pair.Value)||Pair.Value->GetClass()!=Pair.Key||!Pair.Value->HasAnyFlags(RF_ClassDefaultObject)))return Bad(TEXT("component_creation_cdo_role"),BPPath);
+        if(!ComponentRolesReady)
+        {
+            NativeComponentCDO.Reset(NativeDefault);ComponentSCS.Reset(ActualSCS);
+            if(ActualSCS){ComponentSCSOuter=ActualSCS->GetOuter();ComponentSCSPackage=ActualSCS->GetPackage();ComponentSCSClass=ActualSCS->GetClass();}
+            ComponentRolesReady=true;
+            Receipt->SetStringField(TEXT("native_component_scope"),TEXT("Direct ActorComponent/SceneComponent named-function bootstrap with the shared leaf writer. Actual nullable SCS/native parent CDO preserved; generated/skeleton/CDO roles reacquired at existing implicit skeleton rebind boundaries only. No CDO creation request/full authored CDO semantic proof/explicit compile/save/runtime invocation."));
+        }
+        else if(NativeDefault!=NativeComponentCDO.Get()||ActualSCS!=ComponentSCS.Get()
+            ||(ActualSCS&&(ActualSCS->GetOuter()!=ComponentSCSOuter||ActualSCS->GetPackage()!=ComponentSCSPackage||ActualSCS->GetClass()!=ComponentSCSClass)))return Bad(TEXT("component_creation_source_or_scs_changed"),BPPath);
+        if(Adopt){if(ComponentGeneratedCDO.IsValid())Holds.Emplace(ComponentGeneratedCDO.Get());if(ComponentSkeletonCDO.IsValid())Holds.Emplace(ComponentSkeletonCDO.Get());ComponentGeneratedCDO.Reset(GD);ComponentSkeletonCDO.Reset(SD);}
+        else if(GD!=ComponentGeneratedCDO.Get()||SD!=ComponentSkeletonCDO.Get())return Bad(TEXT("component_creation_cdo_slot_changed"),BPPath);
+        return true;
+    }
     TArray<UEdGraph*> OriginalGraphs,OriginalFunctions,OriginalMacros,OriginalEvents,OriginalDelegates,ReadonlyGraphs;FGuid CreatedGuid;
     TArray<FBPVariableDescription> Variables;TArray<FBPInterfaceDescription> Interfaces;
     UClass* ReadonlyClass=nullptr;UObject* ReadonlyOuter=nullptr;UPackage* ReadonlyPackage=nullptr;FString ReadonlyPath;
@@ -4181,8 +4291,9 @@ struct FNodeFunctionCreation
     bool Classes(bool Initial=false)
     {
         UBlueprint* B=BP.Get();if(!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Bad(TEXT("class_slot_unresolved"),BPPath);
-        UClass* G=B->GeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldG(G);
-        UClass* S=B->SkeletonGeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldS(S);
+        UClass* G=NativeComponentCreation?Cast<UClass>(FunctionCreationPointer(B->GeneratedClass.GetGCPtr())):B->GeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldG(G);
+        UClass* S=NativeComponentCreation?Cast<UClass>(FunctionCreationPointer(B->SkeletonGeneratedClass.GetGCPtr())):B->SkeletonGeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldS(S);
+        if(NativeComponentCreation&&(!DeclarationEnumLoaded(G)||!DeclarationEnumLoaded(S)||B->GeneratedClass.GetGCPtr()!=G||B->SkeletonGeneratedClass.GetGCPtr()!=S||!ComponentRoles(G,S,Initial||Rebinding)))return Bad(TEXT("component_creation_class_slots"),BPPath);
         if(InheritedParentBlueprint.IsValid())
         {
             if(!InheritedParentsCurrent())return false;
@@ -4200,7 +4311,7 @@ struct FNodeFunctionCreation
             if(!Role(G,Parent.Get(),TEXT("GeneratedClass"))||!Role(S,InheritedSkeletonParent.Get(),TEXT("SkeletonGeneratedClass")))return false;
             auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("generated_class"),G->GetPathName());J->SetStringField(TEXT("generated_super_expected"),Parent->GetPathName());J->SetStringField(TEXT("generated_super_actual"),G->GetSuperClass()->GetPathName());J->SetStringField(TEXT("skeleton_class"),S->GetPathName());J->SetStringField(TEXT("skeleton_super_expected"),InheritedSkeletonParent->GetPathName());J->SetStringField(TEXT("skeleton_super_actual"),S->GetSuperClass()->GetPathName());J->SetBoolField(TEXT("independent_inspector"),false);Reply->Data->SetObjectField(TEXT("inherited_class_role_observation"),J);
         }
-        else
+        else if(!NativeComponentCreation)
         {
             if(!DeclarationEnumLoaded(G)||!DeclarationEnumLoaded(S)||!G->ClassGeneratedBy.IsResolved()||!S->ClassGeneratedBy.IsResolved()
                 ||G->ClassGeneratedBy.Get()!=B||S->ClassGeneratedBy.Get()!=B||G->GetPackage()!=Package.Get()||S->GetPackage()!=Package.Get()
@@ -4218,7 +4329,8 @@ struct FNodeFunctionCreation
         if(Stopped)return false;
         if(FunctionSourceCurrent&&!FunctionSourceCurrent())return Bad(TEXT("function_creation_source_current"),BPPath);
         if(!MaterialGraphLookupReady()||GEditor!=Editor.Get()||GWorld!=World.Get()||!DeclarationEnumLoaded(BP.Get())||BP->GetOutermost()!=Package.Get()
-            ||!BP->GetPathName().Equals(BPPath,ESearchCase::CaseSensitive)||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr().Get()!=Parent.Get())return Bad(TEXT("target_context"),BPPath);
+            ||!BP->GetPathName().Equals(BPPath,ESearchCase::CaseSensitive)||!BP->ParentClass.GetGCPtr().IsResolved()||(NativeComponentCreation?BP->ParentClass.GetGCPtr()!=Parent.Get():BP->ParentClass.GetGCPtr().Get()!=Parent.Get()))return Bad(TEXT("target_context"),BPPath);
+        if(NativeComponentCreation&&!Rebinding&&!ComponentRoles(Generated.Get(),Skeleton.Get()))return false;
         if(!InheritedParentsCurrent())return false;
         if(BP->NewVariables.Num()!=Variables.Num()||BP->ImplementedInterfaces.Num()!=Interfaces.Num())return Bad(TEXT("declaration_inventory"),BPPath);
         for(int32 I=0;I<Variables.Num();++I)
@@ -4230,13 +4342,14 @@ struct FNodeFunctionCreation
         }
         for(int32 I=0;I<Interfaces.Num();++I){const auto& A=BP->ImplementedInterfaces[I];const auto& E=Interfaces[I];auto ActualInterface=A.Interface;auto ExpectedInterface=E.Interface;if(!ActualInterface.GetGCPtr().IsResolved()||ActualInterface.GetGCPtr().Get()!=ExpectedInterface.GetGCPtr().Get()||A.Graphs!=E.Graphs)return Bad(TEXT("interface_declaration"),BPPath);}
         if(!Rebinding&&(!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()
-            ||BP->GeneratedClass.GetGCPtr().Get()!=Generated.Get()||BP->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()))return Bad(TEXT("generated_class_slot"),BPPath);
+            ||(NativeComponentCreation?BP->GeneratedClass.GetGCPtr()!=Generated.Get():BP->GeneratedClass.GetGCPtr().Get()!=Generated.Get())||(NativeComponentCreation?BP->SkeletonGeneratedClass.GetGCPtr()!=Skeleton.Get():BP->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get())))return Bad(TEXT("generated_class_slot"),BPPath);
         TArray<UEdGraph*> All;BP->GetAllGraphs(All);if(Attached&&All.RemoveSingle(Created.Get())!=1)return Bad(TEXT("created_graph_count"),BPPath);
         if(All!=OriginalGraphs)return Bad(TEXT("target_graph_inventory"),BPPath);
         TArray<UEdGraph*> Functions;for(const auto& H:BP->FunctionGraphs){if(!H.IsResolved())return Bad(TEXT("function_handle_unresolved"),BPPath);Functions.Add(H.Get());}
-        if(Attached){if(Functions.IsEmpty()||Functions.Last()!=Created.Get())return Bad(TEXT("function_graph_append_order"),BPPath);Functions.Pop();}if(Functions!=OriginalFunctions)return Bad(TEXT("function_graph_inventory"),BPPath);
+        if(Attached&&!EventGraphCreation){if(Functions.IsEmpty()||Functions.Last()!=Created.Get())return Bad(TEXT("function_graph_append_order"),BPPath);Functions.Pop();}if(Functions!=OriginalFunctions)return Bad(TEXT("function_graph_inventory"),BPPath);
         auto SameCategory=[](const TArray<TObjectPtr<UEdGraph>>& Actual,const TArray<UEdGraph*>& Expected){if(Actual.Num()!=Expected.Num())return false;for(int32 I=0;I<Expected.Num();++I)if(!Actual[I].IsResolved()||Actual[I].Get()!=Expected[I])return false;return true;};
-        if(!SameCategory(BP->MacroGraphs,OriginalMacros)||!SameCategory(BP->UbergraphPages,OriginalEvents)||!SameCategory(BP->DelegateSignatureGraphs,OriginalDelegates))return Bad(TEXT("prior_graph_category_order"),BPPath);
+        TArray<UEdGraph*> ExpectedEvents=OriginalEvents;if(Attached&&EventGraphCreation)ExpectedEvents.Add(Created.Get());
+        if(!SameCategory(BP->MacroGraphs,OriginalMacros)||!SameCategory(BP->UbergraphPages,ExpectedEvents)||!SameCategory(BP->DelegateSignatureGraphs,OriginalDelegates))return Bad(TEXT("prior_graph_category_order"),BPPath);
         if(Readonly.IsValid()){if(!DeclarationEnumLoaded(Readonly.Get())||Readonly->GetClass()!=ReadonlyClass||Readonly->GetOuter()!=ReadonlyOuter||Readonly->GetOutermost()!=ReadonlyPackage||!Readonly->GetPathName().Equals(ReadonlyPath,ESearchCase::CaseSensitive))return Bad(TEXT("readonly_source_role"),ReadonlyPath);TArray<UEdGraph*> Source;Readonly->GetAllGraphs(Source);if(Source!=ReadonlyGraphs||Readonly->GetOutermost()->IsDirty())return Bad(TEXT("readonly_graph_inventory"),Readonly->GetPathName());}
         for(const auto& Role:Graphs)
         {
@@ -4261,7 +4374,8 @@ struct FNodeFunctionCreation
         if(Created.IsValid())
         {
             if(!DeclarationEnumLoaded(Created.Get())||Created->GetOuter()!=BP.Get()||!Created->GetName().Equals(Name,ESearchCase::CaseSensitive)||Created->GraphGuid!=CreatedGuid)return Bad(TEXT("created_graph_role"),BPPath);
-            if(Attached&&!BP->FunctionGraphs.Contains(Created.Get()))return Bad(TEXT("created_graph_membership"),BPPath);
+            if(EventGraphCreation&&(Created->GetClass()!=UEdGraph::StaticClass()||!Created->Schema.GetGCPtr().IsResolved()||Created->Schema.GetGCPtr()!=UEdGraphSchema_K2::StaticClass()))return Bad(TEXT("created_event_graph_schema_role"),BPPath);
+            if(Attached&&!(EventGraphCreation?BP->UbergraphPages.Contains(Created.Get()):BP->FunctionGraphs.Contains(Created.Get())))return Bad(TEXT("created_graph_membership"),BPPath);
         }
         if(Node&&!RetiringExistingAdded)
         {
@@ -4276,16 +4390,18 @@ struct FNodeFunctionCreation
             if(Added->Pins.Num()!=AddedPins.Num())return Bad(TEXT("created_pin_count"),BPPath);
             for(int32 I=0;I<AddedPins.Num();++I){const auto& E=AddedPins[I];const UEdGraphPin* P=Added->Pins[I];if(P!=E.Address||!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=Added.Get()||P->PinId!=E.Id||P->PinName!=E.Name||P->Direction!=E.Direction||!SameType(P->PinType,E.Type))return Bad(TEXT("created_pin_routing"),BPPath);}
         }
-        if(Attached&&!FunctionAuthoring){int32 AddedCount=0;for(const auto& H:Created->Nodes)if(H.Get()==Added.Get()&&Added.IsValid())++AddedCount;if(AddedCount>1||Created->Nodes.Num()!=1+AddedCount)return Bad(TEXT("created_graph_node_count"),BPPath);}
+        if(Attached&&!FunctionAuthoring){int32 AddedCount=0;for(const auto& H:Created->Nodes)if(H.Get()==Added.Get()&&Added.IsValid())++AddedCount;if(AddedCount>1||Created->Nodes.Num()!=(EventGraphCreation?0:1)+AddedCount)return Bad(TEXT("created_graph_node_count"),BPPath);}
         return true;
     }
 };
 }
 
 static bool CreateFunctionGraphForNodeWork(UBlueprint* BP,const FString& Name,FResult& R,UEdGraph*& Graph,
-    TFunction<bool(UEdGraphNode*)>& Current,UBlueprint* ReadonlySource,TSharedPtr<FNodeFunctionCreation>* Work,TFunction<bool()> SourceCurrent=TFunction<bool()>())
+    TFunction<bool(UEdGraphNode*)>& Current,UBlueprint* ReadonlySource,TSharedPtr<FNodeFunctionCreation>* Work,TFunction<bool()> SourceCurrent=TFunction<bool()>(),bool EventGraphCreation=false)
 {
-    auto Scope=MakeShared<FNodeFunctionCreation>();Scope->FunctionSourceCurrent=MoveTemp(SourceCurrent);Scope->Reply=&R;Scope->BP.Reset(BP);Scope->Package.Reset(BP->GetOutermost());Scope->Parent.Reset(BP->ParentClass.Get());
+    auto Scope=MakeShared<FNodeFunctionCreation>();Scope->EventGraphCreation=EventGraphCreation;Scope->FunctionSourceCurrent=MoveTemp(SourceCurrent);Scope->Reply=&R;Scope->BP.Reset(BP);Scope->Package.Reset(BP->GetOutermost());
+    Scope->NativeComponentCreation=BP->ParentClass.GetGCPtr()==UActorComponent::StaticClass()||BP->ParentClass.GetGCPtr()==USceneComponent::StaticClass();
+    Scope->Parent.Reset(Scope->NativeComponentCreation?Cast<UClass>(FunctionCreationPointer(BP->ParentClass.GetGCPtr())):BP->ParentClass.Get());
     Scope->Editor.Reset(GEditor);Scope->World.Reset(GWorld);Scope->BPPath=BP->GetPathName();Scope->Name=Name;Scope->Variables=BP->NewVariables;Scope->Interfaces=BP->ImplementedInterfaces;
     for(const auto& I:Scope->Interfaces){auto InterfaceCopy=I.Interface;if(!InterfaceCopy.GetGCPtr().IsResolved())return Scope->Bad(TEXT("interface_handle_unresolved"),Scope->BPPath);UClass* ResolvedInterface=InterfaceCopy.GetGCPtr().Get();if(ResolvedInterface)Scope->Holds.Emplace(ResolvedInterface);}
     R.Data->SetObjectField(TEXT("graph_resolution"),Scope->Receipt);Scope->Receipt->SetBoolField(TEXT("requested_create_if_missing"),true);Scope->Receipt->SetBoolField(TEXT("created"),false);Scope->Receipt->SetBoolField(TEXT("reused_existing"),false);
@@ -4300,17 +4416,22 @@ static bool CreateFunctionGraphForNodeWork(UBlueprint* BP,const FString& Name,FR
     R.Data->SetObjectField(TEXT("graph_resolution_before"),Scope->Before);
     auto Absent=[&](){return Scope->Plain()&&FindObject<UObject>(BP,*Name)==nullptr;};
     if(!Absent())return Scope->Bad(TEXT("new_graph_name_collision"),Scope->BPPath);
-    R.Stage=TEXT("create_node_function_graph");R.bMutationAttempted=true;Scope->Receipt->SetBoolField(TEXT("blueprint_modify_entered"),true);
+    R.Stage=EventGraphCreation?TEXT("create_node_event_graph"):TEXT("create_node_function_graph");R.bMutationAttempted=true;Scope->Receipt->SetBoolField(TEXT("blueprint_modify_entered"),true);
     const bool Modified=BP->Modify();Scope->Receipt->SetBoolField(TEXT("blueprint_modify_returned"),Modified);Scope->Receipt->SetBoolField(TEXT("blueprint_modify_call_returned"),true);Scope->Receipt->SetBoolField(TEXT("blueprint_modify_saved_to_transaction_buffer"),Modified);Scope->Receipt->SetBoolField(TEXT("blueprint_modify_returned_is_legacy_value"),true);if(!Absent())return Scope->Bad(TEXT("new_graph_name_collision_after_modify"),Scope->BPPath);
     Scope->Receipt->SetBoolField(TEXT("create_graph_entered"),true);
     UEdGraph* New=FBlueprintEditorUtils::CreateNewGraph(BP,FName(*Name),UEdGraph::StaticClass(),UEdGraphSchema_K2::StaticClass());
     TStrongObjectPtr<UEdGraph> Returned(New);Scope->Receipt->SetBoolField(TEXT("create_graph_returned_nonnull"),New!=nullptr);
     if(!Scope->Plain())return false;
     if(!DeclarationEnumLoaded(New)||New->GetOuter()!=BP||!New->GraphGuid.IsValid()||!New->GetName().Equals(Name,ESearchCase::CaseSensitive))return Scope->Bad(TEXT("new_graph_return_unavailable"),Scope->BPPath);
+    if(EventGraphCreation&&(New->GetClass()!=UEdGraph::StaticClass()||!New->Schema.GetGCPtr().IsResolved()||New->Schema.GetGCPtr()!=UEdGraphSchema_K2::StaticClass()||!New->Nodes.IsEmpty()))return Scope->Bad(TEXT("new_event_graph_initial_shape"),Scope->BPPath);
     Scope->Created.Reset(New);Scope->CreatedGuid=New->GraphGuid;Scope->Receipt->SetStringField(TEXT("graph_path"),New->GetPathName());Scope->Receipt->SetStringField(TEXT("graph_guid"),New->GraphGuid.ToString(EGuidFormats::Digits));
-    R.bChanged=true;R.Data->SetBoolField(TEXT("implicit_skeleton_compile_requested"),true);Scope->Receipt->SetBoolField(TEXT("implicit_skeleton_compile_possible"),true);Scope->Receipt->SetBoolField(TEXT("add_function_graph_entered"),true);
-    Scope->Rebinding=true;FBlueprintEditorUtils::AddFunctionGraph<UFunction>(BP,New,true,nullptr);Scope->Attached=true;
-    Scope->Receipt->SetBoolField(TEXT("add_function_graph_returned"),true);Scope->Receipt->SetBoolField(TEXT("created"),true);
+    R.bChanged=true;R.Data->SetBoolField(TEXT("implicit_skeleton_compile_requested"),true);Scope->Receipt->SetBoolField(TEXT("implicit_skeleton_compile_possible"),true);
+    const TCHAR* Entered=EventGraphCreation?TEXT("add_ubergraph_page_entered"):TEXT("add_function_graph_entered");
+    const TCHAR* ReturnedKey=EventGraphCreation?TEXT("add_ubergraph_page_returned"):TEXT("add_function_graph_returned");
+    Scope->Receipt->SetBoolField(Entered,true);Scope->Rebinding=true;
+    if(EventGraphCreation)FBlueprintEditorUtils::AddUbergraphPage(BP,New);
+    else FBlueprintEditorUtils::AddFunctionGraph<UFunction>(BP,New,true,nullptr);
+    Scope->Attached=true;Scope->Receipt->SetBoolField(ReturnedKey,true);Scope->Receipt->SetBoolField(TEXT("created"),true);
     if(!Scope->Plain()||!Scope->Classes())return false;
     // ReconstructNode may replace physical pin storage at this structural boundary.
     // Old logical rows remain the authority; only matching returned physical roles are adopted.
@@ -4330,11 +4451,20 @@ static bool CreateFunctionGraphForNodeWork(UBlueprint* BP,const FString& Name,FR
         N.Pins=MoveTemp(N.CandidatePins);N.CandidateFixed=false;N.Rebound=true;
     }
     Scope->Rebinding=false;if(!Scope->Plain())return false;
-    TArray<UK2Node_FunctionEntry*> Entries;New->GetNodesOfClass(Entries);
-    if(Entries.Num()!=1||New->Nodes.Num()!=1)return Scope->Bad(TEXT("new_function_entry_shape"),New->GetPathName());
-    TStrongObjectPtr<UK2Node_FunctionEntry> Entry(Entries[0]);if(!Scope->Plain())return false;
-    FNodeFunctionCreation::FNodeRole EntryRole;EntryRole.Hold.Reset(Entries[0]);EntryRole.Graph=New;EntryRole.Class=Entries[0]->GetClass();EntryRole.Guid=Entries[0]->NodeGuid;EntryRole.Path=Entries[0]->GetPathName();EntryRole.Comment=Entries[0]->NodeComment;EntryRole.X=Entries[0]->NodePosX;EntryRole.Y=Entries[0]->NodePosY;
-    if(!Scope->Pins(EntryRole,EntryRole.Pins))return false;Scope->Nodes.Add(MoveTemp(EntryRole));
+    if(EventGraphCreation)
+    {
+        // UE56 CommonUtils1354 and UE58 AddUbergraphPage2483 add no default nodes.
+        if(!New->Nodes.IsEmpty())return Scope->Bad(TEXT("new_event_graph_not_empty"),New->GetPathName());
+        Scope->Receipt->SetStringField(TEXT("event_graph_scope"),TEXT("Missing default EventGraph of a normal direct Actor; exact empty UbergraphPages append and shared prior-node/class rebind/request-local lifetime lease. No macro/default event nodes/latent/runtime proof/full CDO semantic proof/explicit compile/save. Other parents and existing EventGraph naming differences remain incomplete."));
+    }
+    else
+    {
+        TArray<UK2Node_FunctionEntry*> Entries;New->GetNodesOfClass(Entries);
+        if(Entries.Num()!=1||New->Nodes.Num()!=1)return Scope->Bad(TEXT("new_function_entry_shape"),New->GetPathName());
+        TStrongObjectPtr<UK2Node_FunctionEntry> Entry(Entries[0]);if(!Scope->Plain())return false;
+        FNodeFunctionCreation::FNodeRole EntryRole;EntryRole.Hold.Reset(Entries[0]);EntryRole.Graph=New;EntryRole.Class=Entries[0]->GetClass();EntryRole.Guid=Entries[0]->NodeGuid;EntryRole.Path=Entries[0]->GetPathName();EntryRole.Comment=Entries[0]->NodeComment;EntryRole.X=Entries[0]->NodePosX;EntryRole.Y=Entries[0]->NodePosY;
+        if(!Scope->Pins(EntryRole,EntryRole.Pins))return false;Scope->Nodes.Add(MoveTemp(EntryRole));
+    }
     TSharedRef<FJsonObject> After=MakeShared<FJsonObject>();if(!Capture(BP,New,After,R,nullptr,&Fence))return Scope->Bad(TEXT("creation_after_unobservable"),Scope->BPPath);
     R.Data->SetObjectField(TEXT("graph_resolution_after"),After);Scope->Receipt->SetBoolField(TEXT("postcondition_verified"),true);R.bChangeStateKnown=true;Graph=New;if(Work)*Work=Scope;return true;
 }
@@ -4342,6 +4472,20 @@ static bool CreateFunctionGraphForNodeWork(UBlueprint* BP,const FString& Name,FR
 bool CreateFunctionGraphForNode(UBlueprint* BP,const FString& Name,FResult& R,UEdGraph*& Graph,
     TFunction<bool(UEdGraphNode*)>& Current,UBlueprint* ReadonlySource)
 { return CreateFunctionGraphForNodeWork(BP,Name,R,Graph,Current,ReadonlySource,nullptr); }
+
+bool CreateEventGraphForNode(UBlueprint* BP,FResult& R,UEdGraph*& Graph,TFunction<bool(UEdGraphNode*)>& Current,bool bRequestedCreate,bool bDefaultSelector)
+{
+    // Caller owns the original selector-free/explicit-event create flag rule.
+    if(!MaterialGraphLookupReady()||!DeclarationEnumLoaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()
+        ||BP->BlueprintType!=BPTYPE_Normal||!BP->ParentClass.GetGCPtr().IsResolved()
+        ||BP->ParentClass.GetGCPtr()!=AActor::StaticClass()||!BP->UbergraphPages.IsEmpty())
+        return Fail(R,TEXT("event_graph_creation_target_unsupported"),TEXT("Missing default EventGraph bootstrap currently requires a normal direct Actor with no own UbergraphPages; other valid original parents/topologies remain incomplete."));
+    const bool Created=CreateFunctionGraphForNodeWork(BP,TEXT("EventGraph"),R,Graph,Current,nullptr,nullptr,TFunction<bool()>(),true);
+    // Receipt-only publication also on failure; no SDK re-query after unknown.
+    const TSharedPtr<FJsonObject>* Receipt=nullptr;if(R.Data->TryGetObjectField(TEXT("graph_resolution"),Receipt))
+    {(*Receipt)->SetBoolField(TEXT("requested_create_if_missing"),bRequestedCreate);(*Receipt)->SetBoolField(TEXT("default_selector_ignores_create_flag_as_original"),bDefaultSelector);}
+    return Created;
+}
 
 namespace { FResult AddReturnCreatingGraph(const FString&,const FString&,const FString&,const FString&,const FString&); }
 
@@ -5105,7 +5249,8 @@ void RequestedCreationReceipt(FResult& R,bool Reused)
 bool MissingFunctionAdmission(UBlueprint* BP,const FString& Name,const FString& Id,const FString& Type,FResult& R)
 {
     if(!Id.IsEmpty()||Name.IsEmpty()||NormalizeType(Type)!=TEXT("function"))return Fail(R,TEXT("function_graph_creation_selector_unsupported"),TEXT("A missing graph requires an exact function name, graph_type=function and no graph_id; missing EventGraph/latent creation remains pending."));
-    if(BP->GetClass()!=UBlueprint::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr().Get()!=AActor::StaticClass())return Fail(R,TEXT("function_graph_creation_target_unsupported"),TEXT("Missing function creation currently admits a normal direct-native Actor Blueprint; existing True reuse retains the old False profiles."));return true;
+    if(BP->GetClass()!=UBlueprint::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||!BP->ParentClass.GetGCPtr().IsResolved()
+        ||(BP->ParentClass.GetGCPtr()!=AActor::StaticClass()&&BP->ParentClass.GetGCPtr()!=UActorComponent::StaticClass()&&BP->ParentClass.GetGCPtr()!=USceneComponent::StaticClass()))return Fail(R,TEXT("function_graph_creation_target_unsupported"),TEXT("Missing named-function creation admits normal direct-native Actor/ActorComponent/SceneComponent Blueprints; generated parents/custom native subclasses remain incomplete. Existing True reuse retains the old False profiles."));return true;
 }
 // QS: concrete continuations of the existing node-function creation leaf.
 bool CreatedNodePosition(const FString& Json,int32 (&XY)[2],FResult& R)
@@ -7573,6 +7718,93 @@ FResult AddCallCreatingGraph(const FString& Path,const FString& ClassPath,const 
 }
 }
 
+namespace
+{
+// WI keeps alias-role ownership and callback barriers outside the large native
+// dispatcher. The graph is mutable by one call node; its callable is readonly.
+struct FOwnRecursiveCallScope
+{
+    FResult& R;
+    TStrongObjectPtr<UBlueprint> Blueprint;
+    TStrongObjectPtr<UEdGraph> Graph;
+    TStrongObjectPtr<UClass> Generated, Skeleton;
+    TStrongObjectPtr<UFunction> Function, Compiled;
+    TStrongObjectPtr<UK2Node_CallFunction> Call;
+    const UEdGraphSchema_K2* Schema=nullptr;
+    FGuid GraphGuid;
+    uint32 FunctionFlags=0,CompiledFlags=0;
+    bool Lost=false,Member=false;
+    FString Boundary=TEXT("admission");
+    struct FParameter { FProperty* Pointer;FName Name;EPropertyFlags Flags;int32 ArrayDim;FFieldClass* Class; };
+    TArray<FParameter> Parameters,CompiledParameters;
+    TFunction<bool()> Observer;
+    explicit FOwnRecursiveCallScope(FResult& Result):R(Result),Observer([this](){return Current();}){}
+    static constexpr EFunctionFlags SemanticFlags=FUNC_Static|FUNC_Public|FUNC_Private|FUNC_Protected|FUNC_BlueprintCallable
+        |FUNC_BlueprintPure|FUNC_Const|FUNC_EditorOnly|FUNC_Delegate|FUNC_Native|FUNC_Net;
+    static constexpr EPropertyFlags ParameterFlags=CPF_Parm|CPF_ReturnParm|CPF_OutParm|CPF_ReferenceParm|CPF_ConstParm;
+    FORCENOINLINE static void ReadParameters(UFunction* F,TArray<FParameter>& Rows)
+    {for(TFieldIterator<FProperty> It(F);It&&It->HasAnyPropertyFlags(CPF_Parm);++It)Rows.Add({*It,It->GetFName(),It->GetPropertyFlags()&ParameterFlags,It->ArrayDim,It->GetClass()});}
+    FORCENOINLINE static bool ParametersCurrent(UFunction* F,const TArray<FParameter>& Rows)
+    {int32 I=0;for(TFieldIterator<FProperty> It(F);It&&It->HasAnyPropertyFlags(CPF_Parm);++It,++I){if(!Rows.IsValidIndex(I))return false;const auto& V=Rows[I];if(*It!=V.Pointer||It->GetFName()!=V.Name||(It->GetPropertyFlags()&ParameterFlags)!=V.Flags||It->ArrayDim!=V.ArrayDim||It->GetClass()!=V.Class)return false;}return I==Rows.Num();}
+    FORCENOINLINE bool Stop()
+    {
+        Lost=true;R.bChangeStateKnown=false;R.Stage=TEXT("verification");
+        R.Data->SetStringField(TEXT("own_recursive_failed_boundary"),Boundary);
+        R.Data->SetBoolField(TEXT("own_recursive_followup_sdk_stopped"),true);
+        R.Data->SetBoolField(TEXT("own_recursive_call_allocated"),Call.IsValid());
+        R.Data->SetBoolField(TEXT("own_recursive_add_node_returned"),Member);
+        return Fail(R,TEXT("function_self_recursive_state_unavailable"),TEXT("The held caller/callee alias, current class/signature or allocated node role changed across an SDK boundary; actual prefix is retained, with no cleanup, compile, save or retry."));
+    }
+    FORCENOINLINE bool Current()
+    {
+        if(Lost)return false;
+        UBlueprint* BP=Blueprint.Get();UEdGraph* G=Graph.Get();UFunction* F=Function.Get();UFunction* CF=Compiled.Get();
+        if(!MaterialGraphLookupReady()||!DeclarationEnumLoaded(BP)||!DeclarationEnumLoaded(G)
+            ||!BP->FunctionGraphs.Contains(G)||G->GetOuter()!=BP||G->GraphGuid!=GraphGuid||G->GetSchema()!=Schema
+            ||!BP->GeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr().Get()!=Generated.Get()
+            ||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||BP->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()
+            ||!DeclarationEnumLoaded(Generated.Get())||!DeclarationEnumLoaded(Skeleton.Get())
+            ||!DeclarationEnumLoaded(F)||!DeclarationEnumLoaded(CF)
+            ||F->GetOuter()!=Skeleton.Get()||CF->GetOuter()!=Generated.Get()
+            ||uint32(F->FunctionFlags&SemanticFlags)!=FunctionFlags||uint32(CF->FunctionFlags&SemanticFlags)!=CompiledFlags)return Stop();
+        if(!ParametersCurrent(F,Parameters)||!ParametersCurrent(CF,CompiledParameters))return Stop();
+        if(Call.IsValid()&&(!DeclarationEnumLoaded(Call.Get())||Call->GetOuter()!=G||Call->GetGraph()!=G||(Member&&!G->Nodes.Contains(Call.Get()))))return Stop();
+        return true;
+    }
+    FORCENOINLINE bool Check(const TCHAR* Where){Boundary=Where;return Current();}
+    FORCENOINLINE bool Begin(UBlueprint* BP,UEdGraph* G,UClass* Owner,UFunction* F,UFunction* CF,const UEdGraphSchema_K2* InSchema)
+    {
+        Blueprint.Reset(BP);Graph.Reset(G);Generated.Reset(BP->GeneratedClass.Get());Skeleton.Reset(Owner);Function.Reset(F);Compiled.Reset(CF);Schema=InSchema;GraphGuid=G->GraphGuid;
+        FunctionFlags=uint32(F->FunctionFlags&SemanticFlags);CompiledFlags=uint32(CF->FunctionFlags&SemanticFlags);
+        ReadParameters(F,Parameters);ReadParameters(CF,CompiledParameters);
+        if(!Current())return false;
+        R.Data->SetBoolField(TEXT("own_function_caller_callee_alias"),true);
+        R.Data->SetStringField(TEXT("own_function_recursion_scope"),TEXT("One unlinked self call in its existing compiled function graph; original nodes/pins/links and signature preserved. No recursive execution, termination proof, compile or save is requested."));
+        return true;
+    }
+    FORCENOINLINE bool CreateCall(int32 X,int32 Y)
+    {
+        UEdGraph* G=Graph.Get();
+        Call.Reset(NewObject<UK2Node_CallFunction>(G,UK2Node_CallFunction::StaticClass(),NAME_None,RF_Transactional));
+        if(!Call.IsValid()){R.bChangeStateKnown=false;Fail(R,TEXT("function_self_recursive_allocation_unavailable"),TEXT("Call allocation returned null; no followup writer, compile, save or retry."));return false;}
+        R.Data->SetStringField(TEXT("own_recursive_allocated_node_path"),Call->GetPathName());
+        if(!Check(TEXT("after_node_allocation")))return false;
+        if(G->HasAnyFlags(RF_Transient))Call->SetFlags(RF_Transient);
+        G->AddNode(Call.Get(),false,false);Member=true;if(!Check(TEXT("after_graph_add_node")))return false;
+        Call->SetFromFunction(Function.Get());if(!Check(TEXT("after_set_from_function")))return false;
+        Call->NodePosX=X;Call->NodePosY=Y;Call->CreateNewGuid();if(!Check(TEXT("after_node_guid")))return false;
+        Call->PostPlacedNewNode();if(!Check(TEXT("after_post_placed_new_node")))return false;
+        Call->AllocateDefaultPins();return Check(TEXT("after_allocate_default_pins"));
+    }
+    FORCENOINLINE bool VerifyUnlinked()
+    {
+        if(!Current())return false;
+        bool Unlinked=true;for(const UEdGraphPin* Pin:Call->Pins)Unlinked&=Pin&&Pin->GetOwningNode()==Call.Get()&&Pin->LinkedTo.IsEmpty();
+        R.Data->SetBoolField(TEXT("own_recursive_new_call_unlinked"),Unlinked);R.Data->SetNumberField(TEXT("own_recursive_authorized_node_delta"),1);return Unlinked;
+    }
+};
+}
+
 FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FString& FunctionName,
     const FString& DefaultsJson, const FString& PositionJson, const FString& GraphName, const FString& GraphId,
     const FString& RequestedGraphType, bool bCreateGraph, bool bLatent, bool bEditorOnly, bool bWildcard, bool bDeprecated, bool bInternal)
@@ -8083,6 +8315,14 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
     if (!WorldContextName.IsEmpty() && (NativeCreateRenderTarget?RenderWorldRejected:PlayerScope?PlayerWorldRejected:(!FBlueprintEditorUtils::ImplementsGetWorld(BP) || Schema->IsStaticFunctionGraph(G)
         || UEdGraphSchema_K2::IsConstructionScript(G) || Defaults.Contains(FName(*WorldContextName)))))
     { Fail(R, TEXT("function_world_context_unsupported"), TEXT("World-context calls require an instance graph with intrinsic GetWorld outside construction scripts; a literal override of the compiler-provided world context is not supported.")); return R; }
+    const bool OwnRecursive=bOwnClassRequested&&!bCustomEvent&&Callee==G;
+    TSharedPtr<FOwnRecursiveCallScope> RecursiveScope;
+    if(OwnRecursive)
+    {
+        RecursiveScope=MakeShared<FOwnRecursiveCallScope>(R);
+        if(!RecursiveScope->Begin(BP,G,Owner,Function,CompiledFunction,Schema))return R;
+        OwnEventCurrent=&RecursiveScope->Observer;
+    }
     TSharedRef<FJsonObject> Before = MakeShared<FJsonObject>();
     if(PlayerScope)
     {
@@ -8100,10 +8340,11 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
     TSharedRef<FJsonObject> CalleeBefore = MakeShared<FJsonObject>();
     if (bOwnClassRequested)
     {
-        if (Callee == G && !bCustomEvent) { Fail(R, TEXT("function_self_recursion_unsupported"), TEXT("Direct recursive function self-call authoring is outside this slice.")); return R; }
-        if (!Capture(BP, Callee, CalleeBefore, R,nullptr,OwnEventCurrent)) { return R; }
+        if(OwnRecursive){CalleeBefore=Before;}
+        else if (!Capture(BP, Callee, CalleeBefore, R,nullptr,OwnEventCurrent)) { return R; }
         R.Data->SetObjectField(TEXT("callee_before"), CalleeBefore);
-        if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
+        if(OwnRecursive&&!RecursiveScope->Current())return R;
+    if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
     }
     if (G->Nodes.Num() >= MaxNodes) { Fail(R, TEXT("function_node_budget_exceeded"), TEXT("The new call would exceed 2048 nodes.")); return R; }
     EObjectFlags PlacementClassFlags=RF_NoFlags;uint32 PlacementClassTypeFlags=0;int32 PlacementClassSize=0;UObject* PlacementClassOuter=nullptr;
@@ -8173,6 +8414,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
     TSharedRef<FJsonObject> InterpolationAppliedPrefix = MakeShared<FJsonObject>();
     auto InterpolationCheckpoint = [&](const TCHAR* Boundary, bool FreezePins = false, FName PlannedDefault = NAME_None) -> bool
     {
+        if(OwnRecursive&&!RecursiveScope->Check(Boundary))return false;
         if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return false;
         if (!NativeGuardedValueAuthoring) { return true; }
         if(!RenderWorldCurrent(Boundary))return false;
@@ -8351,7 +8593,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
     if (!InterpolationCheckpoint(TEXT("after_graph_usability"))) { return R; }
     if (!Usable)
     { Fail(R, TEXT("function_graph_call_rejected"), Reason.ToString()); return R; }
-    R.Stage = TEXT("add_call");R.bMutationAttempted=true;if(PrimitiveEvent.IsValid())R.bChangeStateKnown=false;BP->Modify();
+    R.Stage = TEXT("add_call");R.bMutationAttempted=true;if(PrimitiveEvent.IsValid()||OwnRecursive)R.bChangeStateKnown=false;BP->Modify();
     if(PlayerScope&&!PlayerScope->Check()) { return R; }
     if (!InterpolationCheckpoint(TEXT("after_blueprint_modify"))) { return R; }
     G->Modify();if(PlayerScope&&!PlayerScope->Check()) { return R; }
@@ -8378,6 +8620,8 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         if(!PrimitiveEvent->CreateCall())return R;
         Call=PrimitiveEvent->Call.Get();
     }
+    else if(OwnRecursive)
+    {if(!RecursiveScope->CreateCall(Position[0],Position[1]))return R;Call=RecursiveScope->Call.Get();}
     else if (NativeGuardedValueAuthoring)
     {
         // The same concrete SDK lifecycle as the existing guarded native path,
@@ -8478,7 +8722,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
             const FString Error=P?Schema->IsCurrentPinDefaultValid(P):TEXT("missing current pin");if(!PrimitiveEvent->Check())return R;
             Applied&=Matches&&Error.IsEmpty();
         }
-        else if (NativeGuardedValueAuthoring)
+        else if (NativeGuardedValueAuthoring || OwnRecursive)
         {
             // Reacquire from the checked current physical pin inventory after each callback.
             P = Call->FindPin(Pair.Key, EGPD_Input);
@@ -8510,6 +8754,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         R.Data->SetStringField(TEXT("change_observation_scope"), TEXT("Existing graph/node/declaration state reused only after the current checkpoint equality; new current physical inventory projects held Class path without tracked DefaultObject dereference. Global callback effects/runtime invocations are not fully observed."));
     }
     else { After(BP, G, Before, R,nullptr,OwnEventCurrent); }
+    if(OwnRecursive&&!RecursiveScope->Current())return R;
     if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
     if (!ExpectedResolvedFunction) { ExpectedResolvedFunction = Function; }
     UFunction* ResolvedFunction = Call->GetTargetFunction();
@@ -8521,6 +8766,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         && ResolvedFunction == ExpectedResolvedFunction && G->Nodes.Contains(Call) && Call->NodeGuid.IsValid()
         && G->Nodes.Num() == Before->GetArrayField(TEXT("nodes")).Num() + 1 && (PlayerScope?PlayerScope->Check():SameExistingNodes(G, Before,nullptr,nullptr,OwnEventCurrent))
         && Call->NodePosX == Position[0] && Call->NodePosY == Position[1];
+    if(OwnRecursive&&!RecursiveScope->Current())return R;
     if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
     TSharedPtr<FJsonObject> LibraryCallVerification;
     if(bExternalLibraryRequested)
@@ -8536,7 +8782,8 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         const UEdGraphPin* Self = Call->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input);
         TSharedRef<FJsonObject> CalleeAfter = MakeShared<FJsonObject>(); const bool CalleeObserved = Capture(BP, Callee, CalleeAfter, R,nullptr,OwnEventCurrent);
         R.Data->SetObjectField(TEXT("callee_after"), CalleeAfter);
-        if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
+        if(OwnRecursive&&!RecursiveScope->Current())return R;
+    if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
         Self=Call->FindPin(UEdGraphSchema_K2::PN_Self,EGPD_Input);
         if (!CalleeObserved) { R.bChangeStateKnown = false; }
         Verified &= CalleeObserved && SameExistingNodes(Callee, CalleeBefore,nullptr,nullptr,OwnEventCurrent)
@@ -8548,8 +8795,10 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
             && Self->PinType.PinSubCategoryObject == nullptr && Self->DefaultObject == nullptr && Self->LinkedTo.IsEmpty();
         R.Data->SetBoolField(TEXT("self_context"), Call->FunctionReference.IsSelfContext());
         R.Data->SetStringField(TEXT("runtime_reference_scope"), TEXT("self member GUID/name and self pin only; no Cubeless or external generated class reference introduced"));
+        if(OwnRecursive)Verified&=RecursiveScope->VerifyUnlinked();
         if (bCustomEvent) { R.Data->SetStringField(TEXT("custom_event_recursion_scope"), TEXT("call node is created unlinked; subsequent event exec topology and recursive cycles are not certified by this operation")); }
     }
+    if(OwnRecursive&&!RecursiveScope->Current())return R;
     if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
     if (bExternalComponentRequested)
     {
@@ -9042,19 +9291,20 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
     else if (NativeComponentLifecycle)
     { TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>(); if (!LifecycleNodeReceipt(Row)) { return R; } Merge(*R.Data, *Row); }
     else { Merge(*R.Data,*DescribeNode(Call,nullptr,OwnEventCurrent)); }
+    if(OwnRecursive&&!RecursiveScope->Current())return R;
     if(PrimitiveEvent.IsValid()&&!PrimitiveEvent->Check())return R;
     if(PlayerScope)
     {
         if(!PlayerScope->Check()) { return R; }auto GraphRow=MakeShared<FJsonObject>();GraphRow->SetStringField(TEXT("graph_id"),G->GraphGuid.ToString(EGuidFormats::Digits));GraphRow->SetStringField(TEXT("graph_name"),G->GetName());GraphRow->SetStringField(TEXT("graph_type"),GraphType(BP,G));GraphRow->SetStringField(TEXT("object_path"),G->GetPathName());GraphRow->SetStringField(TEXT("schema"),PlayerScope->GraphSchema->GetName());GraphRow->SetNumberField(TEXT("node_count"),G->Nodes.Num());R.Data->SetObjectField(TEXT("graph"),GraphRow);
     }
     else { R.Data->SetObjectField(TEXT("graph"),DescribeGraph(BP,G,OwnEventCurrent)); }
-    if ((NativeComponentLifecycle||PrimitiveEvent.IsValid()) && !InterpolationCheckpoint(TEXT("after_final_graph_receipt"))) { return R; }
+    if ((NativeComponentLifecycle||PrimitiveEvent.IsValid()||OwnRecursive) && !InterpolationCheckpoint(TEXT("after_final_graph_receipt"))) { return R; }
     if(PrimitiveEvent.IsValid())R.Data->SetObjectField(TEXT("own_custom_event_source_after"),PrimitiveEvent->Describe());
     R.Data->SetStringField(TEXT("blueprint"), BP->GetPathName()); R.Data->SetStringField(TEXT("function_name"), Function->GetName());
     R.Data->SetStringField(TEXT("function_class"), bOwnClassRequested ? ClassPath : Owner->GetPathName()); R.Data->SetStringField(TEXT("function_path"), ResolvedFunction ? ResolvedFunction->GetPathName() : FString());
     R.Data->SetBoolField(TEXT("is_static"), Function->HasAnyFunctionFlags(FUNC_Static)); R.Data->SetBoolField(TEXT("is_pure"), Function->HasAnyFunctionFlags(FUNC_BlueprintPure));
     R.Data->SetBoolField(TEXT("is_latent"), PrimitiveEvent.IsValid()?false:Function->HasMetaData(TEXT("Latent"))); R.Data->SetObjectField(TEXT("param_defaults_applied"), AppliedDefaults);
-    R.Data->SetStringField(TEXT("node_creation_api"),(PlayerScope || NativeGuardedValueAuthoring || PrimitiveEvent.IsValid())?TEXT("public NewObject/AddNode/SetFromFunction/CreateNewGuid/PostPlacedNewNode/AllocateDefaultPins with concrete callback barriers"):TEXT("FGraphNodeCreator<UK2Node_CallFunction>/SetFromFunction/Finalize"));
+    R.Data->SetStringField(TEXT("node_creation_api"),(PlayerScope || NativeGuardedValueAuthoring || PrimitiveEvent.IsValid() || OwnRecursive)?TEXT("public NewObject/AddNode/SetFromFunction/CreateNewGuid/PostPlacedNewNode/AllocateDefaultPins with concrete callback barriers"):TEXT("FGraphNodeCreator<UK2Node_CallFunction>/SetFromFunction/Finalize"));
     R.Data->SetBoolField(TEXT("implicit_skeleton_compile_possible"), false);
     if(LibraryCallVerification){LibraryCallVerification->SetBoolField(TEXT("postcondition_verified"),Verified);LibraryCallVerification->SetBoolField(TEXT("observations_complete"),true);if(!Verified&&LibraryCallVerification->GetStringField(TEXT("first_failed_condition")).IsEmpty())LibraryCallVerification->SetStringField(TEXT("first_failed_condition"),TEXT("later_common_postcondition"));}
     if (!Verified) { R.Stage = TEXT("verification"); Fail(R, TEXT("function_call_postcondition_failed"), TEXT("Call identity/signature/defaults or existing graph preservation check failed; inspect actual partial changes before retry.")); return R; }
@@ -9892,6 +10142,10 @@ struct FGeneratedCastScope
         int32 PinIndex=-1;for(auto* P:N->Pins){++PinIndex;if(P->PinName==UEdGraphSchema_K2::PN_ObjectToCast&&DynamicCastPlainPin(P,EGPD_Input,UEdGraphSchema_K2::PC_Wildcard,InputObject))Input=P;else if(P->PinName==ResultName&&DynamicCastPlainPin(P,EGPD_Output,CastResultCategory(),Source.Get())){if(Result)return Stop(TEXT("standard_result"));Result=P;}else if(P->PinName==TEXT("bSuccess")&&DynamicCastPlainPin(P,EGPD_Output,UEdGraphSchema_K2::PC_Boolean,nullptr))Success=P;else if(!Pure&&((P->PinName==UEdGraphSchema_K2::PN_Execute&&DynamicCastPlainPin(P,EGPD_Input,UEdGraphSchema_K2::PC_Exec,nullptr))||((P->PinName==UEdGraphSchema_K2::PN_CastSucceeded||P->PinName==UEdGraphSchema_K2::PN_CastFailed)&&DynamicCastPlainPin(P,EGPD_Output,UEdGraphSchema_K2::PC_Exec,nullptr))))Exec.Add(P->PinName);else return FreezePinFailure(TEXT("standard_type"),Boundary,PinIndex,P,InputObject);FEdGraphPinType Expected;Expected.PinCategory=P->PinType.PinCategory;if(P==Input)Expected.PinSubCategoryObject=InputObject;else if(P==Result)Expected.PinSubCategoryObject=Source.Get();if(P->PinType!=Expected||P->PinType.bIsUObjectWrapper||P->PinType.bSerializeAsSinglePrecisionFloat||!P->DefaultValue.IsEmpty()||!P->AutogeneratedDefaultValue.IsEmpty()||P->bDefaultValueIsIgnored||P->bDefaultValueIsReadOnly||P->bNotConnectable||((P!=Success)&&P->bHidden)||P->DefaultObject||!P->DefaultTextValue.IsEmpty()||!P->LinkedTo.IsEmpty()||P->bOrphanedPin||P->ParentPin||!P->SubPins.IsEmpty())return FreezePinFailure(TEXT("standard_defaults"),Boundary,PinIndex,P,InputObject);}if(!Input||!Result||!Success||Input->bHidden||Result->bHidden||Success->bHidden==Pure||Exec.Num()!=(Pure?0:3))return Stop(TEXT("standard_roles"));Fresh.Reset();if(!CapturePins(N,Fresh))return false;Frozen=true;FrozenPure=Pure;return Full();
     }
 };
+// ZO: synchronous continuation into the existing guarded missing-function writer.
+// The current result, successful target load and held native source stay owned by
+// the original call; no second load, mutation replay or frame-spanning callback.
+FResult AddDynamicCastCreatingGraph(const FString& Path,const FString& TargetClass,const FString& PositionJson,bool Pure,const FString& GraphName,const FString& GraphId,const FString& Kind,FResult* ContinuationResult=nullptr,UBlueprint* ContinuationBlueprint=nullptr,FGeneratedCastScope* GeneralSource=nullptr);
 FResult AddGeneratedActorDynamicCast(const FString& Path,const FString& TargetClass,const FString& PositionJson,bool bPure,const FString& GraphName,const FString& GraphId,const FString& RequestedGraphType,bool NativeGraphReuse=false)
 {
     FResult R;const bool NativeDataTable=TargetClass==TEXT("/Script/Engine.DataTable");const bool GeneralNative=TargetClass.StartsWith(TEXT("/Script/"))&&TargetClass!=TEXT("/Script/Engine.MaterialInstanceDynamic")&&!NativeDataTable;const bool NativeMaterial=TargetClass==TEXT("/Script/Engine.MaterialInstanceDynamic")||NativeDataTable||GeneralNative;
@@ -9910,7 +10164,8 @@ FResult AddGeneratedActorDynamicCast(const FString& Path,const FString& TargetCl
     if(!GeneralNative&&NativeMaterial&&!MaterialGraphLookupReady()){Fail(R,TEXT("function_editor_state_invalid"),TEXT("Exact native MID cast refuses import, GC, saving, exit/purge or an unavailable Editor before native lookup."));return R;}
     FGeneratedCastScope S(R);int32 Pos[2]={0,0};
     if(!PositionJson.IsEmpty()){TSharedPtr<FJsonValue> V;if(!Pin::ParseJson(PositionJson,V,R))return R;if(V->Type!=EJson::Null){if(V->Type!=EJson::Array||V->AsArray().Num()!=2){Fail(R,TEXT("function_position_invalid"),TEXT("Cast position requires two exact int32 coordinates."));return R;}for(int32 I=0;I<2;++I){const auto& E=V->AsArray()[I];const double N=E->Type==EJson::Number?E->AsNumber():MAX_dbl;if(E->Type!=EJson::Number||!FMath::IsFinite(N)||N<MIN_int32||N>MAX_int32||FMath::TruncToDouble(N)!=N){Fail(R,TEXT("function_position_invalid"),TEXT("Cast position requires two exact int32 coordinates."));return R;}Pos[I]=int32(N);}}}
-    if(GeneralNative&&NativeGraphReuse)RequestedCreationReceipt(R,false);if(GeneralNative?!S.BindGeneralNative(TargetClass):NativeMaterial?!S.BindNativeMaterial(NativeDataTable):!S.LoadSource(TargetClass))return R;UBlueprint* B=Load(Path,R);TStrongObjectPtr<UBlueprint> NativeReturnedBP(GeneralNative?B:nullptr);if(!S.Full())return R;if(!B){R.bChangeStateKnown=false;return R;}TStrongObjectPtr<UBlueprint> HoldB(B);UEdGraph* G=FindGraph(B,GraphName,GraphId,RequestedGraphType,R,NativeGraphReuse);TStrongObjectPtr<UEdGraph> NativeReturnedGraph(GeneralNative?G:nullptr);if(!S.Full())return R;if(!G){if(GeneralNative&&NativeGraphReuse)Fail(R,TEXT("dynamic_cast_missing_graph_target_pending"),TEXT("New generic native cast admits existing graphs; missing graph creation remains valid incomplete. Actual target load/selection prefix is retained."));R.bChangeStateKnown=false;return R;}if(GeneralNative&&NativeGraphReuse)RequestedCreationReceipt(R,true);if(GraphType(B,G)!=TEXT("function")&&GraphType(B,G)!=TEXT("event")){Fail(R,TEXT("function_graph_type_unsupported"),TEXT("Generated casts require an ordinary own function/event graph."));R.bChangeStateKnown=false;return R;}if(!S.BindTarget(B,G,Pos[0],Pos[1]))return R;
+    const bool SourceGraphReuse=NativeGraphReuse&&(GeneralNative||!NativeMaterial);
+    if(SourceGraphReuse)RequestedCreationReceipt(R,false);if(GeneralNative?!S.BindGeneralNative(TargetClass):NativeMaterial?!S.BindNativeMaterial(NativeDataTable):!S.LoadSource(TargetClass))return R;UBlueprint* B=Load(Path,R);TStrongObjectPtr<UBlueprint> NativeReturnedBP(SourceGraphReuse?B:nullptr);if(!S.Full())return R;if(!B){R.bChangeStateKnown=false;return R;}TStrongObjectPtr<UBlueprint> HoldB(B);UEdGraph* G=FindGraph(B,GraphName,GraphId,RequestedGraphType,R,NativeGraphReuse);TStrongObjectPtr<UEdGraph> NativeReturnedGraph(SourceGraphReuse?G:nullptr);if(!S.Full())return R;if(!G){if(SourceGraphReuse&&R.ErrorCode.IsEmpty())return AddDynamicCastCreatingGraph(Path,TargetClass,PositionJson,bPure,GraphName,GraphId,RequestedGraphType,&R,B,&S);R.bChangeStateKnown=false;return R;}if(SourceGraphReuse)RequestedCreationReceipt(R,true);if(GraphType(B,G)!=TEXT("function")&&GraphType(B,G)!=TEXT("event")){Fail(R,TEXT("function_graph_type_unsupported"),TEXT("Generated casts require an ordinary own function/event graph."));R.bChangeStateKnown=false;return R;}if(!S.BindTarget(B,G,Pos[0],Pos[1]))return R;
     auto* Schema=Cast<UEdGraphSchema_K2>(G->GetSchema());if(!S.Full()||!Schema){S.Stop(TEXT("consumer_schema"));return R;}const bool Impure=Schema->DoesGraphSupportImpureFunctions(G);if(!S.Full())return R;if(!bPure&&!Impure){Fail(R,TEXT("dynamic_cast_impure_graph_unsupported"),TEXT("Graph would force a pure cast; requested impure rejected before allocation."));R.bChangeStateKnown=true;return R;}if(!(S.Library.IsValid()?S.Library->Check():MutationScope(B,R))||!S.Full())return R;if(G->Nodes.Num()>=MaxNodes||B->NewVariables.Num()>1024){Fail(R,TEXT("dynamic_cast_observation_budget_exceeded"),TEXT("Cast declaration budget exceeded."));R.bChangeStateKnown=true;return R;}
     const auto ReadDeclarations=[&](FString& Out){auto J=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Rows;const int32 Count=B->NewVariables.Num();for(int32 I=0;I<Count;++I){if(!S.Raw()||B->NewVariables.Num()!=Count)return S.Stop(TEXT("declaration_membership"));const auto* V=&B->NewVariables[I];FString T;FBPVariableDescription::StaticStruct()->ExportText(T,V,V,B,PPF_None,nullptr);if(!S.Raw()||B->NewVariables.Num()!=Count)return S.Stop(TEXT("declaration_export"));Rows.Add(MakeShared<FJsonValueString>(T));}J->SetArrayField(TEXT("variables"),Rows);Out=Text(J);return S.Full();};
     if(!ReadDeclarations(S.Declarations))return R;R.Data->SetBoolField(TEXT("dirty_before"),B->GetPackage()->IsDirty());R.Data->SetNumberField(TEXT("node_count_before"),G->Nodes.Num());TSharedPtr<FJsonObject> BeforeDeclarations;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(S.Declarations),BeforeDeclarations)||!BeforeDeclarations.IsValid()){S.Stop(TEXT("declaration_json"));return R;}R.Data->SetObjectField(TEXT("declarations_before"),BeforeDeclarations.ToSharedRef());R.Stage=TEXT("add_dynamic_cast");R.bMutationAttempted=true;R.bChangeStateKnown=false;B->Modify();if(!S.TargetModifyReturned(TEXT("after_blueprint_modify"))||!S.Prior())return R;G->Modify();if(!S.TargetModifyReturned(TEXT("after_graph_modify"))||!S.Prior())return R;
@@ -9929,23 +10184,63 @@ FResult AddGeneratedActorDynamicCast(const FString& Path,const FString& TargetCl
 }
 
 namespace {
-FResult AddDynamicCastCreatingGraph(const FString& Path,const FString& TargetClass,const FString& PositionJson,bool Pure,const FString& GraphName,const FString& GraphId,const FString& Kind)
+FResult AddDynamicCastCreatingGraph(const FString& Path,const FString& TargetClass,const FString& PositionJson,bool Pure,const FString& GraphName,const FString& GraphId,const FString& Kind,FResult* ContinuationResult,UBlueprint* ContinuationBlueprint,FGeneratedCastScope* GeneralSource)
 {
- FResult R;RequestedCreationReceipt(R,false);UBlueprint* BP=Load(Path,R);if(!BP)return R;TStrongObjectPtr<UBlueprint> HeldBP(BP);
- UEdGraph* Existing=FindGraph(BP,GraphName,GraphId,Kind,R,true);TStrongObjectPtr<UEdGraph> HeldExisting(Existing);if(!R.ErrorCode.IsEmpty())return R;
- if(Existing){FResult Leaf=AddDynamicCast(Path,TargetClass,PositionJson,Pure,GraphName,GraphId,Kind,false);RequestedCreationReceipt(Leaf,true);return Leaf;}
+ FResult LocalResult;FResult& R=ContinuationResult?*ContinuationResult:LocalResult;
+ const bool BorrowedSource=GeneralSource!=nullptr;
+ const bool GeneralNative=BorrowedSource&&GeneralSource->GeneralNative;
+ const bool GeneratedSource=BorrowedSource&&!GeneralSource->NativeMaterial&&GeneralSource->SourceBP.IsValid();
+ if(BorrowedSource&&(!ContinuationResult||!ContinuationBlueprint||&GeneralSource->R!=&R||(!GeneralNative&&!GeneratedSource)||!GeneralSource->Full()))return R;
+ RequestedCreationReceipt(R,false);UBlueprint* BP=BorrowedSource?ContinuationBlueprint:Load(Path,R);if(!BP)return R;TStrongObjectPtr<UBlueprint> HeldBP(BP);
+ if(BorrowedSource)
+ {
+  if(!GeneralSource->Full()||!DeclarationEnumLoaded(BP))return R;
+  R.Data->SetBoolField(GeneratedSource?TEXT("generated_source_missing_graph_continuation"):TEXT("generic_native_missing_graph_continuation"),true);
+  R.Data->SetBoolField(TEXT("target_blueprint_load_repeated_for_creation"),false);
+  R.Data->SetStringField(TEXT("missing_graph_continuation_scope"),GeneratedSource?TEXT("Same synchronous result, already-resolved target and retained saved/current generated Actor source from the original successful missing-graph selection; no source/target load replay or separate journal. Existing generated-source scope guards the source only while the established function writer owns normal target skeleton reconstruction."):TEXT("Same synchronous result, retained loaded target and held native source from the original successful missing-graph selection; no replay or separate journal. Existing-graph calls retain the original generic native route."));
+  if(GeneratedSource)
+  {
+   // Authoring the protected source package itself requires deliberate source
+   // rebasing and is not inferred from an unrelated saved-source observation.
+   if(BP==GeneralSource->SourceBP.Get()||BP->GetPackage()==GeneralSource->SourcePackage.Get())
+   {Fail(R,TEXT("dynamic_cast_generated_self_creation_pending"),TEXT("Source and new-function target packages must be distinct; same-package graph authoring remains incomplete. Source/target load prefixes are retained, no graph writer dispatched."));return R;}
+   R.Data->SetObjectField(TEXT("generated_source_saved_parent_audit_at_continuation"),R.Data->GetObjectField(TEXT("cast_target_source_before")));
+   R.Data->SetBoolField(TEXT("cast_source_load_repeated_for_creation"),false);
+  }
+ }
+ else
+ {
+  UEdGraph* Existing=FindGraph(BP,GraphName,GraphId,Kind,R,true);TStrongObjectPtr<UEdGraph> HeldExisting(Existing);if(!R.ErrorCode.IsEmpty())return R;
+  if(Existing){FResult Leaf=AddDynamicCast(Path,TargetClass,PositionJson,Pure,GraphName,GraphId,Kind,false);RequestedCreationReceipt(Leaf,true);return Leaf;}
+ }
  if(!MissingFunctionAdmission(BP,GraphName,GraphId,Kind,R))return R;
- if(TargetClass!=TEXT("/Script/Engine.ChildActorComponent")&&TargetClass!=TEXT("/Script/Engine.SceneComponent")&&TargetClass!=TEXT("/Script/Engine.StaticMeshComponent")){Fail(R,TEXT("dynamic_cast_missing_graph_target_pending"),TEXT("Missing function first supports the existing native three component targets; Game/MID/DataTable missing creation is incomplete. Existing True reuses every old False target."));return R;}
+ if(!BorrowedSource&&TargetClass!=TEXT("/Script/Engine.ChildActorComponent")&&TargetClass!=TEXT("/Script/Engine.SceneComponent")&&TargetClass!=TEXT("/Script/Engine.StaticMeshComponent")){Fail(R,TEXT("dynamic_cast_missing_graph_target_pending"),TEXT("Missing function admits native3 components or held native/generated Actor source continuations. MID/DataTable and wider source forms remain incomplete; existing True reuses prior False targets."));return R;}
  int32 XY[2]={0,0};if(!CreatedNodePosition(PositionJson,XY,R))return R;
  if(!MaterialGraphLookupReady()){Fail(R,TEXT("function_editor_state_invalid"),TEXT("Cast graph creation requires idle editor context before native lookup."));return R;}
- UClass* Class=FindObject<UClass>(nullptr,*TargetClass);TStrongObjectPtr<UClass> HeldClass(Class);
- if(!DeclarationEnumLoaded(Class)||!Class->ClassGeneratedBy.IsResolved()||!Class->ClassDefaultObject.IsResolved()){Fail(R,TEXT("dynamic_cast_target_native_guard_failed"),TEXT("Loaded exact native target and resolved existing CDO required; no lazy CDO creation."));return R;}
- UObject* CDO=Class->ClassDefaultObject.Get();TStrongObjectPtr<UObject> HeldCDO(CDO);UClass* Parent=Class->GetSuperClass();TStrongObjectPtr<UClass> HeldParent(Parent);UPackage* Package=Class->GetPackage();TStrongObjectPtr<UPackage> HeldPackage(Package);
- const auto SourceBefore=DynamicCastTargetSource(TargetClass,Class);R.Data->SetObjectField(TEXT("cast_target_source_before"),SourceBefore);
- if(!SourceBefore->GetBoolField(TEXT("native_identity_verified"))||!DeclarationEnumLoaded(CDO)||!DeclarationEnumLoaded(Parent)||!DeclarationEnumLoaded(Package)){Fail(R,TEXT("dynamic_cast_target_native_guard_failed"),TEXT("Existing native component source class/parent/package/CDO role unavailable before graph creation."));return R;}
- UObject* ClassOuter=Class->GetOuter();UObject* CDOOuter=CDO->GetOuter();const FString CDOPath=CDO->GetPathName(),ParentPath=Parent->GetPathName();const EObjectFlags ClassFlags=Class->GetFlags(),CDOFlags=CDO->GetFlags();const EClassFlags TypeFlags=Class->GetClassFlags();const uint32 PackageFlags=uint32(Package->GetPackageFlags());
- auto SourcePlain=[&](){return MaterialGraphLookupReady()&&DeclarationEnumLoaded(Class)&&DeclarationEnumLoaded(CDO)&&DeclarationEnumLoaded(Parent)&&DeclarationEnumLoaded(Package)&&Class->GetOuter()==ClassOuter&&Class->GetPackage()==Package&&Class->GetSuperClass()==Parent&&Class->GetFlags()==ClassFlags&&Class->GetClassFlags()==TypeFlags&&Class->GetPathName().Equals(TargetClass,ESearchCase::CaseSensitive)&&Class->ClassGeneratedBy.IsResolved()&&Class->ClassGeneratedBy.Get()==nullptr&&Class->ClassDefaultObject.IsResolved()&&Class->ClassDefaultObject.Get()==CDO&&CDO->GetClass()==Class&&CDO->GetOuter()==CDOOuter&&CDO->GetPackage()==Package&&CDO->GetFlags()==CDOFlags&&CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)&&Parent->GetPathName().Equals(ParentPath,ESearchCase::CaseSensitive)&&!Package->IsDirty()&&uint32(Package->GetPackageFlags())==PackageFlags;};
- auto SourceCurrent=[&](){if(SourcePlain())return true;R.bChangeStateKnown=false;return Fail(R,TEXT("dynamic_cast_source_current_changed"),TEXT("Held native component source changed; no next SDK call."));};
+ UClass* Class=BorrowedSource?GeneralSource->Source.Get():FindObject<UClass>(nullptr,*TargetClass);TStrongObjectPtr<UClass> HeldClass(Class);
+ if(BorrowedSource){if(!GeneralSource->Full())return R;}
+ else if(!DeclarationEnumLoaded(Class)||!Class->ClassGeneratedBy.IsResolved()||!Class->ClassDefaultObject.IsResolved()){Fail(R,TEXT("dynamic_cast_target_native_guard_failed"),TEXT("Loaded exact native target and resolved existing CDO required; no lazy CDO creation."));return R;}
+ UObject* CDO=BorrowedSource?(GeneratedSource?GeneralSource->CDO:nullptr):Class->ClassDefaultObject.Get();TStrongObjectPtr<UObject> HeldCDO(CDO);UClass* Parent=Class->GetSuperClass();TStrongObjectPtr<UClass> HeldParent(Parent);UPackage* Package=Class->GetPackage();TStrongObjectPtr<UPackage> HeldPackage(Package);
+ // A generated source does not masquerade as a native declaration. Its
+ // existing Full scope compares held roles, authored exports, native ancestry
+ // and the saved file; these copied fields describe that actual observation.
+ auto BorrowedSourceState=[&]() -> TSharedRef<FJsonObject>
+ {
+  if(!GeneratedSource)return GeneralSource->CurrentNativeState();
+  auto State=MakeShared<FJsonObject>();State->SetBoolField(TEXT("observations_complete"),false);
+  if(!GeneralSource->Full())return State;
+  State->SetStringField(TEXT("class_path"),GeneralSource->Source->GetPathName());
+  State->SetStringField(TEXT("current_cdo_path"),GeneralSource->CDO->GetPathName());
+  State->SetStringField(TEXT("source_blueprint"),GeneralSource->SourceBP->GetPathName());
+  State->SetStringField(TEXT("source_disk"),GeneralSource->DiskBefore);State->SetNumberField(TEXT("protected_source_exports"),GeneralSource->Exports.Num());
+  State->SetBoolField(TEXT("observations_complete"),true);State->SetBoolField(TEXT("generated_source_current_verified"),true);return State;
+ };
+ const auto SourceBefore=BorrowedSource?BorrowedSourceState():DynamicCastTargetSource(TargetClass,Class);R.Data->SetObjectField(TEXT("cast_target_source_before"),SourceBefore);
+ if(BorrowedSource&&!R.ErrorCode.IsEmpty())return R;
+ if((GeneratedSource?!SourceBefore->GetBoolField(TEXT("observations_complete")):!SourceBefore->GetBoolField(TEXT("native_identity_verified")))||(!GeneralNative&&(!DeclarationEnumLoaded(CDO)||!DeclarationEnumLoaded(Parent)))||!DeclarationEnumLoaded(Package)){Fail(R,TEXT("dynamic_cast_target_native_guard_failed"),TEXT("Held native class/parent/package source unavailable before graph creation; generic native declarations require no source CDO."));return R;}
+ UObject* ClassOuter=Class->GetOuter();UObject* CDOOuter=CDO?CDO->GetOuter():nullptr;const FString CDOPath=CDO?CDO->GetPathName():FString(),ParentPath=Parent?Parent->GetPathName():FString();const EObjectFlags ClassFlags=Class->GetFlags(),CDOFlags=CDO?CDO->GetFlags():RF_NoFlags;const EClassFlags TypeFlags=Class->GetClassFlags();const uint32 PackageFlags=uint32(Package->GetPackageFlags());
+ auto SourcePlain=[&](){if(BorrowedSource)return GeneralSource->Full();return MaterialGraphLookupReady()&&DeclarationEnumLoaded(Class)&&DeclarationEnumLoaded(CDO)&&DeclarationEnumLoaded(Parent)&&DeclarationEnumLoaded(Package)&&Class->GetOuter()==ClassOuter&&Class->GetPackage()==Package&&Class->GetSuperClass()==Parent&&Class->GetFlags()==ClassFlags&&Class->GetClassFlags()==TypeFlags&&Class->GetPathName().Equals(TargetClass,ESearchCase::CaseSensitive)&&Class->ClassGeneratedBy.IsResolved()&&Class->ClassGeneratedBy.Get()==nullptr&&Class->ClassDefaultObject.IsResolved()&&Class->ClassDefaultObject.Get()==CDO&&CDO->GetClass()==Class&&CDO->GetOuter()==CDOOuter&&CDO->GetPackage()==Package&&CDO->GetFlags()==CDOFlags&&CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)&&Parent->GetPathName().Equals(ParentPath,ESearchCase::CaseSensitive)&&!Package->IsDirty()&&uint32(Package->GetPackageFlags())==PackageFlags;};
+ auto SourceCurrent=[&](){if(SourcePlain())return true;R.bChangeStateKnown=false;return Fail(R,TEXT("dynamic_cast_source_current_changed"),TEXT("Held cast source changed; no next SDK call."));};
  if(!SourceCurrent())return R;FCreatedFunctionAuthoring W(R);if(!W.Begin(BP,GraphName,SourceCurrent))return R;RequestedCreationReceipt(R,false);
  TStrongObjectPtr<UK2Node_DynamicCast> Node;FGuid Guid;bool Configured=false,GuidFixed=false,Fixed=false;TArray<uint32> PinFlags;
  auto Flags=[](const UEdGraphPin* P){return uint32(P->bDefaultValueIsIgnored)|(uint32(P->bDefaultValueIsReadOnly)<<1)|(uint32(P->bNotConnectable)<<2)|(uint32(P->bHidden)<<3)|(uint32(P->bOrphanedPin)<<4);};
@@ -9965,14 +10260,14 @@ FResult AddDynamicCastCreatingGraph(const FString& Path,const FString& TargetCla
  auto Shape=[&](){if(!Fence())return false;const bool ActualPure=static_cast<UK2Node*>(Node.Get())->IsNodePure();if(!Fence())return false;if(ActualPure!=Pure||Node->Pins.Num()!=(Pure?3:6))return W.Bad(TEXT("created_cast_pin_count_or_purity"));TSet<FName> Names;TSet<FGuid> Ids;
   for(const auto& Cell:W.Nodes.Last().Pins){UEdGraphPin* P=Cell.Address;FEdGraphPinType Expected;EEdGraphPinDirection Direction=EGPD_Output;bool Hidden=false;
    if(Cell.Name==UEdGraphSchema_K2::PN_ObjectToCast){Direction=EGPD_Input;Expected.PinCategory=UEdGraphSchema_K2::PC_Wildcard;Expected.PinSubCategoryObject=UObject::StaticClass();}
-   else if(Cell.Name==ResultName){Expected.PinCategory=UEdGraphSchema_K2::PC_Object;Expected.PinSubCategoryObject=Class;}
+   else if(Cell.Name==ResultName){Expected.PinCategory=BorrowedSource?GeneralSource->CastResultCategory():UEdGraphSchema_K2::PC_Object;Expected.PinSubCategoryObject=Class;}
    else if(Cell.Name==TEXT("bSuccess")){Expected.PinCategory=UEdGraphSchema_K2::PC_Boolean;Hidden=!Pure;}
    else if(!Pure&&(Cell.Name==UEdGraphSchema_K2::PN_Execute||Cell.Name==UEdGraphSchema_K2::PN_CastSucceeded||Cell.Name==UEdGraphSchema_K2::PN_CastFailed)){Expected.PinCategory=UEdGraphSchema_K2::PC_Exec;Direction=Cell.Name==UEdGraphSchema_K2::PN_Execute?EGPD_Input:EGPD_Output;}
    else return W.Bad(TEXT("created_cast_pin_name"));
    if(!Cell.Id.IsValid()||Ids.Contains(Cell.Id)||Names.Contains(Cell.Name)||Cell.Direction!=Direction||!W.Creation->SameType(Cell.Type,Expected)||!Cell.Raw.IsEmpty()||!Cell.Auto.IsEmpty()||Cell.Default||!Cell.Links.IsEmpty()||P->bHidden!=Hidden||P->bDefaultValueIsIgnored||P->bDefaultValueIsReadOnly||P->bNotConnectable||P->bOrphanedPin||P->ParentPin||!P->SubPins.IsEmpty())return W.Bad(TEXT("created_cast_pin_shape"));Ids.Add(Cell.Id);Names.Add(Cell.Name);const FText DefaultText=Cell.Text;const bool Empty=DefaultText.IsEmpty();if(!Fence())return false;if(!Empty)return W.Bad(TEXT("created_cast_default_text"));
   }return Names.Contains(UEdGraphSchema_K2::PN_ObjectToCast)&&Names.Contains(ResultName)&&Names.Contains(TEXT("bSuccess"));};
  if(!Shape())return R;FBlueprintEditorUtils::MarkBlueprintAsModified(BP);if(!Fence())return R;auto Row=DescribeNode(Node.Get(),nullptr,&Fence);if(!Fence())return R;After(BP,W.Graph,Before,R,nullptr,&Fence);if(!R.bChangeStateKnown||!Fence())return R;R.bChanged=true;
- const auto SourceAfter=DynamicCastTargetSource(TargetClass,Class);if(!Fence())return R;R.Data->SetObjectField(TEXT("cast_target_source_after"),SourceAfter);if(!Text(SourceBefore).Equals(Text(SourceAfter),ESearchCase::CaseSensitive)||!Shape()){W.Bad(TEXT("created_cast_final_source_or_shape"));return R;}
+ const auto SourceAfter=BorrowedSource?BorrowedSourceState():DynamicCastTargetSource(TargetClass,Class);if(!Fence())return R;R.Data->SetObjectField(TEXT("cast_target_source_after"),SourceAfter);if(!Text(SourceBefore).Equals(Text(SourceAfter),ESearchCase::CaseSensitive)||!Shape()){W.Bad(TEXT("created_cast_final_source_or_shape"));return R;}
  Merge(*R.Data,*Row);R.Data->SetObjectField(TEXT("graph"),DescribeGraph(BP,W.Graph,&Fence));if(!Fence())return R;R.Data->SetStringField(TEXT("blueprint"),BP->GetPathName());R.Data->SetStringField(TEXT("target_class"),TargetClass);R.Data->SetBoolField(TEXT("is_pure"),Pure);R.Data->SetBoolField(TEXT("requested_pure"),Pure);
  for(const auto& Cell:W.Nodes.Last().Pins)
  {
@@ -9980,7 +10275,7 @@ FResult AddDynamicCastCreatingGraph(const FString& Path,const FString& TargetCla
  }
  if(Pure)for(const TCHAR* Key:{TEXT("cast_execute_pin"),TEXT("cast_valid_pin"),TEXT("cast_invalid_pin")}){auto Absent=MakeShared<FJsonObject>();Absent->SetBoolField(TEXT("observations_complete"),false);R.Data->SetObjectField(Key,Absent);}
  for(const TCHAR* Key:{TEXT("existing_nodes_preserved"),TEXT("graph_descriptions_preserved"),TEXT("declarations_preserved"),TEXT("cast_target_source_preserved"),TEXT("typed_cast_shape_verified"),TEXT("implicit_skeleton_compile_possible"),TEXT("implicit_skeleton_compile_requested"),TEXT("created_function_dynamic_cast_contract")})R.Data->SetBoolField(Key,true);
- R.Data->SetBoolField(TEXT("node_only_verified"),false);R.Data->SetBoolField(TEXT("runtime_invocation_verified"),false);R.Data->SetBoolField(TEXT("connected_wildcard_resolution_verified"),false);R.Data->SetStringField(TEXT("node_creation_api"),TEXT("existing public NewObject/AddNode/GUID/SetPurity/PostPlaced/Allocate cast sequence; guarded new function continuation, no unfinished Creator destructor"));R.Data->SetStringField(TEXT("effect_scope"),TEXT("New own Actor function plus exact native3 unlinked cast with original source guard and requested purity. Graph creation/skeleton prefix retained on failure; no full compile/save/runtime/retry."));R.bSuccess=R.bPostconditionPassed=R.bChangeStateKnown=true;R.Stage=TEXT("complete");return R;
+ R.Data->SetBoolField(TEXT("node_only_verified"),false);R.Data->SetBoolField(TEXT("runtime_invocation_verified"),false);R.Data->SetBoolField(TEXT("connected_wildcard_resolution_verified"),false);R.Data->SetStringField(TEXT("node_creation_api"),TEXT("existing public NewObject/AddNode/GUID/SetPurity/PostPlaced/Allocate cast sequence; guarded new function continuation, no unfinished Creator destructor"));R.Data->SetStringField(TEXT("effect_scope"),GeneratedSource?TEXT("New own Actor function plus one protected current saved generated direct-Actor cast. The existing generated source load/current/export/disk/native-parent proof and guarded missing-function writer are reused without repeating source/target load. Source and target packages are distinct; normal target skeleton reconstruction belongs to the function writer rather than the source invariant. Requested purity, full actual graph/skeleton/partial prefix remain preserved. No explicit full compile/save, runtime cast, same-package source rebasing or broad generated-owner support; actual usage validation pending."):GeneralNative?TEXT("New own Actor function plus one loaded runtime native UObject-class/interface cast. Existing generic source class/ancestry/metadata guard and guarded function creation are reused; abstract/deprecated declaration targets need no construction/CDO. Requested purity, typed interface/object result, original target-load and graph/skeleton/partial prefix are retained. No source load/CDO access, full compile/save/runtime/retry; wider owner/graph-creation forms and generated source creation remain incomplete."):TEXT("New own Actor function plus exact native3 unlinked cast with original source guard and requested purity. Graph creation/skeleton prefix retained on failure; no full compile/save/runtime/retry."));R.bSuccess=R.bPostconditionPassed=R.bChangeStateKnown=true;R.Stage=TEXT("complete");return R;
 }
 
 }
@@ -9992,9 +10287,10 @@ FResult AddDynamicCast(const FString& Path, const FString& TargetClass, const FS
     FResult R;
     if (!IsEditorGameThread() || IsPlaySessionActive())
     { Fail(R, TEXT("function_editor_state_invalid"), TEXT("Dynamic Cast requires the editor game thread outside PIE/SIE.")); return R; }
+    if(TargetClass.StartsWith(TEXT("/Game/")))return AddGeneratedActorDynamicCast(Path,TargetClass,PositionJson,bPure,GraphName,GraphId,RequestedGraphType,bCreateGraph);
     if (bCreateGraph)
     { return AddDynamicCastCreatingGraph(Path,TargetClass,PositionJson,bPure,GraphName,GraphId,RequestedGraphType); }
-    if(TargetClass.StartsWith(TEXT("/Game/"))||TargetClass==TEXT("/Script/Engine.MaterialInstanceDynamic")||TargetClass==TEXT("/Script/Engine.DataTable")) { return AddGeneratedActorDynamicCast(Path,TargetClass,PositionJson,bPure,GraphName,GraphId,RequestedGraphType); }
+    if(TargetClass==TEXT("/Script/Engine.MaterialInstanceDynamic")||TargetClass==TEXT("/Script/Engine.DataTable")) { return AddGeneratedActorDynamicCast(Path,TargetClass,PositionJson,bPure,GraphName,GraphId,RequestedGraphType); }
     if (TargetClass != TEXT("/Script/Engine.ChildActorComponent") && TargetClass != TEXT("/Script/Engine.SceneComponent") && TargetClass != TEXT("/Script/Engine.StaticMeshComponent"))
     { Fail(R, TEXT("dynamic_cast_target_unsupported"), TEXT("This finite slice supports only exact loaded native ChildActorComponent, SceneComponent and StaticMeshComponent targets; arbitrary target classes remain pending.")); return R; }
     int32 Position[2] = {0, 0};

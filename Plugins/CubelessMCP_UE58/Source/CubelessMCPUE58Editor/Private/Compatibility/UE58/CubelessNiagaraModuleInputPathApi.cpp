@@ -2307,6 +2307,12 @@ TSharedPtr<FJsonObject> HandleRemoveUnusedPath(FWork& W,const TSharedPtr<FJsonOb
     // All selectors above are the original dry-run contract. Pin every actual
     // writer and freeze call/metadata/default routes before the first Modify.
     W.GuardedRemoval=true;
+    // GetUserParameters returns alias keys; the removal proof and captured store
+    // use full typed declarations. Resolve through the actual map, not a prefix guess.
+    if(!W.Admit(TEXT("resolve_removed_user_alias")))return W.Error(W.R.Error);
+    W.Prefix->SetStringField(TEXT("removed_user_alias_name"),LinkedUserVariable.GetName().ToString());
+    if(!Store.RedirectUserVariable(LinkedUserVariable))return MakeSafetyError(TEXT("Selected User alias could not be resolved to its full typed declaration"),TEXT("niagara_unused_module_input_user_alias_unresolved"));
+    W.Prefix->SetStringField(TEXT("removed_user_full_name"),LinkedUserVariable.GetName().ToString());
     auto Plan=MakeShared<FIDRemovalPlan>();Plan->Custom=CustomHlslNode;Plan->Signature=CustomHlslNode->Signature;Plan->Body=ExistingHlsl;Plan->User=LinkedUserVariable;
     Plan->System=System;Plan->CompileRoles={System->GetSystemSpawnScript(),System->GetSystemUpdateScript()};for(const auto& E:W.Emitters){Plan->EmitterData.Add(E.Data);if(E.Data)E.Data->GetScripts(Plan->CompileRoles,false,false);}
     Plan->Users=CaptureUserValues(W);if(!ContinueRead()||!VerifyCanonicalUserForPath(W,LinkedUserVariable))return W.Error(W.R.Error);

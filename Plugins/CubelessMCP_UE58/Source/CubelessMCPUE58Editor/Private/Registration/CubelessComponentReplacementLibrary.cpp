@@ -7,3 +7,11 @@ FString UCubelessComponentReplacementLibrary::ReplaceBlueprintComponentClass(con
     return Cubeless::UE58::ComponentReplacement::ReplaceComponentClass(BlueprintPath, ComponentName,
         NewComponentClass, SphereRadius, bDryRun, bCompile, bSave, bRefreshNodes);
 }
+
+FString UCubelessComponentReplacementLibrary::ReplaceBlueprintComponentClassRaw(const FString& BlueprintPath,
+    const FString& ComponentName, const FString& NewComponentClass, double SphereRadius, bool bDryRun,
+    bool bCompile, bool bSave, bool bRefreshNodes, bool bRequireSceneCompatibility)
+{
+    return Cubeless::UE58::ComponentReplacement::ReplaceComponentClassRaw(BlueprintPath, ComponentName,
+        NewComponentClass, SphereRadius, bDryRun, bCompile, bSave, bRefreshNodes, bRequireSceneCompatibility);
+}

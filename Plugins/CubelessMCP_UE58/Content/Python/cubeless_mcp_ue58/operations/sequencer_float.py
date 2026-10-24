@@ -91,6 +91,11 @@ def _apply_native(result, arguments, native, raw):
         native_postcondition_scope="returned native insertion prefix before domain exact save",
         final_public_save_postcondition_verified=False)
     _context(result, arguments)
+    if native["data"].get("original_raw_ordered_keys") is True and native["data"].get("raw_key_rows_prevalidated") is False:
+        result["data"].update(whole_request_key_prevalidation=False,
+            original_invalid_late_row_prefix_semantics_preserved=True,
+            raw_key_diagnostic_basis="returned_native_original_raw_ordered_keys_and_no_row_prevalidation",
+            raw_key_diagnostic_scope="admitted finite native Float row path; full original source/type/time/section scope remains incomplete")
     result["compile"].update(requested=native["compile_requested"], attempted=native["compile_attempted"], compiled=native["compiled"])
     # Public6 requests save; hidden5 explicitly does not. Keep both intents,
     # and retain unexpected actual native save flags before policy rejection.
@@ -229,3 +234,12 @@ def add_level_sequence_float_property_keys(sequence_path, property_path, keys, b
 def add_level_sequence_float_property_keys_action(result, sequence_path, property_path, keys,
         binding_id="", actor_label="", save=True, checkpoint_callback=None):
     _run_action(result, _arguments(sequence_path, property_path, keys, binding_id, actor_label, save), checkpoint_callback)
+
+
+
+def _raw_ordered_key_action(result, command, arguments, checkpoint_callback=None):
+    prepared = shared._raw_ordered_key_arguments(command, arguments, IDENTITY)
+    result["data"].update(legacy_original_command=IDENTITY,
+        legacy_original_params=copy.deepcopy(command["legacy_original_params"]),
+        raw_ordered_key_rows_preserved=True, full_original_sequencer_scope_complete=False)
+    return _run_action(result, prepared, checkpoint_callback)

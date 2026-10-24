@@ -303,6 +303,8 @@ def _tick_all(delta_seconds):
     for entry in tuple(_QUARANTINED.values()):
         if entry.get("observation_only_quarantine"):
             _observe_quarantined(entry)
+    from . import batch
+    batch.tick_compile_status_batch(delta_seconds, volume=True)
     return True
 
 
@@ -310,6 +312,8 @@ def _shutdown():
     # Native module owns teardown. No late asset/job/save/cleanup method here.
     global _ACTIVE
     _ACTIVE = False
+    from . import batch
+    batch.shutdown_compile_status_batches(volume=True)
     for entry in tuple(_PENDING.values()):
         result = entry["journal"].result
         state.fail(result, state.OperationError("volume_texture_shutdown_unknown", "Shutdown before verified Native terminal; no late work attempted"))
@@ -324,7 +328,9 @@ def _shutdown():
 
 
 def binding_status():
-    return {"active": _ACTIVE, "pending_count": len(_PENDING), "quarantined_count": len(_QUARANTINED),
+    from . import batch
+    parent = batch.compile_status_batch_status(volume=True)
+    return {"batch_volume_texture": parent,"active": _ACTIVE, "pending_count": len(_PENDING), "quarantined_count": len(_QUARANTINED),
         "ticker_handle_present": _TICKER_HANDLE is not None, "shutdown_handle_present": _SHUTDOWN_HANDLE is not None,
         "last_terminal": copy.deepcopy(_LAST_TERMINAL), "lifecycle_errors": list(_LIFECYCLE_ERRORS),
         "quarantined_operation_ids": sorted(_QUARANTINED),
@@ -340,12 +346,18 @@ def activate():
     if not _ACTIVE:
         if _PENDING or _QUARANTINED or _TICKER_HANDLE is not None or _SHUTDOWN_HANDLE is not None:
             raise state.OperationError("volume_texture_ownership_retained", "Prior retained ownership requires Root reconciliation")
-        _SHUTDOWN_HANDLE = unreal.register_python_shutdown_callback(_shutdown)
+        from . import batch
+        batch.activate_compile_status_batches(volume=True)
         try:
-            _TICKER_HANDLE = unreal.register_ticker_callback(_tick_all, delay=0.0)
+            _SHUTDOWN_HANDLE = unreal.register_python_shutdown_callback(_shutdown)
+            try:
+                _TICKER_HANDLE = unreal.register_ticker_callback(_tick_all, delay=0.0)
+            except Exception:
+                unreal.unregister_python_shutdown_callback(_SHUTDOWN_HANDLE)
+                _SHUTDOWN_HANDLE = None
+                raise
         except Exception:
-            unreal.unregister_python_shutdown_callback(_SHUTDOWN_HANDLE)
-            _SHUTDOWN_HANDLE = None
+            batch.deactivate_compile_status_batches("Texture ticker activation failed", volume=True)
             raise
         _ACTIVE = True
     return binding_status()
@@ -354,6 +366,8 @@ def activate():
 def deactivate(reason="Texture toolset deactivated"):
     global _ACTIVE, _TICKER_HANDLE, _SHUTDOWN_HANDLE
     _ACTIVE = False
+    from . import batch
+    batch.deactivate_compile_status_batches(reason, volume=True)
     for name, handle, remover in (("ticker", _TICKER_HANDLE, unreal.unregister_ticker_callback),
             ("shutdown", _SHUTDOWN_HANDLE, unreal.unregister_python_shutdown_callback)):
         if handle is not None:
@@ -438,3 +452,155 @@ def begin(method, public):
                 result_object.set_error("Texture admission failed and CU completion refused; operation_id=" + run_id
                     + "; stage=" + str(record["stage"]) + "; journal=" + str(state._journal_path(run_id)))
     return result_object
+
+
+class _BatchVolumeTextureFlow:
+    """Existing Native DX job held by Batch; no child journal, CU or ticker."""
+    def __init__(self, result, arguments, checkpoint_callback, method, current_callback=None):
+        self.r = self.result = result
+        self.callback = checkpoint_callback
+        self.current_callback = current_callback
+        self.method = method
+        self.job = None
+        self.in_flight = self.lost = self.cancel_entered = self.job_reference_verified = False
+        supplied = {name: copy.deepcopy(arguments[name]) for name in PUBLIC_FIELDS_BY_METHOD.get(method, ()) if name in arguments}
+        public = copy.deepcopy(DEFAULTS_BY_METHOD.get(method, {}))
+        public.update(supplied)
+        public = _arguments(method, public)
+        self.entry = dict(journal=self, method=method, public=public, job=None,
+            batch_parent_only=True, snapshot_calls=0, tick_callbacks=0, job_reference_verified=False,
+            last_checkpoint_revision=None, native_start_call_entered=False)
+        _context(result, method, public)
+        result['data'].update(parent_journal_only=True, child_journals_created=0,
+            native_start_dispatched=False, native_start_returned=False, native_snapshot_returned=False,
+            native_mutation_attempted=False, native_dispatched=False, mutation_performed=False,
+            mutation_state_unknown=False, change_state_known=True,
+            pending_native_intent=dict(method=method, arguments=copy.deepcopy(public),
+                scope='All future Native compile/source-save/volume-save phases await actual terminal snapshots'))
+        if '_legacy_command_params' in arguments:
+            result['data']['legacy_original_params'] = copy.deepcopy(arguments['_legacy_command_params'])
+        result['compile'].update(requested=False, attempted=False, compiled=None)
+        result['save'].update(requested=False, attempted=False, saved=False)
+
+    def unsafe(self, error):
+        self.lost = True
+        self.r['data'].update(change_state_known=False, mutation_state_unknown=True,
+            mutation_performed=None, do_not_retry=True, workflow_recovery_required=True)
+        return error
+
+    def current(self):
+        if self.lost:
+            raise state.OperationError('volume_texture_batch_lease_lost', 'Volume Batch observer loss is sticky; no next Job call')
+        try:
+            if self.current_callback:
+                self.current_callback()
+            if not _ACTIVE or _PENDING or _QUARANTINED:
+                raise state.OperationError('volume_texture_batch_domain_unavailable', 'Exact active Volume domain must have no retained standalone workflow')
+            if self.current_callback:
+                self.current_callback()
+        except Exception as error:
+            raise self.unsafe(error)
+
+    def checkpoint(self):
+        try:
+            self.current()
+            if self.callback:
+                self.callback(self.r)
+            self.current()
+        except Exception as error:
+            raise self.unsafe(error)
+
+    def _preserve_error(self, error):
+        if getattr(error, 'native_snapshot_returned', False):
+            self.r['data'].update(native_snapshot_returned=True,
+                undecoded_native_raw_result=getattr(error, 'native_raw_result', None))
+
+    def start(self, asynchronous):
+        if asynchronous is not True:
+            raise state.OperationError('volume_texture_batch_async_required', 'Only the official parent continuation admits a Volume job')
+        self.current()
+        self.r['stage'] = 'before_native_volume_texture_start'
+        self.checkpoint()  # Parent intent persists before the first possible writer.
+        self.current()
+        self.r['data'].update(native_start_dispatched=True, native_dispatched=True,
+            native_mutation_attempted=None, mutation_performed=None,
+            mutation_state_unknown=True, change_state_known=False)
+        self.r['compile'].update(requested=None, attempted=None, compiled=None, status='native_start_outcome_unverified')
+        self.r['save'].update(requested=None, attempted=None, saved=None, status='native_start_outcome_unverified')
+        self.in_flight = True
+        self.entry['native_start_call_entered'] = True
+        try:
+            self.job = api.start_job(self.method, self.entry['public'])
+            self.entry.update(job=self.job, job_reference_verified=True)
+            self.job_reference_verified = True
+            self.r['data']['native_start_returned'] = True
+            self.current()
+        except Exception as error:
+            if getattr(error, 'native_start_returned', False):
+                self.job = getattr(error, 'native_returned_job', None)
+                self.entry['job'] = self.job
+                self.r['data']['native_start_returned'] = True
+            if getattr(error, 'code', '') == 'volume_texture_native_api_unavailable':
+                self.in_flight = False
+                self.entry['native_start_call_entered'] = False
+                self.r['data'].update(native_start_dispatched=False, native_dispatched=False,
+                    native_mutation_attempted=False, mutation_performed=False,
+                    mutation_state_unknown=False, change_state_known=True)
+                self.r['compile'].update(requested=False, attempted=False, compiled=None)
+                self.r['save'].update(requested=False, attempted=False, saved=False)
+            else:
+                self.unsafe(error)
+            raise
+        return False  # Existing Native ticker progresses; no immediate poll/spin.
+
+    def poll(self):
+        self.current()
+        if not self.job_reference_verified or not self.in_flight:
+            raise self.unsafe(state.OperationError('volume_texture_batch_job_unverified', 'Exact held in-flight Job reference required'))
+        self.entry['tick_callbacks'] += 1
+        self.entry['snapshot_calls'] += 1
+        try:
+            native = api.snapshot(self.job, self.method)
+            try:
+                self.current()
+            except Exception:
+                # The snapshot really returned, but its post-call lease was not
+                # verified. Preserve its raw/decoded prefix without adopting it
+                # as a current result or successful compile/save evidence.
+                self.r['data'].update(native_snapshot_returned=True,
+                    unadopted_returned_native_snapshot=copy.deepcopy(native),
+                    unadopted_returned_native_raw_result=native.get('_raw_native_json'),
+                    unadopted_snapshot_current_verified=False,
+                    unadopted_snapshot_adopted=False,
+                    unadopted_snapshot_is_not_current_success_or_save_evidence=True)
+                raise
+            _adopt(self.entry, native)
+            terminal = native['data']['native_job_terminal']
+            self.r['data'].update(change_state_known=native['change_state_known'],
+                native_dispatched=True, command_may_still_be_in_flight=not terminal,
+                parent_journal_only=True, child_journals_created=0)
+            _checkpoint_native(self.entry, native, force=terminal)
+        except Exception as error:
+            self._preserve_error(error)
+            raise self.unsafe(error)
+        if not terminal:
+            return False
+        self.in_flight = False
+        self.r.update(success=native['success'], error_code=native.get('error_code', ''), error=native.get('error', ''))
+        if native['success'] and (not native['change_state_known'] or not native['postcondition_passed']):
+            state.fail(self.r, state.OperationError('volume_texture_result_unverified', 'Native terminal success lacks known current postconditions'))
+        self.r['data'].update(native_terminal_observed=True,
+            workflow_recovery_required=not native['change_state_known'],
+            command_may_still_be_in_flight=False)
+        self.r['stage'] = 'complete' if self.r['success'] else native['stage']
+        return True
+
+    def fail(self, error):
+        self._preserve_error(error)
+        state.fail(self.r, error)
+        if self.in_flight or self.lost:
+            self.r['data'].update(mutation_state_unknown=True, change_state_known=False,
+                mutation_performed=None, workflow_recovery_required=True, do_not_retry=True)
+        self.r['data']['command_may_still_be_in_flight'] = self.in_flight
+        self.r['retry'].update(automatic_retry=False, duplicate_risk='owned_volume_texture_Batch_no_replay')
+        return self.r

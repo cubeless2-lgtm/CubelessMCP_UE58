@@ -34,7 +34,7 @@ constexpr const TCHAR* DefaultPath=TEXT("/Script/Engine.Default__BlueprintMapLib
 constexpr const TCHAR* SetLibraryPath=TEXT("/Script/Engine.BlueprintSetLibrary");
 constexpr const TCHAR* SetDefaultPath=TEXT("/Script/Engine.Default__BlueprintSetLibrary");
 const TCHAR* SetOperation(const FString& Name)
-{struct FRow{const TCHAR* Name;const TCHAR* Op;};static constexpr FRow Rows[]={{TEXT("Set_Add"),TEXT("add")},{TEXT("Set_Remove"),TEXT("remove")},{TEXT("Set_Contains"),TEXT("contains")},{TEXT("Set_Length"),TEXT("length")},{TEXT("Set_ToArray"),TEXT("toarray")},{TEXT("Set_Union"),TEXT("union")},{TEXT("Set_Intersection"),TEXT("intersection")},{TEXT("Set_Difference"),TEXT("difference")}};for(const auto& R:Rows)if(Name.Equals(R.Name,ESearchCase::CaseSensitive))return R.Op;return nullptr;}
+{struct FRow{const TCHAR* Name;const TCHAR* Op;};static constexpr FRow Rows[]={{TEXT("Set_Add"),TEXT("add")},{TEXT("Set_AddItems"),TEXT("additems")},{TEXT("Set_Remove"),TEXT("remove")},{TEXT("Set_RemoveItems"),TEXT("removeitems")},{TEXT("Set_Clear"),TEXT("clear")},{TEXT("Set_IsEmpty"),TEXT("isempty")},{TEXT("Set_IsNotEmpty"),TEXT("isnotempty")},{TEXT("Set_Contains"),TEXT("contains")},{TEXT("Set_Length"),TEXT("length")},{TEXT("Set_ToArray"),TEXT("toarray")},{TEXT("Set_Union"),TEXT("union")},{TEXT("Set_Intersection"),TEXT("intersection")},{TEXT("Set_Difference"),TEXT("difference")}};for(const auto& R:Rows)if(Name.Equals(R.Name,ESearchCase::CaseSensitive))return R.Op;return nullptr;}
 constexpr const TCHAR* VectorPath=TEXT("/Script/CoreUObject.Vector");
 bool Loaded(const UObject* O)
 {return IsValid(O)&&!O->HasAnyFlags(RF_BeginDestroyed|RF_FinishDestroyed|RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects);}
@@ -93,6 +93,10 @@ struct FMapScope
     bool SetCall=false;FSetProperty* SetParameter=nullptr;FProperty* SetElement=nullptr;
     TArray<TPair<FSetProperty*,FProperty*>> AdditionalSets;
     bool BinarySet()const{return SetCall&&(Operation==TEXT("union")||Operation==TEXT("intersection")||Operation==TEXT("difference"));}
+    bool PureSet()const{return Operation==TEXT("contains")||Operation==TEXT("length")||Operation==TEXT("isempty")||Operation==TEXT("isnotempty");}
+    bool AdditionalMap()const{return !SetCall&&(Operation==TEXT("isempty")||Operation==TEXT("isnotempty")||Operation==TEXT("getkeyvaluebyindex")||Operation==TEXT("getlastindex"));}
+    bool PureMap()const{return Operation==TEXT("find")||Operation==TEXT("contains")||Operation==TEXT("length")||AdditionalMap();}
+    bool IntMapReturn()const{return Operation==TEXT("length")||(!SetCall&&Operation==TEXT("getlastindex"));}
     const TCHAR* SourcePath()const{return SetCall?SetLibraryPath:LibraryPath;}const TCHAR* SourceDefaultPath()const{return SetCall?SetDefaultPath:DefaultPath;}
     FResult& R;bool LiteralMode=false;int32 PendingPin=INDEX_NONE;TSharedPtr<FPin> PendingExpected;bool Neutral=false,PresetLibrary=false,PresetEntryFixed=false;TStrongObjectPtr<UK2Node_FunctionEntry> PresetEntry;FMemberReference PresetEntryReference;uint32 PresetEntryFlags=0;
     bool DoubleValue=false,Stopped=false,LastCurrent=false,SourceFixed=false,ClassesObserved=false,ClassesFixed=false,TargetFixed=false,InventoryFixed=false,Attached=false,MemberFixed=false,GuidFixed=false,PinsFixed=false;
@@ -113,7 +117,7 @@ struct FMapScope
     TArray<FBPVariableDescription> Variables,GeneratedVariables;TArray<FBPInterfaceDescription> Interfaces;EBlueprintStatus Status=BS_Unknown;
     explicit FMapScope(FResult& Reply):R(Reply){}
     bool Reject(const TCHAR* Code,const TCHAR* Why,bool Unknown=false)
-    {if(!Stopped){const bool KnownPrefix=R.bMutationAttempted&&!Unknown&&LastCurrent&&Attached&&PinsFixed&&Node.IsValid();Stopped=true;R.ErrorCode=Code;R.Error=Why;R.bSuccess=R.bPostconditionPassed=false;if(Unknown||R.bMutationAttempted)R.bChangeStateKnown=KnownPrefix;if(KnownPrefix){R.bChanged=true;R.Data->SetObjectField(TEXT("after"),TargetJson());R.Data->SetBoolField(TEXT("created"),true);R.Data->SetBoolField(TEXT("known_retained_wildcard_prefix"),!LiteralMode);if(LiteralMode){R.Data->SetBoolField(TEXT("known_retained_typed_map_prefix"),true);
+    {if(!Stopped){const bool KnownPrefix=R.bMutationAttempted&&!Unknown&&LastCurrent&&Attached&&PinsFixed&&Node.IsValid();Stopped=true;R.ErrorCode=Code;R.Error=Why;R.bSuccess=R.bPostconditionPassed=false;if(Unknown||R.bMutationAttempted)R.bChangeStateKnown=KnownPrefix;if(KnownPrefix){R.bChanged=true;R.Data->SetObjectField(TEXT("after"),TargetJson());R.Data->SetBoolField(TEXT("created"),true);R.Data->SetBoolField(TEXT("known_retained_wildcard_prefix"),!LiteralMode);if(LiteralMode){R.Data->SetBoolField(TEXT("known_retained_typed_map_prefix"),!Neutral);R.Data->SetBoolField(TEXT("known_retained_scalar_map_index_prefix"),Neutral&&Operation==TEXT("getkeyvaluebyindex"));
         auto Prefix=MakeShared<FJsonObject>();for(const auto& P:Pins){auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("pin_id"),P->Id.ToString(EGuidFormats::Digits));Q->SetStringField(TEXT("raw_default"),P->Default);Q->SetStringField(TEXT("autogenerated_default_value"),P->Auto);Q->SetStringField(TEXT("category"),P->Type.PinCategory.ToString());Q->SetStringField(TEXT("subcategory"),P->Type.PinSubCategory.ToString());Prefix->SetObjectField(P->Name.ToString(),Q);}R.Data->SetObjectField(TEXT("map_literal_known_pin_prefix"),Prefix);R.Data->SetStringField(TEXT("map_literal_known_pin_prefix_scope"),TEXT("Copied last complete current pin snapshots; no failure-time SDK or retired-pointer dereference."));}}R.Data->SetStringField(TEXT("failed_boundary"),R.Stage);}return false;}
     bool Keep(UObject* O,bool Mutable=false)
     {if(!Loaded(O))return Reject(TEXT("map_role_unavailable"),TEXT("Required already-loaded role unavailable."));for(const auto& I:Identities)if(I->Hold.Get()==O)return I->Current()||Reject(TEXT("map_identity_changed"),TEXT("A held identity changed."),true);Identities.Add(MakeShared<FIdentity>(O,Mutable));return true;}
@@ -130,16 +134,19 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
         return H.IsResolved()&&H==D&&(!D||(Loaded(D)&&D->GetClass()==C));
     }
+    // ZQ: Preset names remain receipt compatibility labels, not an Engine graph constraint.
+    // Installed FunctionEntry allocates __WorldContext for static function graphs by schema,
+    // independently of graph name. The same held Entry/pin/role proof now serves Map8/Set8.
     bool PresetCurrent()const
     {
         if(!PresetLibrary)return true;auto* B=Blueprint.Get();
-        if((!DoubleValue&&!Neutral)||!Loaded(B)||B->BlueprintType!=BPTYPE_FunctionLibrary||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()!=UBlueprintFunctionLibrary::StaticClass()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript!=nullptr||!B->NewVariables.IsEmpty()||!B->GeneratedVariables.IsEmpty()||!B->ImplementedInterfaces.IsEmpty()||!B->CachedUDSDependencies.IsEmpty())return false;
-        if(!PresetEntryFixed)return true;auto* E=PresetEntry.Get();auto* G=Graph.Get();if(!Loaded(G)||G->GetFName()!=TEXT("PresetLoader")||G->GetOuter()!=B||!B->FunctionGraphs.Contains(G)||!Loaded(E)||E->GetClass()!=UK2Node_FunctionEntry::StaticClass()||E->GetOuter()!=G||!G->Nodes.Contains(E)||!E->NodeGuid.IsValid()||!E->FunctionReference.IsSameReference(PresetEntryReference)||E->FunctionReference.IsDeprecated()||E->GetExtraFlags()!=PresetEntryFlags||!(PresetEntryFlags&FUNC_Static))return false;
+        if(!Loaded(B)||B->BlueprintType!=BPTYPE_FunctionLibrary||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()!=UBlueprintFunctionLibrary::StaticClass()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript!=nullptr||!B->NewVariables.IsEmpty()||!B->GeneratedVariables.IsEmpty()||!B->ImplementedInterfaces.IsEmpty()||!B->CachedUDSDependencies.IsEmpty())return false;
+        if(!PresetEntryFixed)return true;auto* E=PresetEntry.Get();auto* G=Graph.Get();if(!Loaded(G)||G->GetOuter()!=B||!B->FunctionGraphs.Contains(G)||!Loaded(E)||E->GetClass()!=UK2Node_FunctionEntry::StaticClass()||E->GetOuter()!=G||!G->Nodes.Contains(E)||!E->NodeGuid.IsValid()||!E->FunctionReference.IsSameReference(PresetEntryReference)||E->FunctionReference.IsDeprecated()||E->GetExtraFlags()!=PresetEntryFlags||!(PresetEntryFlags&FUNC_Static))return false;
         int32 Count=0;for(UEdGraphPin* P:E->Pins)if(P&&P->PinName==TEXT("__WorldContext")){FEdGraphPinType Expected;Expected.PinCategory=UEdGraphSchema_K2::PC_Object;Expected.PinSubCategoryObject=UObject::StaticClass();if(P->WasTrashed()||P->GetOwningNodeUnchecked()!=E||!P->PinId.IsValid()||P->Direction!=EGPD_Output||!SameType(P->PinType,Expected)||!P->bHidden||P->bOrphanedPin||P->bDeprecated||P->ParentPin||!P->SubPins.IsEmpty()||!P->DefaultObject.IsResolved()||P->DefaultObject!=nullptr||!P->DefaultTextValue.IsEmpty())return false;++Count;}return Count==1;
     }
     bool Raw();
     bool PriorCurrent()const;
-    bool Source();bool SetSource();
+    bool Source();bool SetSource();bool AdditionalMapSource();
     bool Target(const FString& Path,const FString& Name,const FString& Id,const FString& Kind);
     bool FreezePins();bool SetFreezePins();
     bool PinReceipt();
@@ -212,7 +219,7 @@ bool FMapScope::Raw()
         for(const auto& F:Fields)if(!F->Current())return Reject(TEXT("map_native_source_changed"),TEXT("A captured function or Vector property changed."),true);
         for(int32 I=0;I<Metadata.Num();++I)if(Native->HasMetaData(Metadata[I].Key)!=MetadataPresent[I]||!Equal(Native->GetMetaData(Metadata[I].Key),Metadata[I].Value))return Reject(TEXT("map_native_metadata_changed"),TEXT("Audited native metadata changed."),true);
     }
-    if(PresetLibrary&&!PresetCurrent())return Reject(TEXT("map_preset_loader_context_changed"),TEXT("Exact static member0 PresetLoader local Map context or automatic Entry WorldContext changed."),true);
+    if(PresetLibrary&&!PresetCurrent())return Reject(TEXT("map_preset_loader_context_changed"),TEXT("Captured static own-function library context or automatic Entry WorldContext changed."),true);
     if(ClassesObserved){auto P=Blueprint->ParentClass;auto G=Blueprint->GeneratedClass;auto S=Blueprint->SkeletonGeneratedClass;if(!P.GetGCPtr().IsResolved()||!G.GetGCPtr().IsResolved()||!S.GetGCPtr().IsResolved()||P.GetGCPtr()!=ParentHandle||G.GetGCPtr()!=GeneratedHandle||S.GetGCPtr()!=SkeletonHandle||Blueprint->Status!=Status||Blueprint->bBeingCompiled||Blueprint->bQueuedForCompilation||Blueprint->bIsRegeneratingOnLoad||Blueprint->bSuppressStructurallyModified)return Reject(TEXT("map_target_class_changed"),TEXT("Captured class handles/status changed during target adoption."),true);}
     if(ClassesFixed){auto* B=Blueprint.Get();auto P=B->ParentClass;auto G=B->GeneratedClass;auto S=B->SkeletonGeneratedClass;
         if(!P.GetGCPtr().IsResolved()||!G.GetGCPtr().IsResolved()||!S.GetGCPtr().IsResolved()||P.GetGCPtr()!=Parent.Get()||G.GetGCPtr()!=Generated.Get()||S.GetGCPtr()!=Skeleton.Get()||B->BlueprintType!=(PresetLibrary?BPTYPE_FunctionLibrary:BPTYPE_Normal)||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified||B->Status!=Status)return Reject(TEXT("map_target_class_changed"),TEXT("Captured Blueprint class/status roles changed before another SDK."),true);
@@ -224,7 +231,7 @@ bool FMapScope::Raw()
     if(InventoryFixed&&!PriorCurrent())return Reject(TEXT("map_prior_state_changed"),TEXT("Existing graph/node/pin/reference/declarations changed."),true);
     if(Node.IsValid()){const auto* N=Node.Get();int32 Count=0;for(const auto& E:Graph->Nodes){if(!E.IsResolved())return Reject(TEXT("map_node_inventory_unresolved"),TEXT("Unresolved graph node inventory."),true);if(E==N)++Count;}
         if(!Loaded(N)||N->GetClass()!=UK2Node_CallFunction::StaticClass()||N->GetOuter()!=Graph.Get()||N->GetPackage()!=TargetPackage||!Equal(N->GetPathName(),NodePath)||N->GetFlags()!=NodeFlags||Count!=(Attached?1:0)||(GuidFixed&&(N->NodeGuid!=NodeGuid||N->NodePosX!=X||N->NodePosY!=Y)))return Reject(TEXT("map_created_node_changed"),TEXT("Returned node identity/membership/position changed."),true);
-        if(MemberFixed&&(!N->FunctionReference.IsSameReference(Member)||N->FunctionReference.IsDeprecated()||N->IsNodePure()!=(Operation==TEXT("find")||Operation==TEXT("contains")||Operation==TEXT("length"))))return Reject(TEXT("map_function_reference_changed"),TEXT("Exact native binding changed."),true);
+        if(MemberFixed&&(!N->FunctionReference.IsSameReference(Member)||N->FunctionReference.IsDeprecated()||N->IsNodePure()!=(SetCall?PureSet():PureMap())))return Reject(TEXT("map_function_reference_changed"),TEXT("Exact native binding changed."),true);
         if(PinsFixed){if(N->Pins.Num()!=Pins.Num())return Reject(TEXT("map_created_pins_changed"),TEXT("Physical pin count changed."),true);for(int32 I=0;I<Pins.Num();++I)if(N->Pins[I]!=Pins[I]->Address||(!Pins[I]->Current(N)&&!(LiteralMode&&PendingPin==I&&PendingExpected.IsValid()&&PendingExpected->Current(N)))){
             if(LiteralMode&&!R.Data->HasField(TEXT("map_literal_first_mismatch"))){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),R.Stage);J->SetStringField(TEXT("property"),TEXT("created_pin_whole_role"));J->SetStringField(TEXT("pin_name"),Pins[I]->Name.ToString());J->SetStringField(TEXT("expected_pin_id"),Pins[I]->Id.ToString(EGuidFormats::Digits));J->SetBoolField(TEXT("expected_actual_observed"),false);J->SetStringField(TEXT("diagnostic_scope"),TEXT("Compound physical identity/type/default/link guard failed; no retired pin is dereferenced for a per-property diagnostic."));R.Data->SetObjectField(TEXT("map_literal_first_mismatch"),J);}
             return Reject(TEXT("map_created_pins_changed"),TEXT("Frozen physical pin/ref/terminal/default/link changed."),true);
@@ -233,7 +240,7 @@ bool FMapScope::Raw()
 }
 bool FMapScope::ExpectedType(const FProperty* P,const FEdGraphPinType& Type)const
 {
-    FEdGraphPinType E;E.PinCategory=P->HasAnyPropertyFlags(CPF_ReturnParm)?(Operation==TEXT("length")?UEdGraphSchema_K2::PC_Int:UEdGraphSchema_K2::PC_Boolean):UEdGraphSchema_K2::PC_Wildcard;
+    FEdGraphPinType E;E.PinCategory=P->HasAnyPropertyFlags(CPF_ReturnParm)?(IntMapReturn()?UEdGraphSchema_K2::PC_Int:UEdGraphSchema_K2::PC_Boolean):(!SetCall&&Operation==TEXT("getkeyvaluebyindex")&&P->GetFName()==TEXT("Index"))?UEdGraphSchema_K2::PC_Int:UEdGraphSchema_K2::PC_Wildcard;
     E.bIsReference=P->HasAllPropertyFlags(CPF_OutParm|CPF_ReferenceParm);E.bIsConst=P->HasAnyPropertyFlags(CPF_ConstParm);
     if(SetCall&&(P==SetParameter||AdditionalSets.ContainsByPredicate([P](const auto& E){return E.Key==P;})))E.ContainerType=EPinContainerType::Set;
     if(P==MapParameter){E.ContainerType=EPinContainerType::Map;E.PinValueType.TerminalCategory=UEdGraphSchema_K2::PC_Wildcard;}if(P==ArrayParameter)E.ContainerType=EPinContainerType::Array;return SameType(Type,E);
@@ -248,20 +255,20 @@ bool FMapScope::SetSource()
  SchemaFlags=uint32(SchemaClass->ClassFlags);NodeClassFlags=uint32(NodeClass->ClassFlags);NodeClassSize=NodeClass->GetStructureSize();
  LibraryCDO.Reset(ExistingCDO(Library.Get(),TEXT("/Script/Engine.Default__BlueprintSetLibrary")));SchemaCDO.Reset(ExistingCDO(SchemaClass.Get(),TEXT("/Script/BlueprintGraph.Default__EdGraphSchema_K2")));if(!LibraryCDO.IsValid()||!SchemaCDO.IsValid())return Reject(TEXT("set_native_CDO_unavailable"),TEXT("Existing resolved SetLibrary/schema CDO required; no hidden warm."));
  UFunction* Returned=Library->FindFunctionByName(FName(*FunctionName));TStrongObjectPtr<UFunction> Immediate(Returned);if(!Raw()||!Keep(Returned))return false;Native=MoveTemp(Immediate);
- const bool Pure=Operation==TEXT("contains")||Operation==TEXT("length");
+ const bool Pure=PureSet();
  if(Native->GetOuterUClass()!=Library.Get()||Native->GetFName()!=FName(*FunctionName)||!Native->HasAllFunctionFlags(FUNC_Native|FUNC_Static|FUNC_Public|FUNC_BlueprintCallable)||Native->HasAnyFunctionFlags(FUNC_BlueprintPure)!=Pure||Native->HasAnyFunctionFlags(FUNC_EditorOnly|FUNC_Delegate|FUNC_MulticastDelegate))return Reject(TEXT("set_native_function_unsupported"),TEXT("Exact declared runtime Set5 signature required."));
  FunctionFlags=uint32(Native->FunctionFlags);ClassFlags=uint32(Library->ClassFlags);FunctionSize=Native->GetStructureSize();
- const bool Binary=BinarySet();
- const TCHAR* SetGroup=Binary?TEXT("A|B|Result"):Operation==TEXT("add")?TEXT("TargetSet|NewItem"):Operation==TEXT("remove")?TEXT("TargetSet|Item"):Operation==TEXT("contains")?TEXT("TargetSet|ItemToFind"):Operation==TEXT("toarray")?TEXT("A|Result"):TEXT("TargetSet");
- const TCHAR* RefTerm=Operation==TEXT("add")?TEXT("NewItem"):Operation==TEXT("remove")?TEXT("Item"):Operation==TEXT("contains")?TEXT("ItemToFind"):TEXT("");
+ const bool Binary=BinarySet();const bool ArrayInput=Operation==TEXT("additems")||Operation==TEXT("removeitems");
+ const TCHAR* SetGroup=Binary?TEXT("A|B|Result"):Operation==TEXT("add")?TEXT("TargetSet|NewItem"):Operation==TEXT("additems")?TEXT("TargetSet|NewItems"):Operation==TEXT("remove")?TEXT("TargetSet|Item"):Operation==TEXT("removeitems")?TEXT("TargetSet|Items"):Operation==TEXT("contains")?TEXT("TargetSet|ItemToFind"):Operation==TEXT("toarray")?TEXT("A|Result"):TEXT("TargetSet");
+ const TCHAR* RefTerm=Operation==TEXT("add")?TEXT("NewItem"):Operation==TEXT("additems")?TEXT("NewItems"):Operation==TEXT("remove")?TEXT("Item"):Operation==TEXT("removeitems")?TEXT("Items"):Operation==TEXT("contains")?TEXT("ItemToFind"):TEXT("");
  for(const TCHAR* Name:{TEXT("Category"),TEXT("CustomThunk"),TEXT("SetParam"),TEXT("AutoCreateRefTerm"),TEXT("BlueprintThreadSafe"),TEXT("DisplayName"),TEXT("CompactNodeTitle"),TEXT("Latent"),TEXT("DeprecatedFunction"),TEXT("BlueprintInternalUseOnly"),TEXT("WorldContext"),TEXT("ScriptName")}){const FName MetadataKey(Name);const FString V=Native->GetMetaData(MetadataKey);if(!Raw())return false;const bool Present=Native->HasMetaData(MetadataKey);if(!Raw())return false;Metadata.Emplace(MetadataKey,V);MetadataPresent.Add(Present);}
  if(!Equal(Native->GetMetaData(TEXT("Category")),TEXT("Utilities|Set"))||!Equal(Native->GetMetaData(TEXT("CustomThunk")),TEXT("true"))||!Equal(Native->GetMetaData(TEXT("SetParam")),SetGroup)||!Equal(Native->GetMetaData(TEXT("AutoCreateRefTerm")),RefTerm))return Reject(TEXT("set_native_metadata_unsupported"),TEXT("Installed SetParam/AutoCreateRefTerm group differs."));
  for(const TCHAR* Name:{TEXT("Latent"),TEXT("DeprecatedFunction"),TEXT("BlueprintInternalUseOnly"),TEXT("WorldContext"),TEXT("ScriptName")})if(Native->HasMetaData(Name))return Reject(TEXT("set_native_metadata_unsupported"),TEXT("Special callable/ScriptName remapping is outside exact Set5."));
- TArray<FName> Expected{FName((Binary||Operation==TEXT("toarray"))?TEXT("A"):TEXT("TargetSet"))};if(Binary){Expected.Add(TEXT("B"));Expected.Add(TEXT("Result"));}if(*RefTerm)Expected.Add(FName(RefTerm));if(Operation==TEXT("remove")||Operation==TEXT("contains")||Operation==TEXT("length"))Expected.Add(TEXT("ReturnValue"));if(Operation==TEXT("toarray"))Expected.Add(TEXT("Result"));
+ TArray<FName> Expected{FName((Binary||Operation==TEXT("toarray"))?TEXT("A"):TEXT("TargetSet"))};if(Binary){Expected.Add(TEXT("B"));Expected.Add(TEXT("Result"));}if(*RefTerm)Expected.Add(FName(RefTerm));if(Operation==TEXT("remove")||PureSet())Expected.Add(TEXT("ReturnValue"));if(Operation==TEXT("toarray"))Expected.Add(TEXT("Result"));
  for(TFieldIterator<FProperty> It(Native.Get(),EFieldIterationFlags::IncludeDeprecated);It;++It){FProperty* P=*It;const int32 I=Parameters.Num();if(!Expected.IsValidIndex(I)||P->GetFName()!=Expected[I]||P->GetOwnerStruct()!=Native.Get()||P->GetOwnerProperty()!=P||P->ArrayDim!=1||!P->HasAnyPropertyFlags(CPF_Parm)||P->HasSetterOrGetter()||P->GetOffset_ForInternal()<0||P->GetOffset_ForInternal()+P->GetSize()>FunctionSize)return Reject(TEXT("set_native_property_role"),TEXT("Exact directly-owned ordered native parameter inventory required."));Parameters.Add(P);Fields.Add(MakeShared<FField>(P));
   if(I==0){SetParameter=CastField<FSetProperty>(P);if(!SetParameter)return Reject(TEXT("set_native_property_role"),TEXT("First parameter must be SetProperty."));SetElement=SetParameter->ElementProp;}
   else if(Binary){auto* Set=CastField<FSetProperty>(P);if(!Set||Set->GetClass()!=FSetProperty::StaticClass())return Reject(TEXT("set_native_property_role"),TEXT("Binary Set B/Result must be exact own SetProperty."));AdditionalSets.Emplace(Set,Set->ElementProp);}
-  else if(Operation==TEXT("toarray")){ArrayParameter=CastField<FArrayProperty>(P);if(!ArrayParameter)return Reject(TEXT("set_native_property_role"),TEXT("ToArray result must be ArrayProperty."));ArrayInner=ArrayParameter->Inner;}
+  else if(Operation==TEXT("toarray")||ArrayInput){ArrayParameter=CastField<FArrayProperty>(P);if(!ArrayParameter||ArrayParameter->GetClass()!=FArrayProperty::StaticClass())return Reject(TEXT("set_native_property_role"),TEXT("ToArray output or AddItems/RemoveItems input must be exact own ArrayProperty."));ArrayInner=ArrayParameter->Inner;}
   else if(P->HasAnyPropertyFlags(CPF_ReturnParm)){const bool Length=Operation==TEXT("length");if(P->GetClass()!=(Length?FIntProperty::StaticClass():FBoolProperty::StaticClass())||P->GetSize()!=(Length?sizeof(int32):sizeof(bool)))return Reject(TEXT("set_native_return_role"),TEXT("Native int Length/bool return required."));}
   else if(P->GetClass()!=FIntProperty::StaticClass()||P->GetSize()!=sizeof(int32))return Reject(TEXT("set_native_item_role"),TEXT("Native placeholder item is int32, not an already-typed user value."));
  }
@@ -292,10 +299,11 @@ bool FMapScope::Source()
     Native.Reset(Library->FindFunctionByName(FName(*FunctionName)));if(!Raw()||!Keep(Native.Get()))return false;
     if(Native->GetOuterUClass()!=Library.Get()||Native->GetFName()!=FName(*FunctionName))return Reject(TEXT("map_native_function_missing"),TEXT("Exact declared function required; no inherited/remapped resolution."));
     FunctionFlags=uint32(Native->FunctionFlags);ClassFlags=uint32(Library->ClassFlags);FunctionSize=Native->GetStructureSize();VectorSize=Neutral?0:DoubleValue?sizeof(double):Vector->GetStructureSize();VectorAlign=Neutral?0:DoubleValue?alignof(double):Vector->GetMinAlignment();VectorFlags=(DoubleValue||Neutral)?0U:uint32(Vector->StructFlags);
-    const uint32 Expected=uint32(FUNC_Final|FUNC_RequiredAPI|FUNC_Native|FUNC_Static|FUNC_Public|FUNC_HasOutParms|FUNC_BlueprintCallable)|((Operation==TEXT("find")||Operation==TEXT("contains")||Operation==TEXT("length"))?uint32(FUNC_BlueprintPure):0U);
+    const uint32 Expected=uint32(FUNC_Final|FUNC_RequiredAPI|FUNC_Native|FUNC_Static|FUNC_Public|FUNC_HasOutParms|FUNC_BlueprintCallable)|(PureMap()?uint32(FUNC_BlueprintPure):0U);
     R.Data->SetStringField(TEXT("native_function_flags_expected_string"),LexToString(Expected));R.Data->SetStringField(TEXT("native_function_flags_actual_string"),LexToString(FunctionFlags));
     if(FunctionFlags!=Expected)return Reject(TEXT("map_native_signature_mismatch"),TEXT("SDK symbolic function flags differ; no node created."));
     for(const TCHAR* Name:{TEXT("Category"),TEXT("CustomThunk"),TEXT("MapParam"),TEXT("MapKeyParam"),TEXT("MapValueParam"),TEXT("AutoCreateRefTerm"),TEXT("BlueprintThreadSafe"),TEXT("DisplayName"),TEXT("CompactNodeTitle"),TEXT("Latent"),TEXT("DeprecatedFunction"),TEXT("BlueprintInternalUseOnly"),TEXT("WorldContext"),TEXT("ScriptName")}){const FName K(Name);Metadata.Emplace(K,Native->GetMetaData(K));MetadataPresent.Add(Native->HasMetaData(K));}
+    if(AdditionalMap())return AdditionalMapSource();
     const bool Length=Operation==TEXT("length"),Clear=Operation==TEXT("clear"),Find=Operation==TEXT("find"),Contains=Operation==TEXT("contains"),KeyOnly=Contains||Operation==TEXT("remove"),Keys=Operation==TEXT("keys"),ArrayResult=Keys||Operation==TEXT("values");
     if(Length){
         if(!Equal(Native->GetMetaData(TEXT("DisplayName")),TEXT("Length"))||!Equal(Native->GetMetaData(TEXT("CompactNodeTitle")),TEXT("LENGTH"))||!Equal(Native->GetMetaData(TEXT("Category")),TEXT("Utilities|Map"))||!Equal(Native->GetMetaData(TEXT("CustomThunk")),TEXT("true"))||!Equal(Native->GetMetaData(TEXT("MapParam")),TEXT("TargetMap"))||Native->HasMetaData(TEXT("MapKeyParam"))||Native->HasMetaData(TEXT("MapValueParam"))||Native->HasMetaData(TEXT("AutoCreateRefTerm"))||!Native->HasMetaData(TEXT("BlueprintThreadSafe"))||!Native->GetMetaData(TEXT("BlueprintThreadSafe")).IsEmpty())return Reject(TEXT("map_native_metadata_mismatch"),TEXT("Exact key/value-free pure Map Length metadata differs."));
@@ -332,6 +340,39 @@ bool FMapScope::Source()
     R.Data->SetBoolField(TEXT("native_map_contract_verified"),true);R.Data->SetBoolField(TEXT("map_prior_numeric_capture_verified"),false);
     R.Data->SetStringField(TEXT("map_source_guard_basis"),TEXT("Installed UE5.8.3 symbolic function flags, exact ordered placeholder semantic layout/metadata and frozen full observed property flags. Prior numeric runtime capture not claimed."));
     R.Data->SetObjectField(TEXT("native_map_source_before"),SourceJson());return Raw();
+}
+
+// ZW: original generic CallFunction's remaining Map predicates and sparse-index query nodes.
+// Reuse the same held Map library/function/schema/target and writer; never execute the map.
+bool FMapScope::AdditionalMapSource()
+{
+    if(!Neutral||!AdditionalMap())return Reject(TEXT("map_query_profile_pending"),TEXT("Additional Map queries require the original untyped CallFunction route."));
+    const bool Index=Operation==TEXT("getkeyvaluebyindex"),Last=Operation==TEXT("getlastindex"),Empty=Operation==TEXT("isempty");
+    const TCHAR* Display=Index?TEXT("Get Key Value By Index"):Last?TEXT("Get Last Index"):Empty?TEXT("Is Empty"):TEXT("Is Not Empty");
+    const TCHAR* Title=Index?TEXT("GET KEY VALUE BY INDEX"):Last?TEXT("GET LAST INDEX"):Empty?TEXT("IS EMPTY"):TEXT("IS NOT EMPTY");
+    if(!Equal(Native->GetMetaData(TEXT("Category")),TEXT("Utilities|Map"))||!Equal(Native->GetMetaData(TEXT("DisplayName")),Display)||!Equal(Native->GetMetaData(TEXT("CompactNodeTitle")),Title)||!Equal(Native->GetMetaData(TEXT("CustomThunk")),TEXT("true"))||!Equal(Native->GetMetaData(TEXT("MapParam")),TEXT("TargetMap"))||Native->HasMetaData(TEXT("MapKeyParam"))!=Index||Native->HasMetaData(TEXT("MapValueParam"))!=Index||Native->HasMetaData(TEXT("AutoCreateRefTerm"))!=Index||(Index&&(!Equal(Native->GetMetaData(TEXT("MapKeyParam")),TEXT("Key"))||!Equal(Native->GetMetaData(TEXT("MapValueParam")),TEXT("Value"))||!Equal(Native->GetMetaData(TEXT("AutoCreateRefTerm")),TEXT("Key, Value"))))||Native->HasMetaData(TEXT("BlueprintThreadSafe"))!=(Index||Last)||((Index||Last)&&!Native->GetMetaData(TEXT("BlueprintThreadSafe")).IsEmpty())||!Library->HasMetaData(TEXT("BlueprintThreadSafe"))||!Library->GetMetaData(TEXT("BlueprintThreadSafe")).IsEmpty())return Reject(TEXT("map_query_native_metadata_mismatch"),TEXT("Exact installed predicate/index Map metadata differs."));
+    for(const TCHAR* Name:{TEXT("Latent"),TEXT("DeprecatedFunction"),TEXT("BlueprintInternalUseOnly"),TEXT("WorldContext"),TEXT("ScriptName")})if(Native->HasMetaData(Name))return Reject(TEXT("map_query_native_metadata_mismatch"),TEXT("Unexpected native execution/lookup metadata."));
+    const TArray<FName> Names=Index?TArray<FName>{TEXT("TargetMap"),TEXT("Index"),TEXT("Key"),TEXT("Value")}:TArray<FName>{TEXT("TargetMap"),TEXT("ReturnValue")};
+    for(TFieldIterator<FProperty> It(Native.Get(),EFieldIteratorFlags::ExcludeSuper);It;++It){if(!Names.IsValidIndex(Parameters.Num())||It->GetFName()!=Names[Parameters.Num()])return Reject(TEXT("map_query_native_signature_mismatch"),TEXT("Ordered query parameter inventory differs."));Parameters.Add(*It);Fields.Add(MakeShared<FField>(*It));}
+    if(Parameters.Num()!=Names.Num()||Native->NumParms!=Parameters.Num())return Reject(TEXT("map_query_native_signature_mismatch"),TEXT("Exact query parameter count required."));
+    constexpr uint64 DirectionBits=uint64(CPF_Parm|CPF_OutParm|CPF_ReferenceParm|CPF_ConstParm|CPF_ReturnParm);
+    for(int32 I=0;I<Parameters.Num();++I)
+    {
+        FProperty* P=Parameters[I];const bool Map=I==0,ScalarIndex=Index&&I==1,Return=!Index&&I==1;
+        const uint64 ExpectedBits=Map?uint64(CPF_Parm|CPF_OutParm|CPF_ReferenceParm|CPF_ConstParm):ScalarIndex?uint64(CPF_Parm):Return?uint64(CPF_Parm|CPF_OutParm|CPF_ReturnParm):uint64(CPF_Parm|CPF_OutParm);
+        if(P->GetOwnerStruct()!=Native.Get()||P->GetOwner<FProperty>()!=nullptr||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->HasSetterOrGetter()||(uint64(P->GetPropertyFlags())&DirectionBits)!=ExpectedBits||P->HasAnyPropertyFlags(CPF_EditorOnly|CPF_AdvancedDisplay|CPF_RequiredParm)||P->GetOffset_ForInternal()<0||P->GetSize()<=0||P->GetOffset_ForInternal()+P->GetSize()>FunctionSize||Native->HasMetaData(FName(*(TEXT("CPP_Default_")+P->GetName()))))return Reject(TEXT("map_query_native_signature_mismatch"),TEXT("Exact query property owner/direction/default/layout required."));
+        if(Map)
+        {
+            if(P->GetClass()!=FMapProperty::StaticClass())return Reject(TEXT("map_query_native_signature_mismatch"),TEXT("Exact native Map placeholder required."));MapParameter=static_cast<FMapProperty*>(P);Key=MapParameter->KeyProp;Value=MapParameter->ValueProp;
+            for(FProperty* Child:{Key,Value}){if(!Child||Child->GetClass()!=FIntProperty::StaticClass()||Child->ArrayDim!=1||Child->GetOwner<FProperty>()!=P||Child->GetOwnerProperty()!=P||Child->GetOwnerStruct()!=Native.Get()||Child->GetSize()!=sizeof(int32)||Child->HasSetterOrGetter())return Reject(TEXT("map_query_native_signature_mismatch"),TEXT("Exact owned native int32 Map key/value placeholder required."));Fields.Add(MakeShared<FField>(Child));}
+        }
+        else
+        {
+            const bool BoolReturn=Return&&!Last;if(P->GetClass()!=(BoolReturn?FBoolProperty::StaticClass():FIntProperty::StaticClass())||P->GetSize()!=(BoolReturn?sizeof(bool):sizeof(int32)))return Reject(TEXT("map_query_native_signature_mismatch"),TEXT("Exact bool-return or int32 Index/output/return placeholder required."));
+        }
+    }
+    SourceFixed=true;if(!Raw())return false;for(FProperty* P:Parameters){FEdGraphPinType T;const bool Converted=static_cast<const UEdGraphSchema_K2*>(SchemaCDO.Get())->ConvertPropertyToPinType(P,T);if(!Raw())return false;if(!Converted||!ExpectedType(P,T))return Reject(TEXT("map_query_native_pin_type_mismatch"),TEXT("Scalar Index/int-or-bool return and Map wildcard output projection differs."));}
+    R.Data->SetBoolField(TEXT("native_map_contract_verified"),true);R.Data->SetBoolField(TEXT("native_map_additional_query"),true);R.Data->SetBoolField(TEXT("map_sparse_index_query_node"),Index||Last);R.Data->SetBoolField(TEXT("map_key_value_output_pins"),Index);R.Data->SetBoolField(TEXT("map_sparse_runtime_index_validity_verified"),false);R.Data->SetStringField(TEXT("map_source_guard_basis"),TEXT("Installed UE5.6/5.8 public Map query declarations and UE5.8.3 native ordered flags/metadata/placeholder descriptors, held with the existing Map lifecycle. Native map values or index behavior are not executed."));R.Data->SetObjectField(TEXT("native_map_source_before"),SourceJson());return Raw();
 }
 
 bool FMapScope::Target(const FString& Input,const FString& Name,const FString& Id,const FString& RequestedKind)
@@ -388,11 +429,11 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
     if(!Keep(Graph.Get()))return false;GraphGuid=Graph->GraphGuid;
     if(PresetLibrary)
     {
-        if(Graph->GetFName()!=TEXT("PresetLoader")||Kind(Graph.Get())!=TEXT("function"))return Reject(TEXT("map_preset_loader_graph_unsupported"),TEXT("Function-library Map nodes are limited to the exact own PresetLoader function; no general BFL target."));
+        if(Kind(Graph.Get())!=TEXT("function"))return Reject(TEXT("map_preset_loader_graph_unsupported"),TEXT("Function-library Map/Set nodes require an existing directly owned static function; event/macro/missing graph variants remain incomplete."));
         const auto EntryInventory=Graph->Nodes;for(const auto& Handle:EntryInventory){if(!Handle.IsResolved())return Reject(TEXT("map_preset_loader_entry_unavailable"),TEXT("Resolved own function node inventory required."));UEdGraphNode* Candidate=Handle.Get();if(!Raw()||Graph->Nodes!=EntryInventory)return false;if(Candidate&&Candidate->GetClass()==UK2Node_FunctionEntry::StaticClass()){if(PresetEntry.IsValid())return Reject(TEXT("map_preset_loader_entry_unavailable"),TEXT("One current own Entry required."));PresetEntry.Reset(static_cast<UK2Node_FunctionEntry*>(Candidate));if(!Keep(PresetEntry.Get())||!Raw())return false;}}
         if(!PresetEntry.IsValid())return Reject(TEXT("map_preset_loader_entry_unavailable"),TEXT("One current own Entry required."));PresetEntryReference=PresetEntry->FunctionReference;PresetEntryFlags=PresetEntry->GetExtraFlags();FMemberReference ExpectedEntry;ExpectedEntry.SetExternalMember(Graph->GetFName(),nullptr,PresetEntryReference.GetMemberGuid());
         if(!PresetEntryReference.IsSameReference(ExpectedEntry)||PresetEntryReference.IsSelfContext()||PresetEntryReference.IsDeprecated()||!PresetEntry->CustomGeneratedFunctionName.IsNone()||!(PresetEntryFlags&FUNC_Static))return Reject(TEXT("map_preset_loader_entry_unsupported"),TEXT("Exact static own external-null Entry binding required."));PresetEntryFixed=true;
-        R.Data->SetStringField(TEXT("function_library_profile"),TEXT("preset_loader"));R.Data->SetStringField(TEXT("target_context"),TEXT("preset_loader_library"));R.Data->SetBoolField(TEXT("authored_world_context_edge_assumed"),false);R.Data->SetBoolField(TEXT("target_generated_cdo_available"),GD!=nullptr);R.Data->SetBoolField(TEXT("target_skeleton_cdo_available"),SD!=nullptr);
+        const bool LegacyPreset=Graph->GetFName()==TEXT("PresetLoader");R.Data->SetStringField(TEXT("function_library_profile"),LegacyPreset?TEXT("preset_loader"):TEXT("existing_static_own_function"));R.Data->SetStringField(TEXT("target_context"),LegacyPreset?TEXT("preset_loader_library"):TEXT("static_function_library"));R.Data->SetBoolField(TEXT("function_library_graph_name_restricted"),false);R.Data->SetBoolField(TEXT("function_library_native_set_call"),SetCall);R.Data->SetBoolField(TEXT("function_library_native_vector_map_call"),!SetCall&&!Neutral&&!DoubleValue);R.Data->SetStringField(TEXT("function_library_operation_scope"),TEXT("Existing own static function of a direct native BlueprintFunctionLibrary; current Entry, automatic WorldContext, held class/CDO roles and pre-existing graph/pin/declaration state are protected. No graph creation, CDO creation, explicit compile/save, runtime execution or full original owner parity."));R.Data->SetBoolField(TEXT("authored_world_context_edge_assumed"),false);R.Data->SetBoolField(TEXT("target_generated_cdo_available"),GD!=nullptr);R.Data->SetBoolField(TEXT("target_skeleton_cdo_available"),SD!=nullptr);
     }
     TargetFixed=true;if(!Raw())return false;if(PresetLibrary)R.Data->SetBoolField(TEXT("automatic_entry_world_context_current_verified"),true);
     if(Neutral?!Native->HasAnyFunctionFlags(FUNC_BlueprintPure):(Operation!=TEXT("find")&&Operation!=TEXT("length"))){const bool Allowed=static_cast<const UEdGraphSchema_K2*>(SchemaCDO.Get())->DoesGraphSupportImpureFunctions(Graph.Get());if(!Raw())return false;if(!Allowed)return Reject(TEXT("map_graph_operation_rejected"),TEXT("Graph does not support imperative Map nodes."));}
@@ -432,7 +473,7 @@ TSharedRef<FJsonObject> FMapScope::SourceJson()const
     auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("observations_complete"),true);J->SetBoolField(TEXT("native_identity_verified"),true);J->SetStringField(TEXT("class_path"),SourcePath());J->SetStringField(TEXT("function_path"),Native->GetPathName());J->SetStringField(TEXT("function_flags_string"),LexToString(FunctionFlags));J->SetStringField(TEXT("class_flags_string"),LexToString(ClassFlags));J->SetStringField(TEXT("existing_cdo_path"),SourceDefaultPath());J->SetBoolField(TEXT("cdo_creation_requested"),false);J->SetBoolField(TEXT("cdo_values_sampled"),false);
     TArray<TSharedPtr<FJsonValue>> Rows;for(const auto& F:Fields){auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("name"),F->Name.ToString());Row->SetStringField(TEXT("field_class"),F->Class->GetName());Row->SetStringField(TEXT("property_flags_string"),LexToString(F->Flags));Row->SetNumberField(TEXT("array_dim"),F->Dim);Row->SetNumberField(TEXT("offset"),F->Offset);Row->SetNumberField(TEXT("size"),F->Size);Rows.Add(MakeShared<FJsonValueObject>(Row));}J->SetArrayField(TEXT("fields"),Rows);
     auto M=MakeShared<FJsonObject>();for(int32 I=0;I<Metadata.Num();++I){auto Row=MakeShared<FJsonObject>();Row->SetBoolField(TEXT("present"),MetadataPresent[I]);Row->SetStringField(TEXT("value"),Metadata[I].Value);M->SetObjectField(Metadata[I].Key.ToString(),Row);}J->SetObjectField(TEXT("metadata"),M);
-    if(ArrayParameter){auto A=MakeShared<FJsonObject>();A->SetStringField(TEXT("parameter_name"),ArrayParameter->GetName());A->SetStringField(TEXT("property_path"),ArrayParameter->GetPathName());A->SetStringField(TEXT("property_class"),TEXT("ArrayProperty"));A->SetStringField(TEXT("inner_path"),ArrayInner->GetPathName());A->SetStringField(TEXT("inner_class"),TEXT("IntProperty"));A->SetBoolField(TEXT("direct_owner_and_current_slot_verified"),true);A->SetBoolField(TEXT("native_int_placeholder_is_typed_output"),false);J->SetObjectField(TEXT("array_output_source"),A);}
+    if(ArrayParameter){auto A=MakeShared<FJsonObject>();A->SetStringField(TEXT("parameter_name"),ArrayParameter->GetName());A->SetStringField(TEXT("property_path"),ArrayParameter->GetPathName());A->SetStringField(TEXT("property_class"),TEXT("ArrayProperty"));A->SetStringField(TEXT("inner_path"),ArrayInner->GetPathName());A->SetStringField(TEXT("inner_class"),TEXT("IntProperty"));A->SetBoolField(TEXT("direct_owner_and_current_slot_verified"),true);A->SetBoolField(TEXT("native_int_placeholder_is_typed_output"),false);const bool InputArray=SetCall&&!ArrayParameter->HasAnyPropertyFlags(CPF_ReturnParm)&&(!ArrayParameter->HasAnyPropertyFlags(CPF_OutParm)||ArrayParameter->HasAnyPropertyFlags(CPF_ReferenceParm));A->SetBoolField(TEXT("input_parameter"),InputArray);A->SetBoolField(TEXT("output_parameter"),!InputArray);J->SetObjectField(InputArray?TEXT("array_input_source"):TEXT("array_output_source"),A);}
     if(!Neutral){auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("struct_path"),DoubleValue?TEXT(""):VectorPath);if(DoubleValue){V->SetStringField(TEXT("category"),TEXT("real"));V->SetStringField(TEXT("subcategory"),TEXT("double"));V->SetBoolField(TEXT("scalar_property_required_after_link"),true);}V->SetNumberField(TEXT("size"),VectorSize);V->SetNumberField(TEXT("alignment"),VectorAlign);V->SetBoolField(TEXT("runtime_values_sampled"),false);J->SetObjectField(TEXT("requested_value_source"),V);}return J;
 }
 TSharedRef<FJsonObject> FMapScope::TargetJson()const
@@ -443,7 +484,7 @@ TSharedRef<FJsonObject> FMapScope::TargetJson()const
 bool FMapScope::FreezePins()
 {
     if(SetCall)return SetFreezePins();
-    if(!Raw())return false;const auto* N=Node.Get();const bool Pure=Operation==TEXT("find")||Operation==TEXT("contains")||Operation==TEXT("length");
+    if(!Raw())return false;const auto* N=Node.Get();const bool Pure=PureMap();
     if(N->Pins.Num()!=Parameters.Num()+1+(Pure?0:2)||N->IsNodePure()!=Pure)return Reject(TEXT("map_allocated_node_shape_mismatch"),TEXT("Stock Map pin count/purity differs."));
     TSet<FGuid> Ids;for(UEdGraphPin* P:N->Pins){if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||!P->PinId.IsValid()||Ids.Contains(P->PinId)||P->ParentPin||!P->SubPins.IsEmpty()||P->bOrphanedPin||P->bDeprecated||!P->LinkedTo.IsEmpty()||!P->DefaultObject.IsResolved())return Reject(TEXT("map_allocated_node_shape_mismatch"),TEXT("Initial physical whole pin role invalid."));Ids.Add(P->PinId);Pins.Add(MakeShared<FPin>(P));}
     PinsFixed=true;if(!Raw()||!PinReceipt())return false;
@@ -451,7 +492,7 @@ bool FMapScope::FreezePins()
         if(!P||!ExpectedType(Field,P->PinType)||P->bHidden||P->bNotConnectable||P->bDefaultValueIsReadOnly||P->bAdvancedView||P->DefaultObject!=nullptr||!P->DefaultTextValue.IsEmpty())return Reject(TEXT("map_allocated_node_shape_mismatch"),TEXT("Stock wildcard direction/ref/const/terminal differs."));
         const bool Ignored=Field->HasAllPropertyFlags(CPF_ConstParm|CPF_ReferenceParm)&&(!Native->HasMetaData(TEXT("AutoCreateRefTerm"))||P->PinType.IsContainer());
         if(P->bDefaultValueIsIgnored!=Ignored)return Reject(TEXT("map_allocated_node_shape_mismatch"),TEXT("AutoCreateRefTerm/container ignored-default condition differs."));
-        const FString ExpectedDefault=Field->HasAnyPropertyFlags(CPF_ReturnParm)?(Operation==TEXT("length")?TEXT("0"):TEXT("false")):TEXT("");
+        const FString ExpectedDefault=Field->HasAnyPropertyFlags(CPF_ReturnParm)?(IntMapReturn()?TEXT("0"):TEXT("false")):(Operation==TEXT("getkeyvaluebyindex")&&Field->GetFName()==TEXT("Index"))?TEXT("0"):TEXT("");
         if(!Equal(P->DefaultValue,ExpectedDefault)||!Equal(P->AutogeneratedDefaultValue,ExpectedDefault))return Reject(TEXT("map_allocated_node_default_mismatch"),TEXT("Initial wildcard defaults must be empty; bool ReturnValue uses false and Length int ReturnValue uses zero."));
     }
     FEdGraphPinType SelfType;SelfType.PinCategory=UEdGraphSchema_K2::PC_Object;SelfType.PinSubCategoryObject=Library.Get();const auto* Self=Node->FindPin(UEdGraphSchema_K2::PN_Self,EGPD_Input);
@@ -461,7 +502,7 @@ bool FMapScope::FreezePins()
 }
 bool FMapScope::SetFreezePins()
 {
-    if(!Raw())return false;const auto* N=Node.Get();const bool Pure=Operation==TEXT("find")||Operation==TEXT("contains")||Operation==TEXT("length");
+    if(!Raw())return false;const auto* N=Node.Get();const bool Pure=PureSet();
     if(N->Pins.Num()!=Parameters.Num()+1+(Pure?0:2)||N->IsNodePure()!=Pure)return Reject(TEXT("set_allocated_node_shape_mismatch"),TEXT("Stock Map pin count/purity differs."));
     TSet<FGuid> Ids;for(UEdGraphPin* P:N->Pins){if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||!P->PinId.IsValid()||Ids.Contains(P->PinId)||P->ParentPin||!P->SubPins.IsEmpty()||P->bOrphanedPin||P->bDeprecated||!P->LinkedTo.IsEmpty()||!P->DefaultObject.IsResolved())return Reject(TEXT("set_allocated_node_shape_mismatch"),TEXT("Initial physical whole pin role invalid."));Ids.Add(P->PinId);Pins.Add(MakeShared<FPin>(P));}
     PinsFixed=true;if(!Raw()||!PinReceipt())return false;
@@ -486,7 +527,7 @@ bool FMapScope::PinReceipt()
 
 // OA: preserve the UE56 Any conversion before the stock schema validates it.
 // The only structure admitted here remains the existing native Vector cohort.
-bool MapLiteralText(const TSharedPtr<FJsonValue>& V,bool IsVector,FString& Out)
+bool MapLiteralText(const TSharedPtr<FJsonValue>& V,bool IsVector,const FEdGraphPinType& PinType,FString& Out)
 {
     if(!V)return false;Out.Reset();
     if(IsVector&&(V->Type==EJson::Array||V->Type==EJson::Object)){
@@ -497,7 +538,15 @@ bool MapLiteralText(const TSharedPtr<FJsonValue>& V,bool IsVector,FString& Out)
         Out=FString::Printf(TEXT("(X=%s,Y=%s,Z=%s)"),*FString::SanitizeFloat(A[0]),*FString::SanitizeFloat(A[1]),*FString::SanitizeFloat(A[2]));
     }
     else if(V->Type==EJson::String)Out=V->AsString();
-    else if(V->Type==EJson::Number){if(!FMath::IsFinite(V->AsNumber()))return false;Out=FString::SanitizeFloat(V->AsNumber());}
+    else if(V->Type==EJson::Number){
+        const double Number=V->AsNumber();if(!FMath::IsFinite(Number))return false;
+        // UE56 Shared.h617..624 converts numbers for integer pins before K2 validation.
+        // Preserve truncation toward zero; never perform an undefined int64 conversion.
+        if(PinType.PinCategory==UEdGraphSchema_K2::PC_Int||PinType.PinCategory==UEdGraphSchema_K2::PC_Int64||PinType.PinCategory==UEdGraphSchema_K2::PC_Byte){
+            if(Number < -9223372036854775808.0 || Number >= 9223372036854775808.0)return false;
+            Out=FString::Printf(TEXT("%lld"),static_cast<int64>(Number));
+        }else Out=FString::SanitizeFloat(Number);
+    }
     else if(V->Type==EJson::Boolean)Out=V->AsBool()?TEXT("true"):TEXT("false");
     else if(V->Type==EJson::Array||V->Type==EJson::Object){if(!FJsonSerializer::Serialize(V,TEXT(""),TJsonWriterFactory<>::Create(&Out)))return false;}
     else if(V->Type!=EJson::Null)return false;
@@ -554,19 +603,19 @@ TSharedRef<FJsonObject> FMapScope::LiteralObservation(int32 Index,const FString&
 }
 bool FMapScope::LiteralDefaults(const TSharedRef<FJsonObject>& Defaults)
 {
-    if(!LiteralTypes())return false;
+    if(Neutral){if(Operation!=TEXT("getkeyvaluebyindex")||!LiteralMode||!Raw())return false;}else if(!LiteralTypes())return false;
     const auto* Schema=static_cast<const UEdGraphSchema_K2*>(SchemaCDO.Get());
     const auto Applied=MakeShared<FJsonObject>(),Observed=MakeShared<FJsonObject>();
     R.Data->SetObjectField(TEXT("map_literal_defaults_applied"),Applied);R.Data->SetObjectField(TEXT("map_literal_default_observations"),Observed);
     // Canonical Key then Value order is independent of JSON object ordering.
-    for(const TCHAR* Name:{TEXT("Key"),TEXT("Value")}){
+    for(const TCHAR* Name:{TEXT("Key"),TEXT("Value"),TEXT("Index")}){
         const auto V=Defaults->TryGetField(Name);if(!V.IsValid())continue;
         int32 Index=INDEX_NONE;for(int32 I=0;I<Pins.Num();++I)if(Pins[I]->Name==Name&&Pins[I]->Direction==EGPD_Input){Index=I;break;}
-        if(Index==INDEX_NONE||Pins[Index]->Type.IsContainer()||(Pins[Index]->Flags&(1U<<2))||Pins[Index]->Address->bDefaultValueIsIgnored)return Reject(TEXT("map_literal_pin_unavailable"),TEXT("Exact visible nonignored scalar Key/Value input required."));
-        FString Literal;if(!MapLiteralText(V,FString(Name)==TEXT("Value")&&!DoubleValue,Literal))return Reject(TEXT("map_literal_conversion_failed"),TEXT("Original bounded Any conversion failed; typed node prefix retained."));
+        if(Index==INDEX_NONE||Pins[Index]->Type.IsContainer()||(Pins[Index]->Flags&(1U<<2))||Pins[Index]->Address->bDefaultValueIsIgnored)return Reject(TEXT("map_literal_pin_unavailable"),TEXT("Exact visible nonignored scalar Key/Value or native query Index input required."));
+        FString Literal;if(!MapLiteralText(V,FString(Name)==TEXT("Value")&&!DoubleValue&&!Neutral,Pins[Index]->Type,Literal))return Reject(TEXT("map_literal_conversion_failed"),TEXT("Original bounded Any conversion failed; typed node prefix retained."));
         const FEdGraphPinType Type=Pins[Index]->Type;FString RawDefault;TObjectPtr<UObject> Object=nullptr;FText Text;
         R.Stage=TEXT("map_literal_schema_conversion");LiteralCall(TEXT("GetPinDefaultValuesFromString_Literal"),false);Schema->GetPinDefaultValuesFromString(Type,Node.Get(),Literal,RawDefault,Object,Text,false);LiteralCall(TEXT("GetPinDefaultValuesFromString_Literal"),true);if(!Raw())return false;
-        if(Object!=nullptr||!Text.IsEmpty())return Reject(TEXT("map_literal_conversion_unexpected"),TEXT("Finite String/Double/Vector conversion returned an object or Text role."));
+        if(Object!=nullptr||!Text.IsEmpty())return Reject(TEXT("map_literal_conversion_unexpected"),TEXT("Finite String/Double/Vector or query Index conversion returned an object or Text role."));
         UEdGraphPin* P=Pins[Index]->Address;
         LiteralCall(TEXT("IsPinDefaultValid"),false);const FString Validation=Schema->IsPinDefaultValid(P,RawDefault,nullptr,Text);LiteralCall(TEXT("IsPinDefaultValid"),true);if(!Raw())return false;
         if(!Validation.IsEmpty()){R.Data->SetStringField(TEXT("map_literal_schema_error"),Validation);R.Data->SetStringField(TEXT("map_literal_failed_pin"),Name);return Reject(TEXT("map_literal_engine_rejected"),TEXT("Schema rejected the supplied literal before its setter; created typed prefix remains."));}
@@ -613,7 +662,7 @@ bool FMapScope::UntypedCallReceipt()
     }
     if(!Current())return false;Flat->SetArrayField(TEXT("pins"),Rows);
     auto GraphRow=MakeShared<FJsonObject>();GraphRow->SetStringField(TEXT("graph_id"),GraphGuid.ToString(EGuidFormats::Digits));GraphRow->SetStringField(TEXT("graph_name"),Graph->GetName());GraphRow->SetStringField(TEXT("graph_type"),Kind(Graph.Get()));GraphRow->SetStringField(TEXT("object_path"),Graph->GetPathName());GraphRow->SetStringField(TEXT("schema"),SchemaClass->GetName());GraphRow->SetNumberField(TEXT("node_count"),Graph->Nodes.Num());
-    Flat->SetObjectField(TEXT("graph"),GraphRow);Flat->SetStringField(TEXT("blueprint"),Blueprint->GetPathName());Flat->SetStringField(TEXT("function_name"),FunctionName);Flat->SetStringField(TEXT("function_class"),SourcePath());Flat->SetStringField(TEXT("function_path"),Native->GetPathName());Flat->SetBoolField(TEXT("is_static"),(FunctionFlags&FUNC_Static)!=0);Flat->SetBoolField(TEXT("is_pure"),(FunctionFlags&FUNC_BlueprintPure)!=0);Flat->SetBoolField(TEXT("is_latent"),false);Flat->SetObjectField(TEXT("param_defaults_applied"),MakeShared<FJsonObject>());Flat->SetBoolField(TEXT("flat_node_observation_complete"),true);Flat->SetStringField(TEXT("node_creation_api"),TEXT("public NewObject/AddNode/SetFromFunction/CreateNewGuid/PostPlacedNewNode/AllocateDefaultPins with concrete callback barriers"));Flat->SetBoolField(TEXT("implicit_skeleton_compile_possible"),false);
+    Flat->SetObjectField(TEXT("graph"),GraphRow);Flat->SetStringField(TEXT("blueprint"),Blueprint->GetPathName());Flat->SetStringField(TEXT("function_name"),FunctionName);Flat->SetStringField(TEXT("function_class"),SourcePath());Flat->SetStringField(TEXT("function_path"),Native->GetPathName());Flat->SetBoolField(TEXT("is_static"),(FunctionFlags&FUNC_Static)!=0);Flat->SetBoolField(TEXT("is_pure"),(FunctionFlags&FUNC_BlueprintPure)!=0);Flat->SetBoolField(TEXT("is_latent"),false);Flat->SetObjectField(TEXT("param_defaults_applied"),LiteralMode&&Operation==TEXT("getkeyvaluebyindex")?R.Data->GetObjectField(TEXT("map_literal_defaults_applied")):MakeShared<FJsonObject>());Flat->SetBoolField(TEXT("flat_node_observation_complete"),true);Flat->SetStringField(TEXT("node_creation_api"),TEXT("public NewObject/AddNode/SetFromFunction/CreateNewGuid/PostPlacedNewNode/AllocateDefaultPins with concrete callback barriers"));Flat->SetBoolField(TEXT("implicit_skeleton_compile_possible"),false);
     if(!Current())return false;for(const auto& Pair:Flat->Values)R.Data->SetField(Pair.Key,Pair.Value);return true;
 }
 }
@@ -622,16 +671,16 @@ static Function::FResult AddNodeInternal(const FString& BlueprintPath,const FStr
     const FString& ParamDefaultsJson,const FString& NodePositionJson,const FString& GraphName,const FString& GraphId,
     const FString& GraphType,bool bCreateGraphIfMissing,bool Neutral)
 {
-    FResult R;FMapScope C(R);C.Neutral=Neutral;C.Operation=Operation;C.DoubleValue=ValueType==TEXT("double");C.FunctionName=Operation==TEXT("clear")?TEXT("Map_Clear"):Operation==TEXT("find")?TEXT("Map_Find"):Operation==TEXT("contains")?TEXT("Map_Contains"):Operation==TEXT("remove")?TEXT("Map_Remove"):Operation==TEXT("keys")?TEXT("Map_Keys"):Operation==TEXT("values")?TEXT("Map_Values"):Operation==TEXT("length")?TEXT("Map_Length"):TEXT("Map_Add");
+    FResult R;FMapScope C(R);C.Neutral=Neutral;C.Operation=Operation;C.DoubleValue=ValueType==TEXT("double");C.FunctionName=Operation==TEXT("isempty")?TEXT("Map_IsEmpty"):Operation==TEXT("isnotempty")?TEXT("Map_IsNotEmpty"):Operation==TEXT("getkeyvaluebyindex")?TEXT("Map_GetKeyValueByIndex"):Operation==TEXT("getlastindex")?TEXT("Map_GetLastIndex"):Operation==TEXT("clear")?TEXT("Map_Clear"):Operation==TEXT("find")?TEXT("Map_Find"):Operation==TEXT("contains")?TEXT("Map_Contains"):Operation==TEXT("remove")?TEXT("Map_Remove"):Operation==TEXT("keys")?TEXT("Map_Keys"):Operation==TEXT("values")?TEXT("Map_Values"):Operation==TEXT("length")?TEXT("Map_Length"):TEXT("Map_Add");
     if(Operation==TEXT("length"))R.Data->SetBoolField(TEXT("native_map_length"),true);
     if(!Neutral&&ValueType==TEXT("vector")&&(Operation==TEXT("contains")||Operation==TEXT("remove")||Operation==TEXT("keys")||Operation==TEXT("values")))R.Data->SetBoolField(TEXT("native_vector_map_operation_parity"),true);
     if(C.Neutral){R.Data->SetBoolField(TEXT("native_untyped_map_call"),true);R.Data->SetBoolField(TEXT("map_type_request_specified"),false);}
-    else R.Data->SetBoolField(C.DoubleValue?TEXT("native_map_string_double"):TEXT("native_map_string_vector"),true);R.Data->SetStringField(TEXT("map_operation"),Operation);R.Data->SetBoolField(TEXT("specialization_pending"),true);
+    else R.Data->SetBoolField(C.DoubleValue?TEXT("native_map_string_double"):TEXT("native_map_string_vector"),true);R.Data->SetStringField(TEXT("map_operation"),Operation);R.Data->SetBoolField(TEXT("specialization_pending"),true);R.Data->SetBoolField(TEXT("map_index_input_requires_connection_or_default"),false);R.Data->SetBoolField(TEXT("map_index_literal_supported"),C.Neutral&&Operation==TEXT("getkeyvaluebyindex"));
     R.Data->SetBoolField(TEXT("node_only_contract"),true);R.Data->SetBoolField(TEXT("implicit_data_wiring"),false);R.Data->SetBoolField(TEXT("map_target_requires_connection"),true);
     R.Data->SetBoolField(TEXT("map_key_requires_connection"),Operation==TEXT("find")||Operation==TEXT("add")||Operation==TEXT("contains")||Operation==TEXT("remove"));R.Data->SetBoolField(TEXT("map_value_requires_connection"),Operation==TEXT("add"));
     R.Data->SetBoolField(TEXT("map_literal_defaults_supported"),false);R.Data->SetBoolField(TEXT("map_typed_specialization_verified"),false);R.Data->SetBoolField(TEXT("map_runtime_execution_verified"),false);
     R.Data->SetBoolField(TEXT("transaction_created"),false);R.Data->SetBoolField(TEXT("implicit_skeleton_compile_requested"),false);R.Data->SetBoolField(TEXT("full_original_history_pipeline_verified"),false);
-    if(Operation!=TEXT("clear")&&Operation!=TEXT("find")&&Operation!=TEXT("add")&&Operation!=TEXT("contains")&&Operation!=TEXT("remove")&&Operation!=TEXT("keys")&&Operation!=TEXT("values")&&Operation!=TEXT("length")){C.Reject(TEXT("map_operation_unsupported"),TEXT("Exact operations: clear/find/add/contains/remove/keys/values/length for existing String-double/Vector cohorts."));return R;}
+    if(Operation!=TEXT("clear")&&Operation!=TEXT("find")&&Operation!=TEXT("add")&&Operation!=TEXT("contains")&&Operation!=TEXT("remove")&&Operation!=TEXT("keys")&&Operation!=TEXT("values")&&Operation!=TEXT("length")&&!(C.Neutral&&C.AdditionalMap())){C.Reject(TEXT("map_operation_unsupported"),TEXT("Exact operations: clear/find/add/contains/remove/keys/values/length for existing String-double/Vector cohorts."));return R;}
     if(!C.Neutral&&(KeyType!=TEXT("string")||(ValueType!=TEXT("vector")&&ValueType!=TEXT("double")))){C.Reject(TEXT("map_type_unsupported"),TEXT("Only exact String -> native Vector or scalar double cohorts; float and arbitrary value types remain unsupported."));return R;}
     if(bCreateGraphIfMissing){C.Reject(TEXT("map_graph_creation_unsupported"),TEXT("Create an owned graph separately; no implicit graph creation."));return R;}
     TSharedPtr<FJsonValue> Defaults,Position;
@@ -639,13 +688,13 @@ static Function::FResult AddNodeInternal(const FString& BlueprintPath,const FStr
     if(C.Neutral&&Defaults->Type==EJson::Null)Defaults=MakeShared<FJsonValueObject>(MakeShared<FJsonObject>());
     if(Defaults->Type!=EJson::Object){C.Reject(TEXT("map_literal_defaults_unsupported"),TEXT("Defaults require an object; only typed scalar Key/Value literals are admitted."));return R;}
     auto CanonicalDefaults=MakeShared<FJsonObject>();
-    for(const auto& Pair:Defaults->AsObject()->Values){const FString Requested(Pair.Key.ToView());const bool Key=Requested.Equals(TEXT("Key"),ESearchCase::IgnoreCase),Value=Requested.Equals(TEXT("Value"),ESearchCase::IgnoreCase);
-        const FString Name=Key?TEXT("Key"):TEXT("Value");
-        if(C.Neutral||(!Key&&!Value)||(Key&&(Operation!=TEXT("find")&&Operation!=TEXT("add")&&Operation!=TEXT("contains")&&Operation!=TEXT("remove")))||(Value&&Operation!=TEXT("add"))||CanonicalDefaults->HasField(Name)){C.Reject(TEXT("map_literal_defaults_unsupported"),TEXT("Only unique case-insensitive Key(find/add/contains/remove) and Value(add) are admitted in an existing typed cohort; TargetMap, output, neutral wildcard and unknown literals remain unsupported."));return R;}
+    for(const auto& Pair:Defaults->AsObject()->Values){const FString Requested(Pair.Key.ToView());const bool Key=Requested.Equals(TEXT("Key"),ESearchCase::IgnoreCase),Value=Requested.Equals(TEXT("Value"),ESearchCase::IgnoreCase),QueryIndex=C.Neutral&&Operation==TEXT("getkeyvaluebyindex")&&Requested.Equals(TEXT("Index"),ESearchCase::IgnoreCase);
+        const FString Name=QueryIndex?TEXT("Index"):Key?TEXT("Key"):TEXT("Value");
+        if((C.Neutral?!QueryIndex:((!Key&&!Value)||(Key&&(Operation!=TEXT("find")&&Operation!=TEXT("add")&&Operation!=TEXT("contains")&&Operation!=TEXT("remove")))||(Value&&Operation!=TEXT("add"))))||CanonicalDefaults->HasField(Name)){C.Reject(TEXT("map_literal_defaults_unsupported"),TEXT("Only typed Key/Value literals or the native untyped GetKeyValueByIndex scalar Index are admitted; Map/input containers, outputs, duplicate and unknown literals remain unsupported."));return R;}
         CanonicalDefaults->SetField(Name,Pair.Value);
     }
     C.LiteralMode=!CanonicalDefaults->Values.IsEmpty();
-    if(C.LiteralMode){R.Data->SetBoolField(TEXT("native_typed_map_literal_defaults"),true);R.Data->SetBoolField(TEXT("typed_unlinked_map_profile"),true);R.Data->SetBoolField(TEXT("map_literal_defaults_supported"),true);R.Data->SetBoolField(TEXT("map_key_requires_connection"),!CanonicalDefaults->HasField(TEXT("Key")));R.Data->SetBoolField(TEXT("map_value_requires_connection"),Operation==TEXT("add")&&!CanonicalDefaults->HasField(TEXT("Value")));R.Data->SetBoolField(TEXT("map_literal_runtime_invocation_verified"),false);R.Data->SetBoolField(TEXT("atomic_rollback_provided"),false);R.Data->SetObjectField(TEXT("map_literal_defaults_applied"),MakeShared<FJsonObject>());R.Data->SetObjectField(TEXT("map_literal_default_observations"),MakeShared<FJsonObject>());}
+    if(C.LiteralMode){R.Data->SetBoolField(TEXT("native_typed_map_literal_defaults"),!C.Neutral);R.Data->SetBoolField(TEXT("native_scalar_map_index_literal"),C.Neutral);R.Data->SetBoolField(TEXT("typed_unlinked_map_profile"),!C.Neutral);R.Data->SetBoolField(TEXT("map_literal_defaults_supported"),true);R.Data->SetBoolField(TEXT("map_key_requires_connection"),(Operation==TEXT("find")||Operation==TEXT("add")||Operation==TEXT("contains")||Operation==TEXT("remove"))&&!CanonicalDefaults->HasField(TEXT("Key")));R.Data->SetBoolField(TEXT("map_value_requires_connection"),Operation==TEXT("add")&&!CanonicalDefaults->HasField(TEXT("Value")));R.Data->SetBoolField(TEXT("map_literal_runtime_invocation_verified"),false);R.Data->SetBoolField(TEXT("atomic_rollback_provided"),false);R.Data->SetObjectField(TEXT("map_literal_defaults_applied"),MakeShared<FJsonObject>());R.Data->SetObjectField(TEXT("map_literal_default_observations"),MakeShared<FJsonObject>());}
     if(Position->Type!=EJson::Array||Position->AsArray().Num()!=2){C.Reject(TEXT("map_position_invalid"),TEXT("Position must contain two bounded integers."));return R;}
     int32 Coords[2];for(int32 I=0;I<2;++I){const auto& V=Position->AsArray()[I];if(V->Type!=EJson::Number||!FMath::IsFinite(V->AsNumber())||FMath::TruncToDouble(V->AsNumber())!=V->AsNumber()||(C.Neutral?(V->AsNumber()<MIN_int32||V->AsNumber()>MAX_int32):FMath::Abs(V->AsNumber())>1000000.0)){C.Reject(TEXT("map_position_invalid"),C.Neutral?TEXT("Position requires exact int32 coordinates."):TEXT("Position requires exact integers within +/-1000000."));return R;}Coords[I]=int32(V->AsNumber());}C.X=Coords[0];C.Y=Coords[1];
     const auto& Version=FEngineVersion::Current();if(Version.GetMajor()!=5||Version.GetMinor()!=8||Version.GetPatch()!=3){C.Reject(TEXT("map_version_unsupported"),TEXT("Only installed UE5.8.3 supported."));return R;}
@@ -686,7 +735,7 @@ namespace
 const TCHAR* UntypedOperation(const FString& FunctionName)
 {
     struct FRow{const TCHAR* Function;const TCHAR* Operation;};
-    static constexpr FRow Rows[]={{TEXT("Map_Clear"),TEXT("clear")},{TEXT("Map_Find"),TEXT("find")},{TEXT("Map_Add"),TEXT("add")},{TEXT("Map_Contains"),TEXT("contains")},{TEXT("Map_Remove"),TEXT("remove")},{TEXT("Map_Keys"),TEXT("keys")},{TEXT("Map_Values"),TEXT("values")},{TEXT("Map_Length"),TEXT("length")}};
+    static constexpr FRow Rows[]={{TEXT("Map_Clear"),TEXT("clear")},{TEXT("Map_Find"),TEXT("find")},{TEXT("Map_Add"),TEXT("add")},{TEXT("Map_Contains"),TEXT("contains")},{TEXT("Map_Remove"),TEXT("remove")},{TEXT("Map_Keys"),TEXT("keys")},{TEXT("Map_Values"),TEXT("values")},{TEXT("Map_Length"),TEXT("length")},{TEXT("Map_IsEmpty"),TEXT("isempty")},{TEXT("Map_IsNotEmpty"),TEXT("isnotempty")},{TEXT("Map_GetKeyValueByIndex"),TEXT("getkeyvaluebyindex")},{TEXT("Map_GetLastIndex"),TEXT("getlastindex")}};
     for(const auto& Row:Rows)if(FunctionName.Equals(Row.Function,ESearchCase::CaseSensitive))return Row.Operation;return nullptr;
 }
 }
@@ -698,8 +747,8 @@ static Function::FResult AddSetCall(const FString& BlueprintPath,const FString& 
  if(Defaults->Type!=EJson::Object||!Defaults->AsObject()->Values.IsEmpty()){C.Reject(TEXT("set_literal_defaults_pending"),TEXT("Set5 generic wildcard admission first supports empty param_defaults only; literals remain incomplete."));return R;}
  if(Position->Type!=EJson::Array||Position->AsArray().Num()!=2){C.Reject(TEXT("set_position_invalid"),TEXT("Exact int32 pair required."));return R;}int32 XY[2];for(int32 I=0;I<2;++I){const auto& V=Position->AsArray()[I];const double N=V->Type==EJson::Number?V->AsNumber():MAX_dbl;if(V->Type!=EJson::Number||!FMath::IsFinite(N)||N<MIN_int32||N>MAX_int32||FMath::TruncToDouble(N)!=N){C.Reject(TEXT("set_position_invalid"),TEXT("Exact int32 pair required."));return R;}XY[I]=static_cast<int32>(N);}C.X=XY[0];C.Y=XY[1];
  if(!C.Begin()||!C.Source()||!C.Target(BlueprintPath,GraphName,GraphId,GraphType))return R;
- if(C.PresetLibrary||C.Blueprint->GetClass()!=UBlueprint::StaticClass()||C.Parent.Get()!=AActor::StaticClass()||!C.Variables.IsEmpty()||!C.Interfaces.IsEmpty()){C.Reject(TEXT("set_host_pending"),TEXT("First Set5 cohort uses an existing own normal direct Actor graph, with own variables/interfaces empty; broader hosts remain incomplete."));return R;}
- R.Data->SetBoolField(TEXT("native_untyped_set_call"),true);R.Data->SetBoolField(TEXT("binary_set_operation"),C.BinarySet());R.Data->SetBoolField(TEXT("node_only_contract"),true);R.Data->SetBoolField(TEXT("set_type_request_specified"),false);R.Data->SetBoolField(TEXT("implicit_data_wiring"),false);R.Data->SetBoolField(TEXT("set_target_requires_connection"),true);R.Data->SetBoolField(TEXT("set_runtime_execution_verified"),false);R.Data->SetBoolField(TEXT("implicit_skeleton_compile_requested"),false);R.Data->SetBoolField(TEXT("explicit_compile_requested"),false);R.Data->SetBoolField(TEXT("explicit_save_requested"),false);
+ if(C.Blueprint->GetClass()!=UBlueprint::StaticClass()||(!C.PresetLibrary&&(C.Parent.Get()!=AActor::StaticClass()||!C.Variables.IsEmpty()||!C.Interfaces.IsEmpty()))){C.Reject(TEXT("set_host_pending"),TEXT("Native Set calls require the existing direct Actor profile or a guarded direct native BlueprintFunctionLibrary own static function; broader hosts remain incomplete."));return R;}
+ R.Data->SetBoolField(TEXT("native_untyped_set_call"),true);R.Data->SetBoolField(TEXT("binary_set_operation"),C.BinarySet());R.Data->SetBoolField(TEXT("set_array_input_operation"),C.Operation==TEXT("additems")||C.Operation==TEXT("removeitems"));R.Data->SetBoolField(TEXT("set_empty_predicate_operation"),C.Operation==TEXT("isempty")||C.Operation==TEXT("isnotempty"));R.Data->SetStringField(TEXT("set_operation"),C.Operation);R.Data->SetBoolField(TEXT("node_only_contract"),true);R.Data->SetBoolField(TEXT("set_type_request_specified"),false);R.Data->SetBoolField(TEXT("implicit_data_wiring"),false);R.Data->SetBoolField(TEXT("set_target_requires_connection"),true);R.Data->SetBoolField(TEXT("set_runtime_execution_verified"),false);R.Data->SetBoolField(TEXT("implicit_skeleton_compile_requested"),false);R.Data->SetBoolField(TEXT("explicit_compile_requested"),false);R.Data->SetBoolField(TEXT("explicit_save_requested"),false);
     R.Data->SetStringField(TEXT("function_class"),C.SourcePath());R.Data->SetStringField(TEXT("function_name"),C.FunctionName);
     R.Stage=TEXT("set_blueprint_modify");R.bMutationAttempted=true;R.bChangeStateKnown=false;
     EObjectFlags PackageFlags=C.TargetPackage->GetFlags();const bool BPModified=C.Blueprint->Modify();if(!C.AfterModify(BPModified,PackageFlags))return R;
@@ -739,7 +788,7 @@ Function::FResult AddUntypedCall(const FString& BlueprintPath,const FString& Fun
     const FString& NodePositionJson,const FString& GraphName,const FString& GraphId,const FString& GraphType)
 {
     if(SetOperation(FunctionName))return AddSetCall(BlueprintPath,FunctionName,ParamDefaultsJson,NodePositionJson,GraphName,GraphId,GraphType);
-    const TCHAR* Operation=UntypedOperation(FunctionName);if(!Operation){FResult R;FMapScope C(R);C.Reject(TEXT("map_operation_unsupported"),TEXT("Only exact native Map8 functions admit the untyped checked-call route."));return R;}
+    const TCHAR* Operation=UntypedOperation(FunctionName);if(!Operation){FResult R;FMapScope C(R);C.Reject(TEXT("map_operation_unsupported"),TEXT("Only exact native Map12 functions admit the untyped checked-call route."));return R;}
     return AddNodeInternal(BlueprintPath,Operation,FString(),FString(),ParamDefaultsJson,NodePositionJson,GraphName,GraphId,GraphType,false,true);
 }
 Function::FResult AddNode(const FString& BlueprintPath,const FString& Operation,const FString& KeyType,const FString& ValueType,

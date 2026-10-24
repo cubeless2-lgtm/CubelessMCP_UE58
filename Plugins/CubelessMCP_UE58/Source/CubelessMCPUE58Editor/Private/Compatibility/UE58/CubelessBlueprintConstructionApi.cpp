@@ -107,14 +107,35 @@ void LegacyNodeFields(UEdGraphNode* Node,FResult& R)
     R.Data->SetStringField(TEXT("title"),Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString());R.Data->SetStringField(TEXT("node_comment"),Node->NodeComment);
     R.Data->SetBoolField(TEXT("comment_bubble_visible"),Node->bCommentBubbleVisible);R.Data->SetBoolField(TEXT("comment_bubble_pinned"),Node->bCommentBubblePinned);
 }
-bool ActorScope(UBlueprint* BP,UEdGraph* G,const TSharedPtr<FJsonObject>& Graph,FResult& R)
+// ZN: owner admission uses the actual native hierarchy, not one Actor exact-type
+// assumption. No native CDO construction, class load or runtime instance lookup.
+bool NativeActorParentChain(UClass* ParentClass)
 {
-    if(!Loaded(BP)||!Loaded(G)||FBlueprintEditorUtils::FindBlueprintForGraph(G)!=BP||BP->ParentClass!=AActor::StaticClass()
+    const TStrongObjectPtr<UClass> HeldParent(ParentClass);
+    if(!Loaded(ParentClass)||!ParentClass->IsChildOf(AActor::StaticClass()))return false;
+    TSet<UClass*> Seen;
+    for(UClass* C=ParentClass;C;C=C->GetSuperClass())
+    {
+        const TStrongObjectPtr<UClass> HeldClass(C);const TStrongObjectPtr<UPackage> HeldPackage(Loaded(C)?C->GetPackage():nullptr);
+        if(!Loaded(C)||!Loaded(HeldPackage.Get())||Seen.Contains(C)||Seen.Num()>=64||C->GetClass()!=UClass::StaticClass()
+            ||!C->HasAnyClassFlags(CLASS_Native)||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface)
+            ||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||C->GetOuter()!=HeldPackage.Get()
+            ||!HeldPackage->HasAnyPackageFlags(PKG_CompiledIn)||HeldPackage->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly)
+            ||HeldPackage->IsDirty()||(HeldPackage->GetName()!=TEXT("/Script/Engine")&&HeldPackage->GetName()!=TEXT("/Script/CoreUObject")))return false;
+        Seen.Add(C);if(C==UObject::StaticClass())return C->GetSuperClass()==nullptr;
+    }
+    return false;
+}
+bool ActorScope(UBlueprint* BP,UEdGraph* G,const TSharedPtr<FJsonObject>& Graph,FResult& R,bool NativeParents=false)
+{
+    const TStrongObjectPtr<UBlueprint> HeldBlueprint(BP);const TStrongObjectPtr<UEdGraph> HeldGraph(G);
+    if(!Loaded(BP)||!Loaded(G)||FBlueprintEditorUtils::FindBlueprintForGraph(G)!=BP
+        ||(NativeParents?(!BP->ParentClass.GetGCPtr().IsResolved()||!NativeActorParentChain(BP->ParentClass.GetGCPtr().Get())):BP->ParentClass!=AActor::StaticClass())
         ||BP->BlueprintType!=BPTYPE_Normal||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bSuppressStructurallyModified
         ||BP->bIsRegeneratingOnLoad||BP->Status==BS_BeingCreated||!G->bEditable||!G->GetSchema()
         ||G->GetSchema()->GetClass()!=UEdGraphSchema_K2::StaticClass()
         ||(Graph->GetStringField(TEXT("graph_type"))!=TEXT("function")&&Graph->GetStringField(TEXT("graph_type"))!=TEXT("event"))||G->Nodes.Num()>=2048)
-    { return Fail(R,TEXT("value_blueprint_scope_pending"),TEXT("Finite idle direct native Actor Blueprint with an owned editable function/event K2 graph required; wider original owners remain residual.")); }
+    { return Fail(R,TEXT("value_blueprint_scope_pending"),TEXT("Finite idle Actor Blueprint with an owned editable function/event K2 graph required. The generated ConstructObject source path also admits clean loaded Engine-native Actor parent chains; generated/custom-module and wider owner paths remain incomplete.")); }
     Count(R,TEXT("external_scope_observation_calls"));TArray<TSharedPtr<FJsonValue>> External;
     for(TObjectIterator<UBlueprint> It;It;++It)
     { if(*It!=BP&&It->ParentClass&&BP->GeneratedClass&&It->ParentClass->IsChildOf(BP->GeneratedClass)) { External.Add(MakeShared<FJsonValueString>(It->GetPathName())); } }
@@ -123,13 +144,13 @@ bool ActorScope(UBlueprint* BP,UEdGraph* G,const TSharedPtr<FJsonObject>& Graph,
     R.Data->SetArrayField(TEXT("external_instances_or_derived_blueprints"),External);
     return External.IsEmpty()||Fail(R,TEXT("value_external_instances_pending"),TEXT("Loaded external instances/derived Blueprints can receive MarkModified effects; finite scope refused."));
 }
-bool Graph(const FString& Path,const FString& Name,const FString& Id,const FString& Type,bool Create,UBlueprint*& BP,UEdGraph*& G,TSharedPtr<FJsonObject>& Before,FResult& R)
+bool Graph(const FString& Path,const FString& Name,const FString& Id,const FString& Type,bool Create,UBlueprint*& BP,UEdGraph*& G,TSharedPtr<FJsonObject>& Before,FResult& R,bool NativeParents=false)
 {
     R.Stage=TEXT("resolve_graph");Count(R,TEXT("shared_graph_resolve_calls"));const auto S=Function::Resolve(Path,Name,Id,Type,Create);Count(R,TEXT("shared_graph_resolve_returns"));R.Data->SetObjectField(TEXT("graph_resolution"),ResultJson(S));
     R.bMutationAttempted=S.bMutationAttempted;R.bChanged=S.bChanged;R.bChangeStateKnown=S.bChangeStateKnown;
     if(!S.bSuccess||!S.bPostconditionPassed) { return Fail(R,S.ErrorCode.IsEmpty()?TEXT("branching_graph_unverified"):*S.ErrorCode,S.Error); }
     BP=FindObject<UBlueprint>(nullptr,*S.Data->GetStringField(TEXT("blueprint")));const auto J=S.Data->GetObjectField(TEXT("graph"));G=FindObject<UEdGraph>(nullptr,*J->GetStringField(TEXT("object_path")));
-    if(!ActorScope(BP,G,J,R)) { return false; }Before=S.Data->GetObjectField(TEXT("after"));R.Data->SetObjectField(TEXT("before"),Before);R.Data->SetStringField(TEXT("blueprint"),BP->GetPathName());return true;
+    if(!ActorScope(BP,G,J,R,NativeParents)) { return false; }Before=S.Data->GetObjectField(TEXT("after"));R.Data->SetObjectField(TEXT("before"),Before);R.Data->SetStringField(TEXT("blueprint"),BP->GetPathName());return true;
 }
 void Place(UBlueprint* BP,UEdGraph* G,UEdGraphNode* Node,const int32 (&XY)[2],bool Reconstruct,FResult& R)
 {
@@ -266,16 +287,54 @@ struct FGeneratedConstruct
 {
     FResult& R;bool Stopped=false,Member=false,Placed=false,Retired=false,Replacing=false,PinsFixed=false,ClassAssigned=false;
     TStrongObjectPtr<UBlueprint> Source,Target;TStrongObjectPtr<UPackage> SourcePackage,TargetPackage;
-    TStrongObjectPtr<UClass> Generated,Skeleton,Parent,TargetGenerated,TargetSkeleton;
+    TStrongObjectPtr<UClass> Generated,Skeleton,Parent,TargetGenerated,TargetSkeleton,TargetParent;
     TStrongObjectPtr<UObject> CDO;TStrongObjectPtr<UEdGraphSchema_K2> Schema;
     TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;
     TStrongObjectPtr<UK2Node_GenericCreateObject> Node;
     TArray<TStrongObjectPtr<UObject>> Holds;FString SourcePath,TargetPath,GeneratedPath,SkeletonPath,CDOPath,Filename,FileHash,NodePath;
     UObject* CDOOuter=nullptr;EObjectFlags CDOFlags=RF_NoFlags,GeneratedFlags=RF_NoFlags,SkeletonFlags=RF_NoFlags,SourceFlags=RF_NoFlags;EClassFlags GeneratedClassFlags=CLASS_None,SkeletonClassFlags=CLASS_None;FGuid NodeGuid;int32 X=0,Y=0;
     TArray<FBPVariableDescription> Variables,TargetVariables;TArray<UEdGraph*> SourceGraphs,TargetGraphs;
+    struct FTargetParentRole
+    {
+        TStrongObjectPtr<UClass> Class,Super;TStrongObjectPtr<UObject> Default;TStrongObjectPtr<UPackage> Package;
+        FString ClassPath,DefaultPath;EObjectFlags ClassObjectFlags=RF_NoFlags,DefaultFlags=RF_NoFlags;EClassFlags ClassFlags=CLASS_None;uint32 PackageFlags=0;
+    };
+    TArray<FTargetParentRole> TargetParentRoles;
     TArray<TObjectPtr<UEdGraph>> SourceFunctions,SourceMacros,SourceEvents,SourceDelegates,TargetFunctions,TargetMacros,TargetEvents,TargetDelegates;
-    struct FField{FProperty* Address;UClass* Owner;FFieldClass* Class;FName Name;uint64 Flags;int32 Dim,Size,Offset;FEdGraphPinType Type;bool Exposed=false;bool CompilerFrame=false;UScriptStruct* Struct=nullptr;};
+    struct FField{FProperty* Address;UClass* Owner;FFieldClass* Class;FName Name;uint64 Flags;int32 Dim,Size,Offset;FEdGraphPinType Type;bool Exposed=false;bool CompilerFrame=false;UScriptStruct* Struct=nullptr;
+        FProperty* Inner=nullptr;FFieldClass* InnerClass=nullptr;FName InnerName;uint64 InnerFlags=0;int32 InnerSize=0,InnerOffset=0,InnerDim=0;
+        uint8 BoolSize=0,BoolOffset=0,BoolByteMask=0,BoolFieldMask=0,InnerBoolSize=0,InnerBoolOffset=0,InnerBoolByteMask=0,InnerBoolFieldMask=0;
+    };
     TArray<FField> Fields,SkeletonFields;
+    // ACK: the existing concrete source lease is reused once per Blueprint,
+    // then all source roots are closed before any backing value is inspected.
+    // Independent parent CDOs are never substituted for effective leaf defaults.
+    TStrongObjectPtr<UClass> SourceSkeletonParent;TStrongObjectPtr<UBlueprint> SourceParentBlueprint;
+    TArray<TUniquePtr<FResult>> AncestorResults;TArray<TUniquePtr<FGeneratedConstruct>> Ancestors;
+    FGeneratedConstruct* SourceRoot=nullptr;
+    TArray<FProperty*> EffectivePhysical;TArray<const FField*> EffectiveFields;
+    FString BackingBefore;TArray<FString> BackingCells;TArray<FText> BackingTextHolds;bool EffectiveReady=false;
+
+    // AAY: extend this source's existing field lease, not the global declaration
+    // policy. Native value descriptors and one-level primitive Array.Inner have
+    // distinct ownership/current rules; compiler-frame state stays separate.
+    TMap<UScriptStruct*,TSharedPtr<FJsonObject>> ValueStructSources;
+    static bool PrimitiveArrayInner(const FProperty* P)
+    {return P&&(P->GetClass()==FBoolProperty::StaticClass()||P->GetClass()==FIntProperty::StaticClass()||P->GetClass()==FInt64Property::StaticClass()
+        ||P->GetClass()==FFloatProperty::StaticClass()||P->GetClass()==FDoubleProperty::StaticClass()||P->GetClass()==FNameProperty::StaticClass()
+        ||P->GetClass()==FStrProperty::StaticClass()||P->GetClass()==FTextProperty::StaticClass());}
+    static bool PrimitiveArrayType(const FEdGraphPinType& In)
+    {if(!In.IsArray())return false;auto T=In;T.ContainerType=EPinContainerType::None;return Function::Pin::IsPrimitive(T);}
+    bool ValueStructsCurrent()
+    {
+        for(const auto& Row:ValueStructSources)
+        {
+            FEdGraphPinType T;T.PinCategory=UEdGraphSchema_K2::PC_Struct;T.PinSubCategoryObject=Row.Key;
+            if(!Loaded(Row.Key)||!Function::Pin::IsScalarValueStruct(T))return Bad(TEXT("native_value_struct_identity"));
+            const auto Now=Function::Pin::ScalarValueStructSource(T);
+            if(!Equal(MakeShared<FJsonValueObject>(Row.Value),MakeShared<FJsonValueObject>(Now)))return Bad(TEXT("native_value_struct_source_changed"));
+        }return true;
+    }
     TStrongObjectPtr<UScriptStruct> FrameStruct;TStrongObjectPtr<UObject> FrameStructOuter;UClass* FrameStructClass=nullptr;
     EObjectFlags FrameStructObjectFlags=RF_NoFlags;EStructFlags FrameStructFlags=STRUCT_NoFlags;int32 FrameStructSize=0,FrameStructAlignment=0;
     TSharedPtr<FJsonObject> FieldDiagnostic;
@@ -378,7 +437,18 @@ struct FGeneratedConstruct
             const auto& E=Expected[I];if(Now[I]!=E.Address)return FieldMismatch(Role,I,TEXT("physical_address"),LexToString(reinterpret_cast<UPTRINT>(E.Address)),LexToString(reinterpret_cast<UPTRINT>(Now[I])),true);
             auto* P=E.Address;
             if(P->GetOwnerStruct()!=E.Owner||P->GetOwnerProperty()!=P||P->GetClass()!=E.Class||P->GetFName()!=E.Name||uint64(P->GetPropertyFlags())!=E.Flags||P->ArrayDim!=E.Dim||P->GetSize()!=E.Size||P->GetOffset_ForInternal()!=E.Offset||P->HasSetterOrGetter())return Bad(TEXT("source_field_layout"));
+            if(!BoolLayout(P,E.BoolSize,E.BoolOffset,E.BoolByteMask,E.BoolFieldMask))return Bad(TEXT("source_bool_layout_changed"));
             if(E.Struct){auto* S=CastField<FStructProperty>(P);if(!S||!S->Struct.IsResolved()||S->Struct.Get()!=E.Struct)return FieldMismatch(Role,I,TEXT("struct_binding"),LexToString(reinterpret_cast<UPTRINT>(E.Struct)),S&&S->Struct.IsResolved()?LexToString(reinterpret_cast<UPTRINT>(S->Struct.Get())):TEXT("unresolved_or_other_field"),true);}
+            if(E.Inner)
+            {
+                auto* A=CastField<FArrayProperty>(P);if(!A||A->Inner!=E.Inner)return FieldMismatch(Role,I,TEXT("array_inner_slot"),LexToString(reinterpret_cast<UPTRINT>(E.Inner)),A?LexToString(reinterpret_cast<UPTRINT>(A->Inner)):TEXT("different_root_class"),true);
+                auto* Child=A->Inner;
+                if(Child->GetOwner<FProperty>()!=P||Child->GetOwnerProperty()!=P||Child->GetOwnerStruct()!=C||Child->GetClass()!=E.InnerClass
+                    ||Child->GetFName()!=E.InnerName||uint64(Child->GetPropertyFlags())!=E.InnerFlags||Child->GetSize()!=E.InnerSize
+                    ||Child->GetOffset_ForInternal()!=E.InnerOffset||Child->ArrayDim!=E.InnerDim||Child->HasSetterOrGetter())
+                    return FieldMismatch(Role,I,TEXT("array_inner_role_layout"),E.Name.ToString()+TEXT("/captured primitive immediate Inner"),TEXT("changed"),true);
+                if(!BoolLayout(Child,E.InnerBoolSize,E.InnerBoolOffset,E.InnerBoolByteMask,E.InnerBoolFieldMask))return Bad(TEXT("source_array_inner_bool_layout_changed"));
+            }
             if(E.CompilerFrame&&(!FrameStructCurrent()||E.Struct!=FrameStruct.Get()||!(ActualFrame==P||(!Compiler.Function.IsValid()&&!ActualFrame))))return Bad(TEXT("compiler_frame_role_current"));
         }
         return true;
@@ -387,27 +457,147 @@ struct FGeneratedConstruct
     {
         if(A.Num()!=B.Num())return Bad(TEXT("variable_inventory"));for(int32 I=0;I<B.Num();++I){const auto& ActualVariable=A[I];const auto& E=B[I];if(ActualVariable.VarGuid!=E.VarGuid||ActualVariable.VarName!=E.VarName||!SameType(ActualVariable.VarType,E.VarType)||ActualVariable.PropertyFlags!=E.PropertyFlags||!ActualVariable.DefaultValue.Equals(E.DefaultValue,ESearchCase::CaseSensitive)||!ActualVariable.FriendlyName.Equals(E.FriendlyName,ESearchCase::CaseSensitive)||ActualVariable.RepNotifyFunc!=E.RepNotifyFunc||ActualVariable.ReplicationCondition!=E.ReplicationCondition||FTextInspector::GetSharedDataId(ActualVariable.Category)!=FTextInspector::GetSharedDataId(E.Category)||FTextInspector::GetFlags(ActualVariable.Category)!=FTextInspector::GetFlags(E.Category)||ActualVariable.MetaDataArray.Num()!=E.MetaDataArray.Num())return Bad(TEXT("variable_declaration"));for(int32 J=0;J<E.MetaDataArray.Num();++J)if(ActualVariable.MetaDataArray[J].DataKey!=E.MetaDataArray[J].DataKey||!ActualVariable.MetaDataArray[J].DataValue.Equals(E.MetaDataArray[J].DataValue,ESearchCase::CaseSensitive))return Bad(TEXT("variable_metadata"));}return true;
     }
-    bool Plain()
+    bool PlainCore()
     {
-        if(Stopped)return false;if(!Context())return Bad(TEXT("editor_context"));
+        if(Stopped)return false;if(!Context())return Bad(TEXT("editor_context"));if(!ValueStructsCurrent())return false;
         if(Source.IsValid())
         {
             auto* B=Source.Get();if(!Loaded(B)||B->GetFlags()!=SourceFlags||B->GetClass()!=UBlueprint::StaticClass()||B->GetOuter()!=SourcePackage.Get()||B->GetPackage()!=SourcePackage.Get()||SourcePackage->IsDirty()||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->BlueprintType!=BPTYPE_Normal||!B->GetPathName().Equals(SourcePath,ESearchCase::CaseSensitive)||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=Parent.Get()||B->SimpleConstructionScript||!B->ImplementedInterfaces.IsEmpty()||!VariablesCurrent(B->NewVariables,Variables))return Bad(TEXT("source_blueprint_current"));
             if(!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Generated.Get()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get())return Bad(TEXT("source_class_slots"));
-            for(UClass* C:{Generated.Get(),Skeleton.Get()})if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=B||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=Parent.Get())return Bad(TEXT("source_class_current"));
+            for(UClass* C:{Generated.Get(),Skeleton.Get()})if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=B||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=(C==Skeleton.Get()?SourceSkeletonParent.Get():Parent.Get()))return Bad(TEXT("source_class_current"));
+            if(!SourceParentCurrent())return Bad(TEXT("source_parent_roles_changed"));
             if(Generated->GetFlags()!=GeneratedFlags||Skeleton->GetFlags()!=SkeletonFlags||Generated->GetClassFlags()!=GeneratedClassFlags||Skeleton->GetClassFlags()!=SkeletonClassFlags||!Generated->GetPathName().Equals(GeneratedPath,ESearchCase::CaseSensitive)||!Skeleton->GetPathName().Equals(SkeletonPath,ESearchCase::CaseSensitive)||!Generated->ClassDefaultObject.IsResolved()||Generated->ClassDefaultObject.Get()!=CDO.Get())return Bad(TEXT("source_class_path_or_cdo"));
             if(CDO.IsValid()&&(!Loaded(CDO.Get())||CDO->GetClass()!=Generated.Get()||CDO->GetOuter()!=CDOOuter||CDO->GetFlags()!=CDOFlags||!CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)))return Bad(TEXT("source_cdo_current"));
             if(B->FunctionGraphs!=SourceFunctions||B->MacroGraphs!=SourceMacros||B->UbergraphPages!=SourceEvents||B->DelegateSignatureGraphs!=SourceDelegates||!FieldsCurrent(Generated.Get(),Fields)||!FieldsCurrent(Skeleton.Get(),SkeletonFields))return Bad(TEXT("source_roles"));TArray<UEdGraph*> All;B->GetAllGraphs(All);if(All!=SourceGraphs)return Bad(TEXT("source_graph_inventory"));
         }
         if(Target.IsValid())
         {
-            auto* B=Target.Get();if(!Loaded(B)||B->GetPackage()!=TargetPackage.Get()||!B->GetPathName().Equals(TargetPath,ESearchCase::CaseSensitive)||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=AActor::StaticClass()||B->bBeingCompiled||B->bQueuedForCompilation||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=TargetGenerated.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=TargetSkeleton.Get()||B->FunctionGraphs!=TargetFunctions||B->MacroGraphs!=TargetMacros||B->UbergraphPages!=TargetEvents||B->DelegateSignatureGraphs!=TargetDelegates||!VariablesCurrent(B->NewVariables,TargetVariables))return Bad(TEXT("target_current"));TArray<UEdGraph*> All;B->GetAllGraphs(All);if(All!=TargetGraphs)return Bad(TEXT("target_graph_inventory"));
+            auto* B=Target.Get();if(!Loaded(B)||B->GetPackage()!=TargetPackage.Get()||!B->GetPathName().Equals(TargetPath,ESearchCase::CaseSensitive)||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=TargetParent.Get()||!TargetParentsCurrent()||B->bBeingCompiled||B->bQueuedForCompilation||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=TargetGenerated.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=TargetSkeleton.Get()||B->FunctionGraphs!=TargetFunctions||B->MacroGraphs!=TargetMacros||B->UbergraphPages!=TargetEvents||B->DelegateSignatureGraphs!=TargetDelegates||!VariablesCurrent(B->NewVariables,TargetVariables))return Bad(TEXT("target_current"));TArray<UEdGraph*> All;B->GetAllGraphs(All);if(All!=TargetGraphs||!TargetParentsCurrent()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=TargetParent.Get())return Bad(TEXT("target_graph_inventory"));
         }
         for(const auto& E:Graphs){auto* G=E.Hold.Get();if(!Loaded(G)||G->GetOuter()!=E.BP||G->GetClass()!=E.Class||G->GraphGuid!=E.Guid||!G->GetPathName().Equals(E.Path,ESearchCase::CaseSensitive)||!G->Schema.GetGCPtr().IsResolved()||G->Schema.GetGCPtr().Get()!=E.Schema||G->Nodes.Num()!=E.Nodes.Num()+((Member&&!Retired&&G==Selected)?1:0))return Bad(TEXT("old_graph_current"));for(int32 I=0;I<E.Nodes.Num();++I)if(!G->Nodes[I].IsResolved()||G->Nodes[I].Get()!=E.Nodes[I])return Bad(TEXT("old_node_order"));if(Member&&!Retired&&G==Selected&&(!G->Nodes.Last().IsResolved()||G->Nodes.Last().Get()!=Node.Get()))return Bad(TEXT("new_node_membership"));}
         for(const auto& E:OldNodes){auto* N=E.Hold.Get();if(!Loaded(N)||N->GetOuter()!=E.Graph||N->GetClass()!=E.Class||N->NodeGuid!=E.Guid||N->NodePosX!=E.X||N->NodePosY!=E.Y||!N->GetPathName().Equals(E.Path,ESearchCase::CaseSensitive)||!N->NodeComment.Equals(E.Comment,ESearchCase::CaseSensitive)||!PinsCurrent(N,E.Pins))return Bad(TEXT("old_node_current"));}
         if(Retired){if(Selected&&Selected->Nodes.Contains(Node.Get()))return Bad(TEXT("retired_node_membership"));return true;}
         if(Node.IsValid()){if(!Loaded(Node.Get())||Node->GetOuter()!=Selected||Node->GetClass()!=UK2Node_GenericCreateObject::StaticClass()||!Node->GetPathName().Equals(NodePath,ESearchCase::CaseSensitive)||(Placed&&(Node->NodeGuid!=NodeGuid||Node->NodePosX!=X||Node->NodePosY!=Y)))return Bad(TEXT("construct_node_current"));if(PinsFixed&&!Replacing&&!PinsCurrent(Node.Get(),NodePins))return false;if(Replacing&&!Candidates.IsEmpty()&&!PinsCurrent(Node.Get(),Candidates))return false;}
         return true;
+    }
+    static bool BoolLayout(FProperty* P,uint8 Size,uint8 Offset,uint8 ByteMask,uint8 FieldMask)
+    {
+        if(P->GetClass()!=FBoolProperty::StaticClass())return true;const auto* B=static_cast<FBoolProperty*>(P);
+        return Size==B->GetBoolFieldSize()&&Offset==B->GetByteOffset()&&ByteMask==B->GetByteMask()&&FieldMask==B->GetFieldMask();
+    }
+    static bool BoolLayout(FProperty* P,uint8& Size,uint8& Offset,uint8& ByteMask,uint8& FieldMask,bool Capture)
+    {
+        if(!Capture)return BoolLayout(P,Size,Offset,ByteMask,FieldMask);if(P->GetClass()!=FBoolProperty::StaticClass())return true;const auto* B=static_cast<FBoolProperty*>(P);
+        Size=B->GetBoolFieldSize();Offset=B->GetByteOffset();ByteMask=B->GetByteMask();FieldMask=B->GetFieldMask();return true;
+    }
+    bool SourceParentCurrent()const
+    {
+        if(Parent.Get()==UObject::StaticClass())return !SourceParentBlueprint.IsValid()&&SourceSkeletonParent.Get()==UObject::StaticClass();
+        auto* PB=SourceParentBlueprint.Get();auto* PC=Parent.Get();auto* SP=SourceSkeletonParent.Get();
+        return Loaded(PB)&&PB->GetClass()==UBlueprint::StaticClass()&&Loaded(PC)&&Loaded(SP)&&PC->GetClass()==UBlueprintGeneratedClass::StaticClass()&&SP->GetClass()==UBlueprintGeneratedClass::StaticClass()&&PC->ClassGeneratedBy.IsResolved()&&PC->ClassGeneratedBy.Get()==PB&&SP->ClassGeneratedBy.IsResolved()&&SP->ClassGeneratedBy.Get()==PB&&PB->GeneratedClass.GetGCPtr().IsResolved()&&PB->GeneratedClass.GetGCPtr().Get()==PC&&PB->SkeletonGeneratedClass.GetGCPtr().IsResolved()&&PB->SkeletonGeneratedClass.GetGCPtr().Get()==SP;
+    }
+    static void BackingToken(FString& Out,const FString& Value){Out+=LexToString(Value.Len())+TEXT(":")+Value+TEXT(";");}
+    bool BackingValue(FProperty* P,const void* Address,FString& Out,bool Capture)
+    {
+        if(!P||!Address||Out.Len()>1024*1024)return false;const auto K=P->GetClass();
+        if(K==FBoolProperty::StaticClass())Out+=static_cast<FBoolProperty*>(P)->GetPropertyValue(Address)?TEXT("1;"):TEXT("0;");
+        else if(K==FIntProperty::StaticClass()||K==FInt64Property::StaticClass())Out+=LexToString(static_cast<FNumericProperty*>(P)->GetSignedIntPropertyValue(Address))+TEXT(";");
+        else if(K==FFloatProperty::StaticClass())Out+=BytesToHex(static_cast<const uint8*>(Address),sizeof(float))+TEXT(";");
+        else if(K==FDoubleProperty::StaticClass())Out+=BytesToHex(static_cast<const uint8*>(Address),sizeof(double))+TEXT(";");
+        else if(K==FNameProperty::StaticClass())BackingToken(Out,static_cast<const FName*>(Address)->ToString());
+        else if(K==FStrProperty::StaticClass()){const auto& V=*static_cast<const FString*>(Address);if(V.Len()>65536)return false;BackingToken(Out,V);}
+        else if(K==FTextProperty::StaticClass()){const auto& V=*static_cast<const FText*>(Address);if(Capture)BackingTextHolds.Add(V);Out+=FString::Printf(TEXT("%p:%u;"),FTextInspector::GetSharedDataId(V),FTextInspector::GetFlags(V));}
+        else if(K==FArrayProperty::StaticClass())
+        {
+            auto* A=static_cast<FArrayProperty*>(P);if(!PrimitiveArrayInner(A->Inner))return false;FScriptArrayHelper H(A,Address);if(H.Num()<0||H.Num()>1024)return false;Out+=LexToString(H.Num())+TEXT("[");
+            for(int32 I=0;I<H.Num();++I)if(!BackingValue(A->Inner,H.GetRawPtr(I),Out,Capture))return false;Out+=TEXT("]");
+        }
+        else if(K==FStructProperty::StaticClass())
+        {
+            auto* S=static_cast<FStructProperty*>(P);if(!S->Struct.IsResolved())return false;const auto* T=S->Struct.Get();
+            auto Number=[&](double V){Out+=BytesToHex(reinterpret_cast<const uint8*>(&V),sizeof(V))+TEXT(";");};
+            auto Vector=[&](const FVector& V){Number(V.X);Number(V.Y);Number(V.Z);};
+            if(T==TBaseStructure<FVector>::Get()&&P->GetSize()==sizeof(FVector))Vector(*static_cast<const FVector*>(Address));
+            else if(T==TBaseStructure<FRotator>::Get()&&P->GetSize()==sizeof(FRotator)){const auto& V=*static_cast<const FRotator*>(Address);Number(V.Pitch);Number(V.Yaw);Number(V.Roll);}
+            else if(T==TBaseStructure<FTransform>::Get()&&P->GetSize()==sizeof(FTransform)){const auto& V=*static_cast<const FTransform*>(Address);const auto Q=V.GetRotation();Number(Q.X);Number(Q.Y);Number(Q.Z);Number(Q.W);Vector(V.GetTranslation());Vector(V.GetScale3D());}
+            else return false;
+        }
+        else return false;return Out.Len()<=1024*1024;
+    }
+    bool ObserveBacking(FString& Out,bool Capture=false)
+    {
+        Out.Reset();if(!CDO.IsValid()){Out=TEXT("no_existing_cdo");return true;}
+        for(const auto* E:EffectiveFields)
+        {
+            if(E->Offset<0||E->Size<=0||E->Offset>Generated->GetPropertiesSize()-E->Size)return Bad(TEXT("effective_cdo_field_layout_bound"));
+            FString Cell;BackingToken(Cell,E->Owner->GetPathName()+TEXT(".")+E->Name.ToString());
+            if(!BackingValue(E->Address,E->Address->ContainerPtrToValuePtr<void>(CDO.Get()),Cell,Capture))return Fail(R,TEXT("construction_generated_source_backing_pending"),TEXT("Bounded scalar/primitive Array/native3 effective CDO backing value could not be observed; no generic serializer, loading or repair fallback."));
+            const int32 Index=EffectiveFields.IndexOfByKey(E);
+            if(Capture)BackingCells.Add(Cell);
+            else if(!BackingCells.IsValidIndex(Index)||!Cell.Equals(BackingCells[Index],ESearchCase::CaseSensitive))
+            {
+                auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("source_blueprint"),SourcePath);J->SetStringField(TEXT("actual_cdo"),CDOPath);J->SetStringField(TEXT("declaring_owner"),E->Owner->GetPathName());J->SetStringField(TEXT("property"),E->Name.ToString());J->SetStringField(TEXT("expected"),BackingCells.IsValidIndex(Index)?BackingCells[Index]:TEXT("missing captured cell"));J->SetStringField(TEXT("actual"),Cell);R.Data->SetObjectField(TEXT("effective_source_first_backing_mismatch"),J);return Bad(TEXT("effective_source_cdo_backing_changed"));
+            }
+            BackingToken(Out,Cell);if(Out.Len()>8*1024*1024)return Fail(R,TEXT("construction_generated_source_backing_pending"),TEXT("Effective source backing receipt exceeds8MiB; no writer dispatched by this observer."));
+        }return true;
+    }
+    bool Plain()
+    {
+        if(SourceRoot&&SourceRoot!=this)return SourceRoot->Plain();
+        if(!PlainCore())return false;
+        // Close every physical root/descriptor before following inherited cells.
+        for(auto& A:Ancestors)if(!A->PlainCore()){R.Data->SetObjectField(TEXT("source_ancestor_current_failure"),A->R.Data);return Bad(TEXT("source_ancestor_current_changed"));}
+        if(SourceRoot==this)
+        {
+            TArray<FGeneratedConstruct*> Scopes{this};for(auto& A:Ancestors)Scopes.Add(A.Get());
+            for(auto* S:Scopes)if(S->EffectiveReady)
+            {
+                TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(S->Generated.Get(),EFieldIterationFlags::IncludeSuper);It;++It){if(Now.Num()>=264)return Bad(TEXT("effective_source_field_bound"));Now.Add(*It);}
+                if(Now!=S->EffectivePhysical)return Bad(TEXT("effective_source_field_inventory_changed"));
+                FString Actual;if(!S->ObserveBacking(Actual)||!Actual.Equals(S->BackingBefore,ESearchCase::CaseSensitive)){if(S!=this)R.Data->SetObjectField(TEXT("source_ancestor_current_failure"),S->R.Data);return Bad(TEXT("effective_source_cdo_backing_changed"));}
+            }
+        }return true;
+    }
+    bool BindSource(const FString& Input)
+    {
+        if(!BindSourceResident(Input))return false;TSet<UClass*> Seen;Seen.Add(Generated.Get());FGeneratedConstruct* Tail=this;
+        while(Tail->Parent.Get()!=UObject::StaticClass())
+        {
+            if(Ancestors.Num()>=7||Seen.Contains(Tail->Parent.Get()))return Fail(R,TEXT("construction_generated_source_hierarchy_pending"),TEXT("At most8 acyclic resident saved-clean generated UObject-family source classes are admitted; wider hierarchy remains incomplete."));
+            Seen.Add(Tail->Parent.Get());auto Result=MakeUnique<FResult>();Init(*Result);auto Scope=MakeUnique<FGeneratedConstruct>(*Result);
+            if(!Scope->BindSourceResident(Tail->Parent->GetPathName())){R.Data->SetObjectField(TEXT("source_ancestor_binding_failure"),Result->Data);return Fail(R,TEXT("construction_generated_source_ancestor_pending"),TEXT("A parent source lease did not close before any target writer; parent diagnostic retained."));}
+            if(Scope->Generated.Get()!=Tail->Parent.Get()||Scope->Skeleton.Get()!=Tail->SourceSkeletonParent.Get()||Scope->Source.Get()!=Tail->SourceParentBlueprint.Get())return Bad(TEXT("source_ancestor_role_mismatch"));
+            AncestorResults.Add(MoveTemp(Result));Ancestors.Add(MoveTemp(Scope));Tail=Ancestors.Last().Get();
+        }
+        // Preserve the original direct-source SDK path. New backing observations
+        // and union current apply only when there actually is a generated parent.
+        if(Ancestors.IsEmpty())return FinishSourceBinding();
+        SourceRoot=this;for(auto& A:Ancestors)A->SourceRoot=this;if(!Plain())return false;
+        TArray<FGeneratedConstruct*> Scopes{this};for(auto& A:Ancestors)Scopes.Add(A.Get());
+        for(int32 I=0;I<Scopes.Num();++I)
+        {
+            auto* S=Scopes[I];TSet<FName> Names;int32 UserCount=0;
+            for(int32 J=I;J<Scopes.Num();++J)for(const auto& E:Scopes[J]->Fields)
+            {
+                S->EffectivePhysical.Add(E.Address);if(E.CompilerFrame)continue;
+                if(Names.Contains(E.Name)||++UserCount>256)return Fail(R,TEXT("construction_generated_source_hierarchy_fields_pending"),TEXT("Bounded nonshadowing source members required; wider inherited naming/layout remains incomplete."));Names.Add(E.Name);S->EffectiveFields.Add(&E);
+            }
+            TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(S->Generated.Get(),EFieldIterationFlags::IncludeSuper);It;++It){if(Now.Num()>=264)return Bad(TEXT("effective_source_field_bound"));Now.Add(*It);}
+            if(Now!=S->EffectivePhysical||!S->ObserveBacking(S->BackingBefore,true))return Bad(TEXT("effective_source_initial_inventory_or_backing"));S->EffectiveReady=true;
+        }
+        if(!Plain())return false;
+        for(int32 I=Ancestors.Num()-1;I>=0;--I)if(!Ancestors[I]->FinishSourceBinding()||!Plain()){R.Data->SetObjectField(TEXT("source_ancestor_binding_failure"),AncestorResults[I]->Data);return Bad(TEXT("source_ancestor_sdk_binding_incomplete"));}
+        if(!FinishSourceBinding())return false;
+        for(const auto* E:EffectiveFields)if(E->Exposed&&!CDO.IsValid())return Fail(R,TEXT("construction_generated_source_cdo_required"),TEXT("Inherited exposed defaults require the actual leaf CDO; parent CDO is never substituted or created."));
+        R.Data->SetNumberField(TEXT("generated_source_hierarchy_classes"),Scopes.Num());R.Data->SetNumberField(TEXT("effective_user_field_count"),EffectiveFields.Num());R.Data->SetBoolField(TEXT("leaf_cdo_and_parent_cdos_observed_separately"),true);return Check();
+    }
+    TArray<const FField*> ConstructFields()const
+    {
+        if(SourceRoot==this)return EffectiveFields;TArray<const FField*> Out;for(const auto& E:Fields)if(!E.CompilerFrame)Out.Add(&E);return Out;
+    }
+    TArray<UClass*> ConstructHierarchy()const
+    {
+        TArray<UClass*> Out{Generated.Get()};for(const auto& A:Ancestors)Out.Add(A->Generated.Get());Out.Add(UObject::StaticClass());return Out;
     }
     bool ReadFileHash(FString& Out)
     {
@@ -436,14 +626,25 @@ struct FGeneratedConstruct
             if(!Context())return Bad(TEXT("source_field_bind_context"));
             if(P->GetOwnerStruct()!=C||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->HasSetterOrGetter())return FieldMismatch(Role,Rows.Num()-1,TEXT("direct_scalar_field_layout"),C->GetPathName()+TEXT("/dim1/no_accessor"),P->GetPathName());
             if(!Resolved|| (CastField<FStructProperty>(P)&&!Loaded(Struct)))return FieldMismatch(Role,Rows.Num()-1,TEXT("struct_binding"),TEXT("already resolved loaded struct"),TEXT("unresolved_or_null"));
-            Out.Add({P,C,P->GetClass(),P->GetFName(),uint64(P->GetPropertyFlags()),P->ArrayDim,P->GetSize(),P->GetOffset_ForInternal(),FEdGraphPinType(),false,false,Struct});
+            FField Field{P,C,P->GetClass(),P->GetFName(),uint64(P->GetPropertyFlags()),P->ArrayDim,P->GetSize(),P->GetOffset_ForInternal(),FEdGraphPinType(),false,false,Struct};
+            if(auto* A=CastField<FArrayProperty>(P))
+            {
+                auto* Inner=A->Inner;
+                if(!PrimitiveArrayInner(Inner)||Inner->GetOwner<FProperty>()!=P||Inner->GetOwnerProperty()!=P||Inner->GetOwnerStruct()!=C
+                    ||Inner->ArrayDim!=1||Inner->HasSetterOrGetter())return FieldMismatch(Role,Rows.Num()-1,TEXT("array_inner_admission"),TEXT("direct owned scalar primitive Inner"),Inner?Inner->GetClass()->GetName():TEXT("null"));
+                Field.Inner=Inner;Field.InnerClass=Inner->GetClass();Field.InnerName=Inner->GetFName();Field.InnerFlags=uint64(Inner->GetPropertyFlags());
+                Field.InnerSize=Inner->GetSize();Field.InnerOffset=Inner->GetOffset_ForInternal();Field.InnerDim=Inner->ArrayDim;
+                J->SetStringField(TEXT("array_inner_class"),Inner->GetClass()->GetName());J->SetStringField(TEXT("array_inner_flags"),LexToString(Field.InnerFlags));J->SetBoolField(TEXT("array_inner_owner_verified"),true);
+            }
+            if(!BoolLayout(P,Field.BoolSize,Field.BoolOffset,Field.BoolByteMask,Field.BoolFieldMask,true)||(Field.Inner&&!BoolLayout(Field.Inner,Field.InnerBoolSize,Field.InnerBoolOffset,Field.InnerBoolByteMask,Field.InnerBoolFieldMask,true)))return Bad(TEXT("source_bool_layout_bind"));
+            Out.Add(Field);
         }
         FieldDiagnostic->SetBoolField(FString(Role)+TEXT("_inventory_complete"),true);return true;
     }
     bool ClassifyCompilerFields(UClass* C,TArray<FField>& List,const TCHAR* Role)
     {
-        if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=Source.Get()||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=Parent.Get())
-            return FieldMismatch(Role,INDEX_NONE,TEXT("class_role"),TEXT("exact owned BlueprintGeneratedClass/direct UObject parent"),Loaded(C)?C->GetClass()->GetPathName():TEXT("unavailable"));
+        if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=Source.Get()||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=(C==Skeleton.Get()?SourceSkeletonParent.Get():Parent.Get()))
+            return FieldMismatch(Role,INDEX_NONE,TEXT("class_role"),TEXT("exact owned BlueprintGeneratedClass/current generated or skeleton parent"),Loaded(C)?C->GetClass()->GetPathName():TEXT("unavailable"));
         auto GeneratedSlot=Source->GeneratedClass;auto SkeletonSlot=Source->SkeletonGeneratedClass;
         if(!GeneratedSlot.GetGCPtr().IsResolved()||!SkeletonSlot.GetGCPtr().IsResolved()||GeneratedSlot.GetGCPtr().Get()!=Generated.Get()||SkeletonSlot.GetGCPtr().Get()!=Skeleton.Get())
             return Bad(TEXT("source_class_slots_before_frame_classification"));
@@ -493,7 +694,7 @@ struct FGeneratedConstruct
         if(UserFieldCount(List)!=Variables.Num())return FieldMismatch(Role,INDEX_NONE,TEXT("user_field_count"),LexToString(Variables.Num()),LexToString(UserFieldCount(List)));
         return true;
     }
-    bool BindSource(const FString& Input)
+    bool BindSourceResident(const FString& Input)
     {
         FieldDiagnostic->SetStringField(TEXT("requested_source"),Input);
         FString Path=Input;Path.TrimStartAndEndInline();Path.TrimQuotesInline();
@@ -501,19 +702,40 @@ struct FGeneratedConstruct
         UClass* C=FindObject<UClass>(nullptr,*Path);TStrongObjectPtr<UClass> Returned(C);
         if(!Context()||!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->GetPathName().Equals(Path,ESearchCase::CaseSensitive)||!C->ClassGeneratedBy.IsResolved())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("An already loaded resolved generated class is required; no loader or compile fallback."));
         UObject* Object=C->ClassGeneratedBy.Get();TStrongObjectPtr<UObject> HeldObject(Object);if(!Context()||!Loaded(Object)||Object->GetClass()!=UBlueprint::StaticClass())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("Exact owning Blueprint source required."));
-        auto* B=static_cast<UBlueprint*>(Object);if(B->GetOuter()!=B->GetPackage()||B->GetPackage()->IsDirty()||B->Status!=BS_UpToDate||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->SimpleConstructionScript||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=UObject::StaticClass()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=C||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->NewVariables.Num()>32)return Fail(R,TEXT("construction_generated_source_scope_pending"),TEXT("First generated slice requires saved-clean normal direct UObject Blueprint, no SCS/interfaces and at most32 own primitive scalar members; broader source hierarchies remain incomplete."));
+        auto* B=static_cast<UBlueprint*>(Object);if(B->GetOuter()!=B->GetPackage()||B->GetPackage()->IsDirty()||B->Status!=BS_UpToDate||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->SimpleConstructionScript||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()==nullptr||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=C||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->NewVariables.Num()>32)return Fail(R,TEXT("construction_generated_source_scope_pending"),TEXT("Saved-clean normal UObject-family Blueprint with no SCS/interfaces and at most32 own primitive scalar/primitive Array or native Vector/Rotator/Transform scalar members required; bounded generated UObject-parent hierarchy is admitted separately, wider native/custom parents and values remain incomplete."));
         UClass* S=B->SkeletonGeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldSkeleton(S);if(!Context()||!Loaded(S)||!C->ClassDefaultObject.IsResolved())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("Current skeleton and resolved existing nullable CDO slot required."));
         UObject* Default=C->ClassDefaultObject.Get();TStrongObjectPtr<UObject> HeldDefault(Default);if(!Context()||(Default&&(!Loaded(Default)||Default->GetClass()!=C||Default->GetPackage()!=B->GetPackage())))return Fail(R,TEXT("construction_generated_source_cdo_unavailable"),TEXT("The returned existing CDO must be live and owned by the source; no construction fallback."));
-        Source.Reset(B);SourcePackage.Reset(B->GetPackage());SourcePath=B->GetPathName();Parent.Reset(UObject::StaticClass());Generated.Reset(C);Skeleton.Reset(S);GeneratedPath=C->GetPathName();SkeletonPath=S->GetPathName();CDO.Reset(Default);if(Default){CDOPath=Default->GetPathName();CDOFlags=Default->GetFlags();CDOOuter=Default->GetOuter();Holds.Emplace(CDOOuter);}
+        UClass* ActualParent=B->ParentClass.GetGCPtr().Get();UClass* ActualSkeletonParent=UObject::StaticClass();UBlueprint* ParentBP=nullptr;
+        if(ActualParent!=UObject::StaticClass())
+        {
+            if(!Loaded(ActualParent)||ActualParent->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!ActualParent->ClassGeneratedBy.IsResolved())return Fail(R,TEXT("construction_generated_source_parent_pending"),TEXT("Only resident generated Blueprint parents terminating at native UObject are admitted; native/custom-module parents remain incomplete."));
+            UObject* ParentObject=ActualParent->ClassGeneratedBy.Get();Holds.Emplace(ParentObject);if(!Loaded(ParentObject)||ParentObject->GetClass()!=UBlueprint::StaticClass())return Bad(TEXT("source_parent_blueprint_role"));ParentBP=static_cast<UBlueprint*>(ParentObject);
+            if(!ParentBP->GeneratedClass.GetGCPtr().IsResolved()||ParentBP->GeneratedClass.GetGCPtr().Get()!=ActualParent||!ParentBP->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Bad(TEXT("source_parent_class_slots"));ActualSkeletonParent=ParentBP->SkeletonGeneratedClass.GetGCPtr().Get();
+            if(!Loaded(ActualSkeletonParent)||ActualSkeletonParent->GetClass()!=UBlueprintGeneratedClass::StaticClass()||C->GetSuperClass()!=ActualParent||S->GetSuperClass()!=ActualSkeletonParent)return Fail(R,TEXT("construction_generated_source_parent_pending"),TEXT("Current generated and skeleton superclass roles must match their separate resident parent Blueprint roles; temporary compilation/reinstancing layouts remain incomplete."));
+        }
+        SourceParentBlueprint.Reset(ParentBP);SourceSkeletonParent.Reset(ActualSkeletonParent);
+        Source.Reset(B);SourcePackage.Reset(B->GetPackage());SourcePath=B->GetPathName();Parent.Reset(ActualParent);Generated.Reset(C);Skeleton.Reset(S);GeneratedPath=C->GetPathName();SkeletonPath=S->GetPathName();CDO.Reset(Default);if(Default){CDOPath=Default->GetPathName();CDOFlags=Default->GetFlags();CDOOuter=Default->GetOuter();Holds.Emplace(CDOOuter);}
         SourceFlags=B->GetFlags();GeneratedFlags=C->GetFlags();SkeletonFlags=S->GetFlags();GeneratedClassFlags=C->GetClassFlags();SkeletonClassFlags=S->GetClassFlags();Variables=B->NewVariables;SourceFunctions=B->FunctionGraphs;SourceMacros=B->MacroGraphs;SourceEvents=B->UbergraphPages;SourceDelegates=B->DelegateSignatureGraphs;
         FieldDiagnostic->SetNumberField(TEXT("authored_variable_count"),Variables.Num());
         if(!BindFields(C,Fields,TEXT("generated"))||!BindFields(S,SkeletonFields,TEXT("skeleton")))return false;
         if(!ClassifyCompilerFields(C,Fields,TEXT("generated"))||!ClassifyCompilerFields(S,SkeletonFields,TEXT("skeleton"))||!BindGraphs(B,SourceGraphs)||!Plain())return false;
+        return true;
+    }
+    bool FinishSourceBinding()
+    {
         const auto* ActualSchema=GetDefault<UEdGraphSchema_K2>();Schema.Reset(const_cast<UEdGraphSchema_K2*>(ActualSchema));if(!Plain())return false;
         for(auto* List:{&Fields,&SkeletonFields})for(auto& E:*List)
         {
             if(E.CompilerFrame)continue;
-            const bool Converted=Schema->ConvertPropertyToPinType(E.Address,E.Type);if(!Plain())return false;if(!Converted||!Function::Pin::IsPrimitive(E.Type))return FieldMismatch(List==&Fields?TEXT("generated"):TEXT("skeleton"),List->IndexOfByPredicate([&](const FField& V){return V.Address==E.Address;}),TEXT("user_field_type"),TEXT("primitive scalar"),E.Name.ToString()+TEXT("/")+E.Class->GetName());
+            const bool Converted=Schema->ConvertPropertyToPinType(E.Address,E.Type);if(!Plain())return false;
+            const bool Primitive=Function::Pin::IsPrimitive(E.Type),Array=E.Inner&&PrimitiveArrayType(E.Type),ValueStruct=E.Struct&&Function::Pin::IsScalarValueStruct(E.Type);
+            if(!Converted||(!Primitive&&!Array&&!ValueStruct))return FieldMismatch(List==&Fields?TEXT("generated"):TEXT("skeleton"),List->IndexOfByPredicate([&](const FField& V){return V.Address==E.Address;}),TEXT("user_field_type"),TEXT("primitive scalar/owned primitive Array/native Vector-Rotator-Transform scalar"),E.Name.ToString()+TEXT("/")+E.Class->GetName());
+            if(ValueStruct)
+            {
+                const auto Observed=Function::Pin::ScalarValueStructSource(E.Type);const auto* Old=ValueStructSources.Find(E.Struct);
+                if(Old&&!Equal(MakeShared<FJsonValueObject>(*Old),MakeShared<FJsonValueObject>(Observed)))return Bad(TEXT("native_value_struct_bind_changed"));
+                ValueStructSources.Add(E.Struct,Observed);if(!Plain())return false;
+            }
             const int32 Index=Variables.IndexOfByPredicate([&](const FBPVariableDescription& V){return V.VarName==E.Name&&V.VarGuid.IsValid();});if(Index==INDEX_NONE||!SameType(Variables[Index].VarType,E.Type))return FieldMismatch(List==&Fields?TEXT("generated"):TEXT("skeleton"),Index,TEXT("authored_name_guid_type"),TEXT("matching NewVariables name/valid GUID/fulltype"),E.Name.ToString()+TEXT("/")+E.Class->GetName());
             const bool Exposed=UEdGraphSchema_K2::IsPropertyExposedOnSpawn(E.Address);if(!Plain())return false;E.Exposed=Exposed&&!(E.Flags&(CPF_Parm|CPF_DisableEditOnInstance))&&(E.Flags&CPF_BlueprintVisible);if(E.Exposed&&!CDO.IsValid())return Fail(R,TEXT("construction_generated_source_cdo_required"),TEXT("Nonempty exposed defaults require the existing CDO; no CDO construction fallback."));
         }
@@ -528,25 +750,71 @@ struct FGeneratedConstruct
         {
             if(E.CompilerFrame)continue;
             if(!Plain())return false;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),E.Name.ToString());J->SetStringField(TEXT("property_path"),E.Address->GetPathName());J->SetStringField(TEXT("property_flags"),LexToString(E.Flags));const bool ExposedNow=UEdGraphSchema_K2::IsPropertyExposedOnSpawn(E.Address);if(!Plain())return false;const bool EffectiveExpose=ExposedNow&&!(E.Flags&(CPF_Parm|CPF_DisableEditOnInstance))&&(E.Flags&CPF_BlueprintVisible);if(EffectiveExpose!=E.Exposed)return Bad(TEXT("source_expose_metadata_changed"));J->SetBoolField(TEXT("exposed"),EffectiveExpose);J->SetObjectField(TEXT("type"),Function::Pin::Describe(E.Type));
-            if(CDO.IsValid()){FString Value;const void* Address=E.Address->ContainerPtrToValuePtr<void>(CDO.Get());const bool Exported=E.Address->ExportText_Direct(Value,Address,Address,CDO.Get(),PPF_None);if(!Plain()||!Exported)return Bad(TEXT("source_value_export"));if(Value.Len()>65536)return Bad(TEXT("source_value_budget"));J->SetStringField(TEXT("value_text"),Value);}else J->SetField(TEXT("value_text"),MakeShared<FJsonValueNull>());Rows.Add(MakeShared<FJsonValueObject>(J));
-        }Out->SetArrayField(TEXT("own_fields"),Rows);Out->SetNumberField(TEXT("generated_physical_field_count"),Fields.Num());Out->SetNumberField(TEXT("skeleton_physical_field_count"),SkeletonFields.Num());Out->SetNumberField(TEXT("generated_compiler_frame_count"),Fields.Num()-UserFieldCount(Fields));Out->SetNumberField(TEXT("skeleton_compiler_frame_count"),SkeletonFields.Num()-UserFieldCount(SkeletonFields));Out->SetBoolField(TEXT("compiler_frame_cdo_value_exported"),false);Out->SetBoolField(TEXT("runtime_object_constructed"),false);Out->SetBoolField(TEXT("default_buffer_imported"),false);return Plain();
+            if(CDO.IsValid()){FString Value;const void* Address=E.Address->ContainerPtrToValuePtr<void>(CDO.Get());
+                if(E.Inner){auto* A=CastFieldChecked<FArrayProperty>(E.Address);FScriptArrayHelper Helper(A,Address);if(Helper.Num()<0||Helper.Num()>1024)return Bad(TEXT("source_array_value_bound"));J->SetNumberField(TEXT("array_value_count"),Helper.Num());}
+                const bool Exported=E.Address->ExportText_Direct(Value,Address,Address,CDO.Get(),PPF_None);if(!Plain()||!Exported)return Bad(TEXT("source_value_export"));if(Value.Len()>65536)return Bad(TEXT("source_value_budget"));J->SetStringField(TEXT("value_text"),Value);}else J->SetField(TEXT("value_text"),MakeShared<FJsonValueNull>());Rows.Add(MakeShared<FJsonValueObject>(J));
+        }Out->SetArrayField(TEXT("own_fields"),Rows);
+        if(SourceRoot==this)
+        {
+            TArray<TSharedPtr<FJsonValue>> ParentRows,Inherited;
+            for(auto& A:Ancestors){TSharedRef<FJsonObject> J=MakeShared<FJsonObject>();if(!A->Snapshot(J)||!Plain())return false;ParentRows.Add(MakeShared<FJsonValueObject>(J));}
+            for(const auto* E:EffectiveFields)if(E->Owner!=Generated.Get())
+            {
+                auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),E->Name.ToString());J->SetStringField(TEXT("owner"),E->Owner->GetPathName());J->SetObjectField(TEXT("type"),Function::Pin::Describe(E->Type));J->SetBoolField(TEXT("exposed"),E->Exposed);
+                if(CDO.IsValid()){FString Value;const bool Exported=E->Address->ExportText_Direct(Value,E->Address->ContainerPtrToValuePtr<void>(CDO.Get()),E->Address->ContainerPtrToValuePtr<void>(CDO.Get()),CDO.Get(),PPF_None);if(!Plain()||!Exported||Value.Len()>65536)return Bad(TEXT("effective_inherited_cdo_export"));J->SetStringField(TEXT("leaf_cdo_value_text"),Value);}else J->SetField(TEXT("leaf_cdo_value_text"),MakeShared<FJsonValueNull>());
+                Inherited.Add(MakeShared<FJsonValueObject>(J));
+            }Out->SetArrayField(TEXT("parent_blueprint_sources"),ParentRows);Out->SetArrayField(TEXT("effective_inherited_fields"),Inherited);
+        }
+        TArray<TSharedPtr<FJsonValue>> NativeValues;for(const auto& Row:ValueStructSources)NativeValues.Add(MakeShared<FJsonValueObject>(Row.Value));Out->SetArrayField(TEXT("native_value_struct_sources"),NativeValues);Out->SetNumberField(TEXT("generated_physical_field_count"),Fields.Num());Out->SetNumberField(TEXT("skeleton_physical_field_count"),SkeletonFields.Num());Out->SetNumberField(TEXT("generated_compiler_frame_count"),Fields.Num()-UserFieldCount(Fields));Out->SetNumberField(TEXT("skeleton_compiler_frame_count"),SkeletonFields.Num()-UserFieldCount(SkeletonFields));Out->SetBoolField(TEXT("compiler_frame_cdo_value_exported"),false);Out->SetBoolField(TEXT("runtime_object_constructed"),false);Out->SetBoolField(TEXT("default_buffer_imported"),false);return Plain();
     }
     bool Check()
     {
         if(!Plain())return false;TSharedRef<FJsonObject> Now=MakeShared<FJsonObject>();if(!Snapshot(Now))return false;
-        const bool Preserved=Equal(MakeShared<FJsonValueObject>(SourceBefore),MakeShared<FJsonValueObject>(Now));R.Data->SetObjectField(TEXT("class_source_after"),Now);R.Data->SetBoolField(TEXT("class_source_preserved"),Preserved);if(!Preserved)return Bad(TEXT("source_observed_values_changed"));FString Hash;if(!ReadFileHash(Hash)||!Hash.Equals(FileHash,ESearchCase::CaseSensitive))return Bad(TEXT("source_disk_changed"));return Plain();
+        const bool Preserved=Equal(MakeShared<FJsonValueObject>(SourceBefore),MakeShared<FJsonValueObject>(Now));R.Data->SetObjectField(TEXT("class_source_after"),Now);R.Data->SetBoolField(TEXT("class_source_preserved"),Preserved);if(!Preserved)return Bad(TEXT("source_observed_values_changed"));FString Hash;if(!ReadFileHash(Hash)||!Hash.Equals(FileHash,ESearchCase::CaseSensitive))return Bad(TEXT("source_disk_changed"));for(auto& A:Ancestors){FString ParentHash;if(!A->ReadFileHash(ParentHash)||!ParentHash.Equals(A->FileHash,ESearchCase::CaseSensitive))return Bad(TEXT("source_ancestor_disk_changed"));}return Plain();
+    }
+    bool TargetParentsCurrent()
+    {
+        if(!Target.IsValid())return TargetParentRoles.IsEmpty();
+        if(!Loaded(TargetParent.Get())||TargetParentRoles.IsEmpty()||TargetParentRoles[0].Class.Get()!=TargetParent.Get())return Bad(TEXT("target_native_parent_missing"));
+        for(const auto& E:TargetParentRoles)
+        {
+            auto* C=E.Class.Get();auto* P=E.Package.Get();auto* D=E.Default.Get();
+            if(!Loaded(C)||!Loaded(P)||!Loaded(D)||C->GetClass()!=UClass::StaticClass()||C->GetOuter()!=P||C->GetPackage()!=P
+                ||C->GetSuperClass()!=E.Super.Get()||C->GetClassFlags()!=E.ClassFlags||C->GetFlags()!=E.ClassObjectFlags
+                ||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!C->ClassDefaultObject.IsResolved()||C->ClassDefaultObject.Get()!=D
+                ||!C->GetPathName().Equals(E.ClassPath,ESearchCase::CaseSensitive)||P->IsDirty()||uint32(P->GetPackageFlags())!=E.PackageFlags
+                ||D->GetClass()!=C||D->GetOuter()!=P||D->GetPackage()!=P||D->GetFlags()!=E.DefaultFlags||!D->GetPathName().Equals(E.DefaultPath,ESearchCase::CaseSensitive))return Bad(TEXT("target_native_parent_role_changed"));
+        }
+        R.Data->SetBoolField(TEXT("target_native_parent_chain_current_verified"),true);return true;
+    }
+    bool BindTargetParents(UBlueprint* BP)
+    {
+        if(!Loaded(BP)||!BP->ParentClass.GetGCPtr().IsResolved())return Bad(TEXT("target_native_parent_handle"));
+        TargetParent.Reset(BP->ParentClass.GetGCPtr().Get());if(!NativeActorParentChain(TargetParent.Get()))return Bad(TEXT("target_native_parent_scope"));
+        TArray<TSharedPtr<FJsonValue>> Rows;TSet<UClass*> Seen;
+        for(UClass* C=TargetParent.Get();C;C=C->GetSuperClass())
+        {
+            FTargetParentRole E;E.Class.Reset(C);if(!Loaded(C)||Seen.Contains(C)||Seen.Num()>=64||!C->ClassDefaultObject.IsResolved())return Bad(TEXT("target_native_parent_capture"));Seen.Add(C);
+            E.Package.Reset(C->GetPackage());E.Super.Reset(C->GetSuperClass());E.Default.Reset(C->ClassDefaultObject.Get());
+            if(!Loaded(E.Package.Get())||!Loaded(E.Default.Get())||E.Default->GetClass()!=C||E.Default->GetOuter()!=E.Package.Get()||!E.Default->HasAnyFlags(RF_ClassDefaultObject))return Bad(TEXT("target_native_parent_CDO_unavailable"));
+            E.ClassPath=C->GetPathName();E.DefaultPath=E.Default->GetPathName();E.ClassObjectFlags=C->GetFlags();E.DefaultFlags=E.Default->GetFlags();E.ClassFlags=C->GetClassFlags();E.PackageFlags=uint32(E.Package->GetPackageFlags());
+            auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("class"),E.ClassPath);Row->SetStringField(TEXT("CDO"),E.DefaultPath);Row->SetNumberField(TEXT("class_flags"),uint32(E.ClassFlags));Row->SetNumberField(TEXT("package_flags"),E.PackageFlags);Rows.Add(MakeShared<FJsonValueObject>(Row));TargetParentRoles.Add(MoveTemp(E));
+        }
+        R.Data->SetArrayField(TEXT("target_native_actor_parent_chain"),Rows);
+        R.Data->SetStringField(TEXT("target_owner_scope"),TEXT("Generated ConstructObject node authoring now accepts normal native Engine Actor-derived target Blueprints, including Pawn/Character owners, with an already existing native parent/CDO hierarchy retained across SDK boundaries. The parent CDO identity is protected; arbitrary authored/default-subobject payload and global callback purity are not asserted. Native requested-class and GetSubsystemFromPC branches retain their prior exact Actor owner scope. Generated/custom-module parents, external instances and wider source types remain incomplete."));
+        return TargetParentsCurrent();
     }
     bool BindTarget(UBlueprint* BP,UEdGraph* G)
     {
-        if(!Check()||!Loaded(BP)||BP==Source.Get()||BP->GetPackage()==SourcePackage.Get()||!Loaded(G)||G->GetOuter()!=BP||BP->GetClass()!=UBlueprint::StaticClass()||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Bad(TEXT("target_bind"));
-        Target.Reset(BP);TargetPackage.Reset(BP->GetPackage());TargetPath=BP->GetPathName();TargetGenerated.Reset(BP->GeneratedClass.GetGCPtr().Get());TargetSkeleton.Reset(BP->SkeletonGeneratedClass.GetGCPtr().Get());TargetVariables=BP->NewVariables;TargetFunctions=BP->FunctionGraphs;TargetMacros=BP->MacroGraphs;TargetEvents=BP->UbergraphPages;TargetDelegates=BP->DelegateSignatureGraphs;Selected=G;GraphGuid=G->GraphGuid;
+        if(!Check()||!Loaded(BP)||BP==Source.Get()||BP->GetPackage()==SourcePackage.Get()||Ancestors.ContainsByPredicate([&](const TUniquePtr<FGeneratedConstruct>& A){return BP->GetPackage()==A->SourcePackage.Get();})||!Loaded(G)||G->GetOuter()!=BP||BP->GetClass()!=UBlueprint::StaticClass()||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Bad(TEXT("target_bind"));
+        Target.Reset(BP);TargetPackage.Reset(BP->GetPackage());TargetPath=BP->GetPathName();if(!BindTargetParents(BP))return false;TargetGenerated.Reset(BP->GeneratedClass.GetGCPtr().Get());TargetSkeleton.Reset(BP->SkeletonGeneratedClass.GetGCPtr().Get());TargetVariables=BP->NewVariables;TargetFunctions=BP->FunctionGraphs;TargetMacros=BP->MacroGraphs;TargetEvents=BP->UbergraphPages;TargetDelegates=BP->DelegateSignatureGraphs;Selected=G;GraphGuid=G->GraphGuid;
         return BindGraphs(BP,TargetGraphs)&&Check();
     }
     bool ReacquirePins(bool Assigned,bool First=false)
     {
         // First register returned physical inventory, then observe only copied text.
         if(!Plain())return false;Candidates.Empty();if(!CapturePins(Node.Get(),Candidates))return false;if(!Plain())return false;
-        const auto Prior=NodePins;const int32 Exposed=Fields.FilterByPredicate([](const FField& F){return F.Exposed;}).Num();
+        const auto Prior=NodePins;const auto Effective=ConstructFields();const int32 Exposed=Effective.FilterByPredicate([](const FField* F){return F->Exposed;}).Num();
         if(Candidates.Num()!=5+(Assigned?Exposed:0))return Bad(TEXT("construct_returned_pin_shape"));
         for(const auto& Old:Prior)
         {
@@ -556,8 +824,9 @@ struct FGeneratedConstruct
             const FText A=Old.Text,B=Next->Text,FA=Old.Friendly,FB=Next->Friendly;const FString AV=A.ToString();if(!Plain())return false;const FString BV=B.ToString();if(!Plain())return false;const FString AF=FA.ToString();if(!Plain())return false;const FString BF=FB.ToString();if(!Plain())return false;if(!AV.Equals(BV,ESearchCase::CaseSensitive)||!AF.Equals(BF,ESearchCase::CaseSensitive))return Bad(TEXT("construct_reacquire_text"));
             if(Next->Guid!=Old.Guid)return Bad(TEXT("construct_reacquire_guid"));
         }
-        for(const auto& E:Fields)if(Assigned&&E.Exposed)
+        for(const auto* Field:Effective)if(Assigned&&Field->Exposed)
         {
+            const auto& E=*Field;
             const auto* P=Candidates.FindByPredicate([&](const FPin& V){return V.Name==E.Name&&V.Direction==EGPD_Input;});if(!P||!SameType(P->Type,E.Type)||!P->Links.IsEmpty()||(P->Flags&7)!=0)return Bad(TEXT("construct_exposed_projection"));
         }
         NodePins=MoveTemp(Candidates);Candidates.Empty();PinsFixed=true;Replacing=false;ClassAssigned=Assigned;return Check();
@@ -568,14 +837,14 @@ struct FGeneratedConstruct
 FResult AddGeneratedConstruct(const FString& Path,const FString& ObjectClass,const FString& PositionJson,const FString& Name,const FString& Id,const FString& Type,bool Create)
 {
     FResult R;Init(R);R.Data->SetBoolField(TEXT("native_generated_construct_object"),true);R.Data->SetStringField(TEXT("requested_object_class"),ObjectClass);R.Data->SetStringField(TEXT("actual_node_family"),TEXT("UK2Node_GenericCreateObject"));
-    R.Data->SetStringField(TEXT("generated_source_scope"),TEXT("Loaded saved-clean normal direct UObject Blueprint; own0..32 primitive scalars, current generated/skeleton and resolved nullable CDO (existing CDO required for exposed values); exact existing native node writer, no source loader/compile/default-buffer import/runtime construction. Broader parents and values remain incomplete."));
+    R.Data->SetStringField(TEXT("generated_source_scope"),TEXT("Loaded saved-clean normal UObject Blueprint; direct source or an acyclic chain of up to8 generated UObject-family sources, each with own0..32 primitive scalars/one-level primitive Arrays or exact native Vector/Rotator/Transform scalars. Each generated/skeleton owner and nullable CDO is independently protected; inherited pin defaults use the actual leaf CDO. Existing CDO required for exposed values; exact existing native node writer, no source loader/compile/default-buffer import/runtime construction. Source Array values are bounded to1024 per field for observation; no default-buffer import or container runtime evaluation. Native/custom-module parents, inherited compiler-frame layouts, broader structs/object arrays, shadowing or larger source values and hierarchy/exposed-type/compile/save usage remain incomplete or validation pending."));
     FGeneratedConstruct W(R);if(!W.BindSource(ObjectClass))return R;
-    bool Allowed=false;for(UClass* C:{W.Generated.Get(),W.Parent.Get()}){const bool Not=C->GetBoolMetaData(TEXT("NotBlueprintType"));if(!W.Check())return R;const bool BlueprintType=C->GetBoolMetaData(TEXT("BlueprintType"));if(!W.Check())return R;const bool Dont=C->GetBoolMetaData(TEXT("DontUseGenericSpawnObject"));if(!W.Check())return R;if(Not)break;if(BlueprintType){Allowed=!Dont;break;}}
+    bool Allowed=false;for(UClass* C:W.ConstructHierarchy()){const bool Not=C->GetBoolMetaData(TEXT("NotBlueprintType"));if(!W.Check())return R;const bool BlueprintType=C->GetBoolMetaData(TEXT("BlueprintType"));if(!W.Check())return R;const bool Dont=C->GetBoolMetaData(TEXT("DontUseGenericSpawnObject"));if(!W.Check())return R;if(Not)break;if(BlueprintType){Allowed=!Dont;break;}}
     if(!Allowed||W.Generated->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)){Fail(R,TEXT("construction_generated_class_scope_pending"),TEXT("Current generated class does not satisfy this finite public metadata construction admission; the private compiler utility is not invoked."));return R;}
     int32 XY[2];FString PositionText;if(!Position(PositionJson,XY,PositionText,R))return R;W.X=XY[0];W.Y=XY[1];
     Count(R,TEXT("outer_transaction_calls"));FScopedTransaction Tx(NSLOCTEXT("CubelessMCP","AddGeneratedConstructObject","Add Blueprint Construct Object"));
     UBlueprint* BP=nullptr;UEdGraph* G=nullptr;TSharedPtr<FJsonObject> Before;
-    const bool Resolved=Graph(Path,Name,Id,Type,Create,BP,G,Before,R);if(!R.bChangeStateKnown)return R;if(!W.Check()||!Resolved)return R;
+    const bool Resolved=Graph(Path,Name,Id,Type,Create,BP,G,Before,R,true);if(!R.bChangeStateKnown)return R;if(!W.Check()||!Resolved)return R;
     if(!W.BindTarget(BP,G))return R;
     R.Stage=TEXT("create_construct_object_node");R.bMutationAttempted=true;Count(R,TEXT("node_allocation_calls"));
     UK2Node_GenericCreateObject* Returned=NewObject<UK2Node_GenericCreateObject>(G);W.Node.Reset(Returned);
@@ -611,8 +880,9 @@ FResult AddGeneratedConstruct(const FString& Path,const FString& ObjectClass,con
     // Expected exposed text comes from the original, still-current CDO. The
     // projection observer receives the same node context as the SDK writer.
     TArray<TSharedPtr<FJsonValue>> ExposedRows;
-    for(const auto& E:W.Fields)if(E.Exposed)
+    for(const auto* Field:W.ConstructFields())if(Field->Exposed)
     {
+        const auto& E=*Field;
         auto* P=W.Node->FindPin(E.Name,EGPD_Input);if(!P||!W.Check()){W.Bad(TEXT("construct_exposed_final_missing"));return R;}FString Expected;Count(R,TEXT("exposed_default_projection_calls"));const bool Projected=FBlueprintEditorUtils::PropertyValueToString(E.Address,reinterpret_cast<const uint8*>(W.CDO.Get()),Expected,W.Node.Get());if(!W.Check()||!Projected){W.Bad(TEXT("construct_exposed_source_projection"));return R;}
         P=W.Node->FindPin(E.Name,EGPD_Input);const bool Match=W.Schema->DoesDefaultValueMatch(*P,Expected);if(!W.Check())return R;P=W.Node->FindPin(E.Name,EGPD_Input);const FString Invalid=W.Schema->IsCurrentPinDefaultValid(P);if(!W.Check())return R;
         auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),E.Name.ToString());J->SetStringField(TEXT("source_default"),Expected);J->SetBoolField(TEXT("source_default_match"),Match);J->SetStringField(TEXT("actual_default"),P->DefaultValue);J->SetStringField(TEXT("autogenerated_default"),P->AutogeneratedDefaultValue);ExposedRows.Add(MakeShared<FJsonValueObject>(J));R.Data->SetArrayField(TEXT("exposed_default_observations"),ExposedRows);

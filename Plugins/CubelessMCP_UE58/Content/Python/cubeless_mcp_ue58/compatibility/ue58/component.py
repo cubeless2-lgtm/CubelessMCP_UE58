@@ -78,3 +78,23 @@ def set_static_mesh_properties(blueprint_path, component_name, static_mesh, mate
 def set_physics_properties(blueprint_path, component_name, simulate_physics, gravity_enabled, mass, linear_damping, angular_damping):
     return _invoke_mutation("set_physics_properties", blueprint_path, component_name,
                             simulate_physics, gravity_enabled, mass, linear_damping, angular_damping)
+
+
+
+def set_static_mesh_properties_raw(blueprint_path, component_name, assets_json):
+    """Fixed Editor helper for the original raw command, not another server/RPC."""
+    return _invoke_mutation("set_static_mesh_properties_raw", blueprint_path, component_name, assets_json)
+
+
+
+def set_physics_properties_raw(blueprint_path, component_name, properties_json):
+    """Fixed original Editor Physics helper; no server or runtime dependency."""
+    return _invoke_mutation("set_physics_properties_raw", blueprint_path, component_name, properties_json)
+
+
+def add_component_to_blueprint_raw(blueprint_path, component_type, component_name, transform_json, parent_component, compile_blueprint=True):
+    """Original fixed Add, always compiled; no Named defaults or property writes."""
+    if compile_blueprint is not True:
+        raise OperationError("component_raw_add_compile_contract", "Original Add always requests compilation; no dispatch")
+    return _invoke_mutation("add_component_to_blueprint_raw", blueprint_path, component_type, component_name,
+                            transform_json, parent_component)

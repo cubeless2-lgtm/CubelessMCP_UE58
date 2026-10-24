@@ -9,3 +9,17 @@ FString UCubelessBlueprintNetworkingLibrary::SetBlueprintNetworkingSettings(cons
 {
     return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::BlueprintNetworking::Set(BlueprintName,ReplicatesJson,ReplicateMovementJson,NetDormancyJson,AlwaysRelevantJson,OnlyRelevantToOwnerJson,NetUpdateFrequencyJson,MinNetUpdateFrequencyJson,NetPriorityJson,NetCullDistanceSquaredJson,bDryRun),TEXT("set_blueprint_networking_settings"));
 }
+
+FString UCubelessBlueprintNetworkingLibrary::InspectBlueprintNetworkingSettingsRawInput(const FString& ParamsJson)
+{
+    return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::BlueprintNetworking::InspectRawInput(ParamsJson),TEXT("inspect_blueprint_networking_settings"));
+}
+FString UCubelessBlueprintNetworkingLibrary::SetBlueprintNetworkingSettingsRawInput(const FString& ParamsJson)
+{
+    return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::BlueprintNetworking::SetRawInput(ParamsJson),TEXT("set_blueprint_networking_settings"));
+}
+
+FString UCubelessBlueprintNetworkingLibrary::AuditLoadedBlueprintDuplicateSource(UObject* SourceObject)
+{
+    return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::BlueprintNetworking::AuditLoadedDuplicateSource(SourceObject),TEXT("audit_loaded_blueprint_duplicate_source"));
+}

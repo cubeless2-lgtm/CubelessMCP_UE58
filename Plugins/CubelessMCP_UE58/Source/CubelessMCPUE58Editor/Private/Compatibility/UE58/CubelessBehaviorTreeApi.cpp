@@ -10,6 +10,16 @@
 #include "BehaviorTree/BTDecorator.h"
 #include "BehaviorTree/BTService.h"
 #include "BehaviorTree/BTTaskNode.h"
+#include "BehaviorTree/Tasks/BTTask_BlueprintBase.h"
+#include "BehaviorTree/Services/BTService_BlueprintBase.h"
+#include "BehaviorTree/Decorators/BTDecorator_BlueprintBase.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Interfaces/IProjectManager.h"
+#include "Interfaces/IPluginManager.h"
+#include "ProjectDescriptor.h"
+#include "PluginDescriptor.h"
+#include "Modules/ModuleManager.h"
 #include "BehaviorTree/Composites/BTComposite_Selector.h"
 #include "BehaviorTree/Composites/BTComposite_Sequence.h"
 #include "BehaviorTree/Decorators/BTDecorator_BlackboardBase.h"
@@ -21,6 +31,13 @@
 #include "BehaviorTreeGraphNode_CompositeDecorator.h"
 #include "BehaviorTreeGraphNode_Composite.h"
 #include "BehaviorTreeGraphNode_Task.h"
+#include "BehaviorTreeGraphNode_Service.h"
+#include "BehaviorTree/Services/BTService_BlackboardBase.h"
+#include "BehaviorTree/Services/BTService_DefaultFocus.h"
+#include "BehaviorTree/Services/BTService_RunEQS.h"
+#include "BehaviorTree/Blackboard/BlackboardKeyType_Int.h"
+#include "BehaviorTree/Blackboard/BlackboardKeyType_Float.h"
+#include "EnvironmentQuery/EnvQuery.h"
 #include "BehaviorTreeDecoratorGraph.h"
 #include "BehaviorTreeEditorTypes.h"
 #include "BehaviorTree/Decorators/BTDecorator_Blackboard.h"
@@ -28,6 +45,9 @@
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Object.h"
 #include "GameFramework/Actor.h"
 #include "BehaviorTree/Tasks/BTTask_Wait.h"
+#include "BehaviorTree/Tasks/BTTask_RunBehavior.h"
+#include "BehaviorTreeGraphNode_SubtreeTask.h"
+#include "UObject/UObjectHash.h"
 #include "BehaviorTree/Tasks/BTTask_MoveDirectlyToward.h"
 #include "BehaviorTree/Tasks/BTTask_RotateToFaceBBEntry.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Vector.h"
@@ -48,6 +68,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/ObjectKey.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UnrealType.h"
 
@@ -256,14 +277,20 @@ bool ProtectNative(const TSharedRef<FJsonObject>& Before, const TSharedRef<FJson
 struct FTraversal
 {
     UBehaviorTree* Tree; int32 NodeCount = 0; TSet<const UBTNode*> Seen; TSet<UClass*> Classes;
+    // XR inspector summary only: no reflected exporter, CDO, execution or memory-cache reads.
+    TFunction<bool(UBTNode*)> SummaryAdmission;
     TSharedRef<FJsonObject> Objects = MakeShared<FJsonObject>(), Topology = MakeShared<FJsonObject>();
 };
 bool RuntimeNode(UBTNode* N, FTraversal& T, int32 Depth, TSharedRef<FJsonObject>& J)
 {
-    if (!Loaded(N) || N->HasAnyFlags(RF_Transient | RF_ClassDefaultObject | RF_ArchetypeObject) || N->GetOuter() != T.Tree || !Native(N->GetClass(), TEXT("/Script/AIModule")) || N->GetClass()->IsEditorOnly() || T.Seen.Contains(N) || T.Seen.Num() >= MaxNodes || Depth > MaxDepth) { return false; }
+    if (!Loaded(N) || N->HasAnyFlags(RF_Transient | RF_ClassDefaultObject | RF_ArchetypeObject) || N->GetOuter() != T.Tree || (T.SummaryAdmission ? !T.SummaryAdmission(N) : !Native(N->GetClass(), TEXT("/Script/AIModule"))) || N->GetClass()->IsEditorOnly() || T.Seen.Contains(N) || T.Seen.Num() >= MaxNodes || Depth > MaxDepth) { return false; }
     T.Seen.Add(N); T.Classes.Add(N->GetClass()); J = Identity(N); J->SetStringField(TEXT("node_class"), N->GetClass()->GetName()); J->SetStringField(TEXT("node_name"), N->NodeName);
-    J->SetNumberField(TEXT("execution_index"), N->GetExecutionIndex()); J->SetNumberField(TEXT("memory_offset"), N->GetMemoryOffset()); J->SetNumberField(TEXT("tree_depth"), N->GetTreeDepth());
-    auto P = MakeShared<FJsonObject>(); if (!Properties(N, {}, P)) { return false; } J->SetObjectField(TEXT("properties"), P); T.Objects->SetObjectField(N->GetPathName(), J);
+    if (!T.SummaryAdmission)
+    {
+        J->SetNumberField(TEXT("execution_index"), N->GetExecutionIndex()); J->SetNumberField(TEXT("memory_offset"), N->GetMemoryOffset()); J->SetNumberField(TEXT("tree_depth"), N->GetTreeDepth());
+        auto P = MakeShared<FJsonObject>(); if (!Properties(N, {}, P)) { return false; } J->SetObjectField(TEXT("properties"), P);
+    }
+    T.Objects->SetObjectField(N->GetPathName(), J);
     auto Stable = MakeShared<FJsonObject>(); Stable->SetStringField(TEXT("path"), N->GetPathName()); Stable->SetStringField(TEXT("class"), N->GetClass()->GetPathName()); Stable->SetStringField(TEXT("outer"), N->GetOuter()->GetPathName()); Stable->SetStringField(TEXT("node_name"), N->NodeName);
     TArray<TSharedPtr<FJsonValue>> Children, ChildTopology, Services;
     const auto AddServices = [&](const auto& List)
@@ -343,6 +370,7 @@ struct FRDComposite
     {
         UBehaviorTreeGraphNode* Node=nullptr; UBTNode* Instance=nullptr;
         TArray<UBehaviorTreeGraphNode*> Children;
+        TArray<UBTService*> Services;
         TArray<UBTDecorator*> Tests; TArray<FBTDecoratorLogic> Logic;
     };
     // UpdateAsset's editor projection is distinct from SetDecoratorData's runtime parent.
@@ -350,7 +378,7 @@ struct FRDComposite
     {
         UBehaviorTreeGraphNode* Node=nullptr; FString Path, ParentPath, PlannedParentPath;
         UAIGraphNode* BeforeParent=nullptr; UAIGraphNode* PlannedParent=nullptr; UObject* Instance=nullptr;
-        bool BeforeRoot=false, PlannedRoot=false, BeforeObserver=false;
+        bool BeforeRoot=false, PlannedRoot=false, BeforeObserver=false, RootDecorator=false;
         FString ClassName, Deprecated, Error; bool ErrorUpdated=false, CompositeRole=false;
     };
     TArray<FEditorExecutionRole> EditorExecutionRoles;
@@ -358,12 +386,33 @@ struct FRDComposite
     bool PatrolMixed=false;
     struct FPlainDecorator { UBehaviorTreeGraphNode_Decorator* Node=nullptr; UBehaviorTreeGraphNode* Host=nullptr; UBTDecorator* Instance=nullptr; };
     TArray<FPlainDecorator> PlainDecorators;
+    struct FServiceRole { UBehaviorTreeGraphNode_Service* Node=nullptr; UBehaviorTreeGraphNode* Host=nullptr; UBTService* Instance=nullptr; };
+    TArray<FServiceRole> ServiceRoles;
+    bool HasRunEQS=false;
+    static bool NativeService(const UClass* C) { return C==UBTService_DefaultFocus::StaticClass() || C==UBTService_RunEQS::StaticClass(); }
     static bool PatrolTask(const UClass* C)
     { return C==UBTTask_MoveDirectlyToward::StaticClass() || C==UBTTask_RotateToFaceBBEntry::StaticClass(); }
-    static bool MainTask(const UClass* C) { return C==UBTTask_Wait::StaticClass() || PatrolTask(C); }
-    static bool SelectorOwner(const UClass* C) { return C==UBTDecorator_Blackboard::StaticClass() || PatrolTask(C); }
-    static bool KeyClass(const UClass* C)
-    { return C==UBlackboardKeyType_Bool::StaticClass() || C==UBlackboardKeyType_Object::StaticClass() || C==UBlackboardKeyType_Vector::StaticClass() || C==UBlackboardKeyType_Name::StaticClass(); }
+    static bool MainTask(const UClass* C) { return C==UBTTask_Wait::StaticClass() || PatrolTask(C) || C==UBTTask_RunBehavior::StaticClass(); }
+    struct FRunBehaviorRole
+    {
+        UBTTask_RunBehavior* Task=nullptr;UBehaviorTreeGraphNode_SubtreeTask* Node=nullptr;FObjectProperty* Property=nullptr;
+        UBehaviorTree* Asset=nullptr;int32 PreviewVersion=0;FString PreviewPath;
+    };
+    struct FSubtreeSource
+    {
+        UBehaviorTree* Asset=nullptr;UBehaviorTreeGraph* Graph=nullptr;UBlackboardData* Blackboard=nullptr;UPackage* Package=nullptr;
+        FString Path;uint32 PackageFlags=0;TArray<UObject*> Exports;TMap<UObject*,EObjectFlags> ObjectFlags;
+        TArray<FNode> GraphNodes;TSharedRef<FJsonObject> File=MakeShared<FJsonObject>();
+    };
+    TArray<FRunBehaviorRole> RunBehaviorRoles;TArray<FSubtreeSource> SubtreeSources;
+    bool SubtreeSourceObject(const UObject* Object)const
+    {for(const auto& Source:SubtreeSources){if(Source.Exports.Contains(Object))return true;}return false;}
+    bool LogicalGraphInventory(const UObject* Object)const
+    {if(Object==Graph)return true;for(const auto& C:Composites){if(Object==C.Graph)return true;}return false;}
+    static bool SelectorOwner(const UClass* C) { return C==UBTDecorator_Blackboard::StaticClass() || PatrolTask(C) || NativeService(C); }
+    bool KeyClass(const UClass* C) const
+    { return C==UBlackboardKeyType_Bool::StaticClass() || C==UBlackboardKeyType_Object::StaticClass() || C==UBlackboardKeyType_Vector::StaticClass() || C==UBlackboardKeyType_Name::StaticClass()
+        || (HasRunEQS && (C==UBlackboardKeyType_Int::StaticClass() || C==UBlackboardKeyType_Float::StaticClass())); }
     bool ReadEditorParent(UBehaviorTreeGraphNode* Node,const FString& Path,const TCHAR* Stage,UAIGraphNode*& Parent)
     {
         const FObject* O=Objects.FindByPredicate([&](const FObject& V){return V.Hold.Get()==Node;});
@@ -380,7 +429,7 @@ struct FRDComposite
         auto J=MakeShared<FJsonObject>(); J->SetStringField(TEXT("object"),E.Path);
         J->SetStringField(TEXT("editor_parent"),Planned?E.PlannedParentPath:E.ParentPath);
         J->SetBoolField(TEXT("root_level"),Planned?E.PlannedRoot:E.BeforeRoot);
-        J->SetBoolField(TEXT("observer_error"),Planned&&E.CompositeRole?false:E.BeforeObserver);
+        J->SetBoolField(TEXT("observer_error"),Planned&&E.CompositeRole&&!E.RootDecorator?false:E.BeforeObserver);
         J->SetStringField(TEXT("error_message"),E.Error); return J;
     }
     bool EditorExecutionCurrent(const TCHAR* Stage,TArray<TSharedPtr<FJsonValue>>* Receipt=nullptr)
@@ -392,7 +441,7 @@ struct FRDComposite
             { return Stop(Stage,E.Path,TEXT("editor_NodeInstance"),TEXT("captured resolved runtime/null instance"),TEXT("changed/unresolved")); }
             UAIGraphNode* Expected=ExecutionRebuilt?E.PlannedParent:E.BeforeParent;
             const bool RootValue=ExecutionRebuilt?E.PlannedRoot:E.BeforeRoot;
-            const bool Observer=ExecutionRebuilt&&E.CompositeRole?false:E.BeforeObserver;
+            const bool Observer=ExecutionRebuilt&&E.CompositeRole&&!E.RootDecorator?false:E.BeforeObserver;
             if (Parent!=Expected || static_cast<bool>(E.Node->bRootLevel)!=RootValue || static_cast<bool>(E.Node->bHasObserverError)!=Observer)
             {
                 auto Actual=MakeShared<FJsonObject>(); Actual->SetStringField(TEXT("editor_parent"),Parent?Parent->GetPathName():FString());
@@ -410,8 +459,11 @@ struct FRDComposite
         {
             const auto* D=static_cast<const UBTDecorator*>(Role.Node); const auto Mode=D->GetFlowAbortMode();
             const auto* Parent=Role.Planned.Parent;
-            if (!Parent || (Parent->GetClass()==UBTComposite_Sequence::StaticClass() && Mode!=EBTFlowAbortMode::None && Mode!=EBTFlowAbortMode::Self)
-                || static_cast<uint8>(Mode)>static_cast<uint8>(EBTFlowAbortMode::Both))
+            // Root CollectDecorators(false) never calls UpdateFlowAbortMode;
+            // retain its authored enum instead of inventing a child parent.
+            const bool RootTest=RootDecoratorTests.Contains(static_cast<UBTDecorator*>(Role.Node));
+            if ((!RootTest&&(!Parent || (Parent->GetClass()==UBTComposite_Sequence::StaticClass() && Mode!=EBTFlowAbortMode::None && Mode!=EBTFlowAbortMode::Self)))
+                || (RootTest&&Parent!=nullptr) || static_cast<uint8>(Mode)>static_cast<uint8>(EBTFlowAbortMode::Both))
             { return Stop(Stage,Role.Path,TEXT("flow_abort_mode"),TEXT("normalized native mode supported by the planned parent"),LexToString(static_cast<int32>(Mode))); }
         }
         return true;
@@ -422,6 +474,7 @@ struct FRDComposite
         for (const auto& M : MainRoles) { Ordered.Add(M.Node); }
         for (const auto& C : Composites) { Ordered.Add(C.Node); }
         for (const auto& D : PlainDecorators) { Ordered.Add(D.Node); }
+        for (const auto& S : ServiceRoles) { Ordered.Add(S.Node); }
         for (auto* Node : Ordered)
         {
             FEditorExecutionRole E; E.Node=Node; E.CompositeRole=IsComposite(Node); E.Path=Node->GetPathName();
@@ -430,14 +483,17 @@ struct FRDComposite
             E.ParentPath=E.BeforeParent?E.BeforeParent->GetPathName():FString();
             const FCompositeRole* C=Composites.FindByPredicate([&](const FCompositeRole& V){return V.Node==Node;});
             const FPlainDecorator* Plain=PlainDecorators.FindByPredicate([&](const FPlainDecorator& V){return V.Node==Node;});
-            E.PlannedParent=C?C->Host:Plain?Plain->Host:nullptr; E.PlannedParentPath=E.PlannedParent?E.PlannedParent->GetPathName():FString();
-            E.BeforeRoot=static_cast<bool>(Node->bRootLevel); E.PlannedRoot=E.Instance==ExecutionRoot; E.BeforeObserver=static_cast<bool>(Node->bHasObserverError);
+            const FServiceRole* Service=ServiceRoles.FindByPredicate([&](const FServiceRole& V){return V.Node==Node;});
+            E.PlannedParent=C?C->Host:Plain?Plain->Host:Service?Service->Host:nullptr; E.PlannedParentPath=E.PlannedParent?E.PlannedParent->GetPathName():FString();
+            // ClearRootLevelFlags touches main/decorator nodes, not Services.
+            E.RootDecorator=(C&&C->Host->NodeInstance.IsResolved()&&C->Host->NodeInstance.Get()==ExecutionRoot)||(Plain&&RootDecoratorTests.Contains(Plain->Instance));
+            E.BeforeRoot=static_cast<bool>(Node->bRootLevel); E.PlannedRoot=Service?E.BeforeRoot:(E.Instance==ExecutionRoot||E.RootDecorator); E.BeforeObserver=static_cast<bool>(Node->bHasObserverError);
             E.ClassName=Node->ClassData.GetClassName(); E.Deprecated=Node->ClassData.GetDeprecatedMessage(); E.Error=Node->ErrorMessage;
             E.ErrorUpdated=TopNodes.Contains(Node); for (auto* Top : TopNodes) { E.ErrorUpdated|=static_cast<UBehaviorTreeGraphNode*>(Top)->SubNodes.Contains(Node); }
             FString ExpectedError=E.Error;
             if (E.ErrorUpdated && E.Instance)
             {
-                if (E.Instance->GetClass()!=UBTComposite_Sequence::StaticClass() && E.Instance->GetClass()!=UBTComposite_Selector::StaticClass() && !MainTask(E.Instance->GetClass()) && E.Instance->GetClass()!=UBTDecorator_Blackboard::StaticClass()) { return false; }
+                if (E.Instance->GetClass()!=UBTComposite_Sequence::StaticClass() && E.Instance->GetClass()!=UBTComposite_Selector::StaticClass() && !MainTask(E.Instance->GetClass()) && E.Instance->GetClass()!=UBTDecorator_Blackboard::StaticClass() && !NativeService(E.Instance->GetClass())) { return false; }
                 const FString NativeDeprecated=FGraphNodeClassHelper::GetDeprecationMessage(E.Instance->GetClass()); ExpectedError=NativeDeprecated.IsEmpty()?E.Deprecated:NativeDeprecated;
             }
             else if (E.ErrorUpdated) { FString Stored=E.ClassName; Stored.RemoveFromEnd(TEXT("_C")); if (!Stored.IsEmpty()) { ExpectedError=Stored+TEXT(" class missing. Referenced by ")+Node->GetFullName(); } }
@@ -497,7 +553,7 @@ struct FRDComposite
         if (!ParentField || !AssetField || !Hold(V.Parent) || !Hold(V.Asset)) { return false; }
         V.ParentPath=V.Parent?V.Parent->GetPathName():FString(); V.AssetPath=V.Asset?V.Asset->GetPathName():FString();
         if (Node->GetClass()==UBTComposite_Sequence::StaticClass() || Node->GetClass()==UBTComposite_Selector::StaticClass()) { V.Last=static_cast<UBTCompositeNode*>(Node)->GetLastExecutionIndex(); }
-        if (Node->GetClass()==UBTDecorator_Blackboard::StaticClass()) { V.Child=static_cast<UBTDecorator*>(Node)->GetChildIndex(); }
+        if (Node->GetClass()==UBTDecorator_Blackboard::StaticClass() || NativeService(Node->GetClass())) { V.Child=static_cast<UBTAuxiliaryNode*>(Node)->GetChildIndex(); }
         return true;
     }
     static bool ExecutionSame(const FExecutionValue& A,const FExecutionValue& B)
@@ -569,15 +625,23 @@ struct FRDComposite
             if (Role.Before.Asset!=Tree) { return Stop(TEXT("execution_admission"),Role.Path,TEXT("TreeAsset"),TEXT("existing normalized held Tree"),Role.Before.AssetPath); }
             Role.Planned=Role.Before; Role.Planned.Index=static_cast<uint16>(Next++); Role.Planned.Memory=0; Role.Planned.Depth=Depth;
             Role.Planned.Parent=Parent; Role.Planned.ParentPath=Parent?Parent->GetPathName():FString();
-            if (Node->GetClass()==UBTDecorator_Blackboard::StaticClass()) { Role.Planned.Child=Child; }
+            if (Node->GetClass()==UBTDecorator_Blackboard::StaticClass() || (NativeService(Node->GetClass()) && Child>=0)) { Role.Planned.Child=Child; }
             ExecutionRoles.Add(MoveTemp(Role)); return true;
         };
-        TFunction<bool(FMainRole*,UBTCompositeNode*,uint8)> Visit;
-        Visit=[&](FMainRole* M,UBTCompositeNode* Parent,uint8 Depth)
+        TFunction<bool(FMainRole*,UBTCompositeNode*,uint8,int32)> Visit;
+        Visit=[&](FMainRole* M,UBTCompositeNode* Parent,uint8 Depth,int32 ChildIndex)
         {
-            if (!M || Depth>=MaxDepth || !Add(M->Instance,Parent,Depth,-1)) { return false; }
-            if (MainTask(M->Instance->GetClass())) { return M->Children.IsEmpty(); }
+            if (!M || Depth>=MaxDepth) { return false; }
+            const bool Task=MainTask(M->Instance->GetClass());
+            // SDK CreateChildren: task Services precede their task and receive
+            // its parent/depth/child index. Composite Services follow their
+            // composite and precede its children at the next depth, retaining
+            // their existing auxiliary child index (no InitializeParentLink).
+            if (Task) for (auto* S : M->Services) if (!Add(S,Parent,Depth,ChildIndex)) { return false; }
+            if (!Add(M->Instance,Parent,Depth,-1)) { return false; }
+            if (Task) { return M->Children.IsEmpty(); }
             auto* Runtime=static_cast<UBTCompositeNode*>(M->Instance);
+            for (auto* S : M->Services) if (!Add(S,Runtime,Depth+1,-1)) { return false; }
             for (int32 I=0;I<M->Children.Num();++I)
             {
                 auto* Child=Main(M->Children[I]); if (!Child || I>MAX_uint8) { return false; }
@@ -589,17 +653,27 @@ struct FRDComposite
                     const FExecutionRole* B=ExecutionRoles.FindByPredicate([&](const FExecutionRole& V){return V.Node==C.Tests.Last();});
                     if (!A || !B) { return false; } C.First=A->Planned.Index; C.Last=B->Planned.Index;
                 }
-                if (!Visit(Child,Runtime,Depth+1)) { return false; }
+                if (!Visit(Child,Runtime,Depth+1,I)) { return false; }
             }
             FExecutionRole* Role=ExecutionRoles.FindByPredicate([&](const FExecutionRole& V){return V.Node==Runtime;});
             if (!Role) { return false; } Role->Planned.Last=Next-1; return true;
         };
         FMainRole* Entry=nullptr; for (auto& M : MainRoles) if (M.Instance==ExecutionRoot) { Entry=&M; }
-        if (!Entry || !Visit(Entry,nullptr,0) || Seen.Num()!=MainRoles.Num()+Decorators.Num()) { return Stop(TEXT("execution_plan"),TEXT("tree"),TEXT("reachable_roles"),TEXT("all native roles exactly once"),TEXT("unsupported topology")); }
+        if(Entry)for(auto* D:RootDecoratorTests)
+        {
+            if(!D||Seen.Contains(D))return false;Seen.Add(D);FExecutionRole Role;Role.Node=D;Role.Path=D->GetPathName();
+            if(!ReadExecution(D,Role.Path,TEXT("root_decorator_execution_before"),Role.Before)||Role.Before.Asset!=Tree)return false;
+            // SDK CreateBTFromGraph uses a non-incremented DummyExecutionIndex;
+            // bInitializeNodes=false preserves auxiliary ChildIndex/abort mode.
+            Role.Planned=Role.Before;Role.Planned.Index=MAX_uint16;Role.Planned.Memory=0;Role.Planned.Depth=0;Role.Planned.Parent=nullptr;Role.Planned.ParentPath.Reset();ExecutionRoles.Add(MoveTemp(Role));
+        }
+        if (!Entry || !Visit(Entry,nullptr,0,-1) || Seen.Num()!=MainRoles.Num()+Decorators.Num()+ServiceRoles.Num()) { return Stop(TEXT("execution_plan"),TEXT("tree"),TEXT("reachable_roles"),TEXT("all native roles exactly once"),TEXT("unsupported topology")); }
         for (auto& C : Composites)
         {
             C.FirstBefore=C.Node->FirstExecutionIndex; C.LastBefore=C.Node->LastExecutionIndex;
             if (!ReadEditorExecutionParent(C,TEXT("execution_before"),C.ParentBefore)) { return false; }
+            const auto* Host=Main(C.Host);if(Host&&Host->Instance==ExecutionRoot)
+            {C.Parent=nullptr;C.Child=0;C.First=C.FirstBefore;C.Last=C.LastBefore;}
         }
         for (auto& Role : ExecutionRoles) if (!PlanExecutionFields(Role)) { return false; }
         for (auto& C : Composites)
@@ -609,6 +683,9 @@ struct FRDComposite
             {
                 const void* Value=nullptr; TObjectPtr<UBTCompositeNode> Parent(C.Parent);
                 if (F.Name==TEXT("ParentNodeInstance")) { Value=&Parent; }
+                const auto* Host=Main(C.Host);
+                if(Host&&Host->Instance==ExecutionRoot&&F.Name==TEXT("ChildIndex"))
+                {if(F.Owner!=UBehaviorTreeGraphNode_CompositeDecorator::StaticClass()||F.Class!=FByteProperty::StaticClass()||F.Dim!=1||F.Size!=sizeof(uint8))return false;Value=&C.Child;}
                 if (Value) { F.Planned.Reset(); if (!Export(*O,F,F.Planned,Value)) { return false; } F.Execution=true; }
             }
         }
@@ -624,7 +701,7 @@ struct FRDComposite
     UBehaviorTreeDecoratorGraph* Inner = nullptr; UBlackboardData* OldBB = nullptr; UBlackboardData* Requested = nullptr;
     TArray<FObject> Objects; TArray<FNode> Nodes; TArray<TStrongObjectPtr<UObject>> References;
     TArray<UEdGraphNode*> TopNodes, InnerNodes; TSet<UClass*> Classes;
-    TArray<UBTDecorator*> Decorators; TArray<FBTDecoratorLogic> Ops;
+    TArray<UBTDecorator*> Decorators,RootDecoratorTests; TArray<FBTDecoratorLogic> Ops,RootDecoratorLogic;bool RootDecoratorsCaptured=false;
     TArray<FCompositeRole> Composites; TArray<FMainRole> MainRoles;
     UClass* LogicClass=nullptr; UClass* TestClass=nullptr;
     bool IsComposite(const UObject* Node) const
@@ -763,10 +840,11 @@ struct FRDComposite
         { return Stop(Stage,TEXT("BlackboardKeySelector"),TEXT("typed_layout"),TEXT("captured owner/layout/masks/Class binding"),TEXT("changed")); }
         return true;
     }
-    bool CaptureFilterReferences()
+    bool CaptureFilterReferences(UObject* Only=nullptr)
     {
         for (UObject* Filter : SelectorFilters)
         {
+            if (Only && Filter!=Only) { continue; }
             const FObject* O=Objects.FindByPredicate([&](const FObject& V){return V.Hold.Get()==Filter;});
             if (!O) { return false; }
             for (const auto& F : O->Fields) if (auto* P=CastField<FObjectProperty>(F.Pointer))
@@ -825,6 +903,315 @@ struct FRDComposite
         J->SetArrayField(TEXT("allowed_types"),Filters); return J;
     }
     static bool CacheSame(const FSelectorValue& A,const FSelectorValue& B) { return A.Id==B.Id && A.Type==B.Type; }
+    struct FRunEQSRole
+    {
+        UBTService_RunEQS* Service=nullptr; FStructProperty* Property=nullptr;
+        FEQSParametrizedQueryExecutionRequest Before, Planned;
+        FSelectorValue TemplateKey, PlannedTemplate; TArray<FSelectorValue> Params, PlannedParams;
+        UBlackboardKeyType_Object* AddedFilter=nullptr; bool InitializedAdopted=false, FilterCaptured=false;
+        FArrayProperty* Config=nullptr; FStructProperty* Inner=nullptr; FField InnerRole;
+        FStructProperty* QueryKey=nullptr; FStructProperty* ParamKey=nullptr;
+        EArrayPropertyFlags ConfigFlags=EArrayPropertyFlags::None;
+        TArray<FField> RequestFields, ParamFields;
+    };
+    TArray<FRunEQSRole> RunEQSRequests;
+    TSet<FObjectKey> ExistingQueryFilters; bool QueryFilterInventoryCaptured=false; UBlackboardKeyType_Object* QueryFilterDefault=nullptr;
+    bool CaptureRequestFields(UScriptStruct* Type,TArray<FField>& Fields)
+    {
+        if (!Hold(Type)) { return false; }
+        for (TFieldIterator<FProperty> It(Type);It;++It)
+        {
+            FProperty* P=*It; if (Fields.Num()>=32 || P->ArrayDim!=1) { return false; }
+            FField F; F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass();
+            F.Offset=P->GetOffset_ForInternal(); F.Size=P->ElementSize; F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags());
+            Fields.Add(MoveTemp(F));
+        }
+        return true;
+    }
+    bool RequestFieldsCurrent(UScriptStruct* Type,const TArray<FField>& Fields,const TCHAR* Stage)
+    {
+        int32 Count=0; for (TFieldIterator<FProperty> It(Type);It;++It) { ++Count; }
+        if (Count!=Fields.Num()) { return Stop(Stage,Type->GetPathName(),TEXT("request_field_count"),LexToString(Fields.Num()),LexToString(Count)); }
+        for (const auto& F : Fields)
+        {
+            FProperty* P=FindFProperty<FProperty>(Type,F.Name);
+            if (!P || P!=F.Pointer || P->GetOwnerStruct()!=F.Owner || P->GetClass()!=F.Class || P->ArrayDim!=F.Dim
+                || P->ElementSize!=F.Size || P->GetOffset_ForInternal()!=F.Offset || static_cast<uint64>(P->GetPropertyFlags())!=F.Flags)
+            { return Stop(Stage,Type->GetPathName(),F.Name.ToString(),TEXT("captured public request field binding/layout"),TEXT("changed")); }
+        }
+        return true;
+    }
+    bool RequestBindingCurrent(const FRunEQSRole& Role,const TCHAR* Stage)
+    {
+        const FObject* O=Objects.FindByPredicate([&](const FObject& V){return V.Hold.Get()==Role.Service;});
+        const FField* F=O?O->Fields.FindByPredicate([](const FField& V){return V.Name==TEXT("EQSRequest");}):nullptr;
+        if (!O || !F || !FieldCurrent(*O,*F) || F->Pointer!=Role.Property || F->Owner!=UBTService_RunEQS::StaticClass()
+            || !Role.Property->Struct.IsResolved() || Role.Property->Struct!=FEQSParametrizedQueryExecutionRequest::StaticStruct()
+            || F->Dim!=1 || F->Size!=sizeof(FEQSParametrizedQueryExecutionRequest)
+            || !RequestFieldsCurrent(FEQSParametrizedQueryExecutionRequest::StaticStruct(),Role.RequestFields,Stage)
+            || !RequestFieldsCurrent(FAIDynamicParam::StaticStruct(),Role.ParamFields,Stage))
+        { return Stop(Stage,Role.Service->GetPathName(),TEXT("EQSRequest.binding"),TEXT("captured native request/parameter root fields"),TEXT("changed")); }
+        if (FindFProperty<FArrayProperty>(FEQSParametrizedQueryExecutionRequest::StaticStruct(),TEXT("QueryConfig"))!=Role.Config
+            || Role.Config->Inner!=Role.Inner || Role.Config->ArrayFlags!=Role.ConfigFlags
+            || !Role.Inner->Struct.IsResolved() || Role.Inner->Struct!=FAIDynamicParam::StaticStruct()
+            || Role.Inner->GetClass()!=Role.InnerRole.Class || Role.Inner->GetFName()!=Role.InnerRole.Name
+            || Role.Inner->GetOwnerStruct()!=Role.InnerRole.Owner || Role.Inner->GetOwner<FProperty>()!=Role.Config
+            || Role.Inner->GetOffset_ForInternal()!=Role.InnerRole.Offset || static_cast<uint64>(Role.Inner->GetPropertyFlags())!=Role.InnerRole.Flags
+            || Role.Inner->ArrayDim!=1 || Role.Inner->ElementSize!=sizeof(FAIDynamicParam)
+            || FindFProperty<FStructProperty>(FEQSParametrizedQueryExecutionRequest::StaticStruct(),TEXT("EQSQueryBlackboardKey"))!=Role.QueryKey
+            || !Role.QueryKey->Struct.IsResolved() || Role.QueryKey->Struct!=FBlackboardKeySelector::StaticStruct()
+            || FindFProperty<FStructProperty>(FAIDynamicParam::StaticStruct(),TEXT("BBKey"))!=Role.ParamKey
+            || !Role.ParamKey->Struct.IsResolved() || Role.ParamKey->Struct!=FBlackboardKeySelector::StaticStruct())
+        { return Stop(Stage,Role.Service->GetPathName(),TEXT("EQSRequest.QueryConfig.Inner"),TEXT("captured owned dynamic-param inner binding"),TEXT("changed")); }
+        return true;
+    }
+    bool RequestSelectorSame(FBlackboardKeySelector& Key,const FSelectorValue& Before,const FString& Path,const TCHAR* Stage)
+    {
+        FSelectorValue Now; if (!ReadSelector(Key,Path,Stage,Now)) { return false; }
+        if (Now.Name!=Before.Name || !CacheSame(Now,Before) || Now.NoneAllowed!=Before.NoneAllowed || Now.Filters!=Before.Filters)
+        { return Stop(Stage,Path,TEXT("initialized_request_selector"),TEXT("captured before or exact planned SDK-init name/ID/type/none/ordered filters"),TEXT("changed")); }
+        return true;
+    }
+    bool RequestSelectorRawSame(const FBlackboardKeySelector& Key,const FSelectorValue& Before) const
+    {
+        // TSubclassOf::GetGCPtr is non-const. Its default shallow copy keeps
+        // this comparison untracked; do not replace it with const Get().
+        auto CachedType=Key.SelectedKeyType; const auto& CachedSlot=CachedType.GetGCPtr();
+        if (!CachedSlot.IsResolved() || CachedSlot!=Before.Type
+            || Key.SelectedKeyName!=Before.Name || SelectorId->GetPropertyValue_InContainer(&Key)!=Before.Id
+            || SelectorNone->GetPropertyValue_InContainer(&Key)!=Before.NoneAllowed || Key.AllowedTypes.Num()!=Before.Filters.Num()) { return false; }
+        for (int32 I=0;I<Key.AllowedTypes.Num();++I) if (!Key.AllowedTypes[I].IsResolved() || Key.AllowedTypes[I]!=Before.Filters[I]) { return false; }
+        return true;
+    }
+    bool RunEQSCurrent(const TCHAR* Stage)
+    {
+        for (const auto& Role : RunEQSRequests)
+        {
+            if (!RequestBindingCurrent(Role,Stage)) { return false; }
+            // Copy array cells before any tracked selector observation. Reclose
+            // current live cells without tracked getters after those callbacks.
+            auto Value=*Role.Property->ContainerPtrToValuePtr<FEQSParametrizedQueryExecutionRequest>(Role.Service);
+            const bool Initialized=Role.Before.IsValid() || Role.InitializedAdopted;
+            const FSelectorValue& Template=Role.InitializedAdopted?Role.PlannedTemplate:Role.TemplateKey;
+            const auto& Params=Role.InitializedAdopted?Role.PlannedParams:Role.Params;
+            if (Value.IsValid()!=Initialized || !Value.QueryTemplate.IsResolved() || Value.QueryTemplate!=Role.Before.QueryTemplate
+                || Value.QueryConfig.Num()!=Role.Before.QueryConfig.Num() || Value.RunMode!=Role.Before.RunMode
+                || Value.bUseBBKeyForQueryTemplate!=Role.Before.bUseBBKeyForQueryTemplate)
+            { return Stop(Stage,Role.Service->GetPathName(),TEXT("initialized_EQSRequest"),TEXT("captured initialized flag/query/config/run-mode/template-mode"),TEXT("changed or unresolved")); }
+            if (!RequestSelectorSame(Value.EQSQueryBlackboardKey,Template,Role.Service->GetPathName()+TEXT(".EQSQueryBlackboardKey"),Stage)) { return false; }
+            for (int32 I=0;I<Value.QueryConfig.Num();++I)
+            {
+                const auto& Before=Role.Before.QueryConfig[I]; auto& Param=Value.QueryConfig[I];
+                if (Param.ParamName!=Before.ParamName || Param.ParamType!=Before.ParamType || Param.bAllowBBKey!=Before.bAllowBBKey || Param.Value!=Before.Value)
+                { return Stop(Stage,Role.Service->GetPathName(),TEXT("QueryConfig[")+LexToString(I)+TEXT("].authored"),TEXT("captured name/type/allow/value"),TEXT("changed")); }
+                if (!RequestSelectorSame(Param.BBKey,Params[I],Role.Service->GetPathName()+TEXT(".QueryConfig[")+LexToString(I)+TEXT("]"),Stage)) { return false; }
+            }
+            if (!RequestBindingCurrent(Role,Stage) || !SelectorBindingCurrent(Stage)) { return false; }
+            const auto& Live=*Role.Property->ContainerPtrToValuePtr<FEQSParametrizedQueryExecutionRequest>(Role.Service);
+            bool Same=Live.IsValid()==Initialized && Live.QueryTemplate.IsResolved() && Live.QueryTemplate==Role.Before.QueryTemplate
+                && Live.RunMode==Role.Before.RunMode && Live.bUseBBKeyForQueryTemplate==Role.Before.bUseBBKeyForQueryTemplate
+                && Live.QueryConfig.Num()==Params.Num() && RequestSelectorRawSame(Live.EQSQueryBlackboardKey,Template);
+            if (Same) for (int32 I=0;I<Live.QueryConfig.Num();++I)
+            {
+                const auto& A=Live.QueryConfig[I]; const auto& B=Role.Before.QueryConfig[I];
+                Same &= A.ParamName==B.ParamName && A.ParamType==B.ParamType && A.bAllowBBKey==B.bAllowBBKey && A.Value==B.Value
+                    && RequestSelectorRawSame(A.BBKey,Params[I]);
+            }
+            if (!Same) { return Stop(Stage,Role.Service->GetPathName(),TEXT("RunEQS.live_after_observation"),TEXT("captured authored request and nested caches after selector callbacks"),TEXT("changed or unresolved")); }
+        }
+        return true;
+    }
+    bool PlanRunEQSFirstInitialization(FRunEQSRole& Role,const FString& Path)
+    {
+        Role.Planned=Role.Before; Role.PlannedTemplate=Role.TemplateKey; Role.PlannedParams=Role.Params;
+        if (Role.Before.IsValid()) { return true; }
+        // Native AddObjectFilter must be able to use an already captured CDO;
+        // no preflight GetDefaultObject(true), NewObject or scratch Init.
+        auto* FilterClass=UBlackboardKeyType_Object::StaticClass();
+        if (!Native(FilterClass,TEXT("/Script/AIModule")) || !FilterClass->ClassDefaultObject.IsResolved()) { return false; }
+        auto* CDO=FilterClass->GetDefaultObject(false);
+        auto* Defaults=Cast<UBlackboardKeyType_Object>(CDO);
+        if (!Loaded(Defaults) || Defaults->GetClass()!=FilterClass || !Defaults->DefaultValue.IsResolved() || Defaults->DefaultValue!=nullptr || !AddObject(Defaults))
+        { return Stop(TEXT("RunEQS_plan"),Path,TEXT("new_filter_defaults"),TEXT("existing native Object-key CDO with null default; no default creation"),TEXT("unavailable")); }
+        if (QueryFilterDefault && QueryFilterDefault!=Defaults) { return Stop(TEXT("RunEQS_plan"),Path,TEXT("filter_default_identity"),TEXT("one held native Object-key CDO"),TEXT("changed")); }
+        QueryFilterDefault=Defaults;
+        if (!QueryFilterInventoryCaptured)
+        {
+            for (TObjectIterator<UBlackboardKeyType_Object> It;It;++It)
+            {
+                if (ExistingQueryFilters.Num()>=16384) { return Stop(TEXT("RunEQS_plan"),Path,TEXT("existing_filter_bound"),TEXT("<=16384 existing Object-key identities, one capture"),TEXT("exceeded")); }
+                ExistingQueryFilters.Add(FObjectKey(*It));
+            }
+            QueryFilterInventoryCaptured=true;
+        }
+        Role.Planned.bInitialized=true; // Public bit, scratch value only.
+        for (int32 I=0;I<Role.Planned.QueryConfig.Num();++I)
+        {
+            auto& Key=Role.Planned.QueryConfig[I].BBKey;
+            // SDK ignores bAllowBBKey here; only named+Invalid needs resolving.
+            if (Key.NeedsResolving())
+            {
+                Key.ResolveSelectedKey(*Requested);
+                R.Data->SetNumberField(TEXT("RunEQS_scratch_resolve_calls"),R.Data->GetNumberField(TEXT("RunEQS_scratch_resolve_calls"))+1);
+            }
+            if (!ReadSelector(Key,Path+TEXT(".QueryConfig.plan"),TEXT("RunEQS_plan"),Role.PlannedParams[I])) { return false; }
+        }
+        if (Role.Before.bUseBBKeyForQueryTemplate)
+        {
+            auto& Key=Role.Planned.EQSQueryBlackboardKey;
+            if (Key.SelectedKeyName.IsNone() && !SelectorNone->GetPropertyValue_InContainer(&Key))
+            { return Stop(TEXT("RunEQS_plan"),Path,TEXT("EQSQueryBlackboardKey.auto_selection"),TEXT("named or None-allowed selector; first-init auto-selection with a new filter remains incomplete"),TEXT("None/none-disallowed")); }
+            Key.ResolveSelectedKey(*Requested);
+            R.Data->SetNumberField(TEXT("RunEQS_scratch_resolve_calls"),R.Data->GetNumberField(TEXT("RunEQS_scratch_resolve_calls"))+1);
+            if (!ReadSelector(Key,Path+TEXT(".EQSQueryBlackboardKey.plan"),TEXT("RunEQS_plan"),Role.PlannedTemplate)) { return false; }
+        }
+        return true;
+    }
+    bool RequestAuthoredSame(const FEQSParametrizedQueryExecutionRequest& Value,const FRunEQSRole& Role) const
+    {
+        if (!Value.QueryTemplate.IsResolved() || Value.QueryTemplate!=Role.Before.QueryTemplate
+            || Value.QueryConfig.Num()!=Role.Before.QueryConfig.Num() || Value.RunMode!=Role.Before.RunMode
+            || Value.bUseBBKeyForQueryTemplate!=Role.Before.bUseBBKeyForQueryTemplate) { return false; }
+        for (int32 I=0;I<Value.QueryConfig.Num();++I)
+        {
+            const auto& A=Value.QueryConfig[I]; const auto& B=Role.Before.QueryConfig[I];
+            if (A.ParamName!=B.ParamName || A.ParamType!=B.ParamType || A.bAllowBBKey!=B.bAllowBBKey || A.Value!=B.Value) { return false; }
+        }
+        return true;
+    }
+    bool NewQueryFilterShape(UBlackboardKeyType_Object* Filter) const
+    {
+        return Loaded(Filter) && Filter->GetClass()==UBlackboardKeyType_Object::StaticClass() && Filter->GetOuter()==GetTransientPackage()
+            && Filter->HasAnyFlags(RF_Public) && !Filter->HasAnyFlags(RF_ClassDefaultObject|RF_ArchetypeObject|RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects)
+            && Filter->BaseClass.IsResolved() && Filter->BaseClass==UEnvQuery::StaticClass() && Filter->DefaultValue.IsResolved() && Filter->DefaultValue==nullptr;
+    }
+    bool AdoptRunEQSInitializations()
+    {
+        bool Pending=false; for (const auto& Role : RunEQSRequests) { Pending|=!Role.Before.IsValid() && !Role.InitializedAdopted; }
+        if (!Pending) { return true; }
+        if (!IsEditorGameThread() || IsPlaySessionActive() || IsGarbageCollecting() || GIsSavingPackage || IsEngineExitRequested() || !Resolving || Resolved || !R.bAttempted)
+        { return Stop(TEXT("RunEQS_init_return"),TEXT("tree"),TEXT("adoption_boundary"),TEXT("original first UpdateBlackboardChange returned on owned Editor thread"),TEXT("unavailable")); }
+        for (auto& Role : RunEQSRequests) if (!Role.Before.IsValid() && !Role.InitializedAdopted)
+        {
+            if (!Loaded(Role.Service) || Role.Service->GetClass()!=UBTService_RunEQS::StaticClass() || Role.Service->GetOuter()!=Tree
+                || !RequestBindingCurrent(Role,TEXT("RunEQS_init_return")) || !SelectorBindingCurrent(TEXT("RunEQS_init_return"))) { return false; }
+            auto Actual=*Role.Property->ContainerPtrToValuePtr<FEQSParametrizedQueryExecutionRequest>(Role.Service);
+            if (!Actual.IsValid() || !RequestAuthoredSame(Actual,Role) || Actual.EQSQueryBlackboardKey.AllowedTypes.Num()!=Role.TemplateKey.Filters.Num()+1)
+            { return Stop(TEXT("RunEQS_init_return"),Role.Service->GetPathName(),TEXT("initialized_request_shape"),TEXT("one initialization; authored request preserved; one appended query filter"),TEXT("changed or incomplete")); }
+            auto Template=Role.PlannedTemplate;
+            const auto& Slot=Actual.EQSQueryBlackboardKey.AllowedTypes.Last();
+            if (!Slot.IsResolved() || Slot==nullptr) { return Stop(TEXT("RunEQS_init_return"),Role.Service->GetPathName(),TEXT("new_query_filter"),TEXT("resolved nonnull appended native filter"),TEXT("unavailable")); }
+            auto* Filter=FindObject<UBlackboardKeyType_Object>(nullptr,*Slot.GetPathName());
+            if (Slot!=Filter || !NewQueryFilterShape(Filter) || ExistingQueryFilters.Contains(FObjectKey(Filter)) || !Hold(Filter))
+            { return Stop(TEXT("RunEQS_init_return"),Role.Service->GetPathName(),TEXT("new_query_filter_identity"),TEXT("fresh native transient-package public Object filter, Query base/null default"),TEXT("changed or preexisting")); }
+            Template.Filters.Add(Filter); Template.FilterPaths.Add(Filter->GetPathName());
+            if (!RequestSelectorRawSame(Actual.EQSQueryBlackboardKey,Template))
+            { return Stop(TEXT("RunEQS_init_return"),Role.Service->GetPathName(),TEXT("query_selector_transition"),TEXT("exact planned name/ID/type/none and existing filters plus one new filter"),TEXT("changed")); }
+            for (int32 I=0;I<Actual.QueryConfig.Num();++I) if (!RequestSelectorRawSame(Actual.QueryConfig[I].BBKey,Role.PlannedParams[I]))
+            { return Stop(TEXT("RunEQS_init_return"),Role.Service->GetPathName(),TEXT("QueryConfig[")+LexToString(I)+TEXT("].cache"),TEXT("only named Invalid selectors resolved; other caches preserved"),TEXT("changed")); }
+            // Only this exact returned role may extend the request plan. Old
+            // authored cells are never adopted as a new baseline.
+            Role.AddedFilter=Filter; Role.InitializedAdopted=true; Role.PlannedTemplate=MoveTemp(Template);
+            Role.Planned.EQSQueryBlackboardKey.AllowedTypes.Add(Filter);
+            ExistingQueryFilters.Add(FObjectKey(Filter));
+        }
+        // Validate every returned first-init role before a callback-capable
+        // export. Several Services initialize in the same original SDK call.
+        if (!Pure(TEXT("RunEQS_all_initialized_roles_validated"))) { return false; }
+        for (auto& Role : RunEQSRequests) if (Role.AddedFilter && !Role.FilterCaptured)
+        {
+            auto* Filter=Role.AddedFilter;
+            if (!NewQueryFilterShape(Filter) || !AddObject(Filter)) { return false; }
+            SelectorFilters.Add(Filter);
+            FObject* New=Objects.FindByPredicate([&](const FObject& O){return O.Hold.Get()==Filter;});
+            if (!New) { return false; }
+            const FObject* Defaults=Objects.FindByPredicate([&](const FObject& O){return O.Hold.Get()==QueryFilterDefault;});
+            if (!Defaults) { return false; }
+            for (auto& F : New->Fields)
+            {
+                const FField* Prototype=Defaults->Fields.FindByPredicate([&](const FField& V){return V.Pointer==F.Pointer && V.Name==F.Name;});
+                if (!Prototype || !FieldCurrent(*Defaults,*Prototype) || !Export(*New,F,F.Before)) { return false; }
+                FString Expected=Prototype->Before;
+                if (F.Name==TEXT("BaseClass"))
+                {
+                    if (F.Owner!=UBlackboardKeyType_Object::StaticClass() || F.Size!=sizeof(TObjectPtr<UClass>) || F.Dim!=1) { return false; }
+                    TObjectPtr<UClass> QueryClass(UEnvQuery::StaticClass()); Expected.Reset();
+                    if (!Export(*New,F,Expected,&QueryClass)) { return false; }
+                }
+                if (F.Before!=Expected) { return Stop(TEXT("RunEQS_init_return"),Filter->GetPathName(),F.Name.ToString(),Expected,F.Before); }
+                F.Planned=F.Before;
+            }
+            if (!CaptureFilterReferences(Filter) || !NewQueryFilterShape(Filter) || !Pure(TEXT("RunEQS_new_filter_captured"))) { return false; }
+            FObject* Owner=Objects.FindByPredicate([&](const FObject& O){return O.Hold.Get()==Role.Service;});
+            FField* Field=Owner?Owner->Fields.FindByPredicate([](const FField& F){return F.Name==TEXT("EQSRequest");}):nullptr;
+            if (!Owner || !Field || !FieldCurrent(*Owner,*Field)) { return false; }
+            Field->Planned.Reset(); if (!Export(*Owner,*Field,Field->Planned,&Role.Planned)) { return false; } Field->Selector=true;
+            Role.FilterCaptured=true;
+            R.Data->SetNumberField(TEXT("RunEQS_initialization_adoptions"),R.Data->GetNumberField(TEXT("RunEQS_initialization_adoptions"))+1);
+            R.Data->SetBoolField(TEXT("RunEQS_filter_fresh_membership_observed"),true);
+        }
+        return true;
+    }
+    bool CaptureRunEQSRequests()
+    {
+        R.Data->SetNumberField(TEXT("RunEQS_scratch_resolve_calls"),0);
+        R.Data->SetNumberField(TEXT("RunEQS_initialization_adoptions"),0);
+        for (const auto& S : ServiceRoles) if (S.Instance->GetClass()==UBTService_RunEQS::StaticClass())
+        {
+            const FObject* O=Objects.FindByPredicate([&](const FObject& V){return V.Hold.Get()==S.Instance;});
+            const FField* F=O?O->Fields.FindByPredicate([](const FField& V){return V.Name==TEXT("EQSRequest");}):nullptr;
+            auto* P=F?CastField<FStructProperty>(F->Pointer):nullptr;
+            if (!O || !F || !FieldCurrent(*O,*F) || F->Owner!=UBTService_RunEQS::StaticClass() || !P || !P->Struct.IsResolved()
+                || P->Struct!=FEQSParametrizedQueryExecutionRequest::StaticStruct() || F->Dim!=1 || F->Size!=sizeof(FEQSParametrizedQueryExecutionRequest)) { return false; }
+            const FString OwnerPath=O->Path;
+            FRunEQSRole Role; Role.Service=static_cast<UBTService_RunEQS*>(S.Instance); Role.Property=P;
+            Role.Config=FindFProperty<FArrayProperty>(FEQSParametrizedQueryExecutionRequest::StaticStruct(),TEXT("QueryConfig"));
+            Role.Inner=Role.Config?CastField<FStructProperty>(Role.Config->Inner):nullptr;
+            if (!Role.Inner || !Role.Inner->Struct.IsResolved() || Role.Inner->Struct!=FAIDynamicParam::StaticStruct()
+                || Role.Inner->ArrayDim!=1 || Role.Inner->ElementSize!=sizeof(FAIDynamicParam)
+                || !CaptureRequestFields(FEQSParametrizedQueryExecutionRequest::StaticStruct(),Role.RequestFields)
+                || !CaptureRequestFields(FAIDynamicParam::StaticStruct(),Role.ParamFields)) { return false; }
+            Role.ConfigFlags=Role.Config->ArrayFlags;
+            Role.InnerRole.Name=Role.Inner->GetFName(); Role.InnerRole.Pointer=Role.Inner; Role.InnerRole.Class=Role.Inner->GetClass();
+            Role.InnerRole.Owner=Role.Inner->GetOwnerStruct(); Role.InnerRole.Offset=Role.Inner->GetOffset_ForInternal();
+            Role.InnerRole.Flags=static_cast<uint64>(Role.Inner->GetPropertyFlags());
+            Role.QueryKey=FindFProperty<FStructProperty>(FEQSParametrizedQueryExecutionRequest::StaticStruct(),TEXT("EQSQueryBlackboardKey"));
+            Role.ParamKey=FindFProperty<FStructProperty>(FAIDynamicParam::StaticStruct(),TEXT("BBKey"));
+            if (!Role.QueryKey || !Role.ParamKey || !Role.QueryKey->Struct.IsResolved() || Role.QueryKey->Struct!=FBlackboardKeySelector::StaticStruct()
+                || !Role.ParamKey->Struct.IsResolved() || Role.ParamKey->Struct!=FBlackboardKeySelector::StaticStruct()
+                || Role.QueryKey->ArrayDim!=1 || Role.QueryKey->ElementSize!=sizeof(FBlackboardKeySelector)
+                || Role.ParamKey->ArrayDim!=1 || Role.ParamKey->ElementSize!=sizeof(FBlackboardKeySelector)) { return false; }
+            auto Value=*P->ContainerPtrToValuePtr<FEQSParametrizedQueryExecutionRequest>(S.Instance);
+            if (Value.QueryConfig.Num()>32 || !Value.QueryTemplate.IsResolved()) { return false; }
+            if (Value.QueryTemplate!=nullptr)
+            {
+                auto* Query=FindObject<UEnvQuery>(nullptr,*Value.QueryTemplate.GetPathName()); FString QueryPath;
+                if (!Loaded(Query) || Value.QueryTemplate!=Query || Query->GetClass()!=UEnvQuery::StaticClass()
+                    || Query->GetOuter()!=Query->GetOutermost() || Query->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)
+                    || Query->GetOutermost()->HasAnyPackageFlags(PKG_EditorOnly|PKG_PlayInEditor|PKG_CompiledIn)
+                    || !ExactPath(Query->GetPathName(),false,QueryPath,R) || !AddObject(Query))
+                { return Stop(TEXT("admission"),OwnerPath,TEXT("EQSRequest.QueryTemplate"),TEXT("nullable or already-loaded exact runtime Query asset; no query load/execute"),TEXT("unsupported")); }
+            }
+            Role.Before=Value;
+            const auto Capture=[&](FBlackboardKeySelector& Key,FSelectorValue& Typed,const FString& Path)
+            {
+                if (!ReadSelector(Key,Path,TEXT("RunEQS_capture"),Typed)) { return false; }
+                for (auto* Filter : Typed.Filters) { if (!Native(Filter->GetClass(),TEXT("/Script/AIModule")) || !AddObject(Filter)) { return false; } SelectorFilters.Add(Filter); }
+                return true;
+            };
+            if (!Capture(Value.EQSQueryBlackboardKey,Role.TemplateKey,OwnerPath+TEXT(".EQSQueryBlackboardKey"))) { return false; }
+            for (auto& Param : Value.QueryConfig)
+            {
+                if (!FMath::IsFinite(Param.Value)) { return Stop(TEXT("admission"),OwnerPath,TEXT("QueryConfig.Value"),TEXT("finite authored value"),TEXT("nonfinite")); }
+                FSelectorValue Typed; if (!Capture(Param.BBKey,Typed,OwnerPath+TEXT(".QueryConfig"))) { return false; } Role.Params.Add(MoveTemp(Typed));
+            }
+            if (!PlanRunEQSFirstInitialization(Role,OwnerPath)) { return false; }
+            RunEQSRequests.Add(MoveTemp(Role));
+        }
+        R.Data->SetNumberField(TEXT("composite_RunEQS_request_count"),RunEQSRequests.Num());
+        R.Data->SetStringField(TEXT("RunEQS_request_scope"),TEXT("Initialized native request remains SDK no-op. First initialization plans only named Invalid parameter caches, conditional named/None-allowed query cache, public initialized flag and one fresh transient-package Object/Query filter adopted after the original UpdateBlackboardChange. Authored request/config/filter prefix preserved; bAllowBBKey does not gate SDK initialization. Main BlackboardKey reuses UG. Nullable/already-loaded query root, no Execute/loader/CollectQueryParams/forced reinit. First-init query automatic-selection, query subtree/full runtime effects, broader sources and save normalization remain incomplete."));
+        return true;
+    }
     bool TypedCurrent(const TCHAR* Stage,TArray<TSharedPtr<FJsonValue>>* Receipt=nullptr)
     {
         if (!SelectorBindingCurrent(Stage)) { return false; }
@@ -846,7 +1233,7 @@ struct FRDComposite
         return true;
     }
     UStruct* SelectorDeclaringOwner(const UClass* C) const
-    { return C==UBTDecorator_Blackboard::StaticClass()?UBTDecorator_BlackboardBase::StaticClass():PatrolTask(C)?UBTTask_BlackboardBase::StaticClass():nullptr; }
+    { return C==UBTDecorator_Blackboard::StaticClass()?UBTDecorator_BlackboardBase::StaticClass():PatrolTask(C)?UBTTask_BlackboardBase::StaticClass():NativeService(C)?UBTService_BlackboardBase::StaticClass():nullptr; }
     bool SelectorProperty(const FObject& O,const FField& F) const
     {
         auto* P=F.Class==FStructProperty::StaticClass()?static_cast<FStructProperty*>(F.Pointer):nullptr;
@@ -970,6 +1357,119 @@ struct FRDComposite
             && (!F.ObjectClass || (CastField<FObjectPropertyBase>(P) && CastFieldChecked<FObjectPropertyBase>(P)->PropertyClass == F.ObjectClass))
             && (!F.MetaClass || (CastField<FClassProperty>(P) && CastFieldChecked<FClassProperty>(P)->MetaClass == F.MetaClass));
     }
+    bool RunBehaviorCurrent(const TCHAR* Stage,bool Deep=false)
+    {
+        for(const auto& Role:RunBehaviorRoles)
+        {
+            const FObject* Object=Objects.FindByPredicate([&](const FObject& O){return O.Hold.Get()==Role.Task;});
+            const FField* Field=Object?Object->Fields.FindByPredicate([](const FField& F){return F.Name==TEXT("BehaviorAsset");}):nullptr;
+            if(!Object||!Field||!FieldCurrent(*Object,*Field)||Field->Pointer!=Role.Property||Role.Property->GetOwnerStruct()!=UBTTask_RunBehavior::StaticClass()||!Loaded(Role.Node)||Role.Node->GetClass()!=UBehaviorTreeGraphNode_SubtreeTask::StaticClass()||!Role.Node->NodeInstance.IsResolved()||Role.Node->NodeInstance!=Role.Task)
+                return Stop(Stage,TEXT("RunBehavior"),TEXT("task/editor/BehaviorAsset.binding"),TEXT("exact held task, SubtreeTask editor and captured native asset property"),TEXT("changed"));
+            const auto Value=Role.Property->GetObjectPtrPropertyValue_InContainer(Role.Task);
+            if(!Value.IsResolved()||Value!=Role.Asset||Role.Node->SubtreeVersion!=Role.PreviewVersion||Role.Node->SubtreePath!=Role.PreviewPath)
+                return Stop(Stage,Role.Task->GetPathName(),TEXT("BehaviorAsset/editor_preview_cache"),TEXT("captured resolved nullable source pointer and unchanged preview path/version"),TEXT("changed or unresolved"));
+        }
+        for(const auto& Source:SubtreeSources)
+        {
+            if(!Loaded(Source.Asset)||!Loaded(Source.Package)||Source.Asset->GetClass()!=UBehaviorTree::StaticClass()||Source.Asset->GetOuter()!=Source.Package||Source.Asset->GetPathName()!=Source.Path||Source.Asset->GetPackage()!=Source.Package||Source.Package->IsDirty()||!Source.Package->IsFullyLoaded()||uint32(Source.Package->GetPackageFlags())!=Source.PackageFlags
+                ||!Source.Asset->RootNode.IsResolved()||!Source.Asset->BlackboardAsset.IsResolved()||Source.Asset->BlackboardAsset!=Source.Blackboard||!Source.Asset->BTGraph.IsResolved()||Source.Asset->BTGraph!=Source.Graph||!Source.Asset->RootDecorators.IsEmpty()||!Source.Asset->RootDecoratorOps.IsEmpty())
+                return Stop(Stage,Source.Path,TEXT("readonly_subtree_role"),TEXT("held native saved-clean source/BB/graph and zero root decorators"),TEXT("changed or unresolved"));
+            for(const auto& Flags:Source.ObjectFlags)
+            {if(!Loaded(Flags.Key)||Flags.Key->GetPackage()!=Source.Package||Flags.Key->GetFlags()!=Flags.Value)return Stop(Stage,Source.Path,TEXT("source_export_flags/ownership"),TEXT("captured held source exports unchanged"),TEXT("changed"));}
+            if(!Deep)continue;
+            TArray<UObject*> Exports;GetObjectsWithOuter(Source.Package,Exports,EGetObjectsFlags::IncludeNestedObjects);
+            if(Exports.Num()!=Source.Exports.Num())return Stop(Stage,Source.Path,TEXT("source_exports.count"),LexToString(Source.Exports.Num()),LexToString(Exports.Num()));
+            for(UObject* O:Exports){if(!Source.Exports.Contains(O))return Stop(Stage,Source.Path,TEXT("source_exports.membership"),TEXT("same captured export identities"),TEXT("changed"));}
+            if(Source.Graph)
+            {
+                if(!Loaded(Source.Graph)||Source.Graph->GetOuter()!=Source.Asset||Source.Graph->Nodes.Num()!=Source.GraphNodes.Num()||!Source.Graph->SubGraphs.IsEmpty())return Stop(Stage,Source.Path,TEXT("source_graph.inventory"),TEXT("captured plain source graph and node count"),TEXT("changed"));
+                for(const auto& Node:Source.GraphNodes)
+                {
+                    if(!Loaded(Node.Pointer)||!Source.Graph->Nodes.Contains(Node.Pointer)||Node.Pointer->GetOuter()!=Source.Graph||Node.Pointer->NodeGuid!=Node.Id||Node.Pointer->NodePosX!=Node.X||Node.Pointer->NodePosY!=Node.Y||Node.Pointer->Pins.Num()!=Node.Pins.Num())return Stop(Stage,Source.Path,TEXT("source_node.role"),TEXT("same owner/GUID/position/pin count"),TEXT("changed"));
+                    TSet<FGuid> Ids;
+                    for(UEdGraphPin* Pin:Node.Pointer->Pins)
+                    {
+                        if(!Pin||Pin->WasTrashed()||Pin->GetOwningNodeUnchecked()!=Node.Pointer||Ids.Contains(Pin->PinId))return Stop(Stage,Source.Path,TEXT("source_pin.inventory"),TEXT("live unique owned pins"),TEXT("changed"));Ids.Add(Pin->PinId);
+                        const FPin* Before=Node.Pins.FindByPredicate([Pin](const FPin& P){return P.Id==Pin->PinId;});
+                        if(!Before||!Pin->DefaultObject.IsResolved()||!Type(Pin->PinType)||Pin->PinName!=Before->Name||Pin->Direction!=Before->Direction||!(Pin->PinType==Before->Type)||Pin->DefaultValue!=Before->Raw||Pin->AutogeneratedDefaultValue!=Before->Auto||Pin->DefaultObject!=Before->Default||!SameText(Pin->DefaultTextValue,Before->Text)||!SameText(Pin->PinFriendlyName,Before->Friendly)||Pin->bHidden!=Before->Hidden||Pin->bNotConnectable!=Before->NotConnectable||Pin->bDefaultValueIsReadOnly!=Before->DefaultReadOnly||Pin->bOrphanedPin||Pin->ParentPin||!Pin->SubPins.IsEmpty()||Pin->LinkedTo.Num()!=Before->Links.Num())return Stop(Stage,Source.Path,TEXT("source_pin.authored_state"),TEXT("captured semantic type/defaults/text/flags/links"),TEXT("changed"));
+                        TArray<FString> Links;for(UEdGraphPin* Peer:Pin->LinkedTo)
+                        {
+                            const FNode* Owner=Source.GraphNodes.FindByPredicate([Peer](const FNode& N){return N.Pointer->Pins.Contains(Peer);});
+                            if(!Peer||!Owner||Peer->WasTrashed()||Peer->GetOwningNodeUnchecked()!=Owner->Pointer||Peer->Direction==Pin->Direction||!Peer->LinkedTo.Contains(Pin))return Stop(Stage,Source.Path,TEXT("source_pin.peer"),TEXT("held same-source reciprocal peer"),TEXT("changed"));
+                            Links.Add(Owner->Id.ToString()+TEXT(":")+Peer->PinId.ToString());
+                        }
+                        Links.Sort();if(Links!=Before->Links)return Stop(Stage,Source.Path,TEXT("source_pin.links"),FString::Join(Before->Links,TEXT(",")),FString::Join(Links,TEXT(",")));
+                    }
+                }
+            }
+            auto File=MakeShared<FJsonObject>();if(!Disk(Source.Package->GetName(),File)||!Pure(TEXT("subtree_source_disk_return"))||Text(Source.File)!=Text(File))return Stop(Stage,Source.Path,TEXT("source_file"),Text(Source.File),Text(File));
+        }
+        if(Deep&&!RunBehaviorRoles.IsEmpty()){R.Data->SetBoolField(TEXT("RunBehavior_sources_preserved"),true);R.Data->SetStringField(TEXT("RunBehavior_source_check_stage"),Stage);}
+        return true;
+    }
+    bool CaptureRunBehavior(UBehaviorTreeGraphNode* Node,UBTNode* Instance)
+    {
+        if(Instance->GetClass()!=UBTTask_RunBehavior::StaticClass())return true;
+        auto* Task=static_cast<UBTTask_RunBehavior*>(Instance);
+        if(Node->GetClass()!=UBehaviorTreeGraphNode_SubtreeTask::StaticClass())return Stop(TEXT("subtree_admission"),Node->GetPathName(),TEXT("editor_class"),TEXT("exact native SubtreeTask editor"),TEXT("different"));
+        auto* Editor=static_cast<UBehaviorTreeGraphNode_SubtreeTask*>(Node);FObjectProperty* P=FindFProperty<FObjectProperty>(Task->GetClass(),TEXT("BehaviorAsset"));
+        if(!P||P->GetOwnerStruct()!=UBTTask_RunBehavior::StaticClass()||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UBehaviorTree>)||P->HasSetterOrGetter()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UBehaviorTree::StaticClass())return false;
+        const auto Slot=P->GetObjectPtrPropertyValue_InContainer(Task);if(!Slot.IsResolved())return Stop(TEXT("subtree_admission"),Task->GetPathName(),TEXT("BehaviorAsset"),TEXT("already resolved nullable native subtree source"),TEXT("unresolved; no loader dispatched"));
+        UBehaviorTree* Asset=Task->GetSubtreeAsset();TStrongObjectPtr<UBehaviorTree> Returned(Asset);
+        if(!Hold(Asset)||!Pure(TEXT("subtree_public_getter_return")))return false;
+        const auto Again=P->GetObjectPtrPropertyValue_InContainer(Task);if(!Again.IsResolved()||Again!=Asset)return false;
+        FRunBehaviorRole Role;Role.Task=Task;Role.Node=Editor;Role.Property=P;Role.Asset=Asset;Role.PreviewVersion=Editor->SubtreeVersion;Role.PreviewPath=Editor->SubtreePath;if(Role.PreviewPath.Len()>2048)return false;
+        RunBehaviorRoles.Add(MoveTemp(Role));if(!Pure(TEXT("subtree_role_captured")))return false;
+        if(Asset)
+        {
+            bool Existing=false;for(const auto& Source:SubtreeSources){Existing|=Source.Asset==Asset;}
+            if(!Existing)
+            {
+                FSubtreeSource Source;Source.Asset=Asset;Source.Package=Asset->GetPackage();Source.Path=Asset->GetPathName();
+                if(!Loaded(Asset)||Asset==Tree||Asset->GetClass()!=UBehaviorTree::StaticClass()||!Loaded(Source.Package)||Asset->GetOuter()!=Source.Package||Source.Package==Tree->GetPackage()||!Source.Package->IsFullyLoaded()||Source.Package->IsDirty()||Source.Package->HasAnyPackageFlags(PKG_CompiledIn|PKG_PlayInEditor|PKG_EditorOnly)||Asset->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||!FPackageName::IsValidObjectPath(Source.Path)||!(Source.Path.StartsWith(TEXT("/Game/"))||Source.Path.StartsWith(TEXT("/Engine/")))||!Hold(Source.Package)||!AddObject(Asset)||!Asset->RootDecorators.IsEmpty()||!Asset->RootDecoratorOps.IsEmpty()||!Asset->RootNode.IsResolved()||!Asset->BlackboardAsset.IsResolved()||!Asset->BTGraph.IsResolved())return Stop(TEXT("subtree_admission"),Source.Path,TEXT("source"),TEXT("separate exact loaded saved-clean native subtree with no root decorators"),TEXT("outside first supported source profile"));
+                Source.Blackboard=Asset->BlackboardAsset.Get();if(!Hold(Source.Blackboard)||!Pure(TEXT("subtree_blackboard_return"))||(Source.Blackboard!=OldBB&&Source.Blackboard!=Requested))return Stop(TEXT("subtree_admission"),Source.Path,TEXT("source_blackboard"),TEXT("existing current or requested held Blackboard"),TEXT("third/null source remains incomplete"));
+                Source.Graph=Cast<UBehaviorTreeGraph>(Asset->BTGraph.Get());if(!Hold(Source.Graph)||!Pure(TEXT("subtree_graph_return")))return false;
+                if(Asset->BTGraph!=Source.Graph||!Loaded(Source.Graph)||Source.Graph->GetClass()!=UBehaviorTreeGraph::StaticClass()||Source.Graph->GetOuter()!=Asset||Source.Graph->Nodes.Num()>32||!Source.Graph->SubGraphs.IsEmpty()||Source.Graph->IsLocked())return Stop(TEXT("subtree_admission"),Source.Path,TEXT("source_graph"),TEXT("existing bounded unlocked plain native graph"),TEXT("custom/nested/unloaded graph remains incomplete"));
+                GetObjectsWithOuter(Source.Package,Source.Exports,EGetObjectsFlags::IncludeNestedObjects);if(Source.Exports.Num()>64)return false;
+                for(UObject* O:Source.Exports){if(!Hold(O))return false;}
+                for(UObject* O:Source.Exports)
+                {
+                    if(!Loaded(O)||!Hold(O)||!Hold(O->GetClass()))return false;Source.ObjectFlags.Add(O,O->GetFlags());
+                    if(O->GetClass()->GetPathName()==TEXT("/Script/CoreUObject.MetaData"))continue;
+                    UClass* C=O->GetClass();const bool Allowed=O==Asset||C==UBehaviorTreeGraph::StaticClass()||C==UBehaviorTreeGraphNode_Root::StaticClass()||C==UBehaviorTreeGraphNode_Composite::StaticClass()||C==UBehaviorTreeGraphNode_Task::StaticClass()||C==UBTComposite_Sequence::StaticClass()||C==UBTComposite_Selector::StaticClass()||C==UBTTask_Wait::StaticClass();
+                    if(!Allowed||!AddObject(O))return Stop(TEXT("subtree_admission"),Source.Path,TEXT("source_export_class"),TEXT("plain native Sequence/Selector/Wait subtree exports"),C->GetPathName());
+                }
+                const auto SourceGraphInventory=Source.Graph->Nodes;
+                for(const auto& Entry:SourceGraphInventory)
+                {
+                    if(!Entry.IsResolved()||!Loaded(Entry.Get())||!Source.Exports.Contains(Entry.Get()))return false;auto* N=Cast<UBehaviorTreeGraphNode>(Entry.Get());
+                    if(!N||N->GetOuter()!=Source.Graph||!N->NodeGuid.IsValid()||N->Pins.Num()>16||!N->SubNodes.IsEmpty()||!N->Decorators.IsEmpty()||!N->Services.IsEmpty()||!N->NodeInstance.IsResolved()||N->bInjectedNode)return Stop(TEXT("subtree_admission"),Source.Path,TEXT("source_editor_node"),TEXT("plain held native nodes without decorators/services/injected previews"),TEXT("outside supported source profile"));
+                    UObject* Runtime=N->NodeInstance.Get();if(!Hold(Runtime)||!Pure(TEXT("subtree_source_node_return")))return false;
+                    if(Runtime&&(!Source.Exports.Contains(Runtime)||Runtime->GetOuter()!=Asset))return false;
+                    FNode Captured;Captured.Pointer=N;Captured.Graph=Source.Graph;Captured.Id=N->NodeGuid;Captured.X=N->NodePosX;Captured.Y=N->NodePosY;
+                    for(const auto& Other:Source.GraphNodes){if(Other.Pointer==N||Other.Id==N->NodeGuid)return false;}
+                    for(UEdGraphPin* Pin:N->Pins)
+                    {
+                        if(!Pin||Pin->WasTrashed()||Pin->GetOwningNodeUnchecked()!=N||!Pin->PinId.IsValid()||!Pin->DefaultObject.IsResolved()||Pin->DefaultObject!=nullptr||!Type(Pin->PinType)||Pin->ParentPin||!Pin->SubPins.IsEmpty()||Pin->bOrphanedPin)return false;
+                        FPin Value;Value.Id=Pin->PinId;Value.Name=Pin->PinName;Value.Direction=Pin->Direction;Value.Type=Pin->PinType;Value.Raw=Pin->DefaultValue;Value.Auto=Pin->AutogeneratedDefaultValue;Value.Text=Pin->DefaultTextValue;Value.Friendly=Pin->PinFriendlyName;Value.Default=nullptr;Value.Hidden=Pin->bHidden;Value.NotConnectable=Pin->bNotConnectable;Value.DefaultReadOnly=Pin->bDefaultValueIsReadOnly;Captured.Pins.Add(MoveTemp(Value));
+                    }
+                    Source.GraphNodes.Add(MoveTemp(Captured));
+                }
+                for(auto& NodeRole:Source.GraphNodes)for(UEdGraphPin* Pin:NodeRole.Pointer->Pins)
+                {
+                    FPin* Captured=NodeRole.Pins.FindByPredicate([Pin](const FPin& V){return V.Id==Pin->PinId;});if(!Captured)return false;
+                    for(UEdGraphPin* Peer:Pin->LinkedTo){const FNode* Owner=Source.GraphNodes.FindByPredicate([Peer](const FNode& N){return N.Pointer->Pins.Contains(Peer);});if(!Peer||!Owner||Peer->WasTrashed()||Peer->GetOwningNodeUnchecked()!=Owner->Pointer||Peer->Direction==Pin->Direction||!Peer->LinkedTo.Contains(Pin))return false;Captured->Links.Add(Owner->Id.ToString()+TEXT(":")+Peer->PinId.ToString());}Captured->Links.Sort();
+                }
+                Source.PackageFlags=uint32(Source.Package->GetPackageFlags());if(!Disk(Source.Package->GetName(),Source.File)||!Pure(TEXT("subtree_source_file_return"))||!Source.File->GetBoolField(TEXT("exists"))||Source.File->GetNumberField(TEXT("bytes"))<=0)return false;
+                SubtreeSources.Add(MoveTemp(Source));
+            }
+        }
+        if(!Pure(TEXT("subtree_injected_count_before")))return false;const int32 Injected=Task->GetInjectedNodesCount();if(!Pure(TEXT("subtree_injected_count_return"))||Injected!=0)return Stop(TEXT("subtree_admission"),Task->GetPathName(),TEXT("injected_count"),TEXT("zero from admitted null/root-decorator-free source"),LexToString(Injected));
+        R.Data->SetBoolField(TEXT("native_composite_RunBehavior"),true);R.Data->SetNumberField(TEXT("RunBehavior_task_count"),RunBehaviorRoles.Num());R.Data->SetNumberField(TEXT("RunBehavior_external_source_count"),SubtreeSources.Num());
+        TArray<TSharedPtr<FJsonValue>> SourceRows;for(const auto& Source:SubtreeSources){auto Row=Identity(Source.Asset);Row->SetStringField(TEXT("blackboard"),Source.Blackboard->GetPathName());Row->SetStringField(TEXT("graph"),Source.Graph->GetPathName());Row->SetNumberField(TEXT("package_exports"),Source.Exports.Num());Row->SetNumberField(TEXT("graph_nodes"),Source.GraphNodes.Num());Row->SetNumberField(TEXT("injected_root_decorators"),0);Row->SetObjectField(TEXT("file_before"),Source.File);SourceRows.Add(MakeShared<FJsonValueObject>(Row));}R.Data->SetArrayField(TEXT("RunBehavior_sources_before"),SourceRows);
+        R.Data->SetStringField(TEXT("RunBehavior_scope"),TEXT("Exact native RunBehavior with nullable or held saved-clean plain Sequence/Selector/Wait subtree using current/requested Blackboard and no root decorators. Original UpdateAsset consumes an existing preview and reserves GetInjectedNodesCount(0); it does not call UpdateInjectedNodes. Authored BehaviorAsset/source fields, source graph semantic pins, source package/file and editor SubtreePath/Version are preserved. No subtree Execute, source Save, explicit loader, injection creation or runtime compilation; public serialization/getter internals are whole-call boundaries, not global purity proof."));
+        R.Data->SetStringField(TEXT("RunBehavior_remaining"),TEXT("Nonzero root-decorator injection/replacement and arbitrary subtree preview states, nested RunBehavior/RunBehaviorDynamic, source services/decorators/generated tasks/custom graphs, third/null source Blackboard, cold reload/runtime and full original parity remain incomplete."));return RunBehaviorCurrent(TEXT("subtree_capture_complete"),true);
+    }
     bool Pure(const TCHAR* Stage)
     {
         if (Bad) { return false; }
@@ -1013,7 +1513,32 @@ struct FRDComposite
             if (!D.Node->NodeInstance.IsResolved() || D.Node->NodeInstance.Get()!=D.Instance || !D.Host->Decorators.Contains(D.Node) || !D.Host->SubNodes.Contains(D.Node))
             { return Stop(Stage,D.Node->GetPathName(),TEXT("plain_decorator_role"),TEXT("captured host membership and exact runtime instance"),TEXT("changed")); }
         }
-        if (!DescriptionEnumsCurrent(Stage) || !TypedCurrent(Stage) || !FilterReferencesCurrent(Stage) || !ExecutionCurrent(Stage) || !EditorExecutionCurrent(Stage)) { return false; }
+        for (const auto& S : ServiceRoles)
+        {
+            if (!S.Node->NodeInstance.IsResolved() || S.Node->NodeInstance!=S.Instance
+                || !S.Host->Services.Contains(S.Node) || !S.Host->SubNodes.Contains(S.Node))
+            { return Stop(Stage,S.Node->GetPathName(),TEXT("service_role"),TEXT("held editor host membership and runtime instance"),TEXT("changed or unresolved")); }
+        }
+        for (const auto& M : MainRoles)
+        {
+            if (M.Node->Services.Num()!=M.Services.Num()) { return Stop(Stage,M.Node->GetPathName(),TEXT("Services.count"),LexToString(M.Services.Num()),LexToString(M.Node->Services.Num())); }
+            for (int32 I=0;I<M.Services.Num();++I)
+            {
+                const auto& Slot=M.Node->Services[I];
+                const FServiceRole* S=ServiceRoles.FindByPredicate([&](const FServiceRole& V){return V.Instance==M.Services[I] && V.Host==M.Node;});
+                if (!Slot.IsResolved() || !S || Slot!=S->Node) { return Stop(Stage,M.Node->GetPathName(),TEXT("Services.order"),TEXT("captured ordered resolved editor Service roles"),TEXT("changed")); }
+            }
+            const auto& Runtime=MainTask(M.Instance->GetClass())?static_cast<UBTTaskNode*>(M.Instance)->Services:static_cast<UBTCompositeNode*>(M.Instance)->Services;
+            if (Runtime.Num()!=M.Services.Num()) { return Stop(Stage,M.Node->GetPathName(),TEXT("runtime_Services.count"),LexToString(M.Services.Num()),LexToString(Runtime.Num())); }
+            for (int32 I=0;I<Runtime.Num();++I) if (!Runtime[I].IsResolved() || Runtime[I]!=M.Services[I])
+            { return Stop(Stage,M.Node->GetPathName(),TEXT("runtime_Services.order"),TEXT("captured ordered runtime Service instances"),TEXT("changed or unresolved")); }
+        }
+        if(RootDecoratorsCaptured)
+        {
+            if(!Tree->RootNode.IsResolved()||Tree->RootNode.Get()!=ExecutionRoot||Tree->RootDecorators.Num()!=RootDecoratorTests.Num()||!SameOps(Tree->RootDecoratorOps,RootDecoratorLogic))return Stop(Stage,TEXT("tree"),TEXT("root_decorator_runtime_inventory"),TEXT("captured normalized root and ordered tests/logic"),TEXT("changed or unresolved"));
+            for(int32 I=0;I<RootDecoratorTests.Num();++I)if(!Tree->RootDecorators[I].IsResolved()||Tree->RootDecorators[I].Get()!=RootDecoratorTests[I])return Stop(Stage,TEXT("tree"),TEXT("root_decorator_runtime_role"),TEXT("same held resolved root test in order"),TEXT("changed or unresolved"));
+        }
+        if (!DescriptionEnumsCurrent(Stage) || !TypedCurrent(Stage) || !RunEQSCurrent(Stage) || !RunBehaviorCurrent(Stage) || !FilterReferencesCurrent(Stage) || !ExecutionCurrent(Stage) || !EditorExecutionCurrent(Stage)) { return false; }
         if (!Ready) { return true; }
         if (!Tree->BTGraph.IsResolved() || !Tree->BlackboardAsset.IsResolved() || !Root->BlackboardAsset.IsResolved()) { return Stop(Stage,TEXT("tree"),TEXT("asset_slots"),TEXT("resolved held graph/Blackboard slots"),TEXT("unresolved")); }
         for (auto N : Graph->Nodes) if (!N.IsResolved()) { return Stop(Stage,TEXT("graph"),TEXT("node_slot"),TEXT("resolved inventory before membership"),TEXT("unresolved")); }
@@ -1111,11 +1636,11 @@ struct FRDComposite
     }
     bool Audit(const TCHAR* Stage)
     {
-        if (!Enabled) { return true; } if (!Pure(Stage)) { return false; }
+        if (!Enabled) { return true; } if (!Pure(Stage) || !RunBehaviorCurrent(Stage,true)) { return false; }
         for (auto& O : Objects) for (auto& F : O.Fields)
         {
             // Node arrays are checked as logical membership above; pin physical order is not a contract.
-            if (F.Name == TEXT("Nodes") || F.Name == TEXT("SubGraphs")) { continue; }
+            if ((F.Name == TEXT("Nodes") || F.Name == TEXT("SubGraphs")) && LogicalGraphInventory(O.Hold.Get())) { continue; }
             FString Now; if (!Export(O, F, Now)) { return false; }
             const bool Counter = O.Hold.Get() == Graph && F.Name == TEXT("ModCounter");
             const FString& Expected = (F.Blackboard && Assigned) || (F.Selector && Resolved) || (F.Execution && ExecutionRebuilt) || (Counter && AfterUnlock) ? F.Planned : F.Before;
@@ -1142,7 +1667,9 @@ struct FRDComposite
         Tree=B; if (!B->BTGraph.IsResolved() || !B->BlackboardAsset.IsResolved() || !B->RootNode.IsResolved()) { return Stop(TEXT("admission"),TEXT("tree"),TEXT("resolved_slots"),TEXT("resolved graph/BB/root"),TEXT("unresolved")); }
         Graph=Cast<UBehaviorTreeGraph>(B->BTGraph.Get()); if (!Graph) { return true; }
         if (!Loaded(Graph) || Graph->Nodes.Num()>MaxNodes) { return Stop(TEXT("admission"),TEXT("graph"),TEXT("inventory"),TEXT("bounded loaded graph"),TEXT("unavailable")); }
-        // Detect the extension without broadening the old non-composite route.
+        // ACW extends the existing composite guard to normalized root decorators;
+        // nondecorated legacy routes and external RunBehavior sources stay intact.
+        Enabled=!B->RootDecorators.IsEmpty()||!B->RootDecoratorOps.IsEmpty();
         TArray<UBehaviorTreeGraphNode*> Walk; TSet<UBehaviorTreeGraphNode*> Seen;
         for (auto N : Graph->Nodes) { if (!N.IsResolved() || !Loaded(N.Get())) { return false; } auto* A=Cast<UBehaviorTreeGraphNode>(N.Get()); if (!A) { return false; } Walk.Add(A); }
         for (int32 I=0;I<Walk.Num();++I)
@@ -1167,14 +1694,16 @@ struct FRDComposite
             if (!N->NodeInstance.IsResolved()) { return Stop(TEXT("admission"),N->GetPathName(),TEXT("NodeInstance"),TEXT("resolved nullable slot"),TEXT("unresolved")); }
             UObject* InitialInstance=N->NodeInstance.Get();
             if (InitialInstance && (!Loaded(InitialInstance) || !Hold(InitialInstance))) { return false; }
-            PatrolMixed|=(InitialInstance && PatrolTask(InitialInstance->GetClass())) || N->GetClass()==UBehaviorTreeGraphNode_Decorator::StaticClass();
+            HasRunEQS|=InitialInstance && InitialInstance->GetClass()==UBTService_RunEQS::StaticClass();
+            PatrolMixed|=(InitialInstance && (PatrolTask(InitialInstance->GetClass()) || NativeService(InitialInstance->GetClass()))) || N->GetClass()==UBehaviorTreeGraphNode_Decorator::StaticClass();
         }
         if (Graph->Nodes.Num()>64 || Walk.Num()>128) { return Stop(TEXT("admission"),TEXT("graph"),TEXT("composite_inventory"),TEXT("top64/all128 bound"),TEXT("exceeded")); }
         R.Data->SetBoolField(TEXT("native_composite_decorator_contract"),true); R.Data->SetBoolField(TEXT("nested_decorator_graphs_supported"),true);
         R.Data->SetBoolField(TEXT("native_patrol_composite_contract"),PatrolMixed);
-        R.Data->SetStringField(TEXT("composite_decorator_scope"),PatrolMixed?TEXT("bounded native Sequence/Selector with Wait/MoveDirectlyToward/RotateToFaceBBEntry; owned Composite logical and plain Blackboard decorators; exact Bool/ObjectActor/Vector/Name Blackboard sources, named selectors including SDK missing-key invalidation; saved missing/filter-rejected selector-name transitions remain pending; no custom/services/parentBB/live execution"):TEXT("bounded normalized native Sequence/Selector/Wait tree; multiple owned closed Sink/AND/OR/NOT Bool expressions; no custom/services/parent Blackboard/nonBool source or live execution"));
+        R.Data->SetStringField(TEXT("composite_service_scope"),TEXT("Exact native DefaultFocus on normalized own main Composite/Task hosts; named selector cache, authored interval/filter values and paired editor/runtime order preserved. Runtime execution, first-init RunEQS auto-selected query keys/custom/generated Services, auto-selected main keys and broader Blackboard sources remain incomplete."));
+        R.Data->SetStringField(TEXT("composite_decorator_scope"),PatrolMixed?TEXT("bounded native Sequence/Selector with Wait/MoveDirectlyToward/RotateToFaceBBEntry; owned Composite logical and plain Blackboard decorators; exact Bool/ObjectActor/Vector/Name Blackboard sources, named selectors including SDK missing-key invalidation; saved missing/filter-rejected selector-name transitions remain pending; no custom/generated Services/first-init RunEQS automatic-selection/parentBB/live execution"):TEXT("bounded normalized native Sequence/Selector/Wait tree; multiple owned closed Sink/AND/OR/NOT Bool expressions; no custom/services/parent Blackboard/nonBool source or live execution"));
         if (Graph->GetClass()!=UBehaviorTreeGraph::StaticClass() || Graph->GetOuter()!=B || Graph->IsLocked() || !Loaded(OldBB) || !Loaded(Requested)
-            || !B->RootDecorators.IsEmpty() || !B->RootDecoratorOps.IsEmpty() || !AddObject(B) || !AddObject(Graph) || !Hold(OldBB) || !Hold(Requested)) { return false; }
+            || B->RootDecorators.Num()>MaxNodes || B->RootDecoratorOps.Num()>MaxNodes || !AddObject(B) || !AddObject(Graph) || !Hold(OldBB) || !Hold(Requested)) { return false; }
         LogicClass=FindObject<UClass>(nullptr,TEXT("/Script/BehaviorTreeEditor.BehaviorTreeDecoratorGraphNode_Logic"));
         TestClass=FindObject<UClass>(nullptr,TEXT("/Script/BehaviorTreeEditor.BehaviorTreeDecoratorGraphNode_Decorator"));
         if (!Native(LogicClass,TEXT("/Script/BehaviorTreeEditor")) || !Native(TestClass,TEXT("/Script/BehaviorTreeEditor")) || !Hold(LogicClass) || !Hold(TestClass)) { return false; }
@@ -1214,9 +1743,9 @@ struct FRDComposite
                     if (Key.KeyType->GetClass()==UBlackboardKeyType_Object::StaticClass())
                     {
                         auto* ObjectKey=static_cast<UBlackboardKeyType_Object*>(Key.KeyType.Get());
-                        if (!ObjectKey->BaseClass.IsResolved() || ObjectKey->BaseClass.Get()!=AActor::StaticClass()
+                        if (!ObjectKey->BaseClass.IsResolved() || (ObjectKey->BaseClass.Get()!=AActor::StaticClass() && (!HasRunEQS || ObjectKey->BaseClass.Get()!=UEnvQuery::StaticClass()))
                             || !ObjectKey->DefaultValue.IsResolved() || ObjectKey->DefaultValue.Get()!=nullptr || !Hold(ObjectKey->BaseClass.Get()))
-                        { return Stop(TEXT("admission"),SourceBB->GetPathName(),TEXT("ObjectKey.role"),TEXT("Actor base/null default as native creator"),TEXT("outside bounded role")); }
+                        { return Stop(TEXT("admission"),SourceBB->GetPathName(),TEXT("ObjectKey.role"),TEXT("Actor or admitted RunEQS Query base/null default"),TEXT("outside bounded role")); }
                     }
                     SelectorFilters.Add(Key.KeyType.Get()); // reuse resolved-reference preservation; do not rewrite filters
                 }
@@ -1228,21 +1757,42 @@ struct FRDComposite
             if (Authored < 1 || Authored > 32) { return Stop(TEXT("admission"), SourceBB->GetPathName(), TEXT("authored_key_count"), TEXT("1..32 supported own keys"), LexToString(Authored)); }
         }
         R.Data->SetNumberField(TEXT("preserved_reserved_SelfActor_sources"), SelfKeyRoles.Num());
-        for (auto N : Graph->Nodes)
+        const auto CapturedTopInventory=Graph->Nodes;
+        for (auto N : CapturedTopInventory)
         {
             auto* A=static_cast<UBehaviorTreeGraphNode*>(N.Get());
-            if (!Native(A->GetClass(),TEXT("/Script/BehaviorTreeEditor")) || !A->NodeInstance.IsResolved() || !A->Services.IsEmpty() || A->bInjectedNode || !AddNode(A,Graph)) { return false; }
+            if (!Native(A->GetClass(),TEXT("/Script/BehaviorTreeEditor")) || !A->NodeInstance.IsResolved() || A->bInjectedNode || !AddNode(A,Graph)) { return false; }
             TopNodes.Add(A);
-            if (A->GetClass()==UBehaviorTreeGraphNode_Root::StaticClass()) { if (Root || A->NodeInstance || !A->Decorators.IsEmpty() || !A->SubNodes.IsEmpty()) { return false; } Root=static_cast<UBehaviorTreeGraphNode_Root*>(A); continue; }
+            if (A->GetClass()==UBehaviorTreeGraphNode_Root::StaticClass()) { if (Root || A->NodeInstance || !A->Decorators.IsEmpty() || !A->Services.IsEmpty() || !A->SubNodes.IsEmpty()) { return false; } Root=static_cast<UBehaviorTreeGraphNode_Root*>(A); continue; }
             UObject* V=A->NodeInstance.Get();
             if (!Loaded(V) || (V->GetClass()!=UBTComposite_Sequence::StaticClass() && V->GetClass()!=UBTComposite_Selector::StaticClass() && !MainTask(V->GetClass()))
                 || V->GetOuter()!=B || static_cast<UBTNode*>(V)->GetTreeAsset()!=B || !AddObject(V)) { return Stop(TEXT("admission"),A->GetPathName(),TEXT("runtime_node"),TEXT("normalized exact native Tree-owned Sequence/Selector/Wait"),TEXT("unsupported")); }
-            if (A->GetClass()!=(MainTask(V->GetClass())?UBehaviorTreeGraphNode_Task::StaticClass():UBehaviorTreeGraphNode_Composite::StaticClass())) { return false; }
+            UClass* ExpectedEditorClass=V->GetClass()==UBTTask_RunBehavior::StaticClass()?UBehaviorTreeGraphNode_SubtreeTask::StaticClass():MainTask(V->GetClass())?UBehaviorTreeGraphNode_Task::StaticClass():UBehaviorTreeGraphNode_Composite::StaticClass();
+            if (A->GetClass()!=ExpectedEditorClass || !CaptureRunBehavior(A,static_cast<UBTNode*>(V))) { return false; }
             for (const auto& M : MainRoles) if (M.Instance==V) { return false; }
-            if (MainTask(V->GetClass())) { if (!static_cast<UBTTaskNode*>(V)->Services.IsEmpty()) { return false; } }
-            else if (!static_cast<UBTCompositeNode*>(V)->Services.IsEmpty()) { return false; }
-            FMainRole M; M.Node=A; M.Instance=static_cast<UBTNode*>(V); MainRoles.Add(MoveTemp(M));
+            FMainRole M; M.Node=A; M.Instance=static_cast<UBTNode*>(V);
             TSet<UAIGraphNode*> Unique;
+            const auto EditorServices=A->Services;
+            const auto RuntimeServices=MainTask(V->GetClass())?static_cast<UBTTaskNode*>(V)->Services:static_cast<UBTCompositeNode*>(V)->Services;
+            if (EditorServices.Num()>32 || RuntimeServices.Num()!=EditorServices.Num()) { return Stop(TEXT("admission"),A->GetPathName(),TEXT("Services"),TEXT("<=32 normalized paired editor/runtime Services"),TEXT("unsupported")); }
+            for (int32 ServiceIndex=0;ServiceIndex<EditorServices.Num();++ServiceIndex)
+            {
+                const auto& Slot=EditorServices[ServiceIndex];
+                if (!Slot.IsResolved() || Slot==nullptr || !RuntimeServices[ServiceIndex].IsResolved()) { return false; }
+                auto* S=FindObject<UBehaviorTreeGraphNode_Service>(nullptr,*Slot.GetPathName());
+                if (!Loaded(S) || Slot!=S || S->GetClass()!=UBehaviorTreeGraphNode_Service::StaticClass() || Unique.Contains(S)
+                    || S->bInjectedNode || !S->Decorators.IsEmpty() || !S->Services.IsEmpty() || !S->SubNodes.IsEmpty()
+                    || !S->NodeInstance.IsResolved() || S->NodeInstance==nullptr || !AddNode(S,Graph)) { return false; }
+                auto* Service=FindObject<UBTService>(nullptr,*S->NodeInstance.GetPathName());
+                if (!Loaded(Service) || S->NodeInstance!=Service || !NativeService(Service->GetClass()) || Service->GetOuter()!=B
+                    || Service->GetTreeAsset()!=B || RuntimeServices[ServiceIndex]!=Service || !AddObject(Service))
+                { return Stop(TEXT("admission"),S->GetPathName(),TEXT("service_instance"),TEXT("exact owned normalized native DefaultFocus or admitted RunEQS request; wider/custom/generated Services remain incomplete"),TEXT("unsupported")); }
+                for (const auto& Existing : ServiceRoles) if (Existing.Node==S || Existing.Instance==Service) { return false; }
+                Unique.Add(S); M.Services.Add(Service); ServiceRoles.Add({S,A,Service});
+            }
+            if (A->Services.Num()!=EditorServices.Num()) { return false; }
+            for (int32 I=0;I<EditorServices.Num();++I) if (!A->Services[I].IsResolved() || A->Services[I]!=EditorServices[I]) { return false; }
+            MainRoles.Add(MoveTemp(M));
             for (auto D : A->Decorators)
             {
                 if (!D.IsResolved() || !Loaded(D.Get()) || Unique.Contains(D.Get()) || D->bInjectedNode || !D->Services.IsEmpty() || !D->Decorators.IsEmpty() || !D->SubNodes.IsEmpty() || !D->NodeInstance.IsResolved() || !AddNode(D.Get(),Graph)) { return false; }
@@ -1275,11 +1825,11 @@ struct FRDComposite
                 }
                 Composites.Add(MoveTemp(Role));
             }
-            if (A->SubNodes.Num()!=A->Decorators.Num()) { return false; } TSet<UAIGraphNode*> SubSeen;
+            if (A->SubNodes.Num()!=A->Decorators.Num()+A->Services.Num()) { return false; } TSet<UAIGraphNode*> SubSeen;
             for (auto D : A->SubNodes) { if (!D.IsResolved() || !Unique.Contains(D.Get()) || SubSeen.Contains(D.Get())) { return false; } SubSeen.Add(D.Get()); }
         }
-        if (!Root || Root->BlackboardAsset!=OldBB || Composites.IsEmpty() || Graph->SubGraphs.Num()!=Composites.Num()) { return false; }
-        Composite=Composites[0].Node; Inner=Composites[0].Graph;
+        if (!Root || Root->BlackboardAsset!=OldBB || (Composites.IsEmpty()&&B->RootDecorators.IsEmpty()) || Graph->SubGraphs.Num()!=Composites.Num()) { return false; }
+        if(!Composites.IsEmpty()){Composite=Composites[0].Node; Inner=Composites[0].Graph;}
         // Check every peer by membership before dereferencing it. Link order is
         // later interpreted exactly as the SDK does, never globally canonicalized.
         for (auto& E : Nodes) for (auto& V : E.Pins)
@@ -1347,7 +1897,12 @@ struct FRDComposite
         };
         if (Root->Pins.Num()!=1 || Root->Pins[0]->Direction!=EGPD_Output || Root->Pins[0]->LinkedTo.Num()!=1) { return false; }
         auto* RootMain=static_cast<UBehaviorTreeGraphNode*>(Root->Pins[0]->LinkedTo[0]->GetOwningNodeUnchecked()); auto* M=Main(RootMain);
-        if (!M || M->Instance!=B->RootNode.Get() || MainTask(M->Instance->GetClass()) || !M->Node->Decorators.IsEmpty() || !WalkMain(RootMain,0) || Reachable.Num()!=MainRoles.Num()) { return Stop(TEXT("admission"),B->GetPathName(),TEXT("normalized_topology"),TEXT("one closed native runtime-matching Sequence/Selector/Wait tree"),TEXT("unsupported or rebuild needed")); }
+        if (!M || M->Instance!=B->RootNode.Get() || MainTask(M->Instance->GetClass()) || !WalkMain(RootMain,0) || Reachable.Num()!=MainRoles.Num()) { return Stop(TEXT("admission"),B->GetPathName(),TEXT("normalized_topology"),TEXT("one closed native runtime-matching Sequence/Selector/Wait tree"),TEXT("unsupported or rebuild needed")); }
+        if(B->RootDecorators.Num()!=M->Tests.Num()||!SameOps(B->RootDecoratorOps,M->Logic))return Stop(TEXT("admission"),B->GetPathName(),TEXT("root_decorator_order/logic"),TEXT("runtime root arrays match ordered authored root-host tests/operations"),TEXT("normalization required; no writer"));
+        for(int32 I=0;I<B->RootDecorators.Num();++I)if(!B->RootDecorators[I].IsResolved()||B->RootDecorators[I].Get()!=M->Tests[I])return Stop(TEXT("admission"),B->GetPathName(),TEXT("root_decorator_identity"),TEXT("held own root-host decorator in exact order"),TEXT("changed/unresolved"));
+        RootDecoratorTests=M->Tests;RootDecoratorLogic=M->Logic;ExecutionRoot=B->RootNode.Get();RootDecoratorsCaptured=true;
+        R.Data->SetBoolField(TEXT("native_composite_decorator_contract"),!Composites.IsEmpty());R.Data->SetBoolField(TEXT("native_root_decorator_contract"),!RootDecoratorTests.IsEmpty());R.Data->SetNumberField(TEXT("preserved_root_decorator_count"),RootDecoratorTests.Num());
+        if(!RootDecoratorTests.IsEmpty())R.Data->SetStringField(TEXT("root_decorator_scope"),TEXT("Existing normalized owned root-host native Blackboard decorators and closed Composite groups use the original Blackboard assignment/UpdateAsset writer. Ordered RootDecorators/RootDecoratorOps, authored names/types/logic/links and source preservation stay exact; SDK root parent=null/index=MAX_uint16/memory0/depth0 and editor root-level roles are planned before writes. No node creation/injection/source rewrite/runtime execution. Other decorator classes/generated/custom/unnormalized/inherited Blackboard/source and full original scope remain incomplete or usage validation pending."));
         for (TFieldIterator<FProperty> It(FBlackboardKeySelector::StaticStruct(), EFieldIteratorFlags::IncludeSuper); It; ++It)
         { FProperty* P = *It; FField F; F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass(); F.Offset=P->GetOffset_ForInternal(); F.Size=P->ElementSize; F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags());
             if (auto* C=CastField<FObjectPropertyBase>(P)) { F.ObjectClass=C->PropertyClass; if (!Hold(F.ObjectClass)) { return false; } }
@@ -1356,6 +1911,7 @@ struct FRDComposite
         if (!BindSelectorCache()) { return false; }
         TArray<UBTNode*> SelectorNodes; for (auto* D : Decorators) { SelectorNodes.Add(D); }
         for (const auto& MRole : MainRoles) if (PatrolTask(MRole.Instance->GetClass())) { SelectorNodes.Add(MRole.Instance); }
+        for (const auto& S : ServiceRoles) { SelectorNodes.Add(S.Instance); }
         for (auto* D : SelectorNodes)
         {
             const FObject* O=Objects.FindByPredicate([&](const FObject& V){return V.Hold.Get()==D;});
@@ -1366,7 +1922,7 @@ struct FRDComposite
             if (Key.AllowedTypes.Num() > 8) { return false; }
             for (auto V : Key.AllowedTypes) { if (!V.IsResolved() || !Loaded(V.Get()) || !Native(V->GetClass(), TEXT("/Script/AIModule")) || !AddObject(V.Get())) { return false; } SelectorFilters.Add(V.Get()); }
         }
-        if (!CaptureFilterReferences()) { return false; }
+        if (!CaptureRunEQSRequests() || !CaptureFilterReferences()) { return false; }
         // Existing native defaults only. Never create a CDO to satisfy this profile.
         const TArray<UClass*> SourceClasses = Classes.Array();
         for (UClass* C : SourceClasses)
@@ -1380,12 +1936,12 @@ struct FRDComposite
         // Capture complete reflected cells. Only Blackboard slots and the selector's resolved cache receive a plan.
         for (auto& O : Objects) for (auto& F : O.Fields)
         {
-            if (F.Name == TEXT("Nodes") || F.Name == TEXT("SubGraphs")) { continue; }
+            if ((F.Name == TEXT("Nodes") || F.Name == TEXT("SubGraphs")) && LogicalGraphInventory(O.Hold.Get())) { continue; }
             if (!Export(O, F, F.Before)) { return false; } F.Planned = F.Before;
         }
         for (auto& O : Objects) for (auto& F : O.Fields)
         {
-            if (F.Name == TEXT("Nodes") || F.Name == TEXT("SubGraphs")) { continue; }
+            if ((F.Name == TEXT("Nodes") || F.Name == TEXT("SubGraphs")) && LogicalGraphInventory(O.Hold.Get())) { continue; }
             if (O.Hold.Get() == Graph && F.Name == TEXT("ModCounter"))
             {
                 if (Graph->ModCounter == MAX_int32 || !CastField<FIntProperty>(F.Pointer)) { return false; }
@@ -1396,7 +1952,7 @@ struct FRDComposite
                 FObjectProperty* P = CastField<FObjectProperty>(F.Pointer); if (!P) { return false; }
                 TObjectPtr<UBlackboardData> Value(Requested); F.Planned.Reset(); if (!Export(O, F, F.Planned, &Value)) { return false; } F.Blackboard = true;
             }
-            if (PatrolMixed && !O.Hold->HasAnyFlags(RF_ClassDefaultObject) && SelectorOwner(O.Class) && F.Name==TEXT("BlackboardKey"))
+            if (PatrolMixed && !SubtreeSourceObject(O.Hold.Get()) && !O.Hold->HasAnyFlags(RF_ClassDefaultObject) && SelectorOwner(O.Class) && F.Name==TEXT("BlackboardKey"))
             {
                 if (!SelectorProperty(O,F)) { return false; } auto* P=static_cast<FStructProperty*>(F.Pointer);
                 if (!CaptureTypedBefore(O.Hold.Get(),P,O.Path)) { return false; }
@@ -1418,7 +1974,7 @@ struct FRDComposite
                 Row->SetStringField(TEXT("requested_type"),PlannedType?PlannedType->GetPathName():FString()); Row->SetBoolField(TEXT("sdk_missing_key_invalidated"),Id==FBlackboard::InvalidKey);
                 R.Data->SetObjectField(TEXT("selector_plan_")+FString::FromInt(PlanCount++),Row);
             }
-            else if (!O.Hold->HasAnyFlags(RF_ClassDefaultObject) && O.Class == UBTDecorator_Blackboard::StaticClass() && F.Name == TEXT("BlackboardKey"))
+            else if (!SubtreeSourceObject(O.Hold.Get()) && !O.Hold->HasAnyFlags(RF_ClassDefaultObject) && O.Class == UBTDecorator_Blackboard::StaticClass() && F.Name == TEXT("BlackboardKey"))
             {
                 FStructProperty* P = CastField<FStructProperty>(F.Pointer); if (!P || P->Struct != FBlackboardKeySelector::StaticStruct() || F.Size != sizeof(FBlackboardKeySelector) || F.Dim != 1) { return false; }
                 if (!CaptureTypedBefore(O.Hold.Get(), P, O.Path)) { return false; }
@@ -1464,7 +2020,7 @@ struct FRDComposite
             if (!Audit(TEXT("collect_plain_decorator_return")) || Collected.Num()!=1 || Collected[0]!=D.Instance || !SameOps(Actual,Expected))
             { return Stop(TEXT("collect_plain_decorator_return"),D.Node->GetPathName(),TEXT("ordered_collect"),TEXT("own exact Blackboard decorator/Test0"),TEXT("changed")); }
         }
-        if (!PlanExecution()) { return false; } R.Data->SetNumberField(TEXT("composite_selector_count"),PlanCount); R.Data->SetNumberField(TEXT("composite_graph_count"),Composites.Num()); return true;
+        if (!PlanExecution()) { return false; } R.Data->SetBoolField(TEXT("native_service_composite_contract"),!ServiceRoles.IsEmpty()); R.Data->SetNumberField(TEXT("composite_native_service_count"),ServiceRoles.Num()); R.Data->SetNumberField(TEXT("composite_selector_count"),PlanCount); R.Data->SetNumberField(TEXT("composite_graph_count"),Composites.Num()); return true;
     }
     int32 PlanCount = 0;
     bool Apply()
@@ -1478,6 +2034,7 @@ struct FRDComposite
         Root->BlackboardAsset = Requested; Tree->BlackboardAsset = Requested; Assigned = true;
         if (!Audit(TEXT("slots_assigned"))) { return false; }
         Resolving = true; R.Data->SetNumberField(TEXT("direct_update_blackboard_calls"), 1); Graph->UpdateBlackboardChange();
+        if (!AdoptRunEQSInitializations()) { return false; }
         Resolved = true; Resolving = false; if (!Audit(TEXT("update_blackboard_return"))) { return false; }
         R.Data->SetNumberField(TEXT("direct_update_asset_calls"), 1); R.Data->SetBoolField(TEXT("execution_update_asset_entered"),true);
         Graph->UpdateAsset(UBehaviorTreeGraph::KeepRebuildCounter);
@@ -1492,7 +2049,7 @@ struct FRDComposite
     TSharedRef<FJsonObject> Snapshot() const
     {
         auto J = MakeShared<FJsonObject>(); TArray<TSharedPtr<FJsonValue>> Rows;
-        J->SetStringField(TEXT("graph"), Inner->GetPathName()); J->SetStringField(TEXT("composite"), Composite->GetPathName());
+        J->SetStringField(TEXT("graph"), Inner?Inner->GetPathName():Graph->GetPathName()); J->SetStringField(TEXT("composite"), Composite?Composite->GetPathName():FString());
         for (const auto& E : Nodes) if (E.Graph == Inner)
         {
             auto Row = MakeShared<FJsonObject>(); Row->SetStringField(TEXT("guid"), E.Id.ToString()); Row->SetStringField(TEXT("path"), E.Pointer->GetPathName()); Row->SetStringField(TEXT("class"), E.Pointer->GetClass()->GetPathName());
@@ -1640,6 +2197,236 @@ void Publish(FResult& R, const FObservation& O, const TCHAR* Label)
     TArray<TSharedPtr<FJsonValue>> Empty; R.Data->SetArrayField(TEXT("blackboard_keys"), Empty); R.Data->SetArrayField(TEXT("blackboard_inherited_keys"), Empty); R.Data->SetStringField(TEXT("blackboard_parent"), TEXT(""));
     if (!BBPath.IsEmpty()) { const auto Ref = O.References->GetObjectField(BBPath)->GetObjectField(TEXT("state")); R.Data->SetArrayField(TEXT("blackboard_keys"), Ref->GetArrayField(TEXT("own_keys"))); R.Data->SetArrayField(TEXT("blackboard_inherited_keys"), Ref->GetArrayField(TEXT("inherited_keys"))); R.Data->SetStringField(TEXT("blackboard_parent"), Ref->GetStringField(TEXT("parent_blackboard"))); }
     R.Data->SetBoolField(TEXT("readback_confirmed"), true); R.Data->SetBoolField(TEXT("tree_shape_fallback_is_execution_proof"), false);
+}
+// XR: original read-only structure summary for trees containing Blueprint task/service/decorator classes.
+// These operations read stored topology, never execute nodes, create defaults or export Blueprint properties.
+struct FXRSummary
+{
+    struct FRole
+    {
+        TStrongObjectPtr<UObject> Object, Class, Outer, Package;
+        FString State;
+        FRole(UObject* O) : Object(O), Class(O->GetClass()), Outer(O->GetOuter()), Package(O->GetOutermost()) {}
+    };
+    UBehaviorTree* Tree; FResult& Result;
+    TArray<FRole> Roles;
+    TSet<UClass*> SeenClasses;
+    TSharedRef<FJsonObject> Sources = MakeShared<FJsonObject>();
+    bool Frozen = false, HasGenerated = false, HasRuntimeNative = false, HasRuntimeNativeComposite = false;
+    FXRSummary(UBehaviorTree* B, FResult& R) : Tree(B), Result(R) {}
+    bool Mismatch(const FString& Object, const TCHAR* Field, const FString& Expected, const FString& Actual)
+    {
+        if (!Result.Data->HasField(TEXT("first_mismatch_object")))
+        {
+            Result.Data->SetStringField(TEXT("first_mismatch_object"), Object); Result.Data->SetStringField(TEXT("first_mismatch_property"), Field);
+            Result.Data->SetStringField(TEXT("first_mismatch_expected"), Expected); Result.Data->SetStringField(TEXT("first_mismatch_actual"), Actual);
+        }
+        return false;
+    }
+    bool Role(UObject* O)
+    {
+        if (!Loaded(O) || !Loaded(O->GetClass()) || !Loaded(O->GetOuter()) || !Loaded(O->GetOutermost())) { return false; }
+        auto J = Identity(O); J->SetStringField(TEXT("package"), O->GetOutermost()->GetPathName()); J->SetBoolField(TEXT("package_dirty"), O->GetOutermost()->IsDirty()); const FString State = Text(J);
+        for (const FRole& H : Roles)
+        {
+            if (H.Object.Get() != O) { continue; }
+            if (H.Class.Get() != O->GetClass() || H.Outer.Get() != O->GetOuter() || H.Package.Get() != O->GetOutermost() || H.State != State)
+            { return Mismatch(H.Object->GetPathName(), TEXT("identity/owner/package"), H.State, State); }
+            return true;
+        }
+        if (Frozen || Roles.Num() >= MaxPackages) { return Mismatch(O->GetPathName(), TEXT("role_membership"), TEXT("previously retained object"), TEXT("new or excessive object")); }
+        FRole& H = Roles.Emplace_GetRef(O); H.State = State; return true;
+    }
+    // XX: inspect stored node fields only. A native module is identified from the
+    // already-discovered project/plugin descriptor, never a guessed DLL/path or loader.
+    bool RuntimeNativeSource(UClass* K, const TSharedRef<FJsonObject>& J)
+    {
+        if (Native(K, TEXT("/Script/AIModule"), true) || Native(K, TEXT("/Script/CoreUObject"), true)) { return true; }
+        HasRuntimeNative = true;
+        UPackage* Package = K->GetOutermost();
+        if (K->GetClass() != UClass::StaticClass() || !Loaded(Package) || !Package->HasAnyPackageFlags(PKG_CompiledIn)
+            || Package->HasAnyPackageFlags(PKG_EditorOnly | PKG_Developer | PKG_UncookedOnly | PKG_PlayInEditor)
+            || Package->IsDirty() || K->IsEditorOnly() || !Package->GetName().StartsWith(TEXT("/Script/"))) { return false; }
+        const FString ModuleName = Package->GetName().RightChop(8);
+        // Module names of these tooling plugins are derived from their actual descriptors.
+        for (const TCHAR* Tool : { TEXT("CubelessMCP_UE58"), TEXT("UnrealMCP"), TEXT("CubelessControlRigTools"),
+            TEXT("ModelContextProtocol"), TEXT("ToolsetRegistry"), TEXT("PythonScriptPlugin"), TEXT("EditorScriptingUtilities") })
+        {
+            if (ModuleName.Equals(Tool, ESearchCase::IgnoreCase)) { return false; }
+            if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(Tool))
+            { for (const FModuleDescriptor& Module : Plugin->GetDescriptor().Modules) { if (Module.Name.ToString().Equals(ModuleName, ESearchCase::IgnoreCase)) { return false; } } }
+        }
+        int32 Matches = 0; bool Runtime = false; FString Origin, PluginName;
+        const auto Consider = [&](const FModuleDescriptor& Module, const FString& Owner, const FString& Plugin)
+        {
+            if (!Module.Name.ToString().Equals(ModuleName, ESearchCase::CaseSensitive)) { return; }
+            ++Matches; Runtime = Module.Type == EHostType::Runtime && FModuleManager::Get().IsModuleLoaded(Module.Name);
+            Origin = Owner; PluginName = Plugin;
+        };
+        if (const FProjectDescriptor* Project = IProjectManager::Get().GetCurrentProject())
+        { for (const FModuleDescriptor& Module : Project->Modules) { Consider(Module, TEXT("current_project"), FString()); } }
+        for (const TSharedRef<IPlugin>& Plugin : IPluginManager::Get().GetEnabledPlugins())
+        { for (const FModuleDescriptor& Module : Plugin->GetDescriptor().Modules) { Consider(Module, TEXT("enabled_plugin"), Plugin->GetName()); } }
+        if (Matches != 1 || !Runtime) { return false; }
+        J->SetStringField(TEXT("native_module"), ModuleName); J->SetStringField(TEXT("native_module_origin"), Origin);
+        J->SetStringField(TEXT("native_plugin"), PluginName); J->SetStringField(TEXT("native_module_host_type"), TEXT("Runtime"));
+        J->SetBoolField(TEXT("native_module_loaded"), true);
+        return true;
+    }
+    // Stored-summary source inspection only. A failed descriptor/handle lookup
+    // must not be mistaken for the legitimate null superclass of UObject.
+    bool SummarySuper(UClass* Class, UClass*& Super)
+    {
+        Super = nullptr;
+#if UE_WITH_OBJECT_HANDLE_LATE_RESOLVE
+        if (!IsEditorGameThread() || IsPlaySessionActive() || !Loaded(Class)) { return false; }
+        static FObjectProperty* const P = FindFProperty<FObjectProperty>(UStruct::StaticClass(), TEXT("SuperStruct"));
+        if (!P || P->GetClass() != FObjectProperty::StaticClass() || P->GetOwnerStruct() != UStruct::StaticClass()
+            || P->GetOwnerProperty() != P || P->ArrayDim != 1 || P->ElementSize != sizeof(TObjectPtr<UStruct>)
+            || P->GetSize() != sizeof(TObjectPtr<UStruct>) || P->GetMinAlignment() != alignof(TObjectPtr<UStruct>)
+            || P->GetOffset_ForInternal() < 0 || int64(P->GetOffset_ForInternal()) + P->GetSize() > UStruct::StaticClass()->GetPropertiesSize()
+            || P->HasSetterOrGetter() || !P->PropertyClass.IsResolved() || P->PropertyClass != UStruct::StaticClass()) { return false; }
+        const TObjectPtr<UObject> Slot = P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(Class));
+        if (!Slot.IsResolved()) { return false; }
+        if (Slot == nullptr) { return true; }
+        const FString Path = Slot.GetPathName();
+        UObject* Found = StaticFindObject(nullptr, nullptr, *Path);
+        if (!Loaded(Found) || !Loaded(Found->GetClass()) || Slot != Found) { return false; }
+        Super = Cast<UClass>(Found);
+        return Super != nullptr;
+#else
+        return false; // Other handle configurations remain explicitly incomplete.
+#endif
+    }
+    bool Source(UClass* C)
+    {
+        int32 Depth = 0;
+        for (UClass* K = C; K;)
+        {
+            if (++Depth > MaxDepth || !Role(K) || K->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists) || !K->ClassGeneratedBy.IsResolved()) { return false; }
+            if (SeenClasses.Contains(K)) { break; } SeenClasses.Add(K);
+            UClass* Super = nullptr; if (!SummarySuper(K, Super)) { return false; }
+            TStrongObjectPtr<UClass> SuperHold(Super);
+            auto J = Identity(K); J->SetStringField(TEXT("super_class"), Super ? Super->GetPathName() : TEXT(""));
+            J->SetStringField(TEXT("class_flags"), FString::Printf(TEXT("%llu"), static_cast<uint64>(K->GetClassFlags())));
+            if (K->HasAnyClassFlags(CLASS_Native))
+            {
+                if (!RuntimeNativeSource(K, J)) { return false; }
+                if (K->ClassGeneratedBy.Get()) { return false; }
+            }
+            else
+            {
+                UObject* SourceObject = K->ClassGeneratedBy.Get(); if (!Loaded(SourceObject)) { return false; }
+                auto* BP = Cast<UBlueprint>(SourceObject);
+                if (K->GetClass() != UBlueprintGeneratedClass::StaticClass() || !Loaded(BP) || !Role(BP) || BP->bBeingCompiled
+                    || !BP->GeneratedClass.GetGCPtr().IsResolved() || !BP->SkeletonGeneratedClass.GetGCPtr().IsResolved() || !BP->ParentClass.GetGCPtr().IsResolved()
+                    || BP->GeneratedClass.Get() != K || BP->ParentClass.Get() != Super || BP->GetOuter() != BP->GetOutermost()
+                    || !(BP->GetOutermost()->GetName().StartsWith(TEXT("/Game/")) || BP->GetOutermost()->GetName().StartsWith(TEXT("/Engine/")))
+                    || BP->HasAnyFlags(RF_Transient | RF_ClassDefaultObject | RF_ArchetypeObject)) { return false; }
+                UClass* Skeleton = BP->SkeletonGeneratedClass.Get(); if (Skeleton && !Role(Skeleton)) { return false; }
+                J->SetStringField(TEXT("blueprint"), BP->GetPathName()); J->SetStringField(TEXT("generated_class"), K->GetPathName());
+                J->SetStringField(TEXT("skeleton_class"), Skeleton ? Skeleton->GetPathName() : TEXT("")); J->SetStringField(TEXT("parent_class"), BP->ParentClass->GetPathName());
+                J->SetBoolField(TEXT("being_compiled"), BP->bBeingCompiled); HasGenerated = true;
+            }
+            Sources->SetObjectField(K->GetPathName(), J);
+            K = Super;
+        }
+        return true;
+    }
+    bool Node(UBTNode* N)
+    {
+        if (!Role(N)) { return false; } UClass* C = N->GetClass();
+        if (C->HasAnyClassFlags(CLASS_Native) && C->GetOutermost()->GetName() != TEXT("/Script/AIModule"))
+        {
+            HasRuntimeNative = true; // Unsupported custom sources must not fall through to the native exporter.
+            // ABR: Composite.Children/Services use the same held stored-summary
+            // traversal as native task/service/decorator nodes. Custom execution
+            // handlers, CDO/property exporters and generated execution indices
+            // remain outside this read path; Source() still proves the loaded
+            // Runtime project/plugin module and complete native superclass roles.
+            const bool NativeComposite=N->IsA<UBTCompositeNode>();
+            if (!(N->IsA<UBTTaskNode>() || N->IsA<UBTService>() || N->IsA<UBTDecorator>() || NativeComposite)) { return false; }
+            HasRuntimeNativeComposite|=NativeComposite;
+        }
+        if (!C->HasAnyClassFlags(CLASS_Native) && !(C->IsChildOf(UBTTask_BlueprintBase::StaticClass()) || C->IsChildOf(UBTService_BlueprintBase::StaticClass()) || C->IsChildOf(UBTDecorator_BlueprintBase::StaticClass()))) { return false; }
+        if (!N->GetClass()->ClassGeneratedBy.IsResolved()) { return false; }
+        // Resolve-free pointer-slot checks precede the shared native traversal's Get()/iteration.
+        if (auto* Composite = Cast<UBTCompositeNode>(N))
+        {
+            if (Composite->Children.Num() > MaxNodes || Composite->Services.Num() > MaxNodes) { return false; }
+            for (const auto& Child : Composite->Children)
+            {
+                if (!Child.ChildComposite.IsResolved() || !Child.ChildTask.IsResolved() || Child.Decorators.Num() > MaxNodes) { return false; }
+                for (const auto& D : Child.Decorators) { if (!D.IsResolved()) { return false; } }
+            }
+            for (const auto& S : Composite->Services) { if (!S.IsResolved()) { return false; } }
+        }
+        if (auto* Task = Cast<UBTTaskNode>(N)) { if (Task->Services.Num() > MaxNodes) { return false; } for (const auto& S : Task->Services) { if (!S.IsResolved()) { return false; } } }
+        return Source(C);
+    }
+    bool Capture(FObservation& O)
+    {
+        if (!IsEditorGameThread() || IsPlaySessionActive() || !Role(Tree) || !Tree->RootNode.IsResolved() || !Tree->BTGraph.IsResolved() || !Tree->BlackboardAsset.IsResolved()
+            || Tree->RootDecorators.Num() > MaxNodes || Tree->RootDecoratorOps.Num() > MaxNodes) { return false; }
+        SeenClasses.Reset(); Sources = MakeShared<FJsonObject>();
+        FTraversal T{ Tree }; T.SummaryAdmission = [this](UBTNode* N) { return Node(N); }; auto Root = MakeShared<FJsonObject>();
+        if (Tree->RootNode && !RuntimeNode(Tree->RootNode.Get(), T, 0, Root)) { return false; }
+        TArray<TSharedPtr<FJsonValue>> Decorators, Ops;
+        for (const auto& D : Tree->RootDecorators) { if (!D.IsResolved()) { return false; } auto J = MakeShared<FJsonObject>(); if (!RuntimeNode(D.Get(), T, 1, J)) { return false; } Decorators.Add(MakeShared<FJsonValueObject>(J)); }
+        for (const auto& Op : Tree->RootDecoratorOps) { auto J = MakeShared<FJsonObject>(); J->SetNumberField(TEXT("operation"), static_cast<int32>(Op.Operation)); J->SetNumberField(TEXT("number"), Op.Number); Ops.Add(MakeShared<FJsonValueObject>(J)); }
+        O.State = Identity(Tree); O.State->SetStringField(TEXT("asset_type"), TEXT("behavior_tree")); O.State->SetStringField(TEXT("asset_path"), Tree->GetPathName());
+        O.State->SetBoolField(TEXT("package_dirty"), Tree->GetOutermost()->IsDirty()); O.State->SetStringField(TEXT("blackboard_path"), Tree->BlackboardAsset ? Tree->BlackboardAsset->GetPathName() : TEXT(""));
+        O.State->SetObjectField(TEXT("runtime_root"), Root); O.State->SetObjectField(TEXT("runtime_objects"), T.Objects); O.State->SetObjectField(TEXT("runtime_topology"), T.Topology);
+        O.State->SetArrayField(TEXT("root_decorators"), Decorators); O.State->SetArrayField(TEXT("root_decorator_ops"), Ops);
+        O.State->SetBoolField(TEXT("root_node_loaded"), Tree->RootNode != nullptr); O.State->SetStringField(TEXT("root_node_class"), Tree->RootNode ? Tree->RootNode->GetClass()->GetName() : TEXT("")); O.State->SetStringField(TEXT("root_node_name"), Tree->RootNode ? Tree->RootNode->NodeName : TEXT(""));
+        O.State->SetNumberField(TEXT("root_child_count"), Tree->RootNode ? Tree->RootNode->Children.Num() : 0); O.State->SetNumberField(TEXT("root_service_count"), Tree->RootNode ? Tree->RootNode->Services.Num() : 0); O.State->SetNumberField(TEXT("root_decorator_count"), Tree->RootDecorators.Num());
+        O.State->SetArrayField(TEXT("behavior_tree_children"), Tree->RootNode ? Root->GetArrayField(TEXT("children")) : TArray<TSharedPtr<FJsonValue>>{}); O.State->SetArrayField(TEXT("root_services"), Tree->RootNode ? Root->GetArrayField(TEXT("services")) : TArray<TSharedPtr<FJsonValue>>{});
+        O.State->SetNumberField(TEXT("node_count"), T.NodeCount); O.State->SetNumberField(TEXT("runtime_object_count"), T.Seen.Num()); O.State->SetBoolField(TEXT("traversal_truncated"), false);
+        UEdGraph* G = Tree->BTGraph.Get(); TArray<TSharedPtr<FJsonValue>> GraphNodes;
+        if (G)
+        {
+            if (!Role(G) || G->GetOuter() != Tree || G->Nodes.Num() > MaxNodes) { return false; }
+            for (const auto& Slot : G->Nodes) { if (!Slot.IsResolved() || !Role(Slot.Get()) || Slot->GetOuter() != G) { return false; } GraphNodes.Add(MakeShared<FJsonValueObject>(Identity(Slot.Get()))); }
+            O.State->SetObjectField(TEXT("editor_graph_identity"), Identity(G));
+        }
+        O.State->SetArrayField(TEXT("editor_graph_membership"), GraphNodes); O.State->SetBoolField(TEXT("editor_graph_loaded"), G != nullptr); O.State->SetNumberField(TEXT("editor_graph_node_count"), GraphNodes.Num());
+        FString Shape = TEXT("sequence_patrol_chase"); if (Tree->RootNode && Tree->RootNode->IsA<UBTComposite_Selector>() && Tree->RootNode->Children.Num() == 2) { auto First = Tree->RootNode->Children[0].ChildComposite; Shape = First && First->IsA<UBTComposite_Sequence>() && First->Children.Num() >= 3 ? TEXT("selector_alert_chase_patrol") : TEXT("selector_chase_patrol"); } O.State->SetStringField(TEXT("tree_shape"), Shape);
+        O.Sources = Sources; return true;
+    }
+    bool Current(const FObservation& Expected, const TCHAR* Stage)
+    {
+        Result.Stage = Stage;
+        for (const FRole& H : Roles) { if (!Role(H.Object.Get())) { return false; } }
+        FObservation Actual; if (!Capture(Actual)) { return false; }
+        if (Text(Expected.State) != Text(Actual.State)) { return Mismatch(Tree->GetPathName(), TEXT("structure_summary"), Text(Expected.State), Text(Actual.State)); }
+        if (Text(Expected.Sources) != Text(Actual.Sources)) { return Mismatch(Tree->GetPathName(), TEXT("source_class_roles"), Text(Expected.Sources), Text(Actual.Sources)); }
+        return true;
+    }
+};
+bool InspectGeneratedSummary(UBehaviorTree* B, const FContext& Context, FXRSummary& Scope, FObservation& Before, FResult& R)
+{
+    for (const auto& Ref : Context.Blackboards) { if (!Scope.Role(Ref.Get())) { return false; } }
+    Scope.Frozen = true; R.Data->SetBoolField(TEXT("generated_task_service_decorator_summary_supported"), Scope.HasGenerated);
+    R.Data->SetBoolField(TEXT("runtime_native_task_service_decorator_summary_supported"), Scope.HasRuntimeNative);
+    R.Data->SetBoolField(TEXT("runtime_native_composite_summary_supported"),Scope.HasRuntimeNativeComposite);
+    R.Data->SetStringField(TEXT("native_summary_scope"), TEXT("Stored Composite/Task/Service/Decorator summary from an already-loaded exact native class and current Runtime project/enabled-plugin module descriptor; actual class/super/module/source ownership is checked at existing callback fences. No native task execution, custom property export, default creation or module load. Descriptor-less modules, other host types, generated/custom composite private semantics and broader original sources remain incomplete; actual custom-node usage validation is pending."));
+    R.Data->SetStringField(TEXT("changed_observation_scope"), TEXT("XR read-only stored runtime structure and typed selectors/MoveTo fields, node/graph membership and identities, actual generated Blueprint class/super/source/skeleton roles, referenced Blackboard observations, package dirty states and target disk after initial resolution; no full authored Blueprint/property semantics or arbitrary callback global side-effect proof"));
+    R.Data->SetStringField(TEXT("effect_scope"), TEXT("Generated task/service/decorator or admitted runtime-native composite/task/service/decorator structure summary only; no task execution, default creation, property ExportText, graph rebuild, compile or save. Existing AIModule native detailed/create/assign profiles are unchanged."));
+    if (!Disk(B->GetOutermost()->GetName(), Before.DiskState) || !Dirty(B->GetOutermost()->GetName(), Before.OtherDirty)) { return false; }
+    for (const auto& Ref : Context.Blackboards)
+    {
+        if (!Scope.Current(Before, TEXT("summary_blackboard_before"))) { R.bKnown = false; return false; }
+        auto J = MakeShared<FJsonObject>(); const bool OK = BlackboardObservation(Ref.Get(), J, R);
+        if (!Scope.Current(Before, TEXT("summary_blackboard_return"))) { R.bKnown = false; return false; }
+        if (!OK) { R.bKnown = false; return false; } Before.References->SetObjectField(Ref->GetPathName(), J);
+    }
+    Publish(R, Before, TEXT("before")); FObservation After;
+    if (!Scope.Current(Before, TEXT("summary_complete")) || !Scope.Capture(After) || !Disk(B->GetOutermost()->GetName(), After.DiskState) || !Dirty(B->GetOutermost()->GetName(), After.OtherDirty)) { R.bKnown = false; return false; }
+    After.References = Before.References; Publish(R, After, TEXT("after"));
+    R.bChanged = Text(Before.DiskState) != Text(After.DiskState) || Text(Before.OtherDirty) != Text(After.OtherDirty);
+    if (R.bChanged) { return Fail(R, TEXT("behavior_tree_summary_state_changed"), TEXT("A read-only summary boundary changed target disk or loaded-package dirty state; no node execution, compile, save or automatic retry occurred.")); }
+    R.Data->SetBoolField(TEXT("read_only_after_initial_resolution"), true); R.Data->SetBoolField(TEXT("observations_complete"), true); R.Data->SetBoolField(TEXT("full_authored_semantics_observed"), false);
+    R.bPost = true; R.bSuccess = true; R.Stage = TEXT("complete"); return true;
 }
 UBehaviorTreeGraphNode_Root* FindRoot(UBehaviorTreeGraph* G)
 { UBehaviorTreeGraphNode_Root* Found = nullptr; if (!Loaded(G) || G->Nodes.Num() > MaxNodes) { return nullptr; } for (UEdGraphNode* N : G->Nodes) { if (auto* Root = Cast<UBehaviorTreeGraphNode_Root>(N)) { if (Found) { return nullptr; } Found = Root; } } return Found; }
@@ -1829,6 +2616,16 @@ FString InspectAsset(const FString& AssetPath)
     if (O->GetClass() == UBlackboardData::StaticClass()) { return Blackboard::InspectAsset(Path); }
     auto* B = Cast<UBehaviorTree>(O); if (!B || B->GetClass() != UBehaviorTree::StaticClass()) { Fail(R, TEXT("behavior_tree_inspector_branch_incomplete"), TEXT("Only exact native BehaviorTree and delegated Blackboard branches are implemented; EQS/custom assets remain incomplete.")); return Encode(R); }
     FContext Context; if (!GatherReferences(B, nullptr, false, Context, R)) { return Encode(R); }
+    // A pure summary probe selects generated/runtime-native Task/Service/Decorator reads.
+    // Stock AIModule trees retain their detailed exporter and authoring-derived protection unchanged.
+    FXRSummary Summary(B, R); FObservation SummaryBefore;
+    const bool SummaryReadable = Summary.Capture(SummaryBefore);
+    if (Summary.HasGenerated || Summary.HasRuntimeNative)
+    {
+        if (!SummaryReadable || !InspectGeneratedSummary(B, Context, Summary, SummaryBefore, R))
+        { if (R.Code.IsEmpty()) { Fail(R, TEXT("behavior_tree_generated_summary_unobservable"), TEXT("Generated task/service/decorator or runtime-native composite/task/service/decorator summary/source/module ownership/current state is incomplete; no node execution, compile, save or retry was dispatched.")); } }
+        return Encode(R);
+    }
     FRDComposite CompositeWork(R); if (!CompositeWork.Begin(B, nullptr)) { if (R.Code.IsEmpty()) { Fail(R, TEXT("behavior_tree_composite_profile_unsupported"), TEXT("The existing composite graph is outside the finite first profile; no writer was dispatched.")); } return Encode(R); }
     TGuardValue<FRDComposite*> CompositeRequest(RDActive, CompositeWork.Enabled ? &CompositeWork : nullptr); FObservation Before, After;
     if (!Observe(B, Context, Before, R)) { Fail(R, TEXT("behavior_tree_inspection_unobservable"), TEXT("Bounded complete native runtime/editor graph/reference inspection failed; custom, nested decorator and disconnected variants remain incomplete.")); return Encode(R); } Publish(R, Before, TEXT("before"));

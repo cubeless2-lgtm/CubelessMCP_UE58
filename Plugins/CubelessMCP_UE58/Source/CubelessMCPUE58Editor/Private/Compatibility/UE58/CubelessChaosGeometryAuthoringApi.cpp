@@ -2325,6 +2325,17 @@ TSharedPtr<FJsonObject> HandleConfigureFracture(const TSharedPtr<FJsonObject>& P
 }
 TSharedPtr<FJsonObject> HandleConfigureAnchor(const TSharedPtr<FJsonObject>& Params)
 {
+    const FString Operation = GetString(Params, TEXT("operation"), TEXT("configure"));
+    // Legacy Python default 1 was Sleeping in both UE5.6 and UE5.8, while this
+    // handler has always required Kinematic. Do not alias explicit 1 to 2.
+    // Validate configure before Engine load/replacement/spawn; inspect_saved does
+    // not consume this configure-only field and retains its existing behavior.
+    const int32 FieldMagnitude = Operation == TEXT("configure") ? CastI32(GetNumber(
+        Params, TEXT("field_magnitude"), static_cast<int32>(Chaos::EObjectStateType::Kinematic)),TEXT("field_magnitude")) : static_cast<int32>(Chaos::EObjectStateType::Kinematic);
+    if (Operation == TEXT("configure") && FieldMagnitude != static_cast<int32>(Chaos::EObjectStateType::Kinematic))
+    {
+        return CommandError(TEXT("Anchor field_magnitude must equal the native Kinematic object-state value"));
+    }
     UWorld* World = ResolveEditorWorld();
     const FString GeometryActorName = GetString(Params, TEXT("geometry_collection_actor_name"));
     AActor* GeometryActor = FindActor<AActor>(World, GeometryActorName);
@@ -2335,7 +2346,6 @@ TSharedPtr<FJsonObject> HandleConfigureAnchor(const TSharedPtr<FJsonObject>& Par
     }
     Work->World=World;Work->HasWorld=true;if(!Work->Track(World,TEXT("anchor_world"))||!Work->Track(GeometryActor,TEXT("anchor_geometry_actor"))||!Work->Track(Component,TEXT("anchor_geometry_component"),GeometryActor)) { return CommandError(Work->R.Error); }
     const FString FieldName = GetString(Params, TEXT("field_actor_name"), TEXT("Chaos_AnchorField"));
-    const FString Operation = GetString(Params, TEXT("operation"), TEXT("configure"));
     AFieldSystemActor* FieldActor = FindActor<AFieldSystemActor>(World, FieldName);if(FieldActor&&!Work->Track(FieldActor,TEXT("anchor_field_actor"))) { return CommandError(Work->R.Error); }
     if (Operation == TEXT("inspect_saved"))
     {
@@ -2420,12 +2430,6 @@ TSharedPtr<FJsonObject> HandleConfigureAnchor(const TSharedPtr<FJsonObject>& Par
     Extent.Y = FMath::Max(FMath::Abs(Extent.Y), 1.0);
     Extent.Z = FMath::Max(FMath::Abs(Extent.Z), 1.0);
 
-    const int32 FieldMagnitude = CastI32(GetNumber(
-        Params, TEXT("field_magnitude"), static_cast<int32>(Chaos::EObjectStateType::Kinematic)),TEXT("field_magnitude"));
-    if (FieldMagnitude != static_cast<int32>(Chaos::EObjectStateType::Kinematic))
-    {
-        return CommandError(TEXT("Anchor field_magnitude must equal the native Kinematic object-state value"));
-    }
     UFieldSystemComponent* FieldComponent = FieldActor->GetFieldSystemComponent();
     if(!Work->Modify(FieldActor,TEXT("modify_anchor_actor"))||!Work->Modify(FieldComponent,TEXT("modify_anchor_component"))) { return CommandError(Work->R.Error); }
     if(!Step(TEXT("set_anchor_location"),[&]{FieldActor->SetActorLocation(Center);})) { return CommandError(Work->R.Error); }

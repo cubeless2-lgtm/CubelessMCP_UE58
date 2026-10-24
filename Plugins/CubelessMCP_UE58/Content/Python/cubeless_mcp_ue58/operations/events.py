@@ -7,15 +7,19 @@ from .state import OperationError
 
 def _arguments(blueprint_name, selector_name, selector, node_position_json,
         graph_name, graph_id, graph_type, create_graph_if_missing):
-    if functions._bool(create_graph_if_missing, "create_graph_if_missing"):
-        raise OperationError("event_graph_creation_unsupported", "Resolve an existing event graph; implicit graph creation is not implemented")
+    create = functions._bool(create_graph_if_missing, "create_graph_if_missing")
+    if selector_name == "event_node_id" and create:
+        raise OperationError("event_graph_creation_unsupported", "Parent-call extension requires an existing graph")
     position = functions._json(node_position_json, "node_position_json")
     if position is None:
         position = [0, 0]
     if type(position) is not list or len(position) != 2 or any(type(v) is not int or abs(v) > 1000000 for v in position):
         raise OperationError("event_position_invalid", "node_position_json requires two integers from -1000000 to 1000000")
-    return {**functions._selectors(blueprint_name, graph_name, graph_id, graph_type),
+    args = {**functions._selectors(blueprint_name, graph_name, graph_id, graph_type),
         selector_name: functions._text(selector, selector_name), "x": position[0], "y": position[1]}
+    if selector_name != "event_node_id":
+        args["create_graph_if_missing"] = create
+    return args
 
 
 def _run(result, identity, arguments, checkpoint_callback=None):

@@ -3,6 +3,8 @@
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
+#include "AssetRegistry/AssetIdentifier.h"
+#include "Misc/AssetRegistryInterface.h"
 #include "Editor.h"
 #include "EditorAssetLibrary.h"
 #include "Engine/Blueprint.h"
@@ -162,19 +164,72 @@ namespace Cubeless::UE58
             TArray<FAssetData> Assets;
             Registry.GetAssetsByPackageName(Package, Assets, true);
             if (Assets.IsEmpty()) { Incomplete.Add(FString::Printf(TEXT("No on-disk asset data: %s"), *PackageString)); continue; }
-            TArray<FName> Dependencies;
-            if (!Registry.GetDependencies(Package, Dependencies, UE::AssetRegistry::EDependencyCategory::Package))
+            // Unfiltered Package dependencies preserve both hard/soft and game/editor-only
+            // variants. FName-only GetDependencies discards these properties.
+            TArray<FAssetDependency> Dependencies;
+            if (!Registry.GetDependencies(FAssetIdentifier(Package), Dependencies, UE::AssetRegistry::EDependencyCategory::Package))
             {
                 Incomplete.Add(FString::Printf(TEXT("Dependency data unavailable: %s"), *PackageString));
                 continue;
             }
-            Dependencies.Sort(FNameLexicalLess());
-            for (const FName Dependency : Dependencies)
+            struct FPackageDependencyFlags
             {
+                bool bPropertiesObserved = true;
+                bool bAnyGame = false;
+                bool bAnyEditorOnly = false;
+                bool bAnyHard = false;
+                bool bAnySoft = false;
+                bool bAnyBuild = false;
+                TArray<TSharedPtr<FJsonValue>> Variants;
+            };
+            TMap<FName, FPackageDependencyFlags> ByPackage;
+            Dependencies.Sort([](const FAssetDependency& A, const FAssetDependency& B) { return A.LexicalLess(B); });
+            for (const FAssetDependency& Dependency : Dependencies)
+            {
+                if (Dependency.Category != UE::AssetRegistry::EDependencyCategory::Package || !Dependency.AssetId.IsPackage())
+                {
+                    Incomplete.Add(FString::Printf(TEXT("Unexpected non-package dependency identifier: %s -> %s"), *PackageString, *Dependency.AssetId.ToString()));
+                    continue;
+                }
+                const auto Properties = Dependency.Properties;
+                auto& Flags = ByPackage.FindOrAdd(Dependency.AssetId.PackageName);
+                const bool bKnownProperties = (static_cast<uint8>(Properties) & ~static_cast<uint8>(UE::AssetRegistry::EDependencyProperty::PackageMask)) == 0;
+                const bool bGame = EnumHasAnyFlags(Properties, UE::AssetRegistry::EDependencyProperty::Game);
+                const bool bHard = EnumHasAnyFlags(Properties, UE::AssetRegistry::EDependencyProperty::Hard);
+                const bool bBuild = EnumHasAnyFlags(Properties, UE::AssetRegistry::EDependencyProperty::Build);
+                Flags.bPropertiesObserved &= bKnownProperties;
+                Flags.bAnyGame |= bGame;
+                Flags.bAnyEditorOnly |= !bGame;
+                Flags.bAnyHard |= bHard;
+                Flags.bAnySoft |= !bHard;
+                Flags.bAnyBuild |= bBuild;
+                TSharedRef<FJsonObject> Variant = MakeShared<FJsonObject>();
+                Variant->SetNumberField(TEXT("properties"), static_cast<uint8>(Properties));
+                Variant->SetBoolField(TEXT("properties_observed"), bKnownProperties);
+                Variant->SetBoolField(TEXT("game"), bGame);
+                Variant->SetBoolField(TEXT("editor_only"), !bGame);
+                Variant->SetBoolField(TEXT("hard"), bHard);
+                Variant->SetBoolField(TEXT("soft"), !bHard);
+                Variant->SetBoolField(TEXT("build"), bBuild);
+                Flags.Variants.Add(MakeShared<FJsonValueObject>(Variant));
+            }
+            TArray<FName> DependencyPackages;
+            ByPackage.GetKeys(DependencyPackages);
+            DependencyPackages.Sort(FNameLexicalLess());
+            for (const FName Dependency : DependencyPackages)
+            {
+                const auto& Flags = ByPackage.FindChecked(Dependency);
                 const FString Name = Dependency.ToString();
                 TSharedRef<FJsonObject> Edge = MakeShared<FJsonObject>();
                 Edge->SetStringField(TEXT("from"), PackageString);
                 Edge->SetStringField(TEXT("to"), Name);
+                Edge->SetBoolField(TEXT("dependency_properties_observed"), Flags.bPropertiesObserved);
+                Edge->SetBoolField(TEXT("any_game"), Flags.bAnyGame);
+                Edge->SetBoolField(TEXT("any_editor_only"), Flags.bAnyEditorOnly);
+                Edge->SetBoolField(TEXT("any_hard"), Flags.bAnyHard);
+                Edge->SetBoolField(TEXT("any_soft"), Flags.bAnySoft);
+                Edge->SetBoolField(TEXT("any_build"), Flags.bAnyBuild);
+                Edge->SetArrayField(TEXT("property_variants"), Flags.Variants);
                 const bool bForbidden = IsForbidden(Name, Prefixes);
                 Edge->SetBoolField(TEXT("forbidden"), bForbidden);
                 Edges.Add(MakeShared<FJsonValueObject>(Edge));

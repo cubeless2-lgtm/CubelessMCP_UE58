@@ -58,7 +58,8 @@ def _context(result, arguments):
         adapter_native_arguments=copy.deepcopy(arguments["hidden"]), read_only=arguments["method"] == INSPECT,
         adapter_explicit_asset_load_calls=0, adapter_explicit_compile_calls=0, adapter_explicit_save_calls=0,
         automatic_action_retry=False, actual_official_raw_wire_verified=False,
-        original_none_fields_omitted_native_empty_string_sentinel=True,
+        original_none_fields_omitted_native_empty_string_sentinel=not arguments.get("raw_input", False),
+        original_raw_networking_params_delegated=arguments.get("raw_input", False),
         original_dependency_guard_tokens_and_normalization_preserved=True,
         native_CDO_validation_setter_compile_readback_dependency_and_save_authoritative=True,
         no_added_public_compile_or_save_options=True, implicit_compile_save_decision_native_owned=True,
@@ -80,7 +81,7 @@ def _apply_native(result, arguments, native):
     result["save"].update(requested=native["save_requested"], attempted=native["save_attempted"], saved=native["saved"],
         status="native_returned_saved" if native["saved"] else "native_returned_attempted_not_saved" if native["save_attempted"] else "native_returned_not_attempted")
     no_work = known and native["changed"] is False and not native["mutation_attempted"] and not native["compile_attempted"] and not native["save_attempted"]
-    result["changes"] = [] if no_work else [{"kind": arguments["method"], "asset_path": arguments["public"]["blueprint_name"],
+    result["changes"] = [] if no_work else [{"kind": arguments["method"], "asset_path": arguments["public"].get("blueprint_name"),
         "attempted": native["mutation_attempted"], "change_state_known": known, "changed": native["changed"] if known else None,
         "postcondition_passed": native["postcondition_passed"]}]
     result["validation"].update(status="native_blueprint_networking_postcondition", native_postcondition_passed=native["postcondition_passed"],
@@ -102,10 +103,10 @@ def _run_action(result, arguments, checkpoint_callback=None):
     result["data"].update(native_dispatched=True, native_mutation_attempted=None, mutation_performed=None, mutation_state_unknown=True)
     result["compile"].update(requested=None, attempted=None, compiled=None, status="native_dispatch_outcome_unverified")
     result["save"].update(requested=None, attempted=None, saved=None, status="native_dispatch_outcome_unverified")
-    result["changes"] = [{"kind": arguments["method"], "asset_path": arguments["public"]["blueprint_name"],
+    result["changes"] = [{"kind": arguments["method"], "asset_path": arguments["public"].get("blueprint_name"),
         "attempted": None, "changed": None, "change_state_known": False}]
     try:
-        native = getattr(api, arguments["method"])(**arguments["hidden"])
+        native = getattr(api, arguments.get("native_method", arguments["method"]))(**arguments["hidden"])
     except Exception as error:
         if getattr(error, "native_call_returned", False):
             result["data"].update(native_result_returned=True, native_raw_result=getattr(error, "native_raw_result", None))
@@ -125,6 +126,21 @@ def _run_action(result, arguments, checkpoint_callback=None):
         raise OperationError("blueprint_networking_result_unverified", "Native success lacks known current postconditions; no replay")
     result.update(success=True, stage="complete")
     result["retry"]["duplicate_risk"] = "inspect_current_CDO_settings_compile_save_audit_receipts_and_journal_no_accepted_writer_replay"
+
+
+def _raw_input_action(result, method, params, checkpoint_callback=None):
+    """Exact original Batch raw2; Native resolves before validating settings.
+
+    In particular, supplied null is not the Named API's None/omission, and the
+    raw dry_run is never cast to bool. Unknown fields remain Native-owned.
+    """
+    if method not in (INSPECT, SET) or type(params) is not dict:
+        raise OperationError("batch_networking_raw_input_invalid", "Only the two original networking commands with object params are admitted")
+    public = copy.deepcopy(params)
+    encoded = json.dumps(public, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    arguments = {"method": method, "public": public, "hidden": {"params_json": encoded},
+        "native_method": method + "_raw_input", "raw_input": True}
+    _run_action(result, arguments, checkpoint_callback)
 
 
 def _rejected(method, error):

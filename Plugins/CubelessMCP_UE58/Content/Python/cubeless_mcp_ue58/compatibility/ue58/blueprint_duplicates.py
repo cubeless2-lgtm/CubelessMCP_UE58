@@ -7,6 +7,7 @@ editor preferences. They are not a proof about arbitrary engine callbacks.
 """
 
 import hashlib
+import copy
 import json
 from pathlib import Path
 import re
@@ -100,11 +101,13 @@ def policy():
             "settings_changed": False, "scope": "sampled known engine auto-save paths; arbitrary callbacks are not audited"}
 
 
-def dependency_audit(package):
+def dependency_audit(package, source_work=None):
     native = getattr(unreal, "CubelessNativeToolset", None)
     if native is None:
         raise OperationError("duplicate_dependency_guard_unavailable", "Native saved-package dependency audit is unavailable")
     value = json.loads(native.audit_package_dependencies([package], True, 4096))
+    if source_work is not None:
+        return _dirty_dependency_audit(package, source_work, value)
     if value.get("success") is not True or value.get("passed") is not True:
         raise OperationError("duplicate_dependency_audit_failed", "Saved package dependency audit is incomplete or contains tool dependencies: " + json.dumps(value, ensure_ascii=False))
     for edge in value.get("edges", []):
@@ -113,6 +116,55 @@ def dependency_audit(package):
         if edge["to"].startswith(("/Script/", "/Engine/PythonTypes")):
             reject_tool_reference(edge["to"])
     return value
+
+
+
+def _dirty_dependency_audit(package, work, saved_audit):
+    # The saved scanner's refusal is retained verbatim, never relabeled success.
+    # Only its precise dirty-root coverage gap may be filled by the existing
+    # Native package-export/loaded authored+persisted dependency scanner.
+    receipt = work["receipt"]
+    receipt["latest_dependency_audit"] = {"saved_registry_audit": saved_audit}
+    dirty_reason = "Loaded dirty packages have unsaved state that is not represented by the on-disk dependency graph."
+    if (package != work["expected_memory"]["blueprint"]["path"]
+            or saved_audit.get("root_packages") != [package]
+            or saved_audit.get("scope") != "saved_asset_registry_hard_and_soft_package_dependencies"
+            or saved_audit.get("recursive") is not True
+            or saved_audit.get("incomplete_reasons") != [dirty_reason]
+            or saved_audit.get("dirty_scanned_packages") != [package]
+            or saved_audit.get("violations") != []
+            or saved_audit.get("packages_processed") != saved_audit.get("packages_queued")):
+        raise OperationError("duplicate_dependency_audit_failed", "Dirty source requires an otherwise complete saved graph with only its own dirty-root gap: " + json.dumps(saved_audit, ensure_ascii=False))
+    for edge in saved_audit.get("edges", []):
+        if edge.get("forbidden") is not False:
+            raise OperationError("duplicate_dependency_audit_failed", "Saved graph has a forbidden or unclassified edge")
+        reject_tool_reference(edge["to"])
+    library = getattr(unreal, "CubelessBlueprintNetworkingLibrary", None)
+    observer = getattr(library, "audit_loaded_blueprint_duplicate_source", None)
+    if not callable(observer):
+        raise OperationError("duplicate_dirty_dependency_observer_unavailable", "Build/load the private readonly RAM+persisted dependency observer; dirty incomplete was not waived")
+    dirty_source_current(work)
+    observed = json.loads(observer(work["source_role"]["object"]))
+    receipt["latest_dependency_audit"]["loaded_source_audit"] = observed
+    receipt["dependency_checks"] = receipt.get("dependency_checks", 0) + 1
+    dirty_source_current(work)
+    data = observed.get("data", {})
+    if (observed.get("success") is not True or observed.get("postcondition_passed") is not True
+            or observed.get("change_state_known") is not True or observed.get("changed") is not False
+            or observed.get("mutation_attempted") is not False or observed.get("compile_attempted") is not False
+            or observed.get("save_attempted") is not False or observed.get("saved") is not False
+            or data.get("passed") is not True or data.get("issues") != []
+            or data.get("source_package") != package
+            or data.get("source_object") != work["source_role"]["path"]
+            or package not in data.get("loaded_packages_audited", [])
+            or package not in data.get("saved_packages_audited", [])):
+        raise OperationError("duplicate_dirty_dependency_audit_failed", "Readonly source RAM+persisted dependency observation rejected or remained incomplete: " + json.dumps(observed, ensure_ascii=False))
+    work["dependency_guard_ready"] = True
+    combined = {"success": True, "passed": True, "scope": "saved_registry_plus_current_loaded_source_package_dependencies",
+        "saved_registry_audit": saved_audit, "loaded_source_audit": observed,
+        "packaging_verified": False, "whole_RAM_authored_equality_proven": False}
+    receipt["latest_dependency_audit"] = combined
+    return combined
 
 
 def capture(asset):
@@ -209,9 +261,8 @@ def require_source(asset, observation, allow_dirty_source):
     if (observation["asset_class"] != "/Script/Engine.Blueprint"
             or not basic["parent_class"].startswith("/Script/") and not observation.get("generated_parent")):
         raise OperationError("duplicate_source_type_unsupported", "This slice supports ordinary UBlueprint assets with a native runtime parent or an independently inspected saved clean Actor Blueprint parent chain")
-    if basic["dirty"]:
-        code = "duplicate_dirty_source_unsupported" if allow_dirty_source else "duplicate_source_dirty"
-        raise OperationError(code, "Source has unsaved changes; dirty-source duplication is not implemented and source was not saved")
+    if basic["dirty"] and not allow_dirty_source:
+        raise OperationError("duplicate_source_dirty", "Source has unsaved changes and allow_dirty_source is false; source was not saved")
     if not observation["file"]["exists"] or not basic["generated_class"]:
         raise OperationError("duplicate_source_not_saved", "Source requires an existing .uasset and generated class")
     if not observation["compiled"]:
@@ -538,7 +589,7 @@ def semantic_content(observation):
     return content
 
 
-def duplicate(source, destination, before_dispatch, after_return, replacement=None):
+def duplicate(source, destination, before_dispatch, after_return, replacement=None, source_work=None, dispatch_started=None):
     blueprint.ensure_editor_idle()
     policy()
     require_target_absent(destination, replacement) if replacement is not None else require_target_absent(destination)
@@ -547,8 +598,18 @@ def duplicate(source, destination, before_dispatch, after_return, replacement=No
         replacement_current(replacement, target=False)
         if source != replacement["source_role"]["object"]:
             raise OperationError("duplicate_replacement_source_changed", "Private replacement source object differs; no Duplicate dispatch")
-    value = (replacement["assets"] if replacement is not None else blueprint.asset_subsystem()).duplicate_loaded_asset(source, destination)
-    after_return(value)
+    # Check after the journal callback and immediately before the real SDK call;
+    # it must duplicate the admitted RAM object, never silently reload/save it.
+    if source_work is not None:
+        dirty_source_current(source_work, full=True)
+        if source != source_work["source_role"]["object"]:
+            raise OperationError("duplicate_dirty_source_identity_changed", "Dirty-source role belongs to another object; no duplicate dispatched")
+    if dispatch_started is not None:
+        dispatch_started()  # Pure receipt update, after guards and immediately before SDK.
+    value = (replacement["assets"] if replacement is not None else source_work["assets"] if source_work is not None else blueprint.asset_subsystem()).duplicate_loaded_asset(source, destination)
+    after_return(value)  # Publish the real returned mutation prefix before any new observer can fail.
+    if source_work is not None:
+        dirty_source_current(source_work, full=True)
     if replacement is not None and value is not None:
         replacement_clone_current(replacement, value)
     return value
@@ -606,6 +667,110 @@ def replacement_current(work, target=True):
                 or role["cdo"].get_class() != role["generated"] or role["cdo"].get_outermost() != role["package"]):
             raise OperationError("duplicate_replacement_identity_changed", "Captured source/target identity changed; no fresh baseline or automatic retry")
     return True
+
+
+def _dirty_source_memory(observation):
+    # Same concrete observations already used by clone/source verification; keep
+    # source identities literal, without clone-relative or compiler normalizing.
+    return {key: copy.deepcopy(observation[key]) for key in
+            ("blueprint", "asset_class", "compiled", "graphs", "variables", "file")}
+
+
+def prepare_dirty_source(source, observation):
+    if observation["blueprint"]["dirty"] is not True:
+        return None  # Preserve the existing clean-source route and its costs.
+    if (observation["compiled"] is not True or observation["file"]["exists"] is not True
+            or not observation["file"].get("sha256")):
+        raise OperationError("duplicate_dirty_source_scope_pending", "Dirty support requires an existing saved file and current compiled/CDO observation; source compilation or first save was not performed")
+    editor = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
+    work = {"editor": editor, "world": editor.get_editor_world(), "assets": blueprint.asset_subsystem(),
+            "source_role": _replacement_role(source, observation["blueprint"]["asset_path"]),
+            "target_role": None, "graphs": [], "expected_memory": _dirty_source_memory(observation),
+            "receipt": {"admitted": True, "source_was_dirty": True, "source_compile_requested": False,
+                "source_save_requested": False, "duplicate_input": "held_current_RAM_SourceObject",
+                "existing_saved_file_required": True, "current_compiled_CDO_required": True,
+                "role_checks": 0, "memory_checks": 0, "latest_check_passed": False,
+                "full_RAM_authored_state_proof": False,
+                "scope": "Held source/generated/CDO and current K2 graph/node identities; literal existing K2/variable/CDO DTO, dirty/status and source file bytes. Authored Namespace is read literally on source and clone; DuplicateTransient DisplayName/Description are preserved on source only. Component template properties, comments, other unobserved metadata, arbitrary callback side effects, uncompiled and first-save source variants remain incomplete."}}
+    replacement_current(work, target=False)
+    # Blueprint.h declares Namespace without DuplicateTransient; DisplayName and
+    # Description have that flag and must not be required equal on the clone.
+    work["authored"] = {name: str(source.get_editor_property(name)) for name in
+                        ("blueprint_namespace", "blueprint_display_name", "blueprint_description")}
+    work["namespace"] = work["authored"]["blueprint_namespace"]
+    replacement_current(work, target=False)
+    work["receipt"]["source_namespace"] = work["namespace"]
+    for row in observation["graphs"]:
+        editor_graph = graph.graph_editor(observation["blueprint"]["asset_path"], row["graph_name"])
+        replacement_current(work, target=False)
+        actual = editor_graph.get_graph()
+        if (not _replacement_live(actual) or actual.get_path_name() != row["graph_path"]
+                or actual.get_outermost() != work["source_role"]["package"]
+                or unreal.find_object(None, row["graph_path"]) != actual):
+            raise OperationError("duplicate_dirty_graph_role_pending", "Actual source graph does not match its earlier observed object role")
+        item = {"editor": editor_graph, "object": actual, "class": actual.get_class(),
+                "outer": actual.get_outer(), "path": row["graph_path"], "nodes": []}
+        for node in row["nodes"]:
+            value = unreal.find_object(None, node["node_id"])
+            if (not _replacement_live(value) or value.get_outer() != actual
+                    or value.get_outermost() != work["source_role"]["package"]):
+                raise OperationError("duplicate_dirty_node_role_pending", "Earlier observed K2 node requires the same current graph/owner role")
+            item["nodes"].append({"object": value, "class": value.get_class(), "path": node["node_id"]})
+        work["graphs"].append(item)
+    dirty_source_current(work, full=True)
+    return work
+
+
+def dirty_source_current(work, *, full=False):
+    if work is None:
+        return
+    receipt = work["receipt"]
+    receipt["latest_check_passed"] = False
+    replacement_current(work, target=False)
+    package = work["source_role"]["package"]
+    for row in work["graphs"]:
+        value = row["object"]
+        if (not _replacement_live(value) or not _replacement_live(row["class"])
+                or not _replacement_live(row["outer"]) or value.get_class() != row["class"]
+                or value.get_outer() != row["outer"] or value.get_outermost() != package
+                or value.get_path_name() != row["path"] or unreal.find_object(None, row["path"]) != value
+                or row["editor"].get_graph() != value):
+            raise OperationError("duplicate_dirty_graph_identity_changed", "Captured source graph/class/outer role changed; no next writer or new baseline")
+        for node in row["nodes"]:
+            value = node["object"]
+            if (not _replacement_live(value) or not _replacement_live(node["class"])
+                    or value.get_class() != node["class"] or value.get_outer() != row["object"]
+                    or value.get_outermost() != package or value.get_path_name() != node["path"]
+                    or unreal.find_object(None, node["path"]) != value):
+                raise OperationError("duplicate_dirty_node_identity_changed", "Captured source K2 node/class/graph role changed; no next writer or new baseline")
+    replacement_current(work, target=False)
+    for name, expected in work["authored"].items():
+        actual_value = str(work["source_role"]["object"].get_editor_property(name))
+        replacement_current(work, target=False)
+        if actual_value != expected:
+            receipt["first_memory_mismatch"] = {"property_group": name,
+                "expected": expected, "actual": actual_value}
+            raise OperationError("duplicate_dirty_source_changed", "Original dirty-source authored metadata changed; no next writer or fresh baseline")
+    receipt["role_checks"] += 1
+    actual = None
+    if full:
+        actual = capture(work["source_role"]["object"])
+        # SDK-backed DTO collection can invoke engine code; close the held
+        # graph/node/source roles again before accepting that collection.
+        dirty_source_current(work, full=False)
+        observed = _dirty_source_memory(actual)
+        receipt["memory_checks"] += 1
+        if observed != work["expected_memory"]:
+            first = next(key for key in work["expected_memory"] if observed[key] != work["expected_memory"][key])
+            receipt["first_memory_mismatch"] = {"property_group": first,
+                "expected": copy.deepcopy(work["expected_memory"][first]), "actual": copy.deepcopy(observed[first])}
+            raise OperationError("duplicate_dirty_source_changed", "Original dirty-source RAM/dirty/status or disk state changed; actual prefix retained without another writer or automatic retry")
+        if work.get("dependency_guard_ready"):
+            dependency_audit(work["expected_memory"]["blueprint"]["path"], work)
+            # Close source roles again after Native collector/registry callbacks.
+            dirty_source_current(work, full=False)
+    receipt["latest_check_passed"] = True
+    return actual
 
 
 def replacement_dirty(work):
@@ -711,6 +876,7 @@ def delete_replacement_target(work, before_dispatch, dispatch_started, after_ret
     # ForceDelete, whose callbacks/GC may invalidate even a returned-False prefix.
     work["retired"] = True
     work["target_role"] = None
+    dirty_source_current(work.get("dirty_source_work"), full=True)
     dispatch_started()
     deleted = work["assets"].delete_asset(work["target_package"])
     after_return(deleted)

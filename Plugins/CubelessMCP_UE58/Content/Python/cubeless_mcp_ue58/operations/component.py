@@ -16,7 +16,7 @@ from . import state
 from .state import OperationError, fail, mutate, new_result
 
 _COMPONENT_TYPES = ("SceneComponent", "ChildActorComponent", "StaticMeshComponent", "CameraComponent", "SpringArmComponent",
-                    "SphereComponent", "BoxComponent", "CapsuleComponent", "SplineComponent", "InstancedStaticMeshComponent", "HierarchicalInstancedStaticMeshComponent", "SkeletalMeshComponent", "PointLightComponent", "SpotLightComponent", "RectLightComponent", "DirectionalLightComponent")
+                    "SphereComponent", "BoxComponent", "CapsuleComponent", "SplineComponent", "InstancedStaticMeshComponent", "HierarchicalInstancedStaticMeshComponent", "SkeletalMeshComponent", "PointLightComponent", "SpotLightComponent", "RectLightComponent", "DirectionalLightComponent", "CharacterMovementComponent", "ProjectileMovementComponent", "RotatingMovementComponent", "FloatingPawnMovement")
 
 
 def _selector(value, field, *, empty=False):
@@ -205,6 +205,8 @@ def _add_arguments(blueprint_name, component_type, component_name, location_json
             raise OperationError("component_type_unsupported", "Use the exact /Game/Package.Package_C generated class path; native inspection must also prove a saved clean runtime non-scene ActorComponent")
     elif pcg_native:
         kind = "/Script/PCG.PCGComponent"
+    elif kind in ("WidgetComponent", "UWidgetComponent", "Widget", "/Script/UMG.WidgetComponent"):
+        kind = "/Script/UMG.WidgetComponent"
     elif kind in ("NiagaraComponent", "UNiagaraComponent", "Niagara", "/Script/Niagara.NiagaraComponent"):
         kind = "/Script/Niagara.NiagaraComponent"
     else:
@@ -398,3 +400,130 @@ def set_physics_properties(blueprint_name, component_name, simulate_physics=True
 def set_physics_properties_action(result, blueprint_name, component_name, simulate_physics=True, gravity_enabled=True, mass=1.0, linear_damping=0.01, angular_damping=0.0, checkpoint_callback=None):
     _mutation_action(result, "set_physics_properties", _physics_arguments(blueprint_name, component_name,
         simulate_physics, gravity_enabled, mass, linear_damping, angular_damping), checkpoint_callback)
+
+
+
+def _raw_static_mesh_batch_params(raw):
+    """Fixed original command selectors; asset presence/values stay Native-owned."""
+    from cubeless_mcp_ue58.compatibility.ue58.json_value import number_to_legacy_string
+    values = {}
+    for key in ("blueprint_name", "component_name"):
+        value = raw.get(key)
+        if type(value) is bool:
+            value = "true" if value else "false"
+        elif type(value) in (int, float):
+            value = number_to_legacy_string(value)
+        elif type(value) is not str:
+            raise OperationError("component_raw_mesh_selector_required", "Missing '" + key + "' parameter")
+        values[key] = value
+    # Placeholders belong only to the canonical row fingerprint. They never
+    # become asset defaults or calls on this private original-command route.
+    return {**values, "static_mesh": ""}  # Canonical normalization omits the optional material=None slot.
+
+
+def _raw_static_mesh_batch_action(result, command, arguments, checkpoint_callback=None):
+    raw = command.get("legacy_original_params") if type(command) is dict else None
+    if (type(command) is not dict or command.get("type") != "CubelessComponentTools.set_static_mesh_properties"
+            or command.get("legacy_original_command") != "set_static_mesh_properties"
+            or command.get("legacy_raw_static_mesh_presence") is not True
+            or type(raw) is not dict or type(arguments) is not dict
+            or arguments != command.get("params") or arguments != _raw_static_mesh_batch_params(raw)):
+        raise OperationError("component_raw_mesh_context_invalid", "Only the original normalized static-mesh row may use this fixed Native route; no dispatch")
+    assets = {key: copy.deepcopy(raw[key]) for key in ("static_mesh", "material") if key in raw}
+    assets_json = _json_text(assets)
+    _json_input(assets_json, "raw_mesh_material_assets_json")
+    prepared = {"blueprint_path": _mutation_path(arguments["blueprint_name"]),
+        "component_name": _selector(arguments["component_name"], "component_name"), "assets_json": assets_json}
+    result["data"].update(legacy_raw_static_mesh_presence=True,
+        public_named_static_mesh_contract_changed=False, raw_asset_keys=list(assets))
+    try:
+        _mutation_action(result, "set_static_mesh_properties_raw", prepared, checkpoint_callback)
+    finally:
+        result["data"]["operation"] = "set_static_mesh_properties"
+
+
+
+def _raw_physics_batch_params(raw):
+    """Original command names only; canonical defaults never become raw writes."""
+    from cubeless_mcp_ue58.compatibility.ue58.json_value import number_to_legacy_string
+    values = {}
+    for key in ("blueprint_name", "component_name"):
+        value = raw.get(key)
+        if type(value) is bool:
+            value = "true" if value else "false"
+        elif type(value) in (int, float):
+            value = number_to_legacy_string(value)
+        elif type(value) is not str:
+            raise OperationError("component_raw_physics_selector_required", "Missing '" + key + "' parameter")
+        values[key] = value
+    return {**values, "simulate_physics": True, "gravity_enabled": True,
+        "mass": 1.0, "linear_damping": 0.01, "angular_damping": 0.0}
+
+
+def _raw_physics_batch_action(result, command, arguments, checkpoint_callback=None):
+    raw = command.get("legacy_original_params") if type(command) is dict else None
+    if (type(command) is not dict or command.get("type") != "CubelessComponentTools.set_physics_properties"
+            or command.get("legacy_original_command") != "set_physics_properties"
+            or command.get("legacy_raw_physics_presence") is not True
+            or type(raw) is not dict or type(arguments) is not dict
+            or arguments != command.get("params") or arguments != _raw_physics_batch_params(raw)):
+        raise OperationError("component_raw_physics_context_invalid", "Only the original normalized Physics row may use this fixed Native route; no dispatch")
+    fields = {key: copy.deepcopy(raw[key]) for key in ("simulate_physics", "mass", "linear_damping", "angular_damping") if key in raw}
+    # No generic property parser here: its 2^53 numeric bound would incorrectly
+    # reject original finite float values before an earlier requested setter.
+    text = json.dumps(fields, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
+    if len(text.encode("utf-16-le")) // 2 > 65536:
+        raise OperationError("component_raw_physics_json_invalid", "Original Physics JSON exceeds the bounded Native carrier")
+    prepared = {"blueprint_path": _mutation_path(arguments["blueprint_name"]),
+        "component_name": _selector(arguments["component_name"], "component_name"), "properties_json": text}
+    result["data"].update(legacy_raw_physics_presence=True, public_named_physics_contract_changed=False,
+        original_gravity_enabled_ignored=True, raw_physics_keys=list(fields))
+    try:
+        _mutation_action(result, "set_physics_properties_raw", prepared, checkpoint_callback)
+    finally:
+        result["data"]["operation"] = "set_physics_properties"
+
+
+def _raw_add_batch_params(raw):
+    """Original required TryString selectors; typed defaults are row identity only."""
+    from cubeless_mcp_ue58.compatibility.ue58.json_value import number_to_legacy_string
+    def string(value, required=False):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        if required:
+            raise OperationError("component_raw_add_selector_required", "Original Add requires blueprint_name/component_type/component_name strings")
+        return ""
+    result = {key: string(raw.get(key), True) for key in ("blueprint_name", "component_type", "component_name")}
+    result.update(location_json="[0,0,0]", rotation_json="[0,0,0]", scale_json="[1,1,1]",
+        component_properties_json="{}", compile_blueprint=True, parent_component=None)
+    parent = string(raw.get("parent_component_name"))
+    if parent:
+        result["parent_component"] = parent
+    return result
+
+
+def _raw_add_batch_action(result, command, arguments, checkpoint_callback=None):
+    raw = command.get("legacy_original_params") if type(command) is dict else None
+    if (type(command) is not dict or command.get("type") != "CubelessComponentTools.add_component_to_blueprint"
+            or command.get("legacy_original_command") != "add_component_to_blueprint"
+            or command.get("legacy_raw_add_presence") is not True
+            or type(raw) is not dict or type(arguments) is not dict
+            or arguments != command.get("params") or arguments != _raw_add_batch_params(raw)):
+        raise OperationError("component_raw_add_context_invalid", "Only the original normalized Add row may use this fixed Native route; no dispatch")
+    fields = {key: copy.deepcopy(raw[key]) for key in ("location", "rotation", "scale") if key in raw}
+    text = _json_text(fields)
+    _json_input(text, "original_add_transform_json")
+    prepared = {"blueprint_path": _mutation_path(arguments["blueprint_name"]),
+        "component_type": _selector(arguments["component_type"], "component_type"),
+        "component_name": _selector(arguments["component_name"], "component_name"),
+        "transform_json": text, "parent_component": arguments.get("parent_component") or "", "compile_blueprint": True}
+    result["data"].update(legacy_raw_add_presence=True, public_named_add_contract_changed=False,
+        original_component_properties_ignored=True, raw_transform_keys=list(fields))
+    try:
+        _mutation_action(result, "add_component_to_blueprint_raw", prepared, checkpoint_callback)
+    finally:
+        result["data"]["operation"] = "add_component_to_blueprint"

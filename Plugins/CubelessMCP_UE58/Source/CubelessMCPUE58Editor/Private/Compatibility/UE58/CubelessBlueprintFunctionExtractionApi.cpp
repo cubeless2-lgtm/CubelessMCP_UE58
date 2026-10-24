@@ -33,6 +33,7 @@
 #include "Internationalization/Text.h"
 #include "UObject/UnrealType.h"
 #include "UObject/EnumProperty.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/CompilerResultsLog.h"
@@ -52,6 +53,17 @@ using Variable::FResult;
 constexpr int32 MaxText=1048576, MaxValues=65536, MaxDepth=64;
 constexpr int32 MaxSelection=2048, MaxGraphs=256, MaxNodes=4096, MaxPins=32768, MaxLinks=65536;
 bool Busy=false;
+// YD: the stock SDK makes FunctionLibrary function entries static and may reconstruct
+// world-context/self gateway pins. Observe owner roles, not compiler cache or pin order.
+bool DirectFunctionLibraryRole(UBlueprint* BP)
+{
+    return BP&&BP->BlueprintType==BPTYPE_FunctionLibrary
+        &&BP->ParentClass.GetGCPtr().IsResolved()&&BP->ParentClass.GetGCPtr()==UBlueprintFunctionLibrary::StaticClass()
+        &&BP->NewVariables.IsEmpty()&&BP->ImplementedInterfaces.IsEmpty()
+        &&BP->MacroGraphs.IsEmpty()&&BP->UbergraphPages.IsEmpty()&&BP->EventGraphs.IsEmpty()
+        &&BP->DelegateSignatureGraphs.IsEmpty()&&BP->ComponentTemplates.IsEmpty()&&BP->Timelines.IsEmpty()
+        &&BP->SimpleConstructionScript.IsResolved()&&BP->SimpleConstructionScript==nullptr;
+}
 bool Loaded(const UObject* O)
 {
     return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);
@@ -298,7 +310,10 @@ struct FPXComposite
     TStrongObjectPtr<USceneComponent> CandidateRoot;FString RootPath;FName TemplateName;
     TStrongObjectPtr<UClass> Generated,Skeleton,CandidateGenerated,CandidateSkeleton;FString GeneratedPath,SkeletonPath;UClass* GeneratedMeta=nullptr;UClass* SkeletonMeta=nullptr;
     TArray<UEdGraphNode*> SourceSlots,DestinationSlots,Selected;
-    struct FCompositeRole { TStrongObjectPtr<UK2Node_Composite> Node;TStrongObjectPtr<UEdGraph> Graph;TArray<UEdGraphNode*> Slots;bool Selected=false; };
+    TStrongObjectPtr<UK2Node_CustomEvent> EventTemplate;
+    struct FEventPort { FName Name;FEdGraphPinType Type;FGuid SourcePin;UEdGraphNode* Peer=nullptr;FGuid PeerPin;FString OriginalDefault;FName SourceName;int32 SourceConnection=0; };
+    TArray<FEventPort> EventPorts;
+    struct FCompositeRole { TStrongObjectPtr<UK2Node_Composite> Node;TStrongObjectPtr<UEdGraph> Graph;UEdGraph* ParentGraph=nullptr;TArray<UEdGraphNode*> Slots;int32 Depth=0;bool Selected=false; };
     TArray<FCompositeRole> Composites;TArray<UEdGraph*> MovedSubgraphs;
     struct FBoundary { UEdGraphNode* Node=nullptr;FGuid Pin;FName Name;EEdGraphPinDirection Direction=EGPD_MAX;FEdGraphPinType Type; };
     TArray<FBoundary> Boundary;TArray<TPair<UEdGraphNode*,FGuid>> AutoEntry,AutoReturn;
@@ -326,6 +341,7 @@ struct FPXComposite
         TStrongObjectPtr<UEdGraphNode> Hold;UClass* Class=nullptr;UEdGraph* Graph=nullptr;FName Name;FGuid Guid;int32 X=0,Y=0;
         FString Comment;TArray<FValue> Values;TArray<UEdGraphPin*> Physical;bool Fresh=false,Derived=false;
         bool Tunnel=false,Inputs=false,Outputs=false;UK2Node_Tunnel* Sink=nullptr;UK2Node_Tunnel* Output=nullptr;
+        bool Editable=false,CustomEvent=false;FName EventName;uint32 EventFlags=0;
         TArray<FUserPinInfo> UserPins;FMemberReference Reference;UObject* ReferenceOwner=nullptr;bool HasReference=false;
         FPurityValue Purity;bool HasPurity=false;
     };
@@ -431,6 +447,14 @@ struct FPXComposite
         for(const auto& Link:E.Links)
         {
             const auto* Peer=Nodes.FindByPredicate([&](const FNodeRole& V){return V.Guid==Link.Key;});if(!Peer)return false;
+            // SDK removes the selected event template and breaks its links before moving nodes.
+            // Exec consumers become unlinked entries; data consumers keep their own defaults, not event defaults.
+            if(Moved&&Peer->Hold.Get()==EventTemplate.Get())
+            {
+                if(E.Type.PinCategory==UEdGraphSchema_K2::PC_Exec&&E.Direction==EGPD_Input&&AutoEntry.ContainsByPredicate([&](const TPair<UEdGraphNode*,FGuid>& V){return V.Key==N.Hold.Get()&&V.Value==E.Id;}))
+                {UEdGraphPin* Q=nullptr;for(UEdGraphNode* T:Destination->Nodes)if(T->GetClass()==UK2Node_FunctionEntry::StaticClass())Q=Named(T,UEdGraphSchema_K2::PN_Then,EGPD_Output);if(!Q||!Type(Q->PinType,E.Type))return false;if(!Expected.Contains(Q))Expected.Add(Q);}
+                continue;
+            }
             UEdGraphPin* Q=Find(Peer->Hold.Get(),Link.Value);if(!Q)return false;
             if(Moved&&!N.Derived&&IsSelected(N.Hold.Get())!=IsSelected(Peer->Hold.Get()))
             {
@@ -460,7 +484,7 @@ struct FPXComposite
             for(UEdGraphNode* T:Destination->Nodes)
             {
                 const bool IsPort=E.Direction==EGPD_Input?T->GetClass()==UK2Node_FunctionEntry::StaticClass():T->GetClass()==UK2Node_FunctionResult::StaticClass();
-                if(IsPort){auto* Q=Named(T,E.Direction==EGPD_Input?UEdGraphSchema_K2::PN_Then:UEdGraphSchema_K2::PN_Execute,E.Direction==EGPD_Input?EGPD_Output:EGPD_Input);if(!Q)return false;Expected.Add(Q);}
+                if(IsPort){auto* Q=Named(T,E.Direction==EGPD_Input?UEdGraphSchema_K2::PN_Then:UEdGraphSchema_K2::PN_Execute,E.Direction==EGPD_Input?EGPD_Output:EGPD_Input);if(!Q)return false;if(!Expected.Contains(Q))Expected.Add(Q);}
             }
         }
         if(P->LinkedTo.Num()!=Expected.Num())return false;
@@ -492,7 +516,14 @@ struct FPXComposite
             if(!Loaded(A)||A->GetClass()!=UEdGraph::StaticClass()||!Schema.GetGCPtr().IsResolved()||Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||A->GraphGuid!=G.Guid||A->GetFName()!=G.Name||A->GetPackage()!=BP->GetPackage())return Stop(TEXT("captured_graph_role"));
             TArray<UEdGraph*> Expected=G.Children;if(Moved&&A==Source.Get())for(auto* Sub:MovedSubgraphs)Expected.RemoveSingle(Sub);
             if(!Slots(A->SubGraphs,Expected))return Stop(TEXT("captured_subgraph_membership"));
-            for(const auto& C:Composites)if(A==C.Graph.Get()&&(A->GetOuter()!=C.Node.Get()||!C.Node->BoundGraph.IsResolved()||C.Node->BoundGraph.Get()!=A))return Stop(TEXT("bound_graph_binding"));
+            for(const auto& C:Composites)if(A==C.Graph.Get())
+            {
+                // Only selected gateways move into the function. Descendant gateways
+                // and their BoundGraphs retain their immediate authored owner graph.
+                UEdGraph* ExpectedParent=(Moved&&C.Selected)?Destination:C.ParentGraph;
+                auto* OwnerNode=C.Node.Get();
+                if(!Loaded(ExpectedParent)||!Loaded(OwnerNode)||OwnerNode->GetClass()!=UK2Node_Composite::StaticClass()||OwnerNode->GetOuter()!=ExpectedParent||!ExpectedParent->Nodes.Contains(OwnerNode)||A->GetOuter()!=OwnerNode||!OwnerNode->BoundGraph.IsResolved()||OwnerNode->BoundGraph.Get()!=A)return Stop(TEXT("bound_graph_binding"));
+            }
         }
         if(Moved&&(!Loaded(Destination)||Destination->GetClass()!=UEdGraph::StaticClass()||!Destination->Schema.GetGCPtr().IsResolved()||Destination->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||Destination->GetOuter()!=BP.Get()||!Loaded(Gateway)||Gateway->GetClass()!=UK2Node_CallFunction::StaticClass()||Gateway->GetOuter()!=Source.Get()||!Source->Nodes.Contains(Gateway)||!Slots(Destination->SubGraphs,MovedSubgraphs)))return Stop(TEXT("returned_function_roles"));
         auto Ordered=[&](UEdGraph* G,const TArray<UEdGraphNode*>& Expected)->bool{if(G->Nodes.Num()!=Expected.Num())return false;for(int32 I=0;I<Expected.Num();++I)if(!G->Nodes[I].IsResolved()||G->Nodes[I].Get()!=Expected[I])return false;return true;};
@@ -500,7 +531,8 @@ struct FPXComposite
         for(const auto& C:Composites)if(!Ordered(C.Graph.Get(),C.Slots))return Stop(TEXT("ordered_bound_node_membership"));
         for(auto& N:Nodes)
         {
-            auto* A=N.Hold.Get();UEdGraph* G=(Moved&&IsSelected(A))?Destination:N.Graph;
+            auto* A=N.Hold.Get();if(Moved&&A==EventTemplate.Get())continue; // Removed SDK role: never dereference the retired event/pins.
+            UEdGraph* G=(Moved&&IsSelected(A))?Destination:N.Graph;
             if(!Loaded(A)||A->GetClass()!=N.Class||A->GetFName()!=N.Name||A->GetOuter()!=G||!G->Nodes.Contains(A)||A->NodeGuid!=N.Guid||A->NodePosX!=N.X||A->NodePosY!=N.Y||!A->NodeComment.Equals(N.Comment,ESearchCase::CaseSensitive))return Stop(TEXT("captured_node_role"));
             const auto* Temp=Candidate.Find(A);const auto& Physical=Temp?*Temp:N.Physical;
             if(A->Pins!=Physical||Physical.Num()!=N.Values.Num())return Stop(TEXT("physical_pin_inventory"));
@@ -515,6 +547,12 @@ struct FPXComposite
                 if(!Q||Q->WasTrashed()||Q->GetOwningNodeUnchecked()!=A||Q->PinId!=V.Id||Q->PinName!=V.Name||Q->Direction!=V.Direction||!Type(ActualType,V.Type)||!Q->DefaultObject.IsResolved()||Q->DefaultObject.Get()!=V.Object||!Q->DefaultValue.Equals(V.Raw,ESearchCase::CaseSensitive)||!Q->AutogeneratedDefaultValue.Equals(V.Auto,ESearchCase::CaseSensitive)||Q->bHidden!=V.Hidden||Q->bOrphanedPin!=V.Orphan||Q->bNotConnectable!=V.Connectable||Q->bDefaultValueIsReadOnly!=V.ReadOnly||Q->ParentPin||!Q->SubPins.IsEmpty()||!Links(N,V,Q))return Stop(TEXT("captured_pin_value_or_link"));
                 if(FTextInspector::GetFlags(Q->DefaultTextValue)!=V.TextFlags||FTextInspector::GetFlags(Q->PinFriendlyName)!=V.FriendlyFlags)return Stop(TEXT("text_flags"));
                 if(Values&&!Rebinding&&(FTextInspector::GetSharedDataId(Q->DefaultTextValue)!=FTextInspector::GetSharedDataId(V.Text)||FTextInspector::GetSharedDataId(Q->PinFriendlyName)!=FTextInspector::GetSharedDataId(V.Friendly)))return Stop(TEXT("physical_text_identity"));
+            }
+            if(N.CustomEvent){auto* E=static_cast<UK2Node_CustomEvent*>(A);if(E->CustomFunctionName!=N.EventName||E->FunctionFlags!=N.EventFlags)return Stop(TEXT("event_template_authored_identity"));}
+            if(N.Editable)
+            {
+                auto* E=static_cast<UK2Node_EditablePinBase*>(A);if(E->UserDefinedPins.Num()!=N.UserPins.Num())return Stop(TEXT("editable_user_pin_count"));
+                for(int32 I=0;I<N.UserPins.Num();++I){const auto& U=E->UserDefinedPins[I];const auto& V=N.UserPins[I];if(!U||!WeakReadable(U->PinType.PinSubCategoryObject)||!WeakReadable(U->PinType.PinValueType.TerminalSubCategoryObject)||!U->PinType.PinSubCategoryMemberReference.MemberParent.IsResolved()||U->PinName!=V.PinName||U->DesiredPinDirection!=V.DesiredPinDirection||!Type(U->PinType,V.PinType)||!U->PinDefaultValue.Equals(V.PinDefaultValue,ESearchCase::CaseSensitive))return Stop(TEXT("editable_user_pin_value"));}
             }
             if(N.Tunnel)
             {
@@ -534,9 +572,9 @@ struct FPXComposite
         auto G=BP->GeneratedClass;auto K=BP->SkeletonGeneratedClass;
         if(!G.GetGCPtr().IsResolved()||!K.GetGCPtr().IsResolved()||!RootNode->ComponentTemplate.IsResolved())return Stop(TEXT("reacquire_resolved_handles"));
         CandidateGenerated.Reset(G.GetGCPtr().Get());CandidateSkeleton.Reset(K.GetGCPtr().Get());CandidateRoot.Reset(Cast<USceneComponent>(RootNode->ComponentTemplate.Get()));
-        for(auto& N:Nodes){if(!Loaded(N.Hold.Get())||N.Hold->Pins.Num()!=N.Values.Num())return Stop(TEXT("reacquire_pin_count"));Candidate.Add(N.Hold.Get(),N.Hold->Pins);}
+        for(auto& N:Nodes){if(Moved&&N.Hold.Get()==EventTemplate.Get())continue;if(!Loaded(N.Hold.Get())||N.Hold->Pins.Num()!=N.Values.Num())return Stop(TEXT("reacquire_pin_count"));Candidate.Add(N.Hold.Get(),N.Hold->Pins);}
         if(!Plain(false))return false;
-        for(auto& N:Nodes)for(int32 I=0;I<N.Values.Num();++I)
+        for(auto& N:Nodes)if(!Moved||N.Hold.Get()!=EventTemplate.Get())for(int32 I=0;I<N.Values.Num();++I)
         {
             auto& V=N.Values[I];auto* Q=Candidate.FindChecked(N.Hold.Get())[I];
             const FText T=Q->DefaultTextValue;const FString TD=T.ToString();if(!Plain(false))return false;
@@ -545,13 +583,15 @@ struct FPXComposite
             if(N.Fresh){V.TextDisplay=TD;V.FriendlyDisplay=FD;}
             V.Text=T;V.Friendly=F;
         }
-        for(auto& N:Nodes){N.Physical=Candidate.FindChecked(N.Hold.Get());N.Fresh=false;}Candidate.Reset();Holds.Emplace(Generated.Get());Holds.Emplace(Skeleton.Get());Holds.Emplace(RootTemplate.Get());Generated=MoveTemp(CandidateGenerated);Skeleton=MoveTemp(CandidateSkeleton);RootTemplate=MoveTemp(CandidateRoot);Rebinding=false;return Plain();
+        for(auto& N:Nodes){if(Moved&&N.Hold.Get()==EventTemplate.Get())continue;N.Physical=Candidate.FindChecked(N.Hold.Get());N.Fresh=false;}Candidate.Reset();Holds.Emplace(Generated.Get());Holds.Emplace(Skeleton.Get());Holds.Emplace(RootTemplate.Get());Generated=MoveTemp(CandidateGenerated);Skeleton=MoveTemp(CandidateSkeleton);RootTemplate=MoveTemp(CandidateRoot);Rebinding=false;return Plain();
     }
     bool CaptureNode(UEdGraphNode* O,UEdGraph* A,bool Fresh=false)
     {
         if(!Loaded(O)||O->Pins.Num()>256||!O->NodeGuid.IsValid()||Nodes.ContainsByPredicate([&](const FNodeRole& V){return V.Guid==O->NodeGuid;}))return Stop(TEXT("capture_node"));
         FNodeRole V;V.Hold.Reset(O);V.Class=O->GetClass();V.Graph=A;V.Name=O->GetFName();V.Guid=O->NodeGuid;V.X=O->NodePosX;V.Y=O->NodePosY;V.Comment=O->NodeComment;V.Fresh=Fresh;V.Derived=Fresh;
-        if(auto* T=Cast<UK2Node_Tunnel>(O)){V.Tunnel=true;if(!T->InputSinkNode.IsResolved()||!T->OutputSourceNode.IsResolved())return Stop(TEXT("capture_tunnel"));V.Sink=T->InputSinkNode.Get();V.Output=T->OutputSourceNode.Get();V.Inputs=T->bCanHaveInputs;V.Outputs=T->bCanHaveOutputs;for(const auto& U:T->UserDefinedPins){if(!U||!HoldType(U->PinType))return Stop(TEXT("capture_user_pin"));V.UserPins.Add(*U);}}
+        if(auto* E=Cast<UK2Node_EditablePinBase>(O)){if(E->UserDefinedPins.Num()>256)return Stop(TEXT("capture_editable_user_pin_bound"));V.Editable=true;for(const auto& U:E->UserDefinedPins){if(!U||!HoldType(U->PinType))return Stop(TEXT("capture_editable_user_pin"));V.UserPins.Add(*U);}}
+        if(auto* E=Cast<UK2Node_CustomEvent>(O)){V.CustomEvent=true;V.EventName=E->CustomFunctionName;V.EventFlags=E->FunctionFlags;}
+        if(auto* T=Cast<UK2Node_Tunnel>(O)){V.Tunnel=true;if(!T->InputSinkNode.IsResolved()||!T->OutputSourceNode.IsResolved())return Stop(TEXT("capture_tunnel"));V.Sink=T->InputSinkNode.Get();V.Output=T->OutputSourceNode.Get();V.Inputs=T->bCanHaveInputs;V.Outputs=T->bCanHaveOutputs;}
         if(const auto* Ref=(Fresh&&(O->GetClass()==UK2Node_FunctionEntry::StaticClass()||O->GetClass()==UK2Node_FunctionResult::StaticClass()))?nullptr:NodeReference(O)){if(!ReferenceParent(*Ref,V.ReferenceOwner)||(V.ReferenceOwner&&!Loaded(V.ReferenceOwner)))return Stop(TEXT("capture_member_reference"));if(V.ReferenceOwner)Holds.Emplace(V.ReferenceOwner);V.Reference=*Ref;V.HasReference=true;}
         if(O->GetClass()==UK2Node_CallFunction::StaticClass()){if(!ReadPurity(O,V.Purity,true))return false;V.HasPurity=true;}
         TSet<FGuid> PinIds;for(auto* Q:O->Pins)
@@ -632,12 +672,13 @@ struct FPXComposite
         TArray<UEdGraphPin*> Pins;bool HasExecInput=false;
         for(auto* N:Selection)
         {
+            if(N==EventTemplate.Get())continue;
             TArray<TPair<UEdGraphNode*,FGuid>> Outputs;
             for(auto* P:N->Pins)
             {
-                bool Outside=false;for(auto* Q:P->LinkedTo)if(!Selection.Contains(OwnedPins.FindRef(Q))){Outside=true;break;}
+                bool Outside=false;for(auto* Q:P->LinkedTo)if(OwnedPins.FindRef(Q)!=EventTemplate.Get()&&!Selection.Contains(OwnedPins.FindRef(Q))){Outside=true;break;}
                 if(Outside){if(!PortType(P->PinType))return Fail(R,TEXT("function_extract_composite_boundary_pending"),TEXT("Aggregate boundary requires the existing primitive/exec port profile; wider original pin types remain incomplete."));Pins.Add(P);if(P->PinType.PinCategory==UEdGraphSchema_K2::PC_Exec&&P->Direction==EGPD_Input)HasExecInput=true;}
-                else if(P->LinkedTo.IsEmpty()&&P->PinType.PinCategory==UEdGraphSchema_K2::PC_Exec)
+                else if((P->LinkedTo.IsEmpty()||(EventTemplate&&P->LinkedTo.Num()==1&&OwnedPins.FindRef(P->LinkedTo[0])==EventTemplate.Get()))&&P->PinType.PinCategory==UEdGraphSchema_K2::PC_Exec)
                 {if(P->Direction==EGPD_Input)AutoEntry.Add({N,P->PinId});else Outputs.Add({N,P->PinId});}
             }
             // SDK visits this same TSet and only the first node with unlinked outputs fills the empty return port.
@@ -662,7 +703,9 @@ struct FPXComposite
             FBoundary V;V.Node=OwnedPins.FindRef(P);V.Pin=P->PinId;V.Name=P->PinName;V.Direction=P->Direction;V.Type=P->PinType;
             if(P->PinType.PinCategory!=UEdGraphSchema_K2::PC_Exec)
             {
-                int32 Index=1;while(Used.Contains(V.Name)){++Index;V.Name=FName(*FString::Printf(TEXT("%s%d"),*P->PinName.ToString(),Index));}Used.Add(V.Name);
+                // Template parameters exist on Entry before Gateway reconstruction; reject ambiguous name collisions instead of inventing a different SDK name.
+                if(EventPorts.ContainsByPredicate([&](const FEventPort& E){return E.Name==V.Name;}))return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Template/aggregate parameter name collisions remain incomplete; no extraction writer."));
+                int32 Index=1;while(Used.Contains(V.Name)){++Index;V.Name=FName(*FString::Printf(TEXT("%s%d"),*P->PinName.ToString(),Index));}if(EventPorts.ContainsByPredicate([&](const FEventPort& E){return E.Name==V.Name;}))return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Generated aggregate/template parameter name collisions remain incomplete; no extraction writer."));Used.Add(V.Name);
                 if(P->Direction==EGPD_Output)KeepReturn=true;
             }
             Boundary.Add(MoveTemp(V));
@@ -671,7 +714,7 @@ struct FPXComposite
     }
     bool ReturnedSignature(UEdGraphNode* Entry,UEdGraphNode* Result,UEdGraphNode* Call)
     {
-        int32 Inputs=0,Outputs=0;for(const auto& B:Boundary)if(B.Type.PinCategory!=UEdGraphSchema_K2::PC_Exec){if(B.Direction==EGPD_Input)++Inputs;else ++Outputs;}
+        int32 Inputs=EventPorts.Num(),Outputs=0;for(const auto& B:Boundary)if(B.Type.PinCategory!=UEdGraphSchema_K2::PC_Exec){if(B.Direction==EGPD_Input)++Inputs;else ++Outputs;}
         if(!Entry||Entry->Pins.Num()!=1+Inputs||bool(Result)!=KeepReturn||(Result&&Result->Pins.Num()!=1+Outputs)||Call->Pins.Num()!=3+Inputs+Outputs)return Stop(TEXT("aggregate_signature_pin_count"));
         auto Exec=[&](UEdGraphNode* N,FName Name,EEdGraphPinDirection Direction)->bool{auto* P=Named(N,Name,Direction);return P&&P->PinType.PinCategory==UEdGraphSchema_K2::PC_Exec&&PortType(P->PinType);};
         if(!Exec(Entry,UEdGraphSchema_K2::PN_Then,EGPD_Output)||!Exec(Call,UEdGraphSchema_K2::PN_Execute,EGPD_Input)||!Exec(Call,UEdGraphSchema_K2::PN_Then,EGPD_Output)||(Result&&!Exec(Result,UEdGraphSchema_K2::PN_Execute,EGPD_Input)))return Stop(TEXT("aggregate_signature_exec_shape"));
@@ -695,6 +738,20 @@ struct FPXComposite
             auto* Outside=Named(Call,B.Name,B.Direction);auto* Inside=Named(B.Direction==EGPD_Input?Entry:Result,B.Name,B.Direction==EGPD_Input?EGPD_Output:EGPD_Input);
             if(!Outside||!Inside||!Type(Outside->PinType,B.Type)||!Type(Inside->PinType,B.Type))return Stop(TEXT("aggregate_signature_data_shape"));
         }
+        if(EventTemplate)
+        {
+            auto* Editable=Cast<UK2Node_EditablePinBase>(Entry);if(!Editable)return Stop(TEXT("event_template_entry_type"));
+            auto Rows=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Ports;
+            for(const auto& E:EventPorts)
+            {
+                auto* I=Named(Entry,E.Name,EGPD_Output);auto* O=Named(Call,E.Name,EGPD_Input);
+                const auto* U=Editable->UserDefinedPins.FindByPredicate([&](const TSharedPtr<FUserPinInfo>& V){return V&&V->PinName==E.Name;});
+                // UE58 creates a new FUserPinInfo with an empty default, not a copy of the event's authored default.
+                if(!I||!O||!Type(I->PinType,E.Type)||!Type(O->PinType,E.Type)||!I->LinkedTo.IsEmpty()||!O->LinkedTo.IsEmpty()||!U||(*U)->DesiredPinDirection!=EGPD_Output||!Type((*U)->PinType,E.Type)||!(*U)->PinDefaultValue.IsEmpty()||!I->AutogeneratedDefaultValue.IsEmpty())return Stop(TEXT("event_template_generated_user_pin"));
+                auto P=MakeShared<FJsonObject>();P->SetStringField(TEXT("name"),E.Name.ToString());P->SetStringField(TEXT("original_event_parameter"),E.SourceName.ToString());P->SetStringField(TEXT("original_source_pin_id"),E.SourcePin.ToString(EGuidFormats::Digits));P->SetStringField(TEXT("original_consumer_pin_id"),E.PeerPin.ToString(EGuidFormats::Digits));P->SetNumberField(TEXT("original_connection_ordinal"),E.SourceConnection);P->SetStringField(TEXT("original_event_default"),E.OriginalDefault);P->SetStringField(TEXT("generated_entry_default"),(*U)->PinDefaultValue);P->SetBoolField(TEXT("event_default_copied"),false);P->SetBoolField(TEXT("original_data_link_disconnected_by_sdk"),true);Ports.Add(MakeShared<FJsonValueObject>(P));
+            }
+            Rows->SetArrayField(TEXT("ports"),Ports);Rows->SetBoolField(TEXT("sdk_event_template_removed"),true);Rows->SetBoolField(TEXT("defaults_or_links_repaired_by_plugin"),false);R.Data->SetObjectField(TEXT("composite_event_template_result"),Rows);
+        }
         return true;
     }
     bool Move(UEdGraph* F,UEdGraphNode* Call)
@@ -702,7 +759,7 @@ struct FPXComposite
         if(Stopped)return false;Holds.Emplace(F);Holds.Emplace(Call);
         // No owning reads of returned objects until the captured source/context roles are live.
         if(!OwnerCurrent())return false;
-        if(!Loaded(F)||!Loaded(Call)||F->GetOuter()!=BP.Get()||F->GetClass()!=UEdGraph::StaticClass()||!F->Schema.GetGCPtr().IsResolved()||F->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||Call->GetClass()!=UK2Node_CallFunction::StaticClass()||F->Nodes.Num()!=Selected.Num()+1+(KeepReturn?1:0))return Stop(TEXT("move_returned_objects"));
+        if(!Loaded(F)||!Loaded(Call)||F->GetOuter()!=BP.Get()||F->GetClass()!=UEdGraph::StaticClass()||!F->Schema.GetGCPtr().IsResolved()||F->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||Call->GetClass()!=UK2Node_CallFunction::StaticClass()||F->Nodes.Num()!=Selected.Num()-(EventTemplate?1:0)+1+(KeepReturn?1:0))return Stop(TEXT("move_returned_objects"));
         Destination=F;Gateway=Call;Moved=true;if(!Inventory())return false;int32 Entry=0,Result=0;UEdGraphNode* EntryNode=nullptr;UEdGraphNode* ResultNode=nullptr;
         for(const auto& Slot:F->Nodes){if(!Slot.IsResolved())return Stop(TEXT("destination_unresolved_node"));DestinationSlots.Add(Slot.Get());}
         for(const auto& Slot:F->Nodes)
@@ -723,24 +780,45 @@ struct FPXComposite
         EditorRole.Capture(Editor.Get());WorldRole.Capture(World.Get());BlueprintRole.Capture(B);SourceRole.Capture(G);if(!OwnerCurrent())return false;
         for(auto* N:Selection)Selected.Add(N);
         if(B->ParentClass.Get()!=AActor::StaticClass()||(!B->FunctionGraphs.Contains(G)&&!B->UbergraphPages.Contains(G))||!B->ImplementedInterfaces.IsEmpty()||!B->GetExtensions().IsEmpty())return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Direct Actor own event/function graph required; broader valid owners remain incomplete."));
-        TArray<UEdGraph*> SourceChildren;for(const auto& Slot:G->SubGraphs){if(!Slot.IsResolved())return Stop(TEXT("initial_subgraph_unresolved"));SourceChildren.Add(Slot.Get());}
-        for(const auto& Slot:G->Nodes)
+        // The SDK moves only selected gateway nodes and their immediate SubGraphs.
+        // Observe the complete closed owned hierarchy before any virtual/native query;
+        // never flatten descendants or infer that every nested graph is function-safe.
+        struct FOwnedVisit { UEdGraph* Graph;int32 Depth; };
+        TArray<FOwnedVisit> Pending;Pending.Add({G,0});TSet<UEdGraph*> SeenGraphs;SeenGraphs.Add(G);
+        int32 NestedBodies=0,DeepestBody=0;
+        for(int32 VisitIndex=0;VisitIndex<Pending.Num();++VisitIndex)
         {
-            if(!Slot.IsResolved())return Stop(TEXT("initial_source_node_unresolved"));auto* O=Slot.Get();
-            if(!Loaded(O))return Stop(TEXT("initial_source_node_role"));
-            if(IsSelected(O)&&O->IsA<UK2Node_CustomEvent>())return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Mixed Composite extraction with a removed custom-event template remains a valid original variant outside this ownership profile; plain-only event extraction is unchanged."));
-            if(auto* C=Cast<UK2Node_Composite>(O))
+            const auto Visit=Pending[VisitIndex];auto* ParentGraph=Visit.Graph;
+            if(!Loaded(ParentGraph)||ParentGraph->GetClass()!=UEdGraph::StaticClass()||!ParentGraph->Schema.GetGCPtr().IsResolved()||ParentGraph->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||ParentGraph->GetPackage()!=B->GetPackage()||ParentGraph->Nodes.Num()>MaxNodes||ParentGraph->SubGraphs.Num()>MaxGraphs)return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Composite closure requires bounded loaded own stock K2 graphs; wider original owners remain incomplete."));
+            TArray<UEdGraph*> Children;
+            for(const auto& Child:ParentGraph->SubGraphs)
+            {if(!Child.IsResolved())return Stop(TEXT("initial_subgraph_unresolved"));if(Children.Contains(Child.Get()))return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Duplicate immediate Composite body membership is not admitted."));Children.Add(Child.Get());}
+            int32 ImmediateBodies=0;
+            for(const auto& Slot:ParentGraph->Nodes)
             {
-                if(C->GetClass()!=UK2Node_Composite::StaticClass()||!C->BoundGraph.IsResolved())return Stop(TEXT("initial_composite_binding"));
-                FCompositeRole V;V.Node.Reset(C);V.Graph.Reset(C->BoundGraph.Get());V.Selected=IsSelected(C);
-                if(!Loaded(V.Graph.Get())||V.Graph->GetOuter()!=C||!V.Graph->SubGraphs.IsEmpty()||V.Graph->Nodes.Num()<2||V.Graph->Nodes.Num()>MaxNodes||SourceChildren.FilterByPredicate([&](UEdGraph* E){return E==V.Graph.Get();}).Num()!=1||Composites.ContainsByPredicate([&](const FCompositeRole& E){return E.Graph.Get()==V.Graph.Get();}))return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Each direct Composite must own a distinct finite leaf BoundGraph; deeper/custom original variants remain incomplete."));
-                for(const auto& Node:V.Graph->Nodes){if(!Node.IsResolved())return Stop(TEXT("initial_body_node_unresolved"));V.Slots.Add(Node.Get());}
-                Composites.Add(MoveTemp(V));
+                if(!Slot.IsResolved())return Stop(TEXT("initial_source_node_unresolved"));auto* O=Slot.Get();
+                if(!Loaded(O)||O->GetOuter()!=ParentGraph)return Stop(TEXT("initial_source_node_role"));
+                if(ParentGraph==G&&IsSelected(O)&&O->IsA<UK2Node_CustomEvent>())
+                {
+                    if(O->GetClass()!=UK2Node_CustomEvent::StaticClass()||EventTemplate)return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Mixed Composite extraction currently admits one exact native CustomEvent template; multiple/custom event variants remain incomplete."));
+                    EventTemplate.Reset(static_cast<UK2Node_CustomEvent*>(O));
+                }
+                if(auto* C=Cast<UK2Node_Composite>(O))
+                {
+                    if(C->GetClass()!=UK2Node_Composite::StaticClass()||!C->BoundGraph.IsResolved())return Stop(TEXT("initial_composite_binding"));
+                    FCompositeRole V;V.Node.Reset(C);V.Graph.Reset(C->BoundGraph.Get());V.ParentGraph=ParentGraph;V.Depth=Visit.Depth+1;V.Selected=ParentGraph==G&&IsSelected(C);
+                    if(!Loaded(V.Graph.Get())||V.Graph->GetOuter()!=C||V.Graph->Nodes.Num()<2||V.Graph->Nodes.Num()>MaxNodes||!Children.Contains(V.Graph.Get())||SeenGraphs.Contains(V.Graph.Get())||V.Depth>=MaxDepth||SeenGraphs.Num()>=MaxGraphs)return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Each Composite must own one distinct acyclic bounded body in its immediate parent SubGraphs; deeper/custom/out-of-budget original variants remain incomplete."));
+                    for(const auto& Node:V.Graph->Nodes){if(!Node.IsResolved())return Stop(TEXT("initial_body_node_unresolved"));V.Slots.Add(Node.Get());}
+                    SeenGraphs.Add(V.Graph.Get());Pending.Add({V.Graph.Get(),V.Depth});++ImmediateBodies;
+                    if(V.Depth>1)++NestedBodies;DeepestBody=FMath::Max(DeepestBody,V.Depth);
+                    Composites.Add(MoveTemp(V));
+                }
             }
+            if(ImmediateBodies!=Children.Num())return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Each observed SubGraphs list must consist exactly of its immediate Composite-owned bodies; broader original graph forms remain incomplete."));
         }
-        if(Composites.Num()!=SourceChildren.Num()||Composites.IsEmpty())return Fail(R,TEXT("function_extract_composite_profile_pending"),TEXT("Source SubGraphs must be the distinct directly owned Composite bodies; broader original graph forms remain incomplete."));
+        if(Composites.IsEmpty())return Stop(TEXT("selected_composite_missing"));
         // Retain exactly the SDK TSet order for destination SubGraphs and the unlinked exec-return projection.
-        for(auto* N:Selection)for(const auto& C:Composites)if(C.Node.Get()==N)MovedSubgraphs.Add(C.Graph.Get());
+        for(auto* N:Selection)for(const auto& C:Composites)if(C.Selected&&C.ParentGraph==G&&C.Node.Get()==N)MovedSubgraphs.Add(C.Graph.Get());
         if(MovedSubgraphs.IsEmpty())return Stop(TEXT("selected_composite_missing"));
         Composite.Reset(Composites[0].Node.Get());Bound.Reset(Composites[0].Graph.Get());
         if(!B->SimpleConstructionScript.IsResolved())return Stop(TEXT("initial_scs_unresolved"));SCS.Reset(B->SimpleConstructionScript.Get());
@@ -751,7 +829,7 @@ struct FPXComposite
         if(!Gen.GetGCPtr().IsResolved()||!Skel.GetGCPtr().IsResolved())return Stop(TEXT("initial_generated_handles"));Generated.Reset(Gen.GetGCPtr().Get());Skeleton.Reset(Skel.GetGCPtr().Get());if(!Loaded(Generated.Get())||!Loaded(Skeleton.Get()))return Stop(TEXT("initial_generated_roles"));GeneratedPath=Generated->GetPathName();SkeletonPath=Skeleton->GetPathName();GeneratedMeta=Generated->GetClass();SkeletonMeta=Skeleton->GetClass();Holds.Emplace(GeneratedMeta);Holds.Emplace(SkeletonMeta);
         Functions=Copy(B->FunctionGraphs);Macros=Copy(B->MacroGraphs);Events=Copy(B->UbergraphPages);Delegates=Copy(B->DelegateSignatureGraphs);
         TArray<UEdGraph*> All;if(!::Cubeless::UE58::BlueprintFunctionExtraction::Graphs(B,All,R))return false;
-        // Only the selected source and its BoundGraph may be touched by extraction.
+        // Only the source selection and its closed Composite hierarchy participate; other graph roles remain captured.
         for(auto* A:All){FGraph V;V.Hold.Reset(A);V.Guid=A->GraphGuid;V.Name=A->GetFName();V.Children=Copy(A->SubGraphs);Graphs.Add(MoveTemp(V));}
         if(!Inventory())return false;int32 Calls=0,BodyNodes=0;
         for(const auto& Slot:G->Nodes)SourceSlots.Add(Slot.Get());
@@ -763,20 +841,67 @@ struct FPXComposite
             if(A!=G)
             {
                 ++BodyNodes;
-                if(O->GetClass()!=UK2Node_Tunnel::StaticClass()&&O->GetClass()!=UK2Node_CallFunction::StaticClass()&&O->GetClass()!=UK2Node_IfThenElse::StaticClass()&&O->GetClass()!=UK2Node_ExecutionSequence::StaticClass())return Fail(R,TEXT("function_extract_composite_inner_pending"),TEXT("Existing finite native pure-call/Branch/Sequence/Tunnel2 body proof is reused for each Composite; deeper/custom bodies remain valid incomplete variants."));
+                if(O->GetClass()!=UK2Node_Tunnel::StaticClass()&&O->GetClass()!=UK2Node_CallFunction::StaticClass()&&O->GetClass()!=UK2Node_IfThenElse::StaticClass()&&O->GetClass()!=UK2Node_ExecutionSequence::StaticClass()&&O->GetClass()!=UK2Node_Composite::StaticClass())return Fail(R,TEXT("function_extract_composite_inner_pending"),TEXT("Finite native pure-call/Branch/Sequence/Tunnel2/Composite body proof is reused at each owned depth; custom/other body classes remain valid incomplete variants."));
             }
             if(!CaptureNode(O,A))return false;
         }
         // All source/target/body values and aggregate boundaries precede native-source observations.
+        if(EventTemplate)
+        {
+            const auto* E=Role(EventTemplate.Get());if(!E)return Stop(TEXT("event_template_capture_missing"));TSet<FName> Names,EntryNames;EntryNames.Add(UEdGraphSchema_K2::PN_Then);int32 Execs=0,SourceParameters=0,FanoutParameters=0;
+            for(const auto& V:E->Values)
+            {
+                if(V.Direction!=EGPD_Output)return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Event template must use stock output-only primitive parameters; wider original templates remain incomplete."));
+                if(V.Type.PinCategory==UEdGraphSchema_K2::PC_Delegate){if(!V.Links.IsEmpty())return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Linked event delegates remain incomplete; no writer dispatched."));continue;}
+                const bool Exec=V.Type.PinCategory==UEdGraphSchema_K2::PC_Exec;
+                if(!PortType(V.Type)||(Exec&&V.Links.Num()>1))return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Primitive data fan-out uses the captured finite link bound; exec fan-out and wider signatures remain incomplete."));
+                if(Exec)++Execs;
+                const FUserPinInfo* Definition=nullptr;
+                if(!Exec&&!V.Links.IsEmpty())
+                {
+                    if(V.Name==UEdGraphSchema_K2::PN_Execute||V.Name==UEdGraphSchema_K2::PN_Then||V.Name==UEdGraphSchema_K2::PN_Self||Names.Contains(V.Name))return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Ambiguous/reserved source event parameter names remain incomplete."));
+                    Definition=E->UserPins.FindByPredicate([&](const FUserPinInfo& U){return U.PinName==V.Name;});
+                    if(!Definition||Definition->DesiredPinDirection!=EGPD_Output||!Type(Definition->PinType,V.Type))return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Each event data parameter requires its matching authored output user-pin definition."));
+                    Names.Add(V.Name);++SourceParameters;if(V.Links.Num()>1)++FanoutParameters;
+                }
+                int32 Connection=0;
+                for(const auto& L:V.Links)
+                {
+                    ++Connection;const auto* Peer=Nodes.FindByPredicate([&](const FNodeRole& N){return N.Guid==L.Key;});const auto* Pin=Peer?Peer->Values.FindByPredicate([&](const FValue& P){return P.Id==L.Value;}):nullptr;
+                    if(!Peer||!Pin||!IsSelected(Peer->Hold.Get())||Peer->Graph!=G||Pin->Direction!=EGPD_Input||Pin->Links.Num()!=1||!Type(Pin->Type,V.Type))return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Each fan-out consumer must be an exclusively linked selected source-graph input; external links remain incomplete."));
+                    if(!Exec)
+                    {
+                        // SDK ExtractEventTemplateForFunction visits copied links and creates
+                        // one Entry user pin per selected consumer. Gateway has only execute,
+                        // then and self at this point; none of the admitted data names collide.
+                        // EditablePinBase then applies the actual unique-name algorithm against
+                        // Entry's prior pins (Data, Data2, Data3...), independently of peer order.
+                        FName GeneratedName=V.Name;int32 Suffix=1;while(EntryNames.Contains(GeneratedName)){++Suffix;const FString CandidateName=FString::Printf(TEXT("%s%d"),*V.Name.ToString(),Suffix);if(CandidateName.Len()>=NAME_SIZE)return Fail(R,TEXT("function_extract_composite_event_template_name_bound"),TEXT("SDK fan-out suffix would exceed the native FName limit; no extraction writer."));GeneratedName=FName(*CandidateName);}
+                        EntryNames.Add(GeneratedName);EventPorts.Add({GeneratedName,V.Type,V.Id,Peer->Hold.Get(),Pin->Id,Definition->PinDefaultValue,V.Name,Connection});
+                    }
+                }
+            }
+            if(Execs!=1)return Fail(R,TEXT("function_extract_composite_event_template_pending"),TEXT("Exactly one stock event exec output is required."));
+            R.Data->SetBoolField(TEXT("composite_event_template_admitted"),true);R.Data->SetNumberField(TEXT("composite_event_template_parameter_count"),EventPorts.Num());R.Data->SetNumberField(TEXT("composite_event_template_source_parameter_count"),SourceParameters);R.Data->SetNumberField(TEXT("composite_event_template_data_fanout_parameter_count"),FanoutParameters);R.Data->SetStringField(TEXT("composite_event_template_sdk_semantics"),TEXT("SDK creates one uniquely named Entry parameter per selected data consumer with empty user defaults, removes the event and disconnects every original event data link. Plugin does not copy defaults or repair links. External/exec-fanout/custom signatures remain incomplete."));
+        }
         if(!Plain(false)||!PlanBoundary(Selection))return false;
+        if(EventTemplate)
+        {
+            int32 Inputs=EventPorts.Num(),Outputs=0;for(const auto& V:Boundary)if(V.Type.PinCategory!=UEdGraphSchema_K2::PC_Exec){if(V.Direction==EGPD_Input)++Inputs;else ++Outputs;}
+            // Existing returned-node capture admits at most 256 pins. Reject the
+            // predictable fan-out expansion before invoking the owned toolkit.
+            if(Inputs+Outputs>253)return Fail(R,TEXT("function_extract_composite_event_template_pin_budget"),TEXT("Expanded template and aggregate signature must fit the existing 256-pin gateway observation bound; no extraction writer."));
+            R.Data->SetNumberField(TEXT("composite_event_template_predicted_gateway_pins"),3+Inputs+Outputs);
+        }
         TArray<UEdGraphNode*> NativeCallNodes;for(const auto& N:Nodes)if(N.Class==UK2Node_CallFunction::StaticClass()&&(N.Graph!=G||IsSelected(N.Hold.Get())))NativeCallNodes.Add(N.Hold.Get());
         for(auto* O:NativeCallNodes){if(!Plain(false))return false;if(!Loaded(O))return Stop(TEXT("native_call_slot"));if(!BindNativeCall(static_cast<UK2Node_CallFunction*>(O))){if(R.ErrorCode.IsEmpty())Fail(R,TEXT("function_extract_composite_native_signature_pending"),TEXT("Selected/body native pure function byvalue primitive signature is outside this finite source proof; no extraction writer."));return false;}++Calls;}
         for(const auto& C:Composites)
         {
             Composite.Reset(C.Node.Get());Bound.Reset(C.Graph.Get());
-            if(!Qualify())return Fail(R,TEXT("function_extract_composite_closed_shape_pending"),TEXT("Each body requires the existing finite acyclic reciprocal typed Tunnel2/native pure-call/Branch/Sequence proof; wider original bodies remain incomplete."));
+            if(!Qualify())return Fail(R,TEXT("function_extract_composite_closed_shape_pending"),TEXT("Each owned body requires the finite acyclic reciprocal typed Tunnel2/native pure-call/Branch/Sequence/Composite proof; wider original bodies remain incomplete."));
         }
         R.Data->SetNumberField(TEXT("composite_native_call_count"),Calls);R.Data->SetNumberField(TEXT("composite_body_node_count"),BodyNodes);R.Data->SetNumberField(TEXT("composite_unique_native_sources"),NativeSources.Num());
+        R.Data->SetNumberField(TEXT("composite_nested_body_count"),NestedBodies);R.Data->SetNumberField(TEXT("composite_max_owned_depth"),DeepestBody);R.Data->SetBoolField(TEXT("composite_recursive_owned_closure_observed"),true);
         Ready=true;
         if(!Plain(false))return false;
         for(auto& V:Nodes)for(auto& Q:V.Values){const FText T=Q.Text;Q.TextDisplay=T.ToString();if(!Plain(false))return false;const FText F=Q.Friendly;Q.FriendlyDisplay=F.ToString();if(!Plain(false))return false;}
@@ -802,7 +927,7 @@ struct FContext
     FResult& R;UBlueprint* BP=nullptr;UEdGraph* Source=nullptr;FIdentity Blueprint,Graph,Parent;FInventory Before;
     TSharedPtr<FOwnedExtractor> Editor;TSharedPtr<SGraphEditor> GraphEditor;
     UEdGraph* Diagnostic=nullptr;FIdentity DiagnosticIdentity;bool DiagnosticAdded=false,DiagnosticRemoveAttempted=false;
-    bool Baseline=false,WasDirty=false,Restore=false;EBlueprintStatus OriginalStatus=BS_Unknown;
+    bool Baseline=false,WasDirty=false,Restore=false,FunctionLibrary=false;EBlueprintStatus OriginalStatus=BS_Unknown;
     UEdGraph* ResultFunction=nullptr;UEdGraphNode* ResultGateway=nullptr;
     FIdentity ResultFunctionIdentity,ResultGatewayIdentity;FString RequestedFunction;FMemberReference ExpectedFunctionReference;
     void HoldOutputs(UEdGraph* Function,UEdGraphNode* Gateway,const FString& Name)
@@ -835,6 +960,8 @@ struct FContext
             ||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||BP->bSuppressStructurallyModified
             ||!Parent.Current()||BP->ParentClass!=Parent.Object||!Loaded(BP->SkeletonGeneratedClass)||BP->SkeletonGeneratedClass->ClassGeneratedBy!=BP||!Source->bEditable||Source->Schema!=UEdGraphSchema_K2::StaticClass()||Source->GetSchema()!=GetDefault<UEdGraphSchema_K2>()||Source->GetTypedOuter<UBlueprint>()!=BP)
         { return Fail(R,TEXT("function_extract_owner_changed"),TEXT("Editor, source Blueprint/graph/package or compiler state changed during the operation.")); }
+        if(FunctionLibrary&&(!DirectFunctionLibraryRole(BP)||Source->GetOuter()!=BP||!BP->FunctionGraphs.Contains(Source)))
+        { return Fail(R,TEXT("function_extract_function_library_owner_changed"),TEXT("Direct FunctionLibrary owner or selected own function graph role changed after a callback.")); }
         TArray<UEdGraph*> All;if(!Graphs(BP,All,R)||!All.Contains(Source)) { return Fail(R,TEXT("function_extract_source_removed"),TEXT("Captured source graph is no longer in the bounded Blueprint inventory.")); }
         if(Editor.IsValid()&&(Editor->bCloseObserved||Editor->GetBlueprintObj()!=BP)) { return Fail(R,TEXT("function_extract_toolkit_owner_changed"),TEXT("Owned toolkit no longer addresses the captured Blueprint.")); }
         return !bSameSource||Before.Same(Source,R);
@@ -1010,10 +1137,15 @@ Variable::FResult Collapse(const FString& BlueprintName,const FString& GraphName
         { return Fail(R,TEXT("function_extract_graph_selector"),TEXT("An explicit graph_name or graph_id is required.")); }
         C.BP=LoadBlueprint(BPName,R);
         if(!C.BP) { if(R.ErrorCode.IsEmpty()) { Fail(R,TEXT("function_extract_blueprint_not_found"),TEXT("Blueprint could not be loaded.")); }return false; }
-        if(!Loaded(C.BP)||C.BP->GetClass()!=UBlueprint::StaticClass()||C.BP->BlueprintType!=BPTYPE_Normal||!Loaded(C.BP->ParentClass)
+        if(!Loaded(C.BP)||C.BP->GetClass()!=UBlueprint::StaticClass()||(C.BP->BlueprintType!=BPTYPE_Normal&&C.BP->BlueprintType!=BPTYPE_FunctionLibrary)||!Loaded(C.BP->ParentClass)
             ||!Loaded(C.BP->SkeletonGeneratedClass)||C.BP->SkeletonGeneratedClass->ClassGeneratedBy!=C.BP||C.BP->GetOuter()!=C.BP->GetPackage()||!C.BP->GetPackage()->GetName().StartsWith(TEXT("/Game/"))
             ||C.BP->bBeingCompiled||C.BP->bQueuedForCompilation||C.BP->bIsRegeneratingOnLoad||C.BP->bSuppressStructurallyModified||C.BP->Status==BS_BeingCreated)
-        { return Fail(R,TEXT("function_extract_blueprint_scope"),TEXT("A loaded idle top-level ordinary /Game UBlueprint with a valid skeleton class is required; custom/level/animation/interface Blueprint variants remain unsupported.")); }
+        { return Fail(R,TEXT("function_extract_blueprint_scope"),TEXT("A loaded idle top-level ordinary or direct native FunctionLibrary /Game UBlueprint with a valid skeleton class is required; custom/level/animation/interface Blueprint variants remain unsupported.")); }
+        C.FunctionLibrary=C.BP->BlueprintType==BPTYPE_FunctionLibrary;
+        if(C.FunctionLibrary&&!DirectFunctionLibraryRole(C.BP))
+        { return Fail(R,TEXT("function_extract_function_library_scope_pending"),TEXT("Only a direct native UBlueprintFunctionLibrary with no own variables/interfaces/components/event/macro/delegate graphs is admitted; other FunctionLibrary source variants remain incomplete.")); }
+        D->SetBoolField(TEXT("function_library_source"),C.FunctionLibrary);
+        if(C.FunctionLibrary){D->SetStringField(TEXT("function_library_signature_transition"),TEXT("Stock SDK static/world-context/self reconstruction is retained; no physical pin-order or compiler-metadata equality claim."));D->SetBoolField(TEXT("function_library_composite_event_supported"),false);}
         for(UClass* Parent=C.BP->ParentClass;Parent;Parent=Parent->GetSuperClass())
         { if(ToolingReference(Parent->GetPathName())) { return Fail(R,TEXT("function_extract_runtime_dependency"),TEXT("Blueprint parent cannot depend on Cubeless/MCP Editor tooling.")); } }
         C.Blueprint.Capture(C.BP);C.Parent.Capture(C.BP->ParentClass);
@@ -1030,6 +1162,8 @@ Variable::FResult Collapse(const FString& BlueprintName,const FString& GraphName
         if(!C.Source) { return Fail(R,TEXT("function_extract_graph_missing"),TEXT("Requested Blueprint graph was not found; no replacement function graph was created.")); }
         if(C.Source->Schema!=UEdGraphSchema_K2::StaticClass()||C.Source->GetSchema()!=GetDefault<UEdGraphSchema_K2>()||FBlueprintEditorUtils::IsGraphReadOnly(C.Source)||C.Source->GetPackage()!=C.Blueprint.Package||C.Source->GetTypedOuter<UBlueprint>()!=C.BP)
         { return Fail(R,TEXT("function_extract_graph_scope"),TEXT("A writable stock K2 graph in the captured Blueprint/package is required.")); }
+        if(C.FunctionLibrary&&(C.Source->GetOuter()!=C.BP||!C.BP->FunctionGraphs.Contains(C.Source)))
+        { return Fail(R,TEXT("function_extract_function_library_graph_pending"),TEXT("FunctionLibrary extraction requires an explicitly selected existing own FunctionGraphs member; implicit graphs and other graph roles remain incomplete.")); }
         C.Graph.Capture(C.Source);if(!C.Before.Capture(C.Source,R)) { return false; }
         D->SetStringField(TEXT("source_graph_name"),C.Source->GetName());
         auto GraphJson=MakeShared<FJsonObject>();GraphJson->SetStringField(TEXT("graph_id"),C.Source->GraphGuid.ToString());GraphJson->SetStringField(TEXT("graph_name"),C.Source->GetName());GraphJson->SetStringField(TEXT("graph_type"),GraphKind(C.BP,C.Source));GraphJson->SetStringField(TEXT("schema"),C.Source->GetSchema()->GetClass()->GetName());GraphJson->SetNumberField(TEXT("node_count"),C.Source->Nodes.Num());D->SetObjectField(TEXT("graph"),GraphJson);
@@ -1044,6 +1178,8 @@ Variable::FResult Collapse(const FString& BlueprintName,const FString& GraphName
             }
             return false;
         }();
+        if(C.FunctionLibrary&&HasCompositeSelection)
+        { return Fail(R,TEXT("function_extract_function_library_composite_pending"),TEXT("FunctionLibrary Composite/Event compound extraction remains incomplete; the Actor compound observer was not applied and toolkit mutation was not dispatched.")); }
         TSet<FGuid> Guids;TSet<UEdGraphNode*> Selection;TArray<UEdGraphNode*> SelectedOrder;TArray<TSharedPtr<FJsonValue>> ValidIds;
         int64 SumX=0,SumY=0;int32 CustomEvents=0;
         for(int32 I=0;I<Values.Num();++I)
@@ -1054,6 +1190,8 @@ Variable::FResult Collapse(const FString& BlueprintName,const FString& GraphName
             if(Guids.Contains(Id)) { return Fail(R,TEXT("function_extract_guid_duplicate"),TEXT("Duplicate GUID in node_ids.")); }Guids.Add(Id);
             UEdGraphNode* N=nullptr;for(const auto& Row:C.Before.Nodes) { if(Row->Id==Id) { N=Row->Node;break; } }
             if(!N) { return Fail(R,TEXT("function_extract_node_missing"),TEXT("Selected GUID does not exist in the target graph.")); }
+            if(C.FunctionLibrary&&N->IsA<UK2Node_CustomEvent>())
+            { return Fail(R,TEXT("function_extract_function_library_event_pending"),TEXT("FunctionLibrary CustomEvent template extraction remains incomplete; no toolkit mutation was dispatched.")); }
             if(!HasCompositeSelection)
             {
             Count(R,TEXT("can_encapsulate_calls"));const bool Allowed=GetDefault<UEdGraphSchema_K2>()->CanEncapuslateNode(*N);
@@ -1154,7 +1292,7 @@ Variable::FResult Collapse(const FString& BlueprintName,const FString& GraphName
             if(!Outputs()) { return false; }
             for(UEdGraphNode* Selected:SelectedOrder)
             {
-                if(Selected->IsA<UK2Node_CustomEvent>()) { continue; } // SDK removes the single event template.
+                if(C.PX?Selected==C.PX->EventTemplate.Get():Selected->IsA<UK2Node_CustomEvent>()) { continue; } // Compound path compares the retained role without dereferencing the removed event.
                 if(!Loaded(Selected)||Selected->GetGraph()!=FunctionGraph||!FunctionGraph->Nodes.Contains(Selected)||Selected->GetPackage()!=C.Blueprint.Package)
                 { return Fail(R,TEXT("function_extract_selected_move_unconfirmed"),TEXT("Selected node movement into the returned function graph is incomplete.")); }
             }

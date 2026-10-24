@@ -24,6 +24,9 @@ def binding_status():
     finite_fresh_binding=callable(getattr(fresh,"create_graph_from_spec_json",None))
     return {"ready":available,"bindings_ready":available,"library":"CubelessPCGLibrary","methods":methods,
         "finite_fresh_native_binding_available":finite_fresh_binding,
+        "request_owned_native_graph_spec_binding_available":finite_fresh_binding,
+        "general_Python_construction_available":construction,
+        "native_graph_spec_support":"Existing finite profiles plus request-owned concrete installed /Script/PCG scalar-field construction; no Python PCG object fallback. Native admits exact loaded source/CDO/layout and retains source/graph lifetime guards.",
         "finite_fresh_behavior_verified":False,"general_construction_gate_changed":False,
         "preparation_required":False,"raw_toolset_registration_required":True,"public_toolset_name":TOOLSET_NAME,
         "construction_available":construction,"execution_ready":False,"registration_verified":False,"schema_verified":False,

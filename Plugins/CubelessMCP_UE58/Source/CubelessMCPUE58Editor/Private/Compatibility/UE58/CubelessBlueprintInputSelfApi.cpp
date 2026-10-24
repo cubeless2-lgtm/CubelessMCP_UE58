@@ -32,6 +32,16 @@
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_Event.h"
 #include "Misc/PackageName.h"
+#include "Components/PanelWidget.h"
+#include "Components/PanelSlot.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/Button.h"
+#include "Components/ButtonSlot.h"
+#include "Components/TextBlock.h"
+#include "Fonts/SlateFontInfo.h"
+#include "UObject/UnrealType.h"
+#include "UObject/SoftObjectPtr.h"
+#include "UObject/SparseDelegate.h"
 #include <cfloat>
 namespace Cubeless::UE58::BlueprintInputSelf
 {
@@ -240,7 +250,188 @@ struct FWidgetLifecycleWork
     TSharedPtr<FJsonObject> SelectedDescriptor;FFieldClass* PropertyClass=nullptr;uint64 PropertyFlags=0;int32 PropertyOffset=0,PropertySize=0,PropertyDim=0;FMulticastDelegateProperty* Property=nullptr;TStrongObjectPtr<UClass> PropertyOwner;TStrongObjectPtr<UFunction> Signature;
     struct FField{FProperty* P;FFieldClass* Class;FName Name;uint64 Flags;int32 Offset,Size,Dim;};TArray<FField> Fields;UObject* SignatureOuter=nullptr;UClass* SignatureMeta=nullptr;FString SignaturePath;EFunctionFlags SignatureFlags=FUNC_None;
     ESlateVisibility Visibility;bool Enabled=false,IsVariable=false;float Opacity=1;FWidgetTransform Transform;FVector2D Pivot;EWidgetClipping Clipping;
-    struct FCompiledTree{UClass* Owner=nullptr;TStrongObjectPtr<UWidgetTree> Tree;TStrongObjectPtr<UWidget> Root;FString Path,RootPath;};TArray<FCompiledTree> CompiledTrees;
+    // ACH reuses the existing UU Dispatcher reader below. Authored source tree is
+    // physical authority; each actual compiled tree remains a separate logical cache.
+    struct FTreeObject
+    {
+        TStrongObjectPtr<UObject> Object,Outer;TStrongObjectPtr<UClass> Class;
+        FString Relative,Path,Values,RuntimeValues;
+    };
+    struct FTreeState{TArray<FTreeObject> Objects;FString Shape,Runtime;};
+    FTreeState AuthoredTree;
+    struct FTreeField{FProperty* Property;FFieldClass* Class;UStruct* Owner;FName Name;uint64 Flags;int32 Offset,Size,Dim;bool Accessor;UStruct* Type;uint32 BoolLayout;FProperty* Inner;FProperty* Value;FProperty* RootProperty;};
+    TArray<FTreeField> TreeFields;
+    bool TreeReady=false,RichTree=false;int32 RootChildren=0;
+    static void TreeToken(FString& Out,const FString& Value){Out+=FString::FromInt(Value.Len())+TEXT(":")+Value;}
+    bool TreeNative(UClass* C)
+    {
+        return Loaded(C)&&C->HasAnyClassFlags(CLASS_Native)&&C->ClassGeneratedBy.IsResolved()&&!C->ClassGeneratedBy.Get()
+            &&Loaded(C->GetOuter())&&C->GetOuter()->GetPathName()==TEXT("/Script/UMG")&&!C->HasAnyClassFlags(CLASS_NewerVersionExists|CLASS_Deprecated);
+    }
+    bool TreeField(FProperty* P)
+    {
+        if(!P)return false;auto* K=P->GetClass();
+        const bool Plain=K==FBoolProperty::StaticClass()||K==FByteProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FUInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FUInt32Property::StaticClass()||K==FInt64Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass()||K==FNameProperty::StaticClass()||K==FStrProperty::StaticClass()||K==FTextProperty::StaticClass()||K==FObjectProperty::StaticClass()||K==FSoftObjectProperty::StaticClass()||K==FStructProperty::StaticClass()||K==FEnumProperty::StaticClass()||K==FArrayProperty::StaticClass()||K==FSetProperty::StaticClass()||K==FMapProperty::StaticClass()||K==FDelegateProperty::StaticClass()||K==FMulticastInlineDelegateProperty::StaticClass()||K==FMulticastSparseDelegateProperty::StaticClass();
+        if(!Plain||P->ArrayDim<1||P->ArrayDim>256||P->GetSize()<1)return false;
+        UStruct* Type=nullptr;uint32 BoolLayout=0;
+        if(K==FStructProperty::StaticClass()){auto* SP=static_cast<FStructProperty*>(P);if(!SP->Struct.IsResolved()||!Loaded(SP->Struct.Get()))return false;Type=SP->Struct.Get();}
+        if(K==FObjectProperty::StaticClass()){auto* OP=static_cast<FObjectProperty*>(P);if(!OP->PropertyClass.IsResolved()||!Loaded(OP->PropertyClass.Get()))return false;Type=OP->PropertyClass.Get();}
+        if(K==FBoolProperty::StaticClass()){const auto* B=static_cast<FBoolProperty*>(P);BoolLayout=uint32(B->GetBoolFieldSize())|(uint32(B->GetByteOffset())<<8)|(uint32(B->GetByteMask())<<16)|(uint32(B->GetFieldMask())<<24);}
+        FProperty* Inner=nullptr;FProperty* Value=nullptr;
+        if(K==FArrayProperty::StaticClass())Inner=static_cast<FArrayProperty*>(P)->Inner;
+        else if(K==FSetProperty::StaticClass())Inner=static_cast<FSetProperty*>(P)->ElementProp;
+        else if(K==FMapProperty::StaticClass()){Inner=static_cast<FMapProperty*>(P)->KeyProp;Value=static_cast<FMapProperty*>(P)->ValueProp;}
+        else if(K==FEnumProperty::StaticClass())Inner=static_cast<FEnumProperty*>(P)->GetUnderlyingProperty();
+        if(const auto* E=TreeFields.FindByPredicate([&](const FTreeField& V){return V.Property==P;}))return E->Class==K&&E->Owner==P->GetOwnerStruct()&&E->Name==P->GetFName()&&E->Flags==uint64(P->GetPropertyFlags())&&E->Offset==P->GetOffset_ForInternal()&&E->Size==P->GetSize()&&E->Dim==P->ArrayDim&&E->Accessor==P->HasSetterOrGetter()&&E->Type==Type&&E->BoolLayout==BoolLayout&&E->Inner==Inner&&E->Value==Value&&E->RootProperty==P->GetOwnerProperty();
+        if(TreeReady||TreeFields.Num()>=4096)return false;
+        auto* Owner=P->GetOwnerStruct();if(!Loaded(Owner))return false;Holds.Emplace(Owner);if(Type)Holds.Emplace(Type);
+        TreeFields.Add({P,K,Owner,P->GetFName(),uint64(P->GetPropertyFlags()),P->GetOffset_ForInternal(),P->GetSize(),P->ArrayDim,P->HasSetterOrGetter(),Type,BoolLayout,Inner,Value,P->GetOwnerProperty()});return true;
+    }
+    bool TreeReference(UObject* Value,UWidgetTree* InTree,FString& Out)
+    {
+        if(!Value){TreeToken(Out,TEXT("null"));return true;}if(!Loaded(Value))return false;
+        if(Value==InTree||Value->IsIn(InTree)){TreeToken(Out,TEXT("tree:")+Value->GetPathName(InTree));return true;}
+        const FString Ref=Value->GetPathName();if(!ReferenceGuard(Ref))return false;
+        if(!TreeReady)Holds.Emplace(Value);else if(!Holds.ContainsByPredicate([&](const auto& H){return H.Get()==Value;}))return false;
+        TreeToken(Out,TEXT("external:")+Ref);TreeToken(Out,Value->GetClass()->GetPathName());return true;
+    }
+    bool CompleteNumericPOD(UScriptStruct* S,int32 Depth)
+    {
+        if(Depth>16||!Loaded(S)||S->GetClass()!=UScriptStruct::StaticClass()||!S->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))||!ReferenceGuard(S->GetPathName()))return false;
+        const uint32 Required=uint32(STRUCT_IsPlainOldData)|uint32(STRUCT_NoDestructor);
+        const int32 Size=S->GetStructureSize();if((uint32(S->StructFlags)&Required)!=Required||Size<=0||Size>65536)return false;
+        TArray<uint8> Covered;Covered.Init(0,Size);int32 Count=0;
+        for(TFieldIterator<FProperty> It(S,EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
+        {
+            FProperty* Q=*It;if(++Count>256||!TreeField(Q)||Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization|CPF_EditorOnly))return false;
+            const int32 Offset=Q->GetOffset_ForInternal(),Span=Q->GetSize();if(Offset<0||Span<=0||int64(Offset)+Span>Size||int64(Q->ElementSize)*Q->ArrayDim!=Span)return false;
+            auto* K=Q->GetClass();
+            const bool Numeric=K==FByteProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FUInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FUInt32Property::StaticClass()||K==FInt64Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass();
+            if(!Numeric)
+            {
+                if(K!=FStructProperty::StaticClass())return false;auto* Nested=static_cast<FStructProperty*>(Q);if(!Nested->Struct.IsResolved()||!Loaded(Nested->Struct.Get())||Nested->Struct->GetStructureSize()!=Q->ElementSize||!CompleteNumericPOD(Nested->Struct.Get(),Depth+1))return false;
+            }
+            for(int32 I=Offset;I<Offset+Span;++I){if(Covered[I])return false;Covered[I]=1;}
+        }
+        if(Count==0||Covered.Contains(0))return false;
+        return true; // No padding, unreflected payload or object/container/bool storage is admitted.
+    }
+    bool TreeScalar(FProperty* P,const void* Data,UWidgetTree* InTree,FString& Out,int32 Depth,bool Runtime)
+    {
+        if(Depth>16||!TreeField(P)||!Data)return false;auto* K=P->GetClass();
+        if(K==FBoolProperty::StaticClass()){TreeToken(Out,static_cast<FBoolProperty*>(P)->GetPropertyValue(Data)?TEXT("1"):TEXT("0"));return true;}
+        if(K==FNameProperty::StaticClass()){TreeToken(Out,static_cast<const FName*>(Data)->ToString());return true;}
+        if(K==FStrProperty::StaticClass()){const auto& S=*static_cast<const FString*>(Data);if(S.Len()>65536)return false;TreeToken(Out,S);return true;}
+        if(K==FTextProperty::StaticClass())
+        {
+            const FText& T=*static_cast<const FText*>(Data);const FString* S=FTextInspector::GetSourceString(T);
+            const auto NS=FTextInspector::GetNamespace(T),Key=FTextInspector::GetKey(T);
+            TreeToken(Out,LexToString(FTextInspector::GetFlags(T)));TreeToken(Out,S?*S:TEXT(""));TreeToken(Out,NS.IsSet()?TEXT("set:")+NS.GetValue():TEXT("unset"));TreeToken(Out,Key.IsSet()?TEXT("set:")+Key.GetValue():TEXT("unset"));
+            // No display evaluation, namespace repair or native exporter is invoked.
+            if(!Runtime)TreeToken(Out,FString::Printf(TEXT("%p"),FTextInspector::GetSharedDataId(T)));
+            return S!=nullptr||FTextInspector::GetSharedDataId(T)==FTextInspector::GetSharedDataId(FText::GetEmpty());
+        }
+        if(K==FObjectProperty::StaticClass())
+        {
+            const auto* V=static_cast<const TObjectPtr<UObject>*>(Data);if(!V->IsResolved())return false;return TreeReference(V->Get(),InTree,Out);
+        }
+        if(K==FSoftObjectProperty::StaticClass()){const auto& V=*static_cast<const FSoftObjectPtr*>(Data);const FString Ref=V.ToSoftObjectPath().ToString();if(!Ref.IsEmpty()&&!ReferenceGuard(Ref))return false;TreeToken(Out,Ref);return true;}
+        if(K==FStructProperty::StaticClass())
+        {
+            auto* SP=static_cast<FStructProperty*>(P);if(!SP->Struct.IsResolved())return false;auto* S=SP->Struct.Get();
+            if(!Loaded(S)||S->GetClass()!=UScriptStruct::StaticClass()||!S->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))||!ReferenceGuard(S->GetPathName())||S->GetStructureSize()!=P->ElementSize)return false;
+            // Private native serialization/export state has no general reflected proof.
+            if((S->StructFlags&STRUCT_ExportTextItemNative)||((S->StructFlags&STRUCT_SerializeNative)&&S!=FFontOutlineSettings::StaticStruct()))
+            {
+                if(!CompleteNumericPOD(S,Depth))
+                {
+                    if(!R.Data->HasField(TEXT("widget_tree_pending_native_struct"))){R.Data->SetStringField(TEXT("widget_tree_pending_native_struct"),S->GetPathName());R.Data->SetNumberField(TEXT("widget_tree_pending_native_struct_flags"),uint32(S->StructFlags));R.Data->SetNumberField(TEXT("widget_tree_pending_native_struct_size"),S->GetStructureSize());}
+                    return false;
+                }
+                if(!TreeReady)R.Data->SetBoolField(TEXT("widget_tree_complete_numeric_pod_observed"),true);
+            }
+            if(!TreeReady)Holds.Emplace(S);TreeToken(Out,S->GetPathName());int32 Count=0;
+            for(TFieldIterator<FProperty> It(S,EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
+            {
+                auto* Q=*It;if(Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization)||(Runtime&&Q->HasAnyPropertyFlags(CPF_EditorOnly)))continue;
+                if(++Count>256||Q->GetOffset_ForInternal()<0||Q->GetOffset_ForInternal()+Q->GetSize()>S->GetStructureSize()||!TreeValue(Q,Q->ContainerPtrToValuePtr<void>(Data),InTree,Out,Depth+1,Runtime))return false;
+            }return Count>0;
+        }
+        if(K==FArrayProperty::StaticClass())
+        {
+            auto* A=static_cast<FArrayProperty*>(P);if(!TreeField(A->Inner))return false;FScriptArrayHelper H(A,Data);if(H.Num()>256)return false;TreeToken(Out,FString::FromInt(H.Num()));for(int32 I=0;I<H.Num();++I)if(!TreeValue(A->Inner,H.GetRawPtr(I),InTree,Out,Depth+1,Runtime))return false;return true;
+        }
+        if(K==FSetProperty::StaticClass())
+        {
+            auto* A=static_cast<FSetProperty*>(P);if(!TreeField(A->ElementProp))return false;FScriptSetHelper H(A,Data);if(H.Num()>256)return false;TArray<FString> Values;for(int32 I=0;I<H.GetMaxIndex();++I)if(H.IsValidIndex(I)){FString V;if(!TreeValue(A->ElementProp,H.GetElementPtr(I),InTree,V,Depth+1,Runtime))return false;Values.Add(MoveTemp(V));}Values.Sort();for(const auto& V:Values)TreeToken(Out,V);return true;
+        }
+        if(K==FMapProperty::StaticClass())
+        {
+            auto* A=static_cast<FMapProperty*>(P);if(!TreeField(A->KeyProp)||!TreeField(A->ValueProp))return false;FScriptMapHelper H(A,Data);if(H.Num()>256)return false;TArray<FString> Values;for(int32 I=0;I<H.GetMaxIndex();++I)if(H.IsValidIndex(I)){FString V;if(!TreeValue(A->KeyProp,H.GetKeyPtr(I),InTree,V,Depth+1,Runtime)||!TreeValue(A->ValueProp,H.GetValuePtr(I),InTree,V,Depth+1,Runtime))return false;Values.Add(MoveTemp(V));}Values.Sort();for(const auto& V:Values)TreeToken(Out,V);return true;
+        }
+        if(K==FDelegateProperty::StaticClass()){if(!static_cast<const FScriptDelegate*>(Data)->GetFunctionName().IsNone())return false;TreeToken(Out,TEXT("unbound"));return true;}
+        if(K==FMulticastSparseDelegateProperty::StaticClass()){if(static_cast<const FSparseDelegate*>(Data)->IsBound())return false;TreeToken(Out,TEXT("unbound"));return true;}
+        if(K==FMulticastInlineDelegateProperty::StaticClass())
+        {
+            const auto* D=static_cast<FMulticastDelegateProperty*>(P)->GetMulticastDelegate(Data);if(D&&D->IsBound())return false;TreeToken(Out,TEXT("unbound"));return true;
+        }
+        if(K==FEnumProperty::StaticClass())
+        {
+            auto* Inner=static_cast<FEnumProperty*>(P)->GetUnderlyingProperty();if(!TreeField(Inner)||Inner->GetSize()!=P->ElementSize)return false;
+        }
+        TreeToken(Out,BytesToHex(static_cast<const uint8*>(Data),P->ElementSize));return true;
+    }
+    bool TreeValue(FProperty* P,const void* Data,UWidgetTree* InTree,FString& Out,int32 Depth,bool Runtime)
+    {
+        if(!TreeField(P))return false;TreeToken(Out,P->GetName());TreeToken(Out,P->GetClass()->GetName());
+        for(int32 I=0;I<P->ArrayDim;++I)if(!TreeScalar(P,static_cast<const uint8*>(Data)+I*P->ElementSize,InTree,Out,Depth,Runtime)){if(!R.Data->HasField(TEXT("widget_tree_pending_property"))){R.Data->SetStringField(TEXT("widget_tree_pending_property"),P->GetPathName());R.Data->SetStringField(TEXT("widget_tree_pending_field_class"),P->GetClass()->GetName());}return false;}return Out.Len()<=1048576;
+    }
+    bool ReadWidgetTree(UWidgetTree* InTree,FTreeState& Out)
+    {
+        if(!Loaded(InTree)||InTree->GetClass()!=UWidgetTree::StaticClass()||!InTree->RootWidget.IsResolved()||!InTree->NamedSlotBindings.IsEmpty())return false;
+        auto* TreeRoot=InTree->RootWidget.Get();if(!Loaded(TreeRoot)||TreeRoot->GetClass()!=UCanvasPanel::StaticClass())return false;
+        TArray<UObject*> Objects;GetObjectsWithOuter(InTree,Objects,true);if(Objects.Num()>256)return false;
+        for(auto* O:Objects)
+        {
+            if(!Loaded(O)||(O->GetClass()!=UCanvasPanel::StaticClass()&&O->GetClass()!=UButton::StaticClass()&&O->GetClass()!=UTextBlock::StaticClass()&&O->GetClass()!=UCanvasPanelSlot::StaticClass()&&O->GetClass()!=UButtonSlot::StaticClass())||!TreeNative(O->GetClass()))return false;
+            FTreeObject Row;Row.Object.Reset(O);Row.Class.Reset(O->GetClass());Row.Outer.Reset(O->GetOuter());Row.Path=O->GetPathName();Row.Relative=O->GetPathName(InTree);Out.Objects.Add(MoveTemp(Row));
+        }
+        if(!Objects.Contains(TreeRoot))return false;Out.Objects.Sort([](const auto& A,const auto& B){return A.Relative<B.Relative;});
+        TSet<UWidget*> Seen;TArray<UWidget*> Pending;Pending.Add(TreeRoot);
+        for(int32 I=0;I<Pending.Num();++I)
+        {
+            auto* W=Pending[I];if(!Objects.Contains(W)||Seen.Contains(W)||W->GetOuter()!=InTree||!W->Slot.IsResolved())return false;Seen.Add(W);
+            if(W==TreeRoot){if(W->Slot.Get())return false;}
+            else{auto* Slot=W->Slot.Get();if(!Objects.Contains(Slot)||!Slot->Parent.IsResolved()||!Slot->Content.IsResolved()||Slot->Content.Get()!=W||!Loaded(Slot->Parent.Get())||!Objects.Contains(Slot->Parent.Get()))return false;}
+            TreeToken(Out.Shape,W->GetPathName(InTree));
+            if(auto* Panel=Cast<UPanelWidget>(W))
+            {
+                auto* SlotsField=FindFProperty<FArrayProperty>(UPanelWidget::StaticClass(),TEXT("Slots"));
+                if(!SlotsField||SlotsField->GetOwnerClass()!=UPanelWidget::StaticClass()||!TreeField(SlotsField)||SlotsField->Inner->GetClass()!=FObjectProperty::StaticClass()||!TreeField(SlotsField->Inner))return false;
+                FScriptArrayHelper Slots(SlotsField,SlotsField->ContainerPtrToValuePtr<void>(Panel));if(Slots.Num()>128)return false;
+                for(int32 K=0;K<Slots.Num();++K){const auto& H=*reinterpret_cast<const TObjectPtr<UPanelSlot>*>(Slots.GetRawPtr(K));if(!H.IsResolved()||!Objects.Contains(H.Get()))return false;auto* Slot=H.Get();if(!Slot->Parent.IsResolved()||Slot->Parent.Get()!=Panel||!Slot->Content.IsResolved()||!Objects.Contains(Slot->Content.Get())||!Slot->Content->Slot.IsResolved()||Slot->Content->Slot.Get()!=Slot)return false;Pending.Add(Slot->Content.Get());TreeToken(Out.Shape,Slot->GetPathName(InTree));}
+            }
+        }
+        int32 Widgets=0,Slots=0;for(auto* O:Objects){Widgets+=O->IsA<UWidget>()?1:0;Slots+=O->IsA<UPanelSlot>()?1:0;}if(Widgets!=Seen.Num()||Slots!=Widgets-1)return false;
+        for(auto& Row:Out.Objects)
+        {
+            auto* O=Row.Object.Get();TreeToken(Out.Runtime,Row.Relative);TreeToken(Out.Runtime,Row.Class->GetPathName());
+            for(TFieldIterator<FProperty> It(Row.Class.Get(),EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
+            {
+                auto* Q=*It;if(Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization))continue;
+                if(Q->GetOffset_ForInternal()<0||Q->GetOffset_ForInternal()+Q->GetSize()>Row.Class->GetPropertiesSize())return false;
+                if(!TreeValue(Q,Q->ContainerPtrToValuePtr<void>(O),InTree,Row.Values,0,false))return false;
+                if(!Q->HasAnyPropertyFlags(CPF_EditorOnly)&&!TreeValue(Q,Q->ContainerPtrToValuePtr<void>(O),InTree,Row.RuntimeValues,0,true))return false;
+            }TreeToken(Out.Runtime,Row.RuntimeValues);
+        }TreeToken(Out.Runtime,Out.Shape);return true;
+    }
+    bool WidgetTreeCurrent()
+    {
+        if(!TreeReady)return true;FTreeState Actual;if(!ReadWidgetTree(Tree.Get(),Actual)||Actual.Shape!=AuthoredTree.Shape||Actual.Objects.Num()!=AuthoredTree.Objects.Num())return false;
+        for(int32 I=0;I<Actual.Objects.Num();++I){const auto& A=Actual.Objects[I];const auto& E=AuthoredTree.Objects[I];if(A.Object.Get()!=E.Object.Get()||A.Class.Get()!=E.Class.Get()||A.Outer.Get()!=E.Outer.Get()||A.Path!=E.Path||A.Values!=E.Values)return false;}return true;
+    }
+
+    struct FCompiledTree{UClass* Owner=nullptr;TStrongObjectPtr<UWidgetTree> Tree;TStrongObjectPtr<UWidget> Root;FString Path,RootPath;FTreeState State;};TArray<FCompiledTree> CompiledTrees;
     FObjectProperty* CompiledTreeField=nullptr;int32 CompiledTreeOffset=0;EClassFlags ParentFlags=CLASS_None;TStrongObjectPtr<UObject> ParentCDO;
     explicit FWidgetLifecycleWork(FResult& In):R(In){}
     bool Bad(const TCHAR* Stage,const TCHAR* Field,const FString& Expected=TEXT("captured role"),const FString& Actual=TEXT("changed/unavailable"))
@@ -252,7 +443,7 @@ struct FWidgetLifecycleWork
     bool ClassRole(UClass* C,UClass* Meta,const FString& ExpectedPath)
     {return Loaded(C)&&C->GetClass()==Meta&&C->GetOuter()==Package.Get()&&C->GetSuperClass()==Parent.Get()&&C->ClassGeneratedBy.IsResolved()&&C->ClassGeneratedBy.Get()==BP.Get()&&C->GetPathName().Equals(ExpectedPath,ESearchCase::CaseSensitive)&&!C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&C->ClassDefaultObject.IsResolved();}
     bool CDO(UClass* C,UObject* O){return !O||(Loaded(O)&&O->GetClass()==C&&O->GetOuter()==Package.Get()&&O->GetPackage()==Package.Get()&&O->HasAnyFlags(RF_ClassDefaultObject)&&O->GetFName()==FName(*(TEXT("Default__")+C->GetName())));}
-    static bool SameType(const FEdGraphPinType& A,const FEdGraphPinType& B){return A==B;}
+    static bool SameType(const FEdGraphPinType& A,const FEdGraphPinType& B){return A==B&&A.bIsUObjectWrapper==B.bIsUObjectWrapper&&A.bSerializeAsSinglePrecisionFloat==B.bSerializeAsSinglePrecisionFloat&&A.PinValueType.bTerminalIsUObjectWrapper==B.PinValueType.bTerminalIsUObjectWrapper;}
     bool OldVariables()
     {
         if(BP->NewVariables.Num()!=Variables.Num()+(MemberAdded?1:0))return false;
@@ -402,7 +593,7 @@ struct FWidgetLifecycleWork
             {
                 if(!Loaded(Row.Tree.Get())||Row.Tree->GetClass()!=UWidgetTree::StaticClass()||Row.Tree->GetOuter()!=C||!Row.Tree->RootWidget.IsResolved())return false;
                 Row.Path=Row.Tree->GetPathName();Row.Root.Reset(Row.Tree->RootWidget.Get());
-                if(Row.Root.IsValid()){if(!Loaded(Row.Root.Get())||Row.Root->GetClass()!=UCanvasPanel::StaticClass()||Row.Root->GetOuter()!=Row.Tree.Get())return false;Row.RootPath=Row.Root->GetPathName();}
+                if(Row.Root.IsValid()){if(!Loaded(Row.Root.Get())||Row.Root->GetClass()!=UCanvasPanel::StaticClass()||Row.Root->GetOuter()!=Row.Tree.Get())return false;Row.RootPath=Row.Root->GetPathName();if(RichTree&&!ReadWidgetTree(Row.Tree.Get(),Row.State))return false;}
             }Out.Add(MoveTemp(Row));
         }return true;
     }
@@ -415,6 +606,7 @@ struct FWidgetLifecycleWork
             const auto* Slot=CompiledTreeField->ContainerPtrToValuePtr<TObjectPtr<UWidgetTree>>(Row.Owner);if(!Slot->IsResolved()||Slot->Get()!=Row.Tree.Get())return false;
             if(Row.Tree.IsValid()&&(!Loaded(Row.Tree.Get())||Row.Tree->GetClass()!=UWidgetTree::StaticClass()||Row.Tree->GetOuter()!=Row.Owner||!Row.Tree->GetPathName().Equals(Row.Path,ESearchCase::CaseSensitive)||!Row.Tree->RootWidget.IsResolved()||Row.Tree->RootWidget.Get()!=Row.Root.Get()))return false;
             if(Row.Root.IsValid()&&(!Loaded(Row.Root.Get())||Row.Root->GetClass()!=UCanvasPanel::StaticClass()||Row.Root->GetOuter()!=Row.Tree.Get()||!Row.Root->GetPathName().Equals(Row.RootPath,ESearchCase::CaseSensitive)))return false;
+            if(RichTree&&Row.Root.IsValid()){FTreeState Actual;if(!ReadWidgetTree(Row.Tree.Get(),Actual)||Actual.Shape!=Row.State.Shape||Actual.Objects.Num()!=Row.State.Objects.Num())return false;for(int32 I=0;I<Actual.Objects.Num();++I){const auto& A=Actual.Objects[I];const auto& E=Row.State.Objects[I];if(A.Object.Get()!=E.Object.Get()||A.Class.Get()!=E.Class.Get()||A.Outer.Get()!=E.Outer.Get()||A.Path!=E.Path||A.Values!=E.Values)return false;}}
         }return true;
     }
     bool Current(const TCHAR* Stage)
@@ -425,7 +617,7 @@ struct FWidgetLifecycleWork
         if(B->UbergraphPages!=Uber||B->FunctionGraphs!=Functions||B->MacroGraphs!=Macros||B->DelegateSignatureGraphs.Num()!=Delegates.Num()+(GraphAdded?1:0)||!OldVariables()||!B->Bindings.IsEmpty()||!B->Animations.IsEmpty()||!B->ImplementedInterfaces.IsEmpty()||!B->WidgetVariableNameToGuidMap.OrderIndependentCompareEqual(WidgetGuids))return Bad(Stage,TEXT("authored_graph_variable_binding_inventory"));
         for(int32 I=0;I<Delegates.Num();++I)if(!B->DelegateSignatureGraphs[I].IsResolved()||B->DelegateSignatureGraphs[I].Get()!=Delegates[I].Get())return Bad(Stage,TEXT("delegate_signature_graph"));
         if(GraphAdded&&(!B->DelegateSignatureGraphs.Last().IsResolved()||B->DelegateSignatureGraphs.Last().Get()!=NewGraph))return Bad(Stage,TEXT("new_signature_graph_membership"));
-        if(!Loaded(Tree.Get())||!B->WidgetTree.IsResolved()||B->WidgetTree.Get()!=Tree.Get()||Tree->GetOuter()!=B||!Tree->GetPathName().Equals(TreePath,ESearchCase::CaseSensitive)||!Tree->RootWidget.IsResolved()||Tree->RootWidget.Get()!=Root.Get()||!Loaded(Root.Get())||Root->GetClass()!=UCanvasPanel::StaticClass()||Root->GetOuter()!=Tree.Get()||!Root->GetPathName().Equals(RootPath,ESearchCase::CaseSensitive)||Root->GetChildrenCount()!=0||!Root->Slot.IsResolved()||Root->Slot.Get()!=nullptr||Root->bIsVariable!=IsVariable||Root->GetVisibility()!=Visibility||Root->GetIsEnabled()!=Enabled||Root->GetRenderOpacity()!=Opacity||!(Root->GetRenderTransform()==Transform)||Root->GetRenderTransformPivot()!=Pivot||Root->GetClipping()!=Clipping)return Bad(Stage,TEXT("source_canvas_tree_captured_values"));
+        if(!Loaded(Tree.Get())||!B->WidgetTree.IsResolved()||B->WidgetTree.Get()!=Tree.Get()||Tree->GetOuter()!=B||!Tree->GetPathName().Equals(TreePath,ESearchCase::CaseSensitive)||!Tree->RootWidget.IsResolved()||Tree->RootWidget.Get()!=Root.Get()||!Loaded(Root.Get())||Root->GetClass()!=UCanvasPanel::StaticClass()||Root->GetOuter()!=Tree.Get()||!Root->GetPathName().Equals(RootPath,ESearchCase::CaseSensitive)||!WidgetTreeCurrent()||!Root->Slot.IsResolved()||Root->Slot.Get()!=nullptr||Root->bIsVariable!=IsVariable||Root->GetVisibility()!=Visibility||Root->GetIsEnabled()!=Enabled||Root->GetRenderOpacity()!=Opacity||!(Root->GetRenderTransform()==Transform)||Root->GetRenderTransformPivot()!=Pivot||Root->GetClipping()!=Clipping||Root->GetChildrenCount()!=RootChildren)return Bad(Stage,TEXT("source_canvas_tree_captured_values"));
         if(NewGraph&&(!Loaded(NewGraph)||NewGraph->GetClass()!=UEdGraph::StaticClass()||NewGraph->GetOuter()!=B||!NewGraph->Schema.GetGCPtr().IsResolved()||NewGraph->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()))return Bad(Stage,TEXT("selected_graph_role"));
         if(NewNode&&(!Loaded(NewNode)||NewNode->GetClass()!=NewNodeClass||NewNode->GetOuter()!=NewGraph||!Loaded(NewNodeClass)||((NodeMember||NewNodeClass==UK2Node_FunctionEntry::StaticClass())&&!NewGraph->Nodes.Contains(NewNode))))return Bad(Stage,TEXT("selected_new_node_role"));
         if(NewNode&&((PlacementReady&&(NewNode->NodePosX!=RequestedX||NewNode->NodePosY!=RequestedY))||(GuidReady&&NewNode->NodeGuid!=NewId)))return Bad(Stage,TEXT("selected_lifecycle_position_or_guid"),FString::Printf(TEXT("%d,%d/%s"),RequestedX,RequestedY,*NewId.ToString()),FString::Printf(TEXT("%d,%d/%s"),NewNode->NodePosX,NewNode->NodePosY,*NewNode->NodeGuid.ToString()));
@@ -501,7 +693,7 @@ struct FWidgetLifecycleWork
         TStrongObjectPtr<UClass> NewGen(G.GetGCPtr().Get()),NewSkel(S.GetGCPtr().Get());
         if(!ClassRole(NewGen.Get(),GenMeta,GenPath)||!ClassRole(NewSkel.Get(),SkelMeta,SkelPath))return Bad(Stage,TEXT("reacquire_class_roles"));
         TStrongObjectPtr<UObject> NewGCDO(NewGen->ClassDefaultObject.Get()),NewSCDO(NewSkel->ClassDefaultObject.Get());if(!CDO(NewGen.Get(),NewGCDO.Get())||!CDO(NewSkel.Get(),NewSCDO.Get()))return Bad(Stage,TEXT("reacquire_nullable_cdo"));
-        UClass* OldGen=Gen.Get();UClass* OldSkel=Skel.Get();Gen.Reset(NewGen.Get());Skel.Reset(NewSkel.Get());GenCDO.Reset(NewGCDO.Get());SkelCDO.Reset(NewSCDO.Get());TArray<FCompiledTree> NewTrees;if(!CaptureCompiledTrees(NewTrees))return Bad(Stage,TEXT("reacquire_compiled_widget_tree"));CompiledTrees=MoveTemp(NewTrees);ClassesReady=true;
+        UClass* OldGen=Gen.Get();UClass* OldSkel=Skel.Get();Gen.Reset(NewGen.Get());Skel.Reset(NewSkel.Get());GenCDO.Reset(NewGCDO.Get());SkelCDO.Reset(NewSCDO.Get());TArray<FCompiledTree> NewTrees;if(!CaptureCompiledTrees(NewTrees))return Bad(Stage,TEXT("reacquire_compiled_widget_tree"));if(RichTree&&NewTrees.Num()!=CompiledTrees.Num())return Bad(Stage,TEXT("compiled_tree_owner_inventory"));for(int32 I=0;RichTree&&I<NewTrees.Num();++I){const auto& N=NewTrees[I];const auto& E=CompiledTrees[I];if(N.Root.IsValid()&&N.State.Runtime!=AuthoredTree.Runtime&&(!E.Root.IsValid()||N.State.Runtime!=E.State.Runtime))return Bad(Stage,TEXT("compiled_tree_authored_projection"));if(!N.Root.IsValid()&&E.Root.IsValid())return Bad(Stage,TEXT("compiled_tree_root_lost"));}CompiledTrees=MoveTemp(NewTrees);ClassesReady=true;
         CompilerEventReferences.Reset();for(const auto& Row:Graphs)for(const auto& Node:Row.Nodes)if(Node.ReferenceKind==4){UFunction* Function=Skel->FindFunctionByName(Node.CustomName,EIncludeSuperFlag::ExcludeSuper);TStrongObjectPtr<UFunction> Returned(Function);if(!Current(Stage))return false;if(!Function)continue;if(!Loaded(Function)||Function->GetOuter()!=Skel.Get()||!Function->HasAllFunctionFlags(FUNC_BlueprintCallable|FUNC_BlueprintEvent)||Function->HasAnyFunctionFlags(FUNC_Net|FUNC_Static|FUNC_Native))return Bad(Stage,TEXT("custom_event_compiler_role"));FGuid ActualGuid;const bool Found=UBlueprint::GetGuidFromClassByFieldName<UFunction>(Skel.Get(),Node.CustomName,ActualGuid);if(!Current(Stage))return false;if(!Found||ActualGuid!=Node.Id)return Bad(Stage,TEXT("custom_event_compiler_guid"));FSimpleMemberReference Ref;FMemberReference::FillSimpleMemberReference<UFunction>(Function,Ref);if(!Current(Stage))return false;Holds.Emplace(Function);CompilerEventReferences.Add(Node.Id,Ref);}
         Candidates.Reset();if(!CaptureGraphs(Candidates))return Bad(Stage,TEXT("reacquire_current_inventory"));
         // The new selected graph is still being authored, not a baseline for prior graphs.
@@ -513,17 +705,30 @@ struct FWidgetLifecycleWork
     {
         Dispatcher=Name;const FString ObjectPath=Requested.Contains(TEXT("."))?Requested:Requested+TEXT(".")+FPackageName::GetShortName(Requested);
         if(!Function::Pin::SafeName(ObjectPath)||!ReferenceGuard(ObjectPath)||!Requested.StartsWith(TEXT("/Game/")))return Fail(R,TEXT("widget_dispatcher_path_pending"),TEXT("Already-loaded exact Game Widget Blueprint path required."));
-        BP.Reset(FindObject<UWidgetBlueprint>(nullptr,*ObjectPath));Editor.Reset(GEditor);if(!Loaded(BP.Get())||BP->GetClass()!=UWidgetBlueprint::StaticClass()||!Loaded(Editor.Get())||!IsInGameThread()||IsPlaySessionActive())return Fail(R,TEXT("widget_dispatcher_loaded_target_required"),TEXT("Idle Editor and loaded exact Widget Blueprint required; no new loader."));
+        BP.Reset(FindObject<UWidgetBlueprint>(nullptr,*ObjectPath));Editor.Reset(GEditor);if(!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||GExitPurge||IsEngineExitRequested()||!Loaded(Editor.Get())||GEditor!=Editor.Get()||!Editor->PlayWorld.IsResolved()||Editor->PlayWorld.Get()||IsPlaySessionActive()||!Loaded(BP.Get())||BP->GetClass()!=UWidgetBlueprint::StaticClass())return Fail(R,TEXT("widget_dispatcher_loaded_target_required"),TEXT("Idle Editor and loaded exact Widget Blueprint required; no new loader."));
         World.Reset(GEditor->GetEditorWorldContext().World());Package.Reset(BP->GetPackage());Path=BP->GetPathName();
-        if(!Context()||!Loaded(Package.Get())||BP->GetOuter()!=Package.Get()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr().Get()!=UUserWidget::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->WidgetTree.IsResolved()||!BP->Bindings.IsEmpty()||!BP->Animations.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->FunctionGraphs.IsEmpty()||!BP->MacroGraphs.IsEmpty()||BP->DelegateSignatureGraphs.Num()>1||BP->NewVariables.Num()>2||BP->UbergraphPages.Num()>1)
-            return Fail(R,TEXT("widget_dispatcher_profile_pending"),TEXT("Loaded direct UserWidget, existing flat EventGraph, empty Canvas source tree, no functions/macros/interfaces/animations/bindings, and at most one own dispatcher plus optional factory Canvas descriptor are admitted. Wider Widgets remain incomplete."));
+        if(!Context()||!Loaded(Package.Get())||BP->GetOuter()!=Package.Get()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr().Get()!=UUserWidget::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->WidgetTree.IsResolved()||!BP->Bindings.IsEmpty()||!BP->Animations.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->FunctionGraphs.IsEmpty()||!BP->MacroGraphs.IsEmpty()||BP->DelegateSignatureGraphs.Num()>1||BP->NewVariables.Num()>65||BP->UbergraphPages.Num()>1)
+            return Fail(R,TEXT("widget_dispatcher_profile_pending"),TEXT("Loaded direct UserWidget, existing flat EventGraph, bounded native Canvas-root WidgetTree, no functions/macros/interfaces/animations/bindings, and at most one own dispatcher plus optional factory descriptor are admitted. Wider Widgets remain incomplete."));
         Parent.Reset(UUserWidget::StaticClass());ParentFlags=Parent->GetClassFlags();if(!Parent->ClassDefaultObject.IsResolved())return Fail(R,TEXT("widget_dispatcher_parent_pending"),TEXT("Already-resolved nullable native parent CDO required."));ParentCDO.Reset(Parent->ClassDefaultObject.Get());Tree.Reset(BP->WidgetTree.Get());if(!Loaded(Tree.Get())||Tree->GetOuter()!=BP.Get()||!Tree->RootWidget.IsResolved())return Fail(R,TEXT("widget_dispatcher_tree_pending"),TEXT("Resolved owned WidgetTree required."));
-        Root.Reset(Cast<UCanvasPanel>(Tree->RootWidget.Get()));if(!Loaded(Root.Get())||Root->GetClass()!=UCanvasPanel::StaticClass()||Root->GetOuter()!=Tree.Get()||Root->GetChildrenCount()!=0||!Root->Slot.IsResolved()||Root->Slot.Get()!=nullptr)return Fail(R,TEXT("widget_dispatcher_canvas_pending"),TEXT("First profile has one exact native empty Canvas root; other trees remain incomplete."));
+        Root.Reset(Cast<UCanvasPanel>(Tree->RootWidget.Get()));if(!Loaded(Root.Get())||Root->GetClass()!=UCanvasPanel::StaticClass()||Root->GetOuter()!=Tree.Get()||!Root->Slot.IsResolved()||Root->Slot.Get()!=nullptr)return Fail(R,TEXT("widget_dispatcher_canvas_pending"),TEXT("The bounded native UMG profile requires one owned Canvas root with no parent slot."));
+        RootChildren=Root->GetChildrenCount();RichTree=RootChildren>0;if(RootChildren<0||RootChildren>64||(!RichTree&&BP->NewVariables.Num()>2))return Fail(R,TEXT("widget_self_known_tree_pending"),TEXT("Existing empty Canvas or bounded Canvas/Button/Text source tree required; wider owner variants remain incomplete"));
         Gen.Reset(BP->GeneratedClass.GetGCPtr().Get());Skel.Reset(BP->SkeletonGeneratedClass.GetGCPtr().Get());if(!Loaded(Gen.Get())||!Loaded(Skel.Get())||Gen->GetClass()!=UWidgetBlueprintGeneratedClass::StaticClass()||!Skel->GetClass()->IsChildOf(UBlueprintGeneratedClass::StaticClass()))return Fail(R,TEXT("widget_dispatcher_generated_roles_pending"),TEXT("Actual Widget generated class and observed Blueprint skeleton subtype required."));
         GenMeta=Gen->GetClass();SkelMeta=Skel->GetClass();Holds.Emplace(GenMeta);Holds.Emplace(SkelMeta);GenPath=Gen->GetPathName();SkelPath=Skel->GetPathName();
         if(!ClassRole(Gen.Get(),GenMeta,GenPath)||!ClassRole(Skel.Get(),SkelMeta,SkelPath))return Fail(R,TEXT("widget_dispatcher_class_role_pending"),TEXT("Current class/source/outer roles required."));GenCDO.Reset(Gen->ClassDefaultObject.Get());SkelCDO.Reset(Skel->ClassDefaultObject.Get());if(!CDO(Gen.Get(),GenCDO.Get())||!CDO(Skel.Get(),SkelCDO.Get()))return Fail(R,TEXT("widget_dispatcher_cdo_role_pending"),TEXT("Existing nullable CDO roles required; none are constructed."));
         CompiledTreeField=FindFProperty<FObjectProperty>(UWidgetBlueprintGeneratedClass::StaticClass(),TEXT("WidgetTree"));if(!CompiledTreeField)return Fail(R,TEXT("widget_dispatcher_compiled_tree_pending"),TEXT("Public reflected native compiled WidgetTree field required; no private member access."));CompiledTreeOffset=CompiledTreeField->GetOffset_ForInternal();
+        if(RichTree&&!ReadWidgetTree(Tree.Get(),AuthoredTree))return Fail(R,TEXT("widget_dispatcher_authored_tree_pending"),TEXT("Existing UU reader requires bounded exact Canvas/Button/Text and native slots, closed ownership/ordered tree and observable authored values; custom/navigation/opaque/bound variants remain incomplete"));
+        if(RichTree)
+        {
+            int32 DelegateVariables=0;
+            for(const auto& D:BP->NewVariables)
+            {
+                const auto* Widget=AuthoredTree.Objects.FindByPredicate([&](const FTreeObject& O){return O.Object->IsA<UWidget>()&&O.Object->GetFName()==D.VarName;});
+                if(Widget){if(D.VarType.PinCategory!=UEdGraphSchema_K2::PC_Object||D.VarType.ContainerType!=EPinContainerType::None||D.VarType.bIsReference||!D.VarType.PinSubCategoryObject.IsValid()||D.VarType.PinSubCategoryObject.Get()!=Widget->Class.Get())return Fail(R,TEXT("widget_self_descriptor_scope_pending"),TEXT("Existing widget descriptors must retain exact native source widget classes; other user variables remain incomplete"));}
+                else if(D.VarType.PinCategory!=UEdGraphSchema_K2::PC_MCDelegate||++DelegateVariables>1||BP->DelegateSignatureGraphs.Num()!=1||!BP->DelegateSignatureGraphs[0].IsResolved()||!Loaded(BP->DelegateSignatureGraphs[0].Get())||BP->DelegateSignatureGraphs[0]->GetFName()!=D.VarName)return Fail(R,TEXT("widget_self_descriptor_scope_pending"),TEXT("Only known widget descriptors and one existing own dispatcher are admitted; broader variable/source signatures remain incomplete"));
+            }
+        }
         if(!CaptureCompiledTrees(CompiledTrees))return Fail(R,TEXT("widget_dispatcher_compiled_tree_pending"),TEXT("Actual nullable compiled WidgetTree/root roles required."));
+        TreeReady=RichTree;
         TreePath=Tree->GetPathName();RootPath=Root->GetPathName();IsVariable=Root->bIsVariable;Visibility=Root->GetVisibility();Enabled=Root->GetIsEnabled();Opacity=Root->GetRenderOpacity();Transform=Root->GetRenderTransform();Pivot=Root->GetRenderTransformPivot();Clipping=Root->GetClipping();
         for(const auto* Category:{&BP->UbergraphPages,&BP->FunctionGraphs,&BP->MacroGraphs,&BP->DelegateSignatureGraphs})for(const auto& H:*Category)if(!H.IsResolved()||!Loaded(H.Get()))return Fail(R,TEXT("widget_dispatcher_graph_slot_pending"),TEXT("Authored graph slots must already be resolved."));
         Uber=BP->UbergraphPages;Functions=BP->FunctionGraphs;Macros=BP->MacroGraphs;Delegates=BP->DelegateSignatureGraphs;Variables=BP->NewVariables;WidgetGuids=BP->WidgetVariableNameToGuidMap;
@@ -531,7 +736,7 @@ struct FWidgetLifecycleWork
         if(!Policy.IsValid()||Policy->SaveOnCompile!=SoC_Never)return Fail(R,TEXT("widget_dispatcher_save_policy_pending"),TEXT("Existing SaveOnCompile must be Never; settings are not changed."));
         if(!Current(TEXT("widget_dispatcher_bind"))||!CaptureGraphs(Graphs)||!Current(TEXT("widget_dispatcher_capture"))||!ObserveDelegateSources(Graphs,TEXT("create_delegate_initial_sources"))||!Displays(Graphs,TEXT("widget_dispatcher_initial_text")))return Stopped?false:Bad(TEXT("bind"),TEXT("initial_graph_capture"));
         R.Data->SetBoolField(TEXT("widget_dispatcher_contract"),true);R.Data->SetBoolField(TEXT("implicit_skeleton_compile_possible"),true);R.Data->SetStringField(TEXT("implicit_compile_scope"),TEXT("Original member/category/metadata/structural helpers may regenerate skeleton/class/CDO; actual explicit full compile and save remain zero."));R.Data->SetStringField(TEXT("blueprint"),Path);R.Data->SetBoolField(TEXT("explicit_compile_requested"),false);R.Data->SetBoolField(TEXT("explicit_save_requested"),false);R.Data->SetBoolField(TEXT("automatic_retry_performed"),false);
-        R.Data->SetStringField(TEXT("widget_preservation_scope"),TEXT("Captured source Canvas role/child0/variable/visibility/enabled/render transform-opacity-pivot/clipping, factory Widget GUID map, pre-existing authored variables/graph node/pin type/default/link values. Generated/skeleton/nullable CDO roles reacquired only after actual structural helpers. Compiled WidgetTree/preview/animation/runtime and unobserved Widget fields are not full-state proof."));return true;
+        R.Data->SetStringField(TEXT("widget_preservation_scope"),TEXT("Self reuses the existing UU native WidgetTree reader for bounded Canvas/Button/Text plus Canvas/Button slots: captured source ownership, ordered reciprocal topology, reflected authored values/FText identities and Widget GUID map remain protected. Each actual compiled tree is separate and a structural boundary admits only prior-cache or protected source runtime projection. Existing empty-Canvas path remains separate. Custom/navigation/opaque/native bound/wider widgets and private Slate/render/full runtime state remain incomplete."));return true;
     }
     bool SelectGraph(const FString& Name,const FString& Id,const FString& Kind,bool Create,UEdGraph*& Out)
     {

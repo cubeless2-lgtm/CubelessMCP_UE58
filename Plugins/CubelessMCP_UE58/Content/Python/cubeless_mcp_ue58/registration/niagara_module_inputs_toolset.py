@@ -8,7 +8,7 @@ from .results import CubelessPythonOperationResult, reflected_result
 
 @unreal.uclass()
 class CubelessNiagaraModuleInputTools(unreal.ToolsetDefinition):
-    """Typed literal defaults, finite local Export DI and typed parameter links."""
+    """Typed literal defaults, finite local Export DI and typed parameter links. Loaded system-owned inherited emitter paths additionally preserve the actual Parent and nullable LastMerge version/source/graph roles while changing only the selected local override graph. Shared parent package dirtiness is protected; a child-owned LastMerge graph can share the target package dirty lifecycle while retaining authored content. No loader, detach, parent merge or parent write is added. Unsupported source roles remain rejected, and broader inherited behavior awaits usage validation."""
 
     @toolset_registry.tool_call
     @staticmethod

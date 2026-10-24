@@ -709,6 +709,8 @@ def _observe_quarantined(entry):
 def _tick_all(delta_seconds):
     if not _ACTIVE:
         return False
+    from . import batch
+    batch.tick_compile_status_batch(delta_seconds, scratch=True)
     for entry in tuple(_PENDING.values()):
         if entry.get("finalization_attempted"):
             continue
@@ -733,6 +735,8 @@ def _shutdown():
     # Native module owns teardown. No late asset/job/save/cleanup method here.
     global _ACTIVE
     _ACTIVE = False
+    from . import batch
+    batch.shutdown_compile_status_batches(scratch=True)
     for entry in tuple(_PENDING.values()):
         if entry.get("finalization_attempted"):
             continue
@@ -750,7 +754,9 @@ def _shutdown():
 
 
 def binding_status():
+    from . import batch
     return {"active": _ACTIVE, "pending_count": len(_PENDING), "quarantined_count": len(_QUARANTINED),
+        "Batch_ModuleInput": batch.compile_status_batch_status(scratch=True),
         "ticker_handle_present": _TICKER_HANDLE is not None, "shutdown_handle_present": _SHUTDOWN_HANDLE is not None,
         "last_terminal": copy.deepcopy(_LAST_TERMINAL), "lifecycle_errors": list(_LIFECYCLE_ERRORS),
         "quarantined_operation_ids": sorted(_QUARANTINED),
@@ -766,12 +772,18 @@ def activate():
     if not _ACTIVE:
         if _PENDING or _QUARANTINED or _TICKER_HANDLE is not None or _SHUTDOWN_HANDLE is not None:
             raise state.OperationError("niagara_scratch_stack_authoring_async_ownership_retained", "Prior retained ownership requires Root reconciliation")
-        _SHUTDOWN_HANDLE = unreal.register_python_shutdown_callback(_shutdown)
+        from . import batch
+        batch.activate_compile_status_batches(scratch=True)
         try:
-            _TICKER_HANDLE = unreal.register_ticker_callback(_tick_all, delay=0.0)
+            _SHUTDOWN_HANDLE = unreal.register_python_shutdown_callback(_shutdown)
+            try:
+                _TICKER_HANDLE = unreal.register_ticker_callback(_tick_all, delay=0.0)
+            except Exception:
+                unreal.unregister_python_shutdown_callback(_SHUTDOWN_HANDLE)
+                _SHUTDOWN_HANDLE = None
+                raise
         except Exception:
-            unreal.unregister_python_shutdown_callback(_SHUTDOWN_HANDLE)
-            _SHUTDOWN_HANDLE = None
+            batch.deactivate_compile_status_batches("ModuleInput ticker activation failed", scratch=True)
             raise
         _ACTIVE = True
     return binding_status()
@@ -780,6 +792,8 @@ def activate():
 def deactivate(reason="Niagara scratch stack toolset deactivated"):
     global _ACTIVE, _TICKER_HANDLE, _SHUTDOWN_HANDLE
     _ACTIVE = False
+    from . import batch
+    batch.deactivate_compile_status_batches(reason, scratch=True)
     for name, handle, remover in (("ticker", _TICKER_HANDLE, unreal.unregister_ticker_callback),
             ("shutdown", _SHUTDOWN_HANDLE, unreal.unregister_python_shutdown_callback)):
         if handle is not None:

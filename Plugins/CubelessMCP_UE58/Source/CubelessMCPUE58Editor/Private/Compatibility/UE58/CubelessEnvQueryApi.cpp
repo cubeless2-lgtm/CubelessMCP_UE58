@@ -6,6 +6,11 @@
 #include "EnvironmentQuery/EnvQuery.h"
 #include "EnvironmentQuery/EnvQueryOption.h"
 #include "EnvironmentQuery/EnvQueryGenerator.h"
+#include "EnvironmentQuery/Generators/EnvQueryGenerator_BlueprintBase.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/World.h"
+#include "Editor.h"
 #include "EnvironmentQuery/EnvQueryTest.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
@@ -61,7 +66,7 @@ void Init(FResult& R, const TCHAR* Operation, bool bSave)
     R.Data->SetNumberField(TEXT("asset_load_count"), 0); R.Data->SetNumberField(TEXT("save_attempt_count"), 0); R.Data->SetArrayField(TEXT("save_calls"), {});
     R.Data->SetStringField(TEXT("dependency_tier"), TEXT("EngineAPI: public CoreUObject/AIModule/AssetRegistry/EditorAssetLibrary; no EQS Editor factory, official Toolset delegate or ServerRPC"));
     R.Data->SetStringField(TEXT("effect_scope"), TEXT("Fresh exact native UEnvQuery only; intrinsic PostInitProperties assigns QueryName, explicit asset resolution may run PostLoad. No options, generator/test authoring, editor graph creation, query execution or compile. Allocation/publication/save prefixes are retained without rollback or replay."));
-    R.Data->SetStringField(TEXT("inspection_scope"), TEXT("Bounded actual native query/options/editor graph identity and reflected summary after initial resolution. Summary is not complete nonblank dependency-independence, generator/test correctness, graph-authoring or runtime proof."));
+    R.Data->SetStringField(TEXT("inspection_scope"), TEXT("Bounded exact native query/options/editor graph summary after initial resolution, including admitted loaded Blueprint generator and runtime native generator/test source chains. Custom/generated node values are not exported. Summary is not full nonblank dependency independence, generator/test correctness, graph-authoring or runtime proof."));
 }
 bool Loaded(const UObject* O)
 { return IsValid(O) && !O->HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad | RF_NeedPostLoadSubobjects | RF_BeginDestroyed | RF_FinishDestroyed); }
@@ -75,16 +80,41 @@ bool Native(UClass* C, const TCHAR* Package, bool bAbstract = false)
 { return Loaded(C) && C->HasAnyClassFlags(CLASS_Native) && !C->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists)
     && (bAbstract || !C->HasAnyClassFlags(CLASS_Abstract)) && C->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn)
     && C->GetOutermost()->GetName() == Package && !C->GetOutermost()->IsDirty(); }
-bool Properties(UObject* O, const TSet<FName>& Skip, TSharedRef<FJsonObject>& J)
+bool Properties(UObject* O, const TSet<FName>& Skip, TSharedRef<FJsonObject>& J,const TFunction<bool()>& Current={},FResult* Result=nullptr)
 {
-    if (!Loaded(O)) { return false; } int32 Count = 0, Chars = 0;
+    if((Current&&!Current())||!Loaded(O))return false;
+    TStrongObjectPtr<UObject> Keep;TStrongObjectPtr<UClass> KeepClass;UObject* ActualOuter=O->GetOuter();
+    if(Current){Keep.Reset(O);KeepClass.Reset(O->GetClass());}
+    auto DescriptorLost=[&]()
+    {
+        if(Result){Result->bKnown=false;Result->Data->SetBoolField(TEXT("eqs_followup_sdk_stopped"),true);if(!Result->Data->HasField(TEXT("eqs_first_mismatch"))){auto D=MakeShared<FJsonObject>();D->SetStringField(TEXT("stage"),Result->Stage);D->SetStringField(TEXT("object"),Loaded(O)?O->GetPathName():TEXT("retired exporter receiver"));D->SetStringField(TEXT("property"),TEXT("exporter_receiver_or_descriptor_routing"));D->SetStringField(TEXT("expected"),TEXT("held receiver/actual owner/class and copied field inventory"));D->SetStringField(TEXT("actual"),TEXT("changed at exporter return"));Result->Data->SetObjectField(TEXT("eqs_first_mismatch"),D);}Fail(*Result,TEXT("eqs_inspection_current_changed"),TEXT("EQS exporter receiver/descriptor changed; no followup exporter or retry."));}return false;
+    };
+    // WU: only the newly admitted query profile uses copied descriptor routing.
+    // Generated/custom node properties are not exported by the summary path.
+    struct FReadField{FProperty* P;FFieldVariant Owner;const FFieldClass* Class;FName Name;int32 Dim;};
+    TArray<FReadField> Fields;
+    if(Current){for(TFieldIterator<FProperty> It(O->GetClass(),EFieldIteratorFlags::IncludeSuper);It;++It){if(Fields.Num()>=MaxProperties)return false;Fields.Add({*It,It->GetOwnerVariant(),It->GetClass(),It->GetFName(),It->ArrayDim});}}
+    auto FieldsCurrent=[&]()
+    {
+        if(!Current)return true;if(!Current())return false;
+        if(!Loaded(O)||!Loaded(KeepClass.Get())||O->GetClass()!=KeepClass.Get()||O->GetOuter()!=ActualOuter)return DescriptorLost();
+        if(O->HasAnyFlags(RF_ClassDefaultObject))
+        {
+            PRAGMA_DISABLE_DEPRECATION_WARNINGS
+            const auto CDO=KeepClass->ClassDefaultObject;
+            PRAGMA_ENABLE_DEPRECATION_WARNINGS
+            if(!CDO.IsResolved()||CDO!=O)return DescriptorLost();
+        }
+        int32 I=0;for(TFieldIterator<FProperty> It(O->GetClass(),EFieldIteratorFlags::IncludeSuper);It;++It,++I){if(!Fields.IsValidIndex(I)||*It!=Fields[I].P)return DescriptorLost();const auto& F=Fields[I];if(It->GetOwnerVariant()!=F.Owner||It->GetClass()!=F.Class||It->GetFName()!=F.Name||It->ArrayDim!=F.Dim)return DescriptorLost();}return I==Fields.Num()||DescriptorLost();
+    };
+    int32 Count = 0, Chars = 0;
     for (TFieldIterator<FProperty> It(O->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
     {
         FProperty* P = *It; if (Skip.Contains(P->GetFName())) { continue; } if (++Count > MaxProperties || P->ArrayDim < 1 || P->ArrayDim > 64) { return false; }
         TArray<TSharedPtr<FJsonValue>> Values;
         for (int32 I = 0; I < P->ArrayDim; ++I)
         {
-            FString S; const void* V = P->ContainerPtrToValuePtr<void>(O, I); if (!P->ExportText_Direct(S, V, V, O, PPF_None)) { return false; }
+            if(!FieldsCurrent())return false;FString S; const void* V = P->ContainerPtrToValuePtr<void>(O, I);const bool Exported=P->ExportText_Direct(S,V,V,O,PPF_None);if(!FieldsCurrent()||!Exported)return false;
             Chars += S.Len(); if (Chars > MaxText) { return false; } Values.Add(MakeShared<FJsonValueString>(S));
         }
         auto Row = MakeShared<FJsonObject>(); Row->SetStringField(TEXT("owner"), P->GetOwnerStruct()->GetPathName()); Row->SetStringField(TEXT("class"), P->GetClass()->GetName());
@@ -92,18 +122,19 @@ bool Properties(UObject* O, const TSet<FName>& Skip, TSharedRef<FJsonObject>& J)
     }
     return true;
 }
-bool NativeSource(TSharedRef<FJsonObject>& J)
+bool NativeSource(TSharedRef<FJsonObject>& J,const TFunction<bool()>& Current={},FResult* Result=nullptr)
 {
-    UClass* C = UEnvQuery::StaticClass(); const auto Id = Identity(C); for (const auto& P : Id->Values) { J->SetField(P.Key, P.Value); } J->SetBoolField(TEXT("native_identity_verified"), false);
+    if(Current&&!Current())return false;UClass* C = UEnvQuery::StaticClass(); const auto Id = Identity(C); for (const auto& P : Id->Values) { J->SetField(P.Key, P.Value); } J->SetBoolField(TEXT("native_identity_verified"), false);
     if (!Native(C, TEXT("/Script/AIModule")) || C->GetPathName() != TEXT("/Script/AIModule.EnvQuery") || C->IsEditorOnly()) { return false; }
     J->SetStringField(TEXT("class_flags"), FString::Printf(TEXT("%llu"), static_cast<uint64>(C->GetClassFlags()))); J->SetBoolField(TEXT("package_dirty"), C->GetOutermost()->IsDirty());
-    UObject* CDO = C->GetDefaultObject(false); J->SetBoolField(TEXT("cdo_exists"), CDO != nullptr);
+    UObject* CDO = C->GetDefaultObject(false);if(Current&&!Current())return false; J->SetBoolField(TEXT("cdo_exists"), CDO != nullptr);
+    TStrongObjectPtr<UObject> KeepCDO;if(Current&&CDO){if(!Loaded(CDO)||CDO->GetClass()!=C)return false;KeepCDO.Reset(CDO);}
     if (CDO)
     {
         J->SetObjectField(TEXT("existing_cdo"), Identity(CDO)); auto P = MakeShared<FJsonObject>(); J->SetObjectField(TEXT("existing_cdo_properties"), P);
-        if (!Loaded(CDO) || CDO->GetClass() != C || CDO->GetOuter() != C->GetOuter() || !CDO->HasAnyFlags(RF_ClassDefaultObject) || !Properties(CDO, {}, P)) { return false; }
+        if (!Loaded(CDO) || CDO->GetClass() != C || CDO->GetOuter() != C->GetOuter() || !CDO->HasAnyFlags(RF_ClassDefaultObject) || !Properties(CDO, {}, P,Current,Result)) { return false; }
     }
-    J->SetBoolField(TEXT("native_identity_verified"), true); return true;
+    if(Current&&!Current())return false;J->SetBoolField(TEXT("native_identity_verified"), true); return true;
 }
 bool ProtectSource(const TSharedRef<FJsonObject>& Before, const TSharedRef<FJsonObject>& After, bool bAllowLifecycleCDO, bool& bNewCDO)
 {
@@ -147,51 +178,161 @@ UEnvQuery* Resolve(const FString& Path, FResult& R)
         || Q->HasAnyFlags(RF_Transient | RF_ClassDefaultObject | RF_ArchetypeObject) || Q->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn | PKG_EditorOnly | PKG_PlayInEditor))
     { Fail(R, TEXT("eqs_native_asset_required"), TEXT("Requires an ordinary readable exact native UEnvQuery; custom/generated/transient query variants remain incomplete.")); return nullptr; } return Q;
 }
-bool QueryState(UEnvQuery* Q, TSharedRef<FJsonObject>& J)
+bool QueryState(UEnvQuery* Q, TSharedRef<FJsonObject>& J,TFunction<bool()>* OutCurrent=nullptr,FResult* Result=nullptr)
 {
     if (!Loaded(Q) || Q->GetClass() != UEnvQuery::StaticClass() || Q->GetOuter() != Q->GetOutermost() || Q->GetOptions().Num() > MaxNodes) { return false; }
+    TFunction<bool()> Current;
+    // Existing AIModule-only summaries retain their established exporter path.
+    // New source classes need only the original structural summary, not arbitrary
+    // generated/custom property exporters or generator/test virtual execution.
+    bool ExtendedSources=false;
+    for(UEnvQueryOption* O:Q->GetOptions())if(Loaded(O))
+    {
+        if(O->Generator.IsResolved()&&Loaded(O->Generator.Get())&&!Native(O->Generator->GetClass(),TEXT("/Script/AIModule")))ExtendedSources=true;
+        for(const auto& Slot:O->Tests)if(Slot.IsResolved()&&Loaded(Slot.Get())&&!Native(Slot->GetClass(),TEXT("/Script/AIModule")))ExtendedSources=true;
+    }
+    if(ExtendedSources)
+    {
+        struct FReadObject{TStrongObjectPtr<UObject> Hold,Outer;TStrongObjectPtr<UClass> Class;TStrongObjectPtr<UPackage> Package;FString Path;EObjectFlags Flags;bool Dirty;};
+        struct FReadClass{UClass* Class;UClass* Super;UObject* GeneratedBy;UObject* CDO;EClassFlags Flags;};
+        struct FReadBlueprint{UBlueprint* BP;UClass* Generated;UClass* Skeleton;UClass* Parent;UClass* SkeletonSuper;UObject* SkeletonCDO;EBlueprintStatus Status;EBlueprintType Type;};
+        struct FReadOption{UEnvQueryOption* Option;UEnvQueryGenerator* Generator;TArray<TObjectPtr<UEnvQueryTest>> Tests;};
+        auto Objects=MakeShared<TArray<FReadObject>>();auto Classes=MakeShared<TArray<FReadClass>>();auto Blueprints=MakeShared<TArray<FReadBlueprint>>();auto Options=MakeShared<TArray<FReadOption>>();
+        auto AddObject=[&](UObject* O)
+        {
+            if(!Loaded(O)||!Loaded(O->GetClass())||!Loaded(O->GetPackage())||(O->GetOuter()&&!Loaded(O->GetOuter())))return false;
+            for(const auto& Old:*Objects)if(Old.Hold.Get()==O)return true;if(Objects->Num()>=MaxNodes*8)return false;
+            FReadObject Role;Role.Hold.Reset(O);Role.Outer.Reset(O->GetOuter());Role.Class.Reset(O->GetClass());Role.Package.Reset(O->GetPackage());Role.Path=O->GetPathName();Role.Flags=O->GetFlags()&EObjectFlags(RF_Public|RF_Standalone|RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient);Role.Dirty=O->GetPackage()->IsDirty();Objects->Add(MoveTemp(Role));return true;
+        };
+        // Nullable CDO handles are read without GetDefaultObject/creation; actual
+        // source/skeleton owners are captured rather than assumed to be a class.
+        auto ExistingCDO=[](UClass* C,UObject*& Out)
+        {
+            PRAGMA_DISABLE_DEPRECATION_WARNINGS
+            const auto Handle=C->ClassDefaultObject;
+            PRAGMA_ENABLE_DEPRECATION_WARNINGS
+            if(!Handle.IsResolved())return false;Out=Handle.Get();return !Out||(Loaded(Out)&&Out->GetClass()==C&&Out->HasAnyFlags(RF_ClassDefaultObject));
+        };
+        auto AddSourceChain=[&](UClass* First,bool Generator)
+        {
+            if(!Loaded(First)||First->HasAnyClassFlags(CLASS_Abstract)||!First->IsChildOf(Generator?UEnvQueryGenerator::StaticClass():UEnvQueryTest::StaticClass()))return false;
+            const bool BlueprintGenerator=Generator&&First->IsChildOf(UEnvQueryGenerator_BlueprintBase::StaticClass());
+            int32 Depth=0;TSet<UClass*> Seen;
+            for(UClass* C=First;C;C=C->GetSuperClass())
+            {
+                if(++Depth>32||Seen.Contains(C)||!Loaded(C)||C->IsEditorOnly()||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface)||!C->ClassGeneratedBy.IsResolved())return false;Seen.Add(C);
+                bool Already=false;for(const auto& Old:*Classes)Already|=Old.Class==C;if(Already)continue;
+                UObject* CDO=nullptr;if(!ExistingCDO(C,CDO)||!AddObject(C)||(CDO&&!AddObject(CDO)))return false;
+                if(C->HasAnyClassFlags(CLASS_Native))
+                {
+                    if(C->GetClass()!=UClass::StaticClass()||!C->GetPackage()->GetName().StartsWith(TEXT("/Script/"))||!C->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||C->GetPackage()->IsDirty()||C->ClassGeneratedBy!=nullptr)return false;
+                }
+                else
+                {
+                    if(!BlueprintGenerator||C->GetClass()!=UBlueprintGeneratedClass::StaticClass())return false;
+                    UObject* Source=C->ClassGeneratedBy.Get();if(!Loaded(Source))return false;UBlueprint* BP=Cast<UBlueprint>(Source);
+                    if(!Loaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||BP->Status==BS_BeingCreated||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=C||BP->ParentClass.GetGCPtr()!=C->GetSuperClass())return false;
+                    UClass* Skeleton=BP->SkeletonGeneratedClass.GetGCPtr().Get();UClass* Parent=BP->ParentClass.GetGCPtr().Get();UObject* SkeletonCDO=nullptr;
+                    if(!Loaded(Skeleton)||!Loaded(Parent)||!Skeleton->ClassGeneratedBy.IsResolved()||Skeleton->ClassGeneratedBy!=BP||!ExistingCDO(Skeleton,SkeletonCDO)||!AddObject(BP)||!AddObject(Skeleton)||!AddObject(Parent)||(SkeletonCDO&&!AddObject(SkeletonCDO)))return false;
+                    Blueprints->Add({BP,C,Skeleton,Parent,Skeleton->GetSuperClass(),SkeletonCDO,BP->Status.GetValue(),BP->BlueprintType.GetValue()});
+                }
+                Classes->Add({C,C->GetSuperClass(),C->ClassGeneratedBy.Get(),CDO,C->GetClassFlags()&EClassFlags(CLASS_Native|CLASS_CompiledFromBlueprint|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface|CLASS_DefaultToInstanced|CLASS_EditInlineNew)});
+            }
+            return true;
+        };
+        if(!Loaded(GEditor)||!AddObject(GEditor))return false;UEditorEngine* Editor=GEditor;UWorld* World=Editor->GetEditorWorldContext().World();if(!Loaded(World)||!AddObject(World)||!AddObject(Q)||!Q->EdGraph.IsResolved())return false;
+        const auto OptionSlots=Q->GetOptionsMutable();UEdGraph* Graph=Q->EdGraph.Get();TArray<TObjectPtr<UEdGraphNode>> Nodes;TObjectPtr<UClass> GraphSchema;
+        for(const auto& Slot:OptionSlots)
+        {
+            if(!Slot.IsResolved())return false;UEnvQueryOption* O=Slot.Get();if(!Loaded(O)||O->GetClass()!=UEnvQueryOption::StaticClass()||O->GetTypedOuter<UEnvQuery>()!=Q||!AddObject(O)||!O->Generator.IsResolved()||O->Tests.Num()>MaxNodes)return false;
+            UEnvQueryGenerator* G=O->Generator.Get();if(G&&(!Loaded(G)||G->GetTypedOuter<UEnvQuery>()!=Q||!AddObject(G)||!AddSourceChain(G->GetClass(),true)))return false;
+            for(const auto& T:O->Tests)if(!T.IsResolved()||!Loaded(T.Get())||T->GetTypedOuter<UEnvQuery>()!=Q||!AddObject(T.Get())||!AddSourceChain(T->GetClass(),false))return false;
+            Options->Add({O,G,O->Tests});
+        }
+        if(Graph)
+        {
+            if(!Loaded(Graph)||Graph->GetOuter()!=Q||!Native(Graph->GetClass(),TEXT("/Script/EnvironmentQueryEditor"))||Graph->Nodes.Num()>MaxNodes||!Graph->Schema.GetGCPtr().IsResolved()||!AddObject(Graph))return false;
+            GraphSchema=Graph->Schema.GetGCPtr();if(GraphSchema&&!AddObject(GraphSchema.Get()))return false;Nodes=Graph->Nodes;
+            for(const auto& N:Nodes)if(!N.IsResolved()||!Loaded(N.Get())||N->GetOuter()!=Graph||!Native(N->GetClass(),TEXT("/Script/EnvironmentQueryEditor"))||!AddObject(N.Get()))return false;
+        }
+        const FName QueryName=Q->GetQueryName();const bool Strip=Q->bStripFromClientBuilds!=0;
+        auto Lost=MakeShared<bool>(false);
+        Current=[Objects,Classes,Blueprints,Options,OptionSlots,Nodes,GraphSchema,Graph,Q,Editor,World,QueryName,Strip,ExistingCDO,Lost,Result]()
+        {
+            if(*Lost)return false;
+            auto Bad=[&](const FString& Object,const TCHAR* Property,const FString& Expected,const FString& Actual)
+            {
+                *Lost=true;if(Result){Result->bKnown=false;Result->bPost=false;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),Result->Stage);J->SetStringField(TEXT("object"),Object);J->SetStringField(TEXT("property"),Property);J->SetStringField(TEXT("expected"),Expected);J->SetStringField(TEXT("actual"),Actual);if(!Result->Data->HasField(TEXT("eqs_first_mismatch")))Result->Data->SetObjectField(TEXT("eqs_first_mismatch"),J);Result->Data->SetBoolField(TEXT("eqs_followup_sdk_stopped"),true);Fail(*Result,TEXT("eqs_inspection_current_changed"),TEXT("EQS query/source role changed at an exporter return; no followup SDK, rollback or retry."));}return false;
+            };
+            if(!IsEditorGameThread()||IsPlaySessionActive()||IsGarbageCollecting()||GExitPurge||IsEngineExitRequested()||UE::IsSavingPackage()||GEditor!=Editor||!Loaded(Editor)||!Loaded(World)||Editor->GetEditorWorldContext().World()!=World||World->bIsTearingDown)return Bad(TEXT("Editor"),TEXT("context"),TEXT("admitted Editor/world outside PIE/GC/save"),TEXT("changed or unavailable"));
+            if(Result&&Result->Data->HasField(TEXT("eqs_followup_sdk_stopped"))){*Lost=true;return false;}
+            for(const auto& R:*Objects){UObject* O=R.Hold.Get();if(!Loaded(O)||!Loaded(R.Class.Get())||!Loaded(R.Package.Get())||(R.Outer.IsValid()&&!Loaded(R.Outer.Get()))||O->GetClass()!=R.Class.Get()||O->GetOuter()!=R.Outer.Get()||O->GetPackage()!=R.Package.Get()||O->GetPathName()!=R.Path||(O->GetFlags()&EObjectFlags(RF_Public|RF_Standalone|RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient))!=R.Flags||R.Package->IsDirty()!=R.Dirty)return Bad(R.Path,TEXT("identity_owner_class_package_dirty"),TEXT("admitted actual source role"),TEXT("different or retired"));}
+            for(const auto& R:*Classes){UClass* C=R.Class;UObject* CDO=nullptr;if(C->GetSuperClass()!=R.Super||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=R.GeneratedBy||!ExistingCDO(C,CDO)||CDO!=R.CDO||(C->GetClassFlags()&EClassFlags(CLASS_Native|CLASS_CompiledFromBlueprint|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface|CLASS_DefaultToInstanced|CLASS_EditInlineNew))!=R.Flags)return Bad(C->GetPathName(),TEXT("class_chain_generated_source_existing_cdo"),TEXT("admitted chain/source/nullable CDO"),TEXT("changed"));}
+            for(const auto& R:*Blueprints){UBlueprint* BP=R.BP;UObject* CDO=nullptr;if(BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||BP->Status!=R.Status||BP->BlueprintType!=R.Type||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=R.Generated||BP->SkeletonGeneratedClass.GetGCPtr()!=R.Skeleton||BP->ParentClass.GetGCPtr()!=R.Parent||!R.Skeleton->ClassGeneratedBy.IsResolved()||R.Skeleton->ClassGeneratedBy!=BP||R.Skeleton->GetSuperClass()!=R.SkeletonSuper||!ExistingCDO(R.Skeleton,CDO)||CDO!=R.SkeletonCDO)return Bad(BP->GetPathName(),TEXT("blueprint_generated_skeleton_parent"),TEXT("admitted idle actual compiler source roles"),TEXT("changed"));}
+            const auto& Actual=Q->GetOptionsMutable();if(Actual.Num()!=OptionSlots.Num()||!Q->EdGraph.IsResolved()||Q->EdGraph!=Graph||Q->GetQueryName()!=QueryName||(Q->bStripFromClientBuilds!=0)!=Strip)return Bad(Q->GetPathName(),TEXT("query_option_graph_summary"),TEXT("admitted option/graph/name/strip roles"),TEXT("changed"));
+            for(int32 I=0;I<Actual.Num();++I){const auto& R=(*Options)[I];if(!Actual[I].IsResolved()||Actual[I]!=OptionSlots[I]||!R.Option->Generator.IsResolved()||R.Option->Generator!=R.Generator||R.Option->Tests.Num()!=R.Tests.Num())return Bad(Q->GetPathName(),TEXT("option_generator_test_slots"),TEXT("admitted ordered option/node slots"),TEXT("changed"));for(int32 T=0;T<R.Tests.Num();++T)if(!R.Option->Tests[T].IsResolved()||R.Option->Tests[T]!=R.Tests[T])return Bad(R.Option->GetPathName(),TEXT("test_slot"),LexToString(T),TEXT("different or unresolved"));}
+            if(Graph){if(!Graph->Schema.GetGCPtr().IsResolved()||Graph->Schema.GetGCPtr()!=GraphSchema||Graph->Nodes.Num()!=Nodes.Num())return Bad(Graph->GetPathName(),TEXT("graph_schema_node_slots"),TEXT("admitted schema/node inventory"),TEXT("changed"));for(int32 I=0;I<Nodes.Num();++I)if(!Graph->Nodes[I].IsResolved()||Graph->Nodes[I]!=Nodes[I])return Bad(Graph->GetPathName(),TEXT("graph_node_slot"),LexToString(I),TEXT("different or unresolved"));}
+            return true;
+        };
+        if(OutCurrent)*OutCurrent=Current;if(!Current())return false;
+    }
     J = Identity(Q); J->SetStringField(TEXT("asset_type"), TEXT("eqs")); J->SetStringField(TEXT("asset_path"), Q->GetPathName()); J->SetStringField(TEXT("query_name"), Q->GetQueryName().ToString());
     J->SetBoolField(TEXT("package_dirty"), Q->GetOutermost()->IsDirty()); J->SetBoolField(TEXT("strip_from_client_builds"), Q->bStripFromClientBuilds != 0); J->SetNumberField(TEXT("option_count"), Q->GetOptions().Num());
-    auto P = MakeShared<FJsonObject>(); if (!Properties(Q, {}, P)) { return false; } J->SetObjectField(TEXT("query_properties"), P);
-    TArray<TSharedPtr<FJsonValue>> Options; TSet<const UObject*> Seen; int32 ObjectCount = 0;
+    if(Current){J->SetBoolField(TEXT("extended_node_source_summary"),true);J->SetStringField(TEXT("node_source_observation_scope"),TEXT("Actual query/option/node/class-chain and current BP generated/skeleton/parent/existing nullable CDO identity roles only; generated/custom node property values, source graphs and CDO authored values are not sampled. No node virtual execution, compiler work, CDO creation or added loader."));}
+    auto P = MakeShared<FJsonObject>(); if (!Properties(Q, {}, P,Current,Result)) { return false; } J->SetObjectField(TEXT("query_properties"), P);
+    TArray<TSharedPtr<FJsonValue>> Options; TSet<const UObject*> Seen; int32 ObjectCount = 0, RepeatedGenerators = 0, RepeatedTests = 0;
     for (UEnvQueryOption* Option : Q->GetOptions())
     {
         if (!Loaded(Option) || Option->GetClass() != UEnvQueryOption::StaticClass() || Option->GetTypedOuter<UEnvQuery>() != Q || Seen.Contains(Option) || ++ObjectCount > MaxNodes) { return false; } Seen.Add(Option);
-        auto Row = Identity(Option); auto OP = MakeShared<FJsonObject>(); if (!Properties(Option, {}, OP)) { return false; } Row->SetObjectField(TEXT("properties"), OP);
+        auto Row = Identity(Option); auto OP = MakeShared<FJsonObject>(); if (!Properties(Option, {}, OP,Current,Result)) { return false; } Row->SetObjectField(TEXT("properties"), OP);
         if (Option->Generator)
         {
             UEnvQueryGenerator* G = Option->Generator;
-            if (!Loaded(G) || !Native(G->GetClass(), TEXT("/Script/AIModule")) || G->GetTypedOuter<UEnvQuery>() != Q || Seen.Contains(G) || ++ObjectCount > MaxNodes) { return false; } Seen.Add(G);
-            auto GP = MakeShared<FJsonObject>(); auto GR = Identity(G); if (!Properties(G, {}, GP)) { return false; } GR->SetObjectField(TEXT("properties"), GP); Row->SetObjectField(TEXT("generator"), GR);
+            // EnvQueryOption owns ordinary reflected references, not query-global unique roles.
+            // EnvQueryManager copies the generator independently for every ordered option.
+            if (!Loaded(G) || (!Native(G->GetClass(), TEXT("/Script/AIModule"))&&!Current) || G->GetTypedOuter<UEnvQuery>() != Q || ++ObjectCount > MaxNodes) { return false; }
+            if (Seen.Contains(G)) { ++RepeatedGenerators; } Seen.Add(G);
+            auto GP = MakeShared<FJsonObject>(); auto GR = Identity(G);
+            if(Native(G->GetClass(),TEXT("/Script/AIModule"))){if(!Properties(G,{},GP,Current,Result))return false;}
+            else{GR->SetBoolField(TEXT("reflected_properties_sampled"),false);GR->SetStringField(TEXT("property_scope"),TEXT("Original structural summary plus admitted source identity/class chain; custom/generated exporters and generator execution are not dispatched."));}
+            GR->SetObjectField(TEXT("properties"), GP); Row->SetObjectField(TEXT("generator"), GR);
         }
         else { Row->SetObjectField(TEXT("generator"), MakeShared<FJsonObject>()); }
         if (Option->Tests.Num() > MaxNodes) { return false; } TArray<TSharedPtr<FJsonValue>> Tests;
         for (UEnvQueryTest* T : Option->Tests)
         {
-            if (!Loaded(T) || !Native(T->GetClass(), TEXT("/Script/AIModule")) || T->GetTypedOuter<UEnvQuery>() != Q || Seen.Contains(T) || ++ObjectCount > MaxNodes) { return false; } Seen.Add(T);
-            auto TP = MakeShared<FJsonObject>(); auto TR = Identity(T); if (!Properties(T, {}, TP)) { return false; } TR->SetObjectField(TEXT("properties"), TP); Tests.Add(MakeShared<FJsonValueObject>(TR));
+            // A repeated same-query test stays an ordered occurrence; no execution,
+            // sorting, TestOrder rewrite or reference deduplication is performed here.
+            if (!Loaded(T) || (!Native(T->GetClass(), TEXT("/Script/AIModule"))&&!Current) || T->GetTypedOuter<UEnvQuery>() != Q || ++ObjectCount > MaxNodes) { return false; }
+            if (Seen.Contains(T)) { ++RepeatedTests; } Seen.Add(T);
+            auto TP = MakeShared<FJsonObject>(); auto TR = Identity(T);
+            if(Native(T->GetClass(),TEXT("/Script/AIModule"))){if(!Properties(T,{},TP,Current,Result))return false;}
+            else{TR->SetBoolField(TEXT("reflected_properties_sampled"),false);TR->SetStringField(TEXT("property_scope"),TEXT("Original structural summary plus admitted native source identity/class chain; custom exporters and test execution are not dispatched."));}
+            TR->SetObjectField(TEXT("properties"), TP); Tests.Add(MakeShared<FJsonValueObject>(TR));
         }
         Row->SetArrayField(TEXT("tests"), Tests); Options.Add(MakeShared<FJsonValueObject>(Row));
     }
-    J->SetArrayField(TEXT("options"), Options); auto Graph = MakeShared<FJsonObject>(); J->SetBoolField(TEXT("editor_graph_present"), Q->EdGraph != nullptr); J->SetNumberField(TEXT("editor_graph_node_count"), Q->EdGraph ? Q->EdGraph->Nodes.Num() : 0);
+    J->SetArrayField(TEXT("options"), Options); J->SetNumberField(TEXT("repeated_generator_reference_count"), RepeatedGenerators); J->SetNumberField(TEXT("repeated_test_reference_count"), RepeatedTests);
+    J->SetStringField(TEXT("option_node_reference_scope"), TEXT("Ordered same-query generator/test occurrences may share an existing object. Exact loaded type/source/owner and occurrence budgets remain checked; option and editor-graph node roles retain their existing uniqueness checks. Structural inspection does not certify query execution or complete nonblank dependency independence."));
+    auto Graph = MakeShared<FJsonObject>(); J->SetBoolField(TEXT("editor_graph_present"), Q->EdGraph != nullptr); J->SetNumberField(TEXT("editor_graph_node_count"), Q->EdGraph ? Q->EdGraph->Nodes.Num() : 0);
     if (Q->EdGraph)
     {
         UEdGraph* G = Q->EdGraph;
         if (!Loaded(G) || G->GetOuter() != Q || !Native(G->GetClass(), TEXT("/Script/EnvironmentQueryEditor")) || G->Nodes.Num() > MaxNodes) { return false; }
-        Graph = Identity(G); auto GP = MakeShared<FJsonObject>(); if (!Properties(G, {}, GP)) { return false; } Graph->SetObjectField(TEXT("properties"), GP); TArray<TSharedPtr<FJsonValue>> Nodes;
+        Graph = Identity(G); auto GP = MakeShared<FJsonObject>(); if (!Properties(G, {}, GP,Current,Result)) { return false; } Graph->SetObjectField(TEXT("properties"), GP); TArray<TSharedPtr<FJsonValue>> Nodes;
         for (UEdGraphNode* N : G->Nodes)
         {
             if (!Loaded(N) || N->GetOuter() != G || !Native(N->GetClass(), TEXT("/Script/EnvironmentQueryEditor")) || Seen.Contains(N)) { return false; } Seen.Add(N);
-            auto NR = Identity(N); NR->SetStringField(TEXT("node_guid"), N->NodeGuid.ToString()); auto NP = MakeShared<FJsonObject>(); if (!Properties(N, {}, NP)) { return false; } NR->SetObjectField(TEXT("properties"), NP); Nodes.Add(MakeShared<FJsonValueObject>(NR));
+            auto NR = Identity(N); NR->SetStringField(TEXT("node_guid"), N->NodeGuid.ToString()); auto NP = MakeShared<FJsonObject>(); if (!Properties(N, {}, NP,Current,Result)) { return false; } NR->SetObjectField(TEXT("properties"), NP); Nodes.Add(MakeShared<FJsonValueObject>(NR));
         }
         Graph->SetArrayField(TEXT("nodes"), Nodes);
     }
-    J->SetObjectField(TEXT("editor_graph"), Graph); J->SetBoolField(TEXT("observations_complete"), true); return true;
+    if(Current&&!Current())return false;J->SetObjectField(TEXT("editor_graph"), Graph); J->SetBoolField(TEXT("observations_complete"), true); return true;
 }
 struct FObservation
-{ TSharedRef<FJsonObject> State = MakeShared<FJsonObject>(), Source = MakeShared<FJsonObject>(), DiskState = MakeShared<FJsonObject>(), OtherDirty = MakeShared<FJsonObject>(); };
-bool Observe(UEnvQuery* Q, FObservation& O)
-{ return QueryState(Q, O.State) && NativeSource(O.Source) && Disk(Q->GetOutermost()->GetName(), O.DiskState) && Dirty(Q->GetOutermost()->GetName(), O.OtherDirty); }
+{ TSharedRef<FJsonObject> State = MakeShared<FJsonObject>(), Source = MakeShared<FJsonObject>(), DiskState = MakeShared<FJsonObject>(), OtherDirty = MakeShared<FJsonObject>();TFunction<bool()> Current; };
+bool Observe(UEnvQuery* Q, FObservation& O,FResult* Result=nullptr)
+{ return QueryState(Q,O.State,&O.Current,Result)&&NativeSource(O.Source,O.Current,Result)&&(!O.Current||O.Current())&&Disk(Q->GetOutermost()->GetName(),O.DiskState)&&Dirty(Q->GetOutermost()->GetName(),O.OtherDirty)&&(!O.Current||O.Current()); }
 TSharedRef<FJsonObject> Observation(const FObservation& O)
 { auto J = MakeShared<FJsonObject>(); J->SetObjectField(TEXT("state"), O.State); J->SetObjectField(TEXT("native_source"), O.Source); J->SetObjectField(TEXT("disk"), O.DiskState); J->SetObjectField(TEXT("other_package_dirty"), O.OtherDirty); return J; }
 void Publish(FResult& R, const FObservation& O, const TCHAR* Label)
@@ -209,7 +350,8 @@ void Publish(FResult& R, const FObservation& O, const TCHAR* Label)
 }
 bool Retained(UEnvQuery* Q, const FObservation& Before, FObservation& After, FResult& R, bool bAllowCDO)
 {
-    if (!Observe(Q, After)) { R.bKnown = false; R.bPost = false; return Fail(R, TEXT("eqs_retained_state_unobservable"), TEXT("Retained target/source/disk state is incomplete; do not replay allocation or save.")); } Publish(R, After, TEXT("after"));
+    if(Before.Current&&!Before.Current())return false;
+    if (!Observe(Q,After,&R)) { R.bKnown=false;R.bPost=false;if(R.Code.IsEmpty())Fail(R,TEXT("eqs_retained_state_unobservable"),TEXT("Retained target/source/disk state is incomplete; do not replay allocation or save."));return false; } if(Before.Current&&!Before.Current())return false;Publish(R, After, TEXT("after"));
     R.bChanged |= Text(Before.State) != Text(After.State); bool NewCDO = false;
     const bool SourceOK = ProtectSource(Before.Source, After.Source, bAllowCDO, NewCDO), DirtyOK = Text(Before.OtherDirty) == Text(After.OtherDirty), DiskOK = Text(Before.DiskState) == Text(After.DiskState);
     R.Data->SetBoolField(TEXT("existing_native_defaults_preserved"), SourceOK); R.Data->SetBoolField(TEXT("implicit_native_cdo_creation_observed"), NewCDO || (R.Data->HasField(TEXT("implicit_native_cdo_creation_observed")) && R.Data->GetBoolField(TEXT("implicit_native_cdo_creation_observed")))); R.Data->SetBoolField(TEXT("other_package_dirty_preserved"), DirtyOK); R.Data->SetBoolField(TEXT("disk_preserved_before_save"), DiskOK);
@@ -273,9 +415,10 @@ FString InspectAsset(const FString& AssetPath)
         if (!Asset.IsValid() || Asset.AssetClassPath.ToString() != TEXT("/Script/AIModule.EnvQuery")) { return BehaviorTree::InspectAsset(AssetPath); }
     }
     UEnvQuery* Q = Resolve(Path, R); TStrongObjectPtr<UEnvQuery> Keep(Q); if (!Q) { return Encode(R); } FObservation Before, After;
-    if (!Observe(Q, Before)) { Fail(R, TEXT("eqs_inspection_unobservable"), TEXT("Native bounded summary failed; custom/generated/nonowned/incomplete query/options/graphs remain unsupported.")); return Encode(R); } Publish(R, Before, TEXT("before"));
+    if (!Observe(Q,Before,&R)) { if(R.Code.IsEmpty())Fail(R,TEXT("eqs_inspection_unobservable"),TEXT("Bounded query summary failed; unsupported query subclasses, unresolved/nonowned node references, nonstandard generated sources and custom editor graphs remain incomplete."));return Encode(R); } Publish(R, Before, TEXT("before"));
     if (!Retained(Q, Before, After, R, false)) { return Encode(R); }
     if (R.bChanged) { Fail(R, TEXT("eqs_inspection_state_changed"), TEXT("Repeated native summary changed after initial resolution; no explicit graph/option/cache/query/write/save was dispatched.")); return Encode(R); }
+    R.Data->SetStringField(TEXT("read_only_claim_scope"),TEXT("No explicit query/generator/test execution, property writer, compiler, CDO creation or save after initial resolution. New node profiles expose structural/source roles only; authored generator/CDO values and full nonblank dependency independence are not certified."));
     R.Data->SetBoolField(TEXT("read_only_after_initial_resolution"), true); R.bPost = true; R.bSuccess = true; R.Stage = TEXT("complete"); return Encode(R);
 }
 }

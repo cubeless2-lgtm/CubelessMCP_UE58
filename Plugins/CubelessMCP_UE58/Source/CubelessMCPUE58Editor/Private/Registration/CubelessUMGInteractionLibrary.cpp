@@ -9,3 +9,8 @@ FString UCubelessUMGInteractionLibrary::BindWidgetEvent(const FString& WidgetNam
 {
     return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::UMGInteraction::BindEvent(WidgetName,WidgetComponentName,EventName,FunctionName),TEXT("bind_widget_event"));
 }
+
+FString UCubelessUMGInteractionLibrary::BindWidgetEventRaw(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName,const FString& NodePositionJson)
+{
+    return Cubeless::Operations::EncodeVariableResult(Cubeless::UE58::UMGInteraction::BindEventRaw(WidgetName,WidgetComponentName,EventName,FunctionName,NodePositionJson),TEXT("bind_widget_event"));
+}

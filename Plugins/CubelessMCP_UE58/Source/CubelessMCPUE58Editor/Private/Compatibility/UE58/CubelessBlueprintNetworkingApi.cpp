@@ -329,6 +329,104 @@ TSharedPtr<FJsonObject> BuildDelta(const TArray<FString>& Provided, const TArray
 }
 
 
+// Only the private duplicate-source reader opts into these holds. Existing
+// networking audit entry points retain their original admission and costs.
+struct FDuplicateDependencyAuditRoles
+{
+    struct FExport
+    {
+        TStrongObjectPtr<UObject> Object, Class, Outer;
+        FString Path;
+        UPackage* Package = nullptr;
+    };
+    struct FPackage
+    {
+        TStrongObjectPtr<UPackage> Object;
+        TArray<UObject*> Exports;
+        TSet<UObject*> ExportSet;
+        bool Dirty = false;
+    };
+    TArray<FExport> Exports;
+    TArray<FPackage> Packages;
+    TSet<const UObject*> ReferencedSet;
+    TArray<TStrongObjectPtr<UObject>> ReferencedHolds;
+    bool HoldReference(const UObject* Object, TArray<FString>& Issues)
+    {
+        if (!Object) return true;
+        if (!Loaded(Object))
+        {
+            Issues.AddUnique(TEXT("Duplicate source dependency audit returned an unavailable reference")); return false;
+        }
+        if (ReferencedSet.Contains(Object)) return true;
+        if (ReferencedSet.Num() >= 16384)
+        {
+            Issues.AddUnique(TEXT("Dependency audit infrastructure incomplete: duplicate-source unique held-reference bound16384 exceeded")); return false;
+        }
+        ReferencedHolds.Emplace(const_cast<UObject*>(Object)); ReferencedSet.Add(Object); return true;
+    }
+    bool Current(TArray<FString>& Issues) const
+    {
+        for (const FPackage& P : Packages)
+        {
+            if (!Loaded(P.Object.Get()) || P.Object->IsDirty() != P.Dirty)
+            {
+                Issues.AddUnique(TEXT("Duplicate source dependency audit role changed: package validity/dirty state")); return false;
+            }
+            TArray<UObject*> Now;
+            GetObjectsWithPackage(P.Object.Get(), Now, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
+            if (Now.Num() != P.Exports.Num())
+            {
+                Issues.AddUnique(TEXT("Duplicate source dependency audit role changed: package export membership")); return false;
+            }
+            for (UObject* O : Now) if (!P.ExportSet.Contains(O))
+            {
+                Issues.AddUnique(TEXT("Duplicate source dependency audit role changed: package export identity")); return false;
+            }
+        }
+        for (const FExport& E : Exports)
+        {
+            UObject* O = E.Object.Get();
+            if (!Loaded(O) || !Loaded(E.Class.Get()) || !Loaded(E.Outer.Get()) || !Loaded(E.Package)
+                || O->GetClass() != E.Class.Get() || O->GetOuter() != E.Outer.Get()
+                || O->GetPackage() != E.Package || O->GetPathName() != E.Path
+                || StaticFindObject(UObject::StaticClass(), nullptr, *E.Path) != O)
+            {
+                Issues.AddUnique(TEXT("Duplicate source dependency audit role changed: held export/class/outer/path")); return false;
+            }
+        }
+        return true;
+    }
+    bool Bind(UPackage* Package, const TArray<UObject*>& Values, TArray<FString>& Issues)
+    {
+        // The newly returned inventory is held before checking older packages,
+        // since their current check itself invokes SDK observations.
+        for (UObject* O : Values) if (!HoldReference(O, Issues)) return false;
+        if (!Current(Issues)) return false;
+        if (Exports.Num() + Values.Num() > 16384)
+        {
+            Issues.AddUnique(TEXT("Dependency audit infrastructure incomplete: duplicate-source aggregate held-export bound16384 exceeded")); return false;
+        }
+        for (const FPackage& P : Packages) if (P.Object.Get() == Package) return Current(Issues);
+        FPackage& P = Packages.AddDefaulted_GetRef();
+        P.Object.Reset(Package); P.Exports = Values; P.Dirty = Package->IsDirty();
+        for (UObject* O : Values) P.ExportSet.Add(O);
+        // Pin every export before SDK serialization, soft resolution or hierarchy
+        // walks. Source/outer/class paths are observed only after these holds.
+        const int32 First = Exports.Num();
+        for (UObject* O : Values)
+        {
+            if (!Loaded(O) || O->GetPackage() != Package)
+            {
+                Issues.AddUnique(TEXT("Duplicate source dependency audit role unavailable before collection")); return false;
+            }
+            FExport& E = Exports.AddDefaulted_GetRef();
+            E.Object.Reset(O); E.Class.Reset(O->GetClass()); E.Outer.Reset(O->GetOuter()); E.Package = Package;
+        }
+        for (int32 I = First; I < Exports.Num(); ++I) Exports[I].Path = Exports[I].Object->GetPathName();
+        return Current(Issues);
+    }
+};
+
 enum class EAuditMode { InMemoryOnly, RequirePersisted };
 bool IsEngineOrScriptPackage(const FString& PackageName)
 {
@@ -362,13 +460,15 @@ void AddExternalAuthoredPackage(
 void CollectMCPObjectAuditTokens(
     const FString& Relationship,
     const UObject* Object,
-    TArray<FString>& OutIssues)
+    TArray<FString>& OutIssues,
+    FDuplicateDependencyAuditRoles* Roles = nullptr)
 {
     if (!Object)
     {
         return;
     }
 
+    if (Roles && !Roles->HoldReference(Object, OutIssues)) return;
     const FString ObjectPath = Object->GetPathName();
     if (IsMCPDependencyReference(ObjectPath))
     {
@@ -382,6 +482,7 @@ void CollectMCPObjectAuditTokens(
          ObjectClass;
          ObjectClass = ObjectClass->GetSuperClass())
     {
+        if (Roles && !Roles->HoldReference(ObjectClass, OutIssues)) return;
         const FString ClassPath = ObjectClass->GetPathName();
         if (IsMCPDependencyReference(ClassPath))
         {
@@ -399,6 +500,7 @@ void CollectMCPObjectAuditTokens(
              SuperClass;
              SuperClass = SuperClass->GetSuperClass())
         {
+            if (Roles && !Roles->HoldReference(SuperClass, OutIssues)) return;
             const FString SuperClassPath = SuperClass->GetPathName();
             if (IsMCPDependencyReference(SuperClassPath))
             {
@@ -418,7 +520,8 @@ bool CollectMCPPropertyReferenceAuditTokens(
     int32& InOutPropertyValuesVisited,
     int32& InOutPropertyReferencesInspected,
     TSet<FName>& OutExternalAuthoredPackages,
-    TArray<FString>& OutIssues)
+    TArray<FString>& OutIssues,
+    FDuplicateDependencyAuditRoles* Roles = nullptr)
 {
     if (!SourceObject)
     {
@@ -558,7 +661,8 @@ bool CollectMCPPropertyReferenceAuditTokens(
                 OutExternalAuthoredPackages);
             if (const UObject* ResolvedObject = SoftReference.ResolveObject())
             {
-                CollectMCPObjectAuditTokens(TEXT("Resolved serialized soft reference"), ResolvedObject, OutIssues);
+                if (Roles && !Roles->HoldReference(ResolvedObject, OutIssues)) return false;
+                CollectMCPObjectAuditTokens(TEXT("Resolved serialized soft reference"), ResolvedObject, OutIssues, Roles);
             }
         }
         if (bHasTopLevelReference && !TopLevelReference.IsNull())
@@ -577,9 +681,13 @@ bool CollectMCPPropertyReferenceAuditTokens(
                 TopLevelReference.GetPackageName().ToString(),
                 OutExternalAuthoredPackages);
         }
+        if (Roles) for (const UObject* ReferencedObject : ReferencedObjects)
+        {
+            if (!Roles->HoldReference(ReferencedObject, OutIssues)) return false;
+        }
         for (const UObject* ReferencedObject : ReferencedObjects)
         {
-            CollectMCPObjectAuditTokens(TEXT("Serialized weak or delegate reference"), ReferencedObject, OutIssues);
+            CollectMCPObjectAuditTokens(TEXT("Serialized weak or delegate reference"), ReferencedObject, OutIssues, Roles);
             if (ReferencedObject && ReferencedObject->GetOutermost())
             {
                 AddExternalAuthoredPackage(
@@ -598,7 +706,8 @@ void CollectMCPSerializedReferenceAuditTokens(
     const TArray<UObject*>& SourceObjects,
     int32 SourceObjectCount,
     TSet<FName>& OutExternalAuthoredPackages,
-    TArray<FString>& OutIssues)
+    TArray<FString>& OutIssues,
+    FDuplicateDependencyAuditRoles* Roles = nullptr)
 {
     TArray<UObject*> DirectReferences;
     FReferenceFinder ReferenceFinder(
@@ -611,6 +720,7 @@ void CollectMCPSerializedReferenceAuditTokens(
     constexpr int32 MaxDirectReferences = 16384;
     int32 PropertyValuesVisited = 0;
     int32 PropertyReferencesInspected = 0;
+    int32 PinnedDirectReferences = 0;
     const int32 ObjectsToInspect = FMath::Min(SourceObjects.Num(), SourceObjectCount);
     for (int32 SourceIndex = 0; SourceIndex < ObjectsToInspect; ++SourceIndex)
     {
@@ -620,6 +730,7 @@ void CollectMCPSerializedReferenceAuditTokens(
             continue;
         }
 
+        if (Roles && !Roles->Current(OutIssues)) return;
         ReferenceFinder.FindReferences(SourceObject);
         if (DirectReferences.Num() > MaxDirectReferences)
         {
@@ -627,25 +738,34 @@ void CollectMCPSerializedReferenceAuditTokens(
                 TEXT("Dependency audit infrastructure incomplete: package exceeded the %d-direct-reference safety bound: %s"),
                 MaxDirectReferences,
                 *SourcePackageName));
+            if (Roles) return; // Overflow raw references were not pinned; do not consume them.
             break;
         }
+        // FindReferences appends only new pointers. Keep each returned external
+        // object alive before a later property/soft/hierarchy SDK observation.
+        if (Roles) while (PinnedDirectReferences < DirectReferences.Num())
+        {
+            if (!Roles->HoldReference(DirectReferences[PinnedDirectReferences++], OutIssues)) return;
+        }
+        if (Roles && !Roles->Current(OutIssues)) return;
         if (!CollectMCPPropertyReferenceAuditTokens(
                 SourceObject,
                 SourcePackageName,
                 PropertyValuesVisited,
                 PropertyReferencesInspected,
                 OutExternalAuthoredPackages,
-                OutIssues))
+                OutIssues, Roles))
         {
             break;
         }
+        if (Roles && !Roles->Current(OutIssues)) return;
     }
 
     const int32 ReferencesToInspect = FMath::Min(DirectReferences.Num(), MaxDirectReferences);
     for (int32 ReferenceIndex = 0; ReferenceIndex < ReferencesToInspect; ++ReferenceIndex)
     {
         const UObject* ReferencedObject = DirectReferences[ReferenceIndex];
-        CollectMCPObjectAuditTokens(TEXT("Serialized direct reference"), ReferencedObject, OutIssues);
+        CollectMCPObjectAuditTokens(TEXT("Serialized direct reference"), ReferencedObject, OutIssues, Roles);
         if (ReferencedObject && ReferencedObject->GetOutermost())
         {
             AddExternalAuthoredPackage(
@@ -659,7 +779,8 @@ void CollectMCPSerializedReferenceAuditTokens(
 void CollectMCPPackageAuditTokens(
     UPackage* Package,
     TSet<FName>& OutExternalAuthoredPackages,
-    TArray<FString>& OutIssues)
+    TArray<FString>& OutIssues,
+    FDuplicateDependencyAuditRoles* Roles = nullptr)
 {
     if (!Package)
     {
@@ -675,6 +796,7 @@ void CollectMCPPackageAuditTokens(
     TArray<UObject*> PackageExports;
     GetObjectsWithPackage(Package, PackageExports, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
 
+    if (Roles && !Roles->Bind(Package, PackageExports, OutIssues)) return;
     constexpr int32 MaxPackageExports = 16384;
     const int32 ExportCountToInspect = FMath::Min(PackageExports.Num(), MaxPackageExports);
     if (PackageExports.Num() > MaxPackageExports)
@@ -693,21 +815,23 @@ void CollectMCPPackageAuditTokens(
             continue;
         }
 
-        CollectMCPObjectAuditTokens(TEXT("Package export"), Export, OutIssues);
+        CollectMCPObjectAuditTokens(TEXT("Package export"), Export, OutIssues, Roles);
     }
     CollectMCPSerializedReferenceAuditTokens(
         PackageName,
         PackageExports,
         ExportCountToInspect,
         OutExternalAuthoredPackages,
-        OutIssues);
+        OutIssues, Roles);
+    if (Roles) Roles->Current(OutIssues);
 }
 
 void CollectLoadedAuthoredPackageAuditIssues(
     UPackage* RootPackage,
     TSet<FName>& OutExternalAuthoredPackages,
     TSet<FName>& OutInMemoryAuditedPackages,
-    TArray<FString>& OutIssues)
+    TArray<FString>& OutIssues,
+    FDuplicateDependencyAuditRoles* Roles = nullptr)
 {
     if (!RootPackage)
     {
@@ -728,7 +852,8 @@ void CollectLoadedAuthoredPackageAuditIssues(
 
         OutInMemoryAuditedPackages.Add(CurrentPackage->GetFName());
         TSet<FName> DirectExternalPackages;
-        CollectMCPPackageAuditTokens(CurrentPackage, DirectExternalPackages, OutIssues);
+        CollectMCPPackageAuditTokens(CurrentPackage, DirectExternalPackages, OutIssues, Roles);
+        if (Roles && !Roles->Current(OutIssues)) return;
         for (const FName& ExternalPackageName : DirectExternalPackages)
         {
             OutExternalAuthoredPackages.Add(ExternalPackageName);
@@ -836,14 +961,17 @@ void CollectMCPDependencyAuditIssues(
     const FString& FieldName,
     const UObject* ReferencedObject,
     EAuditMode AuditMode,
-    TArray<FString>& OutIssues)
+    TArray<FString>& OutIssues,
+    FDuplicateDependencyAuditRoles* Roles = nullptr,
+    TSet<FName>* OutLoadedPackages = nullptr,
+    TSet<FName>* OutSavedPackages = nullptr)
 {
     if (!ReferencedObject)
     {
         return;
     }
 
-    CollectMCPObjectAuditTokens(FieldName, ReferencedObject, OutIssues);
+    CollectMCPObjectAuditTokens(FieldName, ReferencedObject, OutIssues, Roles);
 
     UPackage* RootPackage = ReferencedObject->GetOutermost();
     const FString RootPackageName = RootPackage ? RootPackage->GetName() : FString();
@@ -855,7 +983,8 @@ void CollectMCPDependencyAuditIssues(
             RootPackage,
             ExternalAuthoredPackages,
             InMemoryAuditedPackages,
-            OutIssues);
+            OutIssues, Roles);
+        if (Roles && !Roles->Current(OutIssues)) return;
     }
     else if (ReferencedObject)
     {
@@ -924,6 +1053,9 @@ void CollectMCPDependencyAuditIssues(
                 *ExternalPackageName.ToString()));
         }
     }
+    if (Roles) Roles->Current(OutIssues);
+    if (OutLoadedPackages) *OutLoadedPackages = InMemoryAuditedPackages;
+    if (OutSavedPackages) *OutSavedPackages = PersistedAuditedPackages;
 }
 TSharedPtr<FJsonObject> CreateNetworkingError(
     const FString& ErrorCode,
@@ -1695,7 +1827,93 @@ bool DecodeCarriers(const TArray<FString>& Values,TSharedRef<FJsonObject> Params
     }
     return true;
 }
+bool RawInputObject(const FString& ParamsJson,TSharedPtr<FJsonObject>& Params,FResult& R)
+{
+    R.Stage=TEXT("raw_input_decode");R.Data->SetBoolField(TEXT("raw_input_adapter"),true);
+    R.Data->SetStringField(TEXT("raw_input_contract"),TEXT("Bounded JSON object transport only; source target resolution, dry_run validation, supplied-null/type checks and ignored unknown fields retain their original ordering."));
+    R.Data->SetBoolField(TEXT("raw_input_source_dispatched"),false);
+    if(!SafeText(ParamsJson,1048576))return Fail(R,TEXT("networking_raw_input_bounds_invalid"),TEXT("Raw-input JSON exceeds1048576 UTF-16 characters or contains embedded NUL; no source operation was dispatched."));
+    // Bound only the transport, not object identifiers, ignored values or source field types.
+    // Wrapping permits a uniform single-value check without treating supplied null as omission.
+    const FString Wrapped=TEXT("[")+ParamsJson+TEXT("]");
+    auto Scanner=TJsonReaderFactory<>::Create(Wrapped);EJsonNotation Token;int32 Depth=0,Tokens=0;
+    while(Scanner->ReadNext(Token))
+    {
+        if(++Tokens>65536)return Fail(R,TEXT("networking_raw_input_bounds_invalid"),TEXT("Raw-input JSON exceeds65536 transport tokens; no source operation was dispatched."));
+        if(Token==EJsonNotation::Error){R.Data->SetStringField(TEXT("raw_input_parser_error"),Scanner->GetErrorMessage());return Fail(R,TEXT("networking_raw_input_json_invalid"),TEXT("Raw-input wrapper could not decode JSON; no source operation was dispatched."));}
+        if(Token==EJsonNotation::ObjectStart||Token==EJsonNotation::ArrayStart)
+        {
+            if(++Depth>65)return Fail(R,TEXT("networking_raw_input_bounds_invalid"),TEXT("Raw-input JSON exceeds64 nested containers; no source operation was dispatched."));
+        }
+        else if(Token==EJsonNotation::ObjectEnd||Token==EJsonNotation::ArrayEnd)--Depth;
+    }
+    if(!Scanner->GetErrorMessage().IsEmpty()||Depth!=0){R.Data->SetStringField(TEXT("raw_input_parser_error"),Scanner->GetErrorMessage());return Fail(R,TEXT("networking_raw_input_json_invalid"),TEXT("Raw-input wrapper could not decode JSON; no source operation was dispatched."));}
+    TArray<TSharedPtr<FJsonValue>> Values;R.Data->SetNumberField(TEXT("raw_input_parse_calls"),1);
+    const bool Parsed=FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Wrapped),Values);R.Data->SetNumberField(TEXT("raw_input_parse_returns"),1);
+    if(!Parsed||Values.Num()!=1||!Values[0].IsValid())return Fail(R,TEXT("networking_raw_input_json_invalid"),TEXT("Raw-input wrapper requires exactly one JSON value; no source operation was dispatched."));
+    const TSharedPtr<FJsonValue> Value=Values[0];
+    if(Value->Type!=EJson::Object)return Fail(R,TEXT("networking_raw_input_object_required"),TEXT("Raw-input wrapper requires a JSON parameter object; root null/arrays/scalars are transport errors, distinct from source field validation."));
+    Params=Value->AsObject();if(!Params.IsValid())return Fail(R,TEXT("networking_raw_input_object_required"),TEXT("Raw parameter object is unavailable."));
+    R.Data->SetNumberField(TEXT("raw_input_field_count"),Params->Values.Num());R.Data->SetBoolField(TEXT("raw_input_preserves_supplied_null"),true);R.Data->SetBoolField(TEXT("raw_input_source_dispatched"),false);return true;
 }
+}
+Variable::FResult AuditLoadedDuplicateSource(UObject* SourceObject)
+{
+    FResult R; Init(R); R.Stage = TEXT("duplicate_source_dependency_audit");
+    R.Data->SetStringField(TEXT("count_scope"), TEXT("Direct source GetDefaultObject(false) invocations are counted in cdo_identity_observation_calls; no creating CDO lookup is requested, so cdo_get_calls remains zero. Other source/package/export/hierarchy identity getters and recursive collector/registry calls are not individually counted. dependency_audit_calls/returns count whole collector wrapper invocations, not its internal work."));
+    R.Data->SetStringField(TEXT("operation"), TEXT("audit_loaded_blueprint_duplicate_source"));
+    R.Data->SetStringField(TEXT("scope"), TEXT("Existing package-export FReferenceFinder plus nontransient reflected soft/class/path/weak/lazy/delegate references; dirty loaded authored dependency packages in RAM and persisted authored dependency closure. Not a whole authored-state equality, arbitrary callback or packaging proof."));
+    R.Data->SetBoolField(TEXT("source_compile_requested"), false); R.Data->SetBoolField(TEXT("source_save_requested"), false);
+    R.Data->SetBoolField(TEXT("whole_RAM_authored_equality_proven"), false);
+    if (!IsEditorGameThread() || IsPlaySessionActive())
+    { Fail(R, TEXT("duplicate_source_audit_context_invalid"), TEXT("Editor game thread outside PIE/SIE required")); return R; }
+    TStrongObjectPtr<UObject> SourceHold(SourceObject);
+    UBlueprint* B = Cast<UBlueprint>(SourceObject);
+    if (!Loaded(B) || B->GetClass() != UBlueprint::StaticClass() || !B->GeneratedClass.GetGCPtr().IsResolved())
+    { Fail(R, TEXT("duplicate_source_audit_source_invalid"), TEXT("Held current ordinary Blueprint and already resolved generated class required; no source load/compile")); return R; }
+    TStrongObjectPtr<UPackage> Package(B->GetPackage());
+    TStrongObjectPtr<UClass> Generated(B->GeneratedClass.Get());
+    if (!Loaded(Package.Get()) || !Package->IsFullyLoaded() || !Package->IsDirty() || !Loaded(Generated.Get()))
+    { Fail(R, TEXT("duplicate_source_audit_role_invalid"), TEXT("Fully loaded dirty source package and current generated class required")); return R; }
+    Count(R, TEXT("cdo_identity_observation_calls"));
+    TStrongObjectPtr<UObject> CDO(Generated->GetDefaultObject(false));
+    const FString SourcePath = B->GetPathName(), PackagePath = Package->GetName();
+    const auto Status = B->Status;
+    FString Filename;
+    if (!PackagePath.StartsWith(TEXT("/Game/")) || !Loaded(CDO.Get()) || CDO->GetClass() != Generated.Get()
+        || (Status != BS_UpToDate && Status != BS_UpToDateWithWarnings)
+        || !FPackageName::DoesPackageExist(PackagePath, &Filename))
+    { Fail(R, TEXT("duplicate_source_audit_saved_compiled_scope_pending"), TEXT("Existing saved /Game file and current compiled/CDO role required; broader original dirty sources remain incomplete")); return R; }
+    auto Current = [&]()
+    {
+        return Loaded(B) && B->GetClass() == UBlueprint::StaticClass() && Loaded(Package.Get()) && Package->IsDirty()
+            && B->GetPackage() == Package.Get() && B->GetPathName() == SourcePath && StaticFindObject(UBlueprint::StaticClass(), nullptr, *SourcePath) == B
+            && B->Status == Status && B->GeneratedClass.GetGCPtr().IsResolved() && B->GeneratedClass.GetGCPtr() == Generated.Get()
+            && Loaded(Generated.Get()) && Loaded(CDO.Get()) && (Count(R, TEXT("cdo_identity_observation_calls")), Generated->GetDefaultObject(false) == CDO.Get()) && CDO->GetClass() == Generated.Get()
+            && B->GeneratedClass.GetGCPtr().IsResolved() && B->GeneratedClass.GetGCPtr() == Generated.Get() && B->GetPackage() == Package.Get() && Package->IsDirty() && B->Status == Status;
+    };
+    if (!Current()) { Fail(R, TEXT("duplicate_source_audit_identity_changed"), TEXT("Source role changed during readonly admission"), true); return R; }
+    R.Data->SetStringField(TEXT("source_object"), SourcePath); R.Data->SetStringField(TEXT("source_package"), PackagePath);
+    TArray<FString> Issues; TSet<FName> LoadedPackages, SavedPackages; FDuplicateDependencyAuditRoles Roles;
+    Count(R, TEXT("dependency_audit_calls"));
+    CollectMCPDependencyAuditIssues(TEXT("duplicate_source"), B, EAuditMode::RequirePersisted, Issues, &Roles, &LoadedPackages, &SavedPackages);
+    Count(R, TEXT("dependency_audit_returns"));
+    if (!Current() || !Roles.Current(Issues))
+    { Fail(R, TEXT("duplicate_source_audit_identity_changed"), TEXT("Source/package/export role changed during readonly dependency observation"), true); }
+    TArray<FString> LoadedNames, SavedNames;
+    for (FName N : LoadedPackages) LoadedNames.Add(N.ToString()); for (FName N : SavedPackages) SavedNames.Add(N.ToString());
+    LoadedNames.Sort(); SavedNames.Sort();
+    R.Data->SetArrayField(TEXT("loaded_packages_audited"), StringsToJson(LoadedNames));
+    R.Data->SetArrayField(TEXT("saved_packages_audited"), StringsToJson(SavedNames));
+    R.Data->SetArrayField(TEXT("issues"), StringsToJson(Issues));
+    R.Data->SetNumberField(TEXT("held_export_count"), Roles.Exports.Num());
+    R.Data->SetNumberField(TEXT("held_reference_count"), Roles.ReferencedHolds.Num());
+    R.Data->SetBoolField(TEXT("passed"), Issues.IsEmpty() && Current() && R.bChangeStateKnown);
+    if (!Issues.IsEmpty()) { Fail(R, TEXT("duplicate_source_dependency_rejected"), Issues[0]); return R; }
+    if (!Current() || !R.bChangeStateKnown) return R;
+    R.bSuccess = R.bPostconditionPassed = true; R.Stage = TEXT("complete"); return R;
+}
+
 Variable::FResult Inspect(const FString& BlueprintName)
 {
     FResult R;Init(R);R.Data->SetStringField(TEXT("operation"),TEXT("inspect_blueprint_networking_settings"));
@@ -1714,4 +1932,24 @@ Variable::FResult Set(const FString& BlueprintName,const FString& ReplicatesJson
     const TArray<FString> Carriers={ReplicatesJson,ReplicateMovementJson,NetDormancyJson,AlwaysRelevantJson,OnlyRelevantToOwnerJson,NetUpdateFrequencyJson,MinNetUpdateFrequencyJson,NetPriorityJson,NetCullDistanceSquaredJson};
     Finish(R,RunSet(Params,R,Carriers));return R;
 }
+Variable::FResult InspectRawInput(const FString& ParamsJson)
+{
+    FResult R;Init(R);R.Data->SetStringField(TEXT("operation"),TEXT("inspect_blueprint_networking_settings"));
+    if(!IsEditorGameThread()){Fail(R,TEXT("editor_game_thread_required"),TEXT("Editor game thread required"));return R;}
+    TSharedPtr<FJsonObject> Params;if(!RawInputObject(ParamsJson,Params,R))return R;
+    R.Data->SetBoolField(TEXT("raw_input_source_dispatched"),true);Finish(R,RunInspect(Params,R));return R;
+}
+Variable::FResult SetRawInput(const FString& ParamsJson)
+{
+    FResult R;Init(R);R.Data->SetStringField(TEXT("operation"),TEXT("set_blueprint_networking_settings"));
+    if(!IsEditorGameThread()){Fail(R,TEXT("editor_game_thread_required"),TEXT("Editor game thread required"));return R;}
+    TSharedPtr<FJsonObject> Params;if(!RawInputObject(ParamsJson,Params,R))return R;
+    // Observe a valid bool/default for the receipt only. Invalid supplied dry_run remains in Params
+    // and is rejected by RunSet only after original play/target/CDO/project admission.
+    if(!Params->HasField(TEXT("dry_run")))R.Data->SetBoolField(TEXT("dry_run"),true);
+    else if(Params->HasTypedField<EJson::Boolean>(TEXT("dry_run")))R.Data->SetBoolField(TEXT("dry_run"),Params->GetBoolField(TEXT("dry_run")));
+    TArray<FString> OmittedCarriers;OmittedCarriers.SetNum(9);R.Data->SetBoolField(TEXT("raw_input_source_dispatched"),true);
+    Finish(R,RunSet(Params,R,OmittedCarriers));return R;
+}
+
 }

@@ -11,4 +11,6 @@ public:
     static FString AddSlidersToWidget(const FString& WidgetName,const FString& SlidersJson);
     UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,ScriptName="bind_widget_event"))
     static FString BindWidgetEvent(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName);
+    UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,ScriptName="bind_widget_event_raw"))
+    static FString BindWidgetEventRaw(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName,const FString& NodePositionJson);
 };

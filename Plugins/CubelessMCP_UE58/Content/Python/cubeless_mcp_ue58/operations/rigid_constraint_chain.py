@@ -190,3 +190,63 @@ def ensure_blueprint_rigid_constraint_chain_action(result, blueprint_name, body_
         swing1_limit_degrees, swing2_limit_degrees, twist_limit_degrees, linear_damping, angular_damping,
         projection_linear_alpha, projection_angular_alpha, projection_linear_tolerance,
         projection_angular_tolerance, required_root, save, dry_run), checkpoint_callback)
+
+
+
+def _raw_batch_arguments(params):
+    """Original C++ command input; body JSON bypasses public Python float normalization."""
+    if type(params) is not dict:
+        raise OperationError('rigid_chain_raw_params_invalid','Original raw command requires an object')
+    _references(params,'params')
+    from ..compatibility.ue58.json_value import number_to_legacy_string,try_get_legacy_bool
+    def text(key,default):
+        value=params.get(key)
+        if type(value) is str:return value
+        if type(value) is bool:return 'true' if value else 'false'
+        if type(value) in (int,float):return number_to_legacy_string(value)
+        return default
+    def number(key,default):
+        value=params.get(key)
+        if type(value) is str:
+            # JsonValue.h451 -> FString::IsNumeric/String.cpp.inl1346 ->
+            # CString.h148: optional sign, at most one dot, no exponent/space.
+            if not value:return default
+            if not value.isascii() or '\x00' in value:
+                raise OperationError('rigid_chain_raw_numeric_string_pending','Platform Unicode/NUL numeric-string conversion remains unverified: '+key)
+            token=value[1:] if value[:1] in ('+','-') else value
+            if token.count('.')>1 or any(c not in '0123456789.' for c in token):return default
+            try:value=float(value)
+            except ValueError:value=0.0  # Atod sign/dot-only strings yield zero.
+        elif type(value) not in (bool,int,float):return default
+        try:value=float(value)
+        except (ValueError,OverflowError) as error:
+            raise OperationError('rigid_chain_raw_number_pending','Original finite double conversion is incomplete: '+key) from error
+        if not math.isfinite(value):
+            raise OperationError('rigid_chain_raw_number_invalid','Original setting must be finite: '+key)
+        return value
+    def flag(key):
+        read,value=try_get_legacy_bool(params.get(key))
+        return value if read else True
+    name=text('blueprint_name','')
+    _text(name,'blueprint_name')
+    try:bodies=json.dumps(params.get('body_components'),ensure_ascii=False,allow_nan=False,separators=(',',':'))
+    except (TypeError,ValueError,OverflowError,RecursionError) as error:
+        raise OperationError('rigid_chain_raw_body_json_invalid','Original body rows require finite JSON') from error
+    if len(bodies.encode('utf-16-le'))//2>_MAX_JSON_UNITS:
+        raise OperationError('rigid_chain_raw_body_json_bound','Original body JSON exceeds the existing Native bound')
+    return dict(blueprint_path=component._mutation_path(name),body_components_json=bodies,
+        root_component_name=text('root_component_name','SceneRoot'),constraint_prefix=text('constraint_prefix','PC'),
+        swing1_limit_degrees=number('swing1_limit_degrees',50.0),swing2_limit_degrees=number('swing2_limit_degrees',50.0),
+        twist_limit_degrees=number('twist_limit_degrees',10.0),linear_damping=number('linear_damping',0.05),
+        angular_damping=number('angular_damping',0.15),projection_linear_alpha=number('projection_linear_alpha',0.25),
+        projection_angular_alpha=number('projection_angular_alpha',0.08),projection_linear_tolerance=number('projection_linear_tolerance',5.0),
+        projection_angular_tolerance=number('projection_angular_tolerance',15.0),
+        required_root=text('required_root','/Game/Study/ChaosSkeletalMesh'),save=flag('save'),dry_run=flag('dry_run'))
+
+
+def _raw_batch_action(result,params,checkpoint_callback=None):
+    arguments=_raw_batch_arguments(params)
+    result['data'].update(legacy_original_command=IDENTITY,legacy_original_params=copy.deepcopy(params),
+        raw_body_rows_single_json_encoding=True,raw_body_defaults_and_types_Native_owned=True,
+        original_Native_load_error_order_and_full_raw_scope_complete=False)
+    return _run_action(result,arguments,checkpoint_callback)

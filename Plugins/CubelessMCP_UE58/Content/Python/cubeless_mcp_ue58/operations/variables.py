@@ -242,6 +242,34 @@ def add_blueprint_variable_action(result, blueprint_name, variable_name, variabl
         variable_guid, is_editable, is_transient), checkpoint_callback)
 
 
+def _add_blueprint_variable_raw_null_action(result, command, arguments, checkpoint_callback=None):
+    """Private original-Batch null presence, reusing public preparation/Native.
+
+    Public Any=None and Named JSON null keep their historical omission behavior.
+    This is not a public tool/schema flag or an alternate unguarded writer.
+    """
+    raw = command.get("legacy_original_params") if type(command) is dict else None
+    if (type(command) is not dict
+            or command.get("type") != "CubelessBlueprintTools.add_blueprint_variable"
+            or command.get("legacy_original_command") != "add_blueprint_variable"
+            or command.get("legacy_blueprint_raw_null_default") is not True
+            or type(raw) is not dict or "default_value" not in raw or raw["default_value"] is not None
+            or type(arguments) is not dict or type(command.get("params")) is not dict
+            or arguments != command["params"] or arguments.get("default_value_json") != "null"):
+        raise OperationError("variable_raw_null_context_invalid",
+            "Only the original normalized Add default_value=null row may use this private carrier; no Native dispatch")
+    prepared = _add_arguments(**arguments)
+    if prepared["default_value_json"] != "":
+        raise OperationError("variable_raw_null_context_invalid", "Public preparation did not retain its expected null-omission contract; no Native dispatch")
+    # Empty means omitted in existing Native Add. Literal JSON null instead
+    # invokes its existing reflected type checker: Boolean rejects, Object clears.
+    prepared["default_value_json"] = "null"
+    result["data"].update(legacy_raw_explicit_null_default=True,
+        public_named_null_default_contract_changed=False,
+        raw_null_carrier_scope="original normalized Batch Add only; existing Native typed-default validation")
+    _run_action(result, "add_blueprint_variable", prepared, checkpoint_callback)
+
+
 def set_blueprint_variable_default(blueprint_name, variable_name, default_value_json, compile=True, save=True, dry_run=False, operation_id=None):
     return _mutate_prepared("set_blueprint_variable_default", lambda: _set_arguments(blueprint_name, variable_name, default_value_json, compile, save, dry_run), operation_id)
 

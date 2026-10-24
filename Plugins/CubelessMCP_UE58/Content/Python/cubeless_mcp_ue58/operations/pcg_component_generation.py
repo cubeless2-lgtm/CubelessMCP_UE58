@@ -212,6 +212,33 @@ def _adopt(result,native,role):
     if native.get('compiled') is None or result['compile']['compiled'] is None:result['compile']['compiled']=None
     elif native.get('compiled') is True:result['compile']['compiled']=True
     for source,target in (('save_requested','requested'),('save_attempted','attempted'),('saved','saved')):result['save'][target]|=native.get(source) is True
+    if role=='bind':
+        # Actual compiler/save receipts are independent of final binding health.
+        # In particular, returned compiler error0 does not prove child reacquisition.
+        cp=native_data.get('actual_compile_prefix') if type(native_data) is dict else None
+        sp=native_data.get('actual_save_prefix') if type(native_data) is dict else None
+        cp=cp if type(cp) is dict else {};sp=sp if type(sp) is dict else {}
+        result['compile']['native_receipt']=copy.deepcopy(cp)
+        result['save']['native_receipt']=copy.deepcopy(sp)
+        result['compile']['native_returned']=cp.get('returned') if type(cp.get('returned')) is bool else None
+        result['compile']['postcompile_verification']='passed' if cp.get('postcompile_reacquire_passed') is True else 'failed' if native.get('success') is False and cp.get('returned') is True else 'not_proven'
+        legacy=native_data.get('legacy_result') if type(native_data) is dict else None
+        if type(legacy) is dict and 'compile_status' in legacy:
+            result['compile']['native_legacy_status']=copy.deepcopy(legacy['compile_status'])
+        if not result['compile']['requested']:compile_status='not_requested'
+        elif not result['compile']['attempted']:compile_status='not_attempted_prior_failure' if native.get('success') is False else 'not_attempted'
+        elif native.get('compiled') is True:compile_status='compiled_native_result'
+        elif native.get('compiled') is False:compile_status='returned_compile_failed' if cp.get('returned') is True else 'compile_failed'
+        elif cp.get('returned') is True:compile_status='returned_postcompile_verification_failed' if native.get('success') is False else 'returned_compile_outcome_unverified'
+        else:compile_status='attempted_compile_outcome_unverified'
+        result['compile']['status']=compile_status
+        if result['save']['saved']:
+            save_status='saved' if sp.get('SDK_save_success') is True and sp.get('dirty_after') is False else 'save_returned_true_postcondition_unverified'
+        elif result['save']['attempted']:
+            save_status='save_returned_false_or_postcondition_failed' if sp.get('SDK_save_returned') is True else 'attempted_save_outcome_unverified'
+        elif result['save']['requested']:save_status='not_attempted_prior_failure' if native.get('success') is False else 'not_attempted'
+        else:save_status='not_requested'
+        result['save']['status']=save_status
     _refresh_changes(result)
 
 
@@ -267,10 +294,58 @@ def _int_or_default(value,default):
     except (TypeError,ValueError):return default
 
 
+def _refresh_operation_receipt(data,source=None,previous=None,query_only=None):
+    # Copied JSON only. This feature-local receipt correlates the current refresh,
+    # independently of old bGenerated/session/output and the immutable source proof.
+    receipt=data.get('scoped_refresh_operation') if type(data) is dict else None
+    if type(receipt) is not dict:raise ValueError('Current refresh operation receipt is missing')
+    token=receipt.get('token');identity=receipt.get('component_identity')
+    if (type(token) is not str or len(token)!=32 or any(c not in '0123456789abcdefABCDEF' for c in token)
+            or type(identity) is not str or not identity or len(identity)>4096
+            or receipt.get('status') not in ('pending','succeeded','aborted','unknown')
+            or any(type(receipt.get(k)) is not bool for k in ('query_only','started_observed','generated_event_observed','cancelled_or_aborted_event_observed','refresh_task_id_available'))
+            or type(receipt.get('refresh_task_id')) is not str or receipt['refresh_task_id']!=''
+            or receipt['refresh_task_id_available'] is not False
+            or type(receipt.get('generation_task_id')) is not str or len(receipt['generation_task_id'])>128):
+        raise ValueError('Typed current refresh token/identity/task/event observation required')
+    if query_only is not None and receipt['query_only'] is not query_only:
+        raise ValueError('Refresh operation query role differs from the actual dispatch role')
+    if source is not None:
+        roles=source.get('objects') if type(source) is dict else None
+        components=[r for r in roles if type(r) is dict and r.get('role')=='component'] if type(roles) is list else []
+        if len(components)!=1 or components[0].get('identity')!=identity:
+            raise ValueError('Refresh operation component differs from the captured source identity')
+    if previous is not None:
+        if token!=previous['token'] or identity!=previous['component_identity']:
+            raise ValueError('Refresh operation token or component identity changed')
+        if previous['generation_task_id'] and receipt['generation_task_id']!=previous['generation_task_id']:
+            raise ValueError('Refresh generation task identity changed')
+        for key in ('started_observed','generated_event_observed','cancelled_or_aborted_event_observed'):
+            if previous[key] and not receipt[key]:raise ValueError('Refresh event observation was lost')
+        if previous['status'] in ('succeeded','aborted') and receipt['status']!=previous['status']:
+            raise ValueError('Terminal refresh observation changed')
+    if receipt['started_observed'] and not receipt['generation_task_id']:
+        raise ValueError('Started refresh lacks the observed public generation task ID')
+    if receipt['status']=='succeeded' and (receipt['started_observed'] is not True
+            or receipt['generated_event_observed'] is not True or receipt['cancelled_or_aborted_event_observed'] is not False):
+        raise ValueError('Refresh success lacks this operation generated event')
+    if receipt['status']=='aborted' and receipt['cancelled_or_aborted_event_observed'] is not True:
+        raise ValueError('Refresh terminal failure lacks its cancellation/abort event')
+    if receipt['status']=='pending' and (receipt['generated_event_observed'] or receipt['cancelled_or_aborted_event_observed']):
+        raise ValueError('Pending refresh has contradictory terminal events')
+    if receipt['status']=='unknown':raise ValueError('Current refresh completion observation is unknown; no cancellation is inferred')
+    return copy.deepcopy(receipt)
+
+
 def _native_refresh_result_ready(result):
     response=result.get('native_response')
     data=response.get('data') if type(response) is dict else None
-    if type(data) is dict and (data.get('scoped_generate_only') is True or data.get('scoped_immediate_cleanup_only') is True or data.get('scoped_cleanup_generate') is True) and result.get('wait_completed') is not True:return False
+    if type(data) is dict and (data.get('scoped_generate_only') is True or data.get('scoped_immediate_cleanup_only') is True or data.get('scoped_cleanup_generate') is True or data.get('scoped_refresh_only') is True) and result.get('wait_completed') is not True:return False
+    if type(data) is dict and data.get('scoped_refresh_only') is True:
+        try:receipt=_refresh_operation_receipt(data,data.get('scoped_generate_source'))
+        except (ValueError,KeyError,TypeError):return False
+        if receipt['status']!='succeeded':return False
+    scoped_generation=type(data) is dict and any(data.get(key) is True for key in ('scoped_generate_only','scoped_cleanup_generate','scoped_refresh_only'))
     components=result.get('components',[])
     if not isinstance(components,list):return bool(result.get('wait_completed',False))
     if not components:return _int_or_default(result.get('component_count'),0)==0
@@ -278,6 +353,9 @@ def _native_refresh_result_ready(result):
     min_resources=_int_or_default(result.get('min_managed_resource_count'),-1)
     for component in components:
         if not isinstance(component,dict):return False
+        # A serialized output/bGenerated from a previous Editor session is not
+        # completion of this request. Native also requires this session's post-generate.
+        if scoped_generation and (component.get('generated') is not True or component.get('was_generated_this_session') is not True):return False
         if component.get('generating') or component.get('cleaning_up') or component.get('refresh_in_progress'):return False
         if min_output>=0 and _int_or_default(component.get('generated_output_data_count'),0)<min_output:return False
         if min_resources>=0 and _int_or_default(component.get('managed_resource_count'),0)<min_resources:return False
@@ -395,6 +473,8 @@ class _PythonContext:
         try:
             response=leaf.get('native_response') if type(leaf) is dict else None
             data=response.get('data') if type(response) is dict else None
+            if not cleanup and not composite and type(data) is dict and data.get('scoped_refresh_only') is True:
+                marker='scoped_refresh_only'
             if type(data) is not dict or marker not in data or data[marker] is False:
                 if phase=='initial':return None
                 raise ValueError('Query lost the initial scoped '+scope+' receipt')
@@ -402,7 +482,7 @@ class _PythonContext:
             source=data.get(source_key)
             if type(source) is not dict or set(source)!={'profile','objects','source_authored','source_files'}:
                 raise ValueError('Exact scoped stable source object required')
-            if source['profile'] not in ('owned_editor_cpu_createpoints_v1','owned_editor_cpu_weighted_ism_v1'):raise ValueError('Unknown scoped source profile')
+            if source['profile'] not in ('owned_editor_cpu_createpoints_v1','owned_editor_cpu_weighted_ism_v1','owned_editor_cpu_createpoints_refresh_v1','owned_editor_cpu_point_pipeline_v1','owned_editor_cpu_point_pipeline_refresh_v1'):raise ValueError('Unknown scoped source profile')
             objects=source['objects'];files=source['source_files']
             if type(objects) is not list or not objects or type(source['source_authored']) is not dict or not source['source_authored']:
                 raise ValueError('Observed object roles and authored source are required')
@@ -418,7 +498,70 @@ class _PythonContext:
                         or type(row.get('sha1')) is not str or len(row['sha1'])!=40
                         or any(char not in '0123456789abcdefABCDEF' for char in row['sha1'])):
                     raise ValueError('Typed current source file receipt required')
+            if len(files)==1:
+                # AEE's native Volume has no source Blueprint or mesh file to fabricate.
+                # Only this exact captured host/ownership proof admits one actual graph file.
+                volume=source['source_authored'].get('native_volume_host')
+                roles={row['role']:row for row in objects}
+                expected={'actor':'/Script/PCG.PCGVolume','component':'/Script/PCG.PCGComponent',
+                    'volume_root':'/Script/Engine.BrushComponent','volume_model':'/Script/Engine.Model',
+                    'volume_polys':'/Script/Engine.Polys','source_graph':'/Script/PCG.PCGGraph'}
+                if (source['profile']=='owned_editor_cpu_weighted_ism_v1' or type(volume) is not dict
+                        or volume.get('kind')!='native_pcg_volume' or len(roles)!=len(objects)
+                        or any(roles.get(role,{}).get('class_path')!=cls for role,cls in expected.items())
+                        or roles['component']['outer_path']!=roles['actor']['path']
+                        or roles['volume_root']['outer_path']!=roles['actor']['path']
+                        or roles['volume_model']['outer_path']!=roles['actor']['path']
+                        or roles['volume_polys']['outer_path']!=roles['volume_model']['path']
+                        or volume.get('model')!=roles['volume_model']['identity']
+                        or volume.get('polys')!=roles['volume_polys']['identity']):
+                    raise ValueError('Single source file requires the exact captured native PCGVolume/Brush/Model/Polys ownership proof')
+                graph_package=roles['source_graph']['package_path']
+                if (not graph_package.startswith('/Game/') or not files[0]['path'].replace('\\','/').casefold().endswith('/'+graph_package[6:].casefold()+'.uasset')):
+                    raise ValueError('Single Volume source file must identify the actual saved /Game graph')
             encoded=json.dumps(source,ensure_ascii=False,sort_keys=True,allow_nan=False,separators=(',',':'))
+            def captured_history(state):
+                # Immutable copied pre-call observation, never a reconstructed baseline.
+                fresh=data.get('scoped_cleanup_started_never_generated')
+                if (type(fresh) is not bool or type(state) is not dict
+                        or type(state.get('generated')) is not bool or type(state.get('was_generated_this_session')) is not bool):
+                    raise ValueError('Typed captured generation origin and actual session history required')
+                history=state['was_generated_this_session']
+                if fresh:
+                    if state['generated'] is not False or history is not False:
+                        raise ValueError('Never-generated origin requires generated/session false')
+                    origin='never_generated_empty'
+                else:
+                    if state['generated'] is not True:raise ValueError('Existing generated origin requires generated true')
+                    origin='generated_this_session' if history else 'existing_generated_no_session_history'
+                if data.get('scoped_cleanup_origin')!=origin:
+                    raise ValueError('Captured generation origin does not match actual pre-call history')
+                return history
+            if not cleanup and leaf.get('wait_completed') is True:
+                rows=leaf.get('components')
+                if (type(rows) is not list or not rows or any(type(row) is not dict
+                        or row.get('generated') is not True or row.get('was_generated_this_session') is not True for row in rows)):
+                    raise ValueError('Scoped generation completion requires actual current generated/session true, not cached output')
+            if source['profile'] in ('owned_editor_cpu_createpoints_refresh_v1','owned_editor_cpu_point_pipeline_refresh_v1'):
+                if cleanup or composite or marker!='scoped_refresh_only':raise ValueError('Refresh source requires its exact single-operation marker')
+                receipt=_refresh_operation_receipt(data,source,
+                    getattr(self,'scoped_refresh_operation',None) if phase=='poll' else None,phase=='poll')
+                if phase=='initial' and receipt['status']!='pending':
+                    raise ValueError('Initial refresh must preserve its actual pending observation')
+                if leaf.get('wait_completed') is True and receipt['status']!='succeeded':
+                    raise ValueError('Old generated/output cannot prove completion of this refresh')
+                if phase=='initial':
+                    captured_history(data.get('scoped_refresh_before'))
+                    if (data.get('scoped_cleanup_started_never_generated') is not False
+                            or data.get('scoped_refresh_dispatch_returned') is not True
+                            or data.get('scoped_refresh_task_pending_observed') is not True
+                            or leaf.get('wait_completed') is not False):
+                        raise ValueError('Actual one-shot refresh dispatch and pending task observation required')
+                elif (data.get('scoped_refresh_query_only') is not True
+                        or getattr(self,'scoped_refresh_pending_observed',None) is not True
+                        or type(getattr(self,'scoped_refresh_initial_session_history',None)) is not bool
+                        or data.get('scoped_refresh_completed') is not (leaf.get('wait_completed') is True)):
+                    raise ValueError('Refresh continuation requires original pending receipt and actual query-only completion')
             if composite:
                 before=data.get('scoped_cleanup_generate_source_before')
                 if (type(before) is not dict or json.dumps(before,ensure_ascii=False,sort_keys=True,allow_nan=False,separators=(',',':'))!=encoded
@@ -430,13 +573,41 @@ class _PythonContext:
                     raise ValueError('Typed generation completion observation required')
                 if phase=='initial':
                     dispatch=data.get('scoped_cleanup_dispatch');generation=data.get('scoped_generate_dispatch')
+                    after=data.get('scoped_cleanup_after')
+                    expected_force=self.result['data'].get('effective_generation_force')
+                    state_before=data.get('scoped_cleanup_before')
+                    fresh=data.get('scoped_cleanup_started_never_generated')
+                    expected_session=captured_history(state_before)
+                    if fresh:
+                        if (source['profile'] not in ('owned_editor_cpu_createpoints_v1','owned_editor_cpu_weighted_ism_v1','owned_editor_cpu_point_pipeline_v1')
+                                or any(state_before.get(key) is not False for key in ('generated','was_generated_this_session','generating','cleaning_up','refresh_in_progress'))
+                                or state_before.get('managed_resources_accessible') is not True
+                                or type(state_before.get('managed_resource_count')) is not int or state_before['managed_resource_count']!=0
+                                or type(state_before.get('generated_output_data_count')) is not int or state_before['generated_output_data_count']!=0):
+                            raise ValueError('Never-generated cleanup requires exact empty idle bounded CPU pre-state')
+                        if source['profile']=='owned_editor_cpu_weighted_ism_v1':
+                            survivors=source['source_authored'].get('surviving_owner_components')
+                            if (any(type(state_before.get(key)) is not int or state_before[key]!=0 for key in ('captured_managed_row_count','captured_generated_component_count','captured_held_managed_count'))
+                                    or state_before.get('managed_resource_details')!=[]
+                                    or type(survivors) is not list or not survivors
+                                    or any(type(row) is not dict or type(row.get('identity')) is not str or not row['identity'] for row in survivors)
+                                    or type(state_before.get('captured_survivor_component_count')) is not int
+                                    or state_before['captured_survivor_component_count']!=len(survivors)):
+                                raise ValueError('Fresh Weighted cleanup requires empty captured selected resources and the complete original survivor inventory')
                     if (data.get('scoped_cleanup_generate_query_only') is not False or data.get('PCG_cleanup_completed') is not True
                             or leaf.get('wait_completed') is not False or data['PCG_generation_completed'] is not False
                             or type(dispatch) is not dict or dispatch.get('remove_components') is not True
                             or any(dispatch.get(key) is not True for key in ('entered','returned','completion_proven'))
                             or type(generation) is not dict
                             or any(generation.get(key) is not True for key in ('entered','returned','task_accepted'))
-                            or generation.get('requested_force') is not False or generation.get('completion_proven') is not False):
+                            or type(expected_force) is not bool or generation.get('requested_force') is not expected_force
+                            or generation.get('completion_proven') is not False
+                            or type(after) is not dict
+                            or any(after.get(key) is not False for key in ('generated','generating','cleaning_up','refresh_in_progress'))
+                            or after.get('managed_resources_accessible') is not True
+                            or after.get('was_generated_this_session') is not expected_session
+                            or type(after.get('managed_resource_count')) is not int or after['managed_resource_count']!=0
+                            or type(after.get('generated_output_data_count')) is not int or after['generated_output_data_count']!=0):
                         raise ValueError('Actual cleanup completion and separate accepted generation dispatch required')
                 elif (data.get('scoped_cleanup_generate_query_only') is not True or data.get('PCG_cleanup_completed') is not False
                         or data['PCG_generation_completed'] is not (leaf.get('wait_completed') is True)):
@@ -450,13 +621,24 @@ class _PythonContext:
                     raise ValueError('Cleanup completion must be separate from generation completion')
                 if phase=='initial':
                     dispatch=data.get('scoped_cleanup_dispatch')
-                    if (data.get('PCG_cleanup_completed') is not True or type(dispatch) is not dict
+                    expected_session=captured_history(data.get('scoped_cleanup_before'))
+                    after=data.get('scoped_cleanup_after')
+                    if (data.get('scoped_cleanup_started_never_generated') is not False
+                            or data.get('PCG_cleanup_completed') is not True or type(dispatch) is not dict
                             or type(dispatch.get('remove_components')) is not bool
-                            or any(dispatch.get(key) is not True for key in ('entered','returned','completion_proven'))):
-                        raise ValueError('Actual synchronous cleanup dispatch receipt required')
-                elif (data.get('scoped_cleanup_query_only') is not True or data.get('PCG_cleanup_completed') is not False
-                        or type(data.get('scoped_cleanup_state_ready')) is not bool):
-                    raise ValueError('Cleanup wait must remain a query-only state observation')
+                            or any(dispatch.get(key) is not True for key in ('entered','returned','completion_proven'))
+                            or type(after) is not dict or after.get('was_generated_this_session') is not expected_session
+                            or after.get('generated') is not (not dispatch['remove_components'])
+                            or any(after.get(key) is not False for key in ('generating','cleaning_up','refresh_in_progress'))):
+                        raise ValueError('Actual synchronous cleanup dispatch and preserved captured history required')
+                else:
+                    history=getattr(self,'scoped_cleanup_session_history',None)
+                    after=data.get('scoped_cleanup_after')
+                    if (data.get('scoped_cleanup_query_only') is not True or data.get('PCG_cleanup_completed') is not False
+                            or type(data.get('scoped_cleanup_state_ready')) is not bool or type(history) is not bool
+                            or data.get('scoped_cleanup_expected_session_history') is not history
+                            or type(after) is not dict or after.get('was_generated_this_session') is not history):
+                        raise ValueError('Cleanup wait must remain query-only with the original captured session history')
             if phase=='poll' and encoded!=getattr(self,attribute+'_json'):
                 code='pcg_wait_scoped_source_changed'
                 raise ValueError('Query stable source differs from the initial Native receipt')
@@ -474,10 +656,16 @@ class _PythonContext:
         proof=self._scoped_source_observation(leaf,'initial')
         self.scoped_generate_source=copy.deepcopy(proof[0]) if proof is not None else None
         self.scoped_generate_source_json=proof[1] if proof is not None else None
+        initial_data=leaf.get('native_response',{}).get('data',{})
+        refresh_source=proof is not None and proof[0]['profile'] in ('owned_editor_cpu_createpoints_refresh_v1','owned_editor_cpu_point_pipeline_refresh_v1')
+        self.scoped_refresh_pending_observed=initial_data.get('scoped_refresh_task_pending_observed') if refresh_source else None
+        self.scoped_refresh_initial_session_history=initial_data['scoped_refresh_before']['was_generated_this_session'] if refresh_source else None
+        self.scoped_refresh_operation=_refresh_operation_receipt(initial_data,proof[0],query_only=False) if refresh_source else None
         cleanup=self._scoped_source_observation(leaf,'initial',cleanup=True)
         self.scoped_cleanup_source=copy.deepcopy(cleanup[0]) if cleanup is not None else None
         self.scoped_cleanup_source_json=cleanup[1] if cleanup is not None else None
         self.scoped_cleanup_remove_components=leaf['native_response']['data']['scoped_cleanup_dispatch']['remove_components'] if cleanup is not None else None
+        self.scoped_cleanup_session_history=initial_data['scoped_cleanup_before']['was_generated_this_session'] if cleanup is not None else None
         composite=self._scoped_source_observation(leaf,'initial',composite=True)
         self.scoped_cleanup_generate_source=copy.deepcopy(composite[0]) if composite is not None else None
         self.scoped_cleanup_generate_source_json=composite[1] if composite is not None else None
@@ -597,6 +785,8 @@ def _start(result,method,args,original,legacy,callback=None,deferred=False):
     _ACTIVE_REQUEST=True
     try:
         _context(result,method,args,original,legacy);_initialize(result)
+        if method=='refresh_pcg_components' and legacy is None:
+            result['data']['effective_generation_force']=args['values']['force']
         result['stage']='before_pcg_component_generation_checkpoint';_checkpoint(result,callback)
         if method=='bind_pcg_generation_settings_to_blueprint':
             native=_native(result,method,args['params'],'bind',callback)
@@ -651,16 +841,19 @@ def _poll(result,descriptor,callback=None):
     try:
         context=descriptor['context'];context.admit()
         params=copy.deepcopy(descriptor['params'])
-        params.update(cleanup=False,generate=False,refresh=False,force=False,wait_until_complete=True)
+        params.update(cleanup=False,generate=False,refresh=False,force=False,notify_properties_changed=False,wait_until_complete=True)
         scoped=getattr(context,'scoped_generate_source',None) is not None
         cleanup_scoped=getattr(context,'scoped_cleanup_source',None) is not None
         composite_scoped=getattr(context,'scoped_cleanup_generate_source',None) is not None
         if scoped:
             params['_scoped_generate_expectation']=copy.deepcopy(context.scoped_generate_source)
             params['notify_properties_changed']=False
+            if getattr(context,'scoped_refresh_operation',None) is not None:
+                params['_scoped_refresh_operation']=context.scoped_refresh_operation['token']
         if cleanup_scoped:
             params['_scoped_cleanup_expectation']=copy.deepcopy(context.scoped_cleanup_source)
             params['_scoped_cleanup_remove_components']=context.scoped_cleanup_remove_components
+            params['_scoped_cleanup_session_history']=context.scoped_cleanup_session_history
             params['notify_properties_changed']=False
         if composite_scoped:
             params['_scoped_cleanup_generate_expectation']=copy.deepcopy(context.scoped_cleanup_generate_source)
@@ -669,7 +862,14 @@ def _poll(result,descriptor,callback=None):
             native=_native(result,'refresh_pcg_components',params,'poll',callback)
             leaf=_with_marker(native)
             context.verify_observation(leaf)
-        except Exception:
+            if getattr(context,'scoped_refresh_operation',None) is not None:
+                context.scoped_refresh_operation=_refresh_operation_receipt(native['data'],context.scoped_generate_source,context.scoped_refresh_operation,True)
+        except Exception as error:
+            # A verified Native terminal cancellation/abort is a failed operation,
+            # not a lost lease. Validate only copied receipts; do not observe Engine
+            # again after this terminal error, retry the writer or cancel any task.
+            native=getattr(error,'native_decoded_result',None)
+            if _verified_refresh_terminal_failure(result,context,native,error):raise
             if scoped or cleanup_scoped or composite_scoped:
                 context.lost=True
                 result['data'].update(change_state_known=False,Python_context_lost=True,projection_skipped_unsafe=True)
@@ -679,6 +879,41 @@ def _poll(result,descriptor,callback=None):
         result['data']['last_wait_native_result']=leaf
         return leaf
     finally:_ACTIVE_REQUEST=False
+
+
+def _verified_refresh_terminal_failure(result,context,native,error):
+    if getattr(context,'scoped_refresh_operation',None) is None or type(native) is not dict:return False
+    data=native.get('data')
+    if (native.get('error_code')!='pcg_scoped_refresh_aborted' or native.get('success') is not False
+            or native.get('change_state_known') is not True or type(native.get('changed')) is not bool
+            or native.get('operation_complete') is False or type(data) is not dict or data.get('operation_complete') is not True
+            or data.get('scoped_refresh_only') is not True
+            or data.get('scoped_refresh_terminal_observation_verified') is not True
+            or data.get('typed_target_postcondition_passed') is not True
+            or any(native.get(k) is not False for k in ('compile_requested','compile_attempted','compiled','save_requested','save_attempted','saved'))):return False
+    try:
+        receipt=_refresh_operation_receipt(data,context.scoped_generate_source,context.scoped_refresh_operation,True)
+        if receipt['status']!='aborted':return False
+        # The Native error retains its original legacy error object. A copied
+        # observation leaf is used solely for the existing pure source/target seal.
+        leaf=_with_marker(native)
+        rows=data.get('after')
+        if (type(rows) is not list or not rows or any(type(row) is not dict
+                or any(row.get(k) is not False for k in ('generating','cleaning_up','refresh_in_progress')) for row in rows)):
+            raise ValueError('Terminal refresh requires actual idle Native after rows')
+        leaf.update(components=copy.deepcopy(rows),component_count=len(rows),wait_completed=False)
+        context._scoped_source_observation(leaf,'poll')
+        if tuple(row.get('component_path') for row in rows if type(row) is dict)!=context.component_paths:
+            raise ValueError('Terminal refresh component set differs from the initial target')
+        if context.lost or result['data'].get('change_state_known') is not True:return False
+        context.scoped_refresh_operation=receipt
+        result['data'].update(last_wait_native_result=leaf,scoped_refresh_terminal_failure_verified=True,
+            scoped_refresh_terminal_status='aborted_or_cancelled',PCG_generation_may_still_be_in_flight=False)
+        error.pcg_refresh_terminal_failure=True
+        return True
+    except Exception as validation_error:
+        result['data']['scoped_refresh_terminal_validation_error']=str(validation_error)[:700]
+        return False
 
 
 def _wait_failure(result,descriptor,error):
@@ -693,6 +928,11 @@ def _wait_failure(result,descriptor,error):
     leaf=dict(success=False,status='error',error='Native PCG completion poll failed',message='Native PCG completion poll failed',
         error_code='native_pcg_completion_poll_failed',native_command_used=True,native_command='refresh_pcg_components',
         initial_native_response=initial.get('native_response'),failed_stage='poll_pcg_completion',failed_stage_effect='read',read_unreal_response=response)
+    if getattr(error,'pcg_refresh_terminal_failure',False) is True:
+        leaf.update(error_code='pcg_scoped_refresh_aborted',error='This refresh was aborted or cancelled',
+            message='This refresh was aborted or cancelled; the cause is not distinguished by the Engine event',
+            terminal_observation_verified=True,terminal_status='aborted_or_cancelled',
+            pcg_generation_may_still_be_in_flight=False,do_not_retry=True)
     if completed:leaf.update(partial_mutation=True,mutation_performed=True,do_not_retry=True,completed_mutation_count=len(completed),completed_mutation_stages=completed)
     else:leaf.update(mutation_attempted=False,mutation_performed=False,changed=False)
     if result['data'].get('change_state_known') is not True:leaf.update(read_command_outcome_unknown=True,workflow_recovery_required=True,do_not_retry=True)

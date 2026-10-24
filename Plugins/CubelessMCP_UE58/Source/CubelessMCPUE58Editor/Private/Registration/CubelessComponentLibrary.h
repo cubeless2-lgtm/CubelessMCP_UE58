@@ -34,4 +34,11 @@ public:
     UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore))
     static FString SetStaticMeshProperties(const FString& BlueprintPath, const FString& ComponentName,
         const FString& StaticMeshPath, const FString& MaterialPath);
+    // Internal Editor Python connection only; no new official Toolset schema.
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore, ScriptName="set_static_mesh_properties_raw"))
+    static FString SetStaticMeshPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& AssetsJson);
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore, ScriptName="set_physics_properties_raw"))
+    static FString SetPhysicsPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertiesJson);
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Component", meta=(AIIgnore, ScriptName="add_component_to_blueprint_raw"))
+    static FString AddComponentToBlueprintRaw(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName, const FString& TransformJson, const FString& ParentComponent);
 };

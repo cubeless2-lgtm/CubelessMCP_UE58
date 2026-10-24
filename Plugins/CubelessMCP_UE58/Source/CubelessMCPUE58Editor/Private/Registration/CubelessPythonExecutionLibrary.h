@@ -16,4 +16,10 @@ public:
         bool bDeferToTicker = false, bool bAllowUnsafeEditorScriptingDuringPIE = false,
         const FString& InterchangePolicy = TEXT("auto"), const FString& TransactionPolicy = TEXT("command"),
         bool bAllowUnsafePCGSelectorPython = false);
+
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Editor|Internal", meta=(AIIgnore))
+    static FString BeginBatchTransaction(const FString& OperationId);
+
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Editor|Internal", meta=(AIIgnore))
+    static FString ObserveBatchTransaction(const FString& ScopeId, const FString& Action);
 };

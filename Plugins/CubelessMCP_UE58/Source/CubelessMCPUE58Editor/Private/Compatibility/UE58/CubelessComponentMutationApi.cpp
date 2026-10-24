@@ -10,6 +10,8 @@
 #include "PCGComponent.h"
 #include "PCGGraph.h"
 #include "Compatibility/UE58/CubelessPCGApi.h"
+#include "Compatibility/UE58/CubelessPCGComponentGenerationApi.h"
+#include "StructUtils/PropertyBag.h"
 #include "PCGNode.h"
 #include "PCGSettings.h"
 #include "PCGPin.h"
@@ -33,6 +35,8 @@
 #include "Components/SpotLightComponent.h"
 #include "Components/RectLightComponent.h"
 #include "Editor.h"
+#include "EditorAssetLibrary.h"
+#include "HAL/PlatformTime.h"
 #include "Engine/World.h"
 #include "Engine/TextureLightProfile.h"
 #include "HAL/FileManager.h"
@@ -41,9 +45,17 @@
 #include "Misc/SecureHash.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimBlueprint.h"
+#include "Animation/AnimBlueprintGeneratedClass.h"
+#include "Animation/AnimNodeBase.h"
+#include "Animation/Skeleton.h"
 #include "Components/SphereComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/WidgetComponent.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SCS_Node.h"
@@ -51,6 +63,11 @@
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/MovementComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/RotatingMovementComponent.h"
+#include "GameFramework/FloatingPawnMovement.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Materials/Material.h"
@@ -125,10 +142,14 @@ bool ParseValue(const FString& Json, TSharedPtr<FJsonValue>& Value, FMutationRes
 }
 bool NiagaraComponentName(const FString& Name)
 { return Name == TEXT("NiagaraComponent") || Name == TEXT("UNiagaraComponent") || Name == TEXT("Niagara") || Name == TEXT("/Script/Niagara.NiagaraComponent"); }
+bool NativeMovementClass(const UClass* C)
+{return C==UCharacterMovementComponent::StaticClass()||C==UProjectileMovementComponent::StaticClass()||C==URotatingMovementComponent::StaticClass()||C==UFloatingPawnMovement::StaticClass();}
+bool NativeMovementName(const FString& Name)
+{for(UClass* C:{UCharacterMovementComponent::StaticClass(),UProjectileMovementComponent::StaticClass(),URotatingMovementComponent::StaticClass(),UFloatingPawnMovement::StaticClass()})if(Name==C->GetName()||Name==TEXT("U")+C->GetName()||Name==C->GetPathName()||Name+TEXT("Component")==C->GetName())return true;return false;}
 UClass* SupportedClass(const FString& Name)
 {
     if (NiagaraComponentName(Name)) { return FindObject<UClass>(nullptr, TEXT("/Script/Niagara.NiagaraComponent")); }
-    UClass* Classes[] = {USceneComponent::StaticClass(), UStaticMeshComponent::StaticClass(), UCameraComponent::StaticClass(), USpringArmComponent::StaticClass(), USphereComponent::StaticClass(), UBoxComponent::StaticClass(), UCapsuleComponent::StaticClass(), USplineComponent::StaticClass(), UInstancedStaticMeshComponent::StaticClass(), UHierarchicalInstancedStaticMeshComponent::StaticClass(), USkeletalMeshComponent::StaticClass(), UPointLightComponent::StaticClass(), USpotLightComponent::StaticClass(), URectLightComponent::StaticClass(), UDirectionalLightComponent::StaticClass()};
+    UClass* Classes[] = {USceneComponent::StaticClass(), UWidgetComponent::StaticClass(), UCharacterMovementComponent::StaticClass(), UProjectileMovementComponent::StaticClass(), URotatingMovementComponent::StaticClass(), UFloatingPawnMovement::StaticClass(), UStaticMeshComponent::StaticClass(), UCameraComponent::StaticClass(), USpringArmComponent::StaticClass(), USphereComponent::StaticClass(), UBoxComponent::StaticClass(), UCapsuleComponent::StaticClass(), USplineComponent::StaticClass(), UInstancedStaticMeshComponent::StaticClass(), UHierarchicalInstancedStaticMeshComponent::StaticClass(), USkeletalMeshComponent::StaticClass(), UPointLightComponent::StaticClass(), USpotLightComponent::StaticClass(), URectLightComponent::StaticClass(), UDirectionalLightComponent::StaticClass()};
     for (UClass* Class : Classes)
     { if (Name == Class->GetName() || Name == TEXT("U") + Class->GetName() || Name == Class->GetPathName() || Name + TEXT("Component") == Class->GetName()) { return Class; } }
     return nullptr;
@@ -221,6 +242,80 @@ TSharedRef<FJsonObject> NativeSkeletalSourceObservation(const UClass* Class)
         && IsValid(CDO) && CDO->GetClass() == Class && CDO->GetOuter() == Class->GetOuter() && CDO->HasAnyFlags(RF_ClassDefaultObject) && !CDO->HasAnyFlags(RF_NeedLoad | RF_NeedPostLoad | RF_NeedPostLoadSubobjects));
     return State;
 }
+// The original raw Skeletal Add needs only actual native constructor defaults.
+// This first source-lifecycle admission observes an empty authored reference
+// profile rather than assuming all Skeletal CDOs are empty. Private animation,
+// pose/render/cloth cache identities are deliberately not equality invariants.
+bool RawSkeletalAuthoredEmpty(UActorComponent* Object,FString& Key,FString& Actual)
+{
+    if(!IsValid(Object)||Object->GetClass()!=USkeletalMeshComponent::StaticClass())
+    {Key=TEXT("native_skeletal_object");Actual=TEXT("unavailable or different native class");return false;}
+    for(const TCHAR* Name:{TEXT("SkinnedAsset"),TEXT("SkeletalMesh"),TEXT("AnimClass"),TEXT("PhysicsAssetOverride")})
+    {
+        auto* Field=FindFProperty<FObjectPropertyBase>(USkeletalMeshComponent::StaticClass(),Name);
+        if(!Field||Field->ArrayDim!=1||Field->GetSize()!=static_cast<int32>(sizeof(TObjectPtr<UObject>)))
+        {Key=Name;Actual=TEXT("native hard-reference descriptor unavailable");return false;}
+        const auto Value=Field->GetObjectPtrPropertyValue(Field->ContainerPtrToValuePtr<void>(Object));
+        if(!Value.IsResolved()||Value!=nullptr)
+        {Key=Name;Actual=Value.IsResolved()?FString::Printf(TEXT("nonempty pointer %p"),Value.Get()):TEXT("unresolved reference; no resolver requested");return false;}
+    }
+    return true;
+}
+TSharedRef<FJsonObject> NativeWidgetSourceObservation()
+{
+    UClass* Class=UWidgetComponent::StaticClass();const TStrongObjectPtr<UClass> HoldClass(Class);
+    auto J=MakeShared<FJsonObject>();const UPackage* Package=Class->GetPackage();const TStrongObjectPtr<UPackage> HoldPackage(const_cast<UPackage*>(Package));
+    const TStrongObjectPtr<UWidgetComponent> CDO(Cast<UWidgetComponent>(Class->GetDefaultObject(false)));
+    J->SetStringField(TEXT("class"),Class->GetPathName());J->SetStringField(TEXT("package"),Package->GetName());J->SetStringField(TEXT("super"),Class->GetSuperClass()?Class->GetSuperClass()->GetPathName():FString());
+    J->SetNumberField(TEXT("class_flags"),uint32(Class->GetClassFlags()));J->SetNumberField(TEXT("package_flags"),uint32(Package->GetPackageFlags()));J->SetBoolField(TEXT("package_dirty"),Package->IsDirty());
+    const bool Ready=CDO.IsValid()&&CDO->GetClass()==Class&&CDO->GetOuter()==Class->GetOuter()&&CDO->HasAnyFlags(RF_ClassDefaultObject)&&!CDO->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects);
+    J->SetBoolField(TEXT("existing_cdo_available"),Ready);J->SetBoolField(TEXT("cdo_creation_requested"),false);J->SetStringField(TEXT("cdo_path"),Ready?CDO->GetPathName():FString());
+    bool EmptyClass=false;if(Ready){auto C=CDO->GetWidgetClass();EmptyClass=C.GetGCPtr().IsResolved()&&C.GetGCPtr()==nullptr;J->SetBoolField(TEXT("native_default_widget_class_empty"),EmptyClass);J->SetNumberField(TEXT("native_space"),int32(CDO->GetWidgetSpace()));const FVector2D Size=CDO->GetDrawSize();J->SetStringField(TEXT("native_draw_size"),Size.ToString());}
+    J->SetBoolField(TEXT("native_identity_verified"),Ready&&EmptyClass&&Class->GetPathName()==TEXT("/Script/UMG.WidgetComponent")&&Class->GetSuperClass()==UMeshComponent::StaticClass()&&Class->HasAnyClassFlags(CLASS_Native)&&!Class->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)&&!Class->ClassGeneratedBy&&Package->GetName()==TEXT("/Script/UMG")&&!Package->IsDirty()&&!Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly));
+    J->SetStringField(TEXT("cache_scope"),TEXT("Slate/Widget/RenderTarget/material caches are not equality invariants; source class/CDO role and named authored defaults only."));return J;
+}
+
+// ZI: native movement classes use the existing local-SCS writer. Runtime
+// registration, movement, homing/updated references and preview simulation are not dispatched.
+bool MovementTemplateInactive(UMovementComponent* M)
+{
+    if(!IsValid(M)||M->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed)||M->GetOwner()||M->GetWorld()||M->IsRegistered()||M->IsPhysicsStateCreated()||M->HasBegunPlay()||!M->IsTemplate()||!M->UpdatedComponent.IsResolved()||M->UpdatedComponent!=nullptr||!M->UpdatedPrimitive.IsResolved()||M->UpdatedPrimitive!=nullptr)return false;
+    if(auto* Projectile=Cast<UProjectileMovementComponent>(M))if(!Projectile->HomingTargetComponent.IsExplicitlyNull()||Projectile->GetInterpolatedComponent()!=nullptr)return false;
+    if(auto* Pawn=Cast<UPawnMovementComponent>(M))if(Pawn->GetPawnOwner()!=nullptr)return false;
+    // CharacterOwner is transient cached ownership; an own inactive SCS template
+    // must not be bound to an ACharacter or a live updated target. No registration.
+    if(auto* Character=Cast<UCharacterMovementComponent>(M))if(Character->GetCharacterOwner()!=nullptr)return false;
+    // User-data callbacks are not in this raw/non-live template slice.
+    for(const TCHAR* Key:{TEXT("AssetUserData"),TEXT("AssetUserDataEditorOnly")}){const auto* P=FindFProperty<FArrayProperty>(UActorComponent::StaticClass(),Key);if(!P||P->ArrayDim!=1||FScriptArrayHelper(P,P->ContainerPtrToValuePtr<void>(M)).Num()!=0)return false;}
+    return true;
+}
+bool MovementTypedField(const FProperty* P)
+{
+    if(!P||P->ArrayDim!=1||P->HasSetterOrGetter()||P->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_Deprecated|CPF_EditorOnly|CPF_InstancedReference|CPF_ContainsInstancedReference))return false;
+    if(CastField<FBoolProperty>(P)||CastField<FNumericProperty>(P)||CastField<FEnumProperty>(P)||CastField<FNameProperty>(P)||CastField<FStrProperty>(P))return true;
+    const auto* S=CastField<FStructProperty>(P);return S&&(S->Struct==TBaseStructure<FVector>::Get()||S->Struct==TBaseStructure<FLinearColor>::Get());
+}
+TSharedRef<FJsonObject> NativeMovementSourceObservation(UClass* Class)
+{
+    auto J=MakeShared<FJsonObject>();const TStrongObjectPtr<UClass> HoldClass(Class);const TStrongObjectPtr<UPackage> Package(IsValid(Class)?Class->GetPackage():nullptr);
+    const TStrongObjectPtr<UMovementComponent> Default(IsValid(Class)?Cast<UMovementComponent>(Class->GetDefaultObject(false)):nullptr);
+    auto Current=[&](){return IsValid(Class)&&NativeMovementClass(Class)&&IsValid(Package.Get())&&Package->GetName()==TEXT("/Script/Engine")&&!Package->IsDirty()&&Package->HasAnyPackageFlags(PKG_CompiledIn)&&!Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly)&&Class->GetPackage()==Package.Get()&&Class->HasAnyClassFlags(CLASS_Native)&&!Class->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)&&Class->ClassGeneratedBy.IsResolved()&&Class->ClassGeneratedBy==nullptr&&Class->ClassDefaultObject.IsResolved()&&Class->ClassDefaultObject==Default.Get()&&IsValid(Default.Get())&&Default->GetClass()==Class&&Default->GetOuter()==Class->GetOuter()&&Default->HasAnyFlags(RF_ClassDefaultObject)&&MovementTemplateInactive(Default.Get());};
+    J->SetBoolField(TEXT("native_identity_verified"),false);J->SetBoolField(TEXT("cdo_creation_requested"),false);if(!Current())return J;
+    J->SetStringField(TEXT("class"),Class->GetPathName());J->SetStringField(TEXT("super"),Class->GetSuperClass()->GetPathName());J->SetStringField(TEXT("CDO"),Default->GetPathName());J->SetNumberField(TEXT("class_flags"),uint32(Class->GetClassFlags()));J->SetNumberField(TEXT("package_flags"),uint32(Package->GetPackageFlags()));
+    struct FFieldRole{FProperty* P;FFieldVariant Owner;FFieldClass* Kind;FName Name;EPropertyFlags Flags;int32 Offset,Size;};
+    auto Values=MakeShared<FJsonObject>();auto Layout=MakeShared<FJsonObject>();TArray<FFieldRole> Fields;
+    for(TFieldIterator<FProperty> It(Class);It;++It){FProperty* P=*It;if(MovementTypedField(P)&&P->GetOwnerClass()&&P->GetOwnerClass()->IsChildOf(UMovementComponent::StaticClass()))Fields.Add({P,P->GetOwnerVariant(),P->GetClass(),P->GetFName(),P->GetPropertyFlags(),P->GetOffset_ForInternal(),P->GetSize()});}
+    if(Fields.Num()>256)return J;
+    for(const FFieldRole& F:Fields)
+    {
+        auto FieldCurrent=[&](){return FindFProperty<FProperty>(Class,F.Name)==F.P&&F.P->GetOwnerVariant()==F.Owner&&F.P->GetClass()==F.Kind&&F.P->GetPropertyFlags()==F.Flags&&F.P->ArrayDim==1&&F.P->GetOffset_ForInternal()==F.Offset&&F.P->GetSize()==F.Size;};
+        if(!Current()||!FieldCurrent())return J;TSharedPtr<FJsonValue> Value;FString Encoding,Error;
+        if(!ReadComponentValue(F.P,F.P->ContainerPtrToValuePtr<void>(Default.Get()),MaxJsonChars,Value,Encoding,Error)||!Current()||!FieldCurrent())return J;
+        Values->SetField(F.Name.ToString(),Value);auto Shape=MakeShared<FJsonObject>();Shape->SetStringField(TEXT("kind"),F.Kind->GetName());Shape->SetStringField(TEXT("flags"),LexToString(uint64(F.Flags)));Shape->SetNumberField(TEXT("offset"),F.Offset);Shape->SetNumberField(TEXT("size"),F.Size);Layout->SetObjectField(F.Name.ToString(),Shape);
+    }
+    J->SetObjectField(TEXT("typed_layout"),Layout);J->SetObjectField(TEXT("typed_authored_defaults"),Values);J->SetBoolField(TEXT("native_identity_verified"),Current());J->SetStringField(TEXT("scope"),TEXT("Native class/existing CDO role, no live movement target, and bounded inherited movement scalar/math defaults; private caches, arbitrary native serialization and whole SDK callback purity are not proven."));return J;
+}
+
 FProperty* FindProperty(UClass* Class, const FString& Name)
 {
     for (TFieldIterator<FProperty> It(Class); It; ++It)
@@ -257,6 +352,13 @@ struct FPreparedProperty
     FProperty* Property = nullptr;
     void* Value = nullptr;
     TStrongObjectPtr<UObject> Reference;
+    TFunction<bool()> HardReferenceCurrent;TSharedPtr<bool> HardReferencePrewrite;bool bPlainHardReference=false;
+    bool bMovementDirect=false,bMovementNotify=false;TSharedPtr<bool> MovementWritten;TSharedPtr<FJsonObject> MovementReceipt;
+    // Only the source-defined CharacterMovement PostEdit return may normalize
+    // the selected angle and its companion; raw requested/store values stay in
+    // Requested and MovementReceipt, never rewritten as a successful raw store.
+    bool bMovementFloorAngle=false;float MovementFloorAngleAfter=0.f,MovementFloorZAfter=0.f;
+    bool bWidgetClassDirect=false,bSkeletalAnimClassDirect=false;TSharedPtr<bool> WidgetClassWritten;TSharedPtr<FJsonObject> WidgetClassReceipt;
     bool bSocket = false;
     EShapeSize ShapeSize = EShapeSize::None;
     TSharedPtr<FJsonValue> Requested, Before;
@@ -264,7 +366,7 @@ struct FPreparedProperty
     // TG owns only native scalar/math/FString scratch storage. Its cleanup must
     // not dereference a retired generated FProperty after an unknown callback.
     bool bPlainGeneratedValue=false,bPlainGeneratedString=false;
-    ~FPreparedProperty() { if (Value) { if(bPlainGeneratedValue){if(bPlainGeneratedString)static_cast<FString*>(Value)->~FString();}else Property->DestroyValue(Value); FMemory::Free(Value); } }
+    ~FPreparedProperty() { if (Value) { if(bPlainHardReference){}else if(bPlainGeneratedValue){if(bPlainGeneratedString)static_cast<FString*>(Value)->~FString();}else Property->DestroyValue(Value); FMemory::Free(Value); } }
 };
 // These sizes are protected native fields, but are explicitly EditAnywhere.
 // Use their public setters, retaining the public property-access notification and
@@ -338,7 +440,7 @@ bool VectorValues(const TSharedPtr<FJsonValue>& Json, int32 Size, double* Out, b
 bool AuditRuntimeReference(UObject* Asset, const FString& Kind, FMutationResult& R)
 {
     auto Audit = ReadPackageDependencies({Asset->GetOutermost()->GetName()}, true, 4096);
-    R.Data->SetObjectField(Kind == TEXT("mesh") ? TEXT("static_mesh_dependency_audit") : TEXT("material_dependency_audit"), Audit);
+    R.Data->SetObjectField(Kind==TEXT("mesh")?TEXT("static_mesh_dependency_audit"):Kind==TEXT("material")?TEXT("material_dependency_audit"):TEXT("hard_reference_dependency_audit"),Audit);
     bool bAuditPassed = false;
     if (!Audit->TryGetBoolField(TEXT("passed"), bAuditPassed) || !bAuditPassed)
     { return Fail(R, *(TEXT("component_") + Kind + TEXT("_dependency_unverified")), TEXT("Saved asset dependency graph is incomplete, dirty or contains tool dependencies.")); }
@@ -349,7 +451,20 @@ bool AuditRuntimeReference(UObject* Asset, const FString& Kind, FMutationResult&
     {
         const FString Package = Edge->AsObject()->GetStringField(TEXT("to"));
         if (!Package.StartsWith(TEXT("/Game/")) && !Package.StartsWith(TEXT("/Engine/")) && !NativePackages.Contains(Package))
-        { return Fail(R, *(TEXT("component_") + Kind + TEXT("_dependency_unsupported")), TEXT("Asset references an unaudited module or plugin mount: ") + Package); }
+        {
+            // The full audit above still rejects tool references on every edge,
+            // including editor-only edges. Only this runtime native-module
+            // whitelist distinguishes a positively observed non-Game edge.
+            // Aggregated variants can be both Game and EditorOnly: Game wins.
+            bool bPropertiesObserved = false, bAnyGame = true, bAnyEditorOnly = false;
+            const auto Fields = Edge->AsObject();
+            const bool bEditorOnlyNativeEdge = Package.StartsWith(TEXT("/Script/"))
+                && Fields->TryGetBoolField(TEXT("dependency_properties_observed"), bPropertiesObserved) && bPropertiesObserved
+                && Fields->TryGetBoolField(TEXT("any_game"), bAnyGame) && !bAnyGame
+                && Fields->TryGetBoolField(TEXT("any_editor_only"), bAnyEditorOnly) && bAnyEditorOnly;
+            if (!bEditorOnlyNativeEdge)
+            { return Fail(R, *(TEXT("component_") + Kind + TEXT("_dependency_unsupported")), TEXT("Asset references an unaudited module or plugin mount: ") + Package); }
+        }
     }
     return true;
 }
@@ -399,6 +514,316 @@ bool PreserveMaterialSlots(UStaticMeshComponent* Component, UStaticMesh* FinalMe
     return true;
 }
 bool PrepareLightReference(FObjectPropertyBase* Property,const TSharedPtr<FJsonValue>& Json,FPreparedProperty& Prepared);
+// Original CommonUtils::SetObjectProperty class/object branches. This bounded
+// extension reuses existing scratch + Generic_SetEditorProperty notifications;
+// it does not export arbitrary asset properties, instantiate classes or sample CDOs.
+bool PrepareWidgetGeneratedSource(UClass* Source,FPreparedProperty& Prepared,FMutationResult& R);
+bool PrepareAnimGeneratedSource(UClass* Source,FPreparedProperty& Prepared,FMutationResult& R);
+bool PrepareHardComponentReference(UActorComponent* Template,FObjectPropertyBase* Property,const TSharedPtr<FJsonValue>& Json,FPreparedProperty& Prepared,FMutationResult& R)
+{
+    auto Loaded=[](const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);};
+    const bool IsClass=Property->GetClass()==FClassProperty::StaticClass();
+    const bool WidgetClass=IsClass&&Template->GetClass()==UWidgetComponent::StaticClass()&&Property->GetFName()==TEXT("WidgetClass")&&Property->GetOwnerClass()==UWidgetComponent::StaticClass();
+    const bool SkeletalAnimClass=IsClass&&Template->GetClass()==USkeletalMeshComponent::StaticClass()&&Property->GetFName()==TEXT("AnimClass")&&Property->GetOwnerClass()==USkeletalMeshComponent::StaticClass();
+    const bool DirectClass=WidgetClass||SkeletalAnimClass;
+    if((!IsClass&&Property->GetClass()!=FObjectProperty::StaticClass())||Property->HasAnyPropertyFlags(CPF_InstancedReference|CPF_ContainsInstancedReference|CPF_PersistentInstance)||!Property->HasAnyPropertyFlags(CPF_NoDestructor))return Fail(R,TEXT("component_reference_descriptor_pending"),TEXT("Only exact non-instanced native hard object/class fields with trivial scratch cleanup are implemented; soft/weak/instanced/custom references remain incomplete."));
+    if(Json->Type!=EJson::String)return Fail(R,TEXT("component_reference_string_required"),TEXT("Original reference input is a path string; empty string clears, JSON null is not converted to clear."));
+    if(!Loaded(Template)||Template->HasAnyFlags(RF_ClassDefaultObject)||Template->IsRegistered()||Template->IsPhysicsStateCreated()||(!SkeletalAnimClass&&Property->GetFName()==TEXT("AnimClass"))||(DirectClass&&(Template->GetOwner()!=nullptr||Template->GetWorld()!=nullptr||Template->HasBegunPlay())))return Fail(R,TEXT("component_reference_receiver_pending"),SkeletalAnimClass?TEXT("Requires an inactive own-SCS native skeletal template; generated animation lifecycle remains incomplete."):TEXT("Requires an inactive own-SCS native template. Add/CDO preparation and AnimClass/generated animation lifecycle remain incomplete."));
+    if(!Property->PropertyClass.IsResolved())return Fail(R,TEXT("component_reference_type_unresolved"),TEXT("Declared reference type must already be resolved."));
+    UClass* Declared=Property->PropertyClass.Get();UClass* Meta=nullptr;
+    if(IsClass){auto* C=static_cast<FClassProperty*>(Property);if(!C->MetaClass.IsResolved())return Fail(R,TEXT("component_reference_type_unresolved"),TEXT("MetaClass must already be resolved."));Meta=C->MetaClass.Get();}
+    auto* Generated=Cast<UBlueprintGeneratedClass>(Template->GetOuter());
+    if(!Loaded(Generated)||!Generated->ClassGeneratedBy.IsResolved()||!Loaded(Generated->ClassGeneratedBy.Get()))return Fail(R,TEXT("component_reference_receiver_pending"),TEXT("Own generated-class template owner must be current without an added resolver."));
+    UBlueprint* BP=Cast<UBlueprint>(Generated->ClassGeneratedBy.Get());
+    if(!Loaded(BP)||!BP->SimpleConstructionScript.IsResolved()||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=Generated)return Fail(R,TEXT("component_reference_receiver_pending"),TEXT("Current own Blueprint/SCS/compiler roles must already be resolved."));
+    USimpleConstructionScript* SCS=BP->SimpleConstructionScript.Get();if(!Loaded(SCS)||SCS->GetAllNodes().Num()>MaxNodes)return Fail(R,TEXT("component_reference_receiver_pending"),TEXT("Bounded current own SCS is required."));
+    USCS_Node* Selected=nullptr;for(USCS_Node* N:SCS->GetAllNodes()){if(!Loaded(N)||!N->ComponentTemplate.IsResolved())return Fail(R,TEXT("component_reference_receiver_pending"),TEXT("Own SCS template handles must already be resolved."));if(N->ComponentTemplate==Template){if(Selected)return Fail(R,TEXT("component_reference_receiver_pending"),TEXT("Selected template has multiple SCS owners."));Selected=N;}}
+    if(!Selected||Selected->GetOuter()!=SCS||!Selected->VariableGuid.IsValid())return Fail(R,TEXT("component_reference_receiver_pending"),TEXT("Selected template must be owned by exactly one current own SCS node."));
+    struct FRole{TStrongObjectPtr<UObject> Hold,Outer;TStrongObjectPtr<UClass> Class;TStrongObjectPtr<UPackage> Package;FString Path;EObjectFlags Flags;bool Source=false,Dirty=false;};
+    struct FNativeRole{UClass* Class;UClass* Super;EClassFlags Flags;TStrongObjectPtr<UClass> Within;};
+    auto Roles=MakeShared<TArray<FRole>>();auto NativeRoles=MakeShared<TArray<FNativeRole>>();
+    auto Hold=[&](UObject* O,bool Source)
+    {
+        if(!Loaded(O)||!Loaded(O->GetClass())||!Loaded(O->GetPackage())||(O->GetOuter()&&!Loaded(O->GetOuter())))return false;
+        for(const auto& Old:*Roles)if(Old.Hold.Get()==O)return true;
+        FRole V;V.Hold.Reset(O);V.Outer.Reset(O->GetOuter());V.Class.Reset(O->GetClass());V.Package.Reset(O->GetPackage());V.Path=O->GetPathName();V.Flags=O->GetFlags()&EObjectFlags(RF_Public|RF_Standalone|RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient);V.Source=Source;V.Dirty=O->GetPackage()->IsDirty();Roles->Add(MoveTemp(V));return true;
+    };
+    TSet<FString> RuntimeModules={TEXT("/Script/Engine"),TEXT("/Script/CoreUObject"),TEXT("/Script/PhysicsCore"),TEXT("/Script/MeshDescription"),TEXT("/Script/StaticMeshDescription"),TEXT("/Script/NavigationSystem")};if(WidgetClass)RuntimeModules.Add(TEXT("/Script/UMG"));
+    auto NativeChain=[&](UClass* First)
+    {
+        int32 Depth=0;TSet<UClass*> Seen;
+        for(UClass* C=First;C;C=C->GetSuperClass())
+        {
+            if(++Depth>64||Seen.Contains(C)||!Loaded(C)||!Loaded(C->GetPackage())||C->GetClass()!=UClass::StaticClass()||!C->HasAnyClassFlags(CLASS_Native)||C->HasAnyClassFlags(CLASS_NewerVersionExists)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!RuntimeModules.Contains(C->GetPackage()->GetName())||!C->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||C->GetPackage()->IsDirty()||C->IsEditorOnly()||!Hold(C,true))return false;Seen.Add(C);
+            bool Existing=false;for(const auto& Old:*NativeRoles)Existing|=Old.Class==C;if(!Existing){if(SkeletalAnimClass&&(!C->ClassWithin.IsResolved()||!Loaded(C->ClassWithin.Get())||!Hold(C->ClassWithin.Get(),true)))return false;NativeRoles->Add({C,C->GetSuperClass(),C->GetClassFlags()&EClassFlags(CLASS_Native|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface),TStrongObjectPtr<UClass>(SkeletalAnimClass?C->ClassWithin.Get():nullptr)});}
+        }
+        return First!=nullptr;
+    };
+    UClass* Owner=Property->GetOwnerClass();UClass* ComponentClass=Template->GetClass();UClass* Skeleton=BP->SkeletonGeneratedClass.GetGCPtr().Get();UClass* Parent=BP->ParentClass.GetGCPtr().Get();
+    if(!Loaded(Declared)||(IsClass&&!Loaded(Meta))||!NativeChain(Owner)||!NativeChain(ComponentClass)||!NativeChain(Declared)||(Meta&&!NativeChain(Meta))||!Hold(BP,false)||!Hold(Generated,false)||!Hold(Skeleton,false)||!Hold(Parent,false)||!Hold(SCS,false)||!Hold(Selected,false)||!Hold(Template,false)||!Loaded(GEditor)||!Hold(GEditor,false))return Fail(R,TEXT("component_reference_source_pending"),TEXT("Reference descriptor/receiver requires current native runtime type chains; generated reference types remain incomplete."));
+    UEditorEngine* Editor=GEditor;UWorld* World=Editor->GetEditorWorldContext().World();if(!Loaded(World)||!Hold(World,false))return Fail(R,TEXT("component_reference_editor_invalid"),TEXT("Current Editor world is required."));
+    const FGuid Guid=Selected->VariableGuid;const FName Variable=Selected->GetVariableName();const FName FieldName=Property->GetFName();const auto FieldFlags=Property->GetPropertyFlags();const FFieldVariant FieldOwner=Property->GetOwnerVariant();const auto* FieldClass=Property->GetClass();
+    auto Receipt=MakeShared<FJsonObject>();Receipt->SetStringField(TEXT("property"),FieldName.ToString());Receipt->SetBoolField(TEXT("is_class"),IsClass);Receipt->SetBoolField(TEXT("loader_dispatched"),false);Receipt->SetBoolField(TEXT("custom_asset_values_sampled"),false);Receipt->SetStringField(TEXT("source_scope"),TEXT("Actual hard-reference/native-class hierarchy/owner/package identities and source dirty roles only; no asset/CDO authored-value or global PostLoad purity proof."));R.Data->SetObjectField(TEXT("hard_reference_preparation"),Receipt);
+    const auto BeforeHandle=Property->GetObjectPtrPropertyValue(Property->ContainerPtrToValuePtr<void>(Template));
+    if(!BeforeHandle.IsResolved()||(BeforeHandle&&!Hold(BeforeHandle.Get(),false)))return Fail(R,TEXT("component_reference_before_pending"),TEXT("Existing field reference must be resolved/live; no extra resolver is used to prepare a replacement."));
+    // Original AnimClass is a direct class-slot authoring write, not the runtime
+    // SetAnimInstanceClass API (which changes AnimationMode/instances/InitAnim).
+    // Observe only actual fixed authored/instance slots; do not freeze private
+    // pose/render/cloth caches or infer a CDO outer from an instance Within rule.
+    struct FAnimSlot{TStrongObjectPtr<UObject> Object;FProperty* P;FFieldVariant Owner;FFieldClass* Kind;EPropertyFlags Flags;int32 Offset,Size;FName Name;FString Path;TObjectPtr<UObject> Ref;uint8 Byte=0;bool Flag=false;int32 Type=0;};
+    auto AnimSlots=MakeShared<TArray<FAnimSlot>>();
+    if(SkeletalAnimClass)
+    {
+        if(Meta!=UAnimInstance::StaticClass()||!Template->IsTemplate())return Fail(R,TEXT("component_anim_class_descriptor_pending"),TEXT("Exact native AnimClass with actual UAnimInstance MetaClass on an own template required."));
+        auto CaptureSlot=[&](UObject* O,const TCHAR* Key,int32 Type)->bool
+        {
+            FProperty* P=Loaded(O)?FindProperty(O->GetClass(),Key):nullptr;
+            if(!P||P->ArrayDim!=1||!Hold(O,true)||!NativeChain(P->GetOwnerClass()))return false;
+            FAnimSlot V;V.Object.Reset(O);V.P=P;V.Owner=P->GetOwnerVariant();V.Kind=P->GetClass();V.Flags=P->GetPropertyFlags();V.Offset=P->GetOffset_ForInternal();V.Size=P->GetSize();V.Name=P->GetFName();V.Path=O->GetPathName();V.Type=Type;
+            if(Type==0){auto* F=CastField<FObjectPropertyBase>(P);if(!F)return false;V.Ref=F->GetObjectPtrPropertyValue(F->ContainerPtrToValuePtr<void>(O));if(!V.Ref.IsResolved()||(V.Ref&&!Hold(V.Ref.Get(),true)))return false;}
+            else if(Type==1){auto* F=CastField<FByteProperty>(P);if(!F)return false;V.Byte=F->GetPropertyValue_InContainer(O);}
+            else{auto* F=CastField<FBoolProperty>(P);if(!F)return false;V.Flag=F->GetPropertyValue_InContainer(O);}
+            if((V.Name==TEXT("AnimScriptInstance")||V.Name==TEXT("PostProcessAnimInstance"))&&V.Ref!=nullptr)return false;
+            AnimSlots->Add(MoveTemp(V));return true;
+        };
+        for(const TCHAR* Key:{TEXT("SkinnedAsset"),TEXT("SkeletalMesh"),TEXT("PhysicsAssetOverride"),TEXT("AnimScriptInstance"),TEXT("PostProcessAnimInstance")})if(!CaptureSlot(Template,Key,0))return Fail(R,TEXT("component_anim_class_state_pending"),TEXT("Resolved original mesh/physics slots and no live animation/postprocess instances are required; no setter entered."));
+        if(!CaptureSlot(Template,TEXT("AnimationMode"),1)||!CaptureSlot(Template,TEXT("bEnableAnimation"),2))return Fail(R,TEXT("component_anim_class_state_pending"),TEXT("Native animation mode/enable descriptors must be observable before class-slot authoring."));
+        // Preserve the actual mesh's skeleton reference without loading a mesh,
+        // skeleton, animation asset, instance or CDO to manufacture admission.
+        UObject* Mesh=(*AnimSlots)[0].Ref.Get();if(Mesh&&!CaptureSlot(Mesh,TEXT("Skeleton"),0))return Fail(R,TEXT("component_anim_class_skeleton_pending"),TEXT("Existing mesh skeleton slot must be resolved/observable; source asset is not changed."));
+        Receipt->SetStringField(TEXT("anim_class_writer"),TEXT("Original direct FClassProperty slot then MarkBlueprintAsModified only; runtime native class, admitted loaded saved-clean direct AnimBP class or empty-string clear. No animation setter, PostEdit, instance creation, compile or save."));
+        Receipt->SetBoolField(TEXT("anim_class_generated_source_complete"),false);
+    }
+    Prepared.HardReferencePrewrite=MakeShared<bool>(true);const auto Prewrite=Prepared.HardReferencePrewrite;
+    auto WidgetExpected=MakeShared<TObjectPtr<UObject>>(nullptr);auto WidgetWritten=MakeShared<bool>(false);
+    if(DirectClass){Prepared.bWidgetClassDirect=WidgetClass;Prepared.bSkeletalAnimClassDirect=SkeletalAnimClass;Prepared.WidgetClassWritten=WidgetWritten;Prepared.WidgetClassReceipt=Receipt;}
+    auto Lost=MakeShared<bool>(false);
+    Prepared.HardReferenceCurrent=[Roles,NativeRoles,Loaded,BP,Generated,Skeleton,Parent,SCS,Selected,Template,ComponentClass,Editor,World,Property,Declared,Meta,IsClass,Guid,Variable,FieldName,FieldFlags,FieldOwner,FieldClass,BeforeHandle,Prewrite,Lost,Receipt,WidgetClass,WidgetExpected,WidgetWritten,SkeletalAnimClass,DirectClass,AnimSlots,&R]()
+    {
+        if(*Lost)return false;
+        auto Bad=[&](const FString& Object,const TCHAR* Key,const FString& Expected,const FString& Actual)
+        {
+            *Lost=true;R.bChangeStateKnown=false;R.bPostconditionPassed=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),R.Stage);J->SetStringField(TEXT("object"),Object);J->SetStringField(TEXT("property"),Key);J->SetStringField(TEXT("expected"),Expected);J->SetStringField(TEXT("actual"),Actual);if(!R.Data->HasField(TEXT("hard_reference_first_mismatch")))R.Data->SetObjectField(TEXT("hard_reference_first_mismatch"),J);Receipt->SetBoolField(TEXT("current_lost"),true);return Fail(R,TEXT("component_reference_current_changed"),TEXT("Reference source/receiver role changed at an SDK boundary; retained prefix, no followup SDK or retry."));
+        };
+        if(!IsEditorGameThread()||IsPlaySessionActive()||IsGarbageCollecting()||GExitPurge||IsEngineExitRequested()||UE::IsSavingPackage()||GEditor!=Editor||!Loaded(Editor)||!Loaded(World)||Editor->GetEditorWorldContext().World()!=World||World->bIsTearingDown)return Bad(TEXT("Editor"),TEXT("context"),TEXT("admitted idle Editor/world"),TEXT("lost or changed"));
+        for(const auto& V:*Roles){UObject* O=V.Hold.Get();if(!Loaded(O)||!Loaded(V.Class.Get())||!Loaded(V.Package.Get())||(V.Outer.IsValid()&&!Loaded(V.Outer.Get()))||O->GetClass()!=V.Class.Get()||O->GetOuter()!=V.Outer.Get()||O->GetPackage()!=V.Package.Get()||O->GetPathName()!=V.Path||(O->GetFlags()&EObjectFlags(RF_Public|RF_Standalone|RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient))!=V.Flags||(V.Source&&V.Package->IsDirty()!=V.Dirty))return Bad(V.Path,TEXT("identity_owner_class_package"),TEXT("held actual reference/receiver role"),TEXT("different, retired or source dirty changed"));}
+        for(const auto& V:*NativeRoles)if(V.Class->GetSuperClass()!=V.Super||!V.Class->ClassGeneratedBy.IsResolved()||V.Class->ClassGeneratedBy!=nullptr||(V.Class->GetClassFlags()&EClassFlags(CLASS_Native|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface))!=V.Flags||(V.Within.IsValid()&&(!V.Class->ClassWithin.IsResolved()||V.Class->ClassWithin!=V.Within.Get())))return Bad(V.Class->GetPathName(),TEXT("native_class_chain"),TEXT("admitted source superclass/flags/generated-source absence"),TEXT("changed"));
+        if(BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||!BP->SimpleConstructionScript.IsResolved()||BP->SimpleConstructionScript!=SCS||!BP->GeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=Generated||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||BP->SkeletonGeneratedClass.GetGCPtr()!=Skeleton||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=Parent||!Selected->ComponentTemplate.IsResolved()||Selected->ComponentTemplate!=Template||!Selected->ComponentClass.IsResolved()||Selected->ComponentClass!=ComponentClass||Selected->VariableGuid!=Guid||Selected->GetVariableName()!=Variable||!SCS->GetAllNodes().Contains(Selected))return Bad(BP->GetPathName(),TEXT("own_scs_receiver"),TEXT("held idle Blueprint/selected SCS node/template roles"),TEXT("changed or reinstanced"));
+        if(SkeletalAnimClass)
+        {
+            if(!Template->IsTemplate()||Template->IsRegistered()||Template->IsPhysicsStateCreated()||Template->GetOwner()!=nullptr||Template->GetWorld()!=nullptr||Template->HasBegunPlay())return Bad(Template->GetPathName(),TEXT("skeletal_inactive_template"),TEXT("held own inactive SCS template"),TEXT("runtime role changed"));
+            for(const FAnimSlot& V:*AnimSlots)
+            {
+                UObject* O=V.Object.Get();FProperty* P=Loaded(O)?FindProperty(O->GetClass(),V.Name.ToString()):nullptr;
+                if(P!=V.P||!P||P->GetOwnerVariant()!=V.Owner||P->GetClass()!=V.Kind||P->GetPropertyFlags()!=V.Flags||P->ArrayDim!=1||P->GetOffset_ForInternal()!=V.Offset||P->GetSize()!=V.Size)return Bad(V.Path,*V.Name.ToString(),TEXT("same observed descriptor/owner/layout"),TEXT("changed or unavailable"));
+                if(V.Type==0){const auto Actual=static_cast<FObjectPropertyBase*>(P)->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(O));if(!Actual.IsResolved()||Actual!=V.Ref)return Bad(V.Path,*V.Name.ToString(),FString::Printf(TEXT("resolved pointer %p"),V.Ref.Get()),FString::Printf(TEXT("resolved=%d pointer %p"),Actual.IsResolved(),Actual.IsResolved()?Actual.Get():nullptr));}
+                else if(V.Type==1){const uint8 Actual=static_cast<FByteProperty*>(P)->GetPropertyValue_InContainer(O);if(Actual!=V.Byte)return Bad(V.Path,*V.Name.ToString(),LexToString(V.Byte),LexToString(Actual));}
+                else{const bool Actual=static_cast<FBoolProperty*>(P)->GetPropertyValue_InContainer(O);if(Actual!=V.Flag)return Bad(V.Path,*V.Name.ToString(),V.Flag?TEXT("true"):TEXT("false"),Actual?TEXT("true"):TEXT("false"));}
+            }
+        }
+        FProperty* Live=FindProperty(ComponentClass,FieldName.ToString());if(Live!=Property)return Bad(Template->GetPathName(),TEXT("property_descriptor"),TEXT("same current native field"),TEXT("different routing"));
+        if(Live->GetClass()!=FieldClass||Live->GetOwnerVariant()!=FieldOwner||Live->GetPropertyFlags()!=FieldFlags||Live->ArrayDim!=1||!static_cast<FObjectPropertyBase*>(Live)->PropertyClass.IsResolved()||static_cast<FObjectPropertyBase*>(Live)->PropertyClass!=Declared||(IsClass&&(!static_cast<FClassProperty*>(Live)->MetaClass.IsResolved()||static_cast<FClassProperty*>(Live)->MetaClass!=Meta)))return Bad(Template->GetPathName(),TEXT("property_class_meta_owner"),TEXT("admitted hard-reference descriptor role"),TEXT("changed"));
+        if(*Prewrite){const auto Actual=static_cast<FObjectPropertyBase*>(Live)->GetObjectPtrPropertyValue(Live->ContainerPtrToValuePtr<void>(Template));if(!Actual.IsResolved()||Actual!=BeforeHandle)return Bad(Template->GetPathName(),TEXT("prewrite_reference_value"),TEXT("admitted original hard reference until explicit field writer"),TEXT("changed during preparation/SDK callback"));}
+        if(DirectClass){const auto Actual=static_cast<FObjectPropertyBase*>(Live)->GetObjectPtrPropertyValue(Live->ContainerPtrToValuePtr<void>(Template));const auto Expected=*WidgetWritten?*WidgetExpected:BeforeHandle;if(!Actual.IsResolved()||Actual!=Expected)return Bad(Template->GetPathName(),WidgetClass?TEXT("widget_class_authored_value"):TEXT("anim_class_authored_value"),TEXT("original value before raw writer; requested value after returned writer"),TEXT("changed outside explicit writer"));}
+        return true;
+    };
+    Prepared.bPlainHardReference=true;if(!Prepared.HardReferenceCurrent())return false;
+    const bool EmptyInput=Json->AsString().IsEmpty();FString Path=FPackageName::ExportTextPathToObjectPath(Json->AsString()).TrimStartAndEnd();Path.TrimQuotesInline();
+    if(EmptyInput){Receipt->SetBoolField(TEXT("cleared_by_empty_string"),true);Property->SetObjectPropertyValue(Prepared.Value,nullptr);return Prepared.HardReferenceCurrent();}
+    const FString Lower=Path.ToLower();for(const TCHAR* Token:{TEXT("cubelessmcp"),TEXT("cubelesscontrolrigtools"),TEXT("unrealmcp"),TEXT("mcpunreal"),TEXT("mcp_unreal")})if(Lower.Contains(Token))return Fail(R,TEXT("component_reference_dependency_forbidden"),TEXT("Authoring bridge class/content references cannot become a game dependency."));
+    const bool PathAllowed=IsClass?(Path.StartsWith(TEXT("/Script/"))||(DirectClass&&Path.StartsWith(TEXT("/Game/")))):(Path.StartsWith(TEXT("/Game/"))||Path.StartsWith(TEXT("/Engine/")));
+    if(!SafeName(Path)||Path.Contains(TEXT(":"))||!PathAllowed)return Fail(R,TEXT("component_reference_path_pending"),TEXT("Use an exact native /Script class or an admitted /Game UserWidget class or /Game/Engine asset path; other generated classes, subobjects and aliases remain incomplete."));
+    if(!Path.Contains(TEXT(".")))Path+=TEXT(".")+FPackageName::GetShortName(Path);if(!SafeName(Path)||!FPackageName::IsValidObjectPath(Path))return Fail(R,TEXT("component_reference_path_invalid"),TEXT("Reference path must fit NAME_SIZE and name one object."));
+    Receipt->SetStringField(TEXT("requested_path"),Path);UObject* Returned=FindObject<UObject>(nullptr,*Path);bool LoadedHere=false;
+    if(!Returned)
+    {
+        if(DirectClass&&Path.StartsWith(TEXT("/Game/")))return Fail(R,WidgetClass?TEXT("component_widget_class_preload_pending"):TEXT("component_anim_class_preload_pending"),WidgetClass?TEXT("Generated UserWidget source must already be loaded; no source load, CDO creation, compile or save is performed."):TEXT("Generated AnimBP class source must already be loaded; no source load, CDO creation, compile or save is performed."));
+        if(!Prepared.HardReferenceCurrent())return false;const FString Prior=R.Stage;R.Stage=TEXT("load_component_property_reference");Receipt->SetBoolField(TEXT("loader_dispatched"),true);Receipt->SetStringField(TEXT("loader"),TEXT("StaticLoadObject"));LoadedHere=true;
+        Returned=StaticLoadObject(IsClass?UClass::StaticClass():Declared,nullptr,*Path);Receipt->SetBoolField(TEXT("loader_returned"),true);Receipt->SetBoolField(TEXT("global_postload_effects_unverified"),true);
+        if(!Prepared.HardReferenceCurrent())return false;R.Stage=Prior;
+    }
+    auto Refuse=[&](const TCHAR* Code,const FString& Message){if(LoadedHere){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_preparation_outcome_unknown"),true);}return Fail(R,Code,Message);};
+    if(!Loaded(Returned))return Refuse(TEXT("component_reference_load_failed"),TEXT("Reference resolution returned no live object; no field was written. Loader effects are not retried."));
+    if(IsClass)
+    {
+        UClass* C=Cast<UClass>(Returned);const bool GeneratedWidget=WidgetClass&&C&&C->GetClass()==UWidgetBlueprintGeneratedClass::StaticClass();const bool GeneratedAnim=SkeletalAnimClass&&C&&C->GetClass()==UAnimBlueprintGeneratedClass::StaticClass();if(!C||!C->IsChildOf(Meta)||(!GeneratedWidget&&!GeneratedAnim&&(!C->HasAnyClassFlags(CLASS_Native)||!NativeChain(C))))return Refuse(TEXT("component_reference_class_pending"),TEXT("Class must be a current native runtime child of the actual MetaClass; generated class lifecycle remains incomplete."));
+    }
+    else
+    {
+        if(!Returned->IsA(Declared)||Returned->GetOuter()!=Returned->GetPackage()||Returned->GetPackage()==BP->GetPackage()||Returned->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||Returned->GetPackage()->IsDirty()||Returned->GetPackage()->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_CompiledIn)||!NativeChain(Returned->GetClass()))return Refuse(TEXT("component_reference_asset_pending"),TEXT("Asset must be an external saved-clean direct runtime asset of the declared native type; generated/instanced/dirty source profiles remain incomplete."));
+    }
+    if(!Hold(Returned,true))return Refuse(TEXT("component_reference_return_invalid"),TEXT("Resolved source ownership/current roles could not be retained."));
+    Prepared.Reference.Reset(Returned);if(!Prepared.HardReferenceCurrent())return false;
+    if(DirectClass)*WidgetExpected=Returned;
+    if(WidgetClass){if(Returned->GetClass()==UWidgetBlueprintGeneratedClass::StaticClass()&&!PrepareWidgetGeneratedSource(CastChecked<UClass>(Returned),Prepared,R))return false;Receipt->SetStringField(TEXT("widget_class_writer"),TEXT("Original FClassProperty direct slot then MarkBlueprintAsModified; no SetWidgetClass/PostEditChange/InitWidget/preview calls."));}
+    if(SkeletalAnimClass&&Returned->GetClass()==UAnimBlueprintGeneratedClass::StaticClass()&&!PrepareAnimGeneratedSource(CastChecked<UClass>(Returned),Prepared,R))return false;
+    const bool EditorOnly=Returned->IsEditorOnly();if(!Prepared.HardReferenceCurrent())return false;if(EditorOnly)return Refuse(TEXT("component_reference_editor_only"),TEXT("Editor-only source cannot become a game reference."));
+    if(!IsClass){const bool Audited=AuditRuntimeReference(Returned,TEXT("hard_reference"),R);if(!Prepared.HardReferenceCurrent())return false;if(!Audited){if(LoadedHere){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_preparation_outcome_unknown"),true);}return false;}}
+    Receipt->SetStringField(TEXT("actual_path"),Returned->GetPathName());Receipt->SetStringField(TEXT("actual_class"),Returned->GetClass()->GetPathName());Receipt->SetBoolField(TEXT("actual_type_and_source_roles_admitted"),true);Property->SetObjectPropertyValue(Prepared.Value,Returned);return Prepared.HardReferenceCurrent();
+}
+
+bool PrepareWidgetGeneratedSource(UClass* Source,FPreparedProperty& Prepared,FMutationResult& R)
+{
+    const auto BaseCurrent=Prepared.HardReferenceCurrent;
+    auto Loaded=[](const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);};
+    if(!BaseCurrent()||!Loaded(Source)||Source->GetClass()!=UWidgetBlueprintGeneratedClass::StaticClass()||!Source->ClassGeneratedBy.IsResolved()||!Source->ClassDefaultObject.IsResolved())return Fail(R,TEXT("component_widget_source_pending"),TEXT("Current loaded UserWidget generated class, resolved source/CDO required."));
+    const TStrongObjectPtr<UClass> Class(Source);const TStrongObjectPtr<UBlueprint> BP(Cast<UBlueprint>(Source->ClassGeneratedBy.Get()));const TStrongObjectPtr<UObject> CDO(Source->ClassDefaultObject.Get());const TStrongObjectPtr<UPackage> Package(Source->GetPackage());
+    if(!BaseCurrent()||!Loaded(BP.Get())||!Loaded(CDO.Get())||!Loaded(Package.Get())||BP->GetClass()->GetPathName()!=TEXT("/Script/UMGEditor.WidgetBlueprint")||!BP->GeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=Source||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=UUserWidget::StaticClass()||Source->GetSuperClass()!=UUserWidget::StaticClass()||BP->GetPackage()!=Package.Get()||Source->GetOuter()!=Package.Get()||CDO->GetClass()!=Source||CDO->GetPackage()!=Package.Get()||!CDO->HasAnyFlags(RF_ClassDefaultObject)||Package->IsDirty()||!Package->IsFullyLoaded()||Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_CompiledIn)||(BP->Status!=BS_UpToDate&&BP->Status!=BS_UpToDateWithWarnings)||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad)return Fail(R,TEXT("component_widget_source_pending"),TEXT("First source slice requires a saved-clean current direct UserWidget Blueprint/CDO; inherited/generated parents, dirty/uncompiled/unloaded and broader original sources remain incomplete."));
+    const TStrongObjectPtr<UClass> Skeleton(BP->SkeletonGeneratedClass.Get());const auto Status=BP->Status;const FString BPPath=BP->GetPathName(),ClassPath=Class->GetPathName(),CDOPath=CDO->GetPathName();
+    FString Filename;if(!FPackageName::DoesPackageExist(Package->GetName(),&Filename)||IFileManager::Get().FileSize(*Filename)>64*1024*1024||IFileManager::Get().FileSize(*Filename)<0)return Fail(R,TEXT("component_widget_source_file_pending"),TEXT("Readable saved source file up to64MiB required; no source save requested."));
+    const FMD5Hash FileHash=FMD5Hash::HashFile(*Filename);if(!FileHash.IsValid()||!BaseCurrent())return Fail(R,TEXT("component_widget_source_file_pending"),TEXT("Source file hash could not be observed; no source load/save/compile requested."));
+    struct FSourceObject{TStrongObjectPtr<UObject> Object,Outer;TStrongObjectPtr<UClass> Class;FString Path;};
+    auto Objects=MakeShared<TArray<FSourceObject>>();auto Inventory=MakeShared<TSet<UObject*>>();
+    TArray<UObject*> Raw;GetObjectsWithPackage(Package.Get(),Raw,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);
+    if(Raw.Num()>256)return Fail(R,TEXT("component_widget_source_bound_pending"),TEXT("At most256 current nontransient source exports required."));
+    // Pin the complete returned inventory before any current/owner/path observation.
+    for(UObject* O:Raw){FSourceObject V;V.Object.Reset(O);Objects->Add(MoveTemp(V));Inventory->Add(O);}
+    if(!BaseCurrent())return false;
+    for(auto& V:*Objects){UObject* O=V.Object.Get();if(!Loaded(O)||O->GetPackage()!=Package.Get())return Fail(R,TEXT("component_widget_source_export_pending"),TEXT("Source export must be currently loaded in its source package."));V.Outer.Reset(O->GetOuter());V.Class.Reset(O->GetClass());}
+    struct FSourceField{FProperty* Property;FFieldVariant Owner;FFieldClass* Type;FName Name;EPropertyFlags Flags;int32 Dim,Size,Offset;};
+    auto Schemas=MakeShared<TMap<UClass*,TArray<FSourceField>>>();
+    for(auto& V:*Objects){V.Path=V.Object->GetPathName();if(!Schemas->Contains(V.Class.Get())){TArray<FSourceField> Fields;for(TFieldIterator<FProperty> It(V.Class.Get());It;++It){FProperty* P=*It;Fields.Add({P,P->GetOwnerVariant(),P->GetClass(),P->GetFName(),P->GetPropertyFlags(),P->ArrayDim,P->ElementSize,P->GetOffset_ForInternal()});}Schemas->Add(V.Class.Get(),MoveTemp(Fields));}}
+    auto RawCurrent=[BaseCurrent,Loaded,Class,BP,CDO,Package,Skeleton,Status,BPPath,ClassPath,CDOPath,Objects,Inventory,Schemas,&R]()
+    {
+        auto Stop=[&](){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_widget_source_changed"),TEXT("Captured UserWidget source/class/CDO/package/export role changed; actual prefix retained without another writer/retry."));};
+        if(!BaseCurrent()||!Loaded(BP.Get())||!Loaded(Class.Get())||!Loaded(CDO.Get())||!Loaded(Skeleton.Get())||!Loaded(Package.Get())||Package->IsDirty()||BP->Status!=Status||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||!BP->GeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=Class.Get()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||BP->SkeletonGeneratedClass.GetGCPtr()!=Skeleton.Get()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=UUserWidget::StaticClass()||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=BP.Get()||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject!=CDO.Get()||Class->GetSuperClass()!=UUserWidget::StaticClass()||CDO->GetClass()!=Class.Get()||CDO->GetPackage()!=Package.Get()||BP->GetPathName()!=BPPath||Class->GetPathName()!=ClassPath||CDO->GetPathName()!=CDOPath)return Stop();
+        TArray<UObject*> Now;GetObjectsWithPackage(Package.Get(),Now,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);if(Now.Num()!=Inventory->Num())return Stop();for(UObject* O:Now)if(!Inventory->Contains(O))return Stop();
+        for(const auto& Schema:*Schemas){TArray<FProperty*> Current;for(TFieldIterator<FProperty> It(Schema.Key);It;++It)Current.Add(*It);if(Current.Num()!=Schema.Value.Num())return Stop();for(int32 I=0;I<Current.Num();++I){const FSourceField& F=Schema.Value[I];FProperty* P=Current[I];if(P!=F.Property||P->GetOwnerVariant()!=F.Owner||P->GetClass()!=F.Type||P->GetFName()!=F.Name||P->GetPropertyFlags()!=F.Flags||P->ArrayDim!=F.Dim||P->ElementSize!=F.Size||P->GetOffset_ForInternal()!=F.Offset)return Stop();}}
+        for(const auto& V:*Objects){UObject* O=V.Object.Get();if(!Loaded(O)||O->GetClass()!=V.Class.Get()||O->GetOuter()!=V.Outer.Get()||O->GetPackage()!=Package.Get()||O->GetPathName()!=V.Path)return Stop();}
+        return BaseCurrent()&&BP->GeneratedClass.GetGCPtr().IsResolved()&&BP->GeneratedClass.GetGCPtr()==Class.Get()&&Class->ClassDefaultObject.IsResolved()&&Class->ClassDefaultObject==CDO.Get()&&!Package->IsDirty();
+    };
+    auto Fields=[Objects,Schemas,RawCurrent,&R](FString& Out)
+    {
+        if(!RawCurrent())return false;auto State=MakeShared<FJsonObject>();int32 Count=0,Chars=0;
+        for(const auto& V:*Objects)
+        {
+            UObject* O=V.Object.Get();if(O->IsA<UClass>())continue;auto Row=MakeShared<FJsonObject>();
+            const TArray<FSourceField>* SourceFields=Schemas->Find(V.Class.Get());if(!SourceFields)return false;
+            for(const FSourceField& Field:*SourceFields)
+            {
+                if((Field.Flags&(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization))!=CPF_None)continue;
+                if(++Count>8192||Field.Dim<1||Field.Dim>64)return Fail(R,TEXT("component_widget_source_fields_pending"),TEXT("Bounded source reflected field projection exceeded."));
+                TArray<TSharedPtr<FJsonValue>> Values;for(int32 I=0;I<Field.Dim;++I){if(!RawCurrent())return false;FProperty* P=Field.Property;FString Text;const bool OK=P->ExportText_Direct(Text,P->ContainerPtrToValuePtr<void>(O,I),P->ContainerPtrToValuePtr<void>(O,I),O,PPF_None);if(!RawCurrent())return false;if(!OK||(Chars+=Text.Len())>2*1024*1024)return Fail(R,TEXT("component_widget_source_fields_pending"),TEXT("Source reflected values cannot be fully observed within2MiB."));Values.Add(MakeShared<FJsonValueString>(Text));}Row->SetArrayField(Field.Name.ToString(),Values);
+            }State->SetObjectField(V.Path,Row);
+        }
+        Out.Reset();FJsonSerializer::Serialize(State,TJsonWriterFactory<>::Create(&Out));return RawCurrent();
+    };
+    auto Expected=MakeShared<FString>();if(!Fields(*Expected)||!RawCurrent())return false;
+    auto Audit=ReadPackageDependencies({Package->GetName()},true,4096);R.Data->SetObjectField(TEXT("widget_class_dependency_audit"),Audit);if(!RawCurrent())return false;bool Passed=false;if(!Audit->TryGetBoolField(TEXT("passed"),Passed)||!Passed)return Fail(R,TEXT("component_widget_source_dependencies_pending"),TEXT("Saved UserWidget source dependency audit is incomplete or contains editor-tool/MCP references."));
+    auto Receipt=MakeShared<FJsonObject>();Receipt->SetStringField(TEXT("source_blueprint"),BPPath);Receipt->SetStringField(TEXT("source_class"),ClassPath);Receipt->SetStringField(TEXT("source_CDO"),CDOPath);Receipt->SetBoolField(TEXT("loaded_source_only"),true);Receipt->SetBoolField(TEXT("source_compile_requested"),false);Receipt->SetBoolField(TEXT("source_save_requested"),false);Receipt->SetBoolField(TEXT("full_authored_graph_or_SDK_purity_proven"),false);Receipt->SetStringField(TEXT("scope"),TEXT("Loaded saved-clean direct UserWidget generated class/CDO plus bounded nontransient reflected source exports and exact source file. Native serialization, physical graph pins, arbitrary SDK callback effects and broader source types remain incomplete."));R.Data->SetObjectField(TEXT("widget_class_source"),Receipt);
+    Prepared.HardReferenceCurrent=[RawCurrent,Fields,Expected,Filename,FileHash,Receipt,&R]()
+    {
+        if(!RawCurrent())return false;
+        if(!FPaths::FileExists(Filename)||FMD5Hash::HashFile(*Filename)!=FileHash||!RawCurrent()){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_widget_source_file_changed"),TEXT("Saved UserWidget source file changed; no next writer/retry."));}
+        FString Now;if(!Fields(Now))return false;if(!Now.Equals(*Expected,ESearchCase::CaseSensitive)){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_widget_source_values_changed"),TEXT("Captured source reflected authored projection changed; no fresh baseline or followup writer."));}Receipt->SetBoolField(TEXT("current_verified"),true);return RawCurrent();
+    };
+    return Prepared.HardReferenceCurrent();
+}
+
+// Source admission only: this is the original FClassProperty default-slot
+// contract, not AnimDefaults' runtime SetAnimationMode/SetAnimInstanceClass.
+// Reuses the Widget guard's loaded/export/descriptor/file proof, while keeping
+// Anim-specific native-parent/target-skeleton roles and transient CDO rules.
+bool PrepareAnimGeneratedSource(UClass* Source,FPreparedProperty& Prepared,FMutationResult& R)
+{
+    const auto BaseCurrent=Prepared.HardReferenceCurrent;
+    auto Loaded=[](const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);};
+    if(!BaseCurrent()||!Loaded(Source)||Source->GetClass()!=UAnimBlueprintGeneratedClass::StaticClass()||!Source->ClassGeneratedBy.IsResolved()||!Source->ClassDefaultObject.IsResolved()||!Source->ClassWithin.IsResolved())return Fail(R,TEXT("component_anim_source_pending"),TEXT("Loaded current AnimBP generated class and resolved source/existing CDO/actual Within required; no warming."));
+    const TStrongObjectPtr<UAnimBlueprintGeneratedClass> Class(CastChecked<UAnimBlueprintGeneratedClass>(Source));
+    const TStrongObjectPtr<UAnimBlueprint> BP(Cast<UAnimBlueprint>(Source->ClassGeneratedBy.Get()));const TStrongObjectPtr<UObject> CDO(Source->ClassDefaultObject.Get());
+    const TStrongObjectPtr<UPackage> Package(Source->GetPackage());const TStrongObjectPtr<UClass> Within(Source->ClassWithin.Get());
+    if(!BaseCurrent()||!Loaded(BP.Get())||BP->GetClass()!=UAnimBlueprint::StaticClass()||!Loaded(CDO.Get())||CDO->GetClass()!=Source||!CDO->HasAnyFlags(RF_ClassDefaultObject)||!Loaded(Within.Get())||!Loaded(Package.Get())||!Package->GetName().StartsWith(TEXT("/Game/"))||BP->GetPackage()!=Package.Get()||Source->GetOuter()!=Package.Get()||Package->IsDirty()||!Package->IsFullyLoaded()||Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_CompiledIn)||!BP->GeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=Source||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=UAnimInstance::StaticClass()||Source->GetSuperClass()!=UAnimInstance::StaticClass()||(BP->Status!=BS_UpToDate&&BP->Status!=BS_UpToDateWithWarnings)||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||Source->HasAnyClassFlags(CLASS_NewerVersionExists|CLASS_Deprecated))return Fail(R,TEXT("component_anim_source_pending"),TEXT("Current saved-clean /Game direct native UAnimInstance-parent AnimBP and existing class/CDO required; generated parents, uncompiled/dirty/cold sources remain incomplete."));
+    if(!BP->TargetSkeleton.IsResolved()||!Class->TargetSkeleton.IsResolved()||BP->TargetSkeleton!=Class->TargetSkeleton)return Fail(R,TEXT("component_anim_source_skeleton_pending"),TEXT("Current Blueprint/generated class target skeleton slots must already resolve and agree; no skeleton resolver or repair."));
+    const TStrongObjectPtr<USkeleton> TargetSkeleton(BP->TargetSkeleton.Get());const TStrongObjectPtr<UPackage> SkeletonPackage(TargetSkeleton.IsValid()?TargetSkeleton->GetPackage():nullptr);
+    if(TargetSkeleton.IsValid()&&(!Loaded(TargetSkeleton.Get())||TargetSkeleton->GetClass()!=USkeleton::StaticClass()||!Loaded(SkeletonPackage.Get())||SkeletonPackage->IsDirty()||SkeletonPackage->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_CompiledIn)))return Fail(R,TEXT("component_anim_source_skeleton_pending"),TEXT("Existing saved-clean native skeleton source required; no skeleton/mesh mutation or load."));
+    const TStrongObjectPtr<UClass> Skeleton(BP->SkeletonGeneratedClass.Get());const auto Status=BP->Status;const bool Template=BP->bIsTemplate;
+    const FString BPPath=BP->GetPathName(),ClassPath=Class->GetPathName();
+    const EClassFlags SourceFlags=Class->GetClassFlags()&EClassFlags(CLASS_Native|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Transient|CLASS_Interface);
+    // Capture actual CDO/Within/outer roles. AnimInstance's Within applies to
+    // instances; it is not an invented CDO outer==SkeletalMeshComponent rule.
+    struct FSourceObject{TStrongObjectPtr<UObject> Object,Outer;TStrongObjectPtr<UClass> Class;TStrongObjectPtr<UPackage> Package;FString Path;EObjectFlags Flags;bool Dirty=false;};
+    auto Objects=MakeShared<TArray<FSourceObject>>();auto Inventory=MakeShared<TSet<UObject*>>();
+    TArray<UObject*> Raw;GetObjectsWithPackage(Package.Get(),Raw,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);
+    if(Raw.Num()>512)return Fail(R,TEXT("component_anim_source_bound_pending"),TEXT("At most512 current nontransient source exports supported in this source projection."));
+    auto Pin=[&](UObject* O){for(const auto& V:*Objects)if(V.Object.Get()==O)return;FSourceObject V;V.Object.Reset(O);Objects->Add(MoveTemp(V));};
+    for(UObject* O:Raw){Pin(O);Inventory->Add(O);}Pin(CDO.Get());if(TargetSkeleton.IsValid())Pin(TargetSkeleton.Get());
+    if(!BaseCurrent())return false;
+    for(auto& V:*Objects){UObject* O=V.Object.Get();if(!Loaded(O)||!Loaded(O->GetClass())||!Loaded(O->GetPackage())||(O->GetOuter()&&!Loaded(O->GetOuter())))return Fail(R,TEXT("component_anim_source_export_pending"),TEXT("Every observed source export/actual outer/class/package must already be loaded."));V.Outer.Reset(O->GetOuter());V.Class.Reset(O->GetClass());V.Package.Reset(O->GetPackage());V.Path=O->GetPathName();V.Flags=O->GetFlags()&EObjectFlags(RF_Public|RF_Standalone|RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient);V.Dirty=V.Package->IsDirty();}
+    struct FSourceField{FProperty* P;FFieldVariant Owner;FFieldClass* Kind;FName Name;EPropertyFlags Flags;int32 Dim,Size,Offset;};
+    auto Schemas=MakeShared<TMap<UClass*,TArray<FSourceField>>>();
+    for(const auto& V:*Objects)if(!Schemas->Contains(V.Class.Get())){TArray<FSourceField> Fields;for(TFieldIterator<FProperty> It(V.Class.Get());It;++It){FProperty* P=*It;Fields.Add({P,P->GetOwnerVariant(),P->GetClass(),P->GetFName(),P->GetPropertyFlags(),P->ArrayDim,P->ElementSize,P->GetOffset_ForInternal()});}Schemas->Add(V.Class.Get(),MoveTemp(Fields));}
+    struct FSourceFile{FString Path;FMD5Hash Hash;};auto Files=MakeShared<TArray<FSourceFile>>();
+    auto File=[&](UPackage* P)->bool{FString Path;if(!FPackageName::DoesPackageExist(P->GetName(),&Path)||IFileManager::Get().FileSize(*Path)<=0||IFileManager::Get().FileSize(*Path)>64*1024*1024)return false;const auto Hash=FMD5Hash::HashFile(*Path);if(!Hash.IsValid())return false;Files->Add({Path,Hash});return true;};
+    if(!File(Package.Get())||(SkeletonPackage.IsValid()&&SkeletonPackage.Get()!=Package.Get()&&!File(SkeletonPackage.Get()))||!BaseCurrent())return Fail(R,TEXT("component_anim_source_file_pending"),TEXT("Readable saved source/skeleton files up to64MiB each required; no source save/compile requested."));
+    auto Receipt=MakeShared<FJsonObject>();Receipt->SetStringField(TEXT("source_blueprint"),BPPath);Receipt->SetStringField(TEXT("source_class"),ClassPath);Receipt->SetStringField(TEXT("actual_source_CDO"),CDO->GetPathName());Receipt->SetStringField(TEXT("actual_source_CDO_outer"),CDO->GetOuter()?CDO->GetOuter()->GetPathName():FString());Receipt->SetStringField(TEXT("actual_class_within"),Within->GetPathName());Receipt->SetBoolField(TEXT("template_AnimBP"),Template);Receipt->SetStringField(TEXT("source_target_skeleton"),TargetSkeleton.IsValid()?TargetSkeleton->GetPathName():FString());Receipt->SetBoolField(TEXT("source_load_compile_save_requested"),false);Receipt->SetBoolField(TEXT("runtime_mesh_skeleton_compatibility_certified"),false);Receipt->SetBoolField(TEXT("full_authored_graph_or_SDK_purity_proven"),false);R.Data->SetObjectField(TEXT("anim_class_source"),Receipt);
+    auto Stop=[Receipt,&R](const TCHAR* Code,const FString& Why){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);Receipt->SetBoolField(TEXT("current_lost"),true);return Fail(R,Code,Why);};
+    auto RoleCurrent=[BaseCurrent,Loaded,Class,BP,CDO,Package,Within,Skeleton,TargetSkeleton,SkeletonPackage,Status,Template,SourceFlags,Stop]()
+    {
+        if(!BaseCurrent())return false;
+        if(!Loaded(BP.Get())||!Loaded(Class.Get())||!Loaded(CDO.Get())||!Loaded(Package.Get())||!Loaded(Within.Get())||!Loaded(Skeleton.Get())||Package->IsDirty()||!Package->IsFullyLoaded()||Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_CompiledIn)||(Class->GetClassFlags()&EClassFlags(CLASS_Native|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Transient|CLASS_Interface))!=SourceFlags||BP->Status!=Status||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||BP->bIsTemplate!=Template||!BP->GeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr()!=Class.Get()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||BP->SkeletonGeneratedClass.GetGCPtr()!=Skeleton.Get()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=UAnimInstance::StaticClass()||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy.Get()!=BP.Get()||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject.Get()!=CDO.Get()||!Class->ClassWithin.IsResolved()||Class->ClassWithin.Get()!=Within.Get()||Class->GetSuperClass()!=UAnimInstance::StaticClass()||CDO->GetClass()!=Class.Get()||!CDO->HasAnyFlags(RF_ClassDefaultObject)||!BP->TargetSkeleton.IsResolved()||!Class->TargetSkeleton.IsResolved()||BP->TargetSkeleton.Get()!=TargetSkeleton.Get()||Class->TargetSkeleton.Get()!=TargetSkeleton.Get())return Stop(TEXT("component_anim_source_changed"),TEXT("Source BP/class/native-parent/actual CDO/Within/target-skeleton role changed; actual target prefix retained without retry."));
+        if(TargetSkeleton.IsValid()&&(!Loaded(TargetSkeleton.Get())||!Loaded(SkeletonPackage.Get())||TargetSkeleton->GetPackage()!=SkeletonPackage.Get()||SkeletonPackage->IsDirty()||SkeletonPackage->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_CompiledIn)))return Stop(TEXT("component_anim_source_skeleton_changed"),TEXT("Source skeleton role/clean state changed; no next target SDK."));
+        return BaseCurrent();
+    };
+    auto ObjectCurrent=[Loaded,RoleCurrent](const FSourceObject& V){UObject* O=V.Object.Get();return RoleCurrent()&&Loaded(O)&&Loaded(V.Class.Get())&&Loaded(V.Package.Get())&&(!V.Outer.IsValid()||Loaded(V.Outer.Get()))&&O->GetClass()==V.Class.Get()&&O->GetOuter()==V.Outer.Get()&&O->GetPackage()==V.Package.Get()&&O->GetPathName()==V.Path&&(O->GetFlags()&EObjectFlags(RF_Public|RF_Standalone|RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient))==V.Flags&&V.Package->IsDirty()==V.Dirty;};
+    auto Projection=[RoleCurrent,ObjectCurrent,Stop,Objects,Inventory,Schemas,Package,CDO,Class,Loaded](TSharedPtr<FJsonObject>& State)
+    {
+        if(!RoleCurrent())return false;TArray<UObject*> Now;GetObjectsWithPackage(Package.Get(),Now,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);if(Now.Num()!=Inventory->Num())return Stop(TEXT("component_anim_source_inventory_changed"),TEXT("Nontransient source export inventory changed."));for(UObject* O:Now)if(!Inventory->Contains(O))return Stop(TEXT("component_anim_source_inventory_changed"),TEXT("Nontransient source export identity changed."));
+        for(const auto& Schema:*Schemas)
+        {
+            if(!RoleCurrent()||!Loaded(Schema.Key))return Stop(TEXT("component_anim_source_schema_changed"),TEXT("Observed source schema class retired before inventory."));
+            TArray<FProperty*> Current;for(TFieldIterator<FProperty> It(Schema.Key);It;++It)Current.Add(*It);
+            if(Current.Num()!=Schema.Value.Num())return Stop(TEXT("component_anim_source_schema_changed"),TEXT("Source descriptor inventory changed."));
+            for(int32 I=0;I<Current.Num();++I){const auto& F=Schema.Value[I];FProperty* P=Current[I];if(P!=F.P||P->GetOwnerVariant()!=F.Owner||P->GetClass()!=F.Kind||P->GetFName()!=F.Name||P->GetPropertyFlags()!=F.Flags||P->ArrayDim!=F.Dim||P->ElementSize!=F.Size||P->GetOffset_ForInternal()!=F.Offset)return Stop(TEXT("component_anim_source_schema_changed"),TEXT("Source descriptor inventory/owner/layout changed."));}
+        }
+        auto FieldCurrent=[](UClass* K,const FSourceField& F)->FProperty*
+        {FProperty* P=FindFProperty<FProperty>(K,F.Name);return P&&P==F.P&&P->GetOwnerVariant()==F.Owner&&P->GetClass()==F.Kind&&P->GetPropertyFlags()==F.Flags&&P->ArrayDim==F.Dim&&P->ElementSize==F.Size&&P->GetOffset_ForInternal()==F.Offset?P:nullptr;};
+        State=MakeShared<FJsonObject>();int32 Count=0,Chars=0;
+        for(const auto& V:*Objects)
+        {
+            if(!ObjectCurrent(V))return Stop(TEXT("component_anim_source_object_changed"),TEXT("Observed source object/actual outer/class/package role changed."));UObject* O=V.Object.Get();if(O->IsA<UClass>())continue;
+            const auto* Fields=Schemas->Find(V.Class.Get());if(!Fields)return Stop(TEXT("component_anim_source_schema_changed"),TEXT("Observed source schema missing."));auto Row=MakeShared<FJsonObject>();
+            for(const auto& F:*Fields)
+            {
+                if((F.Flags&(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization))!=CPF_None)continue;
+                // This finite projection excludes all FAnimNode-derived storage,
+                // including authored editor AnimGraphNode::Node payloads as well
+                // as CDO execution/cache fields. Other reflected graph fields
+                // and saved files are guarded; this is not full in-memory Node
+                // payload preservation or a compiler-metadata invariant.
+                FProperty* Current=FieldCurrent(V.Class.Get(),F);if(!Current)return Stop(TEXT("component_anim_source_schema_changed"),TEXT("Source descriptor/owner/layout changed before type inspection/export."));
+                auto* Struct=CastField<FStructProperty>(Current);
+                if(Struct){if(!Struct->Struct.IsResolved()||!IsValid(Struct->Struct.Get()))return Stop(TEXT("component_anim_source_struct_pending"),TEXT("Source struct type must already be resolved; no type loader."));if(Struct->Struct->IsChildOf(FAnimNode_Base::StaticStruct()))continue;}
+                if(O==CDO.Get()&&Current->GetOwnerClass()!=Class.Get()&&(F.Flags&CPF_Edit)==CPF_None)continue;
+                if(++Count>8192||F.Dim<1||F.Dim>64)return Stop(TEXT("component_anim_source_fields_pending"),TEXT("Source reflected projection exceeds existing bounded scope."));
+                TArray<TSharedPtr<FJsonValue>> Values;
+                for(int32 I=0;I<F.Dim;++I){if(!ObjectCurrent(V))return Stop(TEXT("component_anim_source_object_changed"),TEXT("Source role changed before reflected export."));FString Text;const void* Address=Current->ContainerPtrToValuePtr<void>(O,I);const bool OK=Current->ExportText_Direct(Text,Address,Address,O,PPF_None);if(!ObjectCurrent(V))return Stop(TEXT("component_anim_source_object_changed"),TEXT("Source role changed after reflected export."));if(FieldCurrent(V.Class.Get(),F)!=Current)return Stop(TEXT("component_anim_source_schema_changed"),TEXT("Source descriptor retired/changed at reflected export return."));if(!OK||(Chars+=Text.Len())>2*1024*1024)return Stop(TEXT("component_anim_source_fields_pending"),TEXT("Source projection exceeds2MiB or cannot export; no target writer."));Values.Add(MakeShared<FJsonValueString>(Text));}Row->SetArrayField(F.Name.ToString(),Values);
+            }
+            State->SetObjectField(V.Path,Row);
+        }
+        if(!RoleCurrent())return false;Now.Reset();GetObjectsWithPackage(Package.Get(),Now,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);if(Now.Num()!=Inventory->Num())return Stop(TEXT("component_anim_source_inventory_changed"),TEXT("Source export inventory changed during projection."));for(UObject* O:Now)if(!Inventory->Contains(O))return Stop(TEXT("component_anim_source_inventory_changed"),TEXT("Source export identity changed during projection."));return RoleCurrent();
+    };
+    auto Expected=MakeShared<TSharedPtr<FJsonObject>>();if(!Projection(*Expected))return false;
+    auto Audit=ReadPackageDependencies({Package->GetName()},true,4096);R.Data->SetObjectField(TEXT("anim_class_dependency_audit"),Audit);if(!RoleCurrent())return false;bool Passed=false;if(!Audit->TryGetBoolField(TEXT("passed"),Passed)||!Passed)return Fail(R,TEXT("component_anim_source_dependencies_pending"),TEXT("Saved AnimBP dependency audit is incomplete/dirty or contains MCP/editor-tool references; no target writer."));
+    Receipt->SetStringField(TEXT("scope"),TEXT("Loaded saved-clean direct native-parent AnimBP class, actual CDO/Within/source export roles and target skeleton, bounded authored reflection projection and exact source/skeleton files. No source loader/compile/CDO creation, animation setter, mesh/skeleton compatibility normalization or runtime initialization. FAnimNode-derived storage including authored editor AnimGraph Node payloads and CDO execution/cache fields is excluded/unobserved by this projection. Transient exports, physical pins, compiled indices and global SDK purity are also not proven; full in-memory authored Node payload preservation, generated parents/native custom parents and broader original profiles remain incomplete."));
+    Prepared.HardReferenceCurrent=[RoleCurrent,Projection,Expected,Files,Receipt,Stop,&R]()
+    {
+        if(!RoleCurrent())return false;
+        for(const auto& V:*Files)if(!FPaths::FileExists(V.Path)||FMD5Hash::HashFile(*V.Path)!=V.Hash||!RoleCurrent())return Stop(TEXT("component_anim_source_file_changed"),TEXT("Saved AnimBP/skeleton source file changed; no next target writer/retry."));
+        TSharedPtr<FJsonObject> Now;if(!Projection(Now))return false;
+        if(!FJsonValue::CompareEqual(FJsonValueObject(*Expected),FJsonValueObject(Now)))
+        {
+            for(const auto& Row:(*Expected)->Values)
+            {
+                const auto Other=Now->TryGetField(Row.Key.ToView());if(!Other||Other->Type!=EJson::Object)break;
+                for(const auto& F:Row.Value->AsObject()->Values){const auto A=Other->AsObject()->TryGetField(F.Key.ToView());if(!A||!FJsonValue::CompareEqual(*F.Value,*A)){auto D=MakeShared<FJsonObject>();D->SetStringField(TEXT("object"),FString(Row.Key.ToView()));D->SetStringField(TEXT("property"),FString(F.Key.ToView()));FString E,Actual;FJsonSerializer::Serialize(F.Value,TEXT(""),TJsonWriterFactory<>::Create(&E));if(A)FJsonSerializer::Serialize(A,TEXT(""),TJsonWriterFactory<>::Create(&Actual));D->SetStringField(TEXT("expected"),E.Left(2048));D->SetStringField(TEXT("actual"),Actual.Left(2048));R.Data->SetObjectField(TEXT("anim_class_source_first_mismatch"),D);return Stop(TEXT("component_anim_source_values_changed"),TEXT("Source authored projection changed; first actual mismatch retained."));}}
+            }
+            return Stop(TEXT("component_anim_source_values_changed"),TEXT("Source authored projection inventory/values changed; no refreshed baseline or retry."));
+        }
+        Receipt->SetBoolField(TEXT("current_verified"),true);return RoleCurrent();
+    };
+    return Prepared.HardReferenceCurrent();
+}
+
 bool PrepareProperty(UActorComponent* Template, const FString& Name, const TSharedPtr<FJsonValue>& Json,
     TUniquePtr<FPreparedProperty>& Out, FMutationResult& R)
 {
@@ -452,6 +877,8 @@ bool PrepareProperty(UActorComponent* Template, const FString& Name, const TShar
     else if(FObjectPropertyBase* LightObject=CastField<FObjectPropertyBase>(Property);LightObject&&NativeLightClass(Template->GetClass())
         &&((Property->GetFName()==TEXT("LightFunctionMaterial")&&LightObject->PropertyClass==UMaterialInterface::StaticClass())||(Property->GetFName()==TEXT("IESTexture")&&LightObject->PropertyClass==UTextureLightProfile::StaticClass())))
     {if(!PrepareLightReference(LightObject,Json,*Prepared))return false;LightObject->SetObjectPropertyValue(Value,Prepared->Reference.Get());bConverted=true;}
+    if(!bConverted)if(auto* Reference=CastField<FObjectPropertyBase>(Property))
+    {if(!PrepareHardComponentReference(Template,Reference,Json,*Prepared,R))return false;bConverted=true;}
     if (!bConverted) { return Fail(R, TEXT("component_property_value_unsupported"), TEXT("Value/type is unsupported or out of range; no generic ImportText/object setter is used.")); }
     Prepared->ShapeSize = ShapeSizeProperty(Template, Property);
     if (Prepared->ShapeSize != EShapeSize::None)
@@ -544,6 +971,35 @@ bool ApplyShapeSize(UActorComponent* Template, const FPreparedProperty& Prepared
 bool ApplyProperty(UActorComponent* Template, USCS_Node* Node, const FPreparedProperty& Prepared)
 {
     if (Prepared.ShapeSize != EShapeSize::None) { return ApplyShapeSize(Template, Prepared); }
+    if(Prepared.bMovementDirect)
+    {
+        auto* M=Cast<UMovementComponent>(Template);if(!M||!NativeMovementClass(M->GetClass())||!Prepared.HardReferenceCurrent||!Prepared.MovementWritten||!Prepared.HardReferenceCurrent())return false;
+        if(Prepared.bMovementNotify){if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("pre_edit_attempted"),true);Template->PreEditChange(Prepared.Property);if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("pre_edit_returned"),true);if(!Prepared.HardReferenceCurrent())return false;}
+        if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("store_entered"),true);Prepared.Property->CopyCompleteValue(Prepared.Property->ContainerPtrToValuePtr<void>(Template),Prepared.Value);*Prepared.MovementWritten=true;if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("store_returned"),true);if(!Prepared.HardReferenceCurrent())return false;
+        if(Prepared.bMovementNotify)
+        {
+            FPropertyChangedEvent Event(Prepared.Property,EPropertyChangeType::ValueSet);Event.MemberProperty=Prepared.Property;
+            if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("post_edit_attempted"),true);
+            Template->PostEditChangeProperty(Event);
+            if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("post_edit_returned"),true);
+            if(Prepared.bMovementFloorAngle)
+            {
+                // Change scratch expectation only after the actual SDK return.
+                // No second target write or public SetWalkableFloorAngle call.
+                *static_cast<float*>(Prepared.Value)=Prepared.MovementFloorAngleAfter;
+                if(Prepared.MovementReceipt.IsValid())Prepared.MovementReceipt->SetBoolField(TEXT("engine_clamp_expectation_active"),true);
+            }
+            if(!Prepared.HardReferenceCurrent())return false;
+        }
+        return true;
+    }
+    if(Prepared.bWidgetClassDirect||Prepared.bSkeletalAnimClassDirect)
+    {
+        auto* Field=CastField<FClassProperty>(Prepared.Property);if(!Field||(!Prepared.bSkeletalAnimClassDirect&&Template->GetClass()!=UWidgetComponent::StaticClass())||(Prepared.bSkeletalAnimClassDirect&&Template->GetClass()!=USkeletalMeshComponent::StaticClass())||!Prepared.WidgetClassWritten||!Prepared.HardReferenceCurrent||!Prepared.HardReferenceCurrent())return false;
+        if(Prepared.WidgetClassReceipt.IsValid())Prepared.WidgetClassReceipt->SetBoolField(TEXT("direct_writer_entered"),true);
+        Field->SetObjectPropertyValue(Field->ContainerPtrToValuePtr<void>(Template),Prepared.Reference.Get());
+        *Prepared.WidgetClassWritten=true;if(Prepared.WidgetClassReceipt.IsValid())Prepared.WidgetClassReceipt->SetBoolField(TEXT("direct_writer_returned"),true);return Prepared.HardReferenceCurrent();
+    }
     if (Prepared.bSocket)
     {
         USceneComponent* Scene = Cast<USceneComponent>(Template);
@@ -879,6 +1335,43 @@ struct FHismScope
     TArray<TStrongObjectPtr<UObject>> Holds;TSharedPtr<FJsonObject> NativeBefore;
     struct FRole{TStrongObjectPtr<USCS_Node> Node;TStrongObjectPtr<UActorComponent> Template;UClass* Class=nullptr;FName Name;FGuid Guid;FString Path;};TArray<FRole> Old;
     FString Name,NodePath;FGuid NodeGuid;
+    // ACZ raw-only topology lease. The actual default cache remains owned, while
+    // only its sole childless root membership is retired by SCS.AddNode/Validate.
+    bool RawRootTransition=false,RawRootRetired=false;TStrongObjectPtr<USCS_Node> RawDefaultRoot;
+    FString RawDefaultPath;FName RawDefaultName;FGuid RawDefaultGuid;
+    bool RawDefaultCurrent(const TSet<USCS_Node*>& Current)
+    {
+        if(!RawRootTransition)return true;auto* D=RawDefaultRoot.Get();
+        if(!Loaded(D)||D->GetClass()!=USCS_Node::StaticClass()||D->GetOuter()!=SCS.Get()||SCS->GetDefaultSceneRootNode()!=D
+            ||D->GetPathName()!=RawDefaultPath||D->VariableGuid!=RawDefaultGuid||D->GetVariableName()!=RawDefaultName
+            ||!D->ComponentClass.IsResolved()||D->ComponentClass.Get()!=USceneComponent::StaticClass()||!D->GetChildNodes().IsEmpty()
+            ||D->bIsParentComponentNative||!D->ParentComponentOrVariableName.IsNone()||!D->ParentComponentOwnerClassName.IsNone()||!D->AttachToName.IsNone())return Stop(TEXT("raw_default_root_cache_role"));
+        const auto& Roots=SCS->GetRootNodes();
+        if(RawRootRetired)
+        {
+            if(Current.Contains(D)||Current.Num()!=1||!Current.Contains(Selected.Get())||Roots.Num()!=1||Roots[0]!=Selected.Get())return Stop(TEXT("raw_default_root_retired_membership"));
+        }
+        else if(!Current.Contains(D)||Roots.Num()!=1||Roots[0]!=D)return Stop(TEXT("raw_default_root_original_membership"));
+        return true;
+    }
+    bool ArmRawDefaultRetirement()
+    {
+        if(!Check())return false;auto* D=SCS->GetDefaultSceneRootNode();
+        if(!D||!SCS->GetRootNodes().Contains(D))return true;
+        // No new source/root framework: use the existing own-node/held-template
+        // capture, restricted to one normal Actor default root with no children.
+        if(Populated||Parent.Get()!=AActor::StaticClass()||Old.Num()!=1||Old[0].Node.Get()!=D||SCS->GetRootNodes().Num()!=1
+            ||!Loaded(D)||D->GetClass()!=USCS_Node::StaticClass()||Old[0].Class!=USceneComponent::StaticClass()
+            ||Old[0].Name!=USceneComponent::GetDefaultSceneRootVariableName()||!Old[0].Guid.IsValid()
+            ||!D->GetChildNodes().IsEmpty()||D->bIsParentComponentNative||!D->ParentComponentOrVariableName.IsNone()
+            ||!D->ParentComponentOwnerClassName.IsNone()||!D->AttachToName.IsNone())
+        {
+            R.Data->SetBoolField(TEXT("raw_hism_default_root_retirement_pending"),true);R.Data->SetBoolField(TEXT("raw_geometry_create_node_dispatched"),false);
+            return Fail(R,TEXT("component_raw_hism_root_transition_pending"),TEXT("Raw HISM default-root retirement currently requires a sole childless default Scene root of a direct Actor; wider valid root/child/owner variants remain incomplete. No CreateNode or compile dispatched."));
+        }
+        RawDefaultRoot.Reset(D);RawDefaultPath=Old[0].Path;RawDefaultName=Old[0].Name;RawDefaultGuid=Old[0].Guid;RawRootTransition=true;
+        R.Data->SetBoolField(TEXT("raw_hism_default_root_retirement_admitted"),true);return Check();
+    }
     // PW opt-in is used only by the existing mesh/material leaf, never Add or generic property writes.
     bool AllowPopulated=false,Populated=false,DataReady=false;
     static constexpr int32 InstanceBound=256,CustomWidthBound=16,CustomValueBound=4096;
@@ -1020,8 +1513,8 @@ struct FHismScope
     bool Check()
     {
         if(!Active)return true;if(Stopped)return false;if(Populated&&!ResolvedPopulatedRoles())return Stop(TEXT("populated_resolved_roles"));double Checks=0;R.Data->TryGetNumberField(TEXT("hism_current_scope_checks"),Checks);R.Data->SetNumberField(TEXT("hism_current_scope_checks"),Checks+1);if(Populated){if(!Context()||GUndo!=Undo||!Roles())return Stop(TEXT("populated_context_roles"));if(!UserDataCurrent()||!BindingCurrent())return false;}if(!Context()||GUndo!=Undo||!Roles()||!Source())return Stop(TEXT("context_source_roles"));
-        const auto& All=SCS->GetAllNodes();if(All.Num()>10000)return Stop(TEXT("current_scs_bound"));TSet<USCS_Node*> Current;for(auto* N:All){if(!N||Current.Contains(N))return Stop(TEXT("current_scs_duplicates"));Current.Add(N);}const bool WasOld=Selected.IsValid()&&Old.ContainsByPredicate([&](const FRole& O){return O.Node.Get()==Selected.Get();});if(All.Num()!=Old.Num()+((Selected.IsValid()&&!WasOld&&Current.Contains(Selected.Get()))?1:0))return Stop(TEXT("current_scs_membership"));
-        for(const auto& O:Old){auto* N=O.Node.Get();if(!Loaded(N)||N->GetOuter()!=SCS.Get()||!Current.Contains(N)||N->VariableGuid!=O.Guid||N->GetVariableName()!=O.Name||N->GetPathName()!=O.Path||N->ComponentClass.Get()!=O.Class||N->ComponentTemplate.Get()!=O.Template.Get()||!Loaded(O.Template.Get())||O.Template->GetClass()!=O.Class||O.Template->GetOuter()!=Generated.Get())return Stop(TEXT("old_scs_role"));}
+        const auto& All=SCS->GetAllNodes();if(All.Num()>10000)return Stop(TEXT("current_scs_bound"));TSet<USCS_Node*> Current;for(auto* N:All){if(!N||Current.Contains(N))return Stop(TEXT("current_scs_duplicates"));Current.Add(N);}const bool WasOld=Selected.IsValid()&&Old.ContainsByPredicate([&](const FRole& O){return O.Node.Get()==Selected.Get();});if(All.Num()!=Old.Num()-(RawRootRetired?1:0)+((Selected.IsValid()&&!WasOld&&Current.Contains(Selected.Get()))?1:0))return Stop(TEXT("current_scs_membership"));if(!RawDefaultCurrent(Current))return false;
+        for(const auto& O:Old){if(RawRootRetired&&O.Node.Get()==RawDefaultRoot.Get())continue;auto* N=O.Node.Get();if(!Loaded(N)||N->GetOuter()!=SCS.Get()||!Current.Contains(N)||N->VariableGuid!=O.Guid||N->GetVariableName()!=O.Name||N->GetPathName()!=O.Path||N->ComponentClass.Get()!=O.Class||N->ComponentTemplate.Get()!=O.Template.Get()||!Loaded(O.Template.Get())||O.Template->GetClass()!=O.Class||O.Template->GetOuter()!=Generated.Get())return Stop(TEXT("old_scs_role"));}
         if(Selected.IsValid()){auto* N=Selected.Get();if(!Loaded(N)||N->GetOuter()!=SCS.Get()||N->GetPathName()!=NodePath||N->VariableGuid!=NodeGuid||N->GetVariableName()!=FName(*Name)||N->ComponentClass.Get()!=Class.Get()||N->ComponentTemplate.Get()!=Template.Get()||!TemplateRole(Template.Get())||Template->GetOuter()!=Generated.Get()||(Attached&&!Current.Contains(N)))return Stop(TEXT("selected_empty_template_role"));}
         if(!UserDataCurrent()||!BindingCurrent())return false;return Context()||Stop(TEXT("after_observation"));
     }
@@ -1066,13 +1559,31 @@ struct FHismScope
     }
     bool Adopt(USCS_Node* N,bool IsAttached)
     {if(!Context()||!Roles()||!Loaded(N)||!TemplateRole(N->ComponentTemplate.Get()))return Stop(TEXT("returned_node"));Selected.Reset(N);Template.Reset(Cast<UHierarchicalInstancedStaticMeshComponent>(N->ComponentTemplate.Get()));NodePath=N->GetPathName();NodeGuid=N->VariableGuid;Attached=IsAttached;return Check();}
-    bool Attach(){Attached=true;return Check();}
+    bool Attach()
+    {
+        if(RawRootTransition)
+        {
+            if(Stopped||RawRootRetired||!Context()||GUndo!=Undo||!Roles()||!Source()||!Context()||!Roles())return Stop(TEXT("raw_default_root_attach_source"));
+            const auto& All=SCS->GetAllNodes();const auto& Roots=SCS->GetRootNodes();auto* D=RawDefaultRoot.Get();auto* N=Selected.Get();
+            if(!Loaded(N)||N->GetOuter()!=SCS.Get()||All.Num()!=1||All[0]!=N||Roots.Num()!=1||Roots[0]!=N||SCS->GetDefaultSceneRootNode()!=D
+                ||!Loaded(D)||D->GetOuter()!=SCS.Get()||D->GetPathName()!=RawDefaultPath||D->VariableGuid!=RawDefaultGuid||D->GetVariableName()!=RawDefaultName
+                ||!D->ComponentClass.IsResolved()||D->ComponentClass.Get()!=USceneComponent::StaticClass()||!D->GetChildNodes().IsEmpty()
+                ||D->bIsParentComponentNative||!D->ParentComponentOrVariableName.IsNone()||!D->ParentComponentOwnerClassName.IsNone()||!D->AttachToName.IsNone())return Stop(TEXT("raw_default_root_attach_projection"));
+            // SDK returned; adopt only the proven membership delta. The cache's
+            // retired template is held but is not re-read/rebound after compile.
+            RawRootRetired=true;R.Data->SetBoolField(TEXT("raw_hism_default_root_retired"),true);
+            R.Data->SetBoolField(TEXT("raw_hism_default_root_cache_preserved"),true);
+            R.Data->SetBoolField(TEXT("raw_hism_retired_template_semantics_verified"),false);
+            R.Data->SetStringField(TEXT("raw_hism_default_root_transition_scope"),TEXT("Original raw Add on a sole childless direct-Actor DefaultSceneRoot: SCS.AddNode returns exactly the new empty HISM as AllNodes/RootNodes singleton; original DefaultSceneRoot cache/GUID/name/owner and normalized empty parent/child role remain current. Retired template payload/identity across compiler reconstruction is not an invariant; no recursive reparent, source load, instance operation, extra compile/save or rollback."));
+        }
+        Attached=true;return Check();
+    }
     bool Reacquire()
     {
         if(!Active)return true;if(Stopped)return false;if(!Context()||GUndo!=Undo||!Loaded(BP.Get())||BP->SimpleConstructionScript.Get()!=SCS.Get()||BP->ParentClass.Get()!=Parent.Get()||!Source())return Stop(TEXT("compiler_source_context"));
         UClass* G=BP->GeneratedClass.Get();UClass* K=BP->SkeletonGeneratedClass.Get();if(!Loaded(G)||!Loaded(K)||G->ClassGeneratedBy!=BP.Get()||K->ClassGeneratedBy!=BP.Get()||G->GetPackage()!=BP->GetPackage()||K->GetPackage()!=BP->GetPackage()||G->GetSuperClass()!=Parent.Get()||K->GetSuperClass()!=Parent.Get())return Stop(TEXT("compiler_class_roles"));
         Holds.Emplace(Generated.Get());Holds.Emplace(Skeleton.Get());Generated.Reset(G);Skeleton.Reset(K);
-        for(auto& O:Old){auto* N=O.Node.Get();if(!Loaded(N)||N->ComponentClass.Get()!=O.Class||!Loaded(N->ComponentTemplate.Get())||N->ComponentTemplate->GetClass()!=O.Class||N->ComponentTemplate->GetOuter()!=G)return Stop(TEXT("compiler_old_template_roles"));Holds.Emplace(O.Template.Get());O.Template.Reset(N->ComponentTemplate);}
+        for(auto& O:Old){if(RawRootRetired&&O.Node.Get()==RawDefaultRoot.Get())continue;auto* N=O.Node.Get();if(!Loaded(N)||N->ComponentClass.Get()!=O.Class||!Loaded(N->ComponentTemplate.Get())||N->ComponentTemplate->GetClass()!=O.Class||N->ComponentTemplate->GetOuter()!=G)return Stop(TEXT("compiler_old_template_roles"));Holds.Emplace(O.Template.Get());O.Template.Reset(N->ComponentTemplate);}
         if(Selected.IsValid()){auto* N=Selected.Get();if(!Loaded(N)||N->GetPathName()!=NodePath||N->VariableGuid!=NodeGuid||!TemplateRole(N->ComponentTemplate.Get())||N->ComponentTemplate->GetOuter()!=G)return Stop(TEXT("compiler_selected_template"));Holds.Emplace(Template.Get());Template.Reset(Cast<UHierarchicalInstancedStaticMeshComponent>(N->ComponentTemplate.Get()));}
         return Check();
     }
@@ -2409,10 +2920,9 @@ struct FPCGTemplateConfigureScope
     UPCGGraphInterface* ExpectedGraph = nullptr;
     // IsValid means a backing struct exists, not that the bag contains properties.
     struct FBagState { bool Valid = false; int32 Count = -1, Descriptors = -1; const UPropertyBag* Type = nullptr; FString TypePath; };
-    FBagState SourceBag, ExpectedInstanceBag; FInstancedPropertyBag SourceEmptyParameters;
-    TStrongObjectPtr<UPropertyBag> SourceBagType, InitialInstanceBagType;
-    EStructFlags SourceBagFlags = STRUCT_NoFlags; UStruct* SourceBagSuper = nullptr; int32 SourceBagSize = 0, SourceBagAlignment = 0;
-    bool ParametersReady = false; FValue* InstanceParameterSnapshot = nullptr;
+    FBagState SourceBag, ExpectedInstanceBag;
+    TSharedPtr<FJsonObject> SourceParameters, ExpectedInstanceParameters;
+    bool ParametersReady = false, InstanceParameterLogicalSnapshot = false;
     explicit FPCGTemplateConfigureScope(FMutationResult& In) : R(In), Source(In) {}
     static bool Loaded(const UObject* O) { return FPCGTemplateAddScope::Loaded(O); }
     FString Address(const void* P) const { return FString::Printf(TEXT("%p"), P); }
@@ -2431,53 +2941,56 @@ struct FPCGTemplateConfigureScope
     bool ObserveBag(const FInstancedPropertyBag& Bag, FBagState& Out, const FString& Role)
     {
         if (!Source.Context()) return false;
-        Out.Valid = Bag.IsValid(); Out.Type = Bag.GetPropertyBagStruct();
-        if (Out.Type && !Loaded(Out.Type)) { Out.TypePath = TEXT("unavailable: struct is not safely loaded"); R.Data->SetObjectField(TEXT("parameter_bag_failure_observation"), BagReceipt(Out)); return Stop(TEXT("pcg_template_bag_struct_unavailable"), Role, TEXT("loaded empty bag struct or invalid/null bag"), BagDetails(Out)); }
-        Out.TypePath = Out.Type ? Out.Type->GetPathName() : TEXT("None");
-        Out.Count = Bag.GetNumPropertiesInBag(); Out.Descriptors = Out.Type ? Out.Type->GetPropertyDescs().Num() : 0;
+        Out.Valid = Bag.IsValid(); Out.Type = Bag.GetPropertyBagStruct(); const TStrongObjectPtr<const UPropertyBag> HoldType(Out.Type);
+        if (Out.Type && !Loaded(Out.Type)) return Stop(TEXT("pcg_template_bag_struct_unavailable"), Role, TEXT("locally held loaded bag type"), TEXT("unavailable"));
+        Out.TypePath = Out.Type ? Out.Type->GetPathName() : TEXT("None"); Out.Descriptors = Out.Type ? Out.Type->GetPropertyDescs().Num() : 0; Out.Count = Bag.GetNumPropertiesInBag();
+        if (Bag.GetPropertyBagStruct() != Out.Type || Out.Count != Out.Descriptors || Out.Valid != (Out.Type != nullptr)) return Stop(TEXT("pcg_template_bag_read_changed"), Role, TEXT("one coherent const diagnostic read window"), TEXT("type/descriptor count changed"));
         return Source.Context();
     }
-    bool EmptyBag(const FBagState& B) const { return B.Count == 0 && B.Descriptors == 0 && B.Valid == (B.Type != nullptr); }
-    bool SameBag(const FBagState& A, const FBagState& B) const { return A.Valid == B.Valid && A.Count == B.Count && A.Descriptors == B.Descriptors && A.Type == B.Type && A.TypePath == B.TypePath; }
+    // Physical bag type/addresses remain diagnostics only, never cross-call or
+    // compiler invariants. Default/actual values and explicit marks are logical.
+    bool SameBag(const FBagState& A, const FBagState& B) const { return A.Valid == B.Valid && A.Count == B.Count && A.Descriptors == B.Descriptors; }
+    bool ParameterRolesCurrent()
+    {
+        if (!Source.Context() || !Loaded(Component.Get()) || !Loaded(Instance.Get()) || !Selected->ComponentTemplate.IsResolved() || Selected->ComponentTemplate != Component.Get()) return Stop(TEXT("pcg_template_parameter_owner_changed"), TEXT("selected template"), TEXT("same captured own template/instance"), TEXT("changed"));
+        auto* P = FindFProperty<FObjectProperty>(UPCGComponent::StaticClass(), TEXT("GraphInstance")); if (!P || P != InstanceField) return Stop(TEXT("pcg_template_parameter_owner_changed"), TEXT("GraphInstance descriptor"), TEXT("same native field"), TEXT("changed"));
+        const auto* H = P->GetObjectPtrPropertyValuePtr(P->ContainerPtrToValuePtr<void>(Component.Get()));
+        return (H->IsResolved() && *H == Instance.Get() && Instance->Graph.IsResolved() && Instance->Graph == ExpectedGraph && Instance->GetOuter() == Component.Get()) || Stop(TEXT("pcg_template_parameter_owner_changed"), TEXT("post_const_read_slots"), TEXT("same captured Component.GI and GI.Graph"), TEXT("changed"));
+    }
+    bool ReadSourceParameters(TSharedPtr<FJsonObject>& Out)
+    {
+        TSharedPtr<FJsonObject> Observation; FString Error;
+        if (!Cubeless::UE58::PCGComponentGeneration::ReadScalarUserParameters(Graph.Get(), nullptr, Observation, Error)) return Stop(TEXT("pcg_template_graph_parameters_pending"), TEXT("graph.UserParameters"), TEXT("supported scalar logical schema/default values"), Error, GraphPath);
+        Out = Observation->GetObjectField(TEXT("graph_defaults")); return Source.Context();
+    }
     bool ObserveInstanceBag(FBagState& Out)
     {
-        if (!ObserveBag(Instance->ParametersOverrides.Parameters, Out, TEXT("ParametersOverrides.Parameters"))) return false;
-        const int32 IDs = Instance->ParametersOverrides.PropertiesIDsOverridden.Num();
-        if (!EmptyBag(Out) || IDs != 0 || (ParametersReady && !SameBag(Out, ExpectedInstanceBag)))
-        {
-            auto Receipt = BagReceipt(Out, IDs); TArray<TSharedPtr<FJsonValue>> ObservedIDs; for (const FGuid& ID : Instance->ParametersOverrides.PropertiesIDsOverridden) ObservedIDs.Add(MakeShared<FJsonValueString>(ID.ToString())); Receipt->SetArrayField(TEXT("override_ids"), ObservedIDs); R.Data->SetObjectField(TEXT("parameter_bag_failure_observation"), Receipt);
-            return Stop(TEXT("pcg_template_parameter_scope_changed"), TEXT("ParametersOverrides.Parameters/PropertiesIDsOverridden"), ParametersReady ? BagDetails(ExpectedInstanceBag) + TEXT("; override_id_count=0") : TEXT("zero properties and override IDs; valid empty and invalid bags are distinct allowed initial states"), BagDetails(Out) + FString::Printf(TEXT("; override_id_count=%d"), IDs));
-        }
+        if (!ParameterRolesCurrent()) return false;
+        TSharedPtr<FJsonObject> Observation; FString Error;
+        if (!Cubeless::UE58::PCGComponentGeneration::ReadScalarUserParameters(ExpectedGraph ? Graph.Get() : nullptr, Instance.Get(), Observation, Error)) return Stop(TEXT("pcg_template_parameter_scope_changed"), TEXT("ParametersOverrides"), TEXT("supported scalar actual bag and exact explicit override IDs"), Error);
+        if (!ParameterRolesCurrent() || !ObserveBag(Instance->ParametersOverrides.Parameters, Out, TEXT("ParametersOverrides.Parameters")) || !ParameterRolesCurrent()) return false;
+        auto Actual = MakeShared<FJsonObject>(); Actual->SetObjectField(TEXT("actual"), Observation->GetObjectField(TEXT("instance_actual"))); Actual->SetArrayField(TEXT("override_guids"), Observation->GetArrayField(TEXT("override_guids")));
+        if (ParametersReady && (!SameBag(Out, ExpectedInstanceBag) || !Cubeless::UE58::PCGComponentGeneration::SameScalarUserParameters(ExpectedInstanceParameters, Actual, Error)))
+        { R.Data->SetObjectField(TEXT("parameter_bag_failure_observation"), Actual); return Stop(TEXT("pcg_template_parameter_scope_changed"), TEXT("ParametersOverrides"), TEXT("original or preplanned scalar bag/explicit mark set"), Error.IsEmpty() ? BagDetails(Out) : Error); }
+        if (!ParametersReady) ExpectedInstanceParameters = Actual; // Admission only; no post-writer baseline adoption.
         return true;
     }
-    bool BindEmptyParameters()
+    bool BindScalarParameters()
     {
-        const FInstancedPropertyBag* Parameters = Graph->GetUserParametersStruct(); if (!Raw()) return false;
-        if (!Parameters) return Stop(TEXT("pcg_template_graph_parameters_pending"), TEXT("graph user parameters"), TEXT("public parameter bag pointer"), TEXT("nullptr"), GraphPath);
-        if (!ObserveBag(*Parameters, SourceBag, TEXT("graph.UserParameters"))) return false;
-        R.Data->SetObjectField(TEXT("source_parameter_bag_before"), BagReceipt(SourceBag));
-        if (!EmptyBag(SourceBag)) { R.Data->SetObjectField(TEXT("parameter_bag_failure_observation"), BagReceipt(SourceBag)); return Stop(TEXT("pcg_template_graph_parameters_pending"), TEXT("graph.UserParameters"), TEXT("property_count=0; descriptor_count=0; IsValid agrees with backing struct presence"), BagDetails(SourceBag), GraphPath); }
-        if (SourceBag.Type)
-        {
-            SourceBagType.Reset(const_cast<UPropertyBag*>(SourceBag.Type)); if (!Remember(SourceBagType.Get())) return Stop(TEXT("pcg_template_source_bag_role_unavailable"), TEXT("graph.UserParameters.struct"), TEXT("held readonly source bag struct"), BagDetails(SourceBag), GraphPath);
-            SourceBagFlags = SourceBagType->StructFlags; SourceBagSuper = SourceBagType->GetSuperStruct(); SourceBagSize = SourceBagType->GetStructureSize(); SourceBagAlignment = SourceBagType->GetMinAlignment();
-        }
-        SourceEmptyParameters = *Parameters; if (!Raw()) return false;
+        if (!ReadSourceParameters(SourceParameters)) return false;
+        const FInstancedPropertyBag* Parameters = Graph->GetUserParametersStruct(); if (!Raw() || !Parameters || !ObserveBag(*Parameters, SourceBag, TEXT("graph.UserParameters"))) return false;
+        R.Data->SetObjectField(TEXT("source_parameter_bag_before"), BagReceipt(SourceBag)); R.Data->SetObjectField(TEXT("source_scalar_parameters_before"), SourceParameters);
         if (!ObserveInstanceBag(ExpectedInstanceBag)) return false;
-        if (ExpectedInstanceBag.Type) InitialInstanceBagType.Reset(const_cast<UPropertyBag*>(ExpectedInstanceBag.Type));
-        R.Data->SetObjectField(TEXT("instance_parameter_bag_before"), BagReceipt(ExpectedInstanceBag, 0)); ParametersReady = true;
+        R.Data->SetObjectField(TEXT("instance_parameter_bag_before"), BagReceipt(ExpectedInstanceBag, Instance->ParametersOverrides.PropertiesIDsOverridden.Num())); R.Data->SetObjectField(TEXT("instance_scalar_parameters_before"), ExpectedInstanceParameters); ParametersReady = true;
         return Raw();
     }
-    bool ExpectedEmptyParameterTransition()
+    bool ExpectedScalarParameterTransition()
     {
-        // This is a planned scratch expectation derived from the captured source,
-        // never a post-callback baseline read. Preserve every other override member.
-        if (Source.Stopped) return false;
-        if (!ParametersReady || !InstanceParameterSnapshot || !InstanceParameterSnapshot->Memory) return Stop(TEXT("pcg_template_parameter_snapshot_missing"), TEXT("ParametersOverrides"), TEXT("captured whole override struct"), TEXT("missing"));
-        auto* Expected = static_cast<FPCGOverrideInstancedPropertyBag*>(InstanceParameterSnapshot->Memory);
-        Expected->Parameters = SourceEmptyParameters; ExpectedInstanceBag = SourceBag;
-        R.Data->SetBoolField(TEXT("empty_parameter_bag_expected_transition"), true);
-        return true;
+        // PCGGraph.cpp GraphChanged copies captured parent defaults and clears
+        // explicit marks. This plan never adopts the post-callback actual bag.
+        if (Source.Stopped || !ParametersReady || !InstanceParameterLogicalSnapshot || !SourceParameters) return Stop(TEXT("pcg_template_parameter_snapshot_missing"), TEXT("ParametersOverrides"), TEXT("captured logical source/default/mark snapshot"), TEXT("missing"));
+        auto Planned = MakeShared<FJsonObject>(); Planned->SetObjectField(TEXT("actual"), SourceParameters); Planned->SetArrayField(TEXT("override_guids"), {}); ExpectedInstanceParameters = Planned; ExpectedInstanceBag = SourceBag;
+        R.Data->SetBoolField(TEXT("scalar_parameter_bag_expected_transition"), true); R.Data->SetObjectField(TEXT("instance_scalar_parameters_planned"), Planned); return true;
     }
     bool Raw(bool Reconstructing = false)
     {
@@ -2507,11 +3020,10 @@ struct FPCGTemplateConfigureScope
         if (Graph->GetNodes() != Authored || Graph->GetPackage()->IsDirty()) return Stop(TEXT("pcg_template_source_graph_changed"), TEXT("authored_nodes/dirty"), TEXT("captured graph; dirty=false"), TEXT("mismatch"), GraphPath);
         if (ParametersReady)
         {
-            const FInstancedPropertyBag* Parameters = Graph->GetUserParametersStruct(); FBagState Now;
-            if (!Parameters) return Stop(TEXT("pcg_template_source_bag_changed"), TEXT("graph.UserParameters"), BagDetails(SourceBag), TEXT("nullptr"), GraphPath);
-            if (!ObserveBag(*Parameters, Now, TEXT("graph.UserParameters"))) return false;
-            if (!SameBag(Now, SourceBag) || !EmptyBag(Now)) { R.Data->SetObjectField(TEXT("parameter_bag_failure_observation"), BagReceipt(Now)); return Stop(TEXT("pcg_template_source_bag_changed"), TEXT("graph.UserParameters"), BagDetails(SourceBag), BagDetails(Now), GraphPath); }
-            if (SourceBagType.IsValid() && (SourceBagType->StructFlags != SourceBagFlags || SourceBagType->GetSuperStruct() != SourceBagSuper || SourceBagType->GetStructureSize() != SourceBagSize || SourceBagType->GetMinAlignment() != SourceBagAlignment)) return Stop(TEXT("pcg_template_source_bag_layout_changed"), TEXT("graph.UserParameters.struct layout"), TEXT("captured flags/super/size/alignment and zero descriptors"), TEXT("native layout differs"), SourceBag.TypePath);
+            TSharedPtr<FJsonObject> Now; FString Error; FBagState BagNow;
+            if (!ReadSourceParameters(Now)) return false; const FInstancedPropertyBag* Parameters = Graph->GetUserParametersStruct();
+            if (!Parameters || !ObserveBag(*Parameters, BagNow, TEXT("graph.UserParameters"))) return false;
+            if (!SameBag(BagNow, SourceBag) || !Cubeless::UE58::PCGComponentGeneration::SameScalarUserParameters(SourceParameters, Now, Error)) return Stop(TEXT("pcg_template_source_bag_changed"), TEXT("graph.UserParameters"), TEXT("original copied logical source parameters"), Error.IsEmpty() ? BagDetails(BagNow) : Error, GraphPath);
         }
         for (const auto& M : Members) if (M.Node->GetInputPins() != M.Inputs || M.Node->GetOutputPins() != M.Outputs) return Stop(TEXT("pcg_template_source_pins_changed"), TEXT("physical_pin_inventory"), TEXT("captured input/output membership"), TEXT("mismatch"), GraphPath);
         for (const auto& P : Pins) if (P.Pin->Node != P.Node || P.Pin->Edges != P.Edges) return Stop(TEXT("pcg_template_source_edges_changed"), TEXT("pin.Node/Edges"), LexToString(P.Edges.Num()), LexToString(P.Pin->Edges.Num()), GraphPath);
@@ -2547,7 +3059,16 @@ struct FPCGTemplateConfigureScope
         {
             FProperty* P = *It; if (!P->HasAnyPropertyFlags(CPF_Edit) || P->HasAnyPropertyFlags(CPF_Deprecated) || (Mode != 3 && P->HasAnyPropertyFlags(CPF_Transient))) continue;
             const FName N = P->GetFName(); if (Mode == 1 && (N == TEXT("GenerationTrigger") || N == TEXT("bRegenerateInEditor") || N == TEXT("bGenerateOnDropWhenTriggerOnDemand") || N == TEXT("GraphInstance"))) continue;
-            if (Mode == 2 && N == TEXT("Graph")) continue; Fields.Add(P);
+            if (Mode == 2 && N == TEXT("Graph")) continue;
+            if (Mode == 2 && N == TEXT("ParametersOverrides"))
+            {
+                const auto* S = CastField<FStructProperty>(P); auto* K = FPCGOverrideInstancedPropertyBag::StaticStruct();
+                auto* BagField = FindFProperty<FStructProperty>(K, TEXT("Parameters")); auto* IDs = FindFProperty<FSetProperty>(K, TEXT("PropertiesIDsOverridden")); auto* ID = IDs ? CastField<FStructProperty>(IDs->ElementProp) : nullptr; int32 Count = 0; for (TFieldIterator<FProperty> I(K); I; ++I) ++Count;
+                if (!S || S->Struct != K || P->ArrayDim != 1 || P->GetSize() != sizeof(FPCGOverrideInstancedPropertyBag) || Count != 2 || !BagField || BagField->Struct != FInstancedPropertyBag::StaticStruct() || !ID || ID->Struct != TBaseStructure<FGuid>::Get()) return Stop(TEXT("pcg_template_parameter_descriptor_unsupported"), N.ToString(), TEXT("exact native Parameters + GUID mark set; no unobserved extra fields"), TEXT("descriptor differs"), O->GetPathName());
+                InstanceParameterLogicalSnapshot = true; continue;
+            }
+            if (O == Graph.Get() && N == TEXT("UserParameters")) { const auto* S = CastField<FStructProperty>(P); if (!S || S->Struct != FInstancedPropertyBag::StaticStruct() || P->ArrayDim != 1) return Stop(TEXT("pcg_template_parameter_descriptor_unsupported"), N.ToString(), TEXT("exact source property bag field"), TEXT("descriptor differs"), GraphPath); continue; }
+            Fields.Add(P);
         }
         if (Fields.Num() > 2048) return Stop(TEXT("pcg_template_value_bound"), TEXT("editable_fields"), TEXT("<=2048"), LexToString(Fields.Num()));
         for (FProperty* P : Fields)
@@ -2560,12 +3081,6 @@ struct FPCGTemplateConfigureScope
             auto V = MakeUnique<FValue>(); V->Object.Reset(O); V->Class.Reset(O->GetClass()); V->Property = P; V->Path = O->GetPathName(); V->Name = P->GetName();
             V->Memory = P->AllocateAndInitializeValue(); if (!Raw() || !V->Memory) return false;
             P->CopyCompleteValue(V->Memory, P->ContainerPtrToValuePtr<void>(O)); if (!Raw()) return false;
-            if (Mode == 2 && P->GetFName() == TEXT("ParametersOverrides"))
-            {
-                const auto* StructField = CastField<FStructProperty>(P);
-                if (!StructField || StructField->Struct != FPCGOverrideInstancedPropertyBag::StaticStruct() || P->ArrayDim != 1 || P->GetSize() != sizeof(FPCGOverrideInstancedPropertyBag)) return Stop(TEXT("pcg_template_parameter_descriptor_unsupported"), P->GetName(), TEXT("exact native scalar FPCGOverrideInstancedPropertyBag storage"), TEXT("descriptor differs"), V->Path);
-                InstanceParameterSnapshot = V.Get();
-            }
             SnapshotBytes += P->GetSize(); Values.Add(MoveTemp(V));
         }
         return Raw();
@@ -2614,7 +3129,7 @@ struct FPCGTemplateConfigureScope
         if (!Instance.IsValid() || !Instance->Graph.IsResolved() || (ExpectedTrigger != EPCGComponentGenerationTrigger::GenerateOnLoad && ExpectedTrigger != EPCGComponentGenerationTrigger::GenerateOnDemand) || !Component->SchedulingPolicy.IsResolved() || Component->SchedulingPolicy != nullptr) return Stop(TEXT("pcg_template_policy_variant_pending"), TEXT("initial trigger/scheduling policy"), TEXT("OnLoad or OnDemand, no scheduling policy"), TEXT("pending variant"));
         ExpectedGraph = Instance->Graph.Get(); if (ExpectedGraph && ExpectedGraph != G) return Stop(TEXT("pcg_template_replacement_pending"), TEXT("GraphInstance.Graph"), TEXT("unbound or same requested graph"), Address(ExpectedGraph));
         Authored = G->GetNodes(); Ready = true; if (!Raw()) return false;
-        if (!BindEmptyParameters()) return false;
+        if (!BindScalarParameters()) return false;
         TArray<UPCGNode*> AllGraphNodes = Authored; AllGraphNodes.Add(G->GetInputNode()); AllGraphNodes.Add(G->GetOutputNode()); if (Authored.Num() > 128 || !Remember(G)) return Stop(TEXT("pcg_template_graph_scope_pending"), TEXT("graph source"), TEXT("<=128 loaded native nodes"), LexToString(Authored.Num()));
         TSet<UPCGNode*> UniqueNodes; TSet<UPCGPin*> UniquePins; TSet<UPCGEdge*> UniqueEdges;
         for (auto* N : AllGraphNodes)
@@ -2634,7 +3149,7 @@ struct FPCGTemplateConfigureScope
         if (!CaptureValues(D, 0) || !CaptureValues(DI, 0)) return false;
         for (const auto& O : Old) if (!CaptureValues(O.Template.Get(), O.Node.Get() == Selected.Get() ? 1 : 0)) return false;
         if (!CaptureValues(Instance.Get(), 2) || !CaptureValues(G, 3)) return false;
-        if (!InstanceParameterSnapshot) return Stop(TEXT("pcg_template_parameter_snapshot_missing"), TEXT("ParametersOverrides"), TEXT("whole struct snapshot including IDs and other members"), TEXT("not captured"));
+        if (!InstanceParameterLogicalSnapshot) return Stop(TEXT("pcg_template_parameter_snapshot_missing"), TEXT("ParametersOverrides"), TEXT("exact two-field logical bag/override snapshot"), TEXT("not captured"));
         for (const auto& M : Members) if (!CaptureValues(M.Node.Get(), 3) || !CaptureValues(M.Settings.Get(), 3)) return false;
         for (const auto& P : Pins) if (!CaptureValues(P.Pin.Get(), 3)) return false;
         for (const auto& E : Edges) if (!CaptureValues(E.Edge.Get(), 3)) return false;
@@ -2740,7 +3255,7 @@ FMutationResult ConfigureNativePCGTemplate(const FString& ParamsJson)
         if (!W.Policy(W.TriggerField, W.ExpectedTrigger != EPCGComponentGenerationTrigger::GenerateOnDemand, [&] { W.Component->GenerationTrigger = EPCGComponentGenerationTrigger::GenerateOnDemand; W.ExpectedTrigger = EPCGComponentGenerationTrigger::GenerateOnDemand; })) return false;
         if (W.ExpectedGraph != G)
         {
-            if (!W.Enter(TEXT("Template_SetGraphLocal"))) return false; R.Data->SetBoolField(TEXT("graph_assignment_attempted"), true); W.Component->SetGraphLocal(G); W.Returned(); W.ExpectedGraph = G; R.bChanged = true; if (!W.ExpectedEmptyParameterTransition() || !W.Reacquire()) return false;
+            if (!W.Enter(TEXT("Template_SetGraphLocal"))) return false; R.Data->SetBoolField(TEXT("graph_assignment_attempted"), true); W.Component->SetGraphLocal(G); W.Returned(); W.ExpectedGraph = G; R.bChanged = true; if (!W.ExpectedScalarParameterTransition() || !W.Reacquire()) return false;
         }
         if (!W.Enter(TEXT("MarkBlueprintAsModified"))) return false; FBlueprintEditorUtils::MarkBlueprintAsModified(B); W.Returned(); return W.Reacquire();
     }();
@@ -2752,8 +3267,10 @@ FMutationResult ConfigureNativePCGTemplate(const FString& ParamsJson)
         if (!W.Reacquire()) return R; if (!Compiled) { Fail(R, TEXT("component_compile_failed"), TEXT("Template edit prefix remains; compile failed, no save/retry/rollback")); return R; }
     }
     if (!W.ObserveGraph(false) || !W.FinishDisk()) return R;
-    R.Data->SetObjectField(TEXT("after"), W.Projection()); R.Data->SetObjectField(TEXT("source_parameter_bag_after"), W.BagReceipt(W.SourceBag)); R.Data->SetObjectField(TEXT("instance_parameter_bag_after"), W.BagReceipt(W.ExpectedInstanceBag, 0)); R.Data->SetBoolField(TEXT("source_graph_preserved"), true); R.Data->SetBoolField(TEXT("native_cdo_preserved"), true); R.Data->SetBoolField(TEXT("existing_scs_observations_preserved"), true); R.Data->SetBoolField(TEXT("operation_complete"), true); R.Data->SetBoolField(TEXT("observation_complete"), true); R.Data->SetBoolField(TEXT("generation_requested"), false); R.Data->SetBoolField(TEXT("cleanup_requested"), false); R.Data->SetBoolField(TEXT("graph_assignment_uses_public_setter"), true);
-    R.Data->SetStringField(TEXT("scope"), TEXT("One named ownerless/unregistered native PCG SCS template; saved-clean preloaded Actor BP and native graph without user parameters. Planned policy values and public SetGraphLocal only. Readonly source semantic properties/topology preserved; not all private caches/global SDK purity. Original multi-template helper, live actors, runtime policies/parameters, replacement with another existing graph, generation/binding/generic Set remain incomplete. No save/rollback/cleanup/retry."));
+    FPCGTemplateConfigureScope::FBagState SourceBagAfter, InstanceBagAfter; const FInstancedPropertyBag* SourceParametersAfter = G->GetUserParametersStruct();
+    if (!SourceParametersAfter || !W.ObserveBag(*SourceParametersAfter, SourceBagAfter, TEXT("graph.UserParameters final")) || !W.ObserveInstanceBag(InstanceBagAfter) || !W.Check()) return R;
+    R.Data->SetObjectField(TEXT("after"), W.Projection()); R.Data->SetObjectField(TEXT("source_parameter_bag_after"), W.BagReceipt(SourceBagAfter)); R.Data->SetObjectField(TEXT("instance_parameter_bag_after"), W.BagReceipt(InstanceBagAfter, W.Instance->ParametersOverrides.PropertiesIDsOverridden.Num())); R.Data->SetObjectField(TEXT("source_scalar_parameters_after"), W.SourceParameters); R.Data->SetObjectField(TEXT("instance_scalar_parameters_after"), W.ExpectedInstanceParameters); R.Data->SetBoolField(TEXT("source_graph_preserved"), true); R.Data->SetBoolField(TEXT("native_cdo_preserved"), true); R.Data->SetBoolField(TEXT("existing_scs_observations_preserved"), true); R.Data->SetBoolField(TEXT("operation_complete"), true); R.Data->SetBoolField(TEXT("observation_complete"), true); R.Data->SetBoolField(TEXT("generation_requested"), false); R.Data->SetBoolField(TEXT("cleanup_requested"), false); R.Data->SetBoolField(TEXT("graph_assignment_uses_public_setter"), true);
+    R.Data->SetStringField(TEXT("scope"), TEXT("One named ownerless/unregistered native PCG SCS template; saved-clean preloaded Actor BP and native graph with copied Bool/Byte/Int32/Int64/Float/Double/Name/String parameters. Planned policy values and public SetGraphLocal only; another existing graph replacement and nonscalar bags remain pending. Readonly source semantic properties/topology preserved; not all private caches/global SDK purity. Original multi-template helper, live actors, runtime policies/parameters, replacement with another existing graph, generation/binding/generic Set remain incomplete. No save/rollback/cleanup/retry."));
     R.Data->SetBoolField(TEXT("dirty_before"), false); R.Data->SetBoolField(TEXT("dirty_after"), B->GetPackage()->IsDirty()); R.bChanged |= B->GetPackage()->IsDirty();
     R.bChangeStateKnown = true; R.bSuccess = R.bPostconditionPassed = true; R.Stage = TEXT("complete"); return R;
 }
@@ -2981,11 +3498,17 @@ FMutationResult MutateNativeCAC(UBlueprint* B,USCS_Node* Existing,const FString&
 }
 
 FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName,
-    const FString& TransformJson, const FString& ParentComponent, const FString& PropertiesJson, bool bAdd, bool bCompile, const FString& PropertyName)
+    const FString& TransformJson, const FString& ParentComponent, const FString& PropertiesJson, bool bAdd, bool bCompile, const FString& PropertyName, bool bOriginalAdd = false)
 {
     FMutationResult R; R.bCompileRequested = bAdd && bCompile;FLightScope LightGuard(R);FHismScope HismGuard(R);int32 InitialPropertyCount=0;bool NiagaraHandled=false,GeneratedValueHandled=false,PCGHandled=false,CACHandled=false;
     R.Data->SetStringField(TEXT("blueprint_name"), BlueprintPath); R.Data->SetStringField(TEXT("component_name"), ComponentName);
-    R.Data->SetStringField(TEXT("scope"), TEXT("local reachable SCS; fourteen existing exact Engine scene classes plus bounded empty HISM Add including native Point/Spot/Rect/Directional/Spline/ISM/SkeletalMeshComponent with typed properties, or add a saved clean generated non-scene ActorComponent with unchanged defaults; no inherited template edits"));
+    R.Data->SetStringField(TEXT("scope"), TEXT("local reachable SCS; fourteen existing exact Engine scene classes plus bounded empty HISM Add including native Point/Spot/Rect/Directional/Spline/ISM/SkeletalMeshComponent with typed properties, or exact native UMG WidgetComponent Add/WidgetClass Set, or exact native CharacterMovementComponent/ProjectileMovementComponent/RotatingMovementComponent/FloatingPawnMovement non-scene Add and bounded typed Set, or add a saved clean generated non-scene ActorComponent with unchanged defaults; no inherited template edits"));
+    if (bOriginalAdd)
+    {
+        R.Data->SetBoolField(TEXT("original_raw_add_command"), true);
+        R.Data->SetBoolField(TEXT("original_component_properties_ignored"), true);
+        R.Data->SetBoolField(TEXT("original_transform_setters_before_attachment"), true);
+    }
     R.Data->SetBoolField(TEXT("implicit_postload_work_possible"), true); R.Data->SetBoolField(TEXT("explicit_skeleton_compile_attempted"), false);
     R.Data->SetStringField(TEXT("change_observation_scope"), TEXT("reachable local SCS identities/selected properties, Blueprint dirty/status and dirty package set; arbitrary PostLoad/notification state is not exhaustively observed"));
     TArray<FString> DirtyBefore; FReadResult Before, After;
@@ -2993,11 +3516,23 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
     TStrongObjectPtr<UBlueprint> ComponentBlueprint;
     TStrongObjectPtr<UClass> AddedClass;
     TArray<TUniquePtr<FPreparedProperty>> Properties;
+    TFunction<bool()> WidgetSourceCurrent,MovementSourceCurrent,RawAddCurrent;
+    TStrongObjectPtr<UMovementComponent> MovementNativeDefault;TSharedPtr<FJsonObject> NativeMovementBefore;
+    auto ReferencesCurrent=[&](){if(RawAddCurrent&&!RawAddCurrent())return false;if(MovementSourceCurrent&&!MovementSourceCurrent())return false;if(WidgetSourceCurrent&&!WidgetSourceCurrent())return false;for(const auto& P:Properties)if(P->HardReferenceCurrent&&!P->HardReferenceCurrent())return false;return true;};
+    TSharedPtr<FJsonObject> RawAddTransform;
+    TStrongObjectPtr<USCS_Node> RawAddedNode, RawParentNode;
+    TStrongObjectPtr<UActorComponent> RawAddedTemplate, RawNativeDefault;
+    TStrongObjectPtr<USimpleConstructionScript> RawSCS;
+    TStrongObjectPtr<UClass> RawClass, RawGenerated;
+    FVector RawLocation, RawScale; FRotator RawRotation; FGuid RawNodeGuid;
+    bool RawTransformReady = false, RawCompileReturned = false;
     FString ActualParent; bool bNoOp = false, bCreationObserved = false, bCreationIncomplete = false, bDirtyBaseline = false;
+    const bool bNativeMovementRequested=bAdd&&NativeMovementName(ComponentType);
     const bool bGeneratedRequested = bAdd && ComponentType.StartsWith(TEXT("/Game/"));
     const bool bPCGRequested = bAdd && PCGComponentName(ComponentType);
-    bool bNativeSplineRequested = false, bNativeIsmRequested = false, bNativeSkeletalRequested = false,bNativeLightRequested=false;
-    TSharedPtr<FJsonObject> NativeSplineBefore, NativeIsmBefore, NativeSkeletalBefore;
+    bool bNativeSplineRequested = false, bNativeIsmRequested = false, bNativeSkeletalRequested = false,bNativeLightRequested=false,bNativeWidgetRequested=false;
+    TSharedPtr<FJsonObject> NativeSplineBefore, NativeIsmBefore, NativeSkeletalBefore,NativeWidgetBefore;
+    TStrongObjectPtr<UWidgetComponent> WidgetNativeDefault;
     bool bClassLoadFailed = false, bReferenceObserved = false, bReferenceDirty = false, bReferenceLoadChanged = false;
     EBlueprintStatus ReferenceStatus = BS_Unknown;
     const bool bApplied = [&]() -> bool
@@ -3013,6 +3548,12 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
         {
             if (Input->Type != EJson::Object || Input->AsObject()->Values.Num() > MaxProperties) { return Fail(R, TEXT("component_properties_invalid"), TEXT("component_properties_json must be an object with at most 64 properties.")); }
             PropertyObject = Input->AsObject();InitialPropertyCount=PropertyObject->Values.Num();
+            if(bNativeMovementRequested)
+            {
+                if(!ParentComponent.IsEmpty())return Fail(R,TEXT("component_movement_parent_invalid"),TEXT("Original non-scene movement Add cannot attach to a scene parent; no SCS node was created."));
+                // The original Add handler forwards but never applies component_properties.
+                R.Data->SetBoolField(TEXT("movement_add_initial_properties_ignored_as_original"),!PropertyObject->Values.IsEmpty());R.Data->SetBoolField(TEXT("movement_add_transform_ignored_as_original"),true);PropertyObject=MakeShared<FJsonObject>();InitialPropertyCount=0;
+            }
             if (bPCGRequested && !ParentComponent.IsEmpty()) return Fail(R,TEXT("component_pcg_parent_unsupported"),TEXT("PCGComponent is non-scene; explicit parent is rejected as in the original handler."));
             if (bPCGRequested && !PropertyObject->Values.IsEmpty()) return Fail(R,TEXT("component_pcg_initial_properties_pending"),TEXT("This Add-only native slice accepts {} initial properties; the legacy ignored nonempty property contract remains pending, not a generic setter."));
             if (bGeneratedRequested && (!PropertyObject->Values.IsEmpty() || !ParentComponent.IsEmpty()))
@@ -3021,10 +3562,12 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             if (!ParseValue(TransformJson, Transform, R) || Transform->Type != EJson::Object) { return Fail(R, TEXT("component_transform_invalid"), TEXT("TransformJson must be an object of location, rotation and scale arrays.")); }
             for (const auto& Pair : Transform->AsObject()->Values)
             { const FString Key(Pair.Key.ToView()); if (Key != TEXT("location") && Key != TEXT("rotation") && Key != TEXT("scale")) { return Fail(R, TEXT("component_transform_invalid"), TEXT("Unknown transform field.")); } }
+            if (bOriginalAdd) RawAddTransform = Transform->AsObject();
             const TCHAR* Keys[] = {TEXT("location"), TEXT("rotation"), TEXT("scale")};
             const TCHAR* Fields[] = {TEXT("RelativeLocation"), TEXT("RelativeRotation"), TEXT("RelativeScale3D")};
             for (int32 I = 0; I < 3; ++I)
             {
+                if (bOriginalAdd) continue; // Original HasField conversion runs on the returned template.
                 for (const auto& Pair : PropertyObject->Values) { if (FString(Pair.Key.ToView()).Equals(Fields[I], ESearchCase::IgnoreCase)) { return Fail(R, TEXT("component_transform_conflict"), TEXT("Use transform arguments for RelativeLocation/Rotation/Scale3D on add.")); } }
                 TSharedPtr<FJsonValue> Value = Transform->AsObject()->TryGetField(Keys[I]);
                 if (!Value) { const double D = I == 2 ? 1.0 : 0.0; Value = MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{MakeShared<FJsonValueNumber>(D), MakeShared<FJsonValueNumber>(D), MakeShared<FJsonValueNumber>(D)}); }
@@ -3035,7 +3578,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                     if (XYZ[0] != Expected || XYZ[1] != Expected || XYZ[2] != Expected)
                     { return Fail(R, TEXT("generated_component_options_unsupported"), TEXT("Non-scene ActorComponents have no transform; use identity location/rotation/scale.")); }
                 }
-                else if (!bPCGRequested) { PropertyObject->SetField(Fields[I], Value); }
+                else if (!bPCGRequested&&!bNativeMovementRequested) { PropertyObject->SetField(Fields[I], Value); }
             }
         }
         else { if (!SafeName(PropertyName)) { return Fail(R, TEXT("component_property_name_invalid"), TEXT("Property name is invalid.")); } PropertyObject->SetField(PropertyName, Input); }
@@ -3055,6 +3598,24 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
         UClass* Class = bAdd&&CACName(ComponentType)?UChildActorComponent::StaticClass():bAdd ? (bPCGRequested ? FindObject<UClass>(nullptr, TEXT("/Script/PCG.PCGComponent")) : SupportedClass(ComponentType)) : nullptr;
         if (bAdd)
         {
+            if (bOriginalAdd)
+            {
+                const bool CommonNative = Class == USceneComponent::StaticClass() || Class == UStaticMeshComponent::StaticClass()
+                    || Class == UCameraComponent::StaticClass() || Class == USpringArmComponent::StaticClass()
+                    || Class == USphereComponent::StaticClass() || Class == UBoxComponent::StaticClass() || Class == UCapsuleComponent::StaticClass()
+                    || Class == USkeletalMeshComponent::StaticClass() || NativeMovementClass(Class)
+                    || Class == USplineComponent::StaticClass() || Class == UInstancedStaticMeshComponent::StaticClass() || Class == UHierarchicalInstancedStaticMeshComponent::StaticClass();
+                if (!CommonNative) return Fail(R, TEXT("component_raw_add_source_lifecycle_pending"), TEXT("Original presence path admits implemented common Engine scene/shape/mesh/camera/spring-arm/movement and bounded existing native Spline/ISM/empty-HISM source profiles. Specialized/generated source lifetimes and arbitrary class discovery remain implementation targets; Named profiles are unchanged."));
+                // ACZ proves the original default-root retirement in FHismScope
+                // before CreateNode and adopts it only after SCS.AddNode returns.
+                if(Class==USplineComponent::StaticClass()||Class==UInstancedStaticMeshComponent::StaticClass()||Class==UHierarchicalInstancedStaticMeshComponent::StaticClass())
+                {
+                    R.Data->SetBoolField(TEXT("raw_native_geometry_source_profile"),true);R.Data->SetBoolField(TEXT("raw_geometry_extra_skeleton_refresh_requested"),false);
+                    R.Data->SetStringField(TEXT("raw_native_geometry_scope"),TEXT("Original raw Add reuses existing exact native Spline/ISM/empty inactive HISM source/CDO/current and SCS creation/attachment/one requested full-compile flow. Presence-only float32 transforms run before attachment; original component_properties are ignored. No Named-only extra skeleton refresh, source load/CDO creation, instance insertion, tree build/wait, runtime registration/evaluation or extra save is added. Sole childless direct-Actor DefaultSceneRoot retirement uses a raw-only owned-role lease; broader default-root reparenting, populated/custom/generated/cold/wider source and full original parity remain incomplete or usage pending."));
+                }
+                if (!ParentComponent.IsEmpty() && !Class->IsChildOf(USceneComponent::StaticClass()))
+                    return Fail(R, TEXT("component_raw_add_parent_invalid"), TEXT("Original parent attachment requires a scene component child class; no creation."));
+            }
             if (bGeneratedRequested)
             {
                 if (!SafeName(ComponentType) || !FPackageName::IsValidObjectPath(ComponentType) || ComponentType.Contains(TEXT(":")))
@@ -3091,8 +3652,9 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                 { return Fail(R, TEXT("generated_component_load_changed_state"), TEXT("Reference load changed an already loaded component Blueprint's dirty/status state; inspect it before authoring.")); }
             }
             if(Class==UChildActorComponent::StaticClass()){CACHandled=true;if(InitialPropertyCount!=0)return Fail(R,TEXT("component_child_actor_initial_properties_pending"),TEXT("First CAC Add accepts original {} initial properties only; common transform injection is not a caller property."));const TSharedPtr<FJsonValue> OriginalEmpty=MakeShared<FJsonValueObject>(MakeShared<FJsonObject>());R=MutateNativeCAC(Blueprint.Get(),nullptr,ComponentName,ParentComponent,TransformJson,OriginalEmpty,Before,true,bCompile);return R.bSuccess;}
-            if (!Class) { return Fail(R, TEXT("component_class_unsupported"), TEXT("Supported: fourteen existing exact native Engine classes, bounded empty native HISM Add, or an exact saved clean generated non-scene ActorComponent class.")); }
+            if (!Class) { return Fail(R, TEXT("component_class_unsupported"), TEXT("Supported: existing exact native Engine profiles, bounded empty HISM Add, native UMG WidgetComponent Add, exact native CharacterMovementComponent/ProjectileMovementComponent/RotatingMovementComponent/FloatingPawnMovement, or an exact saved clean generated non-scene ActorComponent class.")); }
             if(Class==UHierarchicalInstancedStaticMeshComponent::StaticClass()&&InitialPropertyCount!=0)return Fail(R,TEXT("component_hism_initial_properties_pending"),TEXT("HISM Add currently preserves native defaults and accepts {} initial properties plus explicit transforms only; generic HISM writes/instance data remain pending."));
+            if(Class==UWidgetComponent::StaticClass()&&InitialPropertyCount!=0)return Fail(R,TEXT("component_widget_initial_properties_pending"),TEXT("First WidgetComponent Add accepts original default/empty initial properties plus parent/transform; explicit initial property profiles remain incomplete."));
             AddedClass.Reset(Class);
             if (Before.NodeVisits >= MaxNodes) { return Fail(R, TEXT("component_budget_exceeded"), TEXT("Add would exceed the 10000 local node observation budget.")); }
             if (ComponentName.Len() > 100 || ComponentName.Equals(TEXT("None"), ESearchCase::IgnoreCase)) { return Fail(R, TEXT("component_name_invalid"), TEXT("New variable name must be 1..100 characters and cannot be None.")); }
@@ -3106,7 +3668,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             if (SCS->GenerateNewComponentName(Class, RequestedName) != RequestedName)
             { return Fail(R, TEXT("component_name_collision"), TEXT("The requested name conflicts with a component, variable, function or native subobject.")); }
             ActualParent = ParentComponent;
-            if (!bGeneratedRequested && !bPCGRequested && ActualParent.IsEmpty() && Before.NodeVisits > 0)
+            if (!bOriginalAdd && !bGeneratedRequested && !bPCGRequested && !bNativeMovementRequested && ActualParent.IsEmpty() && Before.NodeVisits > 0)
             {
                 if (SCS->GetRootNodes().Num() != 1) { return Fail(R, TEXT("component_parent_ambiguous"), TEXT("Specify one exact local scene parent when the SCS has multiple roots.")); }
                 ActualParent = SCS->GetRootNodes()[0]->GetVariableName().ToString();
@@ -3117,6 +3679,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             bNativeSplineRequested = Class == USplineComponent::StaticClass();
             bNativeIsmRequested = Class == UInstancedStaticMeshComponent::StaticClass()||Class==UHierarchicalInstancedStaticMeshComponent::StaticClass();
             bNativeSkeletalRequested = Class == USkeletalMeshComponent::StaticClass();
+            bNativeWidgetRequested = Class == UWidgetComponent::StaticClass();
             if (bNativeSplineRequested)
             {
                 NativeSplineBefore = NativeSplineSourceObservation(Class);
@@ -3141,8 +3704,110 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                 { return Fail(R, TEXT("component_native_skeletal_source_rejected"), TEXT("Requires the exact clean loaded runtime Engine.SkeletalMeshComponent class and existing normal native CDO; no component or CDO creation was dispatched.")); }
                 Template = Cast<UActorComponent>(Class->GetDefaultObject(false));
             }
+            else if(bNativeWidgetRequested)
+            {
+                NativeWidgetBefore=NativeWidgetSourceObservation();R.Data->SetObjectField(TEXT("native_widget_source_before"),NativeWidgetBefore);
+                if(!NativeWidgetBefore->GetBoolField(TEXT("native_identity_verified")))return Fail(R,TEXT("component_widget_native_source_pending"),TEXT("Existing exact native WidgetComponent class/CDO with empty WidgetClass default required; no CDO prewarming performed."));
+                Template=CastChecked<UActorComponent>(Class->GetDefaultObject(false));
+            }
             else if(NativeLightClass(Class)){if(Class==UDirectionalLightComponent::StaticClass()&&!LightGuard.ArmDirectional(PropertyObject.ToSharedRef(),true))return false;bNativeLightRequested=true;if(!LightGuard.Bind(Blueprint.Get(),Class,ComponentName,nullptr))return false;Template=LightGuard.Default.Get();}
-            else { Template = CastChecked<UActorComponent>(Class->GetDefaultObject()); }
+            else if(NativeMovementClass(Class)){NativeMovementBefore=NativeMovementSourceObservation(Class);R.Data->SetObjectField(TEXT("native_movement_source_before"),NativeMovementBefore);if(!NativeMovementBefore->GetBoolField(TEXT("native_identity_verified")))return Fail(R,TEXT("component_movement_native_source_pending"),TEXT("Existing runtime native movement CDO without live targets is required; no CDO prewarming requested."));Template=Cast<UMovementComponent>(Class->GetDefaultObject(false));}
+            else { Template = bOriginalAdd ? Cast<UActorComponent>(Class->GetDefaultObject(false)) : CastChecked<UActorComponent>(Class->GetDefaultObject()); }
+            if (bOriginalAdd)
+            {
+                RawClass.Reset(Class); RawGenerated.Reset(Blueprint->GeneratedClass); RawSCS.Reset(SCS); RawNativeDefault.Reset(Template); RawParentNode.Reset(Parent);
+                if (!FHismScope::Loaded(Template) || Template->GetClass() != Class || !Template->HasAnyFlags(RF_ClassDefaultObject))
+                    return Fail(R, TEXT("component_raw_add_native_default_pending"), TEXT("An existing native constructor CDO is required; no source CDO is prewarmed by this raw route."));
+                auto SkeletalMismatch=MakeShared<FJsonObject>();
+                if(Class==USkeletalMeshComponent::StaticClass())
+                {
+                    FString Key,Actual;
+                    if(!RawSkeletalAuthoredEmpty(Template,Key,Actual))
+                    {
+                        SkeletalMismatch->SetStringField(TEXT("object"),Template->GetPathName());SkeletalMismatch->SetStringField(TEXT("property"),Key);SkeletalMismatch->SetStringField(TEXT("expected"),TEXT("observed resolved-empty constructor references for this finite raw profile"));SkeletalMismatch->SetStringField(TEXT("actual"),Actual);
+                        R.Data->SetObjectField(TEXT("raw_skeletal_source_scope_refusal"),SkeletalMismatch);
+                        return Fail(R,TEXT("component_raw_skeletal_source_profile_pending"),TEXT("Nonempty/unresolved native Skeletal source references remain incomplete; no CreateNode/transform/compile or save dispatched."));
+                    }
+                    R.Data->SetBoolField(TEXT("raw_skeletal_source_references_observed_empty"),true);
+                    R.Data->SetBoolField(TEXT("raw_skeletal_no_extra_structural_refresh_requested"),true);
+                    R.Data->SetStringField(TEXT("raw_skeletal_add_scope"),TEXT("Original raw Add through existing native Skeletal source/current/SCS writer. Actual existing CDO and returned/compiled own template mesh/legacy alias/AnimClass/PhysicsAssetOverride are resolved-empty; supplied properties remain ignored, only present transforms call setters before attachment, one explicit requested full compile and no save. No animation setter, skeleton/physics asset edit, registration, simulation or normal cache-identity freeze. Nonempty source/default references, broader sources and full runtime/usage parity remain incomplete."));
+                }
+                const auto NativeFlags = Class->GetClassFlags(); const auto DefaultFlags = Template->GetFlags();
+                const FString NativePath = Class->GetPathName(); const bool SourceDirty = Class->GetOutermost()->IsDirty(); const auto SourcePackageFlags = Class->GetOutermost()->GetPackageFlags();
+                auto Basic = [&, NativeFlags, DefaultFlags, NativePath, SourceDirty, SourcePackageFlags,SkeletalMismatch]() -> bool
+                {
+                    if (!IsEditorGameThread() || IsPlaySessionActive() || !FHismScope::Loaded(Blueprint.Get())
+                        || !Blueprint->SimpleConstructionScript.IsResolved() || Blueprint->SimpleConstructionScript.Get() != RawSCS.Get()
+                        || !FHismScope::Loaded(RawSCS.Get()) || !FHismScope::Loaded(RawClass.Get()) || !FHismScope::Loaded(RawNativeDefault.Get())
+                        || RawClass->GetClassFlags() != NativeFlags || RawClass->GetPathName() != NativePath || RawClass->GetOutermost()->IsDirty() != SourceDirty || RawClass->GetOutermost()->GetPackageFlags() != SourcePackageFlags
+                        || !RawClass->ClassDefaultObject.IsResolved() || RawClass->ClassDefaultObject.Get() != RawNativeDefault.Get()
+                        || RawNativeDefault->GetFlags() != DefaultFlags || RawNativeDefault->GetClass() != RawClass.Get()
+                        || (!RawCompileReturned && Blueprint->GeneratedClass.Get() != RawGenerated.Get())) return false;
+                    if(RawClass.Get()==USkeletalMeshComponent::StaticClass())
+                    {
+                        auto EmptyCurrent=[&](UActorComponent* Object)->bool
+                        {
+                            FString Key,Actual;if(RawSkeletalAuthoredEmpty(Object,Key,Actual))return true;
+                            if(SkeletalMismatch->Values.IsEmpty())
+                            {SkeletalMismatch->SetStringField(TEXT("object"),Object->GetPathName());SkeletalMismatch->SetStringField(TEXT("property"),Key);SkeletalMismatch->SetStringField(TEXT("expected"),TEXT("same observed resolved-empty authored references"));SkeletalMismatch->SetStringField(TEXT("actual"),Actual);R.Data->SetObjectField(TEXT("raw_skeletal_first_mismatch"),SkeletalMismatch);}
+                            return false;
+                        };
+                        if(!EmptyCurrent(RawNativeDefault.Get()))return false;
+                        if(RawAddedTemplate.IsValid()&&(!FHismScope::Loaded(RawAddedTemplate.Get())||!EmptyCurrent(RawAddedTemplate.Get())))return false;
+                    }
+                    if (RawParentNode.IsValid() && (!FHismScope::Loaded(RawParentNode.Get()) || RawParentNode->GetOuter() != RawSCS.Get())) return false;
+                    if (RawAddedNode.IsValid())
+                    {
+                        if (!FHismScope::Loaded(RawAddedNode.Get()) || RawAddedNode->GetOuter() != RawSCS.Get() || RawAddedNode->VariableGuid != RawNodeGuid
+                            || !RawAddedNode->GetVariableName().ToString().Equals(ComponentName, ESearchCase::CaseSensitive)
+                            || !RawAddedNode->ComponentClass.IsResolved() || RawAddedNode->ComponentClass.Get() != RawClass.Get()
+                            || !RawAddedNode->ComponentTemplate.IsResolved() || RawAddedNode->ComponentTemplate.Get() != RawAddedTemplate.Get()
+                            || !FHismScope::Loaded(RawAddedTemplate.Get()) || RawAddedTemplate->GetClass() != RawClass.Get()
+                            || RawAddedTemplate->GetOuter() != Blueprint->GeneratedClass.Get() || RawAddedTemplate->IsRegistered()) return false;
+                    }
+                    return true;
+                };
+                auto SourceFields = [&, Basic](FString& Values) -> bool
+                {
+                    if (!Basic()) return false; Values.Reset(); int32 Count = 0;
+                    for (TFieldIterator<FProperty> It(RawClass.Get()); It; ++It)
+                    {
+                        FProperty* P = *It;
+                        if (!P->HasAnyPropertyFlags(CPF_Edit) || P->HasAnyPropertyFlags(CPF_Transient | CPF_Deprecated)) continue;
+                        if (++Count > 2048 || P->ArrayDim < 1 || P->ArrayDim > 64) return false;
+                        for (int32 I = 0; I < P->ArrayDim; ++I)
+                        {
+                            if (!Basic()) return false; FString Text; const void* Address = P->ContainerPtrToValuePtr<void>(RawNativeDefault.Get(), I);
+                            const bool Exported = P->ExportText_Direct(Text, Address, Address, RawNativeDefault.Get(), PPF_None);
+                            if (!Basic() || !Exported || Values.Len() + Text.Len() > 1048576) return false;
+                            Values += P->GetPathName() + TEXT("=") + Text + TEXT("\n");
+                        }
+                    }
+                    return Basic();
+                };
+                FString ExpectedSource;
+                if (!SourceFields(ExpectedSource)) return Fail(R, TEXT("component_raw_add_source_unobservable"), TEXT("Native authored defaults are unobservable/bounded; no CreateNode."));
+                RawAddCurrent = [&, Basic, SourceFields, ExpectedSource, NativePath]() -> bool
+                {
+                    FString Now; bool Good = Basic() && SourceFields(Now) && Now.Equals(ExpectedSource, ESearchCase::CaseSensitive);
+                    if (Good && RawTransformReady)
+                    {
+                        auto* Scene = Cast<USceneComponent>(RawAddedTemplate.Get());
+                        Good = Scene && Scene->GetRelativeLocation() == RawLocation && Scene->GetRelativeRotation() == RawRotation && Scene->GetRelativeScale3D() == RawScale;
+                    }
+                    if (Good) return true;
+                    if (!R.Data->HasField(TEXT("raw_add_first_mismatch")))
+                    {
+                        auto Detail = MakeShared<FJsonObject>(); Detail->SetStringField(TEXT("object"), NativePath);
+                        Detail->SetStringField(TEXT("property"), TEXT("native_source_or_current_template_and_transform"));
+                        Detail->SetStringField(TEXT("expected"), ExpectedSource.Left(4096)); Detail->SetStringField(TEXT("actual"), Now.Left(4096));
+                        Detail->SetBoolField(TEXT("actual_source_values_observed"), !Now.IsEmpty()); R.Data->SetObjectField(TEXT("raw_add_first_mismatch"), Detail);
+                    }
+                    R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"), true);
+                    return Fail(R, TEXT("component_raw_add_current_changed"), TEXT("Original Add native source/SCS/template or expected transform changed at an SDK boundary; actual prefix retained without further writer/retry."));
+                };
+                if (!RawAddCurrent()) return false;
+            }
         }
         else
         {
@@ -3151,7 +3816,8 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             Template = Node->ComponentTemplate; Class = Template->GetClass();
             if(Cast<UBlueprintGeneratedClass>(Class)&&!Class->IsChildOf(USceneComponent::StaticClass())){GeneratedValueHandled=true;return MutateGeneratedValue(Blueprint.Get(),Node,PropertyName,Input,Before,R);}
             if(Class==UChildActorComponent::StaticClass()){CACHandled=true;if(!PropertyName.Equals(TEXT("ChildActorClass"),ESearchCase::IgnoreCase))return Fail(R,TEXT("component_child_actor_property_pending"),TEXT("First CAC Set supports ChildActorClass only; broader original properties remain incomplete."));R=MutateNativeCAC(Blueprint.Get(),Node,ComponentName,FString(),FString(),Input,Before,false,false);return R.bSuccess;}
-            if (SupportedClass(Class->GetPathName()) != Class) { return Fail(R, TEXT("component_class_unsupported"), TEXT("Only the fourteen supported exact native Engine component classes can be modified.")); }
+            if(Class==UWidgetComponent::StaticClass()&&!PropertyName.Equals(TEXT("WidgetClass"),ESearchCase::IgnoreCase))return Fail(R,TEXT("component_widget_property_pending"),TEXT("First WidgetComponent Set supports WidgetClass; broader original reflected properties remain incomplete."));
+            if (SupportedClass(Class->GetPathName()) != Class) { return Fail(R, TEXT("component_class_unsupported"), TEXT("Only the implemented exact native component profiles can be modified.")); }
             if(Class==UHierarchicalInstancedStaticMeshComponent::StaticClass())return Fail(R,TEXT("component_hism_generic_property_pending"),TEXT("Use the bounded HISM mesh/material setter; generic HISM properties/instance arrays remain pending."));
             if (Class->GetPathName() == TEXT("/Script/Niagara.NiagaraComponent")) { NiagaraHandled=true; return MutateNativeNiagara(Blueprint.Get(),Node,nullptr,ComponentName,PropertyObject.ToSharedRef(),Before,false,R); }
             if(Class==UDirectionalLightComponent::StaticClass()&&!LightGuard.ArmDirectional(PropertyObject.ToSharedRef(),false))return false;
@@ -3160,6 +3826,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             bNativeSplineRequested = Class == USplineComponent::StaticClass();
             bNativeIsmRequested = Class == UInstancedStaticMeshComponent::StaticClass()||Class==UHierarchicalInstancedStaticMeshComponent::StaticClass();
             bNativeSkeletalRequested = Class == USkeletalMeshComponent::StaticClass();
+            bNativeWidgetRequested = Class == UWidgetComponent::StaticClass();
             if (bNativeSplineRequested)
             {
                 NativeSplineBefore = NativeSplineSourceObservation(Class);
@@ -3182,14 +3849,111 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                 { return Fail(R, TEXT("component_native_skeletal_source_rejected"), TEXT("Requires the exact clean loaded runtime Engine.SkeletalMeshComponent class and existing normal native CDO; no property was written.")); }
             }
         }
-        if(Class==UHierarchicalInstancedStaticMeshComponent::StaticClass()&&!HismGuard.Bind(Blueprint.Get(),ComponentName))return false;
+        if(bNativeWidgetRequested)
+        {
+            if(!NativeWidgetBefore.IsValid())NativeWidgetBefore=NativeWidgetSourceObservation();R.Data->SetObjectField(TEXT("native_widget_source_before"),NativeWidgetBefore);
+            if(!NativeWidgetBefore->GetBoolField(TEXT("native_identity_verified")))return Fail(R,TEXT("component_widget_native_source_pending"),TEXT("Existing exact runtime native WidgetComponent/CDO required."));
+            WidgetNativeDefault.Reset(Cast<UWidgetComponent>(UWidgetComponent::StaticClass()->GetDefaultObject(false)));if(!WidgetNativeDefault.IsValid())return Fail(R,TEXT("component_widget_native_source_pending"),TEXT("Native WidgetComponent CDO disappeared during admission."));
+            WidgetSourceCurrent=[NativeWidgetBefore,WidgetNativeDefault,&R](){auto SameRole=[&](){return IsValid(WidgetNativeDefault.Get())&&UWidgetComponent::StaticClass()->ClassDefaultObject.IsResolved()&&UWidgetComponent::StaticClass()->ClassDefaultObject==WidgetNativeDefault.Get();};if(!SameRole()){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_widget_native_source_changed"),TEXT("Held native WidgetComponent CDO role changed."));}const auto After=NativeWidgetSourceObservation();if(!SameRole()||!After->GetBoolField(TEXT("native_identity_verified"))||!FJsonValue::CompareEqual(FJsonValueObject(NativeWidgetBefore),FJsonValueObject(After))){R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_widget_native_source_changed"),TEXT("Native WidgetComponent class/CDO identity or sampled authored defaults changed; no next writer/retry."));}return true;};
+            R.Data->SetStringField(TEXT("widget_lifecycle_scope"),TEXT("Own SCS native WidgetComponent. Add reuses original parent/transform/compile core; compiler/reconstruction may create ephemeral UI/render caches. WidgetClass Set uses the original direct FClassProperty slot writer and MarkBlueprintAsModified with no explicit compile/save/Widget/Slate/RT update. Cache pointer equality and runtime UI/render behavior are not proven."));
+        }
+        if(NativeMovementClass(Class))
+        {
+            if(!NativeMovementBefore.IsValid())NativeMovementBefore=NativeMovementSourceObservation(Class);R.Data->SetObjectField(TEXT("native_movement_source_before"),NativeMovementBefore);
+            if(!NativeMovementBefore->GetBoolField(TEXT("native_identity_verified")))return Fail(R,TEXT("component_movement_native_source_pending"),TEXT("Existing exact native runtime movement class/CDO is required."));
+            MovementNativeDefault.Reset(Cast<UMovementComponent>(Class->GetDefaultObject(false)));const TStrongObjectPtr<UClass> MovementClass(Class);const TStrongObjectPtr<UBlueprint> MovementBP(Blueprint.Get());const TStrongObjectPtr<USimpleConstructionScript> MovementSCS(SCS);const TStrongObjectPtr<UEditorEngine> MovementEditor(GEditor);const TStrongObjectPtr<UWorld> MovementWorld(GEditor->GetEditorWorldContext().World());
+            MovementSourceCurrent=[MovementClass,MovementNativeDefault,NativeMovementBefore,MovementBP,MovementSCS,MovementEditor,MovementWorld,&R]()
+            {
+                auto OwnRole=[&](){return IsValid(MovementBP.Get())&&IsValid(MovementSCS.Get())&&!MovementBP->bBeingCompiled&&!MovementBP->bQueuedForCompilation&&!MovementBP->bIsRegeneratingOnLoad&&MovementBP->SimpleConstructionScript.IsResolved()&&MovementBP->SimpleConstructionScript==MovementSCS.Get();};
+                auto Role=[&](){return IsEditorGameThread()&&!IsPlaySessionActive()&&!IsGarbageCollecting()&&!GExitPurge&&!IsEngineExitRequested()&&!UE::IsSavingPackage()&&IsValid(MovementEditor.Get())&&GEditor==MovementEditor.Get()&&IsValid(MovementWorld.Get())&&!MovementWorld->bIsTearingDown&&OwnRole()&&MovementEditor->GetEditorWorldContext().World()==MovementWorld.Get()&&OwnRole()&&IsValid(MovementClass.Get())&&IsValid(MovementNativeDefault.Get())&&MovementClass->ClassDefaultObject.IsResolved()&&MovementClass->ClassDefaultObject==MovementNativeDefault.Get();};
+                if(Role()){const auto Now=NativeMovementSourceObservation(MovementClass.Get());if(Role()&&Now->GetBoolField(TEXT("native_identity_verified"))&&FJsonValue::CompareEqual(FJsonValueObject(NativeMovementBefore),FJsonValueObject(Now)))return true;if(!R.Data->HasField(TEXT("movement_native_source_mismatch"))){auto F=MakeShared<FJsonObject>();F->SetObjectField(TEXT("expected"),NativeMovementBefore);F->SetObjectField(TEXT("actual"),Now);F->SetStringField(TEXT("stage"),R.Stage);R.Data->SetObjectField(TEXT("movement_native_source_mismatch"),F);}}
+                R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_movement_native_source_changed"),TEXT("Native movement source or own Editor/Blueprint/SCS roles changed; no next writer/retry."));
+            };
+            if(!MovementSourceCurrent())return false;
+            R.Data->SetStringField(TEXT("movement_lifecycle_scope"),TEXT("Non-scene Add ignores transforms/initial properties as in UE56, rejects explicit parent, and reuses SCS/compile flow. Set uses original numeric/enum PreEdit/store/PostEdit; plain values raw-store then MarkModified. No movement, registration, updated-target setter, save, simulation or rollback requested. Broader original references/container/custom inputs remain incomplete."));
+            if(Class==UCharacterMovementComponent::StaticClass())
+            {
+                R.Data->SetStringField(TEXT("character_movement_scope"),TEXT("Exact own local-SCS native CharacterMovement Add and editable existing scalar/Vector/LinearColor Set through the original writer. WalkableFloorAngle preserves original PreEdit/raw-store/PostEdit and the SDK returned float clamp[0,90]/cos(degrees) WalkableFloorZ transition, including same-value callback execution. No inherited Character native default-subobject editing, Character spawn/registration or movement."));
+            }
+            if(!bAdd&&(!MovementTemplateInactive(Cast<UMovementComponent>(Template))||!MovementTypedField(FindProperty(Class,PropertyName))))return Fail(R,TEXT("component_movement_property_pending"),TEXT("Current inactive own native movement template and editable scalar/native math property required; live targets, weak/object/container/custom and broader original profiles remain incomplete."));
+        }
+        if(Class==UHierarchicalInstancedStaticMeshComponent::StaticClass())
+        {
+            if(!HismGuard.Bind(Blueprint.Get(),ComponentName))return false;
+            if(bAdd&&bOriginalAdd&&ParentComponent.IsEmpty()&&!HismGuard.ArmRawDefaultRetirement())return false;
+        }
         TSet<FName> PreparedNames;
         for (const auto& Pair : PropertyObject->Values)
         {
             TUniquePtr<FPreparedProperty> Prepared;
             if (!PrepareProperty(Template, FString(Pair.Key.ToView()), Pair.Value, Prepared, R)) { return false; }
+            if(!bAdd&&NativeMovementClass(Class))
+            {
+                FPreparedProperty* Q=Prepared.Get();Q->bPlainGeneratedValue=true;Q->bPlainGeneratedString=CastField<FStrProperty>(Q->Property)!=nullptr;Q->bMovementDirect=true;Q->bMovementNotify=CastField<FNumericProperty>(Q->Property)||CastField<FEnumProperty>(Q->Property);Q->MovementWritten=MakeShared<bool>(false);Q->MovementReceipt=MakeShared<FJsonObject>();R.Data->SetObjectField(TEXT("movement_applied_prefix"),Q->MovementReceipt);
+                const TStrongObjectPtr<UBlueprint> TargetBP(Blueprint.Get());const TStrongObjectPtr<USimpleConstructionScript> TargetSCS(SCS);const TStrongObjectPtr<USCS_Node> TargetNode(Node);const TStrongObjectPtr<UMovementComponent> Target(CastChecked<UMovementComponent>(Template));const TStrongObjectPtr<UClass> TargetClass(Class),TargetGenerated(Blueprint->GeneratedClass.Get()),TargetSkeleton(Blueprint->SkeletonGeneratedClass.Get());const TStrongObjectPtr<UObject> TargetOuter(Template->GetOuter());const FString TargetPath=Template->GetPathName();const FGuid Guid=Node->VariableGuid;const FName Variable=Node->GetVariableName();
+                FProperty* P=Q->Property;const FFieldVariant Owner=P->GetOwnerVariant();FFieldClass* Kind=P->GetClass();const auto Flags=P->GetPropertyFlags();const int32 Offset=P->GetOffset_ForInternal(),Size=P->GetSize();const FName FieldName=P->GetFName();
+                FFloatProperty* FloorZ=nullptr;FFieldVariant FloorOwner;EPropertyFlags FloorFlags=CPF_None;int32 FloorOffset=0,FloorSize=0;float FloorBeforeZ=0.f;
+                if(Class==UCharacterMovementComponent::StaticClass()&&FieldName==TEXT("WalkableFloorAngle"))
+                {
+                    FloorZ=FindFProperty<FFloatProperty>(Class,TEXT("WalkableFloorZ"));
+                    if(P->GetClass()!=FFloatProperty::StaticClass()||P->GetOwnerClass()!=UCharacterMovementComponent::StaticClass()||!FloorZ||FloorZ->GetOwnerClass()!=UCharacterMovementComponent::StaticClass()||FloorZ->ArrayDim!=1||FloorZ->HasSetterOrGetter()||FloorZ->GetSize()!=static_cast<int32>(sizeof(float)))
+                        return Fail(R,TEXT("component_character_floor_descriptor_pending"),TEXT("Current exact native float angle/companion descriptors required; no editor callback dispatched."));
+                    FloorOwner=FloorZ->GetOwnerVariant();FloorFlags=FloorZ->GetPropertyFlags();FloorOffset=FloorZ->GetOffset_ForInternal();FloorSize=FloorZ->GetSize();FloorBeforeZ=FloorZ->GetPropertyValue_InContainer(Target.Get());
+                    if(!FMath::IsFinite(FloorBeforeZ))return Fail(R,TEXT("component_character_floor_before_pending"),TEXT("Nonfinite existing companion observation remains incomplete; no editor callback dispatched."));
+                    Q->bMovementFloorAngle=true;const float RawAngle=*static_cast<const float*>(Q->Value);
+                    Q->MovementFloorAngleAfter=FMath::Clamp(RawAngle,0.f,90.f);Q->MovementFloorZAfter=FMath::Cos(FMath::DegreesToRadians(Q->MovementFloorAngleAfter));
+                    Q->MovementReceipt->SetNumberField(TEXT("requested_float_store"),RawAngle);Q->MovementReceipt->SetNumberField(TEXT("walkable_floor_z_before"),FloorBeforeZ);
+                    Q->MovementReceipt->SetNumberField(TEXT("expected_sdk_angle_after"),Q->MovementFloorAngleAfter);Q->MovementReceipt->SetNumberField(TEXT("expected_sdk_floor_z_after"),Q->MovementFloorZAfter);
+                    Q->MovementReceipt->SetStringField(TEXT("engine_normalization_contract"),TEXT("UE58 CharacterMovement.cpp892/7026: MemberProperty WalkableFloorAngle invokes float Clamp[0,90] then Cos(DegreesToRadians(angle)); only actual returned PostEdit activates final expectations."));
+                    R.Data->SetObjectField(TEXT("character_floor_angle_transition"),Q->MovementReceipt);
+                }
+                Q->HardReferenceCurrent=[TargetBP,TargetSCS,TargetNode,Target,TargetClass,TargetGenerated,TargetSkeleton,TargetOuter,TargetPath,Guid,Variable,Owner,Kind,Flags,Offset,Size,FieldName,P,Q,MovementSourceCurrent,FloorZ,FloorOwner,FloorFlags,FloorOffset,FloorSize,FloorBeforeZ,&R]()
+                {
+                    // PreEdit/PostEdit are virtual SDK boundaries; do not follow a
+                    // retired native source, class reconstruction or SCS receiver.
+                    if(!MovementSourceCurrent())return false;
+                    auto Shallow=[&](){return IsEditorGameThread()&&!IsPlaySessionActive()&&!IsGarbageCollecting()&&!GExitPurge&&!IsEngineExitRequested()&&!UE::IsSavingPackage()&&IsValid(TargetBP.Get())&&!TargetBP->bBeingCompiled&&!TargetBP->bQueuedForCompilation&&!TargetBP->bIsRegeneratingOnLoad&&IsValid(TargetGenerated.Get())&&IsValid(TargetSkeleton.Get())&&IsValid(TargetClass.Get())&&IsValid(TargetOuter.Get())&&TargetBP->GeneratedClass.GetGCPtr().IsResolved()&&TargetBP->GeneratedClass.GetGCPtr()==TargetGenerated.Get()&&TargetBP->SkeletonGeneratedClass.GetGCPtr().IsResolved()&&TargetBP->SkeletonGeneratedClass.GetGCPtr()==TargetSkeleton.Get()&&TargetBP->SimpleConstructionScript.IsResolved()&&TargetBP->SimpleConstructionScript==TargetSCS.Get()&&IsValid(TargetSCS.Get())&&IsValid(TargetNode.Get())&&TargetNode->ComponentTemplate.IsResolved()&&TargetNode->ComponentTemplate==Target.Get()&&TargetNode->ComponentClass.IsResolved()&&TargetNode->ComponentClass==TargetClass.Get()&&TargetNode->VariableGuid==Guid&&TargetNode->GetVariableName()==Variable&&IsValid(Target.Get())&&Target->GetClass()==TargetClass.Get()&&Target->GetOuter()==TargetOuter.Get()&&Target->GetPackage()==TargetBP->GetPackage();};
+                    auto Role=[&](){return Shallow()&&TargetSCS->GetAllNodes().Contains(TargetNode.Get())&&Shallow()&&MovementTemplateInactive(Target.Get())&&Shallow()&&FindProperty(TargetClass.Get(),FieldName.ToString())==P&&P->GetOwnerVariant()==Owner&&P->GetClass()==Kind&&P->GetPropertyFlags()==Flags&&P->ArrayDim==1&&P->GetOffset_ForInternal()==Offset&&P->GetSize()==Size&&(!FloorZ||(FindFProperty<FFloatProperty>(TargetClass.Get(),TEXT("WalkableFloorZ"))==FloorZ&&FloorZ->GetOwnerVariant()==FloorOwner&&FloorZ->GetClass()==FFloatProperty::StaticClass()&&FloorZ->GetPropertyFlags()==FloorFlags&&FloorZ->ArrayDim==1&&FloorZ->GetOffset_ForInternal()==FloorOffset&&FloorZ->GetSize()==FloorSize));};
+                    if(Role())
+                    {
+                        TSharedPtr<FJsonValue> Actual;FString Encoding,Error;const bool Read=ReadComponentValue(P,P->ContainerPtrToValuePtr<void>(Target.Get()),MaxJsonChars,Actual,Encoding,Error);
+                        if(Role()&&Read)
+                        {
+                            if(!FloorZ){if(*Q->MovementWritten?P->Identical(Q->Value,P->ContainerPtrToValuePtr<void>(Target.Get())):FJsonValue::CompareEqual(*Q->Before,*Actual))return true;}
+                            else
+                            {
+                                const float ActualAngle=static_cast<FFloatProperty*>(P)->GetPropertyValue_InContainer(Target.Get());
+                                if(Role())
+                                {
+                                    const float ActualZ=FloorZ->GetPropertyValue_InContainer(Target.Get());
+                                    if(Role())
+                                    {
+                                        bool PostReturned=false;Q->MovementReceipt->TryGetBoolField(TEXT("post_edit_returned"),PostReturned);
+                                        const float ExpectedAngle=*Q->MovementWritten?*static_cast<const float*>(Q->Value):static_cast<float>(Q->Before->AsNumber());
+                                        const float ExpectedZ=PostReturned?Q->MovementFloorZAfter:FloorBeforeZ;
+                                        Q->MovementReceipt->SetStringField(TEXT("last_observed_transition_phase"),PostReturned?TEXT("after_returned_post_edit"):(*Q->MovementWritten?TEXT("after_raw_store_before_post_edit"):TEXT("before_raw_store")));
+                                        if(FMath::IsFinite(ActualAngle))Q->MovementReceipt->SetNumberField(TEXT("last_observed_angle"),ActualAngle);
+                                        if(FMath::IsFinite(ActualZ)){Q->MovementReceipt->RemoveField(TEXT("last_observed_floor_z_nonfinite"));Q->MovementReceipt->SetNumberField(TEXT("last_observed_floor_z"),ActualZ);}
+                                        else{Q->MovementReceipt->RemoveField(TEXT("last_observed_floor_z"));Q->MovementReceipt->SetStringField(TEXT("last_observed_floor_z_nonfinite"),LexToString(ActualZ));}
+                                        if(ActualAngle==ExpectedAngle&&ActualZ==ExpectedZ)return true;
+                                        if(!R.Data->HasField(TEXT("movement_first_mismatch")))
+                                        {
+                                            const bool AngleBad=ActualAngle!=ExpectedAngle;auto F=MakeShared<FJsonObject>();F->SetStringField(TEXT("stage"),R.Stage);F->SetStringField(TEXT("object"),TargetPath);
+                                            F->SetStringField(TEXT("property"),AngleBad?FieldName.ToString():TEXT("WalkableFloorZ"));F->SetStringField(TEXT("expected"),LexToString(AngleBad?ExpectedAngle:ExpectedZ));F->SetStringField(TEXT("actual"),LexToString(AngleBad?ActualAngle:ActualZ));F->SetBoolField(TEXT("actual_value_observed"),true);
+                                            F->SetBoolField(TEXT("post_edit_returned"),PostReturned);R.Data->SetObjectField(TEXT("movement_first_mismatch"),F);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if(!R.Data->HasField(TEXT("movement_first_mismatch"))){auto F=MakeShared<FJsonObject>();F->SetStringField(TEXT("stage"),R.Stage);F->SetStringField(TEXT("object"),TargetPath);F->SetStringField(TEXT("property"),FieldName.ToString());F->SetStringField(TEXT("expected"),TEXT("same own inactive SCS/template/descriptor and original value before writer or requested stored value after writer"));F->SetStringField(TEXT("actual"),TEXT("role or value check failed; no extra unsafe SDK observation after failure"));F->SetBoolField(TEXT("actual_value_observed"),false);R.Data->SetObjectField(TEXT("movement_first_mismatch"),F);}
+                    R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"),true);return Fail(R,TEXT("component_movement_current_changed"),TEXT("Selected movement SCS/template/property/value role changed at an SDK boundary; prefix retained without retry."));
+                };
+                if(!Q->HardReferenceCurrent())return false;
+            }
             if (PreparedNames.Contains(Prepared->Property->GetFName())) { return Fail(R, TEXT("component_property_duplicate"), TEXT("Duplicate case-insensitive property names are not accepted.")); }
-            if(!LightGuard.Check()||!HismGuard.Check())return false;PreparedNames.Add(Prepared->Property->GetFName()); Properties.Add(MoveTemp(Prepared));
+            if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;PreparedNames.Add(Prepared->Property->GetFName()); Properties.Add(MoveTemp(Prepared));
         }
         if (UCapsuleComponent* Capsule = Cast<UCapsuleComponent>(Template))
         {
@@ -3225,11 +3989,14 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             const auto& P = Properties[0];
             bNoOp = P->Property->Identical(P->Value, P->Property->ContainerPtrToValuePtr<void>(Template))
                 && (!P->bSocket || Node->AttachToName == CastFieldChecked<FNameProperty>(P->Property)->GetPropertyValue(P->Value));
+            // Original numeric Set still invokes Pre/PostEdit on equal input;
+            // FloorAngle must re-synchronize a separately edited companion Z.
+            if(bNoOp&&P->bMovementFloorAngle){P->MovementReceipt->SetBoolField(TEXT("same_value_callback_required"),true);bNoOp=false;}
             if (bNoOp) { R.Data->SetBoolField(TEXT("no_op"), true); return true; }
         }
         if (!RejectExternalInstances(Blueprint.Get(), R) || (!bAdd && !CheckPropagation(Template, Properties, Blueprint->GetOutermost(), R))) { return false; }
         R.Stage = TEXT("mutation"); R.bMutationAttempted = true; R.bChangeStateKnown = false;
-        if(!LightGuard.Check()||!HismGuard.Check())return false;Blueprint->Modify();if(!LightGuard.Check()||!HismGuard.Check())return false;SCS->Modify();if(!LightGuard.Check()||!HismGuard.Check())return false;
+        if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;Blueprint->Modify();if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;SCS->Modify();if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;
         if (bAdd)
         {
             bCreationIncomplete = true;
@@ -3246,7 +4013,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                 }
                 if(!HismGuard.Adopt(Node,false))return false;
             }
-            if(bNativeLightRequested&&!LightGuard.Adopt(Node,false))return false;if(!LightGuard.Check()||!HismGuard.Check())return false;
+            if(bNativeLightRequested&&!LightGuard.Adopt(Node,false))return false;if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;
             if (Node)
             {
                 bCreationObserved = true; R.Data->SetStringField(TEXT("created_node_path"), Node->GetPathName());
@@ -3254,32 +4021,75 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             }
             if (!Node || Node->GetVariableName().ToString() != ComponentName || !Node->ComponentTemplate)
             { return Fail(R, TEXT("component_create_failed"), TEXT("CreateNode did not return the requested identity; inspect partial state, no automatic cleanup/retry.")); }
-            if (Parent) { Parent->Modify();if(!LightGuard.Check()||!HismGuard.Check())return false; Parent->AddChildNode(Node); } else { SCS->AddNode(Node); }
+            if (bOriginalAdd)
+            {
+                RawAddedNode.Reset(Node); RawAddedTemplate.Reset(Node->ComponentTemplate.Get()); RawNodeGuid = Node->VariableGuid;
+                auto* Scene = Cast<USceneComponent>(RawAddedTemplate.Get());
+                if (Scene) { RawLocation = Scene->GetRelativeLocation(); RawRotation = Scene->GetRelativeRotation(); RawScale = Scene->GetRelativeScale3D(); RawTransformReady = true; }
+                TArray<TSharedPtr<FJsonValue>> Calls;
+                const TCHAR* Keys[] = {TEXT("location"), TEXT("rotation"), TEXT("scale")};
+                for (int32 I = 0; Scene && I < 3; ++I)
+                {
+                    if (!RawAddTransform->HasField(Keys[I])) continue;
+                    if (!ReferencesCurrent()) return false;
+                    // Original CommonUtils: nonarray/short/null -> zero; >=3
+                    // elements uses first three AsNumber values cast to float.
+                    FVector Value = FVector::ZeroVector; const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
+                    if (RawAddTransform->TryGetArrayField(Keys[I], Array) && Array->Num() >= 3)
+                    {
+                        const float X = static_cast<float>((*Array)[0]->AsNumber()), Y = static_cast<float>((*Array)[1]->AsNumber()), Z = static_cast<float>((*Array)[2]->AsNumber());
+                        if (!FMath::IsFinite(X) || !FMath::IsFinite(Y) || !FMath::IsFinite(Z)) return Fail(R, TEXT("component_raw_add_float_pending"), TEXT("Nonfinite original float transform conversion; creation/earlier setters retained, no attachment/compile/retry."));
+                        Value = FVector(X,Y,Z);
+                    }
+                    auto Call = MakeShared<FJsonObject>(); Call->SetStringField(TEXT("field"), Keys[I]); Call->SetBoolField(TEXT("attempted"), true); Call->SetBoolField(TEXT("returned"), false);
+                    Calls.Add(MakeShared<FJsonValueObject>(Call)); R.Data->SetArrayField(TEXT("raw_add_transform_calls"), Calls);
+                    const double Start = FPlatformTime::Seconds();
+                    if (I == 0) { RawLocation = Value; Scene->SetRelativeLocation(Value); }
+                    else if (I == 1)
+                    {
+                        const FRotator Requested(Value.X,Value.Y,Value.Z); Scene->SetRelativeRotation(Requested);
+                        if (!FHismScope::Loaded(Scene) || !FHismScope::Loaded(RawAddedNode.Get()) || !RawAddedNode->ComponentTemplate.IsResolved() || RawAddedNode->ComponentTemplate.Get() != Scene)
+                        { R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"), true); return Fail(R, TEXT("component_raw_add_rotation_current_changed"), TEXT("Template identity changed during rotation setter; no further SDK.")); }
+                        const FRotator Actual = Scene->GetRelativeRotation();
+                        if (!Actual.Quaternion().Equals(Requested.Quaternion(), KINDA_SMALL_NUMBER))
+                        { R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"), true); return Fail(R, TEXT("component_raw_add_rotation_mismatch"), TEXT("Actual orientation differs from requested float32 rotation; no follow-up writer.")); }
+                        RawRotation = Actual;
+                    }
+                    else { RawScale = Value; Scene->SetRelativeScale3D(Value); }
+                    Call->SetBoolField(TEXT("returned"), true); Call->SetNumberField(TEXT("seconds"), FPlatformTime::Seconds() - Start);
+                    if (!ReferencesCurrent()) return false;
+                }
+                R.Data->SetBoolField(TEXT("raw_add_transform_omission_preserved"), true);
+                R.Data->SetBoolField(TEXT("raw_add_non_scene_transform_ignored"), Scene == nullptr);
+            }
+            if (Parent) { Parent->Modify();if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false; Parent->AddChildNode(Node); } else { SCS->AddNode(Node); }
+            if (bOriginalAdd && !ReferencesCurrent()) return false;
             if(bNativeLightRequested&&!LightGuard.Attach(Parent))return false;
             if(HismGuard.Active&&!HismGuard.Attach())return false;
             bCreationIncomplete = false;
             Template = Node->ComponentTemplate;
             if (!CheckPropagation(Template, Properties, Blueprint->GetOutermost(), R)) { return false; }
         }
-        if(!LightGuard.Check()||!HismGuard.Check())return false;Node->Modify();if(!LightGuard.Check()||!HismGuard.Check())return false;Template->Modify();if(!LightGuard.Check()||!HismGuard.Check())return false;
+        if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;Node->Modify();if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;Template->Modify();if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;
         for (const auto& P : Properties)
         {
             // Reacquire after every notification: it can replace component templates.
             FReadResult Current;
-            if(!LightGuard.Check()||!HismGuard.Check())return false;
+            if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;
             if (!ReadLocalComponents(Before.BlueprintPath, ComponentName, FString(), false, MaxNodes, MaxJsonChars, Current, Code, Error)) { return Fail(R, TEXT("component_mutation_readback_failed"), Error); }
-            if(!LightGuard.Check()||!HismGuard.Check())return false;Node = Current.LocalNodes.FindRef(ComponentName).Get(); Template = Node ? Node->ComponentTemplate.Get() : nullptr;
+            if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;Node = Current.LocalNodes.FindRef(ComponentName).Get(); Template = Node ? Node->ComponentTemplate.Get() : nullptr;
             if(!LightGuard.ReferenceMode)
-            {if (!Template || Template->GetClass() != Class || !ApplyProperty(Template, Node, *P)) { return Fail(R, TEXT("component_property_apply_failed"), TEXT("Property notification/application failed after mutation began.")); }}
+            {if(P->HardReferencePrewrite)*P->HardReferencePrewrite=false;
+            if (!Template || Template->GetClass() != Class || !ApplyProperty(Template, Node, *P)) { return Fail(R, TEXT("component_property_apply_failed"), TEXT("Property notification/application failed after mutation began.")); }}
             else
             {
                 if (!Template || Template->GetClass() != Class) { return Fail(R,TEXT("component_property_apply_failed"),TEXT("Current template class differs before application.")); }
                 if(!LightGuard.BeginReferenceApply(*P))return false;const bool Applied=ApplyProperty(Template,Node,*P);if(!LightGuard.EndReferenceApply(Applied))return false;
                 if(!Applied){return Fail(R,TEXT("component_property_apply_failed"),TEXT("Property notification/application failed after mutation began."));}
             }
-            if(!LightGuard.Check(true)||!HismGuard.Check())return false;
+            if(!LightGuard.Check(true)||!HismGuard.Check()||!ReferencesCurrent())return false;
         }
-        if (bGeneratedRequested || (bAdd && (bNativeSplineRequested || bNativeIsmRequested || bNativeSkeletalRequested || bNativeLightRequested)))
+        if (bGeneratedRequested || (bAdd && ((!bOriginalAdd&&(bNativeSplineRequested||bNativeIsmRequested)) || (bNativeSkeletalRequested&&!bOriginalAdd) || bNativeLightRequested || bNativeWidgetRequested || NativeMovementClass(Class))))
         {
             // Public structural refresh creates the SCS object property in the
             // skeleton so the next batch child can author its getter. This is
@@ -3287,7 +4097,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             R.Data->SetBoolField(TEXT("explicit_skeleton_compile_attempted"), true);
             if (bNativeIsmRequested) { R.Data->SetBoolField(TEXT("native_ism_structural_refresh_invoked"), true); }
             if (bNativeSkeletalRequested) { R.Data->SetBoolField(TEXT("native_skeletal_structural_refresh_invoked"), true); }
-            if(!LightGuard.Check()||!HismGuard.Check())return false;FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint.Get());
+            if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint.Get());
             if(bNativeLightRequested&&!LightGuard.Reacquire())return false;if(!HismGuard.Reacquire())return false;
             const FObjectPropertyBase* Member = Blueprint->SkeletonGeneratedClass
                 ? FindFProperty<FObjectPropertyBase>(Blueprint->SkeletonGeneratedClass, FName(*ComponentName)) : nullptr;
@@ -3299,19 +4109,33 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             if (Member) { R.Data->SetStringField(TEXT("skeleton_component_property_path"), Member->GetPathName()); }
             if (!Matches) { return Fail(R, bNativeIsmRequested ? TEXT("component_native_ism_skeleton_mismatch") : bNativeSplineRequested ? TEXT("component_native_spline_skeleton_mismatch") : bNativeSkeletalRequested ? TEXT("component_native_skeletal_skeleton_mismatch") : TEXT("generated_component_skeleton_mismatch"), TEXT("Component was added but its current skeleton object property does not match; inspect partial state before continuing.")); }
         }
-        else { FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint.Get());if(!LightGuard.Check(true)||!HismGuard.Check())return false; }
+        else { FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint.Get());if(!LightGuard.Check(true)||!HismGuard.Check()||!ReferencesCurrent())return false; }
         if (R.bCompileRequested)
         {
             R.Stage = TEXT("compile"); R.bCompileAttempted = true;
-            if(!LightGuard.Check()||!HismGuard.Check())return false;auto Compile = Cubeless::UE58::CompileBlueprint(Before.BlueprintPath, false, false);
+            if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent())return false;auto Compile = Cubeless::UE58::CompileBlueprint(Before.BlueprintPath, false, false);
             R.Data->SetObjectField(TEXT("compile"), Compile);
             bool Compiled = false; Compile->TryGetBoolField(TEXT("compiled"), Compiled); R.Compiled = Compiled;
+            if (bOriginalAdd)
+            {
+                RawCompileReturned = true;
+                if (!FHismScope::Loaded(Blueprint.Get()) || !Blueprint->SimpleConstructionScript.IsResolved() || Blueprint->SimpleConstructionScript.Get() != RawSCS.Get()
+                    || !FHismScope::Loaded(RawAddedNode.Get()) || !RawAddedNode->ComponentTemplate.IsResolved())
+                { R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"), true); return Fail(R, TEXT("component_raw_add_compile_roles_changed"), TEXT("Compiler returned without current own SCS/node/template roles; actual creation/compiler outcome retained, no save/retry.")); }
+                UActorComponent* Returned = RawAddedNode->ComponentTemplate.Get();
+                if (!FHismScope::Loaded(Returned) || Returned->GetClass() != RawClass.Get() || Returned->GetOuter() != Blueprint->GeneratedClass.Get())
+                { R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("hard_reference_followup_sdk_stopped"), true); return Fail(R, TEXT("component_raw_add_compile_template_changed"), TEXT("Compiler returned an ineligible own template; no follow-up SDK.")); }
+                R.Data->SetBoolField(TEXT("raw_add_compiler_reconstructed_template"), Returned != RawAddedTemplate.Get());
+                RawAddedTemplate.Reset(Returned);
+                if (!ReferencesCurrent()) return false;
+            }
             if(bNativeLightRequested&&!LightGuard.Reacquire())return false;if(!HismGuard.Reacquire())return false;
             if (!Compiled) { return Fail(R, TEXT("component_compile_failed"), TEXT("Component was changed but full Blueprint compile failed; inspect diagnostics. Not saved.")); }
         }
         return true;
     }();
     if(NiagaraHandled||GeneratedValueHandled||PCGHandled||CACHandled)return R;
+    if(R.Data->HasField(TEXT("hard_reference_followup_sdk_stopped"))||R.Data->HasField(TEXT("hard_reference_preparation_outcome_unknown"))||!ReferencesCurrent()){R.bSuccess=false;R.bPostconditionPassed=false;R.bChangeStateKnown=false;return R;}
     if(HismGuard.Active&&(HismGuard.Stopped||!HismGuard.Check())){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
     if(LightGuard.Active&&!LightGuard.Check()){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
     bool bVerified = false;
@@ -3320,7 +4144,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
         FString Code, Error;
         if (ReadLocalComponents(Before.BlueprintPath, FString(), FString(), false, MaxNodes, MaxJsonChars, After, Code, Error))
         {
-            if(!LightGuard.Check()||!HismGuard.Check()){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
+            if(!LightGuard.Check()||!HismGuard.Check()||!ReferencesCurrent()){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
             R.Data->SetObjectField(TEXT("after"), After.Data);
             R.Data->SetBoolField(TEXT("dirty_before"), Before.bDirtyBefore); R.Data->SetBoolField(TEXT("dirty_after"), After.bDirtyAfter);
             R.Data->SetNumberField(TEXT("blueprint_status_before"), Before.StatusBefore); R.Data->SetNumberField(TEXT("blueprint_status_after"), After.StatusAfter);
@@ -3333,14 +4157,32 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             {
                 auto Observation = MakeShared<FJsonObject>();
                 Observation->SetStringField(TEXT("property_name"), P->Property->GetName()); Observation->SetField(TEXT("requested"), P->Requested); Observation->SetField(TEXT("before"), P->Before);
+                if(P->bMovementFloorAngle){Observation->SetNumberField(TEXT("expected_engine_clamped_angle"),P->MovementFloorAngleAfter);Observation->SetNumberField(TEXT("expected_engine_derived_floor_z"),P->MovementFloorZAfter);Observation->SetBoolField(TEXT("engine_normalization_expected"),true);}
                 TSharedPtr<FJsonValue> Value; FString Encoding;
-                if (Template && Template->IsA(P->Property->GetOwnerClass()) && ReadComponentValue(P->Property, P->Property->ContainerPtrToValuePtr<void>(Template), MaxJsonChars, Value, Encoding, Error))
+                const bool Readable=Template&&Template->IsA(P->Property->GetOwnerClass())&&ReadComponentValue(P->Property,P->Property->ContainerPtrToValuePtr<void>(Template),MaxJsonChars,Value,Encoding,Error);
+                if(!ReferencesCurrent()){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
+                if(Readable)
                 {
                     Observation->SetField(TEXT("after"), Value); Observation->SetStringField(TEXT("encoding"), Encoding);
                     const bool bMatches = P->Property->Identical(P->Value, P->Property->ContainerPtrToValuePtr<void>(Template))
                         && (!P->bSocket || Node->AttachToName == CastFieldChecked<FNameProperty>(P->Property)->GetPropertyValue(P->Value));
                     Observation->SetBoolField(TEXT("postcondition_passed"), bMatches); bVerified &= bMatches;
                     R.bChanged |= !FJsonValue::CompareEqual(*P->Before, *Value);
+                    if(P->bMovementFloorAngle)
+                    {
+                        // The immediately preceding current fence has observed
+                        // the actual companion on this held descriptor/receiver.
+                        // Include it after the generic dirty/status assignment,
+                        // so a same-angle fix on an already-dirty BP is reported.
+                        double BeforeZ=0.0,ActualZ=0.0;
+                        if(!P->MovementReceipt->TryGetNumberField(TEXT("walkable_floor_z_before"),BeforeZ)||!P->MovementReceipt->TryGetNumberField(TEXT("last_observed_floor_z"),ActualZ))
+                        {
+                            Observation->SetBoolField(TEXT("companion_final_observed"),false);Observations.Add(MakeShared<FJsonValueObject>(Observation));R.Data->SetArrayField(TEXT("property_observations"),Observations);
+                            R.bSuccess=false;R.bPostconditionPassed=false;R.bChangeStateKnown=false;Fail(R,TEXT("component_character_floor_final_unobservable"),TEXT("Final actual companion observation is missing; actual callback/store prefix retained without retry."));return R;
+                        }
+                        Observation->SetBoolField(TEXT("companion_final_observed"),true);Observation->SetNumberField(TEXT("companion_walkable_floor_z_before"),BeforeZ);Observation->SetNumberField(TEXT("companion_walkable_floor_z_after"),ActualZ);
+                        Observation->SetBoolField(TEXT("companion_changed"),BeforeZ!=ActualZ);R.bChanged|=BeforeZ!=ActualZ;
+                    }
                 }
                 else { bVerified = false; if (R.bMutationAttempted) { R.bChangeStateKnown = false; } }
                 Observations.Add(MakeShared<FJsonValueObject>(Observation));
@@ -3348,11 +4190,36 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
             R.Data->SetArrayField(TEXT("property_observations"), Observations);
             if (bAdd && bApplied)
             {
-                bVerified &= Node && Before.NodeVisits + 1 == After.NodeVisits && Node->ComponentClass == AddedClass.Get();
+                if (!bOriginalAdd) { bVerified &= Node && Before.NodeVisits + 1 == After.NodeVisits && Node->ComponentClass == AddedClass.Get(); }
+                else
+                {
+                    // Installed SCS.AddNode/ValidateSceneRootNodes may retire
+                    // only its generated DefaultSceneRoot when a scene is added.
+                    const FString DefaultName = USceneComponent::GetDefaultSceneRootVariableName().ToString();
+                    const bool RetiredDefault = ParentComponent.IsEmpty() && AddedClass->IsChildOf(USceneComponent::StaticClass())
+                        && Before.LocalNodes.Contains(DefaultName) && !After.LocalNodes.Contains(DefaultName);
+                    bVerified &= Node && Before.NodeVisits + 1 - (RetiredDefault ? 1 : 0) == After.NodeVisits && Node->ComponentClass == AddedClass.Get();
+                    R.Data->SetBoolField(TEXT("raw_add_engine_default_root_retired"), RetiredDefault);
+                }
                 for (const auto& Row : After.Data->GetArrayField(TEXT("components")))
-                { if (Row->AsObject()->GetStringField(TEXT("component_name")) == ComponentName) { bVerified &= Row->AsObject()->GetStringField(TEXT("parent_component_name")) == ActualParent; } }
+                { if (Row->AsObject()->GetStringField(TEXT("component_name")) == ComponentName) { if (!bOriginalAdd || !ParentComponent.IsEmpty()) bVerified &= Row->AsObject()->GetStringField(TEXT("parent_component_name")) == ActualParent; else R.Data->SetStringField(TEXT("raw_add_engine_selected_parent"), Row->AsObject()->GetStringField(TEXT("parent_component_name"))); } }
                 R.Data->SetStringField(TEXT("parent_component"), ActualParent);
                 if (Node) { R.Data->SetStringField(TEXT("component_class"), Node->ComponentClass->GetPathName()); R.Data->SetStringField(TEXT("template_path"), Node->ComponentTemplate->GetPathName()); }
+                if(NativeMovementClass(AddedClass.Get()))
+                {
+                    const TStrongObjectPtr<UMovementComponent> Added(Cast<UMovementComponent>(Template));bool DefaultsMatch=Added.IsValid()&&MovementTemplateInactive(Added.Get());auto Observed=MakeShared<FJsonObject>();
+                    const auto Expected=NativeMovementBefore->GetObjectField(TEXT("typed_authored_defaults"));
+                    for(const auto& Pair:Expected->Values)
+                    {
+                        if(!DefaultsMatch||!ReferencesCurrent())break;FProperty* P=FindProperty(AddedClass.Get(),FString(Pair.Key.ToView()));TSharedPtr<FJsonValue> Actual;FString Encoding;
+                        const bool Role=Node&&Node->ComponentTemplate.IsResolved()&&Node->ComponentTemplate==Added.Get();
+                        const bool Read=Role&&MovementTypedField(P)&&ReadComponentValue(P,P->ContainerPtrToValuePtr<void>(Added.Get()),MaxJsonChars,Actual,Encoding,Error);
+                        if(!ReferencesCurrent()){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
+                        if(!Read||!Node->ComponentTemplate.IsResolved()||Node->ComponentTemplate!=Added.Get()||!MovementTemplateInactive(Added.Get())){DefaultsMatch=false;R.bChangeStateKnown=false;break;}
+                        Observed->SetField(FString(Pair.Key.ToView()),Actual);DefaultsMatch&=FJsonValue::CompareEqual(*Pair.Value,*Actual);
+                    }
+                    bVerified&=DefaultsMatch;R.Data->SetBoolField(TEXT("movement_native_typed_defaults_verified"),DefaultsMatch);R.Data->SetObjectField(TEXT("movement_native_typed_defaults_after"),Observed);
+                }
                 if (bGeneratedRequested)
                 {
                     bool ExistingPreserved = true;
@@ -3434,6 +4301,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
         else if (R.bMutationAttempted) { R.bChangeStateKnown = false; }
         if (bClassLoadFailed) { R.bChangeStateKnown = false; }
     }
+    if(!ReferencesCurrent()){R.bSuccess=false;R.bChangeStateKnown=false;return R;}
     if (bDirtyBaseline)
     {
         const auto DirtyAfter = DirtyPackages(); R.Data->SetArrayField(TEXT("dirty_packages_after"), Strings(DirtyAfter));
@@ -3445,6 +4313,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
     R.Data->SetBoolField(TEXT("no_op"), bNoOp); R.Data->SetBoolField(TEXT("creation_observed"), bCreationObserved);
     R.Data->SetBoolField(TEXT("automatic_cleanup_attempted"), false);
     R.Data->SetStringField(TEXT("cleanup_policy"), TEXT("No automatic rollback/removal: newly created partial nodes/templates remain observable for explicit recovery."));
+    if(!ReferencesCurrent()){R.bSuccess=false;R.bPostconditionPassed=false;R.bChangeStateKnown=false;return R;}
     R.bSuccess = bApplied && bVerified && R.bChangeStateKnown; R.bPostconditionPassed = R.bSuccess;
     if (R.bSuccess) { R.Stage = TEXT("complete"); }
     else if (R.ErrorCode.IsEmpty()) { R.Stage = TEXT("verification"); Fail(R, TEXT("component_postcondition_failed"), TEXT("Independent local readback did not prove the requested postcondition; inspect actual changes before retry.")); }
@@ -3455,6 +4324,10 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
 FMutationResult AddLocalComponent(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName,
     const FString& TransformJson, const FString& ParentComponent, const FString& ComponentPropertiesJson, bool bCompile)
 { return Mutate(BlueprintPath, ComponentType, ComponentName, TransformJson, ParentComponent, ComponentPropertiesJson, true, bCompile, FString()); }
+
+FMutationResult AddLocalComponentRaw(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName,
+    const FString& TransformJson, const FString& ParentComponent)
+{ return Mutate(BlueprintPath, ComponentType, ComponentName, TransformJson, ParentComponent, TEXT("{}"), true, true, FString(), true); }
 
 FMutationResult SetLocalComponentProperty(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertyName, const FString& ValueJson)
 {
@@ -3964,4 +4837,336 @@ namespace Cubeless::UE58::Component
 {
 FMutationResult ConfigureBlueprintPCGTemplate(const FString& ParamsJson)
 { return ConfigureNativePCGTemplate(ParamsJson); }
+}
+
+
+namespace Cubeless::UE58::Component
+{
+// Original UnrealMCPBlueprintCommands.cpp3053, fixed command only. Named's
+// separate two-reference prevalidation and reflection signature are unchanged.
+FMutationResult SetLocalStaticMeshPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& AssetsJson)
+{
+    FMutationResult R; FHismScope Hism(R, true); FReadResult Before; FMeshMaterialState Initial, Expected;
+    TStrongObjectPtr<UBlueprint> BP; TStrongObjectPtr<USCS_Node> Node; TStrongObjectPtr<UStaticMeshComponent> Template;
+    TStrongObjectPtr<USimpleConstructionScript> SCS; TStrongObjectPtr<UClass> Generated, Skeleton, Parent, Class;
+    TArray<TStrongObjectPtr<UObject>> LoadedAssets; TArray<TSharedPtr<FJsonValue>> Steps, Boundaries;
+    TSharedPtr<FJsonObject> OriginalAttachment; TArray<FString> OtherDirty; FString Package, File, Hash; int64 Bytes = -1; bool FileExists = false;
+    FGuid Guid; FString NodePath, TemplatePath; bool InitialObserved = false;
+    R.Data->SetStringField(TEXT("component"), ComponentName); R.Data->SetStringField(TEXT("blueprint_name"), BlueprintPath);
+    R.Data->SetBoolField(TEXT("original_raw_static_mesh_command"), true); R.Data->SetBoolField(TEXT("automatic_retry"), false);
+    R.Data->SetStringField(TEXT("scope"), TEXT("Fixed original mesh-then-material command on admitted local native StaticMesh/HISM templates. Missing/wrong-type loads are source-defined skipped steps; dependency/lifetime/state failures retain actual earlier changes and stop. No extra post-edit notifications, compiler, save or rollback."));
+    R.Data->SetStringField(TEXT("slot_preservation_basis"), TEXT("Installed UE58 StaticMeshComponent.cpp2366 SetStaticMesh and MeshComponent.cpp63 SetMaterial do not trim OverrideMaterials/overlay tails. Raw follows those exact public setters without the Named editor PostEditChange notifications that can call CleanUpOverrideMaterials; every boundary checks all stored slots and attachment state."));
+    auto Stop = [&](const TCHAR* Code, const FString& Why)
+    { R.bChangeStateKnown = false; return Fail(R, Code, Why); };
+    auto Disk = [&](bool Capture)
+    {
+        const bool Exists = IFileManager::Get().FileExists(*File); int64 Size = Exists ? IFileManager::Get().FileSize(*File) : -1; FString Digest;
+        if (Exists)
+        {
+            TArray<uint8> Data;
+            if (Size < 0 || Size > 67108864 || !FFileHelper::LoadFileToArray(Data, *File) || Data.Num() != Size)
+            { return Stop(TEXT("component_raw_mesh_disk_unobservable"), TEXT("Target file is unreadable or exceeds the existing 64 MiB observation scope; no follow-up writer.")); }
+            Digest = FMD5::HashBytes(Data.GetData(), Data.Num());
+        }
+        if (Capture) { FileExists = Exists; Bytes = Size; Hash = Digest; }
+        auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("path"), File); J->SetBoolField(TEXT("exists"), Exists);
+        J->SetNumberField(TEXT("bytes"), Size); J->SetStringField(TEXT("md5"), Digest); R.Data->SetObjectField(Capture ? TEXT("target_disk_before") : TEXT("target_disk_current"), J);
+        if (!Capture && (FileExists != Exists || Bytes != Size || Hash != Digest))
+        { return Stop(TEXT("component_raw_mesh_disk_changed"), TEXT("Target file changed across an SDK boundary; actual in-memory prefix retained, no save/retry.")); }
+        return true;
+    };
+    auto Basic = [&]()
+    {
+        return IsEditorGameThread() && !IsPlaySessionActive() && !IsGarbageCollecting() && !IsEngineExitRequested() && !GIsRequestingExit && !UE::IsSavingPackage()
+            && FHismScope::Loaded(BP.Get()) && FHismScope::Loaded(SCS.Get()) && BP->SimpleConstructionScript.Get() == SCS.Get()
+            && BP->GeneratedClass.Get() == Generated.Get() && FHismScope::Loaded(Generated.Get()) && BP->SkeletonGeneratedClass.Get() == Skeleton.Get()
+            && FHismScope::Loaded(Skeleton.Get()) && BP->ParentClass.Get() == Parent.Get() && FHismScope::Loaded(Parent.Get())
+            && !BP->bBeingCompiled && !BP->bQueuedForCompilation && !BP->bSuppressStructurallyModified && !BP->bIsRegeneratingOnLoad
+            && FHismScope::Loaded(Node.Get()) && Node->GetOuter() == SCS.Get() && Node->GetPathName() == NodePath && Node->VariableGuid == Guid
+            && Node->GetVariableName().ToString() == ComponentName && Node->ComponentClass.Get() == Class.Get() && FHismScope::Loaded(Class.Get())
+            && Node->ComponentTemplate.Get() == Template.Get() && FHismScope::Loaded(Template.Get()) && Template->GetOuter() == Generated.Get()
+            && Template->GetPathName() == TemplatePath && Template->GetClass() == Class.Get() && IsMeshMaterialTemplate(Template.Get(), Hism.Populated)
+            && SCS->GetAllNodes().Contains(Node.Get()) && Hism.Check();
+    };
+    auto Current = [&](const TCHAR* Phase)
+    {
+        R.Stage = Phase;
+        if (!Basic()) { return Stop(TEXT("component_raw_mesh_current_changed"), TEXT("Editor/Blueprint/class/SCS/template identity or eligibility changed across an SDK boundary; no follow-up writer.")); }
+        FReadResult Now; FString Code, Error; FMeshMaterialState Actual;
+        if (!ReadLocalComponents(Before.BlueprintPath, FString(), FString(), false, MaxNodes, MaxJsonChars, Now, Code, Error) || !Basic()
+            || !Actual.Read(Template.Get(), Hism.Populated ? TFunction<bool()>([&]{ return Hism.Check(); }) : TFunction<bool()>()) || !Basic())
+        { return Stop(TEXT("component_raw_mesh_after_unobservable"), TEXT("Current local-SCS/stored bindings became unobservable; actual partial prefix retained.")); }
+        auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("phase"), Phase); J->SetObjectField(TEXT("actual"), Actual.Json()); J->SetObjectField(TEXT("expected_stored"), Expected.Json(false));
+        const auto Attached = Attachment(Template.Get(), Node.Get());
+        const bool Same = SCSMatchesExceptSelectedMesh(Before, Now, ComponentName) && Actual.SameStored(Expected)
+            && FJsonValue::CompareEqual(FJsonValueObject(OriginalAttachment.ToSharedRef()), FJsonValueObject(Attached));
+        J->SetBoolField(TEXT("postcondition_passed"), Same); Boundaries.Add(MakeShared<FJsonValueObject>(J)); R.Data->SetArrayField(TEXT("ordered_boundary_observations"), Boundaries);
+        R.Data->SetObjectField(TEXT("after"), Now.Data); R.Data->SetObjectField(TEXT("static_mesh_material_after"), Actual.Json());
+        R.bChanged |= !Initial.SameStored(Actual) || Before.bDirtyBefore != Now.bDirtyAfter || Before.StatusBefore != Now.StatusAfter;
+        if (!Same) { return Stop(TEXT("component_raw_mesh_state_changed"), TEXT("Actual target bindings, other slots, SCS or attachment changed outside the admitted requested prefix.")); }
+        auto Dirty = DirtyPackages(); Dirty.Remove(Package); R.Data->SetArrayField(TEXT("other_dirty_packages_current"), Strings(Dirty));
+        if (Dirty != OtherDirty) { return Stop(TEXT("component_raw_mesh_other_dirty_changed"), TEXT("Other package dirtiness changed during the SDK step; no follow-up writer.")); }
+        if (!Disk(false) || !Basic()) { return false; }
+        R.bChangeStateKnown = true; return true;
+    };
+    const bool Applied = [&]()
+    {
+        if (!IsEditorGameThread() || IsPlaySessionActive()) { return Fail(R, TEXT("component_editor_state_invalid"), TEXT("Requires editor game thread outside PIE/SIE.")); }
+        if (!SafeName(BlueprintPath) || !BlueprintPath.StartsWith(TEXT("/Game/")) || !SafeName(ComponentName))
+        { return Fail(R, TEXT("component_selector_invalid"), TEXT("Exact bounded /Game Blueprint and local component name required.")); }
+        TSharedPtr<FJsonValue> Input;
+        if (!ParseValue(AssetsJson, Input, R) || Input->Type != EJson::Object)
+        { if (R.ErrorCode.IsEmpty()) Fail(R, TEXT("component_raw_mesh_assets_invalid"), TEXT("Fixed original static_mesh/material JSON object required.")); return false; }
+        const auto Assets = Input->AsObject();
+        for (const auto& P : Assets->Values)
+        { const FString Key(P.Key.ToView()); if (Key != TEXT("static_mesh") && Key != TEXT("material")) return Fail(R, TEXT("component_raw_mesh_assets_invalid"), TEXT("Only the original static_mesh/material keys are admitted.")); }
+        R.Data->SetObjectField(TEXT("raw_asset_arguments"), Assets); OtherDirty = DirtyPackages();
+        FString Code, Error;
+        if (!ReadLocalComponents(BlueprintPath, FString(), FString(), false, MaxNodes, MaxJsonChars, Before, Code, Error))
+        { R.bChangeStateKnown = !Before.bLoadedDuringRead; return Fail(R, *Code, Error); }
+        R.Data->SetObjectField(TEXT("before"), Before.Data); R.Data->SetBoolField(TEXT("loaded_during_preflight"), Before.bLoadedDuringRead);
+        R.bChangeStateKnown = false; // Initial whole admitted scope is not yet qualified.
+        BP.Reset(FindObject<UBlueprint>(nullptr, *Before.BlueprintPath));
+        if (!BP.IsValid() || !BP->ParentClass || !BP->ParentClass->IsChildOf(AActor::StaticClass()) || !BP->SimpleConstructionScript || !BP->GeneratedClass || !BP->SkeletonGeneratedClass
+            || BP->BlueprintType != BPTYPE_Normal || BP->GetOutermost()->HasAnyPackageFlags(PKG_EditorOnly | PKG_Developer | PKG_UncookedOnly))
+        { return Fail(R, TEXT("component_blueprint_unsupported"), TEXT("Requires an idle normal Actor Blueprint with current generated/Skeleton classes and local SCS.")); }
+        if (!NativeRuntimeParents(BP.Get(), R)) return false;
+        Node.Reset(Before.LocalNodes.FindRef(ComponentName).Get()); Template.Reset(Node.IsValid() ? Cast<UStaticMeshComponent>(Node->ComponentTemplate) : nullptr);
+        if (!Node.IsValid() || !IsMeshMaterialTemplate(Template.Get(), true))
+        { return Fail(R, TEXT("component_mesh_template_unsupported"), TEXT("Requires an admitted local native StaticMesh/HISM template without active/welded physics.")); }
+        SCS.Reset(BP->SimpleConstructionScript); Generated.Reset(BP->GeneratedClass); Skeleton.Reset(BP->SkeletonGeneratedClass); Parent.Reset(BP->ParentClass); Class.Reset(Template->GetClass());
+        Guid = Node->VariableGuid; NodePath = Node->GetPathName(); TemplatePath = Template->GetPathName();
+        if (Template->GetClass() == UHierarchicalInstancedStaticMeshComponent::StaticClass() && !Hism.Bind(BP.Get(), ComponentName, Node.Get())) return false;
+        if (!Basic()) return Stop(TEXT("component_raw_mesh_current_changed"), TEXT("Current selected roles are invalid after initial load; no asset step."));
+        if (!RejectExternalInstances(BP.Get(), R)) return false;
+        if (!Initial.Read(Template.Get(), Hism.Populated ? TFunction<bool()>([&]{ return Hism.Check(); }) : TFunction<bool()>()) || !Basic())
+        { return Stop(TEXT("component_raw_mesh_before_unobservable"), TEXT("Initial bindings/slots are not fully observable.")); }
+        InitialObserved = true; Expected = Initial; R.Data->SetObjectField(TEXT("static_mesh_material_before"), Initial.Json()); OriginalAttachment = Attachment(Template.Get(), Node.Get());
+        Package = BP->GetOutermost()->GetName(); OtherDirty.Remove(Package); R.Data->SetArrayField(TEXT("other_dirty_packages_before"), Strings(OtherDirty));
+        File = FPackageName::LongPackageNameToFilename(Package, FPackageName::GetAssetPackageExtension()); if (!Disk(true) || !Current(TEXT("before_asset_steps"))) return false;
+        for (const TCHAR* Key : {TEXT("static_mesh"), TEXT("material")})
+        {
+            if (!Assets->HasField(Key)) continue;  // No default Cube or implicit material write.
+            if (!Current(TEXT("before_asset_load"))) return false;
+            FString Path; Assets->TryGetStringField(Key, Path); // Original GetStringField failure leaves empty text, not omission.
+            auto Step = MakeShared<FJsonObject>(); Step->SetStringField(TEXT("field"), Key); Step->SetField(TEXT("raw_value"), Assets->TryGetField(Key)); Step->SetStringField(TEXT("resolved_input_text"), Path);
+            Step->SetBoolField(TEXT("load_attempted"), true); Step->SetBoolField(TEXT("load_returned"), false); Step->SetBoolField(TEXT("setter_attempted"), false); Step->SetBoolField(TEXT("setter_returned"), false);
+            Steps.Add(MakeShared<FJsonValueObject>(Step)); R.Data->SetArrayField(TEXT("ordered_asset_steps"), Steps); R.Stage = FString(Key) + TEXT("_load");
+            const double LoadStart = FPlatformTime::Seconds();
+            UObject* Loaded = UEditorAssetLibrary::LoadAsset(Path); const TStrongObjectPtr<UObject> Immediate(Loaded);
+            Step->SetNumberField(TEXT("load_elapsed_ms"), (FPlatformTime::Seconds() - LoadStart) * 1000.0);
+            if (Loaded) LoadedAssets.Emplace(Loaded);
+            Step->SetBoolField(TEXT("load_returned"), true); Step->SetStringField(TEXT("loaded_object"), GetPathNameSafe(Loaded));
+            if (!Current(TEXT("after_asset_load"))) return false;
+            const bool Mesh = FString(Key) == TEXT("static_mesh");
+            if (!Loaded || (Mesh ? Cast<UStaticMesh>(Loaded) == nullptr : Cast<UMaterialInterface>(Loaded) == nullptr))
+            { Step->SetStringField(TEXT("outcome"), TEXT("source_skipped_missing_or_wrong_type")); continue; }
+            if (!FHismScope::Loaded(Loaded) || !Loaded->IsAsset() || Loaded->IsEditorOnly() || Loaded->HasAnyFlags(RF_Transient)
+                || Loaded->GetOutermost()->HasAnyPackageFlags(PKG_EditorOnly | PKG_Developer | PKG_UncookedOnly)
+                || (Mesh ? Loaded->GetClass() != UStaticMesh::StaticClass() : Loaded->GetClass() != UMaterial::StaticClass() && Loaded->GetClass() != UMaterialInstanceConstant::StaticClass()))
+            { Step->SetStringField(TEXT("outcome"), TEXT("unsupported_runtime_asset")); return Fail(R, TEXT("component_raw_mesh_asset_unsupported"), TEXT("Loaded source asset has an unsupported runtime class/ownership/flags; this is not asset-not-found and earlier steps remain.")); }
+            const bool Audit = AuditRuntimeReference(Loaded, Mesh ? TEXT("mesh") : TEXT("material"), R);
+            if (!Audit) { Step->SetStringField(TEXT("dependency_error_code"), R.ErrorCode); Step->SetStringField(TEXT("dependency_error"), R.Error); }
+            const bool AuditCurrent = Current(TEXT("after_asset_dependency_audit"));
+            if (!Audit || !AuditCurrent)
+            { Step->SetStringField(TEXT("outcome"), TEXT("dependency_or_current_state_failed")); return false; }
+            if (!RejectExternalInstances(BP.Get(), R) || !Current(TEXT("before_public_setter"))) return false;
+            Step->SetBoolField(TEXT("setter_attempted"), true); R.bMutationAttempted = true; R.bChangeStateKnown = false; R.Stage = Mesh ? TEXT("mesh") : TEXT("material_slot0");
+            const double SetStart = FPlatformTime::Seconds();
+            if (Mesh)
+            {
+                UStaticMesh* Asset = CastChecked<UStaticMesh>(Loaded); Expected.Mesh = Asset->GetPathName();
+                if (Hism.Populated && !Hism.BeginMesh(Asset)) return false;
+                const bool Set = Template->SetStaticMesh(Asset); Step->SetBoolField(TEXT("setter_returned"), true); Step->SetBoolField(TEXT("setter_return_value"), Set);
+                if (Hism.Populated && !Hism.EndMesh(Set)) return false;
+            }
+            else
+            {
+                auto* Asset = CastChecked<UMaterialInterface>(Loaded); if (Expected.Overrides.IsEmpty()) Expected.Overrides.Add(FString()); Expected.Overrides[0] = Asset->GetPathName();
+                if (Hism.Populated && !Hism.BeginMaterial(Asset)) return false;
+                Template->SetMaterial(0, Asset); Step->SetBoolField(TEXT("setter_returned"), true);
+                if (Hism.Populated && !Hism.EndMaterial()) return false;
+            }
+            Step->SetNumberField(TEXT("setter_elapsed_ms"), (FPlatformTime::Seconds() - SetStart) * 1000.0);
+            if (!Current(TEXT("after_public_setter"))) return false;
+            Step->SetStringField(TEXT("outcome"), TEXT("source_setter_returned_verified"));
+        }
+        if (!Current(TEXT("before_mark_blueprint_modified"))) return false;
+        // Source always performs this final step, including omitted/failed asset
+        // loads and equal bindings. No full compile or package save is inferred.
+        R.Stage = TEXT("mark_blueprint_modified"); R.bMutationAttempted = true; R.bChangeStateKnown = false;
+        R.Data->SetBoolField(TEXT("mark_blueprint_modified_attempted"), true); FBlueprintEditorUtils::MarkBlueprintAsModified(BP.Get());
+        R.Data->SetBoolField(TEXT("mark_blueprint_modified_returned"), true);
+        if (!Current(TEXT("after_mark_blueprint_modified")) || !Hism.FinishPopulated()) return false;
+        return true;
+    }();
+    if (!Applied && InitialObserved && BP.IsValid() && Template.IsValid() && Basic())
+    {
+        // Read-only failure observation requires the same live ownership scope;
+        // no getters/setters follow a failed lifetime/context qualification.
+        FMeshMaterialState Actual;
+        if (Actual.Read(Template.Get(), Hism.Populated ? TFunction<bool()>([&]{ return Hism.Check(); }) : TFunction<bool()>()))
+        { R.Data->SetObjectField(TEXT("failure_stored_bindings"), Actual.Json()); R.bChanged |= !Initial.SameStored(Actual); }
+    }
+    R.bSuccess = Applied && R.bChangeStateKnown; R.bPostconditionPassed = R.bSuccess;
+    if (R.bSuccess) R.Stage = TEXT("complete");
+    else if (R.ErrorCode.IsEmpty()) Fail(R, TEXT("component_raw_mesh_incomplete"), TEXT("Source command stopped at an unverified SDK boundary; no cleanup, rollback or retry."));
+    return R;
+}
+}
+
+
+namespace Cubeless::UE58::Component
+{
+// Original HandleSetPhysicsProperties (UE56 BlueprintCommands.cpp2792).
+// Fixed original command; Named's full five-value behavior is unchanged.
+FMutationResult SetLocalPhysicsPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertiesJson)
+{
+    FMutationResult R; FReadResult Before; FPhysicsDefaults Initial, Expected;
+    TStrongObjectPtr<UBlueprint> BP; TStrongObjectPtr<USCS_Node> Node; TStrongObjectPtr<UPrimitiveComponent> Template;
+    TStrongObjectPtr<USimpleConstructionScript> SCS; TStrongObjectPtr<UClass> Generated, Skeleton, Parent, Class;
+    FBodyInstance* Body = nullptr; FGuid Guid; FString NodePath, TemplatePath, Package, File, Hash; int64 Bytes = -1; bool FileExists = false, InitialObserved = false;
+    TSharedPtr<FJsonObject> OriginalAttachment; TArray<FString> OtherDirty; TArray<TSharedPtr<FJsonValue>> Steps, Boundaries;
+    R.Data->SetStringField(TEXT("component"), ComponentName); R.Data->SetStringField(TEXT("blueprint_name"), BlueprintPath);
+    R.Data->SetBoolField(TEXT("original_raw_physics_command"), true); R.Data->SetBoolField(TEXT("original_gravity_enabled_ignored"), true);
+    R.Data->SetStringField(TEXT("scope"), TEXT("Original optional simulate/mass/linear/angular ordered public setters on existing inactive local native StaticMesh/Sphere/Box/Capsule body templates. No gravity setter, current-value read-fill, archetype propagation, editor post-edit notification, full compile, save, rollback or automatic retry."));
+    auto Stop = [&](const TCHAR* Code, const FString& Why) { R.bChangeStateKnown = false; return Fail(R, Code, Why); };
+    auto Disk = [&](bool Capture)
+    {
+        const bool Exists = IFileManager::Get().FileExists(*File); const int64 Size = Exists ? IFileManager::Get().FileSize(*File) : -1; FString Digest;
+        if (Exists)
+        {
+            TArray<uint8> Data;
+            if (Size < 0 || Size > 67108864 || !FFileHelper::LoadFileToArray(Data, *File) || Data.Num() != Size)
+            { return Stop(TEXT("component_raw_physics_disk_unobservable"), TEXT("Target file exceeds the existing readable 64 MiB observation scope.")); }
+            Digest = FMD5::HashBytes(Data.GetData(), Data.Num());
+        }
+        if (Capture) { FileExists = Exists; Bytes = Size; Hash = Digest; }
+        auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("path"), File); J->SetBoolField(TEXT("exists"), Exists); J->SetNumberField(TEXT("bytes"), Size); J->SetStringField(TEXT("md5"), Digest);
+        R.Data->SetObjectField(Capture ? TEXT("target_disk_before") : TEXT("target_disk_current"), J);
+        return Capture || (FileExists == Exists && Bytes == Size && Hash == Digest)
+            || Stop(TEXT("component_raw_physics_disk_changed"), TEXT("Target file changed across the SDK boundary; no follow-up writer/save/retry."));
+    };
+    auto Basic = [&]()
+    {
+        return IsEditorGameThread() && !IsPlaySessionActive() && !IsGarbageCollecting() && !IsEngineExitRequested() && !GIsRequestingExit && !UE::IsSavingPackage()
+            && FHismScope::Loaded(BP.Get()) && FHismScope::Loaded(SCS.Get()) && BP->SimpleConstructionScript.Get() == SCS.Get()
+            && BP->GeneratedClass.Get() == Generated.Get() && FHismScope::Loaded(Generated.Get()) && BP->SkeletonGeneratedClass.Get() == Skeleton.Get() && FHismScope::Loaded(Skeleton.Get())
+            && BP->ParentClass.Get() == Parent.Get() && FHismScope::Loaded(Parent.Get()) && !BP->bBeingCompiled && !BP->bQueuedForCompilation && !BP->bSuppressStructurallyModified && !BP->bIsRegeneratingOnLoad
+            && FHismScope::Loaded(Node.Get()) && Node->GetOuter() == SCS.Get() && Node->GetPathName() == NodePath && Node->VariableGuid == Guid && Node->GetVariableName().ToString() == ComponentName
+            && Node->ComponentClass.Get() == Class.Get() && FHismScope::Loaded(Class.Get()) && Node->ComponentTemplate.Get() == Template.Get() && FHismScope::Loaded(Template.Get())
+            && Template->GetOuter() == Generated.Get() && Template->GetPathName() == TemplatePath && Template->GetClass() == Class.Get() && IsPhysicsTemplate(Template.Get())
+            && Body && Template->GetBodyInstance(NAME_None, false) == Body && !Body->IsValidBodyInstance()
+            && (!Body->OwnerComponent.IsValid() || Body->OwnerComponent.Get() == Template.Get()) && SCS->GetAllNodes().Contains(Node.Get());
+    };
+    auto Current = [&](const TCHAR* Phase)
+    {
+        R.Stage = Phase;
+        if (!Basic()) return Stop(TEXT("component_raw_physics_current_changed"), TEXT("Editor/Blueprint/SCS/class/template/body ownership or eligibility changed; no follow-up writer."));
+        FReadResult Now; FPhysicsDefaults Actual; FString Code, Error;
+        if (!ReadLocalComponents(Before.BlueprintPath, FString(), FString(), false, MaxNodes, MaxJsonChars, Now, Code, Error) || !Basic() || !Actual.Read(Template.Get()) || !Basic())
+        { return Stop(TEXT("component_raw_physics_after_unobservable"), TEXT("Current SCS/body state became unobservable; actual earlier prefix retained.")); }
+        const auto Attached = Attachment(Template.Get(), Node.Get());
+        const bool Same = Before.NodeVisits == Now.NodeVisits
+            && FJsonValue::CompareEqual(FJsonValueArray(Before.Data->GetArrayField(TEXT("components"))), FJsonValueArray(Now.Data->GetArrayField(TEXT("components"))))
+            && Actual.Equals(Expected) && FJsonValue::CompareEqual(FJsonValueObject(OriginalAttachment.ToSharedRef()), FJsonValueObject(Attached));
+        auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("phase"), Phase); J->SetObjectField(TEXT("actual"), Actual.Json()); J->SetObjectField(TEXT("expected_stored"), Expected.Json()); J->SetBoolField(TEXT("postcondition_passed"), Same);
+        Boundaries.Add(MakeShared<FJsonValueObject>(J)); R.Data->SetArrayField(TEXT("ordered_boundary_observations"), Boundaries);
+        R.Data->SetObjectField(TEXT("physics_after"), Actual.Json()); R.Data->SetObjectField(TEXT("after"), Now.Data);
+        R.bChanged |= !Initial.Equals(Actual) || Before.bDirtyBefore != Now.bDirtyAfter || Before.StatusBefore != Now.StatusAfter;
+        if (!Same) return Stop(TEXT("component_raw_physics_state_changed"), TEXT("Actual body values, unrelated defaults, SCS or attachment differ from the admitted requested prefix."));
+        auto Dirty = DirtyPackages(); Dirty.Remove(Package); R.Data->SetArrayField(TEXT("other_dirty_packages_current"), Strings(Dirty));
+        if (Dirty != OtherDirty) return Stop(TEXT("component_raw_physics_other_dirty_changed"), TEXT("Other package dirtiness changed across the SDK boundary."));
+        if (!Disk(false) || !Basic()) return false;
+        R.bChangeStateKnown = true; return true;
+    };
+    const bool Applied = [&]()
+    {
+        if (!IsEditorGameThread() || IsPlaySessionActive()) return Fail(R, TEXT("component_editor_state_invalid"), TEXT("Requires editor game thread outside PIE/SIE."));
+        if (!SafeName(BlueprintPath) || !BlueprintPath.StartsWith(TEXT("/Game/")) || !SafeName(ComponentName)) return Fail(R, TEXT("component_selector_invalid"), TEXT("Exact bounded /Game Blueprint/local component name required."));
+        TSharedPtr<FJsonObject> Fields;
+        if (PropertiesJson.Len() > 65536 || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(PropertiesJson), Fields) || !Fields.IsValid())
+        { return Fail(R, TEXT("component_raw_physics_json_invalid"), TEXT("Original Physics requires one bounded JSON object.")); }
+        // Original numbers are doubles before the setter's float conversion;
+        // reuse the existing depth/value budget without its unrelated 2^53 cap.
+        int32 Count = 0; TFunction<bool(const TSharedPtr<FJsonValue>&, int32)> Budget;
+        Budget = [&](const TSharedPtr<FJsonValue>& V, int32 Depth)
+        {
+            if (!V.IsValid() || Depth > 8 || ++Count > 1024) return false;
+            if (V->Type == EJson::Number) return FMath::IsFinite(V->AsNumber());
+            if (V->Type == EJson::String) { for (TCHAR C : V->AsString()) if (C == 0) return false; }
+            if (V->Type == EJson::Array) { for (const auto& X : V->AsArray()) if (!Budget(X, Depth + 1)) return false; }
+            if (V->Type == EJson::Object) { for (const auto& X : V->AsObject()->Values) if (!Budget(X.Value, Depth + 1)) return false; }
+            return true;
+        };
+        for (const auto& P : Fields->Values)
+        {
+            const FString Key(P.Key.ToView());
+            if ((Key != TEXT("simulate_physics") && Key != TEXT("mass") && Key != TEXT("linear_damping") && Key != TEXT("angular_damping")) || !Budget(P.Value, 0))
+            { return Fail(R, TEXT("component_raw_physics_json_invalid"), TEXT("Only the four original optional keys and bounded finite JSON are admitted; gravity_enabled is not a raw Native input.")); }
+        }
+        R.Data->SetObjectField(TEXT("raw_physics_arguments"), Fields); OtherDirty = DirtyPackages(); FString Code, Error;
+        if (!ReadLocalComponents(BlueprintPath, FString(), FString(), false, MaxNodes, MaxJsonChars, Before, Code, Error))
+        { R.bChangeStateKnown = !Before.bLoadedDuringRead; return Fail(R, *Code, Error); }
+        R.Data->SetObjectField(TEXT("before"), Before.Data); R.Data->SetBoolField(TEXT("loaded_during_preflight"), Before.bLoadedDuringRead); R.bChangeStateKnown = false;
+        BP.Reset(FindObject<UBlueprint>(nullptr, *Before.BlueprintPath));
+        if (!BP.IsValid() || !BP->ParentClass || !BP->ParentClass->IsChildOf(AActor::StaticClass()) || !BP->SimpleConstructionScript || !BP->GeneratedClass || !BP->SkeletonGeneratedClass
+            || BP->BlueprintType != BPTYPE_Normal || BP->GetOutermost()->HasAnyPackageFlags(PKG_EditorOnly | PKG_Developer | PKG_UncookedOnly))
+        { return Fail(R, TEXT("component_blueprint_unsupported"), TEXT("Requires a normal own Actor Blueprint with current classes and local SCS.")); }
+        if (!NativeRuntimeParents(BP.Get(), R)) return false;
+        Node.Reset(Before.LocalNodes.FindRef(ComponentName).Get()); Template.Reset(Node.IsValid() ? Cast<UPrimitiveComponent>(Node->ComponentTemplate) : nullptr);
+        if (!Node.IsValid() || !IsPhysicsTemplate(Template.Get())) return Fail(R, TEXT("component_physics_template_unsupported"), TEXT("Requires inactive native StaticMesh/Sphere/Box/Capsule with a stored unregistered, unwelded body."));
+        SCS.Reset(BP->SimpleConstructionScript); Generated.Reset(BP->GeneratedClass); Skeleton.Reset(BP->SkeletonGeneratedClass); Parent.Reset(BP->ParentClass); Class.Reset(Template->GetClass());
+        Body = Template->GetBodyInstance(NAME_None, false); Guid = Node->VariableGuid; NodePath = Node->GetPathName(); TemplatePath = Template->GetPathName();
+        if (!Basic()) return Stop(TEXT("component_raw_physics_current_changed"), TEXT("Current roles/body are invalid after load; no physics setter."));
+        if (!RejectExternalInstances(BP.Get(), R)) return false;
+        if (!Initial.Read(Template.Get()) || !Basic()) return Stop(TEXT("component_raw_physics_before_unobservable"), TEXT("Stored body defaults are unavailable or nonfinite."));
+        InitialObserved = true; Expected = Initial; R.Data->SetObjectField(TEXT("physics_before"), Initial.Json()); OriginalAttachment = Attachment(Template.Get(), Node.Get());
+        Package = BP->GetOutermost()->GetName(); OtherDirty.Remove(Package); File = FPackageName::LongPackageNameToFilename(Package, FPackageName::GetAssetPackageExtension());
+        R.Data->SetArrayField(TEXT("other_dirty_packages_before"), Strings(OtherDirty)); if (!Disk(true) || !Current(TEXT("before_optional_physics_steps"))) return false;
+        for (const TCHAR* Key : {TEXT("simulate_physics"), TEXT("mass"), TEXT("linear_damping"), TEXT("angular_damping")})
+        {
+            if (!Fields->HasField(Key)) continue;
+            if (!Current(TEXT("before_physics_setter"))) return false;
+            auto Step = MakeShared<FJsonObject>(); Step->SetStringField(TEXT("field"), Key); Step->SetField(TEXT("raw_value"), Fields->TryGetField(Key));
+            Step->SetBoolField(TEXT("setter_attempted"), false); Step->SetBoolField(TEXT("setter_returned"), false); Steps.Add(MakeShared<FJsonValueObject>(Step)); R.Data->SetArrayField(TEXT("ordered_physics_steps"), Steps);
+            const bool Simulate = FString(Key) == TEXT("simulate_physics"); bool Flag = false; float Value = 0.f;
+            R.Stage = FString(Key) + TEXT("_convert");
+            if (Simulate)
+            {
+                Flag = Fields->GetBoolField(Key); Expected.bSimulate = Flag; Expected.Blend = Flag ? 1.f : 0.f; Step->SetBoolField(TEXT("converted_bool"), Flag);
+            }
+            else
+            {
+                const double Number = Fields->GetNumberField(Key); Value = static_cast<float>(Number);
+                if (!FMath::IsFinite(Number) || !FMath::IsFinite(Value))
+                { return Fail(R, TEXT("component_raw_physics_float_pending"), TEXT("Nonfinite/out-of-float conversion is unsupported at this source stage; earlier actual setters remain, no later setter/MarkModified/retry.")); }
+                Step->SetNumberField(TEXT("converted_float"), Value);
+                if (FString(Key) == TEXT("mass")) { Expected.bOverrideMass = true; Expected.Mass = Value; }
+                else if (FString(Key) == TEXT("linear_damping")) Expected.Linear = Value;
+                else Expected.Angular = Value;
+            }
+            R.Stage = Key; R.bMutationAttempted = true; R.bChangeStateKnown = false; Step->SetBoolField(TEXT("setter_attempted"), true); const double Start = FPlatformTime::Seconds();
+            if (Simulate) Template->SetSimulatePhysics(Flag);
+            else if (FString(Key) == TEXT("mass")) Template->SetMassOverrideInKg(NAME_None, Value, true);
+            else if (FString(Key) == TEXT("linear_damping")) Template->SetLinearDamping(Value);
+            else Template->SetAngularDamping(Value);
+            Step->SetBoolField(TEXT("setter_returned"), true); Step->SetNumberField(TEXT("setter_elapsed_ms"), (FPlatformTime::Seconds() - Start) * 1000.0);
+            if (!Current(TEXT("after_physics_setter"))) return false;
+        }
+        if (!Current(TEXT("before_mark_blueprint_modified"))) return false;
+        R.Stage = TEXT("mark_blueprint_modified"); R.bMutationAttempted = true; R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("mark_blueprint_modified_attempted"), true);
+        FBlueprintEditorUtils::MarkBlueprintAsModified(BP.Get()); R.Data->SetBoolField(TEXT("mark_blueprint_modified_returned"), true);
+        return Current(TEXT("after_mark_blueprint_modified"));
+    }();
+    if (!Applied && InitialObserved && BP.IsValid() && Template.IsValid() && Basic())
+    {
+        FPhysicsDefaults Actual;
+        if (Actual.Read(Template.Get())) { R.Data->SetObjectField(TEXT("failure_stored_body"), Actual.Json()); R.bChanged |= !Initial.Equals(Actual); }
+    }
+    R.bSuccess = Applied && R.bChangeStateKnown; R.bPostconditionPassed = R.bSuccess;
+    if (R.bSuccess) R.Stage = TEXT("complete");
+    else if (R.ErrorCode.IsEmpty()) Fail(R, TEXT("component_raw_physics_incomplete"), TEXT("Original optional Physics stopped at an unverified SDK boundary; actual prefix retained without rollback/replay."));
+    return R;
+}
 }

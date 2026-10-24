@@ -99,9 +99,9 @@ def _call_arguments(blueprint_name, function_class, function_name, param_default
     dynamic_component = function_class == "/Script/Engine.Actor" and function_name == "AddComponentByClass"
     # ND: the original opt-in creates an untyped stock node; no Map profile is inferred.
     map_wildcard = (flags["allow_wildcard"] and function_class == "/Script/Engine.BlueprintMapLibrary"
-        and function_name in ("Map_Clear", "Map_Find", "Map_Add", "Map_Contains", "Map_Remove", "Map_Keys", "Map_Values", "Map_Length"))
+        and function_name in ("Map_Clear", "Map_Find", "Map_Add", "Map_Contains", "Map_Remove", "Map_Keys", "Map_Values", "Map_Length", "Map_IsEmpty", "Map_IsNotEmpty", "Map_GetKeyValueByIndex", "Map_GetLastIndex"))
     set_wildcard = (flags["allow_wildcard"] and function_class == "/Script/Engine.BlueprintSetLibrary"
-        and function_name in ("Set_Add", "Set_Remove", "Set_Contains", "Set_Length", "Set_ToArray", "Set_Union", "Set_Intersection", "Set_Difference"))
+        and function_name in ("Set_Add", "Set_Remove", "Set_Contains", "Set_Length", "Set_ToArray", "Set_Union", "Set_Intersection", "Set_Difference", "Set_Clear", "Set_IsEmpty", "Set_IsNotEmpty", "Set_AddItems", "Set_RemoveItems"))
     if any(value for name, value in flags.items() if name not in ("allow_internal", "allow_latent") and not ((map_wildcard or set_wildcard) and name == "allow_wildcard")) or (flags["allow_internal"] and not dynamic_component):
         raise OperationError("function_option_unsupported", "Only exact Actor.AddComponentByClass has a specialized internal opt-in; other wildcard/deprecated/internal calls remain unsupported. Native owns the finite latent opt-in and actual function metadata")
     if dynamic_component and not flags["allow_internal"]:
@@ -113,12 +113,12 @@ def _call_arguments(blueprint_name, function_class, function_name, param_default
         raise OperationError("function_defaults_invalid", "param_defaults_json must be an object of at most 64 distinct case-insensitive pin names")
     if map_wildcard:
         _bool(create_graph_if_missing, "create_graph_if_missing")
-        if defaults:
-            raise OperationError("function_map_literal_defaults_unsupported", "Finite wildcard Map8 accepts only empty param_defaults; literal support remains incomplete")
+        if defaults and not (function_name == "Map_GetKeyValueByIndex" and {key.casefold() for key in defaults} == {"index"}):
+            raise OperationError("function_map_literal_defaults_unsupported", "Wildcard Map calls accept empty defaults; only Map_GetKeyValueByIndex also admits a single Index value. Other literal support remains incomplete")
     if set_wildcard:
         _bool(create_graph_if_missing, "create_graph_if_missing")
         if defaults:
-            raise OperationError("function_set_literal_defaults_unsupported", "Finite wildcard Set5 accepts only empty param_defaults; literal support remains incomplete")
+            raise OperationError("function_set_literal_defaults_unsupported", "Finite wildcard Set13 accepts only empty param_defaults; literal support remains incomplete")
     position = _json(node_position_json, "node_position_json")
     if position is None:
         position = [0, 0]  # Legacy node_position=None uses the origin.

@@ -7,7 +7,7 @@ from cubeless_mcp_ue58.operations import chaos_geometry_authoring as domain
 
 @unreal.uclass()
 class CubelessChaosGeometryAuthoringTools(unreal.ToolsetDefinition):
-    'Dedicated native Geometry Collection conversion, deterministic fracture and serialized anchor authoring. Public6/20/6 required2/2/1, original nested Any/nullable arrays and raw hidden0/4/1 remain distinct. Preserve source bytes/dirty, strict and spatial hashes, reload, actual partial save/cleanup, Named anchor default1 versus raw omitted Kinematic2, original post-mutation rejection prefix. Original legacy vacuous or assertion-gated saved leaves never replace actual SDK save. Hidden inspect_saved remains a raw observer. No automatic retry, atomic rollback, Engine global purity, cold reload, physics, packaging or pipeline completion claim.'
+    'Dedicated native Geometry Collection conversion, deterministic fracture and serialized anchor authoring. Public6/20/6 required2/2/1, original nested Any/nullable arrays and raw hidden0/4/1 remain distinct. Preserve source bytes/dirty, strict and spatial hashes, reload, actual partial save/cleanup, Named and raw omitted anchor default Kinematic2 corrects the legacy Python default1 mismatch without remapping explicit values; invalid anchor magnitude is rejected before Engine load or mutation, while other actual partial prefixes remain authoritative. Original legacy vacuous or assertion-gated saved leaves never replace actual SDK save. Hidden inspect_saved remains a raw observer. No automatic retry, atomic rollback, Engine global purity, cold reload, physics, packaging or pipeline completion claim.'
     @toolset_registry.tool_call
     @staticmethod
     def create_geometry_collection_from_mesh(source_static_mesh_paths:str,output_geometry_collection_path:str,source_transforms:str='null',root_mesh_proxy_static_mesh_path:str='""',material_reindex:str='true',overwrite_existing:str='false')->CubelessPythonOperationResult:
@@ -30,8 +30,8 @@ class CubelessChaosGeometryAuthoringTools(unreal.ToolsetDefinition):
 
     @toolset_registry.tool_call
     @staticmethod
-    def configure_anchor_field(geometry_collection_actor_name:str,field_actor_name:str='"Chaos_AnchorField"',box_center:str='null',box_extent:str='null',field_magnitude:str='1',save_level:str='true')->CubelessPythonOperationResult:
-        'Configure serialized Engine anchor field or raw inspect_saved. Preserve Named defaults and raw omission, explicit actual save versus vacuous level_saved and post-spawn invalid-magnitude prefix.'
+    def configure_anchor_field(geometry_collection_actor_name:str,field_actor_name:str='"Chaos_AnchorField"',box_center:str='null',box_extent:str='null',field_magnitude:str='2',save_level:str='true')->CubelessPythonOperationResult:
+        'Configure serialized Engine anchor field or raw inspect_saved. Named and raw omitted magnitude defaults to native Kinematic2, correcting legacy Python default1 without aliasing explicit1. Reject invalid configure magnitude before Engine load/spawn; preserve actual save versus vacuous level_saved.'
         rejected,report,raw=_guard_admission('configure_anchor_field')
         if rejected is not None:return reflected_result(rejected)
         try:values={'geometry_collection_actor_name':_decode_value(geometry_collection_actor_name),'field_actor_name':_decode_value(field_actor_name),'box_center':_decode_value(box_center),'box_extent':_decode_value(box_extent),'field_magnitude':_decode_value(field_magnitude),'save_level':_decode_value(save_level)}

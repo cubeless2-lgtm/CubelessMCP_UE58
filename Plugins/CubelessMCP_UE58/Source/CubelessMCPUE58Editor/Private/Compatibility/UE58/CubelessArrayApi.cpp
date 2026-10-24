@@ -1171,6 +1171,11 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 struct FContext
 {
     bool CreateGraphIfMissing=false;TFunction<bool(UEdGraphNode*)> GraphCreationCurrent;
+    // WT: concrete default-EventGraph bootstrap; no new selector/graph kind.
+    bool DefaultEventPending=false,DefaultEventAttached=false,DefaultEventPinRefresh=false;
+    TStrongObjectPtr<UObject> DefaultEventEditor;TStrongObjectPtr<UWorld> DefaultEventWorld;
+    TStrongObjectPtr<UPackage> DefaultEventPackage;TStrongObjectPtr<UClass> DefaultEventParent;
+    TStrongObjectPtr<UObject> DefaultEventSchema;
     TSharedPtr<Function::FPresetLoaderNameArrayScope> NameScope;
     TSharedPtr<FEnumArrayScope> EnumScope;
     TSharedPtr<FVectorArrayScope> VectorScope;
@@ -1185,7 +1190,11 @@ struct FContext
     TMap<FName,UObject*> DescriptorDefaultObjects,DescriptorAppliedObjects;
     struct FExtendedPin { UEdGraphPin* Address;FGuid Id;FName Name;EEdGraphPinDirection Direction;FEdGraphPinType Type; };
     struct FExtendedNode { TStrongObjectPtr<UEdGraphNode> Hold;UEdGraph* Graph;int32 Index;FGuid Guid;TArray<FExtendedPin> Pins; };
-    struct FExtendedGraph {TStrongObjectPtr<UEdGraph> Hold;int32 NodeCount;};TArray<FExtendedGraph> ExtendedGraphs;
+    struct FExtendedGraph {TStrongObjectPtr<UEdGraph> Hold;int32 NodeCount;
+        // Used only by WT's creation observer; ordinary Array graph observation is unchanged.
+        UObject* BootstrapOuter=nullptr;UPackage* BootstrapPackage=nullptr;UClass* BootstrapClass=nullptr;
+        TObjectPtr<UClass> BootstrapSchema;FString BootstrapPath;FGuid BootstrapGuid;
+    };TArray<FExtendedGraph> ExtendedGraphs;
     struct FExtendedField {FProperty* Address;const FFieldClass* Class;FFieldVariant Owner;FName Name;uint64 Flags;FProperty* Inner;const FFieldClass* InnerClass;FFieldVariant InnerOwner;uint64 InnerFlags;};
     TArray<FExtendedField> ExtendedFields;FResult* ExtendedResult=nullptr;
     TArray<FExtendedNode> ExtendedOld;TArray<FExtendedPin> ExtendedPins;
@@ -1396,7 +1405,8 @@ bool ExtendedCurrentPlain(FContext& C,FResult& R,const UK2Node_CallArrayFunction
     if(!TrackedArrayObservation(C)||!C.ExtendedBound)return true;
     if(R.Data->HasField(TEXT("extended_primitive_followup_sdk_stopped")))return false;
     auto Bad=[&](const TCHAR* K,const FString& E,const FString& A){return ExtendedStop(C,R,K,E,A);};
-    if(!EnumContext()||!EnumLoaded(C.ExtendedBP.Get())||C.Blueprint!=C.ExtendedBP.Get()||!EnumLoaded(C.ExtendedGraph.Get())||C.Graph!=C.ExtendedGraph.Get()||C.Graph->GetOuter()!=C.Blueprint||C.Graph->Schema.Get()!=C.Schema->GetClass()||C.Blueprint->bBeingCompiled||C.Blueprint->bQueuedForCompilation||C.Blueprint->bIsRegeneratingOnLoad)return Bad(TEXT("target_current"),TEXT("held idle Blueprint/direct graph/schema"),TEXT("different, retired or busy"));
+    if(!EnumContext()||!EnumLoaded(C.ExtendedBP.Get())||C.Blueprint!=C.ExtendedBP.Get()||C.Blueprint->bBeingCompiled||C.Blueprint->bQueuedForCompilation||C.Blueprint->bIsRegeneratingOnLoad)return Bad(TEXT("target_current"),TEXT("held idle Blueprint"),TEXT("different, retired or busy"));
+    if(!C.DefaultEventPending&&(!EnumLoaded(C.ExtendedGraph.Get())||C.Graph!=C.ExtendedGraph.Get()||C.Graph->GetOuter()!=C.Blueprint||!C.Graph->Schema.GetGCPtr().IsResolved()||C.Graph->Schema.GetGCPtr()!=C.Schema->GetClass()))return Bad(TEXT("target_current"),TEXT("held direct graph/schema"),TEXT("different or retired"));
     // Bootstrap checks only source roles whose SDK return has already been adopted.
     if(C.ExtendedLibrary.IsValid()&&(!EnumLoaded(C.ExtendedLibrary.Get())||C.Library!=C.ExtendedLibrary.Get()))return Bad(TEXT("source_library_current"),TEXT("held native ArrayLibrary"),TEXT("different or retired"));
     if(C.ExtendedFunction.IsValid()&&(!EnumLoaded(C.ExtendedFunction.Get())||C.Function!=C.ExtendedFunction.Get()||C.Function->GetOuter()!=C.Library))return Bad(TEXT("source_function_current"),TEXT("held selected native function"),TEXT("different or retired"));
@@ -1408,7 +1418,7 @@ bool ExtendedCurrentPlain(FContext& C,FResult& R,const UK2Node_CallArrayFunction
         if(N->Pins.Num()!=Roles.Num())return Bad(TEXT("pin_count"),LexToString(Roles.Num()),LexToString(N->Pins.Num()));
         for(int32 I=0;I<Roles.Num();++I){const auto& Role=Roles[I];const UEdGraphPin* P=N->Pins[I];if(P!=Role.Address||!P||P->WasTrashed())return Bad(TEXT("pin_address"),FString::Printf(TEXT("%p"),Role.Address),FString::Printf(TEXT("%p"),P));if(P->GetOwningNodeUnchecked()!=N||P->PinId!=Role.Id||P->PinName!=Role.Name||P->Direction!=Role.Direction||!SameType(P->PinType,Role.Type))return Bad(TEXT("pin_role"),Role.Id.ToString(EGuidFormats::Digits),P->PinId.ToString(EGuidFormats::Digits));}return true;
     };
-    for(const auto& Old:C.ExtendedOld){const auto* N=Old.Graph->Nodes[Old.Index].Get();if(N!=Old.Hold.Get()||!EnumLoaded(Old.Hold.Get())||N->NodeGuid!=Old.Guid||N->GetOuter()!=Old.Graph)return Bad(TEXT("prior_node_identity"),FString::Printf(TEXT("%p"),Old.Hold.Get()),FString::Printf(TEXT("%p"),N));if(!PinsCurrent(N,Old.Pins))return false;}
+    for(const auto& Old:C.ExtendedOld){const auto* N=Old.Graph->Nodes[Old.Index].Get();if(N!=Old.Hold.Get()||!EnumLoaded(Old.Hold.Get())||N->NodeGuid!=Old.Guid||N->GetOuter()!=Old.Graph)return Bad(TEXT("prior_node_identity"),FString::Printf(TEXT("%p"),Old.Hold.Get()),FString::Printf(TEXT("%p"),N));if(!C.DefaultEventPinRefresh&&!PinsCurrent(N,Old.Pins))return false;}
     if(C.ExtendedCreated.IsValid()){const auto* N=C.ExtendedCreated.Get();if(Node!=N||!EnumLoaded(N)||N->GetOuter()!=C.Graph||(C.ExtendedAttached&&C.Graph->Nodes.Last()!=N))return Bad(TEXT("created_node_identity"),FString::Printf(TEXT("%p"),N),FString::Printf(TEXT("%p"),Node));if(C.ExtendedPinsFixed&&!PinsCurrent(N,C.ExtendedPins))return false;}
     return true;
 }
@@ -1425,6 +1435,7 @@ bool ExtendedObservedCurrent(FContext* C)
 bool ExtendedBind(FContext& C,FResult& R)
 {
     if(!TrackedArrayObservation(C))return true;
+    if(C.ExtendedBound)return ExtendedCurrent(C,R,nullptr);
     C.ExtendedBP.Reset(C.Blueprint);C.ExtendedGraph.Reset(C.Graph);
     C.ExtendedResult=&R;
     TArray<UEdGraph*> Graphs;C.Blueprint->GetAllGraphs(Graphs);if(Graphs.Num()>256)return ExtendedStop(C,R,TEXT("observed_graph_capture"),TEXT("existing bounded complete-capture graphs"),TEXT("over bound"));
@@ -1672,6 +1683,8 @@ TSharedRef<FJsonObject> GraphDescription(const FContext& C)
     Row->SetNumberField(TEXT("node_count"), C.Graph->Nodes.Num()); return Row;
 }
 
+bool BootstrapDefaultEventGraph(FContext& C,FResult& R);
+
 bool ResolveTarget(FContext& C, FResult& R, const FString& Path, const FString& GraphName, const FString& GraphId, const FString& GraphType)
 {
     if (!Function::Pin::SafeName(Path) || !Path.StartsWith(TEXT("/Game/")) || Path.Contains(TEXT(":")))
@@ -1720,37 +1733,54 @@ bool ResolveTarget(FContext& C, FResult& R, const FString& Path, const FString& 
     else if (Kind == TEXT("macrograph")) { Kind = TEXT("macro"); }
     if (!Kind.IsEmpty() && Kind != TEXT("any") && Kind != TEXT("event") && Kind != TEXT("function") && Kind != TEXT("macro"))
     { return Error(R, TEXT("array_graph_type_unsupported"), TEXT("Initial selectors support existing direct event/function/macro K2 graphs only.")); }
-    if (GraphName.IsEmpty() && GraphId.IsEmpty() && Kind.IsEmpty()) { Kind = TEXT("event"); }
+    const bool DefaultSelector=GraphName.IsEmpty()&&GraphId.IsEmpty()&&Kind.IsEmpty();
+    const bool ExplicitDefaultEvent=GraphName.IsEmpty()&&GraphId.IsEmpty()&&Kind==TEXT("event")&&C.CreateGraphIfMissing;
+    if(DefaultSelector)
+    {
+        // UE56 FindOrCreateEventGraph searches only UbergraphPages, first Contains match.
+        for(const auto& Slot:BP->UbergraphPages){if(!Slot.IsResolved())return Error(R,TEXT("array_event_graph_unresolved"),TEXT("Default EventGraph selection will not load an unresolved page."));UEdGraph* G=Slot.Get();if(FullyLoaded(G)&&G->GetName().Contains(TEXT("EventGraph"))){C.Graph=G;break;}}
+        if(!C.Graph&&!BootstrapDefaultEventGraph(C,R))return false;
+        Kind=TEXT("event");
+    }
     TArray<UEdGraph*> Graphs; BP->GetAllGraphs(Graphs);
+    if(C.GraphCreationCurrent&&!ExtendedCurrent(C,R,nullptr))return false;
     if (Graphs.Num() > 256) { return Error(R, TEXT("array_graph_budget_exceeded"), TEXT("Graph selection exceeds 256 owned graphs.")); }
     for (UEdGraph* Graph : Graphs)
     {
+        if(DefaultSelector)break;
         if (!IsValid(Graph) || (!GraphName.IsEmpty() && !Graph->GetName().Equals(GraphName, ESearchCase::IgnoreCase))
             || (!GraphId.IsEmpty() && Graph->GraphGuid != RequestedGuid) || (!Kind.IsEmpty() && Kind != TEXT("any") && GraphKind(BP, Graph) != Kind)) { continue; }
         if (C.Graph) { return Error(R, TEXT("array_graph_ambiguous"), TEXT("Graph selectors match multiple graphs; provide an exact name or GUID.")); } C.Graph = Graph;
+        if(ExplicitDefaultEvent)break; // UE56 FindBlueprintGraph returns the first existing match.
     }
+    if(!C.Graph&&ExplicitDefaultEvent&&!BootstrapDefaultEventGraph(C,R))return false;
     if(!C.Graph&&C.CreateGraphIfMissing)
     {
-        if(!GraphId.IsEmpty()||Kind!=TEXT("function")||GraphName.IsEmpty())return Error(R,TEXT("array_graph_creation_selector_unsupported"),TEXT("Missing graph creation requires an explicit function name/type and no graph_id; missing event/macro creation remains incomplete."));
+        if(!GraphId.IsEmpty()||Kind!=TEXT("function")||GraphName.IsEmpty())return Error(R,TEXT("array_graph_creation_selector_unsupported"),TEXT("Creation supports the original default EventGraph conditions or an explicit function name/type without graph_id; named missing events/macros were not created by UE56."));
         if(C.ElementObject!=nullptr||C.EnumScope.IsValid()||C.ObjectScope.IsValid()||C.NameScope.IsValid())return Error(R,TEXT("array_graph_creation_profile_unsupported"),TEXT("New function creation is limited to normal Blueprint stable ForLoop or primitive Array profiles; existing selected graph support is unchanged."));
         UBlueprint* ReadonlySource=nullptr;
 
         if(!Function::CreateFunctionGraphForNode(BP,GraphName,R,C.Graph,C.GraphCreationCurrent,ReadonlySource))return false;
 
     }
-    else if(C.Graph&&C.CreateGraphIfMissing)
+    else if(C.Graph&&(C.CreateGraphIfMissing||DefaultSelector)&&!C.DefaultEventAttached)
     {
-        auto Resolution=MakeShared<FJsonObject>();Resolution->SetBoolField(TEXT("requested_create_if_missing"),true);Resolution->SetBoolField(TEXT("created"),false);Resolution->SetBoolField(TEXT("reused_existing"),true);Resolution->SetStringField(TEXT("graph_path"),C.Graph->GetPathName());Resolution->SetStringField(TEXT("graph_guid"),C.Graph->GraphGuid.ToString(EGuidFormats::Digits));Resolution->SetBoolField(TEXT("implicit_skeleton_compile_possible"),false);R.Data->SetObjectField(TEXT("graph_resolution"),Resolution);
+        auto Resolution=MakeShared<FJsonObject>();Resolution->SetBoolField(TEXT("requested_create_if_missing"),C.CreateGraphIfMissing);Resolution->SetBoolField(TEXT("created"),false);Resolution->SetBoolField(TEXT("reused_existing"),true);Resolution->SetStringField(TEXT("graph_path"),C.Graph->GetPathName());Resolution->SetStringField(TEXT("graph_guid"),C.Graph->GraphGuid.ToString(EGuidFormats::Digits));Resolution->SetBoolField(TEXT("implicit_skeleton_compile_possible"),false);R.Data->SetObjectField(TEXT("graph_resolution"),Resolution);
     }
     if (!C.Graph) { return Error(R, TEXT("array_graph_not_found"), TEXT("No matching existing graph; nothing was created.")); }
     UClass* SchemaClass = C.Graph->Schema.Get();
     C.Schema = FullyLoaded(SchemaClass) && SchemaClass->GetPathName() == TEXT("/Script/BlueprintGraph.EdGraphSchema_K2")
         ? Cast<UEdGraphSchema_K2>(SchemaClass->GetDefaultObject(false)) : nullptr;
+    if(C.GraphCreationCurrent&&!ExtendedCurrent(C,R,nullptr))return false;
     if (!FullyLoaded(C.Graph) || C.Graph->GetOuter() != BP || !C.Graph->GraphGuid.IsValid() || GraphKind(BP, C.Graph) == TEXT("unknown")
         || !FullyLoaded(C.Schema) || C.Schema->GetClass() != SchemaClass || C.Graph->Nodes.Num() >= 2048)
     { return Error(R, TEXT("array_graph_state_unsupported"), TEXT("Requires a directly owned standard K2 graph with valid GUID and room below 2048 nodes.")); }
-    if (!(C.Operation->Flags & FUNC_BlueprintPure) && !C.Schema->DoesGraphSupportImpureFunctions(C.Graph))
-    { return Error(R, TEXT("array_graph_operation_rejected"), TEXT("Selected graph does not permit this impure array operation.")); }
+    if (!(C.Operation->Flags & FUNC_BlueprintPure))
+    {
+        const bool SupportsImpure=C.Schema->DoesGraphSupportImpureFunctions(C.Graph);
+        if(C.GraphCreationCurrent&&!ExtendedCurrent(C,R,nullptr))return false;
+        if(!SupportsImpure)return Error(R,TEXT("array_graph_operation_rejected"),TEXT("Selected graph does not permit this impure array operation."));
+    }
     R.Data->SetObjectField(TEXT("graph"), GraphDescription(C)); R.Data->SetStringField(TEXT("resolved_blueprint_path"), BP->GetPathName());
     R.Data->SetBoolField(TEXT("loaded_during_operation"), false); R.Data->SetBoolField(TEXT("schema_cdo_already_loaded"), true); return true;
 }
@@ -1885,8 +1915,8 @@ TSharedRef<FJsonObject> NodeState(const UEdGraphNode* Node,FEnumArrayScope* Scop
 bool Capture(FContext& C, const TSharedRef<FJsonObject>& Out)
 {
     if((C.NameScope.IsValid()&&!C.NameScope->Check())||(C.EnumScope.IsValid()&&!C.EnumScope->Check())||(C.VectorScope.IsValid()&&!C.VectorScope->Check())||(C.ObjectScope.IsValid()&&!C.ObjectScope->Check())||(C.ExtendedBound&&!ExtendedCurrent(C,*C.ExtendedResult,C.ExtendedCreated.Get()))) { return false; }
-    if (!IsValid(C.Blueprint) || !IsValid(C.Graph) || C.Graph->GetOuter() != C.Blueprint) { return false; }
-    Out->SetStringField(TEXT("blueprint_path"), C.Blueprint->GetPathName()); Out->SetStringField(TEXT("parent_class"), C.bVector4?C.ObjectScope->Parent->GetPathName():C.Blueprint->ParentClass ? C.Blueprint->ParentClass->GetPathName() : FString());
+    if (!IsValid(C.Blueprint) || (!C.DefaultEventPending&&(!IsValid(C.Graph)||C.Graph->GetOuter()!=C.Blueprint))) { return false; }
+    Out->SetStringField(TEXT("blueprint_path"), C.Blueprint->GetPathName()); Out->SetStringField(TEXT("parent_class"), (C.bVector4&&(C.ObjectScope->Parent != nullptr))?C.ObjectScope->Parent->GetPathName():C.Blueprint->ParentClass ? C.Blueprint->ParentClass->GetPathName() : FString());
     if(C.NameScope.IsValid()&&!C.NameScope->Check())return false;Out->SetBoolField(TEXT("dirty"), C.Blueprint->GetOutermost()->IsDirty()); Out->SetNumberField(TEXT("blueprint_status"), static_cast<int32>(C.Blueprint->Status.GetValue()));
     TArray<TSharedPtr<FJsonValue>> Variables;
     const auto VariableCopies=(C.bVector4||TrackedArrayObservation(C))?C.Blueprint->NewVariables:TArray<FBPVariableDescription>();
@@ -1911,7 +1941,7 @@ bool Capture(FContext& C, const TSharedRef<FJsonObject>& Out)
         Row->SetArrayField(TEXT("graphs"), Rows); Interfaces.Add(MakeShared<FJsonValueObject>(Row));
     }
     Out->SetArrayField(TEXT("interfaces"), Interfaces); TArray<UEdGraph*> Graphs; C.Blueprint->GetAllGraphs(Graphs);if(C.NameScope.IsValid()&&!C.NameScope->Check())return false;
-    if (Graphs.Num() > 256 || !Graphs.Contains(C.Graph)) { return false; }
+    if (Graphs.Num() > 256 || (!C.DefaultEventPending&&!Graphs.Contains(C.Graph))) { return false; }
     TArray<TSharedPtr<FJsonValue>> Rows; TSet<FGuid> GraphIds; int32 TotalPins = 0, TotalNodes = 0;
     for (const UEdGraph* Graph : Graphs)
     {
@@ -1935,6 +1965,140 @@ bool Capture(FContext& C, const TSharedRef<FJsonObject>& Out)
         Row->SetArrayField(TEXT("nodes"), Nodes); Rows.Add(MakeShared<FJsonValueObject>(Row));
     }
     Out->SetArrayField(TEXT("graphs"), Rows); return true;
+}
+
+// WT uses Capture's authored values, replacing only physical pin IDs/order with
+// logical split-pin roles across AddUbergraphPage's skeleton-only compile.
+// Pin defaults/types/links and actual split relationships remain compared.
+bool DefaultEventState(FContext& C,FResult& R,const TSharedRef<FJsonObject>& Out,bool RemoveCreated)
+{
+    if(!Capture(C,Out)||!ExtendedCurrent(C,R,nullptr))return false;
+    Out->RemoveField(TEXT("dirty"));Out->RemoveField(TEXT("blueprint_status"));
+    TArray<TSharedPtr<FJsonValue>> GraphRows;int32 Removed=0;
+    for(const auto& GraphValue:Out->GetArrayField(TEXT("graphs")))
+    {
+        auto Graph=GraphValue->AsObject();
+        if(RemoveCreated&&Graph->GetStringField(TEXT("path"))==C.Graph->GetPathName()){++Removed;continue;}
+        for(const auto& NodeValue:Graph->GetArrayField(TEXT("nodes")))
+        {
+            auto Node=NodeValue->AsObject();const auto Pins=Node->GetArrayField(TEXT("pins"));
+            TMap<FString,FString> Keys;TMap<FString,TSharedPtr<FJsonObject>> ByKey;
+            for(int32 Pass=0;Pass<=Pins.Num()&&Keys.Num()<Pins.Num();++Pass)
+            {
+                const int32 Prior=Keys.Num();
+                for(const auto& V:Pins)
+                {
+                    auto P=V->AsObject();const FString Id=P->GetStringField(TEXT("pin_id"));if(Keys.Contains(Id))continue;
+                    const FString Parent=P->GetStringField(TEXT("parent_pin_id"));if(!Parent.IsEmpty()&&!Keys.Contains(Parent))continue;
+                    const FString Name=P->GetStringField(TEXT("name"));
+                    const FString Key=(Parent.IsEmpty()?FString():Keys[Parent]+TEXT("/"))+P->GetStringField(TEXT("direction"))+TEXT(":")+LexToString(Name.Len())+TEXT(":")+Name;
+                    if(ByKey.Contains(Key))return ExtendedStop(C,R,TEXT("default_event_pin_semantic_key"),TEXT("unambiguous logical split-pin roles"),Key);
+                    Keys.Add(Id,Key);ByKey.Add(Key,P);
+                }
+                if(Keys.Num()==Prior)break;
+            }
+            if(Keys.Num()!=Pins.Num())return ExtendedStop(C,R,TEXT("default_event_pin_parentage"),TEXT("complete acyclic local split-pin roles"),TEXT("unresolved parent/duplicate ID"));
+            TArray<FString> Ordered;ByKey.GetKeys(Ordered);Ordered.Sort();TArray<TSharedPtr<FJsonValue>> SemanticPins;
+            for(const FString& Key:Ordered)
+            {
+                auto P=ByKey[Key];const FString Parent=P->GetStringField(TEXT("parent_pin_id"));
+                TArray<FString> Children;for(const auto& Child:P->GetArrayField(TEXT("sub_pin_ids"))){const FString* K=Keys.Find(Child->AsString());if(!K)return ExtendedStop(C,R,TEXT("default_event_pin_children"),TEXT("node-owned logical child role"),Child->AsString());Children.Add(*K);}Children.Sort();
+                TArray<TSharedPtr<FJsonValue>> Rows;for(const FString& Child:Children)Rows.Add(MakeShared<FJsonValueString>(Child));
+                P->RemoveField(TEXT("pin_id"));P->SetStringField(TEXT("parent_pin_id"),Parent.IsEmpty()?FString():Keys[Parent]);P->SetArrayField(TEXT("sub_pin_ids"),Rows);
+                SemanticPins.Add(MakeShared<FJsonValueObject>(P));
+            }
+            Node->SetArrayField(TEXT("pins"),SemanticPins);
+        }
+        GraphRows.Add(GraphValue);
+    }
+    Out->SetArrayField(TEXT("graphs"),GraphRows);
+    if(RemoveCreated&&Removed!=1)return ExtendedStop(C,R,TEXT("default_event_graph_prefix"),TEXT("exactly one attached new EventGraph"),LexToString(Removed));
+    return true;
+}
+
+bool DefaultEventDifference(FContext& C,FResult& R,const TSharedPtr<FJsonValue>& Expected,const TSharedPtr<FJsonValue>& Actual,const FString& Path)
+{
+    if(EnumEqual(Expected,Actual))return true;
+    if(Expected.IsValid()&&Actual.IsValid()&&Expected->Type==Actual->Type)
+    {
+        if(Expected->Type==EJson::Object){const auto E=Expected->AsObject(),A=Actual->AsObject();for(const auto& Pair:E->Values){const auto* V=A->Values.Find(Pair.Key);const FString P=Path+TEXT(".")+FString(Pair.Key.ToView());if(!V)return ExtendedStop(C,R,*P,TEXT("present authored field"),TEXT("missing"));if(!DefaultEventDifference(C,R,Pair.Value,*V,P))return false;}if(E->Values.Num()!=A->Values.Num())return ExtendedStop(C,R,*Path,TEXT("same authored field inventory"),TEXT("additional field"));}
+        else if(Expected->Type==EJson::Array){const auto& E=Expected->AsArray();const auto& A=Actual->AsArray();if(E.Num()!=A.Num())return ExtendedStop(C,R,*Path,LexToString(E.Num()),LexToString(A.Num()));for(int32 I=0;I<E.Num();++I)if(!DefaultEventDifference(C,R,E[I],A[I],Path+FString::Printf(TEXT("[%d]"),I)))return false;}
+    }
+    auto E=MakeShared<FJsonObject>(),A=MakeShared<FJsonObject>();E->SetField(TEXT("value"),Expected);A->SetField(TEXT("value"),Actual);return ExtendedStop(C,R,*Path,Text(E),Text(A));
+}
+
+bool BootstrapDefaultEventGraph(FContext& C,FResult& R)
+{
+    UBlueprint* BP=C.Blueprint;C.DefaultEventPending=true;
+    C.DefaultEventEditor.Reset(GEditor);C.DefaultEventWorld.Reset(GEditor->GetEditorWorldContext().World());
+    C.DefaultEventPackage.Reset(BP->GetPackage());
+    if(!BP->ParentClass.GetGCPtr().IsResolved())return Error(R,TEXT("array_default_event_parent_unresolved"),TEXT("Default EventGraph bootstrap will not resolve a parent handle."));
+    C.DefaultEventParent.Reset(BP->ParentClass.GetGCPtr().Get());C.ExtendedBP.Reset(BP);
+    UClass* SchemaClass=UEdGraphSchema_K2::StaticClass();
+    C.Schema=FullyLoaded(SchemaClass)?Cast<UEdGraphSchema_K2>(SchemaClass->GetDefaultObject(false)):nullptr;
+    if(!FullyLoaded(C.Schema))return Error(R,TEXT("array_default_event_schema_unavailable"),TEXT("Default EventGraph creation requires the existing native K2 schema CDO."));
+    C.DefaultEventSchema.Reset(const_cast<UEdGraphSchema_K2*>(C.Schema));
+    const FString Path=BP->GetPathName();UObject* const Owner=BP->GetOuter();UClass* const Class=BP->GetClass();
+    const auto UbergraphPages=BP->UbergraphPages;const auto FunctionGraphs=BP->FunctionGraphs;const auto MacroGraphs=BP->MacroGraphs;
+    C.GraphCreationCurrent=[&C,&R,Path,Owner,Class,UbergraphPages,FunctionGraphs,MacroGraphs](UEdGraphNode*)
+    {
+        if(R.Data->HasField(TEXT("extended_primitive_followup_sdk_stopped")))return false;
+        auto Bad=[&](const TCHAR* P,const FString& E,const FString& A){return ExtendedStop(C,R,P,E,A);};
+        UBlueprint* B=C.ExtendedBP.Get();
+        if(!EnumContext()||GEditor!=C.DefaultEventEditor.Get()||!EnumLoaded(C.DefaultEventWorld.Get())||GEditor->GetEditorWorldContext().World()!=C.DefaultEventWorld.Get()||C.DefaultEventWorld->bIsTearingDown)return Bad(TEXT("default_event_context"),TEXT("admitted Editor/world"),TEXT("lost or changed"));
+        if(!EnumLoaded(B)||B!=C.Blueprint||B->GetClass()!=Class||B->GetOuter()!=Owner||B->GetPackage()!=C.DefaultEventPackage.Get()||B->GetPathName()!=Path||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()!=C.DefaultEventParent.Get()||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified)return Bad(TEXT("default_event_blueprint"),Path,TEXT("identity/parent/idle role changed"));
+        if(!EnumLoaded(C.DefaultEventSchema.Get())||C.Schema!=C.DefaultEventSchema.Get()||C.Schema->GetClass()!=UEdGraphSchema_K2::StaticClass())return Bad(TEXT("default_event_schema"),TEXT("held native K2 schema CDO"),TEXT("different or retired"));
+        auto SamePages=[&](const auto& Actual,const auto& Expected,bool WithNew)
+        {
+            if(Actual.Num()!=Expected.Num()+(WithNew?1:0))return false;
+            for(int32 I=0;I<Expected.Num();++I)if(!Actual[I].IsResolved()||!Expected[I].IsResolved()||Actual[I]!=Expected[I])return false;
+            return !WithNew||(Actual.Last().IsResolved()&&Actual.Last()==C.Graph);
+        };
+        if(!SamePages(B->UbergraphPages,UbergraphPages,C.DefaultEventAttached)||!SamePages(B->FunctionGraphs,FunctionGraphs,false)||!SamePages(B->MacroGraphs,MacroGraphs,false))return Bad(TEXT("default_event_graph_collections"),TEXT("original graph collections plus only the attached new page"),TEXT("different graph collection"));
+        for(const auto& G:C.ExtendedGraphs)if(G.BootstrapClass){UEdGraph* Actual=G.Hold.Get();if(!EnumLoaded(Actual)||Actual->GetClass()!=G.BootstrapClass||Actual->GetOuter()!=G.BootstrapOuter||Actual->GetPackage()!=G.BootstrapPackage||Actual->GetPathName()!=G.BootstrapPath||Actual->GraphGuid!=G.BootstrapGuid||!Actual->Schema.GetGCPtr().IsResolved()||Actual->Schema.GetGCPtr()!=G.BootstrapSchema)return Bad(TEXT("default_event_prior_graph"),G.BootstrapPath,TEXT("class/owner/package/path/GUID/schema role changed"));}
+        if(C.ExtendedGraph.IsValid()){UEdGraph* G=C.ExtendedGraph.Get();if(!EnumLoaded(G)||G!=C.Graph||G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=B||G->GetPackage()!=C.DefaultEventPackage.Get()||!G->Schema.GetGCPtr().IsResolved()||G->Schema.GetGCPtr()!=C.Schema->GetClass()||!G->GraphGuid.IsValid()||G->GetFName()!=FName(TEXT("EventGraph")))return Bad(TEXT("default_event_created_graph"),TEXT("held direct standard EventGraph/K2 page"),TEXT("different or retired"));}
+        return true;
+    };
+    if(!ExtendedBind(C,R))return false;
+    for(auto& G:C.ExtendedGraphs){UEdGraph* P=G.Hold.Get();if(!P->Schema.GetGCPtr().IsResolved())return ExtendedStop(C,R,TEXT("default_event_prior_schema"),TEXT("already resolved graph schema"),TEXT("unresolved"));G.BootstrapOuter=P->GetOuter();G.BootstrapPackage=P->GetPackage();G.BootstrapClass=P->GetClass();G.BootstrapSchema=P->Schema.GetGCPtr();G.BootstrapPath=P->GetPathName();G.BootstrapGuid=P->GraphGuid;}
+    auto Before=MakeShared<FJsonObject>();if(!DefaultEventState(C,R,Before,false)){if(R.ErrorCode.IsEmpty())Error(R,TEXT("array_default_event_before_unobservable"),TEXT("Existing authored state could not be observed before default EventGraph creation."));return false;}
+    R.Data->SetObjectField(TEXT("default_event_graph_before"),Before);
+    auto Collision=[&](){return FindObject<UObject>(BP,TEXT("EventGraph"))!=nullptr;};
+    if(Collision())return Error(R,TEXT("array_default_event_name_collision_unsupported"),TEXT("UE56 CreateNewGraph may rename a colliding object; that collateral rename remains incomplete and was not dispatched."));
+    auto Resolution=MakeShared<FJsonObject>();Resolution->SetBoolField(TEXT("requested_create_if_missing"),C.CreateGraphIfMissing);Resolution->SetBoolField(TEXT("default_selector_bootstrap"),true);Resolution->SetBoolField(TEXT("graph_object_created"),false);Resolution->SetBoolField(TEXT("created"),false);Resolution->SetBoolField(TEXT("reused_existing"),false);Resolution->SetBoolField(TEXT("implicit_skeleton_compile_possible"),true);Resolution->SetBoolField(TEXT("explicit_compile_requested"),false);R.Data->SetObjectField(TEXT("graph_resolution"),Resolution);
+    R.Stage=TEXT("default_event_blueprint_modify");R.bMutationAttempted=true;R.bChangeStateKnown=false;BP->Modify();Resolution->SetBoolField(TEXT("blueprint_modify_returned"),true);if(!ExtendedCurrent(C,R,nullptr))return false;Resolution->SetBoolField(TEXT("package_dirty_after_modify"),BP->GetPackage()->IsDirty());
+    if(Collision())return Error(R,TEXT("array_default_event_name_collision_unsupported"),TEXT("A name collision appeared after Modify; CreateNewGraph and collateral rename were not dispatched."));
+    R.Stage=TEXT("default_event_graph_create");R.bChangeStateKnown=false;
+    UEdGraph* Returned=FBlueprintEditorUtils::CreateNewGraph(BP,FName(TEXT("EventGraph")),UEdGraph::StaticClass(),UEdGraphSchema_K2::StaticClass());
+    // Context/source roles precede every inspection/hold of the returned UObject.
+    if(!ExtendedCurrent(C,R,nullptr))return false;
+    if(!EnumLoaded(Returned)||Returned->GetClass()!=UEdGraph::StaticClass()||Returned->GetOuter()!=BP||Returned->GetPackage()!=C.DefaultEventPackage.Get()||!Returned->Schema.GetGCPtr().IsResolved()||Returned->Schema.GetGCPtr()!=C.Schema->GetClass()||!Returned->GraphGuid.IsValid()||Returned->GetFName()!=FName(TEXT("EventGraph"))||!Returned->Nodes.IsEmpty())return ExtendedStop(C,R,TEXT("default_event_graph_return"),TEXT("new direct empty standard K2 EventGraph"),TEXT("null, unexpected owner/class/schema/name/nodes"));
+    C.ExtendedGraph.Reset(Returned);C.Graph=Returned;R.bChanged=true;Resolution->SetBoolField(TEXT("graph_object_created"),true);Resolution->SetStringField(TEXT("graph_path"),Returned->GetPathName());Resolution->SetStringField(TEXT("graph_guid"),Returned->GraphGuid.ToString(EGuidFormats::Digits));R.Data->SetBoolField(TEXT("node_only_contract"),false);
+    FContext::FExtendedGraph NewGraph;NewGraph.Hold.Reset(Returned);NewGraph.NodeCount=0;NewGraph.BootstrapOuter=BP;NewGraph.BootstrapPackage=Returned->GetPackage();NewGraph.BootstrapClass=Returned->GetClass();NewGraph.BootstrapSchema=Returned->Schema.GetGCPtr();NewGraph.BootstrapPath=Returned->GetPathName();NewGraph.BootstrapGuid=Returned->GraphGuid;C.ExtendedGraphs.Add(MoveTemp(NewGraph));
+    if(!ExtendedCurrent(C,R,nullptr))return false;
+    R.Stage=TEXT("default_event_graph_attach");C.DefaultEventAttached=true;C.DefaultEventPending=false;C.DefaultEventPinRefresh=true;R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("implicit_skeleton_compile_requested"),true);Resolution->SetBoolField(TEXT("add_ubergraph_page_dispatched"),true);
+    FBlueprintEditorUtils::AddUbergraphPage(BP,Returned);
+    Resolution->SetBoolField(TEXT("implicit_skeleton_compile_returned"),true);
+    if(!ExtendedCurrent(C,R,nullptr))return false;
+    Resolution->SetBoolField(TEXT("created"),true);
+    // Skeleton reconstruction may replace physical pins. Adopt only live node-owned
+    // pins, then compare the original logical authored state before any next writer.
+    for(auto& Old:C.ExtendedOld){UEdGraphNode* N=Old.Hold.Get();if(N->Pins.Num()>512)return ExtendedStop(C,R,TEXT("default_event_reconstructed_pins"),TEXT("bounded live pin inventory"),TEXT("over bound"));Old.Pins.Reset();for(auto* P:N->Pins){if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N)return ExtendedStop(C,R,TEXT("default_event_reconstructed_pin_owner"),TEXT("live node-owned physical pin"),TEXT("retired/different owner"));Old.Pins.Add({P,P->PinId,P->PinName,P->Direction,P->PinType});}}
+    C.DefaultEventPinRefresh=false;if(!ExtendedCurrent(C,R,nullptr))return false;
+    auto After=MakeShared<FJsonObject>();if(!DefaultEventState(C,R,After,true)){if(R.ErrorCode.IsEmpty())Error(R,TEXT("array_default_event_after_unobservable"),TEXT("Default EventGraph prefix is retained; post-skeleton authored state could not be fully observed."));return false;}
+    R.Data->SetObjectField(TEXT("default_event_graph_after_without_created_page"),After);
+    if(!DefaultEventDifference(C,R,MakeShared<FJsonValueObject>(Before),MakeShared<FJsonValueObject>(After),TEXT("default_event_authored")))return false;
+    Resolution->SetBoolField(TEXT("created"),true);Resolution->SetBoolField(TEXT("prior_authored_state_preserved"),true);Resolution->SetBoolField(TEXT("implicit_skeleton_compile_returned"),true);R.bChangeStateKnown=true;
+    return true;
+}
+
+// New WT profile borrows the allocation return only after the parent observer
+// and actual owner/class are current; existing unrelated allocation paths remain.
+bool AdoptDefaultEventArrayNode(FContext& C,FResult& R,UK2Node_CallArrayFunction* Node)
+{
+    if(!ExtendedCurrent(C,R,nullptr))return false;
+    if(!EnumLoaded(Node)||Node->GetClass()!=UK2Node_CallArrayFunction::StaticClass()||Node->GetOuter()!=C.Graph||Node->GetPackage()!=C.Blueprint->GetPackage())return ExtendedStop(C,R,TEXT("default_event_array_node_return"),TEXT("live exact Array node owned by selected new page"),TEXT("null/retired/different class or owner"));
+    C.ExtendedCreated.Reset(Node);return ExtendedCurrent(C,R,Node);
 }
 
 bool PriorPreserved(const FContext& C, const TSharedRef<FJsonObject>& After, const UEdGraphNode* Created)
@@ -2225,10 +2389,11 @@ Function::FResult AddNode(const FString& BlueprintPath, const FString& Requested
     {
         R.Data->SetNumberField(TEXT("object_array_node_allocation_calls"),1);
         Node=NewObject<UK2Node_CallArrayFunction>(C.Graph,NAME_None,RF_Transactional);
-        if(C.ObjectParity||C.DescriptorLength||C.StructLength||C.UdsLength){C.ExtendedCreated.Reset(Node);if(!ExtendedCurrent(C,R,Node))return R;}
-        if(!C.ObjectScope->Adopt(Node))return R;
+        if(C.DefaultEventAttached){if(!AdoptDefaultEventArrayNode(C,R,Node))return R;}
+        else if(C.ObjectParity||C.DescriptorLength||C.StructLength||C.UdsLength){C.ExtendedCreated.Reset(Node);if(!ExtendedCurrent(C,R,Node))return R;}
+        if(!C.ObjectScope->Adopt(Node)||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node)))return R;
         if(C.Graph->HasAnyFlags(RF_Transient)){Node->SetFlags(RF_Transient);C.ObjectScope->NodeFlags=Node->GetFlags();}
-        if(C.ObjectParity||C.DescriptorLength||C.StructLength||C.UdsLength)C.ExtendedAttached=true;
+        if(C.DefaultEventAttached||C.ObjectParity||C.DescriptorLength||C.StructLength||C.UdsLength)C.ExtendedAttached=true;
         C.ObjectScope->Attached=true;C.Graph->AddNode(Node,false,false);if(!C.ObjectScope->Check()||!ExtendedCurrent(C,R,Node))return R;
         Node->SetFromFunction(C.Function);if(!C.ObjectScope->Check()||!ExtendedCurrent(C,R,Node))return R;
         C.ObjectScope->Member.SetExternalMember(C.Function->GetFName(),C.Library);C.ObjectScope->FunctionAssigned=true;if(!C.ObjectScope->Check()||!ExtendedCurrent(C,R,Node))return R;
@@ -2242,35 +2407,38 @@ Function::FResult AddNode(const FString& BlueprintPath, const FString& Requested
     }
     else if(C.EnumScope.IsValid())
     {
-        UClass* AllocationClass=UK2Node_CallArrayFunction::StaticClass();if(!C.EnumScope->Check()) { return R; }
+        UClass* AllocationClass=UK2Node_CallArrayFunction::StaticClass();if(!C.EnumScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
         R.Data->SetNumberField(TEXT("node_allocation_calls"),1);
         Node=NewObject<UK2Node_CallArrayFunction>(C.Graph,NAME_None,RF_Transactional);
         R.Data->SetNumberField(TEXT("node_allocation_returns"),1);R.Data->SetBoolField(TEXT("node_allocation_returned_nonnull"),Node!=nullptr);
-        if(!C.EnumScope->SetNode(Node,AllocationClass)) { return R; }
+        if(C.DefaultEventAttached&&!AdoptDefaultEventArrayNode(C,R,Node))return R;
+        if(!C.EnumScope->SetNode(Node,AllocationClass)||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
         if(C.Graph->HasAnyFlags(RF_Transient)) { Node->SetFlags(RF_Transient); }
-        C.EnumScope->Attached=true;R.Data->SetNumberField(TEXT("graph_add_node_calls"),1);
-        C.Graph->AddNode(Node,false,false);if(!C.EnumScope->Check()) { return R; }
-        C.EnumScope->FunctionAssigned=true;Node->SetFromFunction(C.Function);if(!C.EnumScope->Check()) { return R; }Node->NodePosX=C.X;Node->NodePosY=C.Y;
-        Node->CreateNewGuid();if(!C.EnumScope->Check()) { return R; }
+        C.EnumScope->Attached=true;if(C.DefaultEventAttached)C.ExtendedAttached=true;R.Data->SetNumberField(TEXT("graph_add_node_calls"),1);
+        C.Graph->AddNode(Node,false,false);if(!C.EnumScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
+        C.EnumScope->FunctionAssigned=true;Node->SetFromFunction(C.Function);if(!C.EnumScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }Node->NodePosX=C.X;Node->NodePosY=C.Y;
+        Node->CreateNewGuid();if(!C.EnumScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
         C.EnumScope->NodeGuid=Node->NodeGuid;C.EnumScope->GuidFixed=true;
-        Node->PostPlacedNewNode();if(!C.EnumScope->Check()) { return R; }
-        if(Node->Pins.IsEmpty()) { Node->AllocateDefaultPins();if(!C.EnumScope->Check()) { return R; } }
+        Node->PostPlacedNewNode();if(!C.EnumScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
+        if(Node->Pins.IsEmpty()) { Node->AllocateDefaultPins();if(!C.EnumScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; } }
         if(!C.EnumScope->FreezePins()) { return R; }
     }
     else if(C.VectorScope.IsValid())
     {
-        UClass* AllocationClass=UK2Node_CallArrayFunction::StaticClass();if(!C.VectorScope->Check()) { return R; }
+        UClass* AllocationClass=UK2Node_CallArrayFunction::StaticClass();if(!C.VectorScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
         R.Data->SetNumberField(TEXT("node_allocation_calls"),1);Node=NewObject<UK2Node_CallArrayFunction>(C.Graph,NAME_None,RF_Transactional);
         R.Data->SetNumberField(TEXT("node_allocation_returns"),1);R.Data->SetBoolField(TEXT("node_allocation_returned_nonnull"),Node!=nullptr);
-        if(!C.VectorScope->SetNode(Node,AllocationClass)) { return R; }if(C.Graph->HasAnyFlags(RF_Transient)) { Node->SetFlags(RF_Transient); }
-        C.VectorScope->Attached=true;R.Data->SetNumberField(TEXT("graph_add_node_calls"),1);C.Graph->AddNode(Node,false,false);if(!C.VectorScope->Check()) { return R; }
-        C.VectorScope->FunctionAssigned=true;Node->SetFromFunction(C.Function);if(!C.VectorScope->Check()) { return R; }Node->NodePosX=C.X;Node->NodePosY=C.Y;
-        Node->CreateNewGuid();if(!C.VectorScope->Check()) { return R; }C.VectorScope->NodeGuid=Node->NodeGuid;C.VectorScope->GuidFixed=true;Node->PostPlacedNewNode();if(!C.VectorScope->Check()) { return R; }
-        if(Node->Pins.IsEmpty()) { Node->AllocateDefaultPins();if(!C.VectorScope->Check()) { return R; } }if(!C.VectorScope->FreezePins()) { return R; }
+        if(C.DefaultEventAttached&&!AdoptDefaultEventArrayNode(C,R,Node))return R;
+        if(!C.VectorScope->SetNode(Node,AllocationClass)||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }if(C.Graph->HasAnyFlags(RF_Transient)) { Node->SetFlags(RF_Transient); }
+        C.VectorScope->Attached=true;if(C.DefaultEventAttached)C.ExtendedAttached=true;R.Data->SetNumberField(TEXT("graph_add_node_calls"),1);C.Graph->AddNode(Node,false,false);if(!C.VectorScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
+        C.VectorScope->FunctionAssigned=true;Node->SetFromFunction(C.Function);if(!C.VectorScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }Node->NodePosX=C.X;Node->NodePosY=C.Y;
+        Node->CreateNewGuid();if(!C.VectorScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }C.VectorScope->NodeGuid=Node->NodeGuid;C.VectorScope->GuidFixed=true;Node->PostPlacedNewNode();if(!C.VectorScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; }
+        if(Node->Pins.IsEmpty()) { Node->AllocateDefaultPins();if(!C.VectorScope->Check()||(C.DefaultEventAttached&&!ExtendedCurrent(C,R,Node))) { return R; } }if(!C.VectorScope->FreezePins()) { return R; }
     }
     else if(ExtendedPrimitive(C)||C.GraphCreationCurrent)
     {
-        R.Data->SetNumberField(TEXT("node_allocation_calls"),1);Node=NewObject<UK2Node_CallArrayFunction>(C.Graph,NAME_None,RF_Transactional);R.Data->SetNumberField(TEXT("node_allocation_returns"),1);C.ExtendedCreated.Reset(Node);
+        R.Data->SetNumberField(TEXT("node_allocation_calls"),1);Node=NewObject<UK2Node_CallArrayFunction>(C.Graph,NAME_None,RF_Transactional);R.Data->SetNumberField(TEXT("node_allocation_returns"),1);
+        if(C.DefaultEventAttached){if(!AdoptDefaultEventArrayNode(C,R,Node))return R;}else C.ExtendedCreated.Reset(Node);
         if(!Node||!ExtendedCurrent(C,R,Node))return R;
         if(C.Graph->HasAnyFlags(RF_Transient))Node->SetFlags(RF_Transient);
         C.ExtendedAttached=true;R.Data->SetNumberField(TEXT("graph_add_node_calls"),1);C.Graph->AddNode(Node,false,false);R.Data->SetNumberField(TEXT("graph_add_node_returns"),1);R.bChanged=true;if(!ExtendedCurrent(C,R,Node))return R;

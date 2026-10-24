@@ -96,7 +96,7 @@ def _run_action(result, arguments, checkpoint_callback=None):
     result["changes"] = [{"kind": arguments["method"], "asset_path": arguments["public"]["widget_name"],
         "attempted": None, "changed": None, "change_state_known": False}]
     try:
-        native = getattr(api, arguments["method"])(**arguments["hidden"])
+        native = getattr(api, arguments.get("native_method", arguments["method"]))(**arguments["hidden"])
     except Exception as error:
         if getattr(error, "native_call_returned", False):
             result["data"].update(native_result_returned=True, native_raw_result=getattr(error, "native_raw_result", None))
@@ -153,3 +153,23 @@ def bind_widget_event(widget_name, widget_component_name, event_name, function_n
 
 def bind_widget_event_action(result, widget_name, widget_component_name, event_name, function_name='', checkpoint_callback=None):
     _run_action(result, _arguments("bind_widget_event", dict(widget_name=widget_name, widget_component_name=widget_component_name, event_name=event_name, function_name=function_name)), checkpoint_callback)
+
+
+def bind_widget_event_raw_action(result, widget_name, widget_component_name, event_name,
+        raw_node_position, function_name='', checkpoint_callback=None):
+    """Private original-command carrier; Named4 and its schema are unchanged."""
+    arguments = _arguments("bind_widget_event", dict(widget_name=widget_name,
+        widget_component_name=widget_component_name, event_name=event_name, function_name=function_name))
+    if type(raw_node_position) is not dict or set(raw_node_position) - {"node_pos_x", "node_pos_y"}:
+        raise OperationError("umg_binding_raw_position_invalid", "Only original independent node_pos_x/y fields admitted")
+    try:
+        encoded = json.dumps(raw_node_position, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) > 131072:
+            raise ValueError("raw position exceeds fixed 128KiB bound")
+    except (TypeError, ValueError, OverflowError, UnicodeError, RecursionError) as error:
+        raise OperationError("umg_binding_raw_position_invalid", "Finite bounded original position JSON required") from error
+    # Do not convert/filter bools or numeric strings: UE TryGetNumberField owns
+    # that original coercion after initial compile and actual event selection.
+    arguments["native_method"] = "bind_widget_event_raw"
+    arguments["hidden"]["node_position_json"] = encoded
+    _run_action(result, arguments, checkpoint_callback)

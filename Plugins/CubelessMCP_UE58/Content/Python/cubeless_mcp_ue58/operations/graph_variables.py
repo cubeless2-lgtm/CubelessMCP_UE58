@@ -1802,7 +1802,7 @@ def _add_primitive_array_local(result, editor, before, plan, variable_name, x, y
 _EXTERNAL_ACTOR_IDENTITY = ("member_scope", "external_actor_member", "variable_name", "setter",
     "graph_path", "target_class_path", "declaring_class_path", "declaring_blueprint_path", "variable_guid",
     "property_path", "compiled_property_path", "pin_category", "pin_subcategory", "expected_pin_type_text",
-    "expected_self_pin_type_text", "external_actor_source_snapshot")
+    "expected_self_pin_type_text", "external_actor_source_snapshot", "inherited_actor_member")
 
 
 def _external_actor_plan(plan, variable_name, setter, target_class):
@@ -1811,9 +1811,19 @@ def _external_actor_plan(plan, variable_name, setter, target_class):
         guid_valid = bool(uuid.UUID(plan.get("variable_guid", "")).int)
     except (TypeError, ValueError, AttributeError):
         guid_valid = False
-    if (plan.get("member_scope") != "external_generated_actor" or plan.get("external_actor_member") is not True
+    inherited = plan.get("member_scope") == "inherited_generated_actor"
+    scope_valid = ((not inherited and plan.get("member_scope") == "external_generated_actor"
+                    and plan.get("external_actor_member") is True
+                    and plan.get("target_class_path") == target_class
+                    and plan.get("declaring_class_path") == target_class)
+                   or (inherited and not target_class and plan.get("external_actor_member") is False
+                       and plan.get("inherited_actor_member") is True
+                       and plan.get("inherited_declaring_property_verified") is True
+                       and type(plan.get("target_class_path")) is str and bool(plan["target_class_path"])
+                       and type(plan.get("declaring_class_path")) is str and bool(plan["declaring_class_path"])
+                       and plan["target_class_path"] != plan["declaring_class_path"]))
+    if (not scope_valid
             or plan.get("variable_name") != variable_name or plan.get("setter") is not setter
-            or plan.get("target_class_path") != target_class or plan.get("declaring_class_path") != target_class
             or not guid_valid or type(snapshot) is not dict or not snapshot
             or any(type(plan.get(key)) is not str or not plan[key] for key in
                 ("graph_path", "declaring_blueprint_path", "property_path", "compiled_property_path",
@@ -1896,7 +1906,7 @@ def _add_action(result, blueprint_name, variable_name, graph_name, x, y, setter,
             result["data"]["member_preflight_failure"] = copy.deepcopy(native_failure)
             if native_failure.get("member_scope") in ("own_native_material_value", "own_native_vector4_array", "external_native_vector_array", "own_native_string_vector_map", "own_native_string_double_map", "local_native_string_double_map", "local_primitive", "local_native_value_struct", "local_referenced_value", "local_primitive_array", "external_native_texture_enum_setter"):
                 result["data"]["mutation_state_unknown"] = True
-        if type(native_failure) is dict and native_failure.get("member_scope") == "external_generated_actor":
+        if type(native_failure) is dict and native_failure.get("member_scope") in ("external_generated_actor", "inherited_generated_actor"):
             result["data"].update(member_preflight_failure=copy.deepcopy(native_failure),
                 mutation_state_unknown=native_failure.get("change_state_known") is not True or native_failure.get("observation_incomplete") is True)
         raise
@@ -1918,7 +1928,8 @@ def _add_action(result, blueprint_name, variable_name, graph_name, x, y, setter,
         if setter:
             return _add_local_map_setter(result, editor, before, plan, variable_name, x, y, checkpoint_callback)
         return _add_local_map(result, editor, before, plan, variable_name, x, y, checkpoint_callback)
-    external_actor = plan.get("member_scope") == "external_generated_actor"
+    inherited_actor = plan.get("member_scope") == "inherited_generated_actor"
+    external_actor = inherited_actor or plan.get("member_scope") == "external_generated_actor"
     if external_actor:
         try:
             _external_actor_plan(plan, variable_name, setter, target_class)
@@ -2006,12 +2017,38 @@ def _add_action(result, blueprint_name, variable_name, graph_name, x, y, setter,
                         row = rows.get(path, {})
                         if (set(rows)-set(prior) != {path} or any(rows.get(key) != value for key, value in prior.items())
                                 or row.get("class") != ("K2Node_VariableSet" if setter else "K2Node_VariableGet")
-                                or row.get("variable_name") != variable_name or row.get("self_context") is not False
+                                or row.get("variable_name") != variable_name or row.get("self_context") is not inherited_actor
                                 or (receipt.get("position_returned") is True and (row.get("x") != x or row.get("y") != y))
-                                or row.get("variable_member_parent_path") != target_class
+                                or row.get("variable_member_parent_path") != ("" if inherited_actor else target_class)
                                 or row.get("variable_property_path") not in (plan["property_path"], plan["compiled_property_path"])
                                 or uuid.UUID(row.get("variable_member_guid", "")) != uuid.UUID(plan["variable_guid"])):
                             raise OperationError("graph_external_actor_node_changed", "Actual new member/reference/property or prior graph changed")
+                        if inherited_actor:
+                            native_rows = result["data"]["external_actor_last_plan"].get("inherited_member_nodes")
+                            if type(native_rows) is not list:
+                                raise OperationError("graph_inherited_member_physical_pins_unavailable", "Current Native physical pin roles are required; visible wrappers omit hidden self")
+                            matches = [entry for entry in native_rows if type(entry) is dict and entry.get("object_path") == path]
+                            if len(matches) != 1:
+                                raise OperationError("graph_inherited_member_physical_pins_changed", "Exactly one held current inherited physical node role is required")
+                            physical_role = matches[0]
+                            if (physical_role.get("graph_path") != before["graph_path"]
+                                    or physical_role.get("node_class_path") != ("/Script/BlueprintGraph.K2Node_VariableSet" if setter else "/Script/BlueprintGraph.K2Node_VariableGet")
+                                    or uuid.UUID(physical_role.get("node_guid", "")) != uuid.UUID(row.get("node_guid", ""))
+                                    or uuid.UUID(physical_role.get("member_guid", "")) != uuid.UUID(plan["variable_guid"])
+                                    or physical_role.get("member_name") != variable_name
+                                    or physical_role.get("member_self_context") is not True
+                                    or physical_role.get("member_parent_path") != ""
+                                    or physical_role.get("physical_roles_verified") is not True
+                                    or physical_role.get("all_pins_unlinked") is not True
+                                    or physical_role.get("self_pin_hidden") is not True
+                                    or physical_role.get("value_pin_type_text") != plan["expected_pin_type_text"]
+                                    or physical_role.get("self_pin_type_text") != plan["expected_self_pin_type_text"]):
+                                raise OperationError("graph_inherited_member_physical_pins_changed", "Actual hidden self/value/exec/reference roles differ from the held source plan")
+                            previous = receipt.get("created_native_pin_role")
+                            if previous is not None and previous != physical_role:
+                                raise OperationError("graph_inherited_member_physical_pins_changed", "Current inherited physical pin identity/type/defaults changed across a callback")
+                            receipt["created_native_pin_role"] = copy.deepcopy(physical_role)
+                            result["data"]["inherited_member_current_physical_role"] = copy.deepcopy(physical_role)
                         role = {key: copy.deepcopy(value) for key, value in row.items() if key not in ("x", "y")}
                         if receipt.get("created_node_role") is not None and receipt["created_node_role"] != role:
                             raise OperationError("graph_external_actor_node_changed", "Returned member semantic role changed across a callback")
@@ -2356,13 +2393,23 @@ def _add_action(result, blueprint_name, variable_name, graph_name, x, y, setter,
         passed = passed and typed_passed and guid_passed and graph_preserved and source_preserved and parent_passed
     elif external_actor:
         current_external_actor("before_typed_readback", node)
-        value_type = api.member_pin_type(node, plan["variable_name"], "input" if setter else "output")
-        current_external_actor("after_value_pin_readback", node)
-        self_type = api.member_pin_type(node, "self", "input")
-        current_external_actor("after_self_pin_readback", node)
+        if inherited_actor:
+            # The exact Native observation includes the real bHidden self pin.
+            # Public FBlueprintGraphPin wrappers cannot represent that pin.
+            physical_role = result["data"]["inherited_member_current_physical_role"]
+            value_type = physical_role["value_pin_type_text"]
+            self_type = physical_role["self_pin_type_text"]
+            result["data"].update(inherited_hidden_self_verified=True,
+                inherited_self_observation="held_native_physical_pin_not_visible_wrapper")
+        else:
+            value_type = api.member_pin_type(node, plan["variable_name"], "input" if setter else "output")
+            current_external_actor("after_value_pin_readback", node)
+            self_type = api.member_pin_type(node, "self", "input")
+            current_external_actor("after_self_pin_readback", node)
         typed_passed = value_type == plan["expected_pin_type_text"] and self_type == plan["expected_self_pin_type_text"]
-        result["data"].update(external_actor_member=True, external_actor_source_preserved=True,
-            external_source_preserved=True, external_actor_member_verified=passed and typed_passed,
+        result["data"].update(external_actor_member=not inherited_actor, external_actor_source_preserved=True,
+            inherited_actor_member=inherited_actor, inherited_actor_member_verified=inherited_actor and passed and typed_passed,
+            external_source_preserved=True, external_actor_member_verified=(not inherited_actor) and passed and typed_passed,
             member_pin_types={"variable": value_type, "self": self_type}, member_output_type_verified=typed_passed,
             external_actor_last_plan=copy.deepcopy(result["data"]["external_actor_last_plan"]),
             external_actor_runtime_value_verified=False)

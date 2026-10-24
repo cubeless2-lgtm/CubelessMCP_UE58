@@ -22,6 +22,7 @@
 #include "HAL/FileManager.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "K2Node_Event.h"
+#include "EdGraphSchema_K2.h"
 #include "K2Node_FunctionEntry.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
@@ -510,7 +511,7 @@ bool ParentSources(FContext& C, TSharedRef<FJsonObject>& Sources, FResult& R)
     }
     return ParentAdmission(C, R);
 }
-bool CompilerTickPolicy(const FContext& C, bool DesiredCanEverTick, FResult& R)
+bool CompilerTickPolicy(const FContext& C, bool DesiredCanEverTick, FResult& R, bool RawTick = false, bool WillCompile = false)
 {
     UBlueprint* B = C.Blueprint.Get(); UClass* Parent = B->ParentClass.Get();
     auto Policy = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("compiler_tick_policy"), Policy);
@@ -522,6 +523,11 @@ bool CompilerTickPolicy(const FContext& C, bool DesiredCanEverTick, FResult& R)
     if (!Loaded(ParentCDO) || ParentCDO->GetClass() != Parent || ParentCDO->GetOuter() != Parent->GetOuter() || !ParentCDO->HasAllFlags(RF_ClassDefaultObject | RF_ArchetypeObject) || !ParentCDO->IsTemplate() || ParentCDO->GetWorld())
     { return Fail(R, TEXT("blueprint_defaults_compiler_tick_policy_unobservable"), TEXT("Existing exact current Actor parent CDO required; no parent CDO creation or compile-on-load override.")); }
     const bool ParentCanEverTick = ParentCDO->PrimaryActorTick.bCanEverTick; Policy->SetBoolField(TEXT("parent_can_ever_tick"), ParentCanEverTick);
+    if(RawTick&&!WillCompile)
+    {
+        Policy->SetBoolField(TEXT("complete"),true);Policy->SetBoolField(TEXT("compatible"),true);R.Data->SetBoolField(TEXT("compiler_tick_policy_compatible"),true);
+        Policy->SetStringField(TEXT("scope"),TEXT("Original dry-run or compile=False requested CDO value; no compiler dispatched or cold/cook persistence claimed"));return CurrentDerivedTarget(C,R);
+    }
     const FName ReceiveTickName(GET_FUNCTION_NAME_CHECKED(AActor, ReceiveTick)); UFunction* OwnTick = B->GeneratedClass->FindFunctionByName(ReceiveTickName, EIncludeSuperFlag::ExcludeSuper);
     Policy->SetObjectField(TEXT("current_own_receive_tick"), Identity(OwnTick)); Policy->SetBoolField(TEXT("current_own_receive_tick_present"), OwnTick != nullptr);
     if (OwnTick && (!Loaded(OwnTick) || OwnTick->GetOuter() != B->GeneratedClass))
@@ -551,7 +557,13 @@ bool CompilerTickPolicy(const FContext& C, bool DesiredCanEverTick, FResult& R)
         }
     }
     Policy->SetBoolField(TEXT("source_ambiguous"), Ambiguous); Policy->SetBoolField(TEXT("complete"), true);
-    const bool Compatible = C.CDO->PrimaryActorTick.bCanEverTick == ParentCanEverTick && DesiredCanEverTick == ParentCanEverTick && (ParentCanEverTick || (!OwnTick && !Ambiguous));
+    const bool Compatible = (RawTick||(C.CDO->PrimaryActorTick.bCanEverTick == ParentCanEverTick && DesiredCanEverTick == ParentCanEverTick)) && (ParentCanEverTick || (!OwnTick && !Ambiguous));
+    if(RawTick&&Compatible)
+    {
+        R.Data->SetBoolField(TEXT("raw_tick_expected_compiled_can_ever_tick"),ParentCanEverTick);
+        Policy->SetBoolField(TEXT("requested_differs_from_compiler_eligibility"),DesiredCanEverTick!=ParentCanEverTick);
+        Policy->SetStringField(TEXT("scope"),TEXT("UE58 KismetCompiler SetCanEverTick: reset to immediate parent; parent-false has no current own/active/ambiguous ReceiveTick. Only this compiler-owned eligibility field may normalize; request and actual remain distinct"));
+    }
     Policy->SetBoolField(TEXT("compatible"), Compatible); R.Data->SetBoolField(TEXT("compiler_tick_policy_compatible"), Compatible);
     if (!Compatible) { return Fail(R, TEXT("blueprint_defaults_compiler_tick_policy_unsupported"), TEXT("Current and requested CanEverTick must equal existing immediate parent CDO policy; parent-false own/active Tick overrides remain incomplete. CDO-only overrides can be recomputed on load; no graph mutation or ephemeral restore will be dispatched.")); }
     return true;
@@ -647,11 +659,42 @@ bool PostcompileCdoEqual(const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJson
     if (LexToString(Flags) != Old || (Flags & CdoFlags) != CdoFlags || (Now != Old && Now != LexToString(Flags & ~LoadFlags))) { return false; }
     for (const auto& Field : X->Values) { if (Field.Key.ToView() != TEXT("object_flags") && !Equal(Field.Value, Y->TryGetField(Field.Key.ToView()))) { return false; } } return true;
 }
+// RefreshAllNodes reconstructs pins. For this exact unlinked stock Event scope,
+// compare authored/logical pin roles, never cache PinId or physical pin order.
+bool RefreshedGraphsEqual(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B)
+{
+    if(!A||!B||A->Type!=EJson::Object||B->Type!=EJson::Object)return false;
+    auto Copy=[](const TSharedPtr<FJsonValue>& V)->TSharedPtr<FJsonObject>{TSharedPtr<FJsonObject> J;FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text(V->AsObject().ToSharedRef())),J);return J;};
+    auto Normalize=[](const TSharedPtr<FJsonObject>& Graphs)->bool
+    {
+        if(!Graphs)return false;const TArray<TSharedPtr<FJsonValue>>* Rows=nullptr;if(!Graphs->TryGetArrayField(TEXT("graphs"),Rows))return false;
+        for(const auto& GraphValue:*Rows)
+        {
+            auto Graph=GraphValue->AsObject();const TArray<TSharedPtr<FJsonValue>>* Nodes=nullptr;
+            if(!Graph->TryGetArrayField(TEXT("nodes"),Nodes))continue; // original empty graph DTO has no nodes field
+            for(const auto& NodeValue:*Nodes)
+            {
+                auto Node=NodeValue->AsObject();const TArray<TSharedPtr<FJsonValue>>* Pins=nullptr;if(!Node->TryGetArrayField(TEXT("pins"),Pins))return false;
+                auto Logical=MakeShared<FJsonObject>();
+                for(const auto& PinValue:*Pins)
+                {
+                    auto Pin=PinValue->AsObject();const FString Name=Pin->GetStringField(TEXT("name")).ToLower();const FString Key=LexToString(static_cast<int32>(Pin->GetNumberField(TEXT("direction"))))+TEXT(":")+Name;
+                    if(Name.IsEmpty()||Logical->HasField(Key)||!Pin->GetArrayField(TEXT("links")).IsEmpty())return false;
+                    Pin->RemoveField(TEXT("id"));Pin->SetStringField(TEXT("name"),Name);Logical->SetObjectField(Key,Pin.ToSharedRef());
+                }
+                Node->RemoveField(TEXT("pins"));Node->SetObjectField(TEXT("logical_pins"),Logical);
+            }
+        }
+        return true;
+    };
+    auto X=Copy(A),Y=Copy(B);return Normalize(X)&&Normalize(Y)&&Equal(X.ToSharedRef(),Y.ToSharedRef());
+}
 // Compare the selected mutation scope while retaining every raw before/after field.
-bool UnselectedEqual(const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJsonValue>& B, const FString& ProfilePath, const FString& ExpectedProfileExport, bool AllowCompileCdo = false, const FString& At = FString())
+bool UnselectedEqual(const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJsonValue>& B, const FString& ProfilePath, const FString& ExpectedProfileExport, bool AllowCompileCdo = false, const FString& At = FString(), bool AllowRefreshedGraphs = false)
 {
     if (!A || !B || A->Type != B->Type) { return false; }
     if (At == TEXT("/selected_values") || At == TEXT("/selected_scs_cdo_member") || At == TEXT("/package_dirty") || At == TEXT("/blueprint_status")) { return true; }
+    if (AllowRefreshedGraphs && At == TEXT("/graphs")) { return RefreshedGraphsEqual(A,B); }
     if (AllowCompileCdo && At == TEXT("/cdo_identity")) { return PostcompileCdoEqual(A, B); }
     if (!ProfilePath.IsEmpty() && At == ProfilePath)
     {
@@ -660,8 +703,8 @@ bool UnselectedEqual(const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJsonValu
         Expected->SetArrayField(TEXT("values"), { MakeShared<FJsonValueString>(ExpectedProfileExport) });
         return Equal(Expected, B->AsObject().ToSharedRef());
     }
-    if (A->Type == EJson::Object) { if (A->AsObject()->Values.Num() != B->AsObject()->Values.Num()) { return false; } for (const auto& P : A->AsObject()->Values) { if (!UnselectedEqual(P.Value, B->AsObject()->TryGetField(P.Key.ToView()), ProfilePath, ExpectedProfileExport, AllowCompileCdo, At + TEXT("/") + FString(P.Key.ToView()))) { return false; } } return true; }
-    if (A->Type == EJson::Array) { if (A->AsArray().Num() != B->AsArray().Num()) { return false; } for (int32 I = 0; I < A->AsArray().Num(); ++I) { if (!UnselectedEqual(A->AsArray()[I], B->AsArray()[I], ProfilePath, ExpectedProfileExport, AllowCompileCdo, At + TEXT("/") + LexToString(I))) { return false; } } return true; }
+    if (A->Type == EJson::Object) { if (A->AsObject()->Values.Num() != B->AsObject()->Values.Num()) { return false; } for (const auto& P : A->AsObject()->Values) { if (!UnselectedEqual(P.Value, B->AsObject()->TryGetField(P.Key.ToView()), ProfilePath, ExpectedProfileExport, AllowCompileCdo, At + TEXT("/") + FString(P.Key.ToView()), AllowRefreshedGraphs)) { return false; } } return true; }
+    if (A->Type == EJson::Array) { if (A->AsArray().Num() != B->AsArray().Num()) { return false; } for (int32 I = 0; I < A->AsArray().Num(); ++I) { if (!UnselectedEqual(A->AsArray()[I], B->AsArray()[I], ProfilePath, ExpectedProfileExport, AllowCompileCdo, At + TEXT("/") + LexToString(I), AllowRefreshedGraphs)) { return false; } } return true; }
     return Equal(A, B);
 }
 bool Fences(const FObservation& Before, const FObservation& After, FResult& R)
@@ -678,7 +721,8 @@ bool Fences(const FObservation& Before, const FObservation& After, FResult& R)
     const bool Compiled = R.bCompileAttempted && R.Compiled.IsSet() && R.Compiled.GetValue();
     const bool Skeletal = R.Operation == TEXT("set_skeletal_mesh_component_anim_defaults");
     const bool TickFields = !Skeletal || (Equal(Before.ActorTickFields, After.ActorTickFields) && Equal(Before.ActorTickValues, After.ActorTickValues));
-    const bool State = TickFields && UnselectedEqual(MakeShared<FJsonValueObject>(Before.State), MakeShared<FJsonValueObject>(After.State), ProfilePath, ExpectedProfileExport, Compiled); const bool Other = Equal(Before.OtherDirty, After.OtherDirty), D = Equal(Before.DiskState, After.DiskState);
+    bool Refreshed=false;R.Data->TryGetBoolField(TEXT("raw_tick_refresh_returned"),Refreshed);
+    const bool State = TickFields && UnselectedEqual(MakeShared<FJsonValueObject>(Before.State), MakeShared<FJsonValueObject>(After.State), ProfilePath, ExpectedProfileExport, Compiled, FString(), Refreshed); const bool Other = Equal(Before.OtherDirty, After.OtherDirty), D = Equal(Before.DiskState, After.DiskState);
     R.Data->SetBoolField(TEXT("postcompile_owned_cdo_identity_verified"), Compiled && PostcompileCdoEqual(Before.State->TryGetField(TEXT("cdo_identity")), After.State->TryGetField(TEXT("cdo_identity"))));
     R.bKnown = true; R.bChanged = !Equal(Before.State, After.State) || !Source || !Other || !D;
     R.Data->SetBoolField(TEXT("source_preserved"), Source); R.Data->SetBoolField(TEXT("unselected_state_preserved"), State && Other); R.Data->SetBoolField(TEXT("disk_preserved_before_save"), D);
@@ -719,10 +763,121 @@ bool Save(FContext& C, const FObservation& BeforeSave, FResult& R)
     if (!State || !Source || !Other || !After.DiskState->GetBoolField(TEXT("exists")) || After.DiskState->GetNumberField(TEXT("bytes")) <= 0 || C.Blueprint->GetOutermost()->IsDirty()) { return Fail(R, TEXT("blueprint_defaults_saved_readback_failed"), TEXT("Successful save receipt remains authoritative, but exact finite saved-state/source/file fence failed; do not replay.")); }
     return true;
 }
-bool Compile(FContext& C, const FObservation& Before, FObservation& After, FResult& R)
+// Local source lease for the four resident AActor stock signatures used by
+// this narrow refresh scope. No ResolveMember/Fixup/CDO creation in admission.
+struct FTickRefreshSources
+{
+    TStrongObjectPtr<UClass> SchemaClass{UEdGraphSchema_K2::StaticClass()};
+    TStrongObjectPtr<UObject> SchemaDefault;
+    TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();
+    TArray<TStrongObjectPtr<UFunction>> Functions;
+    TArray<TArray<FProperty*>> Fields;
+    TArray<TStrongObjectPtr<UObject>> Holds;
+    bool Snapshot(TSharedRef<FJsonObject>& Out,bool Initial)
+    {
+        UClass* Schema=SchemaClass.Get();UObject* Default=SchemaDefault.Get();
+        if(!Loaded(Schema)||Schema!=UEdGraphSchema_K2::StaticClass()||!Loaded(Default)||Schema->GetDefaultObject(false)!=Default||Default->GetClass()!=Schema||Default->GetOuter()!=Schema->GetOuter()||!Default->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
+        Out->SetObjectField(TEXT("schema_class"),Identity(Schema));Out->SetObjectField(TEXT("schema_default"),Identity(Default));
+        auto SchemaFields=MakeShared<FJsonObject>();if(!Properties(Default,{},SchemaFields))return false;Out->SetObjectField(TEXT("schema_default_fields"),SchemaFields);
+        const TArray<FName> Names={FName(TEXT("ReceiveBeginPlay")),FName(TEXT("ReceiveActorBeginOverlap")),FName(TEXT("ReceiveTick")),FName(TEXT("UserConstructionScript"))};
+        for(int32 I=0;I<Names.Num();++I)
+        {
+            UFunction* F=AActor::StaticClass()->FindFunctionByName(Names[I],EIncludeSuperFlag::ExcludeSuper);
+            if(!Loaded(F)||F->GetOuter()!=AActor::StaticClass()||F->GetFName()!=Names[I]||!F->HasAnyFunctionFlags(FUNC_Event)||F->HasAnyFunctionFlags(FUNC_Static|FUNC_Delegate))return false;
+            TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(F,EFieldIteratorFlags::ExcludeSuper);It;++It)Now.Add(*It);
+            if(Now.Num()!=((I==1||I==2)?1:0)||(!Initial&&(Functions[I].Get()!=F||Now!=Fields[I])))return false;
+            if(Initial){Functions.Emplace(F);Fields.Add(Now);}
+            auto Row=MakeShared<FJsonObject>();Row->SetObjectField(TEXT("identity"),Identity(F));Row->SetStringField(TEXT("function_flags"),LexToString(static_cast<uint32>(F->FunctionFlags)));
+            auto FunctionFields=MakeShared<FJsonObject>();if(!Properties(F,{},FunctionFields))return false;Row->SetObjectField(TEXT("function_properties"),FunctionFields);
+            if(!Now.IsEmpty())
+            {
+                FProperty* P=Now[0];if(P->GetOwnerStruct()!=F||P->ArrayDim!=1||!P->HasAllPropertyFlags(CPF_Parm)||P->HasAnyPropertyFlags(CPF_OutParm|CPF_ReturnParm|CPF_ReferenceParm))return false;
+                if(I==1){auto* Object=CastField<FObjectProperty>(P);if(!Object||P->GetClass()!=FObjectProperty::StaticClass()||Object->PropertyClass!=AActor::StaticClass()||P->GetFName()!=TEXT("OtherActor"))return false;}
+                if(I==2&&(P->GetClass()!=FFloatProperty::StaticClass()||P->GetFName()!=TEXT("DeltaSeconds")))return false;
+                Row->SetStringField(TEXT("parameter_class"),P->GetClass()->GetName());Row->SetStringField(TEXT("parameter_flags"),LexToString(static_cast<uint64>(P->GetPropertyFlags())));Row->SetNumberField(TEXT("parameter_offset"),P->GetOffset_ForInternal());Row->SetNumberField(TEXT("parameter_size"),P->GetSize());
+            }
+            Out->SetObjectField(Names[I].ToString(),Row);
+        }
+        return true;
+    }
+    bool Bind()
+    {
+        SchemaDefault.Reset(SchemaClass->GetDefaultObject(false));
+        for(UObject* O:{static_cast<UObject*>(AActor::StaticClass()),static_cast<UObject*>(UEdGraph::StaticClass()),static_cast<UObject*>(UK2Node_Event::StaticClass()),static_cast<UObject*>(UK2Node_FunctionEntry::StaticClass())})Holds.Emplace(O);
+        return Snapshot(Before,true);
+    }
+    bool Current(){auto Now=MakeShared<FJsonObject>();return Snapshot(Now,false)&&Equal(Before,Now);}
+};
+bool RefreshTickAdmission(FContext& C,FResult& R)
+{
+    if(C.GeneratedParents||C.bSkeletal)return Fail(R,TEXT("blueprint_tick_refresh_owner_pending"),TEXT("Generated-parent or skeletal refresh remains incomplete; no writer"));
+    TArray<UEdGraph*> GraphsNow;C.Blueprint->GetAllGraphs(GraphsNow);if(GraphsNow.Num()>MaxGraphs)return false;
+    for(UEdGraph* G:GraphsNow)
+    {
+        if(!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||!G->Schema.GetGCPtr().IsResolved()||G->Schema.Get()!=UEdGraphSchema_K2::StaticClass()||G->GetOutermost()!=C.Blueprint->GetOutermost()||G->Nodes.Num()>MaxNodes)
+            return Fail(R,TEXT("blueprint_tick_refresh_graph_scope_pending"),TEXT("Exact resident K2-schema stock graph required; external/custom graph schema remains incomplete"));
+        for(UEdGraphNode* N:G->Nodes)
+        {
+            if(!Loaded(N)||N->GetOuter()!=G||!N->NodeGuid.IsValid()||(N->GetClass()!=UK2Node_Event::StaticClass()&&N->GetClass()!=UK2Node_FunctionEntry::StaticClass()))
+                return Fail(R,TEXT("blueprint_tick_refresh_node_scope_pending"),TEXT("Exact stock unlinked AActor Event nodes or default UserConstructionScript FunctionEntry1 required; other valid original nodes remain incomplete"));
+            const auto* Event=Cast<UK2Node_Event>(N);const auto* Entry=Cast<UK2Node_FunctionEntry>(N);
+            const FMemberReference& Reference=Event?Event->EventReference:Entry->FunctionReference;
+            // The public GetMemberParentClass and TSubclassOf getters resolve.
+            // Reuse the existing EventApi direct reflected-cell admission first.
+            auto* ReferenceStruct=FMemberReference::StaticStruct();auto* ParentProperty=FindFProperty<FObjectProperty>(ReferenceStruct,TEXT("MemberParent"));
+            if(!ParentProperty||ParentProperty->GetClass()!=FObjectProperty::StaticClass()||ParentProperty->GetOwnerStruct()!=ReferenceStruct||ParentProperty->ArrayDim!=1||ParentProperty->HasSetterOrGetter()||ParentProperty->GetSize()!=sizeof(TObjectPtr<UObject>))return Fail(R,TEXT("blueprint_tick_refresh_reference_layout_pending"),TEXT("Exact native member-parent reflected slot required; no resolving getter dispatched"));
+            const auto* ParentSlot=ParentProperty->ContainerPtrToValuePtr<TObjectPtr<UObject>>(&Reference);
+            if(!ParentSlot||!ParentSlot->IsResolved()||ParentSlot->Get()!=AActor::StaticClass()||Reference.IsSelfContext()||Reference.IsLocalScope()||Reference.GetMemberGuid().IsValid())return Fail(R,TEXT("blueprint_tick_refresh_signature_scope_pending"),TEXT("Already-resolved external AActor native reference required; self/custom/redirected/generated signatures remain incomplete"));
+            const FName Member=Reference.GetMemberName();
+            if(Event&&(!Event->bOverrideFunction||!Event->CustomFunctionName.IsNone()||(Member!=TEXT("ReceiveBeginPlay")&&Member!=TEXT("ReceiveActorBeginOverlap")&&Member!=TEXT("ReceiveTick"))))return Fail(R,TEXT("blueprint_tick_refresh_signature_scope_pending"),TEXT("Only the three resident native Actor default Event signatures are admitted"));
+            if(Entry&&(Member!=TEXT("UserConstructionScript")||G->GetFName()!=TEXT("UserConstructionScript")||G->Nodes.Num()!=1||!Entry->CustomGeneratedFunctionName.IsNone()||!Entry->LocalVariables.IsEmpty()||!Entry->UserDefinedPins.IsEmpty()||Entry->GetExtraFlags()!=0||N->Pins.Num()!=1))return Fail(R,TEXT("blueprint_tick_refresh_construction_entry_pending"),TEXT("Exact default UCS entry1 with no local/user pins/custom flags required; other functions remain incomplete"));
+            TSet<FString> Names;
+            for(UEdGraphPin* P:N->Pins)
+            {
+                if(!P||P->GetOwningNodeUnchecked()!=N||!P->LinkedTo.IsEmpty()||P->ParentPin||!P->SubPins.IsEmpty()||P->bOrphanedPin)return Fail(R,TEXT("blueprint_tick_refresh_pin_scope_pending"),TEXT("Unlinked unsplit current Event logical pins required before refresh; no writer"));
+                if(Entry&&(P->PinName!=UEdGraphSchema_K2::PN_Then||P->Direction!=EGPD_Output||P->PinType.PinCategory!=UEdGraphSchema_K2::PC_Exec))return Fail(R,TEXT("blueprint_tick_refresh_construction_pin_pending"),TEXT("Default UCS output exec then pin required; no full signature expansion"));
+                const FString Key=LexToString(static_cast<int32>(P->Direction))+TEXT(":")+P->PinName.ToString().ToLower();if(P->PinName.IsNone()||Names.Contains(Key))return false;Names.Add(Key);
+            }
+        }
+    }
+    return CurrentDerivedTarget(C,R);
+}
+bool RefreshTickNodes(FContext& C,const FObservation& Before,FObservation& After,FResult& R,FTickRefreshSources& Source)
+{
+    if(!RefreshTickAdmission(C,R))return false;
+    TArray<TStrongObjectPtr<UObject>> Holds;TArray<UEdGraph*> GraphsNow;C.Blueprint->GetAllGraphs(GraphsNow);
+    const auto BPIdentity=Identity(C.Blueprint.Get());TStrongObjectPtr<UClass> Parent(C.Blueprint->ParentClass.Get());
+    for(UEdGraph* G:GraphsNow){Holds.Emplace(G);for(UEdGraphNode* N:G->Nodes)Holds.Emplace(N);}
+    if(!CurrentDerivedTarget(C,R))return false;
+    if(!Source.Current())return Fail(R,TEXT("blueprint_tick_refresh_source_changed_before_sdk"),TEXT("Retained schema/native signature changed after configured writes; no refresh/fullcompile/save"),true);
+    R.Stage=TEXT("refresh_tick_nodes");R.bAttempted=true;R.Data->SetNumberField(TEXT("refresh_nodes_calls"),1);R.Data->SetBoolField(TEXT("raw_tick_refresh_returned"),false);
+    FBlueprintEditorUtils::RefreshAllNodes(C.Blueprint.Get());
+    R.Data->SetBoolField(TEXT("raw_tick_refresh_returned"),true);
+    if(!Source.Current())return Fail(R,TEXT("blueprint_tick_refresh_source_changed"),TEXT("Schema/native source changed during refresh; returned prefix retained and no next writer"),true);
+    R.Data->SetBoolField(TEXT("raw_tick_refresh_source_preserved"),true);
+    // SDK can recompile the skeleton. Admit current roles only after exact asset
+    // and parent identity checks; old class/CDO/pin addresses are not reused.
+    if(!Loaded(C.Blueprint.Get())||!Equal(BPIdentity,Identity(C.Blueprint.Get()))||C.Blueprint->ParentClass!=Parent.Get())return Fail(R,TEXT("blueprint_tick_refresh_identity_changed"),TEXT("Refresh returned with changed Blueprint/parent identity; no next writer"),true);
+    FContext Current;if(!Prepare(C.Blueprint->GetPathName(),FString(),false,Current,R))return Fail(R,TEXT("blueprint_tick_refresh_current_unobservable"),TEXT("Refresh returned but current generated/skeleton/CDO scope is unobservable; no full compile/save"),true);
+    Current.Assets=MoveTemp(C.Assets);C=MoveTemp(Current);
+    if(!RefreshTickAdmission(C,R)||!Capture(C,After,R,TEXT("after_refresh_nodes")))return Fail(R,TEXT("blueprint_tick_refresh_readback_unobservable"),TEXT("Refresh current roles/logical pins incomplete; no full compile/save"),true);
+    return Fences(Before,After,R);
+}
+bool Compile(FContext& C, const FObservation& Before, FObservation& After, FResult& R, bool RawTick = false)
 {
     // r3 Capture detaches phase maps, so this configured tick snapshot stays immutable.
-    const FObservation ExpectedTick = After; R.Data->SetObjectField(TEXT("postcompile_tick_expected"), ExpectedTick.ActorTickValues);
+    FObservation ExpectedTick = After;
+    if(RawTick)
+    {
+        bool ExpectedCanTick=false;if(!R.Data->TryGetBoolField(TEXT("raw_tick_expected_compiled_can_ever_tick"),ExpectedCanTick))return Fail(R,TEXT("blueprint_tick_compiler_prediction_missing"),TEXT("Known SDK parent-reset predicate required before full compile"));
+        TSharedPtr<FJsonObject> Values,Fields;FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text(After.ActorTickValues)),Values);FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text(After.ActorTickFields)),Fields);
+        FActorTickFunction ExpectedField;ExpectedField.bCanEverTick=ExpectedCanTick;
+        FBoolProperty* P=FindFProperty<FBoolProperty>(FActorTickFunction::StaticStruct(),TEXT("bCanEverTick"));FString Export;
+        if(!Values||!Fields||!P||P->ArrayDim!=1||!Fields->HasTypedField<EJson::Object>(TEXT("bCanEverTick"))||!P->ExportText_Direct(Export,P->ContainerPtrToValuePtr<void>(&ExpectedField),P->ContainerPtrToValuePtr<void>(&ExpectedField),C.CDO,PPF_None))return Fail(R,TEXT("blueprint_tick_compiler_prediction_unobservable"),TEXT("Exact reflected eligibility field required before compile"));
+        Values->SetBoolField(TEXT("can_ever_tick"),ExpectedCanTick);Fields->GetObjectField(TEXT("bCanEverTick"))->SetArrayField(TEXT("values"),{MakeShared<FJsonValueString>(Export)});
+        ExpectedTick.ActorTickValues=Values.ToSharedRef();ExpectedTick.ActorTickFields=Fields.ToSharedRef();
+    }
+    R.Data->SetObjectField(TEXT("postcompile_tick_expected"), ExpectedTick.ActorTickValues);
     R.Stage = TEXT("compile_blueprint"); R.Data->SetBoolField(TEXT("after_configuration_source_preserved"), R.Data->GetBoolField(TEXT("source_preserved"))); R.Data->SetBoolField(TEXT("after_configuration_unselected_state_preserved"), R.Data->GetBoolField(TEXT("unselected_state_preserved"))); ClearFinal(R);
     if (!CurrentDerivedTarget(C, R)) { return false; }
     R.bCompileAttempted = true; Count(R, TEXT("full_compile_attempts")); auto Result = Cubeless::UE58::CompileBlueprint(C.Blueprint->GetPathName(), false, false); R.Data->SetObjectField(TEXT("compile_result"), Result);
@@ -738,11 +893,12 @@ bool Compile(FContext& C, const FObservation& Before, FObservation& After, FResu
     if (!Capture(C, After, R, TEXT("after_compile_before_tick_restore"))) { return Fail(R, TEXT("blueprint_defaults_postcompile_unobservable"), TEXT("Compile attempted once, current bounded prefix incomplete; save suppressed."), true); }
     if (!R.Compiled.IsSet()) { return Fail(R, TEXT("blueprint_defaults_compile_outcome_unobservable"), TEXT("Compiler result missing typed compiled status."), true); }
     R.Data->SetObjectField(TEXT("after_observation"), Observation(After));
-    R.Data->SetStringField(TEXT("after_compile_before_tick_restore_scope"), TEXT("raw current compiler result; historical phase key retained, no tick restoration/notification/dirty-mark route exists"));
+    if(RawTick){R.Data->SetObjectField(TEXT("actual_after_compile"),After.ActorTickValues);R.Data->SetBoolField(TEXT("requested_tick_matches_actual_compile"),Equal(After.ActorTickValues,R.Data->GetObjectField(TEXT("after")).ToSharedRef()));}
+    R.Data->SetStringField(TEXT("after_compile_before_tick_restore_scope"), TEXT("raw current compiler result; historical phase key retained, no tick restoration/notification/dirty-mark route exists; original requested after remains separate from actual compiler eligibility"));
     if (!Passed) { Fences(Before, After, R); return Fail(R, TEXT("blueprint_defaults_compile_failed"), TEXT("Compiler reported failure; raw tick state retained and no restoration/save.")); }
     if (!Fences(Before, After, R)) { return false; }
     const bool TickPassed = Equal(ExpectedTick.ActorTickValues, After.ActorTickValues) && Equal(ExpectedTick.ActorTickFields, After.ActorTickFields); R.Data->SetBoolField(TEXT("postcompile_actor_tick_preserved"), TickPassed);
-    if (!TickPassed) { return Fail(R, TEXT("blueprint_defaults_postcompile_tick_readback_failed"), TEXT("All five public tick defaults and other reflected tick fields must match the configured precompile snapshot; no value masking/save.")); }
+    if (!TickPassed) { return Fail(R, TEXT("blueprint_defaults_postcompile_tick_readback_failed"), TEXT("Tick defaults and other reflected fields must match the configured snapshot or the separately predicted raw parent-reset CanEverTick; no restore/value masking/save after mismatch.")); }
     if (Passed && C.bSkeletal && !After.State->GetObjectField(TEXT("selected_scs_cdo_member"))->GetBoolField(TEXT("present"))) { return Fail(R, TEXT("blueprint_skeletal_compiled_member_missing"), TEXT("Full compile reported success but the exact selected own SkeletalMesh object member is absent; no save.")); }
     return Passed || Fail(R, TEXT("blueprint_defaults_compile_failed"), TEXT("Compiler reported failure; retained actual readback and diagnostics, no save."));
 }
@@ -845,22 +1001,56 @@ void LegacySkeletal(FContext& C, const TSharedRef<FJsonObject>& Values, FResult&
     R.Data->SetStringField(TEXT("collision_response"), Uniform ? EnumName(First, ResponseNames) : TEXT("Mixed")); R.Data->SetStringField(TEXT("visibility_based_anim_tick_option"), EnumName(C.Skeletal->VisibilityBasedAnimTickOption, VisibilityNames)); R.Data->SetBoolField(TEXT("dirty_after"), C.Blueprint->GetOutermost()->IsDirty());
 }
 }
-FString SetActorTickSettings(const FString& BlueprintPath, double TickHz, double TickInterval,
+static FString SetActorTickSettingsWork(const FString& BlueprintPath, double TickHz, double TickInterval,
     bool bCanEverTick, bool bStartWithTickEnabled, bool bAllowTickOnDedicatedServer,
-    bool bTickEvenWhenPaused, bool bDryRun, bool bCompile, bool bSave)
+    bool bTickEvenWhenPaused, bool bDryRun, bool bCompile, bool bSave,const FString* SettingsJson)
 {
-    FResult R; Init(R, TEXT("set_blueprint_actor_tick_settings"), !bDryRun && bCompile, !bDryRun && bCompile && bSave);
-    R.Data->SetBoolField(TEXT("dry_run"), bDryRun); R.Data->SetBoolField(TEXT("caller_compile_requested"), bCompile); R.Data->SetBoolField(TEXT("caller_save_requested"), bSave); R.Data->SetBoolField(TEXT("refresh_nodes_requested"), false);
-    if (!FMath::IsFinite(TickHz) || !FMath::IsFinite(TickInterval) || FMath::Abs(TickHz) > static_cast<double>(MAX_flt) || FMath::Abs(TickInterval) > static_cast<double>(MAX_flt)) { Fail(R, TEXT("blueprint_tick_numeric_inputs_invalid"), TEXT("Finite native-float-representable original tick values required before resolving or mutation.")); return Encode(R); }
+    FResult R;TSharedPtr<FJsonObject> Raw;bool Refresh=false;
+    const auto RawBool=[&](const TCHAR* Key,bool Default){bool Value=Default;return Raw&&Raw->TryGetBoolField(Key,Value)?Value:Default;};
+    if(SettingsJson)
+    {
+        bool Nul=false;for(TCHAR Char:*SettingsJson)Nul|=Char==0;
+        if(Nul||SettingsJson->Len()>131072||!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(*SettingsJson),Raw)||!Raw)
+        {Init(R,TEXT("set_blueprint_actor_tick_settings"),false,false);Fail(R,TEXT("blueprint_tick_raw_settings_invalid"),TEXT("Private bounded original settings object required; no loader or writer dispatched"));return Encode(R);}
+        bDryRun=RawBool(TEXT("dry_run"),true);bCompile=RawBool(TEXT("compile"),true);bSave=RawBool(TEXT("save"),true);Refresh=RawBool(TEXT("refresh_nodes"),false);
+    }
+    Init(R, TEXT("set_blueprint_actor_tick_settings"), !bDryRun && bCompile, !bDryRun && bCompile && bSave);
+    if(Raw){R.Data->SetObjectField(TEXT("raw_settings"),Raw);R.Data->SetBoolField(TEXT("raw_tick_presence_contract"),true);R.Data->SetStringField(TEXT("raw_tick_scope"),TEXT("Original JSON TryGetBool/TryGetNumber coercion with current CDO fallback for omitted/unreadable settings, frequency then explicit interval float32/clamp0. Existing parent compiler eligibility/lifetime/source/current protection and compile/save core are retained. Actual refresh admits empty graphs/exact unlinked native AActor default Event nodes and default UCS FunctionEntry1 and checks logical pin roles. Raw no-compile uses the requested CDO flag; full compile checks known parent-reset CanEverTick and reports requested versus actual separately. Parent-false active/ambiguous Tick and wider refresh remain incomplete; Named10 unchanged."));}
+    R.Data->SetBoolField(TEXT("dry_run"), bDryRun); R.Data->SetBoolField(TEXT("caller_compile_requested"), bCompile); R.Data->SetBoolField(TEXT("caller_save_requested"), bSave); R.Data->SetBoolField(TEXT("refresh_nodes_requested"), Refresh);
+    if (!Raw&&(!FMath::IsFinite(TickHz) || !FMath::IsFinite(TickInterval) || FMath::Abs(TickHz) > static_cast<double>(MAX_flt) || FMath::Abs(TickInterval) > static_cast<double>(MAX_flt))) { Fail(R, TEXT("blueprint_tick_numeric_inputs_invalid"), TEXT("Finite native-float-representable original tick values required before resolving or mutation.")); return Encode(R); }
     FContext C; if (!Prepare(BlueprintPath, FString(), false, C, R)) { return Encode(R); } FObservation Before;
     if (!Capture(C, Before, R, TEXT("before_observation"))) { Fail(R, TEXT("blueprint_defaults_preflight_unobservable"), TEXT("Complete initial CDO/native/source/graph/disk/dirty observation required before Modify.")); return Encode(R); }
     auto Desired = Tick(C.CDO); float Interval = C.CDO->PrimaryActorTick.TickInterval;
-    if (TickHz > 0) { Interval = 1.0f / FMath::Max(0.001f, static_cast<float>(TickHz)); } if (TickInterval >= 0) { Interval = static_cast<float>(TickInterval); } Interval = FMath::Max(0.0f, Interval);
+    if(Raw)
+    {
+        // BlueprintCommands.cpp1678: missing/unreadable frequency does not invent
+        // Named's 60Hz; an explicit negative interval overrides Hz then clamps0.
+        double Hz=0,ExplicitInterval=0;const bool HasHz=Raw->TryGetNumberField(TEXT("tick_hz"),Hz),HasInterval=Raw->TryGetNumberField(TEXT("tick_interval"),ExplicitInterval);
+        if((HasHz&&Hz>0&&(!FMath::IsFinite(Hz)||Hz>static_cast<double>(MAX_flt)))||(HasInterval&&(!FMath::IsFinite(ExplicitInterval)||FMath::Abs(ExplicitInterval)>static_cast<double>(MAX_flt))))
+        {Fail(R,TEXT("blueprint_tick_raw_numeric_scope_pending"),TEXT("Original nonfinite/overflowing float32 conversions remain incomplete; current CDO observed, no Modify/compile/save"));return Encode(R);}
+        if(HasHz&&Hz>0)Interval=1.0f/FMath::Max(0.001f,static_cast<float>(Hz));
+        if(HasInterval)Interval=static_cast<float>(ExplicitInterval);Interval=FMath::Max(0.0f,Interval);
+        bCanEverTick=RawBool(TEXT("can_ever_tick"),C.CDO->PrimaryActorTick.bCanEverTick);
+        bStartWithTickEnabled=RawBool(TEXT("start_with_tick_enabled"),C.CDO->PrimaryActorTick.bStartWithTickEnabled);
+        bAllowTickOnDedicatedServer=RawBool(TEXT("allow_tick_on_dedicated_server"),C.CDO->PrimaryActorTick.bAllowTickOnDedicatedServer);
+        bTickEvenWhenPaused=RawBool(TEXT("tick_even_when_paused"),C.CDO->PrimaryActorTick.bTickEvenWhenPaused);
+        auto Presence=MakeShared<FJsonObject>();for(const TCHAR* Key:{TEXT("tick_hz"),TEXT("tick_interval"),TEXT("can_ever_tick"),TEXT("start_with_tick_enabled"),TEXT("allow_tick_on_dedicated_server"),TEXT("tick_even_when_paused"),TEXT("dry_run"),TEXT("compile"),TEXT("save"),TEXT("refresh_nodes")})Presence->SetBoolField(Key,Raw->HasField(Key));R.Data->SetObjectField(TEXT("raw_tick_field_presence"),Presence);
+        R.Data->SetBoolField(TEXT("raw_tick_hz_number_read"),HasHz);R.Data->SetBoolField(TEXT("raw_tick_interval_number_read"),HasInterval);
+    }
+    else
+    {if (TickHz > 0) { Interval = 1.0f / FMath::Max(0.001f, static_cast<float>(TickHz)); } if (TickInterval >= 0) { Interval = static_cast<float>(TickInterval); } Interval = FMath::Max(0.0f, Interval);}
     if (!FMath::IsFinite(Interval) || (Interval > 0 && !FMath::IsFinite(1.0f / Interval))) { Fail(R, TEXT("blueprint_tick_numeric_inputs_invalid"), TEXT("Derived interval/frequency must be finite in the original float representation.")); return Encode(R); }
     Desired->SetBoolField(TEXT("can_ever_tick"), bCanEverTick); Desired->SetBoolField(TEXT("start_with_tick_enabled"), bStartWithTickEnabled); Desired->SetBoolField(TEXT("allow_tick_on_dedicated_server"), bAllowTickOnDedicatedServer); Desired->SetBoolField(TEXT("tick_even_when_paused"), bTickEvenWhenPaused); Desired->SetNumberField(TEXT("tick_interval"), Interval); Desired->SetNumberField(TEXT("tick_hz"), Interval > 0 ? 1.0f / Interval : 0.0f);
     R.Data->SetObjectField(TEXT("before"), Before.State->GetObjectField(TEXT("selected_values"))); R.Data->SetObjectField(TEXT("after"), Desired);
     R.Data->SetBoolField(TEXT("can_apply"), false);
-    if (!CompilerTickPolicy(C, bCanEverTick, R)) { return Encode(R); }
+    if(Raw){R.Data->SetBoolField(TEXT("after_is_original_requested_settings"),true);R.Data->SetStringField(TEXT("tick_compile_result_scope"),TEXT("Original after is the requested configuration. Actual compile_result.compiled/validation_pass and actual_after_compile describe compiler outcome, independent of requested eligibility; success requires actual preservation checks, not equality of the compiler-owned eligibility flag to request."));}
+    TUniquePtr<FTickRefreshSources> RefreshSource;
+    if(Raw&&Refresh&&!bDryRun&&bCompile)
+    {
+        if(!RefreshTickAdmission(C,R))return Encode(R);
+        RefreshSource=MakeUnique<FTickRefreshSources>();if(!RefreshSource->Bind()){Fail(R,TEXT("blueprint_tick_refresh_source_unobservable"),TEXT("Resident exact K2 schema CDO/native AActor signatures required; no CDO creation or writer"));return Encode(R);}
+    }
+    if (!CompilerTickPolicy(C, bCanEverTick, R, Raw.IsValid(), !bDryRun&&bCompile)) { return Encode(R); }
     R.Data->SetBoolField(TEXT("can_apply"), true);
     if (bDryRun)
     {
@@ -875,11 +1065,25 @@ FString SetActorTickSettings(const FString& BlueprintPath, double TickHz, double
     if (!Capture(C, Configured, R, TEXT("after_configuration"))) { Fail(R, TEXT("blueprint_tick_configuration_unobservable"), TEXT("Actual write prefix incomplete; compilation/save suppressed."), true); return Encode(R); }
     if (!Fences(Before, Configured, R) || !Equal(Desired, Configured.State->GetObjectField(TEXT("selected_values")).ToSharedRef())) { if (R.Code.IsEmpty()) { Fail(R, TEXT("blueprint_tick_readback_failed"), TEXT("Actual dedicated Actor-CDO tick readback differs; no compilation/save.")); } return Encode(R); }
     R.Data->SetBoolField(TEXT("after_configuration_readback_passed"), true); R.Data->SetStringField(TEXT("write_scope"), TEXT("blueprint_actor_cdo_primary_tick_defaults")); FObservation After = Configured;
-    if (R.bCompileRequested && !Compile(C, Before, After, R)) { return Encode(R); }
-    if (!Equal(Desired, After.State->GetObjectField(TEXT("selected_values")).ToSharedRef())) { Fail(R, TEXT("blueprint_tick_postcompile_readback_failed"), TEXT("Current generated CDO tick defaults differ after compilation; no save.")); return Encode(R); }
+    if (R.bCompileRequested&&Raw&&Refresh)
+    {
+        if(!RefreshTickNodes(C,Before,After,R,*RefreshSource))return Encode(R);
+        if(!Equal(Desired,After.ActorTickValues)){Fail(R,TEXT("blueprint_tick_refresh_selected_values_changed"),TEXT("Refresh changed configured tick values before full compile; actual prefix retained, no compile/save"));return Encode(R);}
+    }
+    if (R.bCompileRequested && !Compile(C, Before, After, R, Raw.IsValid())) { return Encode(R); }
+    if(RefreshSource&&!RefreshSource->Current()){Fail(R,TEXT("blueprint_tick_refresh_source_changed_after_compile"),TEXT("Retained schema/native signature changed during full compile; actual compile prefix retained, no save"),true);return Encode(R);}
+    const TSharedRef<FJsonObject> ExpectedActual=Raw&&R.bCompileRequested?R.Data->GetObjectField(TEXT("postcompile_tick_expected")).ToSharedRef():Desired;
+    if (!Equal(ExpectedActual, After.State->GetObjectField(TEXT("selected_values")).ToSharedRef())) { Fail(R, TEXT("blueprint_tick_postcompile_readback_failed"), TEXT("Current generated CDO tick defaults differ after compilation; no save.")); return Encode(R); }
     R.Data->SetBoolField(TEXT("independent_readback_passed"), true); if (!Save(C, After, R)) { return Encode(R); }
+    if(RefreshSource&&!RefreshSource->Current()){Fail(R,TEXT("blueprint_tick_refresh_source_changed_after_save"),TEXT("Retained schema/native signature changed across save; actual save receipt retained, no retry"),true);return Encode(R);}
     R.Data->SetBoolField(TEXT("saved"), R.bSaved); R.Stage = TEXT("complete"); R.bSuccess = true; R.bPost = true; return Encode(R);
 }
+
+FString SetActorTickSettings(const FString& BlueprintPath,double TickHz,double TickInterval,
+    bool bCanEverTick,bool bStartWithTickEnabled,bool bAllowTickOnDedicatedServer,bool bTickEvenWhenPaused,bool bDryRun,bool bCompile,bool bSave)
+{return SetActorTickSettingsWork(BlueprintPath,TickHz,TickInterval,bCanEverTick,bStartWithTickEnabled,bAllowTickOnDedicatedServer,bTickEvenWhenPaused,bDryRun,bCompile,bSave,nullptr);}
+FString SetActorTickSettingsRaw(const FString& BlueprintPath,const FString& SettingsJson)
+{return SetActorTickSettingsWork(BlueprintPath,0,-1,false,false,false,false,true,true,true,&SettingsJson);}
 
 FString SetSkeletalAnimDefaults(const FString& BlueprintPath, const FString& ComponentName,
     const FString& SkeletalMesh, const FString& AnimClass, const FString& PhysicsAssetJson,

@@ -1,3 +1,10 @@
+// ADK source-only handoff: ai_tools.py1992 add_ai_blackboard_key -> ai_add_blackboard_key ->
+// AICommands.cpp1894/HandleAddBlackboardKey2573; ResolveBlackboardBaseClass1365/1383 has no Actor-only restriction.
+// Pure UObject-root Object/Class references reuse existing Append/cache/partial/save workers; native/Actor branches remain separate.
+// SDK BlueprintGeneratedClass.cpp690/692 tracks generator/class reads: all source roles/exports/first fields precede Authority,
+// then original fields/exports/current are reclosed. Shared Object-parent inspection preserves actual skeleton super and nullable CDO/SCS.
+// Source checks: public workers/call order unchanged except one scope diagnostic; registration nondoc AST/IO/default/no-import compile pass.
+// Build/official behavior/save/reload pending; other native roots, unobserved cold-load transitions and full arbitrary callback effects incomplete.
 // Original Blackboard Create/Add/Inspect contracts through public runtime AIModule APIs.
 #include "Compatibility/UE58/CubelessBlackboardApi.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
@@ -283,7 +290,7 @@ struct FGeneratedBaseScope
     struct FIdentity{TStrongObjectPtr<UObject> Object;UClass* Class=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Path;EObjectFlags Flags=RF_NoFlags;};
     struct FRow{TStrongObjectPtr<UBlackboardKeyType> Key;UClass* Class=nullptr;UClass* Base=nullptr;UEnum* Enum=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Name,Path,Fields;bool Synced=false;EObjectFlags Flags=RF_NoFlags;};
     struct FOwner{TStrongObjectPtr<UBlackboardData> Board;UBlackboardData* Parent=nullptr;UPackage* Package=nullptr;FString Path,Fields;EObjectFlags Flags=RF_NoFlags;uint32 PackageFlags=0;TArray<FRow> Own,Inherited;};
-    struct FSourceRole{UBlueprint* BP=nullptr;UClass* Generated=nullptr;UClass* Skeleton=nullptr;UClass* Parent=nullptr;UObject* CDO=nullptr;UObject* SkeletonCDO=nullptr;USimpleConstructionScript* SCS=nullptr;EBlueprintStatus Status=BS_Unknown;EClassFlags Flags=CLASS_None,SkeletonFlags=CLASS_None;};
+    struct FSourceRole{UBlueprint* BP=nullptr;UClass* Generated=nullptr;UClass* Skeleton=nullptr;UClass* Parent=nullptr;UObject* CDO=nullptr;UObject* SkeletonCDO=nullptr;USimpleConstructionScript* SCS=nullptr;UClass* SkeletonParent=nullptr;bool ObjectRoot=false;EBlueprintStatus Status=BS_Unknown;EClassFlags Flags=CLASS_None,SkeletonFlags=CLASS_None;};
     struct FSourcePackage{TStrongObjectPtr<UPackage> Package;TArray<UObject*> Exports;FString DiskText;uint32 Flags=0;};
     struct FProof{TStrongObjectPtr<UClass> Class;TSharedRef<FJsonObject> Receipt=MakeShared<FJsonObject>();};
     TArray<FOwner> Owners;TArray<FIdentity> SourceObjects;TArray<FSourceRole> Roles;TArray<FSourcePackage> Packages;TArray<FProof> Proofs;
@@ -307,6 +314,62 @@ struct FGeneratedBaseScope
         if(!Context()||!Loaded(O)||!Loaded(O->GetClass())||(O->GetOuter()&&!Loaded(O->GetOuter()))||!Loaded(O->GetPackage())){return Stop(TEXT("blackboard_generated_source_invalid"),TEXT("Source identity is not currently readable."));}
         for(const auto& I:SourceObjects){if(I.Object.Get()==O){return true;}}if(SourceObjects.Num()>=2048){return Stop(TEXT("blackboard_generated_source_bound"),TEXT("Bounded source export set exceeded."));}
         FIdentity I;I.Object.Reset(O);I.Class=O->GetClass();I.Outer=O->GetOuter();I.Package=O->GetPackage();I.Path=O->GetPathName();I.Flags=O->GetFlags();SourceObjects.Add(MoveTemp(I));return true;
+    }
+    // ADK: pure UObject-root sources share existing readonly fields/export/disk
+    // proof. Resolve no source, create no CDO/SCS, and hold exact resident roles
+    // before calling the shared Object-parent inspector.
+    template<class T,class U> static bool SlotSame(const TObjectPtr<T>& Slot,U* Expected)
+    {return Slot.IsResolved()&&Slot.GetHandle()==TObjectPtr<T>(Expected).GetHandle();}
+    template<class T> bool HoldSlot(const TObjectPtr<T>& Slot,T*& Out)
+    {
+        Out=nullptr;if(!Slot.IsResolved())return false;if(SlotSame(Slot,static_cast<T*>(nullptr)))return true;
+        UObject* Found=StaticFindObject(nullptr,nullptr,*Slot.GetPathName());
+        if(!Loaded(Found)||!Found->IsA<T>()||!SlotSame(Slot,static_cast<T*>(Found))||!PinSource(Found))return false;
+        Out=static_cast<T*>(Found);return true;
+    }
+    bool ObjectSuper(UClass* Class,UClass*& Out) const
+    {
+        Out=nullptr;if(!Loaded(Class))return false;
+        const FObjectProperty* P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
+        if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()||P->GetOwnerProperty()!=P||P->ArrayDim!=1
+            ||P->ElementSize!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)
+            ||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()||P->HasSetterOrGetter()||!SlotSame(P->PropertyClass,UStruct::StaticClass()))return false;
+        const auto Slot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(Class));
+        if(!Slot.IsResolved())return false;if(SlotSame(Slot,static_cast<UObject*>(nullptr)))return true;
+        auto* Found=StaticFindObject(nullptr,nullptr,*Slot.GetPathName());
+        if(!Loaded(Found)||!Found->IsA<UClass>()||!SlotSame(Slot,Found))return false;Out=static_cast<UClass*>(Found);return true;
+    }
+    bool PackageExportsCurrent(const FSourcePackage& Pack)
+    {
+        if(!Raw())return false;TArray<UObject*> Now;GetObjectsWithPackage(Pack.Package.Get(),Now,EGetObjectsFlags::IncludeNestedObjects);
+        if(!Raw()||Now.Num()!=Pack.Exports.Num())return Stop(TEXT("blackboard_generated_source_exports_changed"),TEXT("Readonly source package export inventory changed across a source SDK callback; no next observer/writer/save."));
+        for(UObject* O:Pack.Exports)if(!Now.Contains(O))return Stop(TEXT("blackboard_generated_source_exports_changed"),TEXT("Original strongly held source export left its captured package."));
+        return true;
+    }
+    bool BindObjectRole(UBlueprint* B,UClass* G,FSourceRole& Q)
+    {
+        Q.BP=B;Q.Generated=G;Q.ObjectRoot=true;UClass* ActualGenerated=nullptr;UClass* ActualParent=nullptr;UObject* SkeletonGenerator=nullptr;
+        if(!HoldSlot(B->GeneratedClass.GetGCPtr(),ActualGenerated)||ActualGenerated!=G||!HoldSlot(B->SkeletonGeneratedClass.GetGCPtr(),Q.Skeleton)||!Loaded(Q.Skeleton)
+            ||!HoldSlot(B->ParentClass.GetGCPtr(),Q.Parent)||!Loaded(Q.Parent)||!HoldSlot(B->SimpleConstructionScript,Q.SCS)
+            ||!HoldSlot(G->ClassDefaultObject,Q.CDO)||!HoldSlot(Q.Skeleton->ClassDefaultObject,Q.SkeletonCDO)||!HoldSlot(Q.Skeleton->ClassGeneratedBy,SkeletonGenerator)||SkeletonGenerator!=B
+            ||!ObjectSuper(G,ActualParent)||ActualParent!=Q.Parent||!ObjectSuper(Q.Skeleton,Q.SkeletonParent)||(Q.SkeletonParent&&!PinSource(Q.SkeletonParent)))
+            return Stop(TEXT("blackboard_generated_object_roles_pending"),TEXT("Existing resolved generated/skeleton/actual superclass and nullable CDO/SCS roles required; none are created."));
+        UPackage* P=G->GetPackage();
+        if(Q.Skeleton->GetClass()!=UBlueprintGeneratedClass::StaticClass()||Q.Skeleton->GetOuter()!=P
+            ||(Q.CDO&&(Q.CDO->GetClass()!=G||Q.CDO->GetPackage()!=P||!Q.CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)))
+            ||(Q.SkeletonCDO&&(Q.SkeletonCDO->GetClass()!=Q.Skeleton||Q.SkeletonCDO->GetPackage()!=P||!Q.SkeletonCDO->HasAnyFlags(RF_ClassDefaultObject))))
+            return Stop(TEXT("blackboard_generated_source_defaults_invalid"),TEXT("Pure Object defaults must be absent or current live native default roles in the source package. Actual Outer is held, not assumed equal to package."));
+        Q.Status=B->Status;Q.Flags=G->GetClassFlags();Q.SkeletonFlags=Q.Skeleton->GetClassFlags();return true;
+    }
+    bool ObjectRoleCurrent(const FSourceRole& Q)
+    {
+        UClass* Parent=nullptr;UClass* SkeletonParent=nullptr;
+        return SlotSame(Q.BP->GeneratedClass.GetGCPtr(),Q.Generated)&&SlotSame(Q.BP->SkeletonGeneratedClass.GetGCPtr(),Q.Skeleton)
+            &&SlotSame(Q.BP->ParentClass.GetGCPtr(),Q.Parent)&&SlotSame(Q.BP->SimpleConstructionScript,Q.SCS)&&SlotSame(Q.Generated->ClassGeneratedBy,Q.BP)&&SlotSame(Q.Skeleton->ClassGeneratedBy,Q.BP)
+            &&SlotSame(Q.Generated->ClassDefaultObject,Q.CDO)&&SlotSame(Q.Skeleton->ClassDefaultObject,Q.SkeletonCDO)
+            &&ObjectSuper(Q.Generated,Parent)&&Parent==Q.Parent&&ObjectSuper(Q.Skeleton,SkeletonParent)&&SkeletonParent==Q.SkeletonParent
+            &&Q.BP->Status==Q.Status&&Q.BP->BlueprintType==BPTYPE_Normal&&!Q.BP->bBeingCompiled&&!Q.BP->bQueuedForCompilation&&!Q.BP->bSuppressStructurallyModified&&!Q.BP->bIsRegeneratingOnLoad
+            &&Q.Generated->GetClassFlags()==Q.Flags&&Q.Skeleton->GetClassFlags()==Q.SkeletonFlags&&!Q.Generated->GetPackage()->IsDirty();
     }
     bool ReadRows(const TArray<FBlackboardEntry>& Entries,TArray<FRow>& Out)
     {
@@ -345,8 +408,18 @@ struct FGeneratedBaseScope
         for(const auto& I:SourceObjects){UObject* O=I.Object.Get();if(!Loaded(O)||!Loaded(I.Class)||(I.Outer&&!Loaded(I.Outer))||!Loaded(I.Package)||O->GetClass()!=I.Class||O->GetOuter()!=I.Outer||O->GetPackage()!=I.Package||O->GetFlags()!=I.Flags||!O->GetPathName().Equals(I.Path,ESearchCase::CaseSensitive))
             {return Stop(TEXT("blackboard_generated_source_identity_changed"),TEXT("Captured readonly source identity changed; stale objects are not observed."));}}
         for(const auto& Q:Roles)
-        {if(Q.BP->GeneratedClass!=Q.Generated||Q.BP->SkeletonGeneratedClass!=Q.Skeleton||Q.BP->ParentClass!=Q.Parent||Q.BP->SimpleConstructionScript!=Q.SCS||Q.BP->Status!=Q.Status||Q.BP->BlueprintType!=BPTYPE_Normal||Q.BP->bBeingCompiled||Q.BP->bQueuedForCompilation||Q.BP->bSuppressStructurallyModified||Q.BP->bIsRegeneratingOnLoad||Q.Generated->ClassGeneratedBy!=Q.BP||Q.Generated->GetSuperClass()!=Q.Parent||Q.Generated->GetDefaultObject(false)!=Q.CDO||Q.Generated->GetClassFlags()!=Q.Flags||Q.Skeleton->GetDefaultObject(false)!=Q.SkeletonCDO||Q.Skeleton->GetClassFlags()!=Q.SkeletonFlags||Q.Generated->GetPackage()->IsDirty())
+        {if(Q.ObjectRoot){if(!ObjectRoleCurrent(Q))return Stop(TEXT("blackboard_generated_object_role_changed"),TEXT("Pure Object source generated/skeleton/actual parent/nullable CDO/SCS roles changed; no next SDK or retry."));continue;}if(Q.BP->GeneratedClass!=Q.Generated||Q.BP->SkeletonGeneratedClass!=Q.Skeleton||Q.BP->ParentClass!=Q.Parent||Q.BP->SimpleConstructionScript!=Q.SCS||Q.BP->Status!=Q.Status||Q.BP->BlueprintType!=BPTYPE_Normal||Q.BP->bBeingCompiled||Q.BP->bQueuedForCompilation||Q.BP->bSuppressStructurallyModified||Q.BP->bIsRegeneratingOnLoad||Q.Generated->ClassGeneratedBy!=Q.BP||Q.Generated->GetSuperClass()!=Q.Parent||Q.Generated->GetDefaultObject(false)!=Q.CDO||Q.Generated->GetClassFlags()!=Q.Flags||Q.Skeleton->GetDefaultObject(false)!=Q.SkeletonCDO||Q.Skeleton->GetClassFlags()!=Q.SkeletonFlags||Q.Generated->GetPackage()->IsDirty())
             {return Stop(TEXT("blackboard_generated_class_role_changed"),TEXT("Current source Blueprint/generated/skeleton/CDO/SCS role or idle saved state changed."));}}
+        bool HasObjectRoles=false;for(const auto& Q:Roles)HasObjectRoles|=Q.ObjectRoot;
+        if(HasObjectRoles)
+        {
+            if(!Context())return false;
+            // Existing Actor role getters above may track reads. Reclose only
+            // callback-free identity and Object slots before any next SDK call.
+            for(const auto& I:SourceObjects){UObject* O=I.Object.Get();if(!Loaded(O)||!Loaded(I.Class)||(I.Outer&&!Loaded(I.Outer))||!Loaded(I.Package)||O->GetClass()!=I.Class||O->GetOuter()!=I.Outer||O->GetPackage()!=I.Package||O->GetFlags()!=I.Flags||!O->GetPathName().Equals(I.Path,ESearchCase::CaseSensitive))return Stop(TEXT("blackboard_generated_source_identity_changed"),TEXT("Readonly source identity changed during another source-role observer."));}
+            for(const auto& Pack:Packages)if(!Loaded(Pack.Package.Get())||Pack.Package->GetPackageFlags()!=Pack.Flags||Pack.Package->IsDirty())return Stop(TEXT("blackboard_generated_source_package_changed"),TEXT("Readonly source package changed during another source-role observer."));
+            for(const auto& Q:Roles)if(Q.ObjectRoot&&!ObjectRoleCurrent(Q))return Stop(TEXT("blackboard_generated_object_role_changed"),TEXT("Original pure Object slots changed during another source-role observer; no next SDK or retry."));
+        }
         return true;
     }
     bool SnapshotFields(TArray<FString>& Out)
@@ -387,7 +460,7 @@ struct FGeneratedBaseScope
         TArray<UClass*> Bases;for(auto& O:Owners){auto V=MakeShared<FJsonObject>();if(!Properties(O.Board.Get(),{TEXT("Keys"),TEXT("ParentKeys"),TEXT("bHasSynchronizedKeys"),TEXT("FirstKeyID")},V)||!FillRowFields(O.Own)||!FillRowFields(O.Inherited)){return false;}O.Fields=Text(V);for(const auto* Rows:{&O.Own,&O.Inherited}){for(const auto& Q:*Rows){if(Q.Base&&!Q.Base->HasAnyClassFlags(CLASS_Native)){Bases.AddUnique(Q.Base);}}}}
         auto Native=MakeShared<FJsonObject>();if(!Sources(Native)){return Stop(TEXT("blackboard_generated_native_sources_invalid"),TEXT("Existing native defaults/config proof is incomplete."));}NativeSnapshot=Native;NativeFields=Text(Native);
         for(auto* C:Bases){if(!BindSource(C)){return false;}}Preparing=false;
-        R.Data->SetStringField(TEXT("generated_base_scope"),TEXT("Exact saved-clean current Actor Blueprint class references only; source package exports/fields/disk and current generated/skeleton/CDO/SCS roles stay held through final removal/save. No explicit source compile/save/CDO creation or runtime AI execution."));
+        R.Data->SetStringField(TEXT("generated_base_scope"),TEXT("Exact saved-clean Actor or pure UObject-root Blueprint references; source package exports/fields/disk and generated/skeleton/actual parent/nullable existing CDO/SCS roles stay held. Object-root usage validation is pending; no explicit source compile/save/CDO creation or runtime AI execution."));
         return Full();
     }
     bool AfterBaseLoad(UClass* C,const FString& RequestedPath)
@@ -421,30 +494,59 @@ struct FGeneratedBaseScope
     bool BindSource(UClass* C)
     {
         for(const auto& P:Proofs){if(P.Class.Get()==C){return Full();}}
-        if(!Raw()||!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->IsChildOf(AActor::StaticClass())){return Stop(TEXT("blackboard_generated_actor_class_required"),TEXT("Only an exact current generated Actor class extends BaseClass support."));}
-        TGuardValue<bool> Enroll(Preparing,true);TSet<UClass*> Seen;
-        for(UClass* G=C;G&&!G->HasAnyClassFlags(CLASS_Native);G=G->GetSuperClass())
+        if(!Raw()||!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()){return Stop(TEXT("blackboard_generated_actor_class_required"),TEXT("Only exact current generated Actor or pure UObject-root classes extend BaseClass support."));}
+        const TStrongObjectPtr<UClass> SelectedSource(C);const bool ObjectRoot=!C->IsChildOf(AActor::StaticClass());if(!Raw())return false;
+        TGuardValue<bool> Enroll(Preparing,true);TSet<UClass*> Seen;UClass* G=C;
+        for(;G&&!G->HasAnyClassFlags(CLASS_Native);)
         {
             if(!Raw()||Seen.Contains(G)||Seen.Num()>=16){return Stop(TEXT("blackboard_generated_source_chain_invalid"),TEXT("Bounded current generated Actor ancestry required."));}Seen.Add(G);
-            UBlueprint* BP=Cast<UBlueprint>(G->ClassGeneratedBy);UPackage* P=G->GetPackage();
-            if(!Loaded(BP)||!PinSource(G)||!PinSource(BP)||!PinSource(P)){return false;}UClass* Authority=G->GetAuthoritativeClass();if(!Raw()){return false;}
-            if(!Loaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()||!Loaded(P)||P==Target->GetPackage()||!P->GetName().StartsWith(TEXT("/Game/"))||P->IsDirty()||P->HasAnyPackageFlags(PKG_CompiledIn|PKG_PlayInEditor|PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly)||BP->GetOuter()!=P||G->GetOuter()!=P||BP->GeneratedClass!=G||G->GetClass()!=UBlueprintGeneratedClass::StaticClass()||Authority!=G
+            UObject* Generator=nullptr;if(ObjectRoot&&!HoldSlot(G->ClassGeneratedBy,Generator))return Stop(TEXT("blackboard_generated_object_roles_pending"),TEXT("Resolved current generator required before source inspection."));
+            UBlueprint* BP=ObjectRoot?Cast<UBlueprint>(Generator):Cast<UBlueprint>(G->ClassGeneratedBy);UPackage* P=G->GetPackage();
+            if(!Loaded(BP)||!PinSource(G)||!PinSource(BP)||!PinSource(P)){return false;}FSourceRole Q;FSourcePackage Pack;
+            if(ObjectRoot)
+            {
+                if(!BindObjectRole(BP,G,Q))return false;
+                Pack.Package.Reset(P);Pack.Flags=P->GetPackageFlags();GetObjectsWithPackage(P,Pack.Exports,EGetObjectsFlags::IncludeNestedObjects);
+                if(Pack.Exports.Num()>1024||!PinSource(P))return false;for(auto* O:Pack.Exports)if(!PinSource(O))return false;
+                if(!ObjectRoleCurrent(Q)||!PackageExportsCurrent(Pack))return Stop(TEXT("blackboard_generated_object_role_changed"),TEXT("Original pure Object roles/exports changed before authoritative-class observation."));
+            }
+            UClass* Authority=ObjectRoot?G:G->GetAuthoritativeClass();if(!Raw()||(ObjectRoot&&(!ObjectRoleCurrent(Q)||!PackageExportsCurrent(Pack)))){return Stop(TEXT("blackboard_generated_object_role_changed"),TEXT("Original pure Object roles changed across the authoritative-class SDK observation."));}
+            if(!Loaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()||!Loaded(P)||P==Target->GetPackage()||!P->GetName().StartsWith(TEXT("/Game/"))||P->IsDirty()||P->HasAnyPackageFlags(PKG_CompiledIn|PKG_PlayInEditor|PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly)||BP->GetOuter()!=P||G->GetOuter()!=P||(ObjectRoot?!SlotSame(BP->GeneratedClass.GetGCPtr(),G):BP->GeneratedClass!=G)||G->GetClass()!=UBlueprintGeneratedClass::StaticClass()||Authority!=G
                 ||G->HasAnyClassFlags(CLASS_Native|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||G->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)
                 ||BP->BlueprintType!=BPTYPE_Normal||(BP->Status!=BS_UpToDate&&BP->Status!=BS_UpToDateWithWarnings)||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bSuppressStructurallyModified||BP->bIsRegeneratingOnLoad)
-            {return Stop(TEXT("blackboard_generated_source_not_ready"),TEXT("Exact current saved-clean normal Actor Blueprint with no active/queued regeneration required."));}
-            bool Already=false;for(const auto& Q:Roles){Already|=Q.BP==BP;}if(Already){continue;}
+            {return Stop(TEXT("blackboard_generated_source_not_ready"),TEXT("Exact current saved-clean normal Actor or pure UObject-root Blueprint with no active/queued regeneration required."));}
+            bool Already=false;UClass* ExistingParent=nullptr;for(const auto& ExistingRole:Roles){if(ExistingRole.BP==BP){Already=true;ExistingParent=ExistingRole.Parent;}}if(Already){G=ExistingParent;continue;}
+            if(ObjectRoot){if(!ObjectRoleCurrent(Q))return Stop(TEXT("blackboard_generated_object_role_changed"),TEXT("Original pure Object roles changed during source admission."));}else
+            {
             UClass* S=BP->SkeletonGeneratedClass;UObject* D=G->GetDefaultObject(false);UObject* SD=Loaded(S)?S->GetDefaultObject(false):nullptr;
             if(!Loaded(S)||S->GetClass()!=UBlueprintGeneratedClass::StaticClass()||S->ClassGeneratedBy!=BP||S->GetOuter()!=P||!Loaded(D)||D->GetClass()!=G||D->GetOuter()!=P||!D->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)||(SD&&(!Loaded(SD)||SD->GetClass()!=S||SD->GetOuter()!=P||!SD->HasAnyFlags(RF_ClassDefaultObject)))||!Loaded(BP->ParentClass)||!Loaded(BP->SimpleConstructionScript))
             {return Stop(TEXT("blackboard_generated_source_defaults_invalid"),TEXT("Existing current generated/skeleton/default/SCS roles required; no default or asset creation."));}
-            FSourceRole Q;Q.BP=BP;Q.Generated=G;Q.Skeleton=S;Q.Parent=BP->ParentClass;Q.CDO=D;Q.SkeletonCDO=SD;Q.SCS=BP->SimpleConstructionScript;Q.Status=BP->Status;Q.Flags=G->GetClassFlags();Q.SkeletonFlags=S->GetClassFlags();
-            FSourcePackage Pack;Pack.Package.Reset(P);Pack.Flags=P->GetPackageFlags();GetObjectsWithPackage(P,Pack.Exports,EGetObjectsFlags::IncludeNestedObjects);if(Pack.Exports.Num()>1024||!PinSource(P)){return false;}for(auto* O:Pack.Exports){if(!PinSource(O)){return false;}}
-            if(!PinSource(BP)||!PinSource(G)||!PinSource(S)||!PinSource(D)||(SD&&!PinSource(SD))||!PinSource(Q.SCS)||!PinSource(Q.Parent)){return false;}
-            auto File=MakeShared<FJsonObject>();if(!Disk(P->GetName(),File)||!File->GetBoolField(TEXT("exists"))){return Stop(TEXT("blackboard_generated_source_not_saved"),TEXT("Existing persisted source package required."));}Pack.DiskText=Text(File);Packages.Add(MoveTemp(Pack));Roles.Add(Q);
+            Q.BP=BP;Q.Generated=G;Q.Skeleton=S;Q.Parent=BP->ParentClass;Q.CDO=D;Q.SkeletonCDO=SD;Q.SCS=BP->SimpleConstructionScript;Q.Status=BP->Status;Q.Flags=G->GetClassFlags();Q.SkeletonFlags=S->GetClassFlags();
+            }
+            if(!ObjectRoot){Pack.Package.Reset(P);Pack.Flags=P->GetPackageFlags();GetObjectsWithPackage(P,Pack.Exports,EGetObjectsFlags::IncludeNestedObjects);if(Pack.Exports.Num()>1024||!PinSource(P)){return false;}for(auto* O:Pack.Exports){if(!PinSource(O)){return false;}}}
+            if(!PinSource(BP)||!PinSource(G)||!PinSource(Q.Skeleton)||(Q.CDO&&!PinSource(Q.CDO))||(Q.SkeletonCDO&&!PinSource(Q.SkeletonCDO))||(Q.SCS&&!PinSource(Q.SCS))||!PinSource(Q.Parent)){return false;}
+            auto File=MakeShared<FJsonObject>();if(!Disk(P->GetName(),File)||!File->GetBoolField(TEXT("exists"))){return Stop(TEXT("blackboard_generated_source_not_saved"),TEXT("Existing persisted source package required."));}Pack.DiskText=Text(File);Packages.Add(MoveTemp(Pack));Roles.Add(Q);G=Q.Parent;
         }
+        if(ObjectRoot&&G!=UObject::StaticClass())return Stop(TEXT("blackboard_generated_object_native_root_pending"),TEXT("Only generated hierarchy ending at native CoreUObject.Object is admitted; Component/Widget/DataAsset/custom native roots remain incomplete."));
         TArray<FString> Before;if(!SnapshotFields(Before)){return false;}for(int32 I=0;I<SourceFields.Num();++I){if(!Before.IsValidIndex(I)||!SourceFields[I].Equals(Before[I],ESearchCase::CaseSensitive)){return Stop(TEXT("blackboard_generated_prior_source_changed"),TEXT("Previously admitted readonly source changed before another source was enrolled."));}}
-        const auto Audit=GeneratedComponent::InspectSavedActorParent(C);if(!Raw()){return false;}
-        TArray<FString> After;if(!Audit->GetBoolField(TEXT("success"))||!SnapshotFields(After)||!FieldsEqual(Before,After)){return Stop(TEXT("blackboard_generated_source_audit_failed"),TEXT("Existing saved Actor dependency/source/CDO audit failed or changed its source; no declaration/save."));}
-        SourceFields=MoveTemp(After);FProof P;P.Class.Reset(C);P.Receipt->SetStringField(TEXT("kind"),TEXT("saved_current_actor_blueprint"));P.Receipt->SetStringField(TEXT("class_path"),C->GetPathName());P.Receipt->SetObjectField(TEXT("readonly_saved_actor_audit"),Audit);Proofs.Add(MoveTemp(P));R.Data->SetBoolField(TEXT("custom_base_classes_supported"),true);
+        if(ObjectRoot)
+        {
+            // The first source fields/roles/exports predate every authoritative
+            // getter, including getters for generated ancestors. Returned state
+            // never becomes a replacement baseline after a tracking callback.
+            for(const auto& Role:Roles)if(Role.ObjectRoot)
+            {
+                if(!Raw())return false;UClass* Authority=Role.Generated->GetAuthoritativeClass();
+                if(!Raw()||Authority!=Role.Generated)return Stop(TEXT("blackboard_generated_object_authority_changed"),TEXT("Authoritative-class observer returned outside the original held pure Object roles."));
+                for(const auto& Pack:Packages)if(!PackageExportsCurrent(Pack))return false;
+                TArray<FString> AfterAuthority;if(!SnapshotFields(AfterAuthority)||!FieldsEqual(Before,AfterAuthority))return Stop(TEXT("blackboard_generated_source_fields_changed"),TEXT("Readonly source fields changed across authoritative-class observation; first pre-call values remain authoritative."));
+            }
+            for(const auto& Pack:Packages)if(!PackageExportsCurrent(Pack))return false;
+        }
+        const auto Audit=ObjectRoot?GeneratedComponent::InspectSavedObjectParent(C):GeneratedComponent::InspectSavedActorParent(C);if(!Raw()){return false;}
+        if(ObjectRoot){for(const auto& Pack:Packages)if(!PackageExportsCurrent(Pack))return false;}
+        TArray<FString> After;if(!Audit->GetBoolField(TEXT("success"))||!SnapshotFields(After)||!FieldsEqual(Before,After)){return Stop(TEXT("blackboard_generated_source_audit_failed"),TEXT("Existing saved Actor/pure Object dependency/source/nullable-default audit failed or changed its source; no declaration/save."));}
+        SourceFields=MoveTemp(After);FProof P;P.Class.Reset(C);P.Receipt->SetStringField(TEXT("kind"),ObjectRoot?TEXT("saved_current_object_blueprint"):TEXT("saved_current_actor_blueprint"));P.Receipt->SetStringField(TEXT("class_path"),C->GetPathName());P.Receipt->SetObjectField(ObjectRoot?TEXT("readonly_saved_object_audit"):TEXT("readonly_saved_actor_audit"),Audit);Proofs.Add(MoveTemp(P));R.Data->SetBoolField(TEXT("custom_base_classes_supported"),true);
         auto Summary=MakeShared<FJsonObject>();Summary->SetNumberField(TEXT("held_source_objects"),SourceObjects.Num());Summary->SetNumberField(TEXT("held_source_packages"),Packages.Num());Summary->SetBoolField(TEXT("explicit_source_compile"),false);Summary->SetBoolField(TEXT("explicit_source_save"),false);Summary->SetBoolField(TEXT("explicit_cdo_creation"),false);R.Data->SetObjectField(TEXT("generated_source_protection"),Summary);
         return Raw();
     }
@@ -866,7 +968,7 @@ FString AddKey(const FString& BlackboardPath, const FString& KeyName, const FStr
         }
         if(Loaded(BC)&&!BC->HasAnyClassFlags(CLASS_Native)&&Generated.Active){if(!Generated.BindSource(BC)||!GeneratedBoundary()){return Encode(R);}}
         if (!Loaded(BC) || BC->GetPathName()!=BasePath || !BaseSource(BC, ReferenceBefore))
-        { Fail(R, TEXT("blackboard_base_class_unsupported"), TEXT("Requires an exact native BaseClass or the admitted saved-clean current Actor Blueprint class. No key allocated; source load effects and earlier refusal ordering differ from UE56.")); return Encode(R); }
+        { Fail(R, TEXT("blackboard_base_class_unsupported"), TEXT("Requires an exact native BaseClass or admitted saved-clean Actor/pure UObject-root Blueprint class. Other generated native roots remain incomplete. No key allocated; source load effects and earlier refusal ordering differ from UE56.")); return Encode(R); }
     }
     else if (Type == TEXT("enum"))
     {

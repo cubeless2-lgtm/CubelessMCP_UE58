@@ -19,3 +19,15 @@ namespace Cubeless::Operations
 {
 FString ConfigureBlueprintPCGTemplate(const FString& ParamsJson);
 }
+
+namespace Cubeless::Operations
+{
+FString SetBlueprintStaticMeshPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& AssetsJson);
+}
+
+namespace Cubeless::Operations
+{
+FString SetBlueprintComponentPhysicsRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertiesJson);
+
+FString AddBlueprintComponentRaw(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName, const FString& TransformJson, const FString& ParentComponent);
+}

@@ -114,3 +114,72 @@ def set_blueprint_custom_event_metadata(blueprint_name, custom_event_name="", de
 def set_blueprint_custom_event_metadata_action(result, blueprint_name, custom_event_name="", description="", node_id="", event_name="", tooltip="",
         call_in_editor=None, set_node_comment=True, compile=True, save=False, checkpoint_callback=None):
     _action(result,_arguments(blueprint_name,custom_event_name,description,node_id,event_name,tooltip,call_in_editor,set_node_comment,compile,save),checkpoint_callback)
+
+
+
+def _raw_batch_params(raw):
+    """Original CPP metadata request, preserving presence before Named defaults.
+
+    Only scalar SDK conversion occurs here; no Blueprint load, edit or journal.
+    """
+    from cubeless_mcp_ue58.compatibility.ue58.json_value import number_to_legacy_string, try_get_legacy_bool
+    if type(raw) is not dict:
+        raise OperationError("custom_event_metadata_raw_context_invalid", "Original raw metadata object required")
+    absent = object()
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def flag(key, default):
+        if key not in raw:
+            return default
+        read, value = try_get_legacy_bool(raw[key])
+        return value if read else False  # Original HasField/GetBoolField.
+
+    blueprint_name = string(raw.get("blueprint_name", absent))
+    if blueprint_name is absent:
+        raise OperationError("custom_event_metadata_raw_blueprint_required", "Missing 'blueprint_name' parameter")
+    name = string(raw.get("custom_event_name", absent), "")
+    if not name:
+        name = string(raw.get("event_name", absent), "")
+    node_id = string(raw.get("node_id", absent), "")
+    if not name.strip() and not node_id.strip():
+        raise OperationError("missing_custom_event_identifier", "custom_event_name or node_id is required")
+    description = absent
+    for key in ("description", "tooltip", "comment"):
+        description = string(raw.get(key, absent))
+        if description is not absent:
+            break  # Empty string is a successful request to clear authored text.
+    has_description = description is not absent
+    if not has_description and "call_in_editor" not in raw:
+        raise OperationError("custom_event_metadata_raw_value_required", "Missing description, tooltip, comment or call_in_editor")
+    return {"blueprint_name": blueprint_name, "custom_event_name": name,
+        "description": description if has_description else "", "node_id": node_id, "event_name": "", "tooltip": "",
+        "call_in_editor": flag("call_in_editor", None), "set_node_comment": flag("set_node_comment", True),
+        "compile": flag("compile", has_description), "save": flag("save", False)}, has_description
+
+
+def _raw_batch_action(result, command, arguments, checkpoint_callback=None):
+    """Private raw-row presence carrier; public Named bool/null stays unchanged."""
+    raw = command.get("legacy_original_params") if type(command) is dict else None
+    if (type(command) is not dict or command.get("type") != "CubelessBlueprintGraphTools.set_blueprint_custom_event_metadata"
+            or command.get("legacy_original_command") != IDENTITY
+            or command.get("legacy_blueprint_raw_metadata_presence") is not True
+            or type(raw) is not dict or type(arguments) is not dict
+            or type(command.get("params")) is not dict or arguments != command["params"]):
+        raise OperationError("custom_event_metadata_raw_context_invalid", "Only the normalized original metadata row may use this private carrier; no Native dispatch")
+    expected, has_description = _raw_batch_params(raw)
+    if arguments != expected:
+        raise OperationError("custom_event_metadata_raw_context_invalid", "Original metadata presence and normalized arguments differ; no Native dispatch")
+    prepared = _arguments(**arguments)
+    prepared["call_in_editor_json"] = json.dumps({"cubeless_raw_metadata_presence_v1": True,
+        "description_present": has_description, "call_in_editor": arguments["call_in_editor"]}, separators=(",", ":"))
+    result["data"].update(legacy_raw_metadata_presence=True, raw_description_present=has_description,
+        raw_call_in_editor_present="call_in_editor" in raw, public_named_metadata_contract_changed=False)
+    _action(result, prepared, checkpoint_callback)

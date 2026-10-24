@@ -43,3 +43,9 @@ FString UCubelessPawnLibrary::PreparePawnPropertiesToolset(UClass* ToolsetClass)
     Report->SetStringField(TEXT("error_code"), Error.IsEmpty() ? FString() : TEXT("pawn_properties_preparation_failed")); Report->SetStringField(TEXT("error"), Error);
     FString Json; FJsonSerializer::Serialize(Report, TJsonWriterFactory<>::Create(&Json)); return Json;
 }
+
+FString UCubelessPawnLibrary::SetPawnPropertiesRaw(const FString& Path, const FString& ParamsJson)
+{
+    return Cubeless::Operations::EncodeVariableResult(
+        Cubeless::UE58::Pawn::SetPropertiesRaw(Path, ParamsJson), TEXT("set_pawn_properties"));
+}

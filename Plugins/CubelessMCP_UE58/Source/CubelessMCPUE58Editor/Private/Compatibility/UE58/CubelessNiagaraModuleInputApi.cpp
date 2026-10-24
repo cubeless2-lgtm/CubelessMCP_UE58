@@ -309,7 +309,14 @@ TSharedRef<FJsonObject> Handles(UNiagaraSystem* S)
     }
     J->SetArrayField(TEXT("handles"), Rows); return J;
 }
-struct FProtectedGraph { UNiagaraScriptSource* Source = nullptr; UNiagaraGraph* Graph = nullptr; FSnapshot Before; TSharedRef<FJsonObject> Parameters = MakeShared<FJsonObject>(); bool Dirty = false; };
+struct FProtectedGraph { UNiagaraScriptSource* Source = nullptr; UNiagaraGraph* Graph = nullptr; FSnapshot Before; TSharedRef<FJsonObject> Parameters = MakeShared<FJsonObject>(); bool Dirty = false, InheritedRole = false; };
+struct FInheritedEmitterRole
+{
+    TStrongObjectPtr<UNiagaraEmitter> Emitter;TStrongObjectPtr<UClass> Class;TStrongObjectPtr<UObject> Outer;TStrongObjectPtr<UPackage> Package;
+    TStrongObjectPtr<UNiagaraScriptSource> Source;TStrongObjectPtr<UNiagaraGraph> Graph;
+    TStrongObjectPtr<UClass> SourceClass;TStrongObjectPtr<UObject> SourceOuter;TStrongObjectPtr<UPackage> SourcePackage;FString SourcePath;
+    FGuid Version;FVersionedNiagaraEmitterData* Data=nullptr;FVersionedNiagaraEmitter Parent,LastMerge;FString PathName;bool Ready=false;
+};
 struct FContext
 {
     UNiagaraSystem* System = nullptr; FVersionedNiagaraEmitter Emitter; FVersionedNiagaraEmitterData* Data = nullptr;
@@ -323,6 +330,10 @@ struct FContext
     FString EmitterName, ModuleName; ENiagaraScriptUsage Usage = ENiagaraScriptUsage::Function;
     FSnapshot Before; TSharedRef<FJsonObject> UsersBefore = MakeShared<FJsonObject>(), HandlesBefore = MakeShared<FJsonObject>(), ParametersBefore = MakeShared<FJsonObject>();
     TArray<FProtectedGraph> Protected; bool Dirty = false;
+    TArray<TUniquePtr<FInheritedEmitterRole>> InheritedRoles;TStrongObjectPtr<UNiagaraEmitter> InheritedTarget;
+    TStrongObjectPtr<UNiagaraScriptSource> InheritedLocalSource;TStrongObjectPtr<UNiagaraGraph> InheritedLocalGraph;TStrongObjectPtr<UNiagaraNodeFunctionCall> InheritedLocalModule;
+    TArray<TStrongObjectPtr<UNiagaraEmitter>> InheritedSlotHolds;
+    FVersionedNiagaraEmitter InitialParent,InitialLastMerge;bool InheritedProfile=false,InheritedLost=false;
 };
 void Initialize(FResult& R, const FString& SystemPath, const FString& InputName, bool bSave)
 {
@@ -359,6 +370,80 @@ bool Protect(FResult& R, FContext& C, UNiagaraScriptSource* Source)
     if (!P.Before.bComplete || !Complete) { return Fail(R, TEXT("niagara_source_observation_incomplete"), TEXT("Protected source pin/link/parameter observation is incomplete before dispatch.")); }
     C.Protected.Add(MoveTemp(P)); return true;
 }
+// WH: standard local emitter edits retain readonly Parent and LastMerge roles.
+// LastMerge is often a non-versioned duplicate inside the child emitter/package;
+// no asset flags, common Outer, or stored GUID == version-data GUID is assumed.
+bool InheritedFailure(FResult& R,FContext& C,const TCHAR* Stage,const FString& Object,const TCHAR* Property,const FString& Expected,const FString& Actual)
+{
+    if(!C.InheritedLost){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),Stage);J->SetStringField(TEXT("object"),Object);J->SetStringField(TEXT("property"),Property);J->SetStringField(TEXT("expected"),Expected);J->SetStringField(TEXT("actual"),Actual);R.Data->SetObjectField(TEXT("inherited_source_first_mismatch"),J);}
+    C.InheritedLost=true;R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("outcome_unknown"),true);R.Data->SetBoolField(TEXT("do_not_retry"),true);
+    return Fail(R,TEXT("niagara_inherited_source_changed"),TEXT("Captured inherited emitter/source role changed; actual prefix retained, no next writer/compile/save/retry."));
+}
+bool ParentSlotSame(const FVersionedNiagaraEmitter& A,const FVersionedNiagaraEmitter& B)
+{return A.Emitter.IsResolved()&&B.Emitter.IsResolved()&&A.Emitter.Get()==B.Emitter.Get()&&A.Version==B.Version;}
+bool InheritedCurrent(FResult& R,FContext& C,const TCHAR* Stage)
+{
+    if(!C.InheritedProfile)return true;if(C.InheritedLost)return false;
+    if(!IsEditorGameThread()||IsPlaySessionActive()||IsGarbageCollecting()||UE::IsSavingPackage()||GExitPurge||IsEngineExitRequested()||!Loaded(C.System)||!Loaded(C.InheritedTarget.Get()))return InheritedFailure(R,C,Stage,Path(C.System),TEXT("execution_context"),TEXT("same live idle Editor target"),TEXT("unavailable"));
+    const auto& HandlesNow=C.System->GetEmitterHandles();
+    if(!HandlesNow.IsValidIndex(C.EmitterIndex)||!ParentSlotSame(HandlesNow[C.EmitterIndex].GetInstance(),C.Emitter))return InheritedFailure(R,C,Stage,Path(C.System),TEXT("selected_emitter_handle"),Path(C.InheritedTarget.Get())+TEXT("|")+Guid(C.Emitter.Version),TEXT("changed"));
+    auto* CurrentData=C.InheritedTarget->GetEmitterData(C.Emitter.Version);
+    if(CurrentData!=C.Data||!CurrentData||!CurrentData->GraphSource.IsResolved()||CurrentData->GraphSource.Get()!=C.Source||!ParentSlotSame(CurrentData->VersionedParent,C.InitialParent)||!ParentSlotSame(CurrentData->VersionedParentAtLastMerge,C.InitialLastMerge))return InheritedFailure(R,C,Stage,Path(C.InheritedTarget.Get()),TEXT("selected_version_source_parent_slots"),TEXT("captured public version/source/Parent/LastMerge"),TEXT("changed"));
+    // The selected local writer is held independently of emitter/source slots.
+    // A callback may replace those slots or remove the module from its graph.
+    if(C.InheritedLocalSource.Get()!=C.Source||C.InheritedLocalGraph.Get()!=C.Graph||C.InheritedLocalModule.Get()!=C.Module||!Loaded(C.InheritedLocalSource.Get())||!Loaded(C.InheritedLocalGraph.Get())||!Loaded(C.InheritedLocalModule.Get())||!C.Source->NodeGraph.IsResolved()||C.Source->NodeGraph.Get()!=C.Graph||C.Graph->GetOuter()!=C.Source||C.Module->GetOuter()!=C.Graph||C.Module->GetGraph()!=C.Graph||!C.Graph->Nodes.Contains(C.Module))return InheritedFailure(R,C,Stage,Path(C.InheritedTarget.Get()),TEXT("selected_local_source_graph_module"),TEXT("held Source.NodeGraph and live Module owner/Graph/Nodes membership"),TEXT("changed"));
+    for(const auto& Role:C.InheritedRoles)
+    {
+        const auto& E=*Role;
+        if(!Loaded(E.Emitter.Get())||!Loaded(E.Class.Get())||!Loaded(E.Outer.Get())||!Loaded(E.Package.Get())||E.Emitter->GetClass()!=E.Class.Get()||E.Emitter->GetOuter()!=E.Outer.Get()||E.Emitter->GetOutermost()!=E.Package.Get()||!E.Emitter->GetPathName().Equals(E.PathName,ESearchCase::CaseSensitive))return InheritedFailure(R,C,Stage,E.PathName,TEXT("parent_object_role"),TEXT("held emitter/class/outer/package/path"),TEXT("changed"));
+        // Reacquire via each original stored GUID before dereferencing data.
+        // GetEmitterData intentionally ignores GUID for non-versioned snapshots.
+        auto* D=E.Emitter->GetEmitterData(E.Version);
+        if(!D||D!=E.Data||!D->GraphSource.IsResolved()||D->GraphSource.Get()!=E.Source.Get()||!ParentSlotSame(D->VersionedParent,E.Parent)||!ParentSlotSame(D->VersionedParentAtLastMerge,E.LastMerge)||!Loaded(E.Source.Get())||!E.Source->NodeGraph.IsResolved()||E.Source->NodeGraph.Get()!=E.Graph.Get()||!Loaded(E.SourceClass.Get())||!Loaded(E.SourceOuter.Get())||!Loaded(E.SourcePackage.Get())||E.Source->GetClass()!=E.SourceClass.Get()||E.Source->GetOuter()!=E.SourceOuter.Get()||E.Source->GetOutermost()!=E.SourcePackage.Get()||!E.Source->GetPathName().Equals(E.SourcePath,ESearchCase::CaseSensitive))return InheritedFailure(R,C,Stage,E.PathName,TEXT("parent_version_source_slots"),TEXT("captured getter return/source/Parent/LastMerge"),TEXT("changed"));
+    }
+    for(const auto& P:C.Protected)if(P.InheritedRole)
+    {
+        UNiagaraGraph* G=nullptr;if(!OrdinaryGraph(P.Source,G)||G!=P.Graph)return InheritedFailure(R,C,Stage,Path(P.Source),TEXT("parent_graph_role"),Path(P.Graph),TEXT("changed"));
+        const auto Now=Capture(G);bool Complete=false;const auto Params=GraphParameters(G,Complete);
+        const bool Shared=G->GetOutermost()==C.System->GetOutermost();
+        if(!Now.bComplete||!Complete||!SameGraph(P.Before,Now)||Text(P.Before.Json)!=Text(Now.Json)||Text(P.Parameters)!=Text(Params)||(!Shared&&P.Dirty!=G->GetOutermost()->IsDirty()))return InheritedFailure(R,C,Stage,Path(G),TEXT("readonly_parent_graph"),TEXT("captured authored nodes/pins/links/parameters and external package dirty"),TEXT("changed or incomplete"));
+    }
+    return true;
+}
+bool CaptureInherited(FResult& R,FContext& C)
+{
+    if(!C.Data->VersionedParent.Emitter.IsResolved()||!C.Data->VersionedParentAtLastMerge.Emitter.IsResolved())return Fail(R,TEXT("niagara_inherited_parent_unresolved"),TEXT("Already-resolved nullable Parent/LastMerge slots required; no loader or detach."));
+    C.InitialParent=C.Data->VersionedParent;C.InitialLastMerge=C.Data->VersionedParentAtLastMerge;
+    if(!C.InitialParent.Emitter.Get()&&!C.InitialLastMerge.Emitter.Get())return true;
+    C.InheritedTarget.Reset(C.Emitter.Emitter.Get());
+    if(!Loaded(C.Source)||!Loaded(C.Graph)||!Loaded(C.Module)||!C.Source->NodeGraph.IsResolved()||C.Source->NodeGraph.Get()!=C.Graph||C.Graph->GetOuter()!=C.Source||C.Module->GetOuter()!=C.Graph||C.Module->GetGraph()!=C.Graph||!C.Graph->Nodes.Contains(C.Module))return Fail(R,TEXT("niagara_inherited_local_writer_unavailable"),TEXT("Live selected local Source/Graph/Module ownership and membership required before parent observers."));
+    C.InheritedLocalSource.Reset(C.Source);C.InheritedLocalGraph.Reset(C.Graph);C.InheritedLocalModule.Reset(C.Module);
+    auto HoldSlot=[&](const FVersionedNiagaraEmitter& Slot)->bool
+    {if(!Slot.Emitter.IsResolved())return false;auto* E=Slot.Emitter.Get();if(!E)return true;if(!Loaded(E))return false;C.InheritedSlotHolds.Emplace(E);return true;};
+    if(!HoldSlot(C.InitialParent)||!HoldSlot(C.InitialLastMerge))return Fail(R,TEXT("niagara_inherited_parent_unavailable"),TEXT("Existing nullable parent objects must be live before source observers; no loader."));
+    TFunction<bool(const FVersionedNiagaraEmitter&,int32)> Visit;
+    Visit=[&](const FVersionedNiagaraEmitter& Version,int32 Depth)->bool
+    {
+        if(!Version.Emitter.IsResolved())return Fail(R,TEXT("niagara_inherited_parent_unresolved"),TEXT("No implicit parent loader is dispatched."));auto* E=Version.Emitter.Get();if(!E)return true;
+        if(Depth>32||E==C.InheritedTarget.Get())return Fail(R,TEXT("niagara_inherited_parent_scope_pending"),TEXT("Finite acyclic readonly parent/snapshot closure required; self/cyclic/wider closures remain incomplete."));
+        for(const auto& Existing:C.InheritedRoles)if(Existing->Emitter.Get()==E&&Existing->Version==Version.Version)return Existing->Ready||Fail(R,TEXT("niagara_inherited_parent_cycle_pending"),TEXT("Parent/snapshot closure contains a visiting version; no merge/repair/writer."));
+        if(C.InheritedRoles.Num()>=64||!Loaded(E)||E->GetClass()!=UNiagaraEmitter::StaticClass()||!Loaded(E->GetOuter())||!Loaded(E->GetOutermost()))return Fail(R,TEXT("niagara_inherited_parent_scope_pending"),TEXT("At most64 loaded native emitter/version source roles required."));
+        auto Role=MakeUnique<FInheritedEmitterRole>();auto* V=Role.Get();V->Emitter.Reset(E);V->Class.Reset(E->GetClass());V->Outer.Reset(E->GetOuter());V->Package.Reset(E->GetOutermost());V->Version=Version.Version;V->PathName=E->GetPathName();
+        auto* D=E->GetEmitterData(Version.Version);if(!D||!D->GraphSource.IsResolved()||!D->VersionedParent.Emitter.IsResolved()||!D->VersionedParentAtLastMerge.Emitter.IsResolved())return Fail(R,TEXT("niagara_inherited_parent_data_pending"),TEXT("Stored parent GUID must return loaded data with resolved source/parent slots; nullable LastMerge is allowed."));V->Data=D;V->Parent=D->VersionedParent;V->LastMerge=D->VersionedParentAtLastMerge;
+        if(!HoldSlot(V->Parent)||!HoldSlot(V->LastMerge))return Fail(R,TEXT("niagara_inherited_parent_unavailable"),TEXT("Nested parent/snapshot slots must be live before graph observers."));
+        auto* Source=Cast<UNiagaraScriptSource>(D->GraphSource.Get());UNiagaraGraph* G=nullptr;if(!Loaded(Source)||!Source->NodeGraph.IsResolved()||!OrdinaryGraph(Source,G)||G==C.Graph)return Fail(R,TEXT("niagara_inherited_parent_graph_pending"),TEXT("Loaded ordinary readonly graph distinct from the local writer required; no parent Outer/package/asset-flags restriction is imposed."));
+        if(!Loaded(Source->GetClass())||!Loaded(Source->GetOuter())||!Loaded(Source->GetOutermost()))return Fail(R,TEXT("niagara_inherited_source_unavailable"),TEXT("Live captured source class/outer/package roles required without imposing a particular owner."));
+        V->Source.Reset(Source);V->Graph.Reset(G);V->SourceClass.Reset(Source->GetClass());V->SourceOuter.Reset(Source->GetOuter());V->SourcePackage.Reset(Source->GetOutermost());V->SourcePath=Source->GetPathName();
+        for(const auto& Slot:G->Nodes){if(!Slot.IsResolved())return Fail(R,TEXT("niagara_inherited_source_unavailable"),TEXT("Parent source node slots must already be resolved; no implicit node loader."));UEdGraphNode* N=Slot.Get();if(!Loaded(N))return Fail(R,TEXT("niagara_inherited_source_unavailable"),TEXT("Parent source nodes must be loaded before snapshot."));if(auto* Call=Cast<UNiagaraNodeFunctionCall>(N)){if(!Call->FunctionScript.IsResolved())return Fail(R,TEXT("niagara_inherited_function_source_unresolved"),TEXT("Parent function script slots must already be resolved; no implicit slot loader is admitted."));}}
+        C.InheritedRoles.Add(MoveTemp(Role));
+        if(!Protect(R,C,Source))return false;for(auto& P:C.Protected)if(P.Graph==G)P.InheritedRole=true;
+        if(!Visit(V->Parent,Depth+1)||!Visit(V->LastMerge,Depth+1))return false;V->Ready=true;return true;
+    };
+    if(!Visit(C.InitialParent,0)||!Visit(C.InitialLastMerge,0))return false;
+    C.InheritedProfile=true;R.Data->SetBoolField(TEXT("inherited_local_module_input_supported"),true);R.Data->SetNumberField(TEXT("readonly_parent_version_roles"),C.InheritedRoles.Num());
+    R.Data->SetStringField(TEXT("inherited_source_scope"),TEXT("Local standard emitter graph writer only. Public Parent/LastMerge slots and getter-returned version/source/graph roles are held; readonly authored graph state is compared at Engine boundaries. LastMerge may be nested/non-versioned and share the target package: its package dirty follows the target save/dirty lifecycle, not an immutable source boolean. No detach/merge/load/parent writer, compiled payload/cache equivalence or whole inheritance parity is claimed."));
+    return InheritedCurrent(R,C,TEXT("parent_capture_complete"));
+}
 // Follow only public reciprocal parameter-map outputs; reject cycles and multiple
 // output identities before calling the resolver-bearing exported input utility.
 bool OutputUsage(FResult& R, FContext& C)
@@ -378,6 +463,22 @@ bool OutputUsage(FResult& R, FContext& C)
             UEdGraphNode* Next = Linked->GetOwningNode(); UEdGraphPin* In = nullptr;
             if (!MapPin(Next, EGPD_Input, In) || In != Linked || In->LinkedTo.Num() != 1 || In->LinkedTo[0] != Out ||
                 Seen.Contains(Next)) { return Fail(R, TEXT("niagara_map_chain_invalid"), TEXT("Ambiguous input or cyclic parameter-map chain is unsupported.")); }
+            // A native MapGet consumes the current map as Source but is not a
+            // stack-flow successor. The Engine creates this read side branch
+            // when it links a User/DI value into another module's override.
+            if (ExactNodeClass(Next, TEXT("/Script/NiagaraEditor.NiagaraNodeParameterMapGet")))
+            {
+                UEdGraphPin* ReadMapOutput = nullptr;
+                if (!C.Graph || C.Graph->GetClass() != UNiagaraGraph::StaticClass() ||
+                    Next->GetOuter() != C.Graph || Next->GetGraph() != C.Graph || !C.Graph->Nodes.Contains(Next) ||
+                    In->PinName != TEXT("Source") || !MapPin(Next, EGPD_Output, ReadMapOutput) || ReadMapOutput)
+                { return Fail(R, TEXT("niagara_map_read_branch_invalid"), TEXT("Only an exact own-graph native MapGet Source read leaf without a map output is supported.")); }
+                Seen.Add(Next);
+                if (Seen.Num() > MaxNodes) { return Fail(R, TEXT("niagara_map_traversal_bound"), TEXT("Parameter-map traversal exceeds the bounded graph.")); }
+                double Reads = 0; R.Data->TryGetNumberField(TEXT("parameter_map_read_branches_observed"), Reads);
+                R.Data->SetNumberField(TEXT("parameter_map_read_branches_observed"), Reads + 1);
+                continue;
+            }
             Pending.Add(Next);
         }
     }
@@ -437,8 +538,6 @@ bool Prepare(FResult& R, FContext& C, const FString& SystemPath, const FString& 
         }
     }
     if (!C.Module) { return Fail(R, TEXT("niagara_module_not_found"), TEXT("No matching legacy first-match emitter/function-call selector exists.")); }
-    if (bWrite && (C.Data->VersionedParent.Emitter || C.Data->VersionedParentAtLastMerge.Emitter))
-    { return Fail(R, TEXT("niagara_inherited_emitter_unsupported"), TEXT("Detach the selected local emitter before input authoring; inherited graph merge is outside this finite route.")); }
     C.ModuleScript = C.Module->FunctionScript;
     if (!Loaded(C.ModuleScript) || C.ModuleScript->GetClass() != UNiagaraScript::StaticClass() ||
         !C.ModuleScript->GetScriptData(C.Module->SelectedScriptVersion))
@@ -473,10 +572,12 @@ bool Prepare(FResult& R, FContext& C, const FString& SystemPath, const FString& 
     { const auto* D = H.GetEmitterData(); if (H.GetEmitterMode() != ENiagaraEmitterMode::Standard || !D || !AddOther(D->GraphSource)) { return Fail(R, TEXT("niagara_other_emitter_unobservable"), TEXT("All standard emitter source graphs must be observable for preservation.")); } }
     for (UNiagaraScript* S : {C.System->GetSystemSpawnScript(), C.System->GetSystemUpdateScript()})
     { if (!Loaded(S) || !AddOther(S->GetLatestSource())) { return Fail(R, TEXT("niagara_system_source_unobservable"), TEXT("System script source preservation is incomplete.")); } }
+    if(bWrite&&!CaptureInherited(R,C))return false;
     FCompileConstantResolver Resolver(C.Emitter, C.Usage, C.Module->DebugState);
     TArray<FNiagaraVariable> Inputs; TSet<FNiagaraVariable> Hidden;
     FNiagaraStackGraphUtilities::GetStackFunctionInputs(*C.Module, Inputs, Hidden, Resolver,
         FNiagaraStackGraphUtilities::ENiagaraGetStackFunctionInputPinsOptions::ModuleInputsOnly, true);
+    if(!InheritedCurrent(R,C,TEXT("after_input_enumeration")))return false;
     if (Inputs.Num() > MaxParameters) { return Fail(R, TEXT("niagara_input_bound_exceeded"), TEXT("Resolver input enumeration exceeds the finite bound.")); }
     auto Match = [&](const FNiagaraVariable& V) { FString Short = V.GetName().ToString(); Short.RemoveFromStart(TEXT("Module.")); return V.GetName().ToString().Equals(InputName, ESearchCase::IgnoreCase) || Short.Equals(InputName, ESearchCase::IgnoreCase); };
     int32 Count = 0; for (const auto& V : Inputs) { if (Match(V)) { C.Input = V; ++Count; } }
@@ -703,13 +804,35 @@ bool ObserveProtected(FResult& R, const FContext& C)
     {
         auto Row = MakeShared<FJsonObject>(); const FSnapshot After = Capture(P.Graph);
         bool Complete = false; auto Params = GraphParameters(P.Graph, Complete);
+        // Dirty is one UPackage flag shared by every graph in the target package,
+        // including readonly system-script graphs, not just inherited snapshots.
+        const bool SharedTargetPackage = P.Graph->GetOutermost() == C.System->GetOutermost();
+        const bool DirtyAfter = P.Graph->GetOutermost()->IsDirty();
         const bool Preserved = After.bComplete && Complete && SameGraph(P.Before, After) &&
-            Text(P.Before.Json) == Text(After.Json) && Text(P.Parameters) == Text(Params) && P.Dirty == P.Graph->GetOutermost()->IsDirty() &&
+            Text(P.Before.Json) == Text(After.Json) && Text(P.Parameters) == Text(Params) && (P.Dirty == DirtyAfter || SharedTargetPackage) &&
             Loaded(P.Source) && P.Source->NodeGraph.Get() == P.Graph;
         Row->SetStringField(TEXT("graph_path"), Path(P.Graph)); Row->SetObjectField(TEXT("before"), P.Before.Json);
         Row->SetObjectField(TEXT("after"), After.Json); Row->SetObjectField(TEXT("parameters_before"), P.Parameters); Row->SetObjectField(TEXT("parameters_after"), Params);
-        Row->SetBoolField(TEXT("dirty_before"), P.Dirty); Row->SetBoolField(TEXT("dirty_after"), P.Graph->GetOutermost()->IsDirty());
+        Row->SetBoolField(TEXT("dirty_before"), P.Dirty); Row->SetBoolField(TEXT("dirty_after"), DirtyAfter);
+        Row->SetBoolField(TEXT("inherited_readonly_role"),P.InheritedRole);Row->SetBoolField(TEXT("dirty_shared_with_target_lifecycle"),SharedTargetPackage);
         Row->SetBoolField(TEXT("preserved"), Preserved); Rows.Add(MakeShared<FJsonValueObject>(Row)); All &= Preserved;
+        if (!Preserved && !R.Data->HasField(TEXT("first_protected_source_mismatch")))
+        {
+            auto Mismatch = MakeShared<FJsonObject>();
+            Mismatch->SetStringField(TEXT("object_path"), Path(P.Graph));
+            Mismatch->SetBoolField(TEXT("dirty_shared_with_target_lifecycle"), SharedTargetPackage);
+            if (!After.bComplete || !Complete)
+            { Mismatch->SetStringField(TEXT("property"),TEXT("graph_and_parameter_observation_complete"));Mismatch->SetBoolField(TEXT("expected"),true);Mismatch->SetBoolField(TEXT("actual"),false); }
+            else if (!SameGraph(P.Before, After) || Text(P.Before.Json) != Text(After.Json))
+            { Mismatch->SetStringField(TEXT("property"),TEXT("authored_graph_snapshot"));Mismatch->SetObjectField(TEXT("expected"),P.Before.Json);Mismatch->SetObjectField(TEXT("actual"),After.Json); }
+            else if (Text(P.Parameters) != Text(Params))
+            { Mismatch->SetStringField(TEXT("property"),TEXT("authored_graph_parameters"));Mismatch->SetObjectField(TEXT("expected"),P.Parameters);Mismatch->SetObjectField(TEXT("actual"),Params); }
+            else if (P.Dirty != DirtyAfter && !SharedTargetPackage)
+            { Mismatch->SetStringField(TEXT("object_path"),Path(P.Graph->GetOutermost()));Mismatch->SetStringField(TEXT("property"),TEXT("UPackage.bDirty"));Mismatch->SetBoolField(TEXT("expected"),P.Dirty);Mismatch->SetBoolField(TEXT("actual"),DirtyAfter); }
+            else
+            { Mismatch->SetStringField(TEXT("object_path"),Path(P.Source));Mismatch->SetStringField(TEXT("property"),TEXT("NodeGraph"));Mismatch->SetStringField(TEXT("expected"),Path(P.Graph));Mismatch->SetStringField(TEXT("actual"),Loaded(P.Source)?Path(P.Source->NodeGraph.Get()):TEXT("source_unavailable")); }
+            R.Data->SetObjectField(TEXT("first_protected_source_mismatch"),Mismatch);
+        }
         if (!After.bComplete || !Complete) { R.bChangeStateKnown = false; Fail(R, TEXT("niagara_source_state_unobservable"), TEXT("Actual protected graph/parameter state is incomplete after dispatch; stop without retry.")); }
         else if (!Preserved) { R.bChanged = true; Fail(R, TEXT("niagara_source_changed"), TEXT("A protected module/system/unselected emitter source changed; observed state retained.")); }
     }
@@ -718,6 +841,7 @@ bool ObserveProtected(FResult& R, const FContext& C)
 }
 bool ObserveCommon(FResult& R, FContext& C, FSnapshot& After)
 {
+    if(!InheritedCurrent(R,C,TEXT("observe_common")))return false;
     After = Capture(C.Graph); bool UserComplete = false, ParamsComplete = false;
     auto Users = UserState(C.System, UserComplete); auto Params = GraphParameters(C.Graph, ParamsComplete); auto CurrentHandles = Handles(C.System);
     R.Data->SetObjectField(TEXT("after"), After.Json); R.Data->SetObjectField(TEXT("graph_after"), After.Json);
@@ -828,6 +952,7 @@ void CompleteResult(FResult& R)
 void Finish(FResult& R, FContext& C, const FSnapshot& AfterWrite, bool bSave, bool bCompile, UNiagaraDataInterfaceExport* ExpectedDI = nullptr)
 {
     bool DiskUnknown = false;
+    if(!InheritedCurrent(R,C,TEXT("before_compile_save"))){CompleteResult(R);return;}
     const TSharedPtr<FJsonObject> ParametersAfterWrite = R.Data->HasField(TEXT("graph_parameters_after")) ? R.Data->GetObjectField(TEXT("graph_parameters_after")) : nullptr;
     const TSharedPtr<FJsonObject> DIFieldsAfterWrite = ExpectedDI && R.Data->HasField(TEXT("export_fields_after")) ? R.Data->GetObjectField(TEXT("export_fields_after")) : nullptr;
     if (R.ErrorCode.IsEmpty() && R.bChangeStateKnown)
@@ -836,10 +961,12 @@ void Finish(FResult& R, FContext& C, const FSnapshot& AfterWrite, bool bSave, bo
         {
             R.Stage = TEXT("request_compile"); R.Data->SetBoolField(TEXT("compile_requested"), true); R.Data->SetBoolField(TEXT("compile_attempted"), true);
             R.Data->SetNumberField(TEXT("explicit_compile_requests"), 1); R.Data->SetBoolField(TEXT("compile_request_returned"), C.System->RequestCompile(false));
+            if(!InheritedCurrent(R,C,TEXT("after_request_compile"))){CompleteResult(R);return;}
         }
         if (bSave)
         {
             auto State = CompileState(C.System); R.Data->SetObjectField(TEXT("save_compile_state"), State);
+            if(!InheritedCurrent(R,C,TEXT("before_save"))){CompleteResult(R);return;}
             if (!State->GetBoolField(TEXT("ready_to_save")))
             {
                 R.Stage = TEXT("save_deferred"); R.Data->SetBoolField(TEXT("save_deferred"), true);
@@ -849,12 +976,13 @@ void Finish(FResult& R, FContext& C, const FSnapshot& AfterWrite, bool bSave, bo
             {
                 R.Stage = TEXT("save"); R.Data->SetBoolField(TEXT("save_attempted"), true); R.Data->SetNumberField(TEXT("exact_save_requests"), 1);
                 const bool Saved = UEditorAssetLibrary::SaveLoadedAsset(C.System, false); R.Data->SetBoolField(TEXT("saved"), Saved);
+                if(!InheritedCurrent(R,C,TEXT("after_save"))){CompleteResult(R);return;}
                 if (!Saved) { DiskUnknown = true; Fail(R, TEXT("niagara_save_failed"), TEXT("Save returned false; in-memory graph is retained but actual disk outcome is uncertain. No rollback/retry.")); }
                 else if (C.System->GetOutermost()->IsDirty()) { Fail(R, TEXT("niagara_save_postcondition_failed"), TEXT("Save returned true but the exact system remains dirty.")); }
             }
         }
     }
-    FSnapshot After; ObserveCommon(R, C, After);
+    FSnapshot After; ObserveCommon(R, C, After);if(C.InheritedLost){CompleteResult(R);return;}
     const bool Preserved = SameGraph(AfterWrite, After);
     R.Data->SetBoolField(TEXT("graph_preserved_across_compile_save"), Preserved);
     if (!Preserved && R.ErrorCode.IsEmpty()) { R.Stage = TEXT("observe_after"); Fail(R, TEXT("niagara_compile_save_graph_changed"), TEXT("Graph node/pin/link state changed across compilation/save; actual state retained.")); }
@@ -891,10 +1019,14 @@ bool EmptyValueGuard(FResult& R, const FContext& C, bool bLiteral, bool bOverwri
 }
 UEdGraphPin* CreateOverride(FResult& R, FContext& C, UEdGraphNode*& Map)
 {
+    if(!InheritedCurrent(R,C,TEXT("before_override_writer")))return nullptr;
     R.Stage = TEXT("create_override_pin"); R.bMutationAttempted = true; R.bChangeStateKnown = false;
     R.Data->SetBoolField(TEXT("outcome_unknown"), true); R.Data->SetNumberField(TEXT("override_pin_requests"), 1);
-    C.System->Modify(); C.Graph->Modify(); C.Module->Modify();
+    C.System->Modify();if(!InheritedCurrent(R,C,TEXT("after_system_modify")))return nullptr;
+    C.Graph->Modify();if(!InheritedCurrent(R,C,TEXT("after_graph_modify")))return nullptr;
+    C.Module->Modify();if(!InheritedCurrent(R,C,TEXT("after_module_modify")))return nullptr;
     UEdGraphPin& Returned = FNiagaraStackGraphUtilities::GetOrCreateStackFunctionInputOverridePin(*C.Module, C.Alias, C.Input.GetType(), FGuid(), FGuid());
+    if(!InheritedCurrent(R,C,TEXT("after_override_sdk")))return nullptr;
     UEdGraphPin* Actual = nullptr;
     if (!GetCurrentOverride(R, C, Actual, Map) || Actual != &Returned || !Actual->LinkedTo.IsEmpty()) { return nullptr; }
     R.Data->SetStringField(TEXT("override_pin_id"), PinId(Actual)); R.Data->SetStringField(TEXT("override_node_path"), Path(Map));
@@ -902,6 +1034,7 @@ UEdGraphPin* CreateOverride(FResult& R, FContext& C, UEdGraphNode*& Map)
 }
 void ObserveFailedMutation(FResult& R, FContext& C)
 {
+    if(C.InheritedLost){R.Data->SetBoolField(TEXT("compile_and_save_suppressed_after_failure"),true);CompleteResult(R);return;}
     FSnapshot After; R.bChangeStateKnown = true; ObserveCommon(R, C, After);
     R.Data->SetBoolField(TEXT("compile_and_save_suppressed_after_failure"), true); CompleteResult(R);
 }
@@ -1063,7 +1196,7 @@ void PreflightClosure(FResult& R, FContext& C)
     // rejection receives an actual preservation observation. No mutation retry.
     if (C.Before.bComplete && !C.Protected.IsEmpty() && C.UsersBefore->HasField(TEXT("observation_complete")))
     {
-        FSnapshot After; ObserveCommon(R, C, After);
+        FSnapshot After; ObserveCommon(R, C, After);if(C.InheritedLost){CompleteResult(R);return;}
         const bool Same = SameGraph(C.Before, After) && C.Dirty == C.System->GetOutermost()->IsDirty();
         R.Data->SetBoolField(TEXT("preflight_state_preserved"), Same);
         if (!Same) { R.bChanged = true; Fail(R, TEXT("niagara_preflight_state_changed"), TEXT("Input enumeration/rejection changed observed graph state; no value mutation was dispatched.")); }
@@ -1120,11 +1253,14 @@ Function::FResult SetLiteral(const FString& SystemPath, const FString& InputName
     UEdGraphNode* Map = nullptr; UEdGraphPin* Override = CreateOverride(R, C, Map);
     if (!Override) { ObserveFailedMutation(R, C); return R; }
     R.Stage = TEXT("set_literal_default"); R.Data->SetNumberField(TEXT("value_write_requests"), 1);
-    Override->Modify(); Map->Modify(); Override->DefaultValue = Default;
+    Override->Modify();if(!InheritedCurrent(R,C,TEXT("after_literal_pin_modify"))){CompleteResult(R);return R;}
+    Map->Modify();if(!InheritedCurrent(R,C,TEXT("after_literal_node_modify"))){CompleteResult(R);return R;}
+    Override->DefaultValue = Default;
     static_cast<UNiagaraNode*>(Map)->MarkNodeRequiresSynchronization(TEXT("Cubeless: literal input default changed"), true);
-    C.System->MarkPackageDirty();
+    if(!InheritedCurrent(R,C,TEXT("after_literal_notification"))){CompleteResult(R);return R;}
+    C.System->MarkPackageDirty();if(!InheritedCurrent(R,C,TEXT("after_literal_dirty"))){CompleteResult(R);return R;}
     R.Data->SetBoolField(TEXT("overwrote_existing"), C.Existing && !R.Data->GetStringField(TEXT("previous_default_value")).IsEmpty());
-    R.bChangeStateKnown = true; FSnapshot After; ObserveCommon(R, C, After);
+    R.bChangeStateKnown = true; FSnapshot After; ObserveCommon(R, C, After);if(C.InheritedLost){CompleteResult(R);return R;}
     const bool ValueOk = Override->DefaultValue == Default && Override->LinkedTo.IsEmpty();
     R.Data->SetBoolField(TEXT("literal_default_verified"), ValueOk); R.Data->SetNumberField(TEXT("values_written_count"), ValueOk ? 1 : 0);
     if (!ValueOk) { Fail(R, TEXT("niagara_literal_postcondition_failed"), TEXT("Typed native pin default readback differs; observed graph retained.")); }
@@ -1159,6 +1295,7 @@ Function::FResult SetDataInterface(const FString& SystemPath, const FString& Inp
     UNiagaraDataInterface* Returned = nullptr;
     FNiagaraStackGraphUtilities::SetDataInterfaceValueForFunctionInput(*Override, C.Input.GetType().GetClass(),
         C.Input.GetName().ToString(), Returned);
+    if(!InheritedCurrent(R,C,TEXT("after_di_input_sdk"))){CompleteResult(R);return R;}
     auto* DI = Cast<UNiagaraDataInterfaceExport>(Returned);
     UEdGraphNode* ValueNode = Override->LinkedTo.Num() == 1 ? Override->LinkedTo[0]->GetOwningNode() : nullptr;
     const bool Identity = Loaded(DI) && DI->GetClass() == UNiagaraDataInterfaceExport::StaticClass() && Loaded(ValueNode) &&
@@ -1170,7 +1307,7 @@ Function::FResult SetDataInterface(const FString& SystemPath, const FString& Inp
     R.Data->SetStringField(TEXT("data_interface_class"), DI->GetClass()->GetName());
     R.Data->SetStringField(TEXT("data_interface_class_path"), Path(DI->GetClass())); R.Data->SetStringField(TEXT("data_interface_path"), Path(DI));
     R.Data->SetStringField(TEXT("data_interface_owner_node_path"), Path(ValueNode)); R.Data->SetObjectField(TEXT("export_fields_before"), ExportFields(DI));
-    DI->Modify(); if (Fields.CallbackSet) { DI->CallbackHandlerParameter = Fields.Callback; }
+    DI->Modify();if(!InheritedCurrent(R,C,TEXT("after_di_modify"))){CompleteResult(R);return R;} if (Fields.CallbackSet) { DI->CallbackHandlerParameter = Fields.Callback; }
     if (Fields.ModeSet) { DI->GPUAllocationMode = Fields.Mode; } if (Fields.FixedSet) { DI->GPUAllocationFixedSize = Fields.Fixed; }
     if (Fields.PerParticleSet) { DI->GPUAllocationPerParticleSize = Fields.PerParticle; }
     TArray<TSharedPtr<FJsonValue>> Applied; const auto ActualFields = ExportFields(DI);
@@ -1189,8 +1326,9 @@ Function::FResult SetDataInterface(const FString& SystemPath, const FString& Inp
     R.Data->SetArrayField(TEXT("applied_properties"), Applied); R.Data->SetObjectField(TEXT("export_fields_after"), ActualFields);
     R.Data->SetBoolField(TEXT("export_properties_verified"), Values); R.Data->SetNumberField(TEXT("values_written_count"), Values ? 1 : 0);
     R.Data->SetBoolField(TEXT("export_runtime_callback_or_gpu_verified"), false);
-    static_cast<UNiagaraNode*>(Map)->MarkNodeRequiresSynchronization(TEXT("Cubeless: Export DI input changed"), true); C.System->MarkPackageDirty();
-    R.bChangeStateKnown = true; FSnapshot After; ObserveCommon(R, C, After);
+    static_cast<UNiagaraNode*>(Map)->MarkNodeRequiresSynchronization(TEXT("Cubeless: Export DI input changed"), true);if(!InheritedCurrent(R,C,TEXT("after_di_notification"))){CompleteResult(R);return R;}
+    C.System->MarkPackageDirty();if(!InheritedCurrent(R,C,TEXT("after_di_dirty"))){CompleteResult(R);return R;}
+    R.bChangeStateKnown = true; FSnapshot After; ObserveCommon(R, C, After);if(C.InheritedLost){CompleteResult(R);return R;}
     if (!Values) { Fail(R, TEXT("niagara_export_properties_postcondition_failed"), TEXT("Actual public Export fields differ after the retained native write.")); }
     VerifyGraph(R, C, After, Override, Map, ValueNode, false, FString()); ParameterMutationAllowed(R, C, nullptr);
     Finish(R, C, After, bSave, bRequestCompile, DI); return R;
@@ -1212,14 +1350,16 @@ Function::FResult SetLinked(const FString& SystemPath, const FString& InputName,
     // Public utility allocates a MapGet and adds/updates this exact graph parameter
     // metadata. User store declarations are never fabricated by this operation.
     FNiagaraStackGraphUtilities::SetLinkedParameterValueForFunctionInput(*Override, Linked, Known);
+    if(!InheritedCurrent(R,C,TEXT("after_linked_input_sdk"))){CompleteResult(R);return R;}
     UEdGraphPin* Source = Override->LinkedTo.Num() == 1 ? Override->LinkedTo[0] : nullptr;
     UEdGraphNode* ValueNode = Source ? Source->GetOwningNode() : nullptr;
     const bool Value = Source && ExactNodeClass(ValueNode, TEXT("/Script/NiagaraEditor.NiagaraNodeParameterMapGet")) &&
         Source->Direction == EGPD_Output && Source->PinName == Linked.GetName() && UEdGraphSchema_Niagara::PinToTypeDefinition(Source) == Linked.GetType();
     R.Data->SetStringField(TEXT("linked_value_node_path"), Path(ValueNode)); R.Data->SetBoolField(TEXT("linked_parameter_readback_verified"), Value);
     R.Data->SetNumberField(TEXT("values_written_count"), Value ? 1 : 0);
-    static_cast<UNiagaraNode*>(Map)->MarkNodeRequiresSynchronization(TEXT("Cubeless: linked input changed"), true); C.System->MarkPackageDirty();
-    R.bChangeStateKnown = true; FSnapshot After; ObserveCommon(R, C, After);
+    static_cast<UNiagaraNode*>(Map)->MarkNodeRequiresSynchronization(TEXT("Cubeless: linked input changed"), true);if(!InheritedCurrent(R,C,TEXT("after_linked_notification"))){CompleteResult(R);return R;}
+    C.System->MarkPackageDirty();if(!InheritedCurrent(R,C,TEXT("after_linked_dirty"))){CompleteResult(R);return R;}
+    R.bChangeStateKnown = true; FSnapshot After; ObserveCommon(R, C, After);if(C.InheritedLost){CompleteResult(R);return R;}
     if (!Value) { Fail(R, TEXT("niagara_linked_parameter_postcondition_failed"), TEXT("Actual native MapGet source/name/type differs from the admitted existing linked parameter.")); }
     VerifyGraph(R, C, After, Override, Map, ValueNode, false, FString()); ParameterMutationAllowed(R, C, &Linked);
     Finish(R, C, After, bSave, bRequestCompile); return R;

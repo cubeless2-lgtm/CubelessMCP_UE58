@@ -1,3 +1,12 @@
+// ADN source-only: blueprint_tools.py414 -> replace_blueprint_component_class ->
+// BlueprintCommands.cpp992/1731 and native template/common-copy helpers. Original
+// native class resolution has no shape-only target restriction. Exact empty native
+// StaticMeshComponent targets now share the existing own-SCS shape replacement flow.
+// SDK StaticMeshComponent.h132-133 and MeshComponent.h29-31 are authored references;
+// public reflection reads slots/counts only. No private access, mesh/material writer,
+// new source/template constructor, renderer cache invariant or engine modification.
+// Existing native shape sources only; generated/custom/plain Scene sources, populated
+// target defaults, broad typed references and runtime propagation remain incomplete.
 // Editor-only finite port of UE56 replace_blueprint_component_class.
 // Own native Box/Sphere/Capsule -> native shape targets, including a finite own SCS scene-root slice; no runtime helpers.
 #include "Compatibility/UE58/CubelessComponentReplacementApi.h"
@@ -13,6 +22,10 @@
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/MeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
@@ -180,6 +193,7 @@ bool Sources(UClass* Parent, TSharedRef<FJsonObject>& J,UClass* Additional=nullp
 {
     TArray<UClass*> Classes = { AActor::StaticClass(), UBlueprint::StaticClass(), USCS_Node::StaticClass(), USimpleConstructionScript::StaticClass(), UActorComponent::StaticClass(), USceneComponent::StaticClass(), UPrimitiveComponent::StaticClass(), UBoxComponent::StaticClass(), USphereComponent::StaticClass() };
     if (Parent && !Classes.Contains(Parent)) { Classes.Add(Parent); }
+    if(Additional==UStaticMeshComponent::StaticClass()){Classes.AddUnique(UMeshComponent::StaticClass());Classes.AddUnique(UCapsuleComponent::StaticClass());}
     if(Additional&&!Classes.Contains(Additional))Classes.Add(Additional);
     for (UClass* Class : Classes)
     {
@@ -206,6 +220,13 @@ struct FContext
     FGuid Guid;
     UClass* TargetClass=USphereComponent::StaticClass();bool ShapeMode=false,ShapeBound=false,ShapeRetired=false,ShapeAssigned=false;
     FVector ExpectedBox=FVector::ZeroVector;float ExpectedCapsuleRadius=0,ExpectedCapsuleHalfHeight=0;
+    // ADN: exact native mesh target starts with no authored mesh/material references.
+    // Descriptor-only snapshots; render/physics/lighting caches are never frozen.
+    TStrongObjectPtr<UObject> StaticMeshSourceCDO;
+    struct FMeshField { FProperty* P=nullptr;FFieldClass* Kind=nullptr;UStruct* Owner=nullptr;uint64 Flags=0;int32 Offset=0,Size=0,Dim=0;
+     explicit FMeshField(FProperty* In):P(In),Kind(In->GetClass()),Owner(In->GetOwnerStruct()),Flags(In->GetPropertyFlags()),Offset(In->GetOffset_ForInternal()),Size(In->GetSize()),Dim(In->ArrayDim){}
+     bool Exact()const{return P->GetClass()==Kind&&P->GetOwnerStruct()==Owner&&P->GetPropertyFlags()==Flags&&P->GetOffset_ForInternal()==Offset&&P->GetSize()==Size&&P->ArrayDim==Dim&&!P->HasSetterOrGetter();}};
+    TArray<FMeshField> StaticMeshFields;
     TStrongObjectPtr<UClass> ShapeGenerated,ShapeSkeleton,ShapeOldClass;TStrongObjectPtr<UObject> ShapeTargetCDO,ShapeHostCDO;TStrongObjectPtr<USimpleConstructionScript> ShapeSCS;
     struct FShapeNode{TStrongObjectPtr<USCS_Node> Node;TStrongObjectPtr<UActorComponent> Template;TStrongObjectPtr<UClass> Class;FName Name;FGuid Guid;TArray<USCS_Node*> Children;};
     TArray<FShapeNode> ShapeNodes;TArray<USCS_Node*> ShapeAll,ShapeRoots;
@@ -376,6 +397,29 @@ void KeepChildrenBaseline(FContext& C,FResult& R)
     R.Data->SetBoolField(TEXT("native_scene_child_subtree_replacement"),true);R.Data->SetBoolField(TEXT("native_scene_child_subtree_preserved"),false);R.Data->SetNumberField(TEXT("selected_scs_child_count"),C.Node->GetChildNodes().Num());R.Data->SetNumberField(TEXT("selected_scs_descendant_count"),Queue.Num());R.Data->SetArrayField(TEXT("selected_scs_child_guids"),Children);
     R.Data->SetStringField(TEXT("native_scene_child_subtree_scope"),TEXT("Same original own native SCS nodes/templates/GUIDs/classes/children/order through replacement and explicit compile; original logical reflected values fenced separately. Actual selected template attachments must remain empty. Graph physical pins may be reacquired after explicit reconstruction; original logical Before remains authoritative."));
 }
+// ADN: public reflection observes the existing private StaticMesh UPROPERTY and
+// inherited material-array storage. Non-null/custom defaults remain incomplete;
+// no SetStaticMesh/SetMaterial/load is synthesized by the original common-copy path.
+bool StaticMeshTargetCurrent(FContext& C,FResult& R,bool Bind=false)
+{
+ if(C.TargetClass!=UStaticMeshComponent::StaticClass())return true;
+ auto Bad=[&](const TCHAR* Field){return ShapeStop(C,R,Field,TEXT("same held native CDO/descriptors, null StaticMesh and empty OverrideMaterials"),TEXT("current role/layout/reference differs"));};
+ if(!Loaded(C.TargetClass)||!C.TargetClass->ClassDefaultObject.IsResolved()||!Loaded(C.ShapeTargetCDO.Get())||C.ShapeTargetCDO->GetClass()!=C.TargetClass||!C.ShapeTargetCDO->HasAnyFlags(RF_ClassDefaultObject)||C.ShapeTargetCDO->GetOuter()!=C.TargetClass->GetOuter())return Bad(TEXT("static_mesh_native_cdo"));
+ if(Bind&&C.StaticMeshFields.IsEmpty())C.StaticMeshSourceCDO.Reset(C.ShapeTargetCDO.Get());
+ if(!Loaded(C.StaticMeshSourceCDO.Get())||C.ShapeTargetCDO.Get()!=C.StaticMeshSourceCDO.Get()||C.TargetClass->ClassDefaultObject.GetHandle()!=TObjectPtr<UObject>(C.StaticMeshSourceCDO.Get()).GetHandle())return Bad(TEXT("static_mesh_source_cdo_identity"));
+ auto* Mesh=FindFProperty<FObjectProperty>(C.TargetClass,TEXT("StaticMesh"));auto* Materials=FindFProperty<FArrayProperty>(C.TargetClass,TEXT("OverrideMaterials"));auto* Inner=Materials?CastField<FObjectProperty>(Materials->Inner):nullptr;
+ if(!Mesh||!Materials||!Inner||Mesh->GetOwnerStruct()!=UStaticMeshComponent::StaticClass()||Materials->GetOwnerStruct()!=UMeshComponent::StaticClass()||Inner->GetOwner<FProperty>()!=Materials||Mesh->ArrayDim!=1||Materials->ArrayDim!=1||Inner->ArrayDim!=1||Mesh->GetSize()!=sizeof(TObjectPtr<UObject>)||Materials->GetSize()!=sizeof(TArray<TObjectPtr<UObject>>)||Inner->GetSize()!=sizeof(TObjectPtr<UObject>)||Mesh->HasSetterOrGetter()||Materials->HasSetterOrGetter()||Inner->HasSetterOrGetter()||!Mesh->PropertyClass.IsResolved()||Mesh->PropertyClass.GetHandle()!=TObjectPtr<UClass>(UStaticMesh::StaticClass()).GetHandle()||!Inner->PropertyClass.IsResolved()||Inner->PropertyClass.GetHandle()!=TObjectPtr<UClass>(UMaterialInterface::StaticClass()).GetHandle())return Bad(TEXT("static_mesh_field_layout"));
+ if(Bind&&C.StaticMeshFields.IsEmpty()){C.StaticMeshFields.Emplace(Mesh);C.StaticMeshFields.Emplace(Materials);C.StaticMeshFields.Emplace(Inner);}
+ if(C.StaticMeshFields.Num()!=3||C.StaticMeshFields[0].P!=Mesh||C.StaticMeshFields[1].P!=Materials||C.StaticMeshFields[2].P!=Inner)return Bad(TEXT("static_mesh_field_membership"));
+ for(const auto& F:C.StaticMeshFields)if(!F.Exact())return Bad(TEXT("static_mesh_captured_layout"));
+ for(UObject* O:{C.StaticMeshSourceCDO.Get(),static_cast<UObject*>(C.NewTemplate.Get())})if(O)
+ {
+  if(!Loaded(O)||O->GetClass()!=C.TargetClass)return Bad(TEXT("static_mesh_target_class"));
+  const auto* Slot=Mesh->GetObjectPtrPropertyValuePtr(Mesh->ContainerPtrToValuePtr<void>(O));FScriptArrayHelper H(Materials,Materials->ContainerPtrToValuePtr<void>(O));
+  if(!Slot->IsResolved()||Slot->GetHandle()!=TObjectPtr<UObject>().GetHandle()||H.Num()!=0)return Bad(TEXT("static_mesh_authored_reference"));
+ }
+ return true;
+}
 bool ShapeCurrent(FContext& C,FResult& R)
 {
     if(!C.ShapeMode||!C.ShapeBound)return true;if(R.Data->HasField(TEXT("native_scene_followup_sdk_stopped")))return false;
@@ -400,12 +444,16 @@ bool ShapeCurrent(FContext& C,FResult& R)
     if(C.NewTemplate.IsValid()){auto* P=Cast<UPrimitiveComponent>(C.NewTemplate.Get());if(!Loaded(P)||P->GetClass()!=C.TargetClass||P->GetOuter()!=C.ShapeGenerated.Get()||P->GetName()!=C.Slot||P->IsRegistered()||P->IsPreRegistering()||P->GetOwner()||P->GetWorld()||P->GetAttachParent()||!P->GetAttachChildren().IsEmpty())return ShapeStop(C,R,TEXT("new_template_role"),C.Slot,TEXT("different new class/owner/registration/attachment role"));}
     if(!C.NativeGet)for(const auto& G:C.ShapeGraphs){if(!Loaded(G.Graph.Get())||G.Graph->GetOuter()!=B||G.Graph->Nodes!=G.Nodes)return ShapeStop(C,R,TEXT("graph_node_membership"),TEXT("same held graph/node inventory"),TEXT("different graph nodes"));for(const auto& E:G.Rows){auto* N=E.Node.Get();if(!Loaded(N)||N->GetOuter()!=G.Graph.Get()||N->NodeGuid!=E.Guid||N->Pins!=E.Pins)return ShapeStop(C,R,TEXT("graph_node_pin_membership"),TEXT("same held node/GUID/physical pins"),TEXT("different node/pin roles"));for(int32 I=0;I<E.Pins.Num();++I){const auto* P=E.Pins[I];const auto& Type=E.Types[I];if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||P->PinId!=E.PinIds[I]||!(P->PinType==Type)||P->PinType.bIsUObjectWrapper!=Type.bIsUObjectWrapper||P->PinType.bSerializeAsSinglePrecisionFloat!=Type.bSerializeAsSinglePrecisionFloat||P->PinType.PinValueType.bTerminalIsUObjectWrapper!=Type.PinValueType.bTerminalIsUObjectWrapper)return ShapeStop(C,R,TEXT("graph_physical_pin_role"),E.PinIds[I].ToString(),TEXT("different current pin role"));}}}
     if(!RootCurrent(C,R))return false;
-    return NativeGetCurrent(C,R);
+    if(!NativeGetCurrent(C,R))return false;return StaticMeshTargetCurrent(C,R);
 }
 bool ShapeBind(FContext& C,FResult& R,bool Assigned=false)
 {
     if(!C.ShapeMode)return true;auto* B=C.Blueprint.Get();if(!Loaded(B)||!Loaded(C.OldTemplate.Get())||!Loaded(C.TargetClass)||!C.TargetClass->ClassDefaultObject.IsResolved())return Fail(R,TEXT("component_replace_native_scene_source_unavailable"),TEXT("Loaded native source and already-resolved existing target CDO required; no CDO creation or prewarm."));
-    C.ShapeTargetCDO.Reset(C.TargetClass->ClassDefaultObject.Get());if(!Loaded(C.ShapeTargetCDO.Get()))return Fail(R,TEXT("component_replace_native_scene_source_unavailable"),TEXT("Existing target CDO is absent; no implicit source initialization attempted."));
+    if(C.TargetClass==UStaticMeshComponent::StaticClass()){
+     const auto Slot=C.TargetClass->ClassDefaultObject;UObject* Existing=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),false);TStrongObjectPtr<UObject> Hold(Loaded(Existing)?Existing:nullptr);
+     if(!Hold.IsValid()||Slot.GetHandle()!=TObjectPtr<UObject>(Hold.Get()).GetHandle()||C.TargetClass->ClassDefaultObject.GetHandle()!=Slot.GetHandle()||Hold->GetClass()!=C.TargetClass||!Hold->HasAnyFlags(RF_ClassDefaultObject))return Fail(R,TEXT("component_replace_static_mesh_cdo_unavailable"),TEXT("Existing resolved exact native StaticMeshComponent CDO required; no tracking getter or source creation."));C.ShapeTargetCDO.Reset(Hold.Get());
+     if(!StaticMeshTargetCurrent(C,R,true))return false;
+    }else C.ShapeTargetCDO.Reset(C.TargetClass->ClassDefaultObject.Get());if(!Loaded(C.ShapeTargetCDO.Get()))return Fail(R,TEXT("component_replace_native_scene_source_unavailable"),TEXT("Existing target CDO is absent; no implicit source initialization attempted."));
     C.ShapeGenerated.Reset(B->GeneratedClass.Get());C.ShapeSkeleton.Reset(B->SkeletonGeneratedClass.Get());C.ShapeHostCDO.Reset(C.CDO);if(!Loaded(C.ShapeGenerated.Get())||!C.ShapeGenerated->ClassDefaultObject.IsResolved()||C.ShapeGenerated->ClassDefaultObject.Get()!=C.ShapeHostCDO.Get()||!Loaded(C.ShapeHostCDO.Get())||C.ShapeHostCDO->GetClass()!=C.ShapeGenerated.Get())return Fail(R,TEXT("component_replace_native_scene_host_cdo_unavailable"),TEXT("Actual current generated Actor CDO is required; no CDO creation or stale cached CDO observation."));C.ShapeSCS.Reset(B->SimpleConstructionScript.Get());C.ShapeOldClass.Reset(C.OldTemplate->GetClass());C.ShapeAll=C.ShapeSCS->GetAllNodes();C.ShapeRoots=C.ShapeSCS->GetRootNodes();C.ShapeNodes.Reset();
     for(auto* N:C.ShapeAll){if(!Loaded(N)||!N->ComponentClass.IsResolved()||!N->ComponentTemplate.IsResolved())return Fail(R,TEXT("component_replace_native_scene_source_unavailable"),TEXT("Current local SCS roles required before the new shape path."));FContext::FShapeNode E;E.Node.Reset(N);E.Template.Reset(N->ComponentTemplate.Get());E.Class.Reset(N->ComponentClass.Get());E.Name=N->GetVariableName();E.Guid=N->VariableGuid;E.Children=N->GetChildNodes();C.ShapeNodes.Add(MoveTemp(E));}
     if(!ShapeChildrenCurrent(C,R))return false;
@@ -425,6 +473,7 @@ void CopyShapeContract(const FContext& Old,FContext& Fresh)
  for(const auto& Source:Old.RootRows){FContext::FRootNode E;E.Node.Reset(Source.Node.Get());E.Template.Reset(Source.Template.Get());E.Class.Reset(Source.Class.Get());E.Guid=Source.Guid;E.Name=Source.Name;E.Socket=Source.Socket;E.ParentName=Source.ParentName;E.ParentOwner=Source.ParentOwner;E.NativeParent=Source.NativeParent;E.Children=Source.Children;Fresh.RootRows.Add(MoveTemp(E));}
  }
  Fresh.TargetClass=Old.TargetClass;Fresh.ShapeMode=Old.ShapeMode;Fresh.ExpectedBox=Old.ExpectedBox;Fresh.ExpectedCapsuleRadius=Old.ExpectedCapsuleRadius;Fresh.ExpectedCapsuleHalfHeight=Old.ExpectedCapsuleHalfHeight;
+ Fresh.StaticMeshSourceCDO.Reset(Old.StaticMeshSourceCDO.Get());Fresh.StaticMeshFields=Old.StaticMeshFields;
  Fresh.ShapeChildrenMode=Old.ShapeChildrenMode;Fresh.ChildrenSCS.Reset(Old.ChildrenSCS.Get());Fresh.ChildrenAll=Old.ChildrenAll;Fresh.ChildrenRoots=Old.ChildrenRoots;
  for(const auto& Source:Old.ChildrenBaseline){FContext::FShapeNode E;E.Node.Reset(Source.Node.Get());E.Template.Reset(Source.Template.Get());E.Class.Reset(Source.Class.Get());E.Name=Source.Name;E.Guid=Source.Guid;E.Children=Source.Children;Fresh.ChildrenBaseline.Add(MoveTemp(E));}
 }
@@ -457,7 +506,7 @@ bool CopyAdditionalShapeDefaults(FContext& C,FResult& R,UPrimitiveComponent* Old
     return ShapeCurrent(C,R);
 }
 
-bool Prepare(const FString& RequestedPath, const FString& ComponentName, FContext& C, FResult& R)
+bool Prepare(const FString& RequestedPath, const FString& ComponentName, FContext& C, FResult& R,UClass* ReturnedTarget=nullptr)
 {
     if (!IsEditorGameThread() || IsPlaySessionActive()) { return Fail(R, TEXT("component_replace_editor_context_required"), TEXT("Editor game thread without PIE/SIE required.")); }
     const FString P = Path(RequestedPath); C.Package = FPackageName::ObjectPathToPackageName(P); C.SelectedName = ComponentName;
@@ -509,7 +558,7 @@ bool Prepare(const FString& RequestedPath, const FString& ComponentName, FContex
     if (Reachable.Num() != Nodes.Num() || (!C.RootMode&&(ParentCount != 1 || Roots.Contains(C.Node) || !C.Parent || !C.Parent->ComponentClass->IsChildOf(USceneComponent::StaticClass()))))
     { return Fail(R, TEXT("component_replace_root_or_children_unsupported"), TEXT("Reachable own native shape with one local Scene parent or one own parentless scene root required; inherited/native-bound variants remain incomplete.")); }
     USceneComponent* Scene = Cast<USceneComponent>(C.Node->ComponentTemplate);
-    if (!Loaded(Scene) || (Scene->GetClass() != UBoxComponent::StaticClass() && Scene->GetClass() != USphereComponent::StaticClass() && Scene->GetClass()!=UCapsuleComponent::StaticClass()) || Scene->IsRegistered() || Scene->IsPreRegistering() || Scene->GetOwner() || Scene->GetWorld() || Scene->GetAttachParent() || Scene->GetAttachChildren().Num() != 0)
+    if (!Loaded(Scene) || (Scene->GetClass() != UBoxComponent::StaticClass() && Scene->GetClass() != USphereComponent::StaticClass() && Scene->GetClass()!=UCapsuleComponent::StaticClass() && !(ReturnedTarget==UStaticMeshComponent::StaticClass()&&Scene->GetClass()==ReturnedTarget)) || Scene->IsRegistered() || Scene->IsPreRegistering() || Scene->GetOwner() || Scene->GetWorld() || Scene->GetAttachParent() || Scene->GetAttachChildren().Num() != 0)
     { return Fail(R, TEXT("component_replace_source_class_unsupported"), TEXT("Exact native unregistered/non-preregistering own Box/Sphere/Capsule template without owner/world/template attachments required.")); }
     C.ShapeChildrenMode = !C.Node->GetChildNodes().IsEmpty();
     C.Slot = C.Node->GetVariableName().ToString() + USimpleConstructionScript::ComponentTemplateNameSuffix;
@@ -607,7 +656,7 @@ TSharedRef<FJsonObject> Summary(USCS_Node* Node)
     J->SetStringField(TEXT("mobility"), Loaded(MobilityEnum) ? MobilityEnum->GetNameStringByValue(static_cast<uint8>(Primitive->Mobility.GetValue())) : TEXT("")); J->SetStringField(TEXT("collision_enabled"), Loaded(CollisionEnum) ? CollisionEnum->GetNameStringByValue(static_cast<uint8>(Primitive->GetCollisionEnabled())) : TEXT(""));
     if (const UBoxComponent* Box = Cast<UBoxComponent>(Primitive)) { J->SetStringField(TEXT("shape"), TEXT("box")); J->SetArrayField(TEXT("box_extent"), Vector(Box->GetUnscaledBoxExtent())); }
     else if (const USphereComponent* Sphere = Cast<USphereComponent>(Primitive)) { J->SetStringField(TEXT("shape"), TEXT("sphere")); J->SetNumberField(TEXT("sphere_radius"), Sphere->GetUnscaledSphereRadius()); }
-    else if(const UCapsuleComponent* Capsule=Cast<UCapsuleComponent>(Primitive)){J->SetStringField(TEXT("shape"),TEXT("capsule"));J->SetNumberField(TEXT("capsule_radius"),Capsule->GetUnscaledCapsuleRadius());J->SetNumberField(TEXT("capsule_half_height"),Capsule->GetUnscaledCapsuleHalfHeight());}return J;
+    else if(const UCapsuleComponent* Capsule=Cast<UCapsuleComponent>(Primitive)){J->SetStringField(TEXT("shape"),TEXT("capsule"));J->SetNumberField(TEXT("capsule_radius"),Capsule->GetUnscaledCapsuleRadius());J->SetNumberField(TEXT("capsule_half_height"),Capsule->GetUnscaledCapsuleHalfHeight());}if(Primitive->GetClass()==UStaticMeshComponent::StaticClass()){auto* P=FindFProperty<FObjectProperty>(UStaticMeshComponent::StaticClass(),TEXT("StaticMesh"));if(P){const auto* Slot=P->GetObjectPtrPropertyValuePtr(P->ContainerPtrToValuePtr<void>(Primitive));J->SetStringField(TEXT("static_mesh"),Slot->IsResolved()?Slot->GetPathName():TEXT("<unresolved>"));}}return J;
 }
 bool FiniteCommon(UPrimitiveComponent* P)
 {
@@ -639,7 +688,7 @@ bool Capture(FContext& C, FObservation& O, FResult& R, const TCHAR* Key)
     if (P)
     {
         FObjectPropertyBase* Object = CastField<FObjectPropertyBase>(P); Member->SetStringField(TEXT("path"), P->GetPathName()); Member->SetStringField(TEXT("owner"), P->GetOwnerStruct()->GetPathName()); Member->SetStringField(TEXT("property_flags"), LexToString(static_cast<uint64>(P->GetPropertyFlags()))); Member->SetNumberField(TEXT("array_dim"), P->ArrayDim);
-        if (!Object || P->ArrayDim != 1 || P->GetOwnerClass() != C.CDO->GetClass() || (Object->PropertyClass != UBoxComponent::StaticClass() && Object->PropertyClass != USphereComponent::StaticClass() && Object->PropertyClass!=UCapsuleComponent::StaticClass()) || !P->HasAnyPropertyFlags(CPF_BlueprintVisible)) { return false; }
+        if (!Object || P->ArrayDim != 1 || P->GetOwnerClass() != C.CDO->GetClass() || (Object->PropertyClass != UBoxComponent::StaticClass() && Object->PropertyClass != USphereComponent::StaticClass() && Object->PropertyClass!=UCapsuleComponent::StaticClass()&&Object->PropertyClass!=UStaticMeshComponent::StaticClass()) || !P->HasAnyPropertyFlags(CPF_BlueprintVisible)) { return false; }
         Member->SetStringField(TEXT("object_class"), Object->PropertyClass->GetPathName()); Member->SetStringField(TEXT("value"), ObjectPath(Object->GetObjectPropertyValue_InContainer(C.CDO)));
     }
     USimpleConstructionScript* SCS = B->SimpleConstructionScript.Get(); if (!Loaded(SCS) || SCS->GetAllNodes().Num() > MaxNodes) { return false; }
@@ -658,7 +707,7 @@ bool Capture(FContext& C, FObservation& O, FResult& R, const TCHAR* Key)
     auto Selected = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("selected"), Selected); Selected->SetObjectField(TEXT("summary"), Summary(C.Node)); Selected->SetObjectField(TEXT("common"), Common(CastChecked<UPrimitiveComponent>(C.Node->ComponentTemplate))); Selected->SetStringField(TEXT("parent_guid"), C.RootMode?FString():C.Parent->VariableGuid.ToString()); Selected->SetStringField(TEXT("parent_name"), C.RootMode?FString():C.Parent->GetVariableName().ToString());
     Selected->SetStringField(TEXT("slot"), C.Slot); Selected->SetBoolField(TEXT("current_slot_matches_selected"), FindObject<UObject>(B->GeneratedClass, *C.Slot) == C.Node->ComponentTemplate); Selected->SetStringField(TEXT("archetype_path"), ObjectPath(C.Node->ComponentTemplate->GetArchetype()));
     auto Graph = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("graphs"), Graph);
-    if (!Graphs(B, Graph,C.ShapeMode?&C:nullptr,&R) || !Sources(B->ParentClass, O.NativeSources,C.ShapeMode?C.TargetClass==UCapsuleComponent::StaticClass()?C.TargetClass:C.OldTemplate.IsValid()&&C.OldTemplate->GetClass()==UCapsuleComponent::StaticClass()?UCapsuleComponent::StaticClass():nullptr:nullptr,C.ShapeMode?&C:nullptr,&R) || !Disk(C.Package, O.DiskState) || !Dirty(C.Package, O.OtherDirty)) { return false; }
+    if (!Graphs(B, Graph,C.ShapeMode?&C:nullptr,&R) || !Sources(B->ParentClass, O.NativeSources,C.ShapeMode?(C.TargetClass==UCapsuleComponent::StaticClass()||C.TargetClass==UStaticMeshComponent::StaticClass())?C.TargetClass:C.OldTemplate.IsValid()&&C.OldTemplate->GetClass()==UCapsuleComponent::StaticClass()?UCapsuleComponent::StaticClass():nullptr:nullptr,C.ShapeMode?&C:nullptr,&R) || !Disk(C.Package, O.DiskState) || !Dirty(C.Package, O.OtherDirty)) { return false; }
     if(!ShapeCurrent(C,R))return false;O.bComplete = true; J->SetBoolField(TEXT("complete"), true); return true;
 }
 // Only a confirmed successful full compile may replace this exact owned CDO
@@ -828,6 +877,11 @@ struct FScope
     FString HostPath,HostPackage,SelectedName,Slot;FGuid Guid;decltype(GUndo) Undo=nullptr;
     uint32 HostPackageFlags=0;bool Dirty=false,Stopped=false,GraphsReady=false,Assigned=false,Retired=false;EBlueprintStatus Status=BS_Unknown,OldStatus=BS_Unknown,NewStatus=BS_Unknown;
     TStrongObjectPtr<UEdGraphSchema_K2> GetterSchema;bool GetterPropertiesReady=false;FField GetterSkeletonField,GetterCompiledField;UClass* GetterSkeletonType=nullptr;UClass* GetterCompiledType=nullptr;
+    struct FCrossSparse{FField Field;TStrongObjectPtr<UClass> Owner;TStrongObjectPtr<USparseDelegateFunction> Signature;EFunctionFlags Flags=FUNC_None;FName OwnerName,DelegateName;};
+    bool CrossNativeOld=false,RequireSceneCompatibility=true,CrossSparseReady=false;TArray<FCrossSparse> CrossSparse;
+    TArray<TStrongObjectPtr<UClass>> CrossNativeClasses;TArray<TStrongObjectPtr<UObject>> CrossNativeDefaults;TArray<UClass*> CrossNativeSupers;
+    TStrongObjectPtr<USCS_Node> CrossRoot,CrossParent,CrossDefaultRoot;TStrongObjectPtr<UActorComponent> CrossDefaultTemplate;
+    bool CrossPromoted=false;TSharedPtr<FJsonValue> CrossParentChildrenBefore;
     bool NativeScene=false,NativeReturning=false,NativeCandidatesReady=false,NativeSaved=false;FContext* NativeContext=nullptr;
     TSharedPtr<FNativeOverlap> Overlap;
     TArray<FGraph> NativeCandidates;TArray<TStrongObjectPtr<UObject>> NativeReturnedHolds;
@@ -950,7 +1004,7 @@ struct FScope
         const FGuid SkeletonGuid=HostSkeleton->FindBlueprintPropertyGuidFromName(FName(*SelectedName)),CompiledGuid=HostClass->FindBlueprintPropertyGuidFromName(FName(*SelectedName));
         for(const auto& G:GraphRows)for(const auto& N:G.Nodes)if(N.SelectedGetter)
         {
-            if((!NativeScene&&(N.Reference.GetMemberGuid()!=SkeletonGuid||N.Reference.GetMemberGuid()!=CompiledGuid))||!G.Graph->Schema.GetGCPtr().IsResolved()||G.Graph->Schema.GetGCPtr()!=UEdGraphSchema_K2::StaticClass()||N.Node->GetClass()!=UK2Node_VariableGet::StaticClass()||!static_cast<UK2Node_VariableGet*>(N.Node.Get())->IsNodePure())return Stop(TEXT("component_replace_selected_getter_role_changed"),TEXT("Exact own pure getter/schema/member GUID roles changed; SCS GUID is separately preserved and is not substituted for the member GUID."));
+            if((!NativeScene&&!CrossNativeOld&&(N.Reference.GetMemberGuid()!=SkeletonGuid||N.Reference.GetMemberGuid()!=CompiledGuid))||!G.Graph->Schema.GetGCPtr().IsResolved()||G.Graph->Schema.GetGCPtr()!=UEdGraphSchema_K2::StaticClass()||N.Node->GetClass()!=UK2Node_VariableGet::StaticClass()||!static_cast<UK2Node_VariableGet*>(N.Node.Get())->IsNodePure())return Stop(TEXT("component_replace_selected_getter_role_changed"),TEXT("Exact own pure getter/schema/member GUID roles changed; SCS GUID is separately preserved and is not substituted for the member GUID."));
         }
         return true;
     }
@@ -1006,7 +1060,71 @@ struct FScope
         }
         return true;
     }
-    bool Current(bool Rebinding=false,bool CompilerRefreshedPins=false)
+    // Native scene inheritance terminates at the exact compiled CoreUObject root;
+    // keep the Engine-only Native predicate unchanged for all existing profiles.
+    static bool CrossNativeSourceClass(UClass* K)
+    {
+        return Native(K)||(K==UObject::StaticClass()&&Loaded(K)&&K->HasAnyClassFlags(CLASS_Native)
+            &&!K->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&K->ClassGeneratedBy.IsResolved()&&!K->ClassGeneratedBy.Get()
+            &&K->GetOutermost()->GetName()==TEXT("/Script/CoreUObject")&&!K->GetOutermost()->IsDirty()&&K->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn));
+    }
+    bool CrossOldCurrent()
+    {
+        if(!CrossNativeOld)return true;
+        if(CrossNativeClasses.IsEmpty()||CrossNativeClasses.Num()!=CrossNativeDefaults.Num()||CrossNativeClasses.Num()!=CrossNativeSupers.Num())return Stop(TEXT("component_replace_cross_source_changed"),TEXT("Native source hierarchy role inventory changed."));
+        for(int32 I=0;I<CrossNativeClasses.Num();++I){auto* K=CrossNativeClasses[I].Get();auto* D=CrossNativeDefaults[I].Get();if(!CrossNativeSourceClass(K)||K->GetSuperClass()!=CrossNativeSupers[I]||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=D||(D&&(!Loaded(D)||D->GetClass()!=K||D->GetOuter()!=K->GetOuter())))return Stop(TEXT("component_replace_cross_source_changed"),TEXT("Existing native source hierarchy/CDO role changed."));}
+        if(!Loaded(CrossRoot.Get())||!Loaded(CrossDefaultRoot.Get())||!Loaded(CrossDefaultTemplate.Get())||SCS->GetDefaultSceneRootNode()!=CrossDefaultRoot.Get()
+            ||!CrossDefaultRoot->ComponentClass.IsResolved()||CrossDefaultRoot->ComponentClass.Get()!=USceneComponent::StaticClass()||!CrossDefaultRoot->ComponentTemplate.IsResolved()||CrossDefaultRoot->ComponentTemplate!=CrossDefaultTemplate.Get()||CrossDefaultTemplate->GetClass()!=USceneComponent::StaticClass()||!CrossDefaultRoot->GetChildNodes().IsEmpty()
+            ||!CrossDefaultRoot->ParentComponentOrVariableName.IsNone()||!CrossDefaultRoot->ParentComponentOwnerClassName.IsNone()||CrossDefaultRoot->bIsParentComponentNative
+            ||Roots.Contains(CrossDefaultRoot.Get())||All.Contains(CrossDefaultRoot.Get())||!Roots.Contains(CrossRoot.Get())||CrossRoot.Get()==Selected.Get())return Stop(TEXT("component_replace_cross_root_changed"),TEXT("Existing non-default Scene root/default-root cache changed; no topology normalization is adopted."));
+        if(CrossSparseReady)for(const auto& E:CrossSparse)
+        {
+            auto* P=FindFProperty<FMulticastSparseDelegateProperty>(E.Owner.Get(),E.Field.Name);auto* F=E.Signature.Get();
+            if(!P||P!=E.Field.Property||P->GetOwnerStruct()!=E.Owner.Get()||P->GetClass()!=E.Field.Kind||P->GetPropertyFlags()!=E.Field.Flags||P->GetSize()!=E.Field.Size||P->GetOffset_ForInternal()!=E.Field.Offset||P->ArrayDim!=1||P->HasSetterOrGetter()||!P->SignatureFunction.IsResolved()||P->SignatureFunction.Get()!=F
+                ||!Loaded(F)||F->GetClass()!=USparseDelegateFunction::StaticClass()||F->FunctionFlags!=E.Flags||F->OwningClassName!=E.OwnerName||F->DelegateName!=E.DelegateName)return Stop(TEXT("component_replace_cross_delegate_changed"),TEXT("Native Scene/Primitive sparse property/current held signature role changed before getter."));
+            if(NativeEmptyGuardReady)for(UActorComponent* O:{OldCDO.Get(),OldTemplate.Get()}){if(!Loaded(O))return Stop(TEXT("component_replace_cross_delegate_owner_changed"),TEXT("Held old native sparse delegate owner is unavailable."));const auto* D=P->GetMulticastDelegate(P->ContainerPtrToValuePtr<void>(O));const bool Empty=!D||!D->IsBound();if(!Empty)return Stop(TEXT("component_replace_cross_delegate_became_bound"),TEXT("Old native Scene/Primitive invocation list changed; no compaction/invocation/propagation or next writer."));}
+        }
+        return true;
+    }
+    TArray<TSharedPtr<FJsonValue>> ScsLabels(const TArray<USCS_Node*>& List) const
+    {
+        TArray<TSharedPtr<FJsonValue>> Out;for(auto* N:List){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("pointer"),PointerLabel(N));const auto* Captured=Nodes.FindByPredicate([&](const FScsNode& E){return E.Node.Get()==N;});J->SetBoolField(TEXT("captured_role"),Captured!=nullptr);J->SetStringField(TEXT("captured_name"),Captured?Captured->Name.ToString():FString());J->SetStringField(TEXT("captured_guid"),Captured?Captured->Guid.ToString():FString());Out.Add(MakeShared<FJsonValueObject>(J));}return Out;
+    }
+    TArray<USCS_Node*> ExpectedRoots() const
+    {auto Expected=Roots;if(CrossPromoted)Expected.Add(Selected.Get());return Expected;}
+    TArray<USCS_Node*> ExpectedChildren(const FScsNode& Row) const
+    {auto Expected=Row.Children;if(CrossPromoted&&Row.Node.Get()==CrossParent.Get())Expected.RemoveSingle(Selected.Get());return Expected;}
+    bool ScsMismatch(const TCHAR* Field,const TArray<USCS_Node*>& Expected,const TArray<USCS_Node*>& Actual)
+    {
+        if(!R.Data->HasField(TEXT("scs_topology_first_mismatch")))
+        {
+            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),R.Stage);J->SetStringField(TEXT("object"),HostPath);J->SetStringField(TEXT("property"),Field);J->SetArrayField(TEXT("expected"),ScsLabels(Expected));J->SetArrayField(TEXT("actual"),ScsLabels(Actual));J->SetArrayField(TEXT("captured_all_nodes"),ScsLabels(All));J->SetArrayField(TEXT("captured_roots"),ScsLabels(Roots));J->SetArrayField(TEXT("actual_all_nodes"),ScsLabels(SCS->GetAllNodes()));J->SetArrayField(TEXT("actual_roots"),ScsLabels(SCS->GetRootNodes()));J->SetBoolField(TEXT("diagnostic_read_scope_held_scs_and_node_arrays_only"),true);
+            TArray<USCS_Node*> Parents;for(const auto& N:Nodes)if(N.Node->GetChildNodes().Contains(Selected.Get()))Parents.Add(N.Node.Get());TArray<USCS_Node*> ExpectedParents;if(CrossNativeOld&&!CrossPromoted)ExpectedParents.Add(CrossParent.Get());J->SetArrayField(TEXT("expected_selected_local_parents"),ScsLabels(ExpectedParents));J->SetArrayField(TEXT("actual_selected_local_parents"),ScsLabels(Parents));J->SetBoolField(TEXT("new_unknown_node_dereference_performed"),false);R.Data->SetObjectField(TEXT("scs_topology_first_mismatch"),J);
+        }
+        return Stop(TEXT("component_replace_generated_scs_changed"),TEXT("Current SCS topology differs from the exact captured or admitted selected-leaf compiler transition; actual prefix retained."));
+    }
+    bool AdoptCrossCompilerTopology()
+    {
+        if(!CrossNativeOld||!Assigned||CrossPromoted)return true;
+        // BlueprintCompilationManager's full-compile fixup moves non-Scene
+        // nodes out of scene children into the root set. No other node/layout
+        // change is inferred from this successful compiler return.
+        const auto ActualAll=SCS->GetAllNodes();const auto ActualRoots=SCS->GetRootNodes();
+        if(ActualAll!=All)return ScsMismatch(TEXT("AllNodes"),All,ActualAll);
+        if(ActualRoots==Roots)return true;
+        auto PromotedRoots=Roots;PromotedRoots.Add(Selected.Get());if(ActualRoots!=PromotedRoots)return ScsMismatch(TEXT("RootNodes"),PromotedRoots,ActualRoots);
+        if(RequireSceneCompatibility||!CrossParent.IsValid()||!NewClass.IsValid()||NewClass->IsChildOf(USceneComponent::StaticClass())||!Selected->GetChildNodes().IsEmpty())return Stop(TEXT("component_replace_cross_compiler_scope_changed"),TEXT("Only the admitted assigned non-Scene selected leaf can move to the root set."));
+        int32 ParentMatches=0;
+        for(const auto& Row:Nodes)
+        {
+            auto* N=Row.Node.Get();if(!Loaded(N)||N->GetOuter()!=SCS.Get()||N->GetVariableName()!=Row.Name||N->VariableGuid!=Row.Guid||!N->ComponentClass.IsResolved()||N->ComponentClass!=(N==Selected.Get()?NewClass.Get():Row.Class.Get())||!N->ComponentTemplate.IsResolved()||N->ComponentTemplate!=(N==Selected.Get()?NewTemplate.Get():Row.Template.Get()))return Stop(TEXT("component_replace_cross_compiler_node_changed"),TEXT("Compiler topology return changed a node identity/class/template role."));
+            auto Children=Row.Children;if(N==CrossParent.Get()){if(Children.RemoveSingle(Selected.Get())!=1)return Stop(TEXT("component_replace_cross_compiler_parent_changed"),TEXT("Captured exact local parent must contain the selected leaf once."));++ParentMatches;}
+            if(N->GetChildNodes()!=Children)return ScsMismatch(TEXT("ChildNodes_after_full_compile"),Children,N->GetChildNodes());
+        }
+        if(ParentMatches!=1||!Selected->ParentComponentOrVariableName.IsNone()||!Selected->ParentComponentOwnerClassName.IsNone()||Selected->bIsParentComponentNative)return Stop(TEXT("component_replace_cross_compiler_parent_changed"),TEXT("Selected promoted leaf must retain empty inherited/native parent roles."));
+        CrossPromoted=true;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("boundary"),TEXT("successful_full_compile"));J->SetArrayField(TEXT("original_roots"),ScsLabels(Roots));J->SetArrayField(TEXT("actual_roots"),ScsLabels(ActualRoots));J->SetArrayField(TEXT("preserved_all_nodes"),ScsLabels(ActualAll));J->SetBoolField(TEXT("selected_leaf_only_promoted"),true);J->SetBoolField(TEXT("other_topology_adopted"),false);R.Data->SetObjectField(TEXT("cross_scene_leaf_compiler_normalization"),J);return true;
+    }
+    bool Current(bool Rebinding=false,bool CompilerRefreshedPins=false,bool AllowCrossCompilerTopology=false)
     {
         if(NativeScene)return NativeSceneCurrent(*this,Rebinding,CompilerRefreshedPins);
         if(Stopped)return false;
@@ -1028,8 +1146,10 @@ struct FScope
             PRAGMA_ENABLE_DEPRECATION_WARNINGS
             if(!HostDefault.IsResolved()||HostDefault!=HostCDO.Get()||HostCDO->GetClass()!=HostClass.Get())return Stop(TEXT("component_replace_generated_host_cdo_changed"),TEXT("Current host CDO shallow handle/class changed outside the explicit compiler return."));
         }
+        if(!CrossOldCurrent())return false;
         for(int32 I=0;I<2;++I)
         {
+            if(CrossNativeOld&&I==0)continue;
             UBlueprint* B=I?NewBP.Get():OldBP.Get();UClass* C=I?NewClass.Get():OldClass.Get();UClass* K=I?NewSkeleton.Get():OldSkeleton.Get();UObject* D=I?NewCDO.Get():OldCDO.Get();
             if(!Loaded(B)||!Loaded(C)||!Loaded(K)||!Loaded(D)||B->GetPackage()->IsDirty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()!=UActorComponent::StaticClass()
                 ||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr()!=C||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr()!=K
@@ -1040,15 +1160,17 @@ struct FScope
             PRAGMA_ENABLE_DEPRECATION_WARNINGS
             if(!Handle.IsResolved()||Handle!=D||D->GetClass()!=C)return Stop(TEXT("component_replace_generated_source_cdo_changed"),TEXT("Existing held source CDO handle/class changed; no CDO creation."));
         }
-        if(SCS->GetAllNodes()!=All||SCS->GetRootNodes()!=Roots)return Stop(TEXT("component_replace_generated_scs_changed"),TEXT("Own SCS all/root membership changed."));
+        if(Rebinding&&AllowCrossCompilerTopology&&!AdoptCrossCompilerTopology())return false;
+        const auto ActualAll=SCS->GetAllNodes();if(ActualAll!=All)return ScsMismatch(TEXT("AllNodes"),All,ActualAll);const auto ActualRoots=SCS->GetRootNodes();const auto WantedRoots=ExpectedRoots();if(ActualRoots!=WantedRoots)return ScsMismatch(TEXT("RootNodes"),WantedRoots,ActualRoots);
         for(const auto& A:Nodes)
         {
             USCS_Node* N=A.Node.Get();UClass* C=N==Selected.Get()&&Assigned?NewClass.Get():A.Class.Get();UActorComponent* T=N==Selected.Get()&&Assigned?NewTemplate.Get():A.Template.Get();
-            if(!Loaded(N)||N->GetOuter()!=SCS.Get()||N->GetVariableName()!=A.Name||N->VariableGuid!=A.Guid||!N->ComponentClass.IsResolved()||N->ComponentClass!=C||!N->ComponentTemplate.IsResolved()||N->ComponentTemplate!=T||N->GetChildNodes()!=A.Children)return Stop(TEXT("component_replace_generated_node_changed"),TEXT("Own SCS node/name/GUID/class/template/children scope changed."));
+            if(!Loaded(N)||N->GetOuter()!=SCS.Get()||N->GetVariableName()!=A.Name||N->VariableGuid!=A.Guid||!N->ComponentClass.IsResolved()||N->ComponentClass!=C||!N->ComponentTemplate.IsResolved()||N->ComponentTemplate!=T)return Stop(TEXT("component_replace_generated_node_changed"),TEXT("Own SCS node/name/GUID/class/template scope changed."));
+            const auto Children=ExpectedChildren(A);if(N->GetChildNodes()!=Children)return ScsMismatch(TEXT("ChildNodes"),Children,N->GetChildNodes());
         }
         if(GraphsReady)
         {
-            if(!SameArrays(HostArrays,Arrays(Host.Get()))||!SameArrays(OldArrays,Arrays(OldBP.Get()))||!SameArrays(NewArrays,Arrays(NewBP.Get())))return Stop(TEXT("component_replace_generated_graphs_changed"),TEXT("Stored graph arrays changed."));
+            if(!SameArrays(HostArrays,Arrays(Host.Get()))||(!CrossNativeOld&&!SameArrays(OldArrays,Arrays(OldBP.Get())))||!SameArrays(NewArrays,Arrays(NewBP.Get())))return Stop(TEXT("component_replace_generated_graphs_changed"),TEXT("Stored graph arrays changed."));
             for(const auto& G:GraphRows)
             {
                 if(!Loaded(G.Graph.Get())||G.Graph->GraphGuid!=G.Guid||G.Graph->Nodes.Num()!=G.Nodes.Num()||!G.Graph->SubGraphs.IsEmpty())return Stop(TEXT("component_replace_generated_graph_changed"),TEXT("Current flat graph/node inventory changed."));
@@ -1213,28 +1335,43 @@ bool Bind(FScope& C,const FString& BPPath,const FString& ComponentName,const FSt
     for(auto* Root:C.Roots)if(Parents.Contains(Root))return Fail(C.R,TEXT("component_replace_generated_scs_topology_unsupported"),TEXT("Local roots may not also be children."));
     for(int32 I=0;I<Queue.Num();++I){if(Reached.Contains(Queue[I]))return Fail(C.R,TEXT("component_replace_generated_scs_topology_unsupported"),TEXT("Cyclic or duplicate SCS reachability."));Reached.Add(Queue[I]);for(auto* Child:Queue[I]->GetChildNodes())Queue.Add(Child);}
     if(Reached.Num()!=C.All.Num())return Fail(C.R,TEXT("component_replace_generated_scs_topology_unsupported"),TEXT("Every own node must be reachable from one admitted root."));
-    if(!C.Selected.IsValid()||!C.Roots.Contains(C.Selected.Get())||!C.Selected->GetChildNodes().IsEmpty()||!C.Selected->ParentComponentOrVariableName.IsNone()||!C.Selected->ParentComponentOwnerClassName.IsNone())return Fail(C.R,TEXT("component_replace_generated_flat_root_required"),TEXT("One own flat non-scene root with no children/inherited parent attachment is required."));
+    if(C.Selected.IsValid()&&!C.RequireSceneCompatibility&&(C.OldClass.Get()==UBoxComponent::StaticClass()||C.OldClass.Get()==USphereComponent::StaticClass()||C.OldClass.Get()==UCapsuleComponent::StaticClass()))
+    {
+        C.CrossNativeOld=true;
+        USCS_Node* Parent=nullptr;int32 Incoming=0;for(const auto& N:C.Nodes)if(N.Children.Contains(C.Selected.Get())){Parent=N.Node.Get();++Incoming;}
+        if(C.Roots.Num()!=1||C.Roots.Contains(C.Selected.Get())||Incoming!=1||!Parent||!C.Selected->GetChildNodes().IsEmpty()||!Parent->ComponentClass->IsChildOf(USceneComponent::StaticClass())||!C.Roots[0]->ComponentClass->IsChildOf(USceneComponent::StaticClass()))return Fail(C.R,TEXT("component_replace_cross_leaf_scope_pending"),TEXT("False cross-class slice needs one own native Scene root and a non-root leaf shape with one Scene parent; root/child-bearing/reverse transitions remain incomplete."));
+        C.CrossRoot.Reset(C.Roots[0]);C.CrossParent.Reset(Parent);C.CrossDefaultRoot.Reset(C.SCS->GetDefaultSceneRootNode());
+        if(!Loaded(C.CrossDefaultRoot.Get())||C.All.Contains(C.CrossDefaultRoot.Get())||!C.CrossDefaultRoot->ComponentTemplate.IsResolved())return Fail(C.R,TEXT("component_replace_cross_default_root_pending"),TEXT("Existing resolved inactive default-root cache required; no cache creation/normalization is pre-approved."));
+        C.CrossDefaultTemplate.Reset(C.CrossDefaultRoot->ComponentTemplate.Get());
+        auto* Scene=Cast<USceneComponent>(C.OldTemplate.Get());if(!Scene||Scene->GetAttachParent()||!Scene->GetAttachChildren().IsEmpty())return Fail(C.R,TEXT("component_replace_cross_template_attachment_pending"),TEXT("Only unregistered/unattached template roles; SCS parent is separate from live template attachments."));
+        for(UClass* K=C.OldClass.Get();K;K=K->GetSuperClass()){if(!FScope::CrossNativeSourceClass(K)||!K->ClassDefaultObject.IsResolved())return Fail(C.R,TEXT("component_replace_cross_native_source_pending"),TEXT("Loaded resolved native Engine hierarchy and exact CoreUObject UObject root/CDO slots required."));C.CrossNativeClasses.Emplace(K);C.CrossNativeSupers.Add(K->GetSuperClass());C.CrossNativeDefaults.Emplace(K->ClassDefaultObject.Get());}
+        C.OldCDO.Reset(Cast<UActorComponent>(C.CrossNativeDefaults[0].Get()));if(!Loaded(C.OldCDO.Get()))return Fail(C.R,TEXT("component_replace_cross_native_cdo_pending"),TEXT("Existing native shape CDO required without warming."));
+    }
+    if(!C.Selected.IsValid()||(!C.CrossNativeOld&&!C.Roots.Contains(C.Selected.Get()))||!C.Selected->GetChildNodes().IsEmpty()||!C.Selected->ParentComponentOrVariableName.IsNone()||!C.Selected->ParentComponentOwnerClassName.IsNone())return Fail(C.R,TEXT("component_replace_generated_flat_root_required"),TEXT("One own flat non-scene root with no children/inherited parent attachment is required."));
     UObject* Requested=FindObject<UObject>(nullptr,*ClassPath);if(!Loaded(Requested)||Requested->GetClass()!=UBlueprintGeneratedClass::StaticClass()||Requested->GetPathName()!=ClassPath)return Fail(C.R,TEXT("component_replace_generated_class_unavailable"),TEXT("Replacement exact generated class must already be loaded."));C.NewClass.Reset(static_cast<UClass*>(Requested));
+    if(C.RequireSceneCompatibility&&C.OldClass->IsChildOf(USceneComponent::StaticClass())!=C.NewClass->IsChildOf(USceneComponent::StaticClass()))return Fail(C.R,TEXT("component_replace_scene_incompatible"),TEXT("Original require_scene_compatibility=true rejects Scene/non-Scene transitions before Modify."));
     for(int32 I=0;I<2;++I)
     {
+        if(C.CrossNativeOld&&I==0)continue;
         UClass* K=I?C.NewClass.Get():C.OldClass.Get();if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!K->ClassGeneratedBy.IsResolved())return Fail(C.R,TEXT("component_replace_generated_class_unsupported"),TEXT("Both component classes must be current generated BPC classes."));
         UObject* Source=FromHandle(K->ClassGeneratedBy);if(!Loaded(Source)||Source->GetClass()!=UBlueprint::StaticClass())return Fail(C.R,TEXT("component_replace_generated_class_unsupported"),TEXT("Exact source Blueprint identity required."));
         UBlueprint* BP=static_cast<UBlueprint*>(Source);UClass* Skeleton=ClassHandle(BP->SkeletonGeneratedClass.GetGCPtr());UObject* D=ExistingCDO(K);
         if(!Loaded(Skeleton)||!Loaded(D)||D->GetClass()!=K||!D->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr()!=UActorComponent::StaticClass())return Fail(C.R,TEXT("component_replace_generated_class_unsupported"),TEXT("Direct ActorComponent source parent and existing source CDO/skeleton required."));
         if(I){C.NewBP.Reset(BP);C.NewSkeleton.Reset(Skeleton);C.NewCDO.Reset(static_cast<UActorComponent*>(D));C.NewStatus=BP->Status;}else{C.OldBP.Reset(BP);C.OldSkeleton.Reset(Skeleton);C.OldCDO.Reset(static_cast<UActorComponent*>(D));C.OldStatus=BP->Status;}
     }
-    if(C.OldBP->GetPackage()==C.Host->GetPackage()||C.NewBP->GetPackage()==C.Host->GetPackage())return Fail(C.R,TEXT("component_replace_generated_source_target_package_shared"),TEXT("Source class packages must be distinct from the selected target package."));
+    if((!C.CrossNativeOld&&C.OldBP->GetPackage()==C.Host->GetPackage())||C.NewBP->GetPackage()==C.Host->GetPackage())return Fail(C.R,TEXT("component_replace_generated_source_target_package_shared"),TEXT("Source class packages must be distinct from the selected target package."));
     C.Status=C.Host->Status;C.Dirty=false;C.HostPackageFlags=C.Host->GetPackage()->GetPackageFlags();
-    for(UObject* O:{static_cast<UObject*>(C.Host.Get()),static_cast<UObject*>(C.Host->GetOutermost()),static_cast<UObject*>(C.HostClass.Get()),static_cast<UObject*>(C.HostSkeleton.Get()),C.HostCDO.Get(),static_cast<UObject*>(C.SCS.Get()),static_cast<UObject*>(C.OldBP.Get()),static_cast<UObject*>(C.NewBP.Get()),static_cast<UObject*>(C.OldClass.Get()),static_cast<UObject*>(C.NewClass.Get()),static_cast<UObject*>(C.OldSkeleton.Get()),static_cast<UObject*>(C.NewSkeleton.Get()),static_cast<UObject*>(C.OldCDO.Get()),static_cast<UObject*>(C.NewCDO.Get()),static_cast<UObject*>(AActor::StaticClass()),static_cast<UObject*>(UActorComponent::StaticClass())})if(C.Role(O)==INDEX_NONE)return Fail(C.R,TEXT("component_replace_generated_role_unavailable"),TEXT("An initial held object identity is incomplete."));
+    for(UObject* O:{static_cast<UObject*>(C.Host.Get()),static_cast<UObject*>(C.Host->GetOutermost()),static_cast<UObject*>(C.HostClass.Get()),static_cast<UObject*>(C.HostSkeleton.Get()),C.HostCDO.Get(),static_cast<UObject*>(C.SCS.Get()),static_cast<UObject*>(C.OldBP.Get()),static_cast<UObject*>(C.NewBP.Get()),static_cast<UObject*>(C.OldClass.Get()),static_cast<UObject*>(C.NewClass.Get()),static_cast<UObject*>(C.OldSkeleton.Get()),static_cast<UObject*>(C.NewSkeleton.Get()),static_cast<UObject*>(C.OldCDO.Get()),static_cast<UObject*>(C.NewCDO.Get()),static_cast<UObject*>(AActor::StaticClass()),static_cast<UObject*>(UActorComponent::StaticClass())})if((O||!C.CrossNativeOld)&&C.Role(O)==INDEX_NONE)return Fail(C.R,TEXT("component_replace_generated_role_unavailable"),TEXT("An initial held object identity is incomplete."));
+    if(C.CrossNativeOld){for(int32 I=0;I<C.CrossNativeClasses.Num();++I){if(C.Role(C.CrossNativeClasses[I].Get())==INDEX_NONE||(C.CrossNativeDefaults[I].IsValid()&&C.Role(C.CrossNativeDefaults[I].Get())==INDEX_NONE))return false;}for(UObject* O:{static_cast<UObject*>(C.CrossDefaultRoot.Get()),static_cast<UObject*>(C.CrossDefaultTemplate.Get())})if(C.Role(O)==INDEX_NONE)return false;}
     for(const auto& Row:C.Nodes){if(C.Role(Row.Node.Get())==INDEX_NONE||C.Role(Row.Template.Get())==INDEX_NONE||C.Role(Row.Class.Get())==INDEX_NONE)return Fail(C.R,TEXT("component_replace_generated_role_unavailable"),TEXT("Own SCS node/class/template role cannot be held."));if(Row.Node.Get()!=C.Selected.Get()&&!Native(Row.Class.Get()))return Fail(C.R,TEXT("component_replace_generated_unselected_class_pending"),TEXT("Other generated SCS component classes remain outside this first finite source-protection slice."));}
     if(!C.Current())return false;
     for(const auto& V:C.Host->NewVariables)if(!V.DefaultValue.IsEmpty())return Fail(C.R,TEXT("component_replace_generated_pending_defaults"),TEXT("Host pending descriptor defaults must be compiled/saved before replacement; no unselected default consumption is admitted."));
     auto HostInspection=GeneratedComponent::InspectSavedActorParent(C.HostClass.Get());if(!C.Current())return false;C.R.Data->SetObjectField(TEXT("host_parent_inspection"),HostInspection);bool HostPassed=false;if(!HostInspection->TryGetBoolField(TEXT("success"),HostPassed)||!HostPassed)return Fail(C.R,TEXT("component_replace_generated_host_rejected"),TEXT("Saved-clean runtime host dependency inspection failed; no Modify."));
-    for(UClass* K:{C.OldClass.Get(),C.NewClass.Get()}){auto Inspection=GeneratedComponent::InspectSavedClass(K);if(!C.Current())return false;C.R.Data->SetObjectField(K==C.OldClass.Get()?TEXT("old_generated_component_inspection"):TEXT("new_generated_component_inspection"),Inspection);bool Passed=false;if(!Inspection->TryGetBoolField(TEXT("success"),Passed)||!Passed)return Fail(C.R,TEXT("component_replace_generated_source_rejected"),TEXT("Saved-clean generated component inspection failed; no Modify."));}
+    for(UClass* K:{C.OldClass.Get(),C.NewClass.Get()}){if(C.CrossNativeOld&&K==C.OldClass.Get())continue;auto Inspection=GeneratedComponent::InspectSavedClass(K);if(!C.Current())return false;C.R.Data->SetObjectField(K==C.OldClass.Get()?TEXT("old_generated_component_inspection"):TEXT("new_generated_component_inspection"),Inspection);bool Passed=false;if(!Inspection->TryGetBoolField(TEXT("success"),Passed)||!Passed)return Fail(C.R,TEXT("component_replace_generated_source_rejected"),TEXT("Saved-clean generated component inspection failed; no Modify."));}
     if(!Fresh(C,C.OldTemplate.Get())||C.OldTemplate->GetClass()!=C.OldClass.Get()||C.OldTemplate->GetName()!=C.Slot||FindObject<UObject>(C.HostClass.Get(),*C.Slot)!=C.OldTemplate.Get())return Fail(C.R,TEXT("component_replace_generated_template_unsupported"),TEXT("Exact fresh inactive/unregistered/noWorld selected standard template slot required."));
     for(UObject* D:{static_cast<UObject*>(C.OldCDO.Get()),static_cast<UObject*>(C.NewCDO.Get()),static_cast<UObject*>(C.OldTemplate.Get())}){TArray<UObject*> Owned;GetObjectsWithOuter(D,Owned,EGetObjectsFlags::IncludeNestedObjects);if(!C.Current())return false;if(!Owned.IsEmpty())return Fail(C.R,TEXT("component_replace_generated_owned_defaults_pending"),TEXT("Owned/default subobjects require separate instancing propagation proof."));}
-    C.HostArrays=FScope::Arrays(C.Host.Get());C.OldArrays=FScope::Arrays(C.OldBP.Get());C.NewArrays=FScope::Arrays(C.NewBP.Get());
-    if(!FreezeGraphs(C,C.Host.Get())||!FreezeGraphs(C,C.OldBP.Get())||(C.NewBP.Get()!=C.OldBP.Get()&&!FreezeGraphs(C,C.NewBP.Get())))return false;C.GraphsReady=true;
+    C.HostArrays=FScope::Arrays(C.Host.Get());if(!C.CrossNativeOld)C.OldArrays=FScope::Arrays(C.OldBP.Get());C.NewArrays=FScope::Arrays(C.NewBP.Get());
+    if(!FreezeGraphs(C,C.Host.Get())||(!C.CrossNativeOld&&!FreezeGraphs(C,C.OldBP.Get()))||(C.NewBP.Get()!=C.OldBP.Get()&&!FreezeGraphs(C,C.NewBP.Get())))return false;C.GraphsReady=true;
     return C.Current()&&NoConsumers(C);
 }
 
@@ -1256,6 +1393,23 @@ bool PrepareNativeEmptyDelegates(FScope& C)
         auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("property_name"),Name.ToString());Row->SetStringField(TEXT("owner"),TEXT("/Script/Engine.ActorComponent"));Row->SetStringField(TEXT("field_class"),P->GetClass()->GetName());Row->SetStringField(TEXT("property_flags_string"),LexToString(static_cast<uint64>(ExpectedFlags)));Row->SetNumberField(TEXT("size"),ExpectedSize);Row->SetNumberField(TEXT("offset"),ExpectedOffset);Row->SetObjectField(TEXT("signature"),Identity(F));Row->SetStringField(TEXT("signature_function_flags_string"),LexToString(static_cast<uint32>(F->FunctionFlags)));Row->SetNumberField(TEXT("signature_num_parms"),F->NumParms);Row->SetNumberField(TEXT("signature_parms_size"),F->ParmsSize);Row->SetStringField(TEXT("signature_owning_class"),F->OwningClassName.ToString());Row->SetStringField(TEXT("signature_delegate_name"),F->DelegateName.ToString());Rows.Add(MakeShared<FJsonValueObject>(Row));
     }
     C.NativeEmptyMetadataReady=true;if(!C.Current())return false;Prepared->SetArrayField(TEXT("fields"),Rows);Prepared->SetBoolField(TEXT("complete"),true);return true;
+}
+bool PrepareCrossSparse(FScope& C)
+{
+    if(!C.CrossNativeOld)return true;if(!C.Current())return false;
+    for(UClass* Owner:{USceneComponent::StaticClass(),UPrimitiveComponent::StaticClass()})
+    {
+        const auto Layout=FScope::Fields(Owner);
+        for(const auto& E:Layout)if(E.Owner==Owner&&E.Kind==FMulticastSparseDelegateProperty::StaticClass())
+        {
+            auto* P=static_cast<FMulticastSparseDelegateProperty*>(E.Property);
+            if(P->ArrayDim!=1||P->HasSetterOrGetter()||!P->HasAnyPropertyFlags(CPF_BlueprintAssignable)||!P->SignatureFunction.IsResolved())return Fail(C.R,TEXT("component_replace_cross_sparse_source_pending"),TEXT("Exact native public sparse property/signature roles required."));
+            const auto Slot=P->SignatureFunction;auto* Raw=FromHandle(Slot);if(!C.Current()||!FScope::FieldsSame(Owner,Layout))return false;
+            auto* F=Cast<USparseDelegateFunction>(Raw);if(!Loaded(F)||F->GetPackage()->GetName()!=TEXT("/Script/Engine")||F->IsEditorOnly()||F->OwningClassName!=Owner->GetFName()||F->DelegateName!=E.Name)return Fail(C.R,TEXT("component_replace_cross_sparse_signature_pending"),TEXT("Native Scene/Primitive owning-class/member signature required; no source lookup fallback."));
+            FScope::FCrossSparse S;S.Field=E;S.Owner.Reset(Owner);S.Signature.Reset(F);S.Flags=F->FunctionFlags;S.OwnerName=F->OwningClassName;S.DelegateName=F->DelegateName;if(C.Role(F)==INDEX_NONE)return false;C.CrossSparse.Add(MoveTemp(S));
+        }
+    }
+    C.CrossSparseReady=true;C.R.Data->SetNumberField(TEXT("cross_native_sparse_source_count"),C.CrossSparse.Num());return C.Current();
 }
 // The raw public getter result is reduced to plain bools before any later SDK/current/layout query.
 bool ObserveNativeEmptyDelegate(FScope& C,UActorComponent* O,const FField& Field,const TArray<FField>& Layout,const TSharedRef<FJsonObject>& Metadata,bool& Empty)
@@ -1301,6 +1455,8 @@ bool NoInstancedDefaults(FScope& C,UActorComponent* O)
         {UObject* Value=P->GetObjectPropertyValue_InContainer(O);if(!C.Current())return false;if(!FScope::FieldsSame(O->GetClass(),Fields))return C.Stop(TEXT("component_replace_generated_property_layout_changed"),TEXT("Instanced default inspection changed its current descriptor layout."));if(Value)return RejectPending(Metadata,TEXT("non_null_instanced_object"),TEXT("Non-null instanced objects require separate ownership propagation proof."));}
         else if(F.Owner==UActorComponent::StaticClass()&&F.Kind==FMulticastSparseDelegateProperty::StaticClass()&&(F.Name==TEXT("OnComponentActivated")||F.Name==TEXT("OnComponentDeactivated")))
         {bool Empty=false;if(!ObserveNativeEmptyDelegate(C,O,F,Fields,Metadata,Empty))return false;if(!Empty)return RejectPending(Metadata,TEXT("nonempty_native_sparse_delegate"),TEXT("Native sparse delegate invocation list is nonempty; expired entries are retained and no cleanup or instancing is attempted."));}
+        else if(C.CrossNativeOld&&(O==C.OldCDO.Get()||O==C.OldTemplate.Get())&&F.Kind==FMulticastSparseDelegateProperty::StaticClass()&&(F.Owner==USceneComponent::StaticClass()||F.Owner==UPrimitiveComponent::StaticClass()))
+        {const auto* S=C.CrossSparse.FindByPredicate([&](const FScope::FCrossSparse& X){return X.Field.Property==F.Property;});if(!S||!C.CrossOldCurrent())return false;const auto* D=static_cast<FMulticastSparseDelegateProperty*>(F.Property)->GetMulticastDelegate(F.Property->ContainerPtrToValuePtr<void>(O));const bool Empty=!D||!D->IsBound();if(!C.Current()||!FScope::FieldsSame(O->GetClass(),Fields))return false;if(!Empty)return RejectPending(Metadata,TEXT("nonempty_native_scene_sparse_delegate"),TEXT("Native Scene/Primitive delegate bindings require propagation outside this leaf slice."));}
         else return RejectPending(Metadata,TEXT("unsupported_nested_instanced_kind"),TEXT("Nested instanced defaults are not admitted."));
     }
     return C.Current();
@@ -1336,6 +1492,7 @@ bool SourceState(FScope& C,const TSharedRef<FJsonObject>& Out)
 {
     for(int32 I=0;I<2;++I)
     {
+        if(C.CrossNativeOld&&I==0){auto NativeSource=MakeShared<FJsonObject>();for(int32 J=0;J<C.CrossNativeClasses.Num();++J){auto* K=C.CrossNativeClasses[J].Get();auto Row=Identity(K);Row->SetStringField(TEXT("class_flags"),LexToString(uint32(K->GetClassFlags())));auto* D=C.CrossNativeDefaults[J].Get();Row->SetObjectField(TEXT("existing_cdo"),Identity(D));if(D){auto Values=MakeShared<FJsonObject>();if(!C.Props(D,{},Values))return false;Row->SetObjectField(TEXT("default_properties"),Values);}NativeSource->SetObjectField(K->GetPathName(),Row);}Out->SetObjectField(TEXT("old_native_source"),NativeSource);continue;}
         UBlueprint* B=I?C.NewBP.Get():C.OldBP.Get();UActorComponent* D=I?C.NewCDO.Get():C.OldCDO.Get();auto J=MakeShared<FJsonObject>();J->SetObjectField(TEXT("blueprint"),Identity(B));J->SetObjectField(TEXT("class"),Identity(I?C.NewClass.Get():C.OldClass.Get()));J->SetObjectField(TEXT("skeleton"),Identity(I?C.NewSkeleton.Get():C.OldSkeleton.Get()));J->SetObjectField(TEXT("cdo"),Identity(D));
         auto Values=MakeShared<FJsonObject>(),Declaration=MakeShared<FJsonObject>(),File=MakeShared<FJsonObject>();if(!C.Props(D,{},Values)||!Declarations(C,B,Declaration)||!Disk(B->GetOutermost()->GetName(),File)||!C.Current())return false;J->SetObjectField(TEXT("default_properties"),Values);J->SetObjectField(TEXT("declarations"),Declaration);J->SetObjectField(TEXT("disk"),File);Out->SetObjectField(I?TEXT("new_source"):TEXT("old_source"),J);
     }
@@ -1348,13 +1505,36 @@ bool TargetState(FScope& C,const TSharedRef<FJsonObject>& Out)
     for(const auto& N:C.Nodes)
     {
         auto J=MakeShared<FJsonObject>();J->SetObjectField(TEXT("node"),Identity(N.Node.Get()));J->SetStringField(TEXT("name"),N.Name.ToString());J->SetStringField(TEXT("guid"),N.Guid.ToString());
-        auto Props=MakeShared<FJsonObject>();if(!C.Props(N.Node.Get(),N.Node.Get()==C.Selected.Get()?TSet<FName>{TEXT("ComponentClass"),TEXT("ComponentTemplate")}:TSet<FName>{},Props))return false;J->SetObjectField(TEXT("node_properties"),Props);
+        auto Props=MakeShared<FJsonObject>();if(!C.Props(N.Node.Get(),N.Node.Get()==C.Selected.Get()?TSet<FName>{TEXT("ComponentClass"),TEXT("ComponentTemplate")}:TSet<FName>{},Props))return false;
+        if(C.CrossNativeOld&&!C.Assigned&&N.Node.Get()==C.CrossParent.Get()){const auto ChildField=Props->TryGetField(TEXT("ChildNodes"));if(!ChildField||ChildField->Type!=EJson::Object)return C.Stop(TEXT("component_replace_cross_parent_field_unobservable"),TEXT("Original local parent ChildNodes descriptor/value could not be observed."));if(C.CrossParentChildrenBefore.IsValid()&&!Equal(C.CrossParentChildrenBefore,ChildField))return C.Stop(TEXT("component_replace_cross_parent_field_changed"),TEXT("Original parent ChildNodes export changed before assignment."));C.CrossParentChildrenBefore=ChildField;}
+        J->SetObjectField(TEXT("node_properties"),Props);
         if(N.Node.Get()!=C.Selected.Get()){auto Values=MakeShared<FJsonObject>();if(!C.Props(N.Template.Get(),{},Values))return false;J->SetObjectField(TEXT("template"),Identity(N.Template.Get()));J->SetObjectField(TEXT("template_properties"),Values);}
         Nodes.Add(MakeShared<FJsonValueObject>(J));
     }
     Out->SetArrayField(TEXT("scs"),Nodes);return C.Current();
 }
 bool SelectedGetterGraphExpectation(FScope& C,const TSharedPtr<FJsonValue>& Before,TSharedPtr<FJsonValue>& Projected);
+bool CrossScsExpectation(FScope& C,const TSharedPtr<FJsonValue>& Before,const TSharedPtr<FJsonValue>& Actual,TSharedPtr<FJsonValue>& Projected)
+{
+    Projected=Before;if(!C.CrossPromoted)return true;if(!C.Current()||!Before||!Actual||Before->Type!=EJson::Array||Actual->Type!=EJson::Array||!C.CrossParentChildrenBefore.IsValid())return false;
+    const auto& A=Before->AsArray();const auto& B=Actual->AsArray();if(A.Num()!=C.Nodes.Num()||B.Num()!=A.Num())return false;TArray<TSharedPtr<FJsonValue>> Rows=A;int32 Matched=0;
+    for(int32 I=0;I<A.Num();++I)if(C.Nodes[I].Node.Get()==C.CrossParent.Get())
+    {
+        ++Matched;if(!A[I]||!B[I]||A[I]->Type!=EJson::Object||B[I]->Type!=EJson::Object)return false;auto Original=A[I]->AsObject();auto ActualRow=B[I]->AsObject();
+        const auto* P=Original->TryGetField(TEXT("node_properties")).Get();const auto* Q=ActualRow->TryGetField(TEXT("node_properties")).Get();if(!P||!Q||P->Type!=EJson::Object||Q->Type!=EJson::Object)return false;
+        auto Properties=P->AsObject();auto ActualProperties=Q->AsObject();const auto OldChildren=Properties->TryGetField(TEXT("ChildNodes")),NewChildren=ActualProperties->TryGetField(TEXT("ChildNodes"));if(!OldChildren||!NewChildren||OldChildren->Type!=EJson::Object||NewChildren->Type!=EJson::Object)return false;
+        if(Equal(OldChildren,NewChildren))continue;
+        if(!Equal(OldChildren,C.CrossParentChildrenBefore))return false;
+        const auto ExpectedField=OldChildren->AsObject(),ActualField=NewChildren->AsObject();if(ExpectedField->Values.Num()!=ActualField->Values.Num())return false;
+        const auto OldValues=ExpectedField->TryGetField(TEXT("values")),NewValues=ActualField->TryGetField(TEXT("values"));if(!OldValues||!NewValues||OldValues->Type!=EJson::Array||NewValues->Type!=EJson::Array)return false;
+        for(const auto& E:ExpectedField->Values)if(E.Key.ToView()!=TEXT("values")&&!Equal(E.Value,ActualField->TryGetField(E.Key.ToView())))return false;
+        // Current() separately proves the original parent child-pointer list
+        // minus exactly Selected. Only its serialized values cell is projected;
+        // descriptor identity/layout and every other node/property stay exact.
+        auto CopyField=MakeShared<FJsonObject>();CopyField->Values=ExpectedField->Values;CopyField->SetField(TEXT("values"),NewValues);auto CopyProperties=MakeShared<FJsonObject>();CopyProperties->Values=Properties->Values;CopyProperties->SetObjectField(TEXT("ChildNodes"),CopyField);auto CopyRow=MakeShared<FJsonObject>();CopyRow->Values=Original->Values;CopyRow->SetObjectField(TEXT("node_properties"),CopyProperties);Rows[I]=MakeShared<FJsonValueObject>(CopyRow);
+    }
+    if(Matched!=1)return false;Projected=MakeShared<FJsonValueArray>(Rows);return C.Current();
+}
 bool Boundary(FScope& C,const TSharedRef<FJsonObject>& SourceBefore,const TSharedRef<FJsonObject>& TargetBefore,const TSharedRef<FJsonObject>& DiskBefore,const TSharedRef<FJsonObject>& DirtyBefore,const TCHAR* Key,bool SavePhase=false,bool Compiled=false)
 {
     auto Sources=MakeShared<FJsonObject>(),Target=MakeShared<FJsonObject>(),File=MakeShared<FJsonObject>(),Others=MakeShared<FJsonObject>(),J=MakeShared<FJsonObject>();C.R.Data->SetObjectField(Key,J);J->SetBoolField(TEXT("complete"),false);
@@ -1365,6 +1545,7 @@ bool Boundary(FScope& C,const TSharedRef<FJsonObject>& SourceBefore,const TShare
     {
         TSharedPtr<FJsonValue> Expected=Field.Value;
         if(Field.Key.ToView()==TEXT("graphs")&&!SelectedGetterGraphExpectation(C,Field.Value,Expected))return C.Stop(TEXT("component_replace_selected_getter_projection_failed"),TEXT("Selected getter comparison-only type projection was not unique and exact."));
+        if(Field.Key.ToView()==TEXT("scs")&&!CrossScsExpectation(C,Field.Value,Target->TryGetField(Field.Key.ToView()),Expected))return C.Stopped?false:C.Stop(TEXT("component_replace_cross_compiler_scs_projection_failed"),TEXT("Selected full-compile leaf promotion projection was not exact; no save/retry."));
         if(Field.Key.ToView()==TEXT("host_cdo")&&Compiled){if(!PostcompileCdoEqual(Field.Value,Target->TryGetField(Field.Key.ToView())))SameTarget=false;}
         else if(SavePhase){if(!SavedEqual(Expected,Target->TryGetField(Field.Key.ToView()),C.HostPackage))SameTarget=false;}
         else if(!Equal(Expected,Target->TryGetField(Field.Key.ToView())))SameTarget=false;
@@ -1426,7 +1607,7 @@ bool AdoptAllocation(FScope& C,UActorComponent* Returned)
 }
 bool RebindHost(FScope& C,bool FullCompile,bool CompilerRefreshedPins=false)
 {
-    if(!C.Current(true,CompilerRefreshedPins))return false;
+    if(!C.Current(true,CompilerRefreshedPins,FullCompile))return false;
     UClass* RawClass=ClassHandle(C.Host->GeneratedClass.GetGCPtr());if(!C.Current(true,CompilerRefreshedPins))return false;
     UClass* RawSkeleton=ClassHandle(C.Host->SkeletonGeneratedClass.GetGCPtr());if(!C.Current(true,CompilerRefreshedPins))return false;
     if(!Loaded(RawClass)||!Loaded(RawSkeleton))return C.Stop(TEXT("component_replace_generated_compiler_class_unobservable"),TEXT("Compiler returned without resolved exact current generated/skeleton roles."));
@@ -1528,7 +1709,7 @@ bool PrepareSelectedGetters(FScope& C)
     const FGuid MemberGuid=C.HostSkeleton->FindBlueprintPropertyGuidFromName(FName(*C.SelectedName));
     for(const auto& G:C.GraphRows)for(const auto& N:G.Nodes)if(N.SelectedGetter)
     {
-        if((!C.NativeScene&&(N.Reference.GetMemberGuid()!=MemberGuid||C.HostClass->FindBlueprintPropertyGuidFromName(FName(*C.SelectedName))!=MemberGuid))||!G.Graph->Schema.GetGCPtr().IsResolved()||G.Graph->Schema.GetGCPtr()!=SchemaClass)return Fail(C.R,TEXT("component_replace_selected_getter_reference_unsupported"),TEXT("Own getter member GUID must equal both current public property GUID maps; exact K2 schema required. SCS GUID is a separate identity."));
+        if((!C.NativeScene&&!C.CrossNativeOld&&(N.Reference.GetMemberGuid()!=MemberGuid||C.HostClass->FindBlueprintPropertyGuidFromName(FName(*C.SelectedName))!=MemberGuid))||!G.Graph->Schema.GetGCPtr().IsResolved()||G.Graph->Schema.GetGCPtr()!=SchemaClass)return Fail(C.R,TEXT("component_replace_selected_getter_reference_unsupported"),TEXT("Own getter member GUID must equal both current public property GUID maps; exact K2 schema required. SCS GUID is a separate identity."));
     }
     C.GetterPropertiesReady=true;
     C.R.Data->SetStringField(TEXT("selected_getter_member_guid"),MemberGuid.ToString());C.R.Data->SetStringField(TEXT("selected_scs_variable_guid"),C.Guid.ToString());C.R.Data->SetBoolField(TEXT("scs_guid_substituted_for_member_guid"),false);
@@ -1537,7 +1718,7 @@ bool PrepareSelectedGetters(FScope& C)
     {
         if(!C.Current())return false;
         if(!C.R.Data->HasField(TEXT("selected_getter_entry_object_flags"))){C.R.Data->SetStringField(TEXT("selected_getter_entry_object_flags"),LexToString(static_cast<uint32>(N.Node->GetFlags())));C.R.Data->SetNumberField(TEXT("selected_getter_entry_pin_count"),N.PinRows.Num());C.R.Data->SetBoolField(TEXT("selected_getter_entry_native_scene"),C.NativeScene);C.R.Data->SetStringField(TEXT("selected_getter_entry_node_guid"),N.Guid.ToString());}
-        if((!C.NativeScene&&!N.Node->HasAnyFlags(RF_Transactional))||N.PinRows.Num()!=2)return Fail(C.R,TEXT("component_replace_selected_getter_shape_unsupported"),TEXT("Pure getter with one own value output and one hidden unlinked self input required; generated non-scene entry additionally requires its original transactional flag."));
+        if((!C.NativeScene&&!C.CrossNativeOld&&!N.Node->HasAnyFlags(RF_Transactional))||N.PinRows.Num()!=2)return Fail(C.R,TEXT("component_replace_selected_getter_shape_unsupported"),TEXT("Pure getter with one own value output and one hidden unlinked self input required; generated non-scene entry additionally requires its original transactional flag."));
         int32 SelfCount=0,ValueCount=0;
         for(int32 I=0;I<N.PinRows.Num();++I)
         {
@@ -1627,11 +1808,11 @@ bool AdoptSaveFlags(FScope& C)
     }
     C.Dirty=C.Host->GetPackage()->IsDirty();return C.Current();
 }
-FString Replace(const FString& BlueprintPath,const FString& ComponentName,const FString& NewComponentClass,double SphereRadius,bool DryRun,bool Compile,bool Save,bool Refresh)
+FString Replace(const FString& BlueprintPath,const FString& ComponentName,const FString& NewComponentClass,double SphereRadius,bool DryRun,bool Compile,bool Save,bool Refresh,bool RequireSceneCompatibility=true)
 {
-    FResult R;Init(R,DryRun,Compile,Save,Refresh);FScope C(R);
+    FResult R;Init(R,DryRun,Compile,Save,Refresh);FScope C(R);C.RequireSceneCompatibility=RequireSceneCompatibility;
     R.Data->SetBoolField(TEXT("generated_non_scene_component_replacement"),true);R.Data->SetBoolField(TEXT("native_transaction_scope_created"),false);R.Data->SetBoolField(TEXT("full_legacy_contract_completed"),false);R.Data->SetBoolField(TEXT("graph_member_migration_performed"),false);
-    R.Data->SetStringField(TEXT("blueprint_name"),BlueprintPath);R.Data->SetStringField(TEXT("requested_new_component_class"),NewComponentClass);R.Data->SetBoolField(TEXT("require_scene_compatibility"),true);
+    R.Data->SetStringField(TEXT("blueprint_name"),BlueprintPath);R.Data->SetStringField(TEXT("requested_new_component_class"),NewComponentClass);R.Data->SetBoolField(TEXT("require_scene_compatibility"),RequireSceneCompatibility);
     R.Data->SetStringField(TEXT("dependency_tier"),TEXT("EngineAPI: existing saved generated BPC/native Actor source inspection, public UObject Rename/NewObject and SCS/editor compile/save APIs; no ServerRPC, custom runtime component or external bridge."));
     R.Data->SetStringField(TEXT("effect_scope"),TEXT("Exact loaded saved-clean direct-native Actor host, one own flat leaf non-scene generated BPC root to a saved-clean direct ActorComponent BPC class. One retirement/allocation preserves node name/GUID and copies only ComponentTags, as the original non-scene helper did; remaining selected defaults originate from the new class CDO. Public Modify/Rename/constructor/structural/compiler/save callbacks may have implicit engine effects; no atomic rollback."));
     R.Data->SetStringField(TEXT("read_scope"),TEXT("Held current source classes/skeletons/existing CDOs, bounded source defaults/declarations/stored graphs/disk, host own SCS/name/GUID/class/template/topology, selected defaults and bounded unselected CDO/declaration/graph/template/disk/dirty-package state. No complete loaded-reference, delegate purity, runtime or cook proof."));
@@ -1642,7 +1823,8 @@ FString Replace(const FString& BlueprintPath,const FString& ComponentName,const 
     {
         if(!FMath::IsFinite(SphereRadius))return Fail(R,TEXT("component_replace_radius_invalid"),TEXT("Finite public radius required; this non-scene branch does not consume sphere_radius."));
         if(!Bind(C,BlueprintPath,ComponentName,NewComponentClass)||!PrepareSelectedGetters(C))return false;
-        if(!PrepareNativeEmptyDelegates(C)||!NoInstancedDefaults(C,C.OldCDO.Get())||!NoInstancedDefaults(C,C.NewCDO.Get())||!NoInstancedDefaults(C,C.OldTemplate.Get()))return false;
+        if(!PrepareNativeEmptyDelegates(C)||!PrepareCrossSparse(C)||!NoInstancedDefaults(C,C.OldCDO.Get())||!NoInstancedDefaults(C,C.NewCDO.Get())||!NoInstancedDefaults(C,C.OldTemplate.Get()))return false;
+        if(C.CrossNativeOld){USCS_Node* Root=nullptr;const auto* SceneRoot=C.SCS->GetSceneRootComponentTemplate(false,&Root);if(!C.Current())return false;if(Root!=C.CrossRoot.Get()||SceneRoot!=C.CrossRoot->ComponentTemplate.Get())return Fail(R,TEXT("component_replace_cross_root_selection_pending"),TEXT("Existing actual own non-default Scene root required; no default-root cache creation or normalization is allowed."));R.Data->SetBoolField(TEXT("cross_scene_to_non_scene_leaf"),true);R.Data->SetStringField(TEXT("unsupported_original_scope"),TEXT("Cross Scene root/child-bearing/reverse/mixed native targets, nonempty sparse bindings/owned subobjects, selected setters/bound events/literals and incompatible typed consumers remain incomplete. Native Scene leaf to direct ActorComponent BPC is implemented using the existing writer; usage/compile/save validation pending."));R.Data->SetStringField(TEXT("effect_scope"),TEXT("Raw require_scene_compatibility=false: own non-root native Box/Sphere/Capsule leaf below an existing non-default Scene root to saved-clean direct ActorComponent BPC. Existing node identities/default-root cache remain; successful full compile may move exactly the selected non-Scene leaf from its one local parent to the root set; original cross-class copy is ComponentTags only, target defaults originate from its CDO. Exact source/template/delegate/getter/current/partial/compiler/save guards retained. Root, child-bearing and reverse cross transitions remain incomplete; actual usage validation pending."));}
         C.NativeEmptyGuardReady=true;if(!C.Current())return false;R.Data->SetBoolField(TEXT("native_empty_delegate_current_guard_active"),true);
         auto SourceBefore=MakeShared<FJsonObject>(),TargetBefore=MakeShared<FJsonObject>(),DiskBefore=MakeShared<FJsonObject>(),OtherDirty=MakeShared<FJsonObject>(),OldValues=MakeShared<FJsonObject>(),NewDefaults=MakeShared<FJsonObject>();
         if(!SourceState(C,SourceBefore)||!TargetState(C,TargetBefore)||!C.Props(C.OldTemplate.Get(),{},OldValues)||!C.Props(C.NewCDO.Get(),{TEXT("ComponentTags")},NewDefaults)||!Disk(C.HostPackage,DiskBefore)||!Dirty(C.HostPackage,OtherDirty)||!C.Current())return C.Stopped?false:C.Stop(TEXT("component_replace_generated_before_unobservable"),TEXT("Bounded actual source/target/default/disk observation incomplete; no Modify."));
@@ -2036,14 +2218,14 @@ bool NativeGetSaved(FContext& C,FResult& R)
 {if(!C.NativeGet)return true;if(!R.bSaved)return C.NativeGet->Stop(TEXT("component_replace_save_failed_or_unobservable"),TEXT("Save false stops before followup getter/source SDK."));C.NativeGet->NativeSaved=true;return C.NativeGet->Current();}
 
 }
-FString ReplaceComponentClass(const FString& BlueprintPath, const FString& ComponentName, const FString& NewComponentClass,
-    double SphereRadius, bool bDryRun, bool bCompile, bool bSave, bool bRefreshNodes)
+FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& NewComponentClass,
+    double SphereRadius, bool bDryRun, bool bCompile, bool bSave, bool bRefreshNodes, bool bRequireSceneCompatibility)
 {
     if (NewComponentClass.StartsWith(TEXT("/Game/")))
     {
-        return GeneratedReplacement::Replace(BlueprintPath, ComponentName, NewComponentClass, SphereRadius, bDryRun, bCompile, bSave, bRefreshNodes);
+        return GeneratedReplacement::Replace(BlueprintPath, ComponentName, NewComponentClass, SphereRadius, bDryRun, bCompile, bSave, bRefreshNodes,bRequireSceneCompatibility);
     }
-    FResult R; Init(R, bDryRun, bCompile, bSave, bRefreshNodes); R.Data->SetStringField(TEXT("blueprint_name"), BlueprintPath); R.Data->SetStringField(TEXT("requested_new_component_class"), NewComponentClass); R.Data->SetBoolField(TEXT("require_scene_compatibility"), true); FContext C; FObservation Before, Current; float Radius = 0;
+    FResult R; Init(R, bDryRun, bCompile, bSave, bRefreshNodes); R.Data->SetStringField(TEXT("blueprint_name"), BlueprintPath); R.Data->SetStringField(TEXT("requested_new_component_class"), NewComponentClass); R.Data->SetBoolField(TEXT("require_scene_compatibility"), bRequireSceneCompatibility); FContext C; FObservation Before, Current; float Radius = 0;
     const bool Passed = [&]() -> bool
     {
         FString Target = NewComponentClass.TrimStartAndEnd(); Target.TrimQuotesInline();
@@ -2051,7 +2233,8 @@ FString ReplaceComponentClass(const FString& BlueprintPath, const FString& Compo
         if(Alias(TEXT("Sphere"),TEXT("SphereComponent"),TEXT("USphereComponent"),TEXT("/Script/Engine.SphereComponent")))C.TargetClass=USphereComponent::StaticClass();
         else if(Alias(TEXT("Box"),TEXT("BoxComponent"),TEXT("UBoxComponent"),TEXT("/Script/Engine.BoxComponent")))C.TargetClass=UBoxComponent::StaticClass();
         else if(Alias(TEXT("Capsule"),TEXT("CapsuleComponent"),TEXT("UCapsuleComponent"),TEXT("/Script/Engine.CapsuleComponent")))C.TargetClass=UCapsuleComponent::StaticClass();
-        else return Fail(R,TEXT("component_replace_target_class_unsupported"),TEXT("Exact native Sphere/Box/Capsule aliases are admitted; other native/custom Scene targets remain incomplete."));
+        else if(Alias(TEXT("StaticMeshComponent"),TEXT("StaticMeshComponent"),TEXT("UStaticMeshComponent"),TEXT("/Script/Engine.StaticMeshComponent")))C.TargetClass=UStaticMeshComponent::StaticClass();
+        else return Fail(R,TEXT("component_replace_target_class_unsupported"),TEXT("Exact native Sphere/Box/Capsule and bounded null-mesh StaticMeshComponent targets are admitted; other native/custom Scene targets remain incomplete."));
         if (C.TargetClass==USphereComponent::StaticClass()&&!FMath::IsFinite(SphereRadius)) { return Fail(R, TEXT("component_replace_radius_invalid"), TEXT("Finite radius required; negative public values mean original omitted/derived radius.")); }
         if (!Prepare(BlueprintPath, ComponentName, C, R)) { return false; }
         C.OldTemplate.Reset(C.Node->ComponentTemplate); auto* Old = CastChecked<UPrimitiveComponent>(C.OldTemplate.Get());
@@ -2076,13 +2259,17 @@ FString ReplaceComponentClass(const FString& BlueprintPath, const FString& Compo
             if(C.RootMode)R.Data->SetStringField(TEXT("effect_scope"),TEXT("Own parentless native Box/Sphere/Capsule root template replacement; original tags/relative transform/mobility/visibility/collision and target-shape semantics, ordered descendants/socket/GUID/variable references preserved in editor. No runtime world-transform or live-instance propagation claim."));
             if(!ShapeCurrent(C,R))return false;
         }
+        if(C.TargetClass==UStaticMeshComponent::StaticClass()){
+         R.Data->SetBoolField(TEXT("native_static_mesh_target"),true);R.Data->SetBoolField(TEXT("static_mesh_reference_written"),false);R.Data->SetBoolField(TEXT("static_mesh_runtime_verified"),false);
+         R.Data->SetStringField(TEXT("effect_scope"),TEXT("Own native shape -> exact native StaticMeshComponent using original Scene/Primitive common-copy and existing SCS root/children/retirement/compile/save flow. Target CDO and returned templates keep null StaticMesh and empty OverrideMaterials; no mesh/material assignment, load, renderer setup or runtime proof. Broader original native component/source/asset profiles remain incomplete; implemented/usage validation pending."));
+        }
         R.Data->SetStringField(TEXT("new_component_class"), C.TargetClass->GetName()); R.Data->SetStringField(TEXT("new_component_class_path"), C.TargetClass->GetPathName());
         if (!Capture(C, Before, R, TEXT("before_observation"))) { return Fail(R, TEXT("component_replace_before_unobservable"), TEXT("Preflight bounded target/source/file observation incomplete; no Modify/allocation.")); }
         R.Data->SetObjectField(TEXT("before"), Summary(C.Node));
         if (bDryRun)
         {
             auto Preview = Summary(C.Node); Preview->SetStringField(TEXT("component_class"), C.TargetClass->GetName());Preview->SetStringField(TEXT("component_class_path"),C.TargetClass->GetPathName());if(C.ShapeMode){Preview->RemoveField(TEXT("box_extent"));Preview->RemoveField(TEXT("sphere_radius"));Preview->RemoveField(TEXT("capsule_radius"));Preview->RemoveField(TEXT("capsule_half_height"));}
-            if(C.TargetClass==UBoxComponent::StaticClass()){Preview->SetStringField(TEXT("shape"),TEXT("box"));Preview->SetArrayField(TEXT("box_extent"),Vector(C.ExpectedBox));}else if(C.TargetClass==UCapsuleComponent::StaticClass()){Preview->SetStringField(TEXT("shape"),TEXT("capsule"));Preview->SetNumberField(TEXT("capsule_radius"),C.ExpectedCapsuleRadius);Preview->SetNumberField(TEXT("capsule_half_height"),C.ExpectedCapsuleHalfHeight);}else{Preview->SetStringField(TEXT("shape"),TEXT("sphere"));Preview->SetNumberField(TEXT("sphere_radius"),Radius);} R.Data->SetObjectField(TEXT("after_preview"), Preview); R.Data->SetStringField(TEXT("write_scope"), TEXT("dry_run_no_asset_mutation"));
+            if(C.TargetClass==UBoxComponent::StaticClass()){Preview->SetStringField(TEXT("shape"),TEXT("box"));Preview->SetArrayField(TEXT("box_extent"),Vector(C.ExpectedBox));}else if(C.TargetClass==UCapsuleComponent::StaticClass()){Preview->SetStringField(TEXT("shape"),TEXT("capsule"));Preview->SetNumberField(TEXT("capsule_radius"),C.ExpectedCapsuleRadius);Preview->SetNumberField(TEXT("capsule_half_height"),C.ExpectedCapsuleHalfHeight);}else if(C.TargetClass==UStaticMeshComponent::StaticClass()){Preview->RemoveField(TEXT("shape"));Preview->SetStringField(TEXT("static_mesh"),TEXT(""));}else{Preview->SetStringField(TEXT("shape"),TEXT("sphere"));Preview->SetNumberField(TEXT("sphere_radius"),Radius);} R.Data->SetObjectField(TEXT("after_preview"), Preview); R.Data->SetStringField(TEXT("write_scope"), TEXT("dry_run_no_asset_mutation"));
             if (!Capture(C, Current, R, TEXT("after_observation"))) { return Fail(R, TEXT("component_replace_preview_unobservable"), TEXT("Preview returned but exact repeated current observation incomplete."), true); }
             const bool EqualAll = Equal(Before.State, Current.State) && Equal(Before.NativeSources, Current.NativeSources) && Equal(Before.DiskState, Current.DiskState) && Equal(Before.OtherDirty, Current.OtherDirty);
             R.Data->SetBoolField(TEXT("observations_complete"), true); R.Data->SetBoolField(TEXT("source_preserved"), Equal(Before.NativeSources, Current.NativeSources)); R.Data->SetBoolField(TEXT("unselected_state_preserved"), EqualAll); R.Data->SetBoolField(TEXT("independent_readback_passed"), EqualAll); R.bChanged = !EqualAll;
@@ -2095,7 +2282,7 @@ FString ReplaceComponentClass(const FString& BlueprintPath, const FString& Compo
         if (!Renamed || !Loaded(C.OldTemplate.Get()) || C.OldTemplate->GetOutermost() != GetTransientPackage() || FindObject<UObject>(C.Blueprint->GeneratedClass, *C.Slot)) { return Fail(R, TEXT("component_replace_retirement_failed"), TEXT("One exact retirement Rename failed or old slot not empty; retained actual prefix, no allocation/retry."), true); }
         R.Stage = TEXT("allocate_replacement_template"); Count(R, TEXT("template_allocation_calls")); C.NewTemplate.Reset(NewObject<UActorComponent>(C.Blueprint->GeneratedClass, C.TargetClass, FName(*C.Slot), RF_ArchetypeObject | RF_Transactional | RF_Public));if(!ShapeCurrent(C,R))return false; Retirement(C, R, TEXT("after_allocation"));
         auto* Sphere = Cast<UPrimitiveComponent>(C.NewTemplate.Get());
-        if (!Loaded(Sphere) || Sphere->GetClass() != C.TargetClass || Sphere->GetOuter() != C.Blueprint->GeneratedClass || Sphere->GetName() != C.Slot || Sphere->IsRegistered() || Sphere->IsPreRegistering() || Sphere->GetOwner() || Sphere->GetWorld()) { return Fail(R, TEXT("component_replace_allocation_failed"), TEXT("Exact new native unregistered Sphere template not observed; old node prefix remains, no rollback/retry."), true); }
+        if (!Loaded(Sphere) || Sphere->GetClass() != C.TargetClass || Sphere->GetOuter() != C.Blueprint->GeneratedClass || Sphere->GetName() != C.Slot || Sphere->IsRegistered() || Sphere->IsPreRegistering() || Sphere->GetOwner() || Sphere->GetWorld()) { return Fail(R, TEXT("component_replace_allocation_failed"), TEXT("Exact new native unregistered Primitive target template not observed; old node prefix remains, no rollback/retry."), true); }
         Sphere->Modify(); Count(R, TEXT("modify_calls"));if(!ShapeCurrent(C,R))return false; R.Stage = TEXT("copy_common_defaults"); Count(R, TEXT("common_copy_calls"));
         if(C.ShapeMode){if(!CopyAdditionalShapeDefaults(C,R,Old,Sphere,Radius))return false;}
         else{auto* NativeSphere=CastChecked<USphereComponent>(Sphere);
@@ -2111,7 +2298,7 @@ FString ReplaceComponentClass(const FString& BlueprintPath, const FString& Compo
         if (!Fences(Before, Current, C, R) || !Readback(C, Before, Current, Radius, R, false)) { return false; }
         R.Data->SetBoolField(TEXT("after_assignment_preserved"), true); R.Stage = TEXT("structural_refresh"); ClearFinal(R); R.bKnown = false; Count(R, TEXT("structural_refresh_calls")); FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(C.Blueprint.Get());
         if(!RootCompilerReturned(C,R)||!NativeGetReturn(C,R,false))return false;
-        FContext Refreshed; const bool ContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, Refreshed, R); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&(!ContextOK||C.RootMode!=Refreshed.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (ContextOK) { Refreshed.OldTemplate = MoveTemp(C.OldTemplate); Refreshed.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,Refreshed); C = MoveTemp(Refreshed);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
+        FContext Refreshed; const bool ContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, Refreshed, R,C.TargetClass==UStaticMeshComponent::StaticClass()?C.TargetClass:nullptr); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&(!ContextOK||C.RootMode!=Refreshed.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (ContextOK) { Refreshed.OldTemplate = MoveTemp(C.OldTemplate); Refreshed.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,Refreshed); C = MoveTemp(Refreshed);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
         if (!Capture(C, Current, R, TEXT("after_structural_observation")) || !ContextOK) { return Fail(R, TEXT("component_replace_structural_unobservable"), TEXT("Structural refresh returned but current admitted ownership/defaults incomplete; retained prefix, no full compile/save."), true); }
         const FObjectPropertyBase* SkeletonMember = FindFProperty<FObjectPropertyBase>(C.Blueprint->SkeletonGeneratedClass, FName(*C.SelectedName)); const bool SkeletonOK = SkeletonMember && SkeletonMember->GetOwnerClass() == C.Blueprint->SkeletonGeneratedClass && SkeletonMember->ArrayDim == 1 && SkeletonMember->PropertyClass == C.TargetClass && SkeletonMember->HasAnyPropertyFlags(CPF_BlueprintVisible);
         R.Data->SetBoolField(TEXT("skeleton_selected_member_verified"), SkeletonOK); R.Data->SetObjectField(TEXT("after"), Summary(C.Node)); R.Data->SetStringField(TEXT("write_scope"), TEXT("blueprint_scs_component_template_replacement")); Retirement(C, R, TEXT("after_structural_retirement"));
@@ -2127,7 +2314,7 @@ FString ReplaceComponentClass(const FString& BlueprintPath, const FString& Compo
         }
         if(C.RootMode){if(!Compiled)return Fail(R,TEXT("component_replace_compile_failed"),TEXT("Known compiler failure retained; no old role readback/save/retry."),true);if(!RootCompilerReturned(C,R))return false;}
         if(C.NativeGet){if(!Compiled)return Fail(R,TEXT("component_replace_compile_failed"),TEXT("Known compiler failure retained; no old pin readback/save/retry."),true);if(!NativeGetReturn(C,R,true))return false;}
-        FContext CompiledContext; const bool CompiledContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, CompiledContext, R); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&(!CompiledContextOK||C.RootMode!=CompiledContext.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (CompiledContextOK) { CompiledContext.OldTemplate = MoveTemp(C.OldTemplate); CompiledContext.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,CompiledContext); C = MoveTemp(CompiledContext);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
+        FContext CompiledContext; const bool CompiledContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, CompiledContext, R,C.TargetClass==UStaticMeshComponent::StaticClass()?C.TargetClass:nullptr); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&(!CompiledContextOK||C.RootMode!=CompiledContext.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (CompiledContextOK) { CompiledContext.OldTemplate = MoveTemp(C.OldTemplate); CompiledContext.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,CompiledContext); C = MoveTemp(CompiledContext);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
         if (!Capture(C, Current, R, TEXT("after_observation")) || !CompiledContextOK) { return Fail(R, TEXT("component_replace_postcompile_unobservable"), TEXT("Full compiler attempted once; current bounded actual prefix incomplete, save suppressed."), true); }
         Retirement(C, R, TEXT("after_compile_retirement")); if (!Fences(Before, Current, C, R) || !Readback(C, Before, Current, Radius, R, Compiled)) { return false; }
         if (!R.Compiled.IsSet()) { return Fail(R, TEXT("component_replace_compile_outcome_unobservable"), TEXT("Missing typed compiler outcome; actual prefix retained, save suppressed."), true); }
@@ -2149,4 +2336,8 @@ FString ReplaceComponentClass(const FString& BlueprintPath, const FString& Compo
     if(C.ShapeChildrenMode){R.Data->SetBoolField(TEXT("native_scene_child_subtree_preserved"),Passed&&R.Data->GetBoolField(TEXT("unselected_state_preserved"))&&R.Data->GetBoolField(TEXT("source_preserved")));R.Data->SetBoolField(TEXT("native_scene_child_replacement_applied"),Passed&&!bDryRun);R.Data->SetBoolField(TEXT("native_scene_child_runtime_verified"),false);}
     return Encode(R);
 }
+FString ReplaceComponentClass(const FString& BlueprintPath,const FString& ComponentName,const FString& NewComponentClass,
+    double SphereRadius,bool bDryRun,bool bCompile,bool bSave,bool bRefreshNodes)
+{ return ReplaceComponentClassRaw(BlueprintPath,ComponentName,NewComponentClass,SphereRadius,bDryRun,bCompile,bSave,bRefreshNodes,true); }
+
 }

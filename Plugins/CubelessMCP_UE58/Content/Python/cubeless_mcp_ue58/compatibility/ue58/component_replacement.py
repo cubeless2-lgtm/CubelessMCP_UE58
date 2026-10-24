@@ -30,3 +30,21 @@ def replace_blueprint_component_class(blueprint_path, component_name, new_compon
         error.native_raw_result = raw
         error.native_call_returned = True
         raise
+
+
+def replace_blueprint_component_class_raw(blueprint_path, component_name, new_component_class,
+        sphere_radius, dry_run, compile, save, refresh_nodes, require_scene_compatibility):
+    function = getattr(getattr(unreal, LIBRARY, None), "replace_blueprint_component_class_raw", None)
+    if not callable(function):
+        raise OperationError("native_component_replacement_raw_api_unavailable", "Fixed Raw9 helper unavailable; no replacement or fallback dispatched")
+    try:
+        raw = function(blueprint_path, component_name, new_component_class, sphere_radius,
+            dry_run, compile, save, refresh_nodes, require_scene_compatibility)
+    finally:
+        function = None
+    try:
+        return _decode_result(raw)
+    except Exception as error:
+        error.native_raw_result = raw
+        error.native_call_returned = True
+        raise

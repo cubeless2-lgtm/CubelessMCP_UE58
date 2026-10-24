@@ -622,6 +622,7 @@ struct FNativeCacheRecordSession
     TArray<TWeakObjectPtr<UGeometryCollectionComponent>> Components;
     TArray<FString> ComponentActorNames;
     TArray<FString> AppliedCacheNames;
+    TArray<TStrongObjectPtr<UChaosCache>> RecordingCacheOutputs;
     FTSTicker::FDelegateHandle TickerHandle;
     FString ConfigurationPhase = TEXT("end_evaluate_quiescence");
     FString ConfigurationFailure;
@@ -730,6 +731,72 @@ struct FNativeCacheRecordSession
     bool bCacheSaved = false;
     bool bCleanupComplete = false;
 };
+
+
+// These are the actual named outputs opened by BeginEvaluate, not a collection-wide
+// maximum which could be satisfied by an unrelated previously recorded cache.
+bool RecordCacheOutputsCurrent(const FNativeCacheRecordSession& Session)
+{
+    auto* Collection=Session.Collection.Get();
+    if(!Live(Collection)||Session.RecordingCacheOutputs.Num()!=Session.AppliedCacheNames.Num()||Session.RecordingCacheOutputs.IsEmpty())
+    { return Work->Fail(TEXT("record_cache_output_changed"),TEXT("Recording collection/output role count is unavailable or changed")); }
+    for(int32 I=0;I<Session.RecordingCacheOutputs.Num();++I)
+    {
+        auto* Cache=Session.RecordingCacheOutputs[I].Get();
+        if(!Live(Cache)||Cache->GetOuter()!=Collection||Cache->GetFName()!=FName(*Session.AppliedCacheNames[I]))
+        { return Work->Fail(TEXT("record_cache_output_changed"),TEXT("Held named recording output identity/owner/name changed")); }
+        const TObjectPtr<UChaosCache> Expected(Cache);int32 Matches=0;
+        for(const auto& Slot:Collection->Caches) { Matches+=Slot.GetHandle()==Expected.GetHandle()?1:0; }
+        if(Matches!=1) { return Work->Fail(TEXT("record_cache_output_changed"),TEXT("Held named recording output is missing or duplicated in its collection")); }
+    }
+    return true;
+}
+bool BindRecordCacheOutputs(FNativeCacheRecordSession& Session)
+{
+    if(!Guard()) { return false; }auto* Collection=Session.Collection.Get();
+    if(!Live(Collection)||!Session.RecordingCacheOutputs.IsEmpty()||Session.AppliedCacheNames.IsEmpty())
+    { return Work->Fail(TEXT("record_cache_output_unavailable"),TEXT("Live recording collection and initially empty output roles required")); }
+    // Resolve only resident objects by exact outer/name; no tracked slot read, load,
+    // cache creation or additional BeginRecord. Hold all outputs before Guard callbacks.
+    for(const auto& Name:Session.AppliedCacheNames)
+    {
+        auto* Cache=Cast<UChaosCache>(StaticFindObjectFast(UChaosCache::StaticClass(),Collection,FName(*Name)));
+        if(!Live(Cache)) { return Work->Fail(TEXT("record_cache_output_unavailable"),TEXT("BeginEvaluate did not create/open the requested named cache output")); }
+        Session.RecordingCacheOutputs.Emplace(Cache);
+    }
+    if(!RecordCacheOutputsCurrent(Session)) { return false; }
+    for(const auto& Hold:Session.RecordingCacheOutputs)
+    {
+        if(!Work->Track(Hold.Get(),TEXT("active_record_cache_output"),Collection)||!RecordCacheOutputsCurrent(Session)) { return false; }
+    }
+    return Guard()&&RecordCacheOutputsCurrent(Session);
+}
+bool RecordCacheCaptureBoundary(FNativeCacheRecordSession& Session,bool& Ready)
+{
+    Ready=false;if(!Guard()||!RecordCacheOutputsCurrent(Session)) { return false; }
+    auto* Collection=Session.Collection.Get();
+    // SDK Manager::TickActor also flushes while recording. Drain current pending
+    // frames before reading the actual timestamp span; do not infer it from world time.
+    if(!Step(TEXT("flush_record_capture_boundary"),[&]{Collection->FlushAllCacheWrites();})||!RecordCacheOutputsCurrent(Session)) { return false; }
+    auto Data=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Outputs;bool Complete=true;
+    Data->SetNumberField(TEXT("required_recorded_duration_seconds"),Session.TargetDurationSeconds);
+    Data->SetNumberField(TEXT("required_recorded_frame_count"),Session.TargetFrameCount);
+    Data->SetNumberField(TEXT("observed_engine_frame_count"),Session.CapturedFrameCount);
+    Data->SetStringField(TEXT("duration_scope"),TEXT("Each selected UChaosCache flushed last-minus-first timestamp; world elapsed is only a scheduling prerequisite"));
+    for(int32 I=0;I<Session.RecordingCacheOutputs.Num();++I)
+    {
+        const auto* Cache=Session.RecordingCacheOutputs[I].Get();
+        const float Duration=Cache->GetDuration();const uint32 Frames=Cache->NumRecordedFrames;
+        const bool Valid=FMath::IsFinite(Duration)&&Duration>=0.0f;
+        auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("cache_name"),Session.AppliedCacheNames[I]);Row->SetNumberField(TEXT("recorded_frame_count"),Frames);
+        if(FMath::IsFinite(Duration)) { Row->SetNumberField(TEXT("recorded_duration_seconds"),Duration); }else { Row->SetStringField(TEXT("recorded_duration_invalid"),TEXT("non_finite")); }
+        const bool Sufficient=Valid&&static_cast<double>(Duration)>=Session.TargetDurationSeconds&&static_cast<double>(Frames)>=Session.TargetFrameCount;
+        Row->SetBoolField(TEXT("capture_boundary_satisfied"),Sufficient);Outputs.Add(MakeShared<FJsonValueObject>(Row));Complete&=Sufficient;
+        if(!Valid) { Data->SetArrayField(TEXT("outputs"),Outputs);Work->R.Data->SetObjectField(TEXT("record_capture_boundary"),Data);return Work->Fail(TEXT("record_cache_duration_invalid"),TEXT("Selected recorded cache returned a non-finite or negative duration")); }
+    }
+    Data->SetArrayField(TEXT("outputs"),Outputs);Data->SetBoolField(TEXT("all_selected_outputs_ready"),Complete);Work->R.Data->SetObjectField(TEXT("record_capture_boundary"),Data);
+    Ready=Complete;return true;
+}
 
 struct FNativeCacheValidationSession
 {
@@ -871,7 +938,20 @@ void CleanupNativeRecordSession(FNativeCacheRecordSession& Session,bool bSaveCom
     if(Session.TickerHandle.IsValid()) { FTSTicker::GetCoreTicker().RemoveTicker(Session.TickerHandle);Session.TickerHandle.Reset(); }if(Session.bCleanupAttempted) { return; }FRestoreEvidenceScope Receipt(Session.Evidence);Session.bCleanupAttempted=true;Work->OperationComplete=true;Work->R.Data->SetBoolField(TEXT("cleanup_attempted"),true);if(Session.Evidence) { Session.Evidence->OperationComplete=true; }
     if(!AdoptSessionTargets(Session.Evidence)) { Work->R.Data->SetBoolField(TEXT("cleanup_skipped_unsafe_lifetime"),true);Work->Fail(TEXT("cleanup_incomplete"),TEXT("Record cleanup skipped unsafe Engine/world/target lifetime"));return; }if(!Session.bManagerTouched) { Session.bCleanupComplete=true;Session.bSettingsRestored=true;Session.bComponentSimulationSettingsRestored=true;Session.bComponentRegistrationSettingsRestored=true;Work->R.Data->SetBoolField(TEXT("cleanup_complete"),true);return; }TGuardValue<bool> RestoreScope(Restoring,true);
     auto* Manager=Session.Manager.Get();if(Manager&&!Step(TEXT("EndEvaluate_record_cleanup"),[&]{Manager->EndEvaluate();})) { return; }
-    if(bSaveCompletedCache) { auto* C=Session.Collection.Get();if(!C||!Step(TEXT("flush_completed_cache_writes"),[&]{C->FlushAllCacheWrites();})) { return; }Session.bCacheSaved=SaveAssetPackageDirect(C);if(!Guard()) { return; } }
+    // Membership-only disagreement is a capture failure, but it does not itself
+    // invalidate the held manager/components needed for the original safe restore.
+    bool OutputRolesCurrent=Session.RecordingCacheOutputs.IsEmpty()||RecordCacheOutputsCurrent(Session);
+    if(bSaveCompletedCache&&OutputRolesCurrent)
+    {
+        auto* C=Session.Collection.Get();if(!C||!Step(TEXT("flush_completed_cache_writes"),[&]{C->FlushAllCacheWrites();})) { return; }
+        OutputRolesCurrent=RecordCacheOutputsCurrent(Session);
+        if(OutputRolesCurrent)
+        {
+            Session.bCacheSaved=SaveAssetPackageDirect(C);if(!Guard()) { return; }
+            // Preserve a true SDK save result even if its callback changed membership.
+            OutputRolesCurrent=RecordCacheOutputsCurrent(Session);
+        }
+    }
     if(Manager&&Session.bHasOriginalManagerState)
     {
         if(!Step(TEXT("clear_record_observed_before_component_restore"),[&]{Manager->ClearObservedComponents(false);})) { return; }
@@ -1548,7 +1628,7 @@ bool TickNativeCacheRecordBody(float)
         {
             return true;
         }
-        if(!Step(TEXT("BeginEvaluate"),[&]{Manager->BeginEvaluate();})) { return false; }
+        if(!Step(TEXT("BeginEvaluate"),[&]{Manager->BeginEvaluate();})||!BindRecordCacheOutputs(Session)) { return false; }
         Session.BeginEvaluateFrame = GFrameCounter;
         Session.BeginFrame = GFrameCounter;
         Session.BeginWorldTime = World->GetTimeSeconds();
@@ -1808,9 +1888,16 @@ bool TickNativeCacheRecordBody(float)
     Session.ObservedTransformHashes.Add(HashLiveSolverDiagnostic(Session.Components));if(!Work->R.Error.IsEmpty()) { Session.ConfigurationFailure=Work->R.Error;CleanupNativeRecordSession(Session,false);return false; }
     if (Session.CapturedFrameCount >= Session.TargetFrameCount && Elapsed >= Session.TargetDurationSeconds)
     {
-        Session.bReadyToFinish = true;
-        CleanupNativeRecordSession(Session, true);
-        return false;
+        bool CacheCaptureComplete=false;
+        if(!RecordCacheCaptureBoundary(Session,CacheCaptureComplete)) { return false; }
+        if(CacheCaptureComplete)
+        {
+            Session.bReadyToFinish = true;
+            CleanupNativeRecordSession(Session, true);
+            return false;
+        }
+        // Keep the existing ticker and timeout: a sample at t=dt begins the
+        // cache span, so elapsed >= duration does not yet prove a full span.
     }
     return true;
 }
@@ -2214,11 +2301,50 @@ TSharedPtr<FJsonObject> RecordChaosCacheNative(const TSharedPtr<FJsonObject>& Pa
             return CommandError(TEXT("record begin requires cache manager, geometry_collection_actor_names, and a Cinematic-root cache path"));
         }
         if(TargetOverlap(ActiveNativeValidationSession,Manager,Components,CachePath)) { return CommandError(TEXT("Recording conflicts with an unfinished validation manager/component/cache target")); }
-        UChaosCacheCollection* Collection=Work->Load<UChaosCacheCollection>(CachePath,TEXT("load_record_cache_collection"));if(!Guard()||!Work->R.Error.IsEmpty()) { return CommandError(Work->R.Error); }
+        if(Dependency(CachePath)){Work->Fail(TEXT("dependency_rejected"),TEXT("MCP-only asset dependency rejected"));return CommandError(Work->R.Error);}
+        // ADQ: inspect fresh output before LoadObject. SDK UObjectGlobals.cpp1434
+        // calls ResolveName2(Create=true); on a failed disk load it may create an
+        // empty package (1303-1310), which the old post-load collision gate rejects.
+        // The earlier actual refusal has no per-gate receipt; this is a possible
+        // SDK path, not a retrospective claim that FindPackage caused that failure.
+        const FString CachePackageName=FPackageName::ObjectPathToPackageName(CachePath);
+        const FString ExactObject=CachePackageName+TEXT(".")+FPackageName::GetShortName(CachePackageName);
+        auto CacheAdmission=MakeShared<FJsonObject>();CacheAdmission->SetStringField(TEXT("requested_path"),CachePath);CacheAdmission->SetStringField(TEXT("package"),CachePackageName);CacheAdmission->SetStringField(TEXT("object"),ExactObject);Work->R.Data->SetObjectField(TEXT("record_cache_target_admission"),CacheAdmission);
+        auto ObserveAbsence=[&](const TCHAR* Stage,bool& Absent,UPackage* OwnedNewPackage=nullptr)
+        {
+            if(!Guard())return false;SDK(Stage);auto State=MakeShared<FJsonObject>();const bool Valid=FPackageName::IsValidLongPackageName(CachePackageName);State->SetBoolField(TEXT("valid_package"),Valid);CacheAdmission->SetObjectField(Stage,State);
+            if(!Valid){State->SetStringField(TEXT("first_blocking_field"),TEXT("valid_package"));State->SetBoolField(TEXT("expected"),true);State->SetBoolField(TEXT("actual"),false);return Work->Fail(TEXT("cache_path_invalid"),TEXT("Valid long cache package required; no load or allocation followed."));}
+            // Disk/registry are SDK observation boundaries. Inspect resident object
+            // and package after their return and Guard, so a callback-created target
+            // is not silently reused by CreatePackage. No resolve/load is used here.
+            const bool Disk=FPackageName::DoesPackageExist(CachePackageName);if(!Guard())return false;
+            const bool Registered=FAssetRegistryModule::GetRegistry().GetAssetByObjectPath(FSoftObjectPath(ExactObject)).IsValid();if(!Guard())return false;
+            UObject* Object=FindObject<UObject>(nullptr,*ExactObject);UPackage* ResidentPackage=FindPackage(nullptr,*CachePackageName);
+            const bool OwnedPackageCurrent=OwnedNewPackage&&ResidentPackage==OwnedNewPackage&&Live(OwnedNewPackage)&&OwnedNewPackage->GetClass()==UPackage::StaticClass()&&OwnedNewPackage->GetOuter()==nullptr&&OwnedNewPackage->GetName().Equals(CachePackageName,ESearchCase::CaseSensitive);
+            State->SetBoolField(TEXT("disk_exists"),Disk);State->SetBoolField(TEXT("registry_exists"),Registered);State->SetBoolField(TEXT("object_exists"),Object!=nullptr);State->SetBoolField(TEXT("package_exists"),ResidentPackage!=nullptr);State->SetBoolField(TEXT("owned_new_package_required"),OwnedNewPackage!=nullptr);State->SetBoolField(TEXT("owned_new_package_current"),OwnedPackageCurrent);State->SetStringField(TEXT("object_class"),Object?Object->GetClass()->GetPathName():FString());
+            Absent=!Disk&&!Registered&&!Object&&(OwnedNewPackage?OwnedPackageCurrent:ResidentPackage==nullptr);State->SetBoolField(TEXT("absent"),Absent);
+            const TCHAR* First=Object?TEXT("object_exists"):(OwnedNewPackage&&!OwnedPackageCurrent)?TEXT("owned_new_package_current"):(!OwnedNewPackage&&ResidentPackage)?TEXT("package_exists"):Disk?TEXT("disk_exists"):Registered?TEXT("registry_exists"):TEXT("");State->SetStringField(TEXT("first_blocking_field"),First);if(!Absent){const bool Expected=FCString::Strcmp(First,TEXT("owned_new_package_current"))==0;State->SetBoolField(TEXT("expected"),Expected);State->SetBoolField(TEXT("actual"),!Expected);}return true;
+        };
+        bool Fresh=false;if(!ObserveAbsence(TEXT("before_load"),Fresh))return CommandError(Work->R.Error);
+        CacheAdmission->SetBoolField(TEXT("load_skipped_for_absent_target"),Fresh);UChaosCacheCollection* Collection=nullptr;
+        if(!Fresh)
+        {
+            Collection=Work->Load<UChaosCacheCollection>(CachePath,TEXT("load_record_cache_collection"));if(!Guard()||!Work->R.Error.IsEmpty())return CommandError(Work->R.Error);
+            CacheAdmission->SetBoolField(TEXT("existing_cache_load_returned"),Collection!=nullptr);
+            if(!Collection){bool StillAbsent=false;if(!ObserveAbsence(TEXT("after_failed_existing_load"),StillAbsent))return CommandError(Work->R.Error);return CommandError(TEXT("Existing wrong-class/unloadable cache output cannot be overwritten; actual gate receipt retained."));}
+        }
         if (!Collection)
         {
-            const FString CachePackageName = FPackageName::ObjectPathToPackageName(CachePath);
-            const FString ExactObject=CachePackageName+TEXT(".")+FPackageName::GetShortName(CachePackageName);SDK(TEXT("admit_new_cache_collection"));if(!FPackageName::IsValidLongPackageName(CachePackageName)||FindObject<UObject>(nullptr,*ExactObject)||FindPackage(nullptr,*CachePackageName)||FPackageName::DoesPackageExist(CachePackageName)||FAssetRegistryModule::GetRegistry().GetAssetByObjectPath(FSoftObjectPath(ExactObject)).IsValid()||!Guard()) { return CommandError(TEXT("Existing wrong-class/unloadable cache output or invalid package cannot be overwritten")); }Write(TEXT("create_cache_package"));UPackage* Package = CreatePackage(*CachePackageName);if(!Work->Track(Package,TEXT("new_cache_package"),nullptr,true)) { return CommandError(Work->R.Error); }
+            // Fresh creation only. A different explicit object name is not silently
+            // rewritten to the package's short name. Existing valid loads above keep
+            // the original loader/reference behavior.
+            if(!CachePath.Equals(CachePackageName,ESearchCase::IgnoreCase)&&!CachePath.Equals(ExactObject,ESearchCase::IgnoreCase)){CacheAdmission->SetStringField(TEXT("first_blocking_field"),TEXT("canonical_new_object_path"));CacheAdmission->SetStringField(TEXT("expected"),ExactObject);CacheAdmission->SetStringField(TEXT("actual"),CachePath);return CommandError(TEXT("New cache output must name the package or its canonical top-level object."));}
+            bool StillAbsent=false;if(!ObserveAbsence(TEXT("before_create"),StillAbsent))return CommandError(Work->R.Error);if(!StillAbsent)return CommandError(TEXT("Cache output appeared after admission; actual gate receipt retained, no allocation/retry."));
+            Write(TEXT("create_cache_package"));UPackage* Package = CreatePackage(*CachePackageName);const TStrongObjectPtr<UPackage> NewCachePackageHold(Package);if(!Work->Track(Package,TEXT("new_cache_package"),nullptr,true)) { return CommandError(Work->R.Error); }
+            // Track/Guard are SDK boundaries too. Admit only our exact held new
+            // package here, never an arbitrary pre-existing package, and close the
+            // fixed-name object/disk/registry absence again before NewObject.
+            bool NewObjectAbsent=false;if(!ObserveAbsence(TEXT("before_new_object"),NewObjectAbsent,NewCachePackageHold.Get()))return CommandError(Work->R.Error);if(!NewObjectAbsent)return CommandError(TEXT("New cache object target changed after package creation; retained package prefix, no allocation/retry."));
             Write(TEXT("new_cache_collection"));Collection = NewObject<UChaosCacheCollection>(
                 Package, *FPackageName::GetShortName(CachePackageName), RF_Public | RF_Standalone | RF_Transactional);
             if(!Work->Track(Collection,TEXT("new_cache_collection"),Package,true)||!Step(TEXT("register_new_cache_collection"),[&]{FAssetRegistryModule::AssetCreated(Collection);})) { return CommandError(Work->R.Error); }

@@ -1,3 +1,11 @@
+// ADM source-only: niagara_tools.py8716 -> set_niagara_module_inputs_batch -> Part1.cpp266
+// -> Part5.cpp2920 HandleSetNiagaraModuleInputsBatch. Original batch has no CPU-only admission.
+// SDK NiagaraEmitter.cpp1588-1623 GetScripts(false,false) includes GPUComputeScript;
+// NiagaraEmitter.h566 private UPROPERTY is read through public reflection, never direct access.
+// NiagaraSystem.cpp2130-2164 HasOutstandingCompilationRequests(true) includes GPU shader readiness.
+// Shared RI row order, continue-on-error, partial/unknown stop, compile/wait/save and no replay remain.
+// Ordinary owned GPU authoring is implemented/usage validation pending. Stateless/external emitters,
+// broader input coercions, GPU execution/shader correctness and cold persistence remain unverified.
 #include "Compatibility/UE58/CubelessNiagaraModuleApi.h"
 #include "Compatibility/UE58/CubelessNiagaraModuleInputsBatchAsyncApi.h"
 #include "CubelessNiagaraModuleInputsBatchJob.h"
@@ -42,6 +50,7 @@
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UObjectIterator.h"
+#include "UObject/UnrealType.h"
 
 namespace Cubeless::UE58::NiagaraModule
 {
@@ -814,6 +823,16 @@ struct FBatchAssignmentIdentity
     UNiagaraScript* Script=nullptr;const FVersionedNiagaraScriptData* Data=nullptr;UNiagaraScriptSource* Source=nullptr;UNiagaraGraph* Graph=nullptr;
     FString NodePath;TArray<FNiagaraVariable> Targets;TArray<FString> Defaults;TArray<UObject*> TypeObjects;
 };
+// ADM: existing shared batch authoring also admits ordinary owned GPU emitters.
+// Private GPUComputeScript is observed through public reflected slot access only;
+// no private access, script setter, shader wait/flush, CDO or renderer resource is added.
+struct FBatchGpuRole
+{
+ int32 Index=INDEX_NONE;FGuid Id,Version;const FVersionedNiagaraEmitterData* Data=nullptr;
+ TObjectPtr<UNiagaraScriptSourceBase> SourceSlot;TObjectPtr<UObject> ScriptSlot;TObjectPtr<UNiagaraGraph> GraphSlot;
+ FObjectProperty* Field=nullptr;uint64 Flags=0;int32 Offset=0;
+ TArray<TUniquePtr<FBatchIdentity>> Objects;
+};
 struct FBatchContext
 {
 
@@ -830,6 +849,7 @@ struct FBatchContext
     TArray<FBatchCallIdentity> CallIdentities;
     TArray<FBatchAssignmentIdentity> AssignmentIdentities;
     TArray<FBatchHandleIdentity> HandleIdentities;
+    TArray<FBatchGpuRole> GpuRoles;
     UNiagaraScript* SystemSpawn=nullptr;UNiagaraScript* SystemUpdate=nullptr;
 
     UNiagaraSystem* System = nullptr;
@@ -843,6 +863,50 @@ bool BatchPublicationSafe(const FBatchContext& C)
     if(!BatchSafe()||C.Editor.Get()!=GEditor)return false;
     UWorld* W=GEditor->GetEditorWorldContext().World();
     return BatchLive(W)&&!W->bIsTearingDown&&C.World.Get()==W&&!GEditor->PlayWorld&&!GEditor->GetPIEWorldContext();
+}
+// SDK NiagaraEmitter.cpp1588-1623 includes GPUComputeScript in GetScripts(false,false).
+// The authored SimTarget and source/script routing remain current across the existing
+// whole-call callback boundaries; GPU caches/executable/shader state are not frozen.
+bool BatchGpuCurrent(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
+{
+ if(C.GpuRoles.IsEmpty())return true;
+ auto Stop=[&](const TCHAR* Field){C.GuardFailed=true;R.bChangeStateKnown=false;R.bSuccess=R.bPostconditionPassed=false;R.Stage=Stage;if(!R.Data->HasField(TEXT("gpu_batch_first_mismatch")))R.Data->SetStringField(TEXT("gpu_batch_first_mismatch"),Field);return BatchFail(R,TEXT("niagara_batch_gpu_source_changed"),TEXT("Captured owned GPU emitter/version/data/source/script routing changed; no next SDK, replay or source replacement."));};
+ if(!BatchPublicationSafe(C)||C.CancelRequested||BatchAsyncStopping.load()||!BatchLive(C.System))return Stop(TEXT("Editor/world/system"));
+ const auto& Handles=C.System->GetEmitterHandles();
+ for(const auto& E:C.GpuRoles)
+ {
+  for(const auto& I:E.Objects)if(!I->Exact())return Stop(TEXT("held source identity"));
+  if(!Handles.IsValidIndex(E.Index))return Stop(TEXT("emitter index"));const auto& H=Handles[E.Index];
+  const auto Instance=H.GetInstance();auto* Emitter=static_cast<UNiagaraEmitter*>(E.Objects[1]->Hold.Get());
+  if(H.GetEmitterMode()!=ENiagaraEmitterMode::Standard||H.GetId()!=E.Id||Instance.Version!=E.Version||!Instance.Emitter.IsResolved()||Instance.Emitter.GetHandle()!=TObjectPtr<UNiagaraEmitter>(Emitter).GetHandle())return Stop(TEXT("emitter mode/id/version/instance"));
+  // SDK NiagaraEmitter.cpp2531-2569 is a native VersionData lookup; avoid the tracked handle getter.
+  const FVersionedNiagaraEmitterData* D=Emitter->GetEmitterData(E.Version);if(D!=E.Data||!D||D->SimTarget!=ENiagaraSimTarget::GPUComputeSim||D->GraphSource.GetHandle()!=E.SourceSlot.GetHandle())return Stop(TEXT("current data/SimTarget/GraphSource"));
+  if(FindFProperty<FObjectProperty>(FVersionedNiagaraEmitterData::StaticStruct(),TEXT("GPUComputeScript"))!=E.Field||E.Field->GetOwnerStruct()!=FVersionedNiagaraEmitterData::StaticStruct()||E.Field->ArrayDim!=1||E.Field->GetSize()!=sizeof(TObjectPtr<UObject>)||E.Field->HasSetterOrGetter()||E.Field->GetPropertyFlags()!=E.Flags||E.Field->GetOffset_ForInternal()!=E.Offset||!E.Field->PropertyClass.IsResolved()||E.Field->PropertyClass.GetHandle()!=TObjectPtr<UClass>(UNiagaraScript::StaticClass()).GetHandle())return Stop(TEXT("GPUComputeScript descriptor"));
+  const auto* Slot=E.Field->GetObjectPtrPropertyValuePtr(E.Field->ContainerPtrToValuePtr<void>(D));if(!Slot->IsResolved()||Slot->GetHandle()!=E.ScriptSlot.GetHandle())return Stop(TEXT("GPUComputeScript slot"));
+  if(static_cast<UNiagaraScript*>(E.Objects[4]->Hold.Get())->GetUsage()!=ENiagaraScriptUsage::ParticleGPUComputeScript)return Stop(TEXT("GPUComputeScript Usage"));
+  auto* Source=static_cast<UNiagaraScriptSource*>(E.Objects[2]->Hold.Get());if(Source->bIsCompilationCopy||Source->bIsReleased||!Source->NodeGraph.IsResolved()||Source->NodeGraph.GetHandle()!=E.GraphSlot.GetHandle())return Stop(TEXT("owned graph source role"));
+ }
+ return true;
+}
+bool BatchCaptureGpuRole(FBatchContext& C,FBatchResult& R,int32 Index,const FNiagaraEmitterHandle& H,const FVersionedNiagaraEmitterData* D)
+{
+ if(!D||D->SimTarget!=ENiagaraSimTarget::GPUComputeSim)return true;
+ auto Bad=[&](const TCHAR* Field){R.Data->SetStringField(TEXT("gpu_batch_admission_failure"),Field);return BatchFail(R,TEXT("niagara_batch_gpu_source_unavailable"),TEXT("Owned resolved GPU emitter/script/native source roles required before GetScripts; no hidden load or source construction."));};
+ if(!C.Editor.IsValid()){C.Editor=GEditor;C.World=GEditor->GetEditorWorldContext().World();C.Keep.Emplace(GEditor);if(C.World.IsValid())C.Keep.Emplace(C.World.Get());}
+ if(!BatchPublicationSafe(C)||!BatchGpuCurrent(C,R,TEXT("before_gpu_source_capture")))return false;
+ FBatchGpuRole E;E.Index=Index;E.Id=H.GetId();E.Version=H.GetInstance().Version;E.Data=D;
+ auto Own=[&](UObject* O){if(!BatchLive(O)||!BatchReadableChain(O))return false;E.Objects.Add(MakeUnique<FBatchIdentity>(O));return true;};
+ if(!Own(C.System))return Bad(TEXT("system"));
+ auto Resident=[&](const auto& Slot)->UObject* {if(!Slot.IsResolved()||Slot.GetPathName().IsEmpty())return nullptr;UObject* O=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),false);TStrongObjectPtr<UObject> Hold(BatchLive(O)?O:nullptr);return Hold.IsValid()&&Slot.GetHandle()==TObjectPtr<UObject>(Hold.Get()).GetHandle()&&Own(Hold.Get())?Hold.Get():nullptr;};
+ const auto Instance=H.GetInstance();if(!Resident(Instance.Emitter))return Bad(TEXT("emitter"));
+ E.SourceSlot=D->GraphSource;auto* Source=Cast<UNiagaraScriptSource>(Resident(E.SourceSlot));if(!Source||Source->GetClass()!=UNiagaraScriptSource::StaticClass()||!Source->IsIn(C.System)||Source->bIsCompilationCopy||Source->bIsReleased)return Bad(TEXT("GraphSource"));
+ E.GraphSlot=Source->NodeGraph;auto* Graph=Cast<UNiagaraGraph>(Resident(E.GraphSlot));if(!Graph||Graph->GetClass()!=UNiagaraGraph::StaticClass()||Graph->GetOuter()!=Source)return Bad(TEXT("NodeGraph"));
+ E.Field=FindFProperty<FObjectProperty>(FVersionedNiagaraEmitterData::StaticStruct(),TEXT("GPUComputeScript"));
+ if(!E.Field||E.Field->GetOwnerStruct()!=FVersionedNiagaraEmitterData::StaticStruct()||E.Field->ArrayDim!=1||E.Field->GetSize()!=sizeof(TObjectPtr<UObject>)||E.Field->HasSetterOrGetter()||!E.Field->PropertyClass.IsResolved()||E.Field->PropertyClass.GetHandle()!=TObjectPtr<UClass>(UNiagaraScript::StaticClass()).GetHandle())return Bad(TEXT("GPUComputeScript descriptor"));
+ E.Flags=E.Field->GetPropertyFlags();E.Offset=E.Field->GetOffset_ForInternal();E.ScriptSlot=*E.Field->GetObjectPtrPropertyValuePtr(E.Field->ContainerPtrToValuePtr<void>(D));
+ auto* Script=Cast<UNiagaraScript>(Resident(E.ScriptSlot));if(!Script||Script->GetClass()!=UNiagaraScript::StaticClass()||!Script->IsIn(C.System)||Script->GetUsage()!=ENiagaraScriptUsage::ParticleGPUComputeScript)return Bad(TEXT("GPUComputeScript"));
+ C.GpuRoles.Add(MoveTemp(E));R.Data->SetNumberField(TEXT("gpu_batch_emitter_count"),C.GpuRoles.Num());R.Data->SetBoolField(TEXT("gpu_runtime_execution_verified"),false);R.Data->SetBoolField(TEXT("GPU_resources_or_shader_caches_frozen"),false);
+ return BatchGpuCurrent(C,R,TEXT("captured_gpu_source_roles"));
 }
 // SZ: separate ordered authored Assignment state from its generated function cache.
 bool BatchAssignmentsCurrent(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
@@ -880,7 +944,7 @@ bool BatchAssignmentsCurrent(FBatchContext& C,FBatchResult& R,const TCHAR* Stage
 
 bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
 {
-    if(C.GuardFailed)return false;
+    if(C.GuardFailed||!BatchGpuCurrent(C,R,Stage))return false;
     if(C.OwnedAuthoringGuard&&C.System)
     {
         if(!(*C.OwnedAuthoringGuard)(C.System,Stage))
@@ -892,7 +956,7 @@ bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
         BatchCount(R,TEXT("owned_authoring_guard_calls"));
     }
     if(!BatchAssignmentsCurrent(C,R,Stage))return false;
-    if(!C.Deferred&&!C.OwnedAuthoringGuard)return true;
+    if(!C.Deferred&&!C.OwnedAuthoringGuard)return BatchGpuCurrent(C,R,Stage);
     if(!BatchPublicationSafe(C)||C.CancelRequested||BatchAsyncStopping.load())
     {
         C.GuardFailed=true;R.bChangeStateKnown=false;R.bSuccess=false;R.bPostconditionPassed=false;
@@ -931,7 +995,7 @@ bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
         if(D->GraphSource.Get()!=E.Source)
             return C.GuardFailed=true,R.bChangeStateKnown=false,BatchFail(R,TEXT("niagara_batch_async_emitter_source_changed"),TEXT("Current Emitter GraphSource differs from its captured authoring source."));
     }
-    return true;
+    return BatchGpuCurrent(C,R,Stage);
 }
 bool BatchCaptureIdentities(FBatchContext& C,FBatchResult& R)
 {
@@ -1189,7 +1253,7 @@ bool BatchCapture(FBatchContext& C, FBatchObservation& O, FBatchResult& R, const
     for (auto* G : C.SourceGraphs) { const auto S = Capture(G); auto Row = MakeShared<FJsonObject>(); O.Sources->SetObjectField(Path(G), Row); Row->SetObjectField(TEXT("graph"), GraphPrefix(S)); bool AssignmentCache=false;for(const auto& A:C.AssignmentIdentities)AssignmentCache|=A.Graph==G; if(AssignmentCache){Row->SetBoolField(TEXT("assignment_generated_cache"),true);Row->SetStringField(TEXT("package_dirty_role"),TEXT("shared target package; actual dirty value is the root observation"));}else Row->SetBoolField(TEXT("package_dirty"), G->GetOutermost()->IsDirty()); if (!S.bComplete) { return false; } }
     bool ExposedOK; const auto Exposed = BatchStore(C.System->GetExposedParameters(), ExposedOK); O.Exposed->Values = Exposed->Values; if (!ExposedOK) { return false; }
     int32 N = 0; for (const auto& H : C.System->GetEmitterHandles())
-    { auto Row = MakeShared<FJsonObject>(); O.Handles->SetObjectField(LexToString(N++), Row); Row->SetStringField(TEXT("name"), H.GetName().ToString()); Row->SetStringField(TEXT("id"), Guid(H.GetId())); Row->SetStringField(TEXT("emitter"), Path(H.GetInstance().Emitter)); Row->SetStringField(TEXT("version"), Guid(H.GetInstance().Version)); Row->SetBoolField(TEXT("enabled"), H.GetIsEnabled()); }
+    { auto Row = MakeShared<FJsonObject>(); O.Handles->SetObjectField(LexToString(N++), Row); Row->SetStringField(TEXT("name"), H.GetName().ToString()); Row->SetStringField(TEXT("id"), Guid(H.GetId())); Row->SetStringField(TEXT("emitter"), Path(H.GetInstance().Emitter)); Row->SetStringField(TEXT("version"), Guid(H.GetInstance().Version)); Row->SetBoolField(TEXT("enabled"), H.GetIsEnabled());if(!C.GpuRoles.IsEmpty()){const auto* Data=H.GetEmitterData();if(!Data)return false;Row->SetNumberField(TEXT("SimTarget"),static_cast<int32>(Data->SimTarget));} }
     int32 Packages = 0; for (TObjectIterator<UPackage> It; It; ++It)
     { if (!IsValid(*It) || *It == C.System->GetOutermost() || (*It)->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed)) { continue; } if (++Packages > 8192) { return false; } O.Other->SetBoolField((*It)->GetName(), (*It)->IsDirty()); }
     if (!BatchDisk(C.System, O.Disk) || !BatchAdmit(C,R,Phase)) { return false; } O.Complete = true; J->SetBoolField(TEXT("complete"), true); return true;
@@ -1204,7 +1268,7 @@ bool BatchPrepare(FBatchContext& C, FBatchResult& R, const FString& SystemPath, 
     if(C.OwnedAuthoringGuard){if(C.System)C.Keep.Emplace(C.System);if(!BatchAdmit(C,R,TEXT("owned_batch_target_resolved")))return false;}
     if (!Loaded(C.System) || C.System->GetClass() != UNiagaraSystem::StaticClass() || !C.System->IsAsset() || !C.System->GetOutermost()->IsFullyLoaded() ||
         C.System->GetOutermost()->HasAnyPackageFlags(PKG_EditorOnly | PKG_PlayInEditor | PKG_CompiledIn) || C.System->GetEmitterHandles().Num() > 16)
-    { return BatchFail(R, TEXT("niagara_batch_loaded_system_required"), TEXT("Already-loaded fully loaded exact NiagaraSystem with at most16 ordinary CPU emitters is required; no hidden warm.")); }
+    { return BatchFail(R, TEXT("niagara_batch_loaded_system_required"), TEXT("Already-loaded fully loaded exact NiagaraSystem with at most16 ordinary CPU/GPU emitters is required; no hidden warm.")); }
     const FString Package = C.System->GetOutermost()->GetName(); const FString Temp = TEXT("/Game/_MCP_Temp/NiagaraGenerated");
     if (!Package.StartsWith(TEXT("/Game/")) || (!Allow && Package != Temp && !Package.StartsWith(Temp + TEXT("/"))))
     { return BatchFail(R, TEXT("niagara_batch_source_edit_refused"), TEXT("Original temp root or explicit allow_source_edit on /Game is required.")); }
@@ -1220,11 +1284,13 @@ bool BatchPrepare(FBatchContext& C, FBatchResult& R, const FString& SystemPath, 
     { if (IsValid(*It) && !(*It)->IsTemplate() && (*It)->GetAsset() == C.System && (*It)->GetWorld()) { return BatchFail(R, TEXT("niagara_batch_world_instance_unsupported"), TEXT("Live world system instances are outside finite authoring scope.")); } }
     auto AddScript = [&](UNiagaraScript* S) { if (!Loaded(S) || S->GetClass() != UNiagaraScript::StaticClass() || !S->IsIn(C.System)) { return false; } C.Scripts.AddUnique(S); return C.Scripts.Num() <= 128; };
     if (!AddScript(C.System->GetSystemSpawnScript()) || !AddScript(C.System->GetSystemUpdateScript())) { return BatchFail(R, TEXT("niagara_batch_script_scope_unsupported"), TEXT("Owned runtime scripts must already be observable.")); }
+    int32 EmitterIndex=0;
     for (const auto& H : C.System->GetEmitterHandles())
     {
-        auto* D = H.GetEmitterData(); if (!D || !Loaded(H.GetInstance().Emitter) || !H.GetInstance().Emitter->IsIn(C.System) || D->SimTarget != ENiagaraSimTarget::CPUSim)
-        { return BatchFail(R, TEXT("niagara_batch_emitter_scope_unsupported"), TEXT("Only current owned CPU emitter instances are implemented; GPU/stateless/external variants remain valid residuals.")); }
-        TArray<UNiagaraScript*> Scripts; D->GetScripts(Scripts, false, false); for (auto* S : Scripts) { if (!AddScript(S)) { return BatchFail(R, TEXT("niagara_batch_script_scope_unsupported"), TEXT("Emitter script owner/count incomplete.")); } }
+        auto* D = H.GetEmitterData(); if (!D || !Loaded(H.GetInstance().Emitter) || !H.GetInstance().Emitter->IsIn(C.System) || (D->SimTarget != ENiagaraSimTarget::CPUSim&&D->SimTarget!=ENiagaraSimTarget::GPUComputeSim))
+        { return BatchFail(R, TEXT("niagara_batch_emitter_scope_unsupported"), TEXT("Only current owned ordinary CPU/GPU emitter instances are implemented; stateless/external/invalid targets remain valid residuals.")); }
+        if(!BatchCaptureGpuRole(C,R,EmitterIndex++,H,D))return false;
+        TArray<UNiagaraScript*> Scripts; D->GetScripts(Scripts, false, false); if(!BatchGpuCurrent(C,R,TEXT("after_owned_emitter_GetScripts")))return false; for (auto* S : Scripts) { if (!AddScript(S)) { return BatchFail(R, TEXT("niagara_batch_script_scope_unsupported"), TEXT("Emitter script owner/count incomplete.")); } }
         auto* Source = Cast<UNiagaraScriptSource>(D->GraphSource); if (!Loaded(Source) || !Source->IsIn(C.System) || !Loaded(Source->NodeGraph) || Source->bIsCompilationCopy || Source->bIsReleased)
         { return BatchFail(R, TEXT("niagara_batch_graph_scope_unsupported"), TEXT("Ordinary existing owned emitter graph source required.")); } C.Graphs.AddUnique(Source->NodeGraph);
     }

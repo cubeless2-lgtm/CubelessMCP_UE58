@@ -17,10 +17,11 @@ def binding_status():
     return {name: callable(getattr(library, name, None)) for name in BINDINGS}
 
 
-def _invoke(method, arguments):
+def _invoke(method, arguments, raw_input=False):
     if method not in BINDINGS:
         raise OperationError("blueprint_networking_method_invalid", "Only original networking inspect/set methods admitted")
-    function = getattr(getattr(unreal, LIBRARY, None), method, None)
+    script_name = method + "_raw_input" if raw_input else method
+    function = getattr(getattr(unreal, LIBRARY, None), script_name, None)
     if not callable(function):
         raise OperationError("blueprint_networking_native_api_unavailable", "Exact networking native binding unavailable; no dispatch")
     raw = function(*arguments)
@@ -34,6 +35,14 @@ def _invoke(method, arguments):
         raise
     value["_raw_native_json"] = raw
     return value
+
+
+def inspect_blueprint_networking_settings_raw_input(params_json):
+    return _invoke('inspect_blueprint_networking_settings', (params_json,), raw_input=True)
+
+
+def set_blueprint_networking_settings_raw_input(params_json):
+    return _invoke('set_blueprint_networking_settings', (params_json,), raw_input=True)
 
 
 def inspect_blueprint_networking_settings(blueprint_name):

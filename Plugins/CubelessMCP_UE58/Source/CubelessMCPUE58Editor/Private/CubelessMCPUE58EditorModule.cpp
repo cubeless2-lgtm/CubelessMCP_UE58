@@ -1,5 +1,8 @@
 #include "Modules/ModuleManager.h"
+#include "Registration/CubelessLocalFacadeDefaults.h"
+#include "Compatibility/UE58/CubelessStatusWindowApi.h"
 #include "CubelessPCGNativeCanaryLibrary.h"
+#include "Compatibility/UE58/CubelessPCGComponentGenerationApi.h"
 #include "Compatibility/UE58/CubelessEditorLevelSessionApi.h"
 #include "Compatibility/UE58/CubelessChaosSolverSettingsApi.h"
 #include "Compatibility/UE58/CubelessChaosCacheSessionApi.h"
@@ -141,6 +144,9 @@ public:
 
     virtual void ShutdownModule() override
     {
+        Cubeless::UE58::PCGComponentGeneration::ShutdownRefreshTracking();
+        Cubeless::Registration::ShutdownLocalFacadeDefaults();
+        Cubeless::UE58::StatusWindow::Shutdown();
         PythonExecutionRaw.Unregister();
         Cubeless::Registration::ShutdownTextureMaterialToolset();
         Cubeless::Registration::ShutdownBlueprintPropertyGraphToolset();

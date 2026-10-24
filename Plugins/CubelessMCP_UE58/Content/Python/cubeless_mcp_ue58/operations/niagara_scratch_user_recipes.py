@@ -33,6 +33,187 @@ _QUARANTINED={}
 _LAST_TERMINAL={}
 _LIFECYCLE_ERRORS=[]
 
+
+class _BatchScratchUserRecipeFlow:
+    """Original five generators; scheduling, journal and cancellation lease belong to Batch."""
+    def __init__(self,result,arguments,checkpoint_callback,method,parent_current,cancel_current):
+        self.r=self.result=result
+        self.method,self.callback=method,checkpoint_callback
+        self.parent_current,self.cancel_current=parent_current,cancel_current
+        self.job=None
+        self.in_flight=self.lost=self.cancel_entered=self.job_reference_verified=False
+        self.checkpoint_failure_stop_permitted=False
+        self.finished=False
+        values=_values(method,arguments,arguments.get('_public_input',False),arguments.get('_legacy_command_params'))
+        _pure_admission(method,values)
+        self.current()
+        if _QUARANTINED:raise OperationError('niagara_scratch_user_recipe_quarantined','Prior unknown recipe requires reconciliation; no new writer')
+        if not binding_status().get(method):raise OperationError('niagara_scratch_user_recipe_leaf_unavailable','Exact existing leaf bindings are required; no first writer dispatched')
+        self.entry=_initial_entry(method,values,result,lambda ignored:self.checkpoint())
+        result['data'].update(Batch_async_continuation_implemented=True,parent_journal_only=True,
+            child_journals_created=0,async_entry='official_Batch_owned_ScratchUser_recipe',
+            native_dispatched=False,change_state_known=True,operation_complete=False,
+            command_may_still_be_in_flight=False,global_compiler_cancel_attempted=False)
+
+    def unsafe(self,error):
+        self.lost=True
+        self.r['data'].update(change_state_known=False,mutation_state_unknown=True,
+            mutation_performed=None,do_not_retry=True,workflow_recovery_required=True)
+        return error
+
+    def current(self):
+        if self.lost:raise OperationError('batch_scratch_user_recipe_observation_lost','Observation loss is sticky; no next leaf or Job SDK')
+        try:
+            self.parent_current()
+            if not _ACTIVE:raise OperationError('niagara_scratch_user_recipe_inactive','Recipe lifecycle retired; no next leaf')
+        except Exception as error:raise self.unsafe(error)
+
+    def checkpoint(self):
+        try:
+            self.current()
+            if self.callback:self.callback(self.r)
+            self.current()
+        except Exception as error:
+            self.checkpoint_failure_stop_permitted=True
+            raise self.unsafe(error)
+
+    def _unadopted(self,error,native=None):
+        if native is None:native=getattr(error,'native_decoded_result',None)
+        raw=native.get('_raw_native_json') if type(native) is dict else None
+        if raw is None:raw=getattr(error,'native_raw_result',None)
+        if type(native) is dict or getattr(error,'native_snapshot_returned',False):
+            self.r['data'].update(native_snapshot_returned=True,
+                unadopted_returned_native_snapshot=copy.deepcopy(native),
+                unadopted_returned_native_raw_result=raw,
+                returned_native_snapshot_adopted=False,returned_native_current_verified=False)
+
+    def _complete(self):
+        self.current()
+        unknown=self.r['data'].get('mutation_state_unknown') is True
+        if unknown and self.r['success']:
+            state.fail(self.r,OperationError('niagara_scratch_user_recipe_scope_unverified','Current receipt remains unknown; original legacy and actual save prefix retained'))
+        self.r['data'].update(operation_complete=True,workflow_recovery_required=unknown,
+            command_may_still_be_in_flight=False,automatic_retry=False,
+            cancel_acknowledgement_is_not_shared_compiler_stop=True)
+        self.checkpoint()
+        self.finished=True
+        return True
+
+    def start(self,asynchronous):
+        if asynchronous is not True:raise OperationError('batch_scratch_user_recipe_official_async_required','Original recipe waits require the existing official Batch continuation')
+        self.current()
+        if not _advance(self.entry,first=True):return self._complete()
+        self.r['stage']='before_niagara_scratch_user_recipes_checkpoint'
+        self.checkpoint()
+        return False
+
+    def _accept_leaf(self,name,legacy,error=None):
+        self.current()
+        more=_accept(self.entry,name,legacy,error)
+        self.job=None
+        self.job_reference_verified=self.in_flight=False
+        self.cancel_entered=False
+        if not more:return self._complete()
+        if self.r['data'].get('mutation_state_unknown') is True:
+            raise self.unsafe(OperationError('batch_scratch_user_recipe_child_unknown','Actual child prefix is unknown; next recipe leaf withheld without replay'))
+        self.checkpoint()
+        return False
+
+    def _poll_job(self):
+        self.current()
+        name=self.entry['leaf'][0]
+        native=None;adopted=False
+        self.entry['snapshot_calls']+=1
+        try:
+            native=api.snapshot(self.job,name,current_callback=self.current)
+            self.current()
+            # _adopt_job checks exact same-job ID and monotonic revision before
+            # touching receipts/compile/save. No inadmissible DTO becomes proof.
+            child,legacy=_adopt_job(self.entry,native,checkpoint=False)
+            adopted=True
+            terminal=native['data']['native_job_terminal']
+            self.r['data'].update(native_snapshot_returned=True,
+                returned_native_snapshot_adopted=True,returned_native_current_verified=True,
+                command_may_still_be_in_flight=not terminal)
+            if terminal:self.in_flight=False
+            self.checkpoint()
+        except Exception as error:
+            if not adopted:self._unadopted(error,native)
+            else:self.r['data']['adapter_failure_after_native_adoption']=True
+            raise self.unsafe(error)
+        if not terminal:return False
+        if self.r['data'].get('mutation_state_unknown') is True:
+            raise self.unsafe(OperationError('batch_scratch_user_recipe_terminal_unknown','Terminal child has unknown change state; actual prefix retained and no next recipe stage'))
+        error=None
+        if not native['success'] or not native['postcondition_passed'] or not native['data']['operation_complete']:
+            error=NiagaraBridgeResponseError(name,legacy or dict(success=False,error=native.get('error')),
+                command_effect='read' if name=='inspect_niagara_compile_status' else 'mutation')
+        return self._accept_leaf(name,legacy,error)
+
+    def poll(self):
+        self.current()
+        self.checkpoint_failure_stop_permitted=False
+        if self.finished:return True
+        if self.job_reference_verified:return self._poll_job()
+        name,params=self.entry['leaf']
+        prior={key:self.r['data'].get(key) for key in ('change_state_known','mutation_state_unknown','mutation_performed')}
+        self.r['stage']='before_niagara_scratch_user_recipes_checkpoint'
+        self.r['data'].update(pending_recipe_leaf=dict(index=self.entry['leaf_index'],operation=name),
+            recipe_leaf_dispatch_intent=True,change_state_known=False,
+            mutation_state_unknown=True,mutation_performed=None)
+        self.checkpoint()  # Persist uncertain dispatch intent before the next SDK.
+        self.in_flight=True
+        if name in api.METHODS and params.get('wait_for_completion') is True:
+            try:
+                self.job=api.start_job(name,params,current_callback=self.current)
+                self.entry.update(job=self.job,job_reference_verified=True)
+                self.job_reference_verified=True
+                self.r['data'].update(native_dispatched=True,native_start_returned=True,
+                    command_may_still_be_in_flight=True)
+                self.current()
+                self.checkpoint()
+            except Exception as error:
+                if getattr(error,'native_start_returned',False):
+                    self.job=getattr(error,'native_returned_job',self.job)
+                    self.entry['job']=self.job
+                    self.r['data'].update(native_dispatched=True,native_start_returned=True)
+                if getattr(error,'native_start_dispatched',None) is False:
+                    self.in_flight=False
+                    if not self.lost:self.r['data'].update(prior)
+                else:self.unsafe(error)
+                raise
+            return False  # One start OR one snapshot per existing parent tick.
+        self.entry['synchronous_child_entered']=True
+        try:child,legacy,error=_call_sync(self.entry,name,params)
+        except Exception as error:raise self.unsafe(error)
+        self.entry['synchronous_child_entered']=False
+        self.in_flight=False
+        self.current()  # SDK callbacks may retire the parent; never resume then.
+        if not child.get('success'):
+            error=NiagaraBridgeResponseError(name,legacy or dict(success=False,error=child.get('error')),
+                command_effect='read' if name=='inspect_niagara_compile_status' else 'mutation')
+        return self._accept_leaf(name,legacy,error)
+
+    def fail(self,error):
+        if self.checkpoint_failure_stop_permitted and self.in_flight and self.job_reference_verified and not self.cancel_entered:
+            try:
+                job=self.job
+                self.cancel_current(self,job,True)
+                self.cancel_entered=True
+                self.r['data']['owned_cancel_after_failure_attempts']=1
+                acknowledged=job.cancel_job('Stop exact owned recipe leaf after Batch checkpoint failure: '+str(error)[:700])
+                self.r['data'].update(owned_cancel_after_failure_returned=True,
+                    owned_cancel_acknowledgement=acknowledged if type(acknowledged) is bool else None)
+                self.cancel_current(self,job,True)
+            except Exception as cancel_error:self.r['data']['owned_cancel_after_failure_error']=str(cancel_error)[:700]
+        state.fail(self.r,error)
+        if self.in_flight or self.lost:
+            self.r['data'].update(mutation_state_unknown=True,change_state_known=False,
+                mutation_performed=None,workflow_recovery_required=True,do_not_retry=True)
+        self.r['data'].update(operation_complete=False,command_may_still_be_in_flight=self.in_flight)
+        self.r['retry'].update(automatic_retry=False,duplicate_risk='owned_ScratchUser_recipe_Batch_no_replay')
+        return self.r
+
 def tool_error(message,*,error_code='error',details=None,**fields):
     result=dict(success=False,message=message,error=message,error_code=error_code)
     if details is not None:result['details']=details
@@ -216,7 +397,7 @@ def _record_child(entry,name,child,legacy=None,pending=False):
     original_keys=set(_FUNCTION_LEGACY_KEYS.get(name,()))
     skip=original_keys|{'legacy_result','legacy_Named_result','native_raw_result','native_result_data','native_outcome','requested_arguments','native_params','legacy_command_params'}
     diagnostic={k:copy.deepcopy(v) for k,v in data.items() if k not in skip}
-    receipt=dict(index=index,operation=name,success=child.get('success'),stage=child.get('stage'),error_code=child.get('error_code'),error=child.get('error'),compile=copy.deepcopy(child.get('compile',{})),save=copy.deepcopy(child.get('save',{})),validation=copy.deepcopy(child.get('validation',{})),changes=copy.deepcopy(child.get('changes',[])),diagnostics=diagnostic,pending=pending,canonical_legacy_reference='data.recipe_stages['+str(index)+'].result')
+    receipt=dict(index=index,operation=name,success=child.get('success'),stage=child.get('stage'),error_code=child.get('error_code'),error=child.get('error'),compile=copy.deepcopy(child.get('compile',{})),save=copy.deepcopy(child.get('save',{})),validation=copy.deepcopy(child.get('validation',{})),changes=copy.deepcopy(child.get('changes',[])),diagnostics=diagnostic,pending=pending,canonical_legacy_reference=None)
     # The original Native raw string is not rewritten and labelled raw. Only
     # its digest/length is retained alongside one typed diagnostic projection.
     raw=data.get('native_raw_result')
@@ -288,14 +469,25 @@ def _advance(entry,value=None,error=None,first=False):
         entry['result']['data']['legacy_result']=legacy
         if legacy.get('success') is True and entry['method']!='create_niagara_visible_scratch_pad_snow_seed':
             entry['result']['data'].pop('recipe_stages',None)
-            for receipt in entry['result']['data']['native_receipts']:receipt['canonical_legacy_reference']=receipt['canonical_legacy_reference'].replace('data.recipe_stages','data.legacy_result.stages')
+            for receipt in entry['result']['data']['native_receipts']:
+                reference=receipt.get('canonical_legacy_reference')
+                if type(reference) is str:receipt['canonical_legacy_reference']=reference.replace('data.recipe_stages','data.legacy_result.stages')
+        elif legacy.get('success') is False:
+            receipts=entry['result']['data']['native_receipts'];response=legacy.get('unreal_response')
+            current=entry.get('current_legacy')
+            if receipts and type(response) is dict and type(current) is dict and json.dumps(response,sort_keys=True,allow_nan=False)==json.dumps(current,sort_keys=True,allow_nan=False):
+                receipt=receipts[-1]
+                if receipt.get('index')==entry['leaf_index'] and receipt.get('operation')==legacy.get('failed_bridge_command'):
+                    receipt['canonical_legacy_reference']='data.legacy_result.unreal_response'
         entry['result'].update(success=legacy.get('success') is True,stage='complete' if legacy.get('success') is True else 'recipe_failed',error_code=legacy.get('error_code',''),error=legacy.get('error',''))
         return False
     return True
 
 def _accept(entry,name,legacy,error=None):
     if error is None and legacy.get('success') is not False:
-        entry['result']['data']['recipe_stages'].append(dict(stage=name,result=legacy))
+        stages=entry['result']['data']['recipe_stages'];stages.append(dict(stage=name,result=legacy))
+        receipts=entry['result']['data']['native_receipts'];index=entry['leaf_index']
+        if index<len(receipts):receipts[index]['canonical_legacy_reference']='data.recipe_stages['+str(len(stages)-1)+'].result'
     entry['job']=None;entry['job_reference_verified']=False;entry.pop('native_job_id',None);entry.pop('last_revision',None);entry.pop('cancel_attempted',None)
     more=_advance(entry,legacy,error)
     entry['leaf_index']+=1

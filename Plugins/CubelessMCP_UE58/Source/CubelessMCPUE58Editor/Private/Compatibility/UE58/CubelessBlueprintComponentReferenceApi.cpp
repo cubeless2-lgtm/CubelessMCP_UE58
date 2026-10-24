@@ -248,6 +248,107 @@ struct FGeneratedReferenceScope
     }
     bool RequestedProperty(const FProperty* P,UClass* DeclaringRole,UClass* ComponentClass)const
     {const auto* O=CastField<FObjectPropertyBase>(P);return P&&O&&P->GetFName()==Requested&&P->ArrayDim==1&&O->PropertyClass.Get()==ComponentClass&&P->GetOwnerClass()==DeclaringRole;}
+    // ADD: public record iteration, copied stable keys and actual existing
+    // templates. This is source observation only; no handler/template creation,
+    // key refresh, archetype/CDO lookup, validation or cooked-cache mutation.
+    static bool ResolvedKeyOwner(const FComponentKey& Key,UClass*& Out)
+    {
+        Out=nullptr;static FObjectProperty* const P=FindFProperty<FObjectProperty>(FComponentKey::StaticStruct(),TEXT("OwnerClass"));
+        if(!P||P->GetOwnerStruct()!=FComponentKey::StaticStruct()||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->HasSetterOrGetter()||P->GetSize()!=sizeof(TObjectPtr<UClass>)||P->GetMinAlignment()!=alignof(TObjectPtr<UClass>)||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>FComponentKey::StaticStruct()->GetStructureSize()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UClass::StaticClass())return false;
+        const TObjectPtr<UObject> Slot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(&Key));
+        if(!Slot.IsResolved()||Slot==nullptr)return false;Out=Cast<UClass>(StaticFindObject(nullptr,nullptr,*Slot.GetPathName()));return Loaded(Out)&&Slot==Out;
+    }
+    static bool ResolvedHandler(UBlueprintGeneratedClass* GC,UInheritableComponentHandler*& Out)
+    {
+        Out=nullptr;static FObjectProperty* const P=FindFProperty<FObjectProperty>(UBlueprintGeneratedClass::StaticClass(),TEXT("InheritableComponentHandler"));
+        if(!Loaded(GC)||!P||P->GetOwnerStruct()!=UBlueprintGeneratedClass::StaticClass()||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->HasSetterOrGetter()||P->GetSize()!=sizeof(TObjectPtr<UInheritableComponentHandler>)||P->GetMinAlignment()!=alignof(TObjectPtr<UInheritableComponentHandler>)||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UBlueprintGeneratedClass::StaticClass()->GetPropertiesSize()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UInheritableComponentHandler::StaticClass())return false;
+        const TObjectPtr<UObject> Slot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(GC));
+        if(!Slot.IsResolved())return false;if(Slot==nullptr)return true;Out=Cast<UInheritableComponentHandler>(StaticFindObject(nullptr,nullptr,*Slot.GetPathName()));return Loaded(Out)&&Slot==Out;
+    }
+    bool OverrideRows(UBlueprint* B,UBlueprintGeneratedClass* GC,UInheritableComponentHandler* H,const TArray<UBlueprint*>& Bs,TArray<UObject*>& Roles,bool Capture,int64& TextSize,TSharedRef<FJsonObject> Row)
+    {
+        struct FObserved
+        {
+            FComponentKey Key;UClass* Owner=nullptr;UClass* ActualClass=nullptr;UClass* DeclaredClass=nullptr;
+            UActorComponent* Template=nullptr;USCS_Node* Declaration=nullptr;FString StableKey,TemplateIdentity,ClassIdentity,OwnerIdentity;
+            EClassFlags ClassFlags=CLASS_None;FField* ClassFields=nullptr;
+        };
+        if(!Loaded(B)||!Loaded(GC)||!Loaded(H)||H->GetClass()!=UInheritableComponentHandler::StaticClass()||H->GetOuter()!=GC||H->GetOutermost()!=B->GetOutermost())return false;
+        const FString HandlerIdentity=Identity(H);TArray<FObserved> Observed;TSet<FString> Keys;
+        auto KeepObserved=[&](UObject* O)
+        {if(!Loaded(O))return false;if(Capture)return Hold(O);for(const auto& Existing:Holds)if(Existing.Get()==O)return true;return Stop(TEXT("override_source_role_replaced"));};
+        Roles.Add(H);if(!KeepObserved(H))return false;
+        // Copy keys and root every referenced role before any tracked key getter
+        // or native property exporter. Do not retain record/iterator addresses.
+        for(auto It=H->CreateRecordIterator();It;++It)
+        {
+            const FComponentOverrideRecord& Rec=*It;
+            if(Observed.Num()>=256||!Rec.ComponentClass.IsResolved()||Rec.ComponentClass==nullptr||!Rec.ComponentTemplate.IsResolved()||Rec.ComponentTemplate==nullptr)return false;
+            FObserved E;E.Key=Rec.ComponentKey;
+            if(!E.Key.IsSCSKey()||!ResolvedKeyOwner(E.Key,E.Owner))return false;
+            E.ActualClass=Cast<UClass>(StaticFindObject(nullptr,nullptr,*Rec.ComponentClass.GetPathName()));E.Template=Cast<UActorComponent>(StaticFindObject(nullptr,nullptr,*Rec.ComponentTemplate.GetPathName()));
+            if(!Loaded(E.ActualClass)||Rec.ComponentClass!=E.ActualClass||!Loaded(E.Template)||Rec.ComponentTemplate!=E.Template||E.Template->GetClass()!=E.ActualClass||E.Template->GetOuter()!=GC||E.Template->GetOutermost()!=B->GetOutermost()||!E.Template->IsTemplate()||!E.ActualClass->HasAnyClassFlags(CLASS_Native)||!E.ActualClass->ClassGeneratedBy.IsResolved()||E.ActualClass->ClassGeneratedBy!=nullptr||E.ActualClass->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||E.ActualClass->IsEditorOnly()||E.ActualClass->GetPackage()->GetName()!=TEXT("/Script/Engine"))return false;
+            if(!KeepObserved(E.Owner)||!KeepObserved(E.ActualClass)||!KeepObserved(E.Template))return false;
+            UBlueprint* OwnerBP=nullptr;for(auto* Candidate:Bs)if(Candidate!=B&&Candidate->GeneratedClass.GetGCPtr().IsResolved()&&Candidate->GeneratedClass.GetGCPtr()==E.Owner){OwnerBP=Candidate;break;}
+            if(!OwnerBP||!KeepObserved(OwnerBP)||!OwnerBP->SimpleConstructionScript.IsResolved()||OwnerBP->SimpleConstructionScript==nullptr)return false;
+            auto* OwnerSCS=Cast<USimpleConstructionScript>(StaticFindObject(nullptr,nullptr,*OwnerBP->SimpleConstructionScript.GetPathName()));if(!Loaded(OwnerSCS)||OwnerBP->SimpleConstructionScript!=OwnerSCS||!KeepObserved(OwnerSCS))return false;
+            const auto& All=OwnerSCS->GetAllNodes();if(All.Num()>256)return false;
+            for(auto* N:All)if(Loaded(N)&&N->VariableGuid==E.Key.GetAssociatedGuid()){if(E.Declaration)return false;E.Declaration=N;}
+            if(!E.Declaration||E.Declaration->GetOuter()!=OwnerSCS||!E.Declaration->ComponentClass.IsResolved())return false;
+            E.DeclaredClass=Cast<UClass>(StaticFindObject(nullptr,nullptr,*E.Declaration->ComponentClass.GetPathName()));if(!Loaded(E.DeclaredClass)||E.Declaration->ComponentClass!=E.DeclaredClass)return false;
+            E.StableKey=E.Owner->GetPathName()+TEXT("|")+E.Key.GetAssociatedGuid().ToString(EGuidFormats::Digits);if(Keys.Contains(E.StableKey))return false;Keys.Add(E.StableKey);
+            E.TemplateIdentity=Identity(E.Template);E.ClassIdentity=Identity(E.ActualClass);E.OwnerIdentity=Identity(E.Owner);E.ClassFlags=E.ActualClass->GetClassFlags();E.ClassFields=E.ActualClass->ChildProperties;
+            for(UObject* O:{static_cast<UObject*>(E.Owner),static_cast<UObject*>(E.ActualClass),static_cast<UObject*>(E.Template),static_cast<UObject*>(E.Declaration),static_cast<UObject*>(E.DeclaredClass)})if(!KeepObserved(O))return false;
+            Observed.Add(MoveTemp(E));
+        }
+        // Record order is not a getter contract: preserve key -> actual-template
+        // mapping and serialize canonically, not physical iterator order.
+        Observed.Sort([](const FObserved& A,const FObserved& Other){return A.StableKey<Other.StableKey;});
+        auto CurrentOwner=[&]()
+        {
+            if(!Context()||!Loaded(B)||!Loaded(GC)||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr()!=GC)return false;
+            UInheritableComponentHandler* Actual=nullptr;return ResolvedHandler(GC,Actual)&&Actual==H;
+        };
+        auto CurrentRow=[&](const FObserved& E)
+        {return CurrentOwner()&&Loaded(H)&&H->GetOuter()==GC&&Identity(H)==HandlerIdentity&&Loaded(E.Template)&&Loaded(E.ActualClass)&&Loaded(E.Owner)&&Loaded(E.Declaration)&&Identity(E.Template)==E.TemplateIdentity&&Identity(E.ActualClass)==E.ClassIdentity&&Identity(E.Owner)==E.OwnerIdentity&&E.Template->GetClass()==E.ActualClass&&E.Template->GetOuter()==GC&&E.ActualClass->GetClassFlags()==E.ClassFlags&&E.ActualClass->ChildProperties==E.ClassFields;};
+        auto Membership=[&]()
+        {
+            if(!CurrentOwner()||!Loaded(H)||Identity(H)!=HandlerIdentity)return false;
+            UInheritableComponentHandler* Returned=GC->GetInheritableComponentHandler(false);
+            // The returned old object does not prove the actual slot survived a
+            // tracked-read callback. Close current class + resolved slot first.
+            if(!CurrentOwner()||Returned!=H||!Loaded(H)||Identity(H)!=HandlerIdentity)return false;
+            TSet<FString> Seen;int32 Num=0;
+            for(auto It=H->CreateRecordIterator();It;++It)
+            {
+                const FComponentOverrideRecord& Rec=*It;UClass* Owner=nullptr;if(++Num>256||!ResolvedKeyOwner(Rec.ComponentKey,Owner))return false;
+                const FString Key=Owner->GetPathName()+TEXT("|")+Rec.ComponentKey.GetAssociatedGuid().ToString(EGuidFormats::Digits);const auto* E=Observed.FindByPredicate([&](const FObserved& X){return X.StableKey==Key;});
+                if(!E||Seen.Contains(Key)||!Rec.ComponentClass.IsResolved()||Rec.ComponentClass!=E->ActualClass||!Rec.ComponentTemplate.IsResolved()||Rec.ComponentTemplate!=E->Template||Rec.ComponentKey.GetSCSVariableName()!=E->Key.GetSCSVariableName()||Owner!=E->Owner||!CurrentRow(*E))return false;Seen.Add(Key);
+            }
+            return Num==Observed.Num();
+        };
+        if(!Membership())return Stop(TEXT("override_records_before_observation"));
+        TArray<TSharedPtr<FJsonValue>> Rows;
+        for(const auto& E:Observed)
+        {
+            for(UObject* O:{static_cast<UObject*>(E.Owner),static_cast<UObject*>(E.ActualClass),static_cast<UObject*>(E.Template),static_cast<UObject*>(E.Declaration),static_cast<UObject*>(E.DeclaredClass)})Roles.Add(O);
+            if(!CurrentRow(E))return Stop(TEXT("override_before_key_getter"));UClass* Owner=E.Key.GetComponentOwner();if(!CurrentRow(E)||Owner!=E.Owner)return Stop(TEXT("override_after_key_getter"));
+            // Actual override class and declared property class are distinct
+            // roles. A native subclass is admitted without changing pin type.
+            const bool Compatible=E.ActualClass->IsChildOf(E.DeclaredClass)&&GC->IsChildOf(E.Owner);if(!CurrentRow(E)||!Compatible)return Stop(TEXT("override_class_relationship"));
+            auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("key_owner"),E.Owner->GetPathName());Q->SetStringField(TEXT("key_guid"),E.Key.GetAssociatedGuid().ToString(EGuidFormats::Digits));Q->SetStringField(TEXT("key_scs_name"),E.Key.GetSCSVariableName().ToString());Q->SetStringField(TEXT("declaration"),Identity(E.Declaration));Q->SetStringField(TEXT("declared_component_class"),E.DeclaredClass->GetPathName());Q->SetStringField(TEXT("actual_component_class"),E.ClassIdentity);Q->SetStringField(TEXT("actual_template"),E.TemplateIdentity);
+            TArray<TSharedPtr<FJsonValue>> Fields;int32 CountFields=0;
+            for(TFieldIterator<FProperty> It(E.ActualClass);It;++It)
+            {
+                if(It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient))continue;if(++CountFields>1024||!CurrentRow(E))return false;
+                FString V;const FString Name=It->GetName();if(!It->ExportText_InContainer(0,V,E.Template,nullptr,E.Template,PPF_None)||!CurrentRow(E))return Stop(TEXT("override_property_export"));TextSize+=V.Len();if(V.Len()>65536||TextSize>4194304)return false;
+                auto F=MakeShared<FJsonObject>();F->SetStringField(TEXT("name"),Name);F->SetStringField(TEXT("value"),V);Fields.Add(MakeShared<FJsonValueObject>(F));
+            }
+            Q->SetArrayField(TEXT("serialized_nontransient_fields"),Fields);Rows.Add(MakeShared<FJsonValueObject>(Q));
+        }
+        if(!Membership())return Stop(TEXT("override_records_after_observation"));Row->SetStringField(TEXT("override_handler"),HandlerIdentity);Row->SetArrayField(TEXT("component_overrides"),Rows);
+        R.Data->SetBoolField(TEXT("inherited_component_override_source_profile"),true);R.Data->SetBoolField(TEXT("override_cooked_instancing_cache_invariant_assumed"),false);R.Data->SetBoolField(TEXT("override_template_class_equals_declared_pin_class_assumed"),false);return true;
+    }
     bool Sources(FString& Out,TArray<UObject*>& Roles,bool Capture)
     {
         if(!Context()||!Loaded(BP.Get())||BP->ParentClass.Get()!=Parent||BP->GeneratedClass.Get()!=Generated||BP->SkeletonGeneratedClass.Get()!=Skeleton)return false;
@@ -262,9 +363,16 @@ struct FGeneratedReferenceScope
         for(auto* B:Bs)
         {
             if(!Loaded(B)||!Loaded(B->GeneratedClass.Get())||!Loaded(B->SkeletonGeneratedClass.Get())||!Loaded(B->SimpleConstructionScript.Get()))return false;
-            auto* GC=Cast<UBlueprintGeneratedClass>(B->GeneratedClass.Get());if(!GC)return false;auto* H=GC->GetInheritableComponentHandler(false);if(H&&(!Loaded(H)||!H->IsEmpty()))return false;
+            auto* GC=Cast<UBlueprintGeneratedClass>(B->GeneratedClass.Get());if(!GC)return false;
+            // Nonempty new-profile records are rooted before the first tracked
+            // public getter. Existing absent/empty handler behavior is unchanged.
+            UInheritableComponentHandler* PreHandler=nullptr;const bool HandlerResolved=ResolvedHandler(GC,PreHandler);
+            auto* H=HandlerResolved&&PreHandler&&!PreHandler->IsEmpty()?PreHandler:GC->GetInheritableComponentHandler(false);if(H&&!Loaded(H))return false;
+            if(H&&!H->IsEmpty()&&(!HandlerResolved||H!=PreHandler))return false;
+            auto Row=MakeShared<FJsonObject>();
+            if(H&&!H->IsEmpty()&&!OverrideRows(B,GC,H,Bs,Roles,Capture,TextSize,Row))return false;
             for(UObject* O:{static_cast<UObject*>(B),static_cast<UObject*>(B->GeneratedClass.Get()),static_cast<UObject*>(B->SkeletonGeneratedClass.Get()),static_cast<UObject*>(B->SimpleConstructionScript.Get())}){Roles.Add(O);if(Capture&&!Hold(O))return false;}
-            auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("blueprint"),B->GetPathName());Row->SetStringField(TEXT("parent"),GetPathNameSafe(B->ParentClass.Get()));Row->SetStringField(TEXT("generated"),Identity(B->GeneratedClass.Get()));Row->SetStringField(TEXT("skeleton"),Identity(B->SkeletonGeneratedClass.Get()));Row->SetStringField(TEXT("scs"),Identity(B->SimpleConstructionScript.Get()));
+            Row->SetStringField(TEXT("blueprint"),B->GetPathName());Row->SetStringField(TEXT("parent"),GetPathNameSafe(B->ParentClass.Get()));Row->SetStringField(TEXT("generated"),Identity(B->GeneratedClass.Get()));Row->SetStringField(TEXT("skeleton"),Identity(B->SkeletonGeneratedClass.Get()));Row->SetStringField(TEXT("scs"),Identity(B->SimpleConstructionScript.Get()));
             if(B!=BP.Get()){Row->SetBoolField(TEXT("dirty"),B->GetPackage()->IsDirty());Row->SetNumberField(TEXT("status"),B->Status.GetValue());}
             const auto& All=B->SimpleConstructionScript->GetAllNodes();if(All.Num()>256)return false;TSet<USCS_Node*> Reachable;TArray<USCS_Node*> Pending=B->SimpleConstructionScript->GetRootNodes();
             while(!Pending.IsEmpty()){auto* N=Pending.Pop();if(!Loaded(N)||Reachable.Contains(N)||!All.Contains(N)||N->GetOuter()!=B->SimpleConstructionScript.Get())return false;Reachable.Add(N);Pending.Append(N->GetChildNodes());}
@@ -303,8 +411,8 @@ FResult AddGeneratedLoaded(UBlueprint* BP,const FString& ComponentName,const FSt
     FResult R;Init(R);R.Data->SetStringField(TEXT("requested_component_name"),ComponentName);R.Data->SetBoolField(TEXT("requested_create_graph_if_missing"),CreateGraph);
     for(const TCHAR* K:{TEXT("generated_reference_current_checks"),TEXT("generated_parent_saved_inspection_calls")})R.Data->SetNumberField(K,0);
     R.Data->SetStringField(TEXT("lifecycle_scope"),TEXT("KC bounded generated-owner writer retains native NewObject/SetSelfMember/AddNode/GUID/Post/Pins/Reconstruct/Mark sequence, with native SCS declaration preflight and selected source/target checks across SDK and outer transaction end. No explicit Modify, compile/save, runtime getter, cleanup or retry."));
-    R.Data->SetStringField(TEXT("preservation_scope"),TEXT("Selected target graph/pins/defaults, loaded generated Actor parent roles and native SCS nontransient serialized template fields; no transient/CDO/world/global/disk purity claim."));
-    R.Data->SetStringField(TEXT("generated_reference_scope"),TEXT("KC already-loaded Actor child, saved-clean generated parents, unambiguous own/inherited native Engine SCS component and existing graph; nonempty override records, ambiguous/unresolved/generated component members remain pending. Native-parent permissive route unchanged."));
+    R.Data->SetStringField(TEXT("preservation_scope"),TEXT("Selected target graph/pins/defaults, loaded generated Actor parent roles, native SCS fields and bounded existing inherited SCS override key/handler/actual-template roles and nontransient fields; no transient/cooked-cache/CDO/world/global/disk purity claim."));
+    R.Data->SetStringField(TEXT("generated_reference_scope"),TEXT("KC already-loaded Actor child, saved-clean generated parents, unambiguous own/inherited native Engine SCS component and existing graph; bounded existing native inherited SCS override records are observed by stable key/actual template role. Ambiguous/unresolved/generated component and UCS overrides remain pending. Native-parent permissive route unchanged."));
     if(!IsEditorGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||GIsRequestingExit||UE::IsSavingPackage()||!Loaded(GEditor)||IsPlaySessionActive()){Fail(R,TEXT("component_reference_editor_invalid"),TEXT("Safe idle Editor game thread required."));return R;}
     if(CreateGraph||ComponentName.IsEmpty()||!Function::Pin::SafeName(ComponentName)||!Loaded(BP)||!Loaded(BP->ParentClass.Get())||!BP->ParentClass->ClassGeneratedBy||!BP->ParentClass->IsChildOf(AActor::StaticClass())||BP->BlueprintType!=BPTYPE_Normal||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bSuppressStructurallyModified||BP->bIsRegeneratingOnLoad){Fail(R,TEXT("component_reference_generated_scope_pending"),TEXT("New exception requires loaded idle Actor child, native SCS literal member and existing graph; no new graph/inference."));return R;}
     FGeneratedReferenceScope C(R);C.Editor.Reset(GEditor);C.World.Reset(GEditor->GetEditorWorldContext().World());C.BP.Reset(BP);C.Parent=BP->ParentClass.Get();C.Generated=BP->GeneratedClass.Get();C.Skeleton=BP->SkeletonGeneratedClass.Get();C.Requested=FName(*ComponentName);
@@ -313,7 +421,7 @@ FResult AddGeneratedLoaded(UBlueprint* BP,const FString& ComponentName,const FSt
     if(!Loaded(G)||G->GetOuter()!=BP||!G->bEditable||!G->GetSchema()||G->GetSchema()->GetClass()!=UEdGraphSchema_K2::StaticClass()||G->Nodes.Num()>=2048){Fail(R,TEXT("component_reference_owner_scope_pending"),TEXT("Current owned bounded editable K2 graph required."));return R;}
     C.G.Reset(G);if(!C.Hold(const_cast<UEdGraphSchema*>(G->GetSchema()))){C.Stop(TEXT("graph_schema"));return R;}C.GraphGuid=G->GraphGuid;for(const auto& N:G->Nodes){if(!C.Hold(N.Get())){C.Stop(TEXT("old_node"));return R;}C.OldNodes.Add(N.Get());C.OldPins.Add(N->Pins);}
     R.Data->SetBoolField(TEXT("component_existence_preflight_performed"),true);Count(R,TEXT("component_existence_validation_calls"));const bool Declared=C.Sources(C.SourcesBefore,C.SourceRoles,true);R.Data->SetBoolField(TEXT("component_existence_validation_passed"),Declared);
-    if(!Declared||!C.OldState(C.OldBefore)){Fail(R,TEXT("component_reference_generated_native_scs_pending"),TEXT("New generated-owner exception requires one reachable own/inherited native Engine SCS object property with exact current compiled/skeleton declaring roles, preserved native templates and no override records; no node writer."));return R;}
+    if(!Declared||!C.OldState(C.OldBefore)){Fail(R,TEXT("component_reference_generated_native_scs_pending"),TEXT("New generated-owner exception requires one reachable own/inherited native Engine SCS object property with exact current compiled/skeleton declaring roles, preserved native templates and bounded observable native inherited SCS override records; no node writer."));return R;}
     R.Data->SetStringField(TEXT("component_declaration_scope"),C.Declaring.Get()==BP?TEXT("own_scs_in_generated_parent_actor"):TEXT("inherited_native_scs"));R.Data->SetStringField(TEXT("declaring_blueprint"),C.Declaring->GetPathName());R.Data->SetStringField(TEXT("declaring_scs_node"),C.Member->GetPathName());
     Count(R,TEXT("generated_parent_saved_inspection_calls"));const auto ParentInspection=GeneratedComponent::InspectSavedActorParent(C.Parent);R.Data->SetObjectField(TEXT("generated_parent_before"),ParentInspection);if(!C.Check(TEXT("after_saved_parent_inspection")))return R;
     if(!ParentInspection->GetBoolField(TEXT("success"))){Fail(R,TEXT("component_reference_generated_parent_pending"),TEXT("Saved clean generated Actor parent failed existing runtime/source/dependency guard; no node writer."));return R;}
@@ -348,7 +456,7 @@ const FGuid GraphGuid=G->GraphGuid;
     Count(R,TEXT("generated_parent_saved_inspection_calls"));const auto ParentAfter=GeneratedComponent::InspectSavedActorParent(C.Parent);R.Data->SetObjectField(TEXT("generated_parent_after"),ParentAfter);if(!C.Check(TEXT("after_final_saved_parent_inspection")))return R;if(!ParentAfter->GetBoolField(TEXT("success"))){C.Stop(TEXT("final_parent_proof"));return R;}
     Function::FResult Endpoint;if(!Observe(BP,G,TEXT("generated_endpoint_graph_observation"),Endpoint,R)||!C.Check(TEXT("after_endpoint_graph_observation")))return R;
     if(!Equal(MakeShared<FJsonValueObject>(R.Data->GetObjectField(TEXT("after"))),MakeShared<FJsonValueObject>(Endpoint.Data->GetObjectField(TEXT("after"))))){C.Stop(TEXT("endpoint_differs_from_writer"));return R;}
-    R.Data->SetBoolField(TEXT("generated_endpoint_observation_complete"),true);R.Data->SetBoolField(TEXT("generated_parent_target_scope_preserved"),true);R.Data->SetStringField(TEXT("generated_observation_limits"),TEXT("Loaded source roles/native SCS nontransient template fields/selected old graph and new pin/reference state only; transient template/CDO/world/global callback/disk effects unobserved. No atomic rollback, runtime getter execution or full original generated-owner parity."));return R;
+    R.Data->SetBoolField(TEXT("generated_endpoint_observation_complete"),true);R.Data->SetBoolField(TEXT("generated_parent_target_scope_preserved"),true);R.Data->SetStringField(TEXT("generated_observation_limits"),TEXT("Loaded source roles/native SCS and existing override key/handler/actual-template nontransient fields/selected old graph and new pin/reference state only; transient/cooked cache/template native nonreflected/CDO/world/global callback/disk effects unobserved. No atomic rollback, runtime getter execution or full original generated-owner parity."));return R;
 }
 }
 Variable::FResult Add(const FString& Path,const FString& ComponentName,const FString& PositionJson,const FString& Name,const FString& Id,const FString& Type,bool CreateGraph)

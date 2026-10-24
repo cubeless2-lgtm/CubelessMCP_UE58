@@ -19,6 +19,7 @@
 #include "PCGNode.h"
 #include "PCGPin.h"
 #include "PCGSettings.h"
+#include "Elements/PCGProjectionElement.h"
 #include "Metadata/PCGAttributePropertySelector.h"
 #include "Data/Registry/PCGDataTypeCommon.h"
 
@@ -407,9 +408,29 @@ namespace
 
     // Finite fields of the original nine-node CPU falloff family. This is not
     // a generic property writer; selectors retain their separate named API.
+    bool SamplingEditorDebugProperty(const UClass* Class,const FProperty* Property)
+    {return Class&&Property&&Class->GetPathName()==TEXT("/Script/PCG.PCGSurfaceSamplerSettings")&&Property->GetOwnerStruct()==Class&&Property->GetFName()==TEXT("bKeepZeroDensityPoints")&&Property->GetClass()==FBoolProperty::StaticClass()&&Property->HasAnyPropertyFlags(CPF_Transient);}
     const TMap<FString, TMap<FString, FString>>& SettingFields()
     {
         static const TMap<FString, TMap<FString, FString>> Fields = {
+            {TEXT("PCGDataFromActorSettings"), {{TEXT("mode"),TEXT("Mode")},{TEXT("ignorepcggeneratedcomponents"),TEXT("bIgnorePCGGeneratedComponents")},{TEXT("alsooutputsinglepointdata"),TEXT("bAlsoOutputSinglePointData")},{TEXT("componentsmustoverlapself"),TEXT("bComponentsMustOverlapSelf")},{TEXT("getdataonallgrids"),TEXT("bGetDataOnAllGrids")},{TEXT("allowedgrids"),TEXT("AllowedGrids")},{TEXT("mergesinglepointdata"),TEXT("bMergeSinglePointData")},{TEXT("propertyname"),TEXT("PropertyName")},{TEXT("alwaysrequeryactors"),TEXT("bAlwaysRequeryActors")},{TEXT("silencesanitizedattributenamewarnings"),TEXT("bSilenceSanitizedAttributeNameWarnings")},{TEXT("silencereservedattributenamewarnings"),TEXT("bSilenceReservedAttributeNameWarnings")},{TEXT("trackactorsonlywithinbounds"),TEXT("bTrackActorsOnlyWithinBounds")}}},
+            {TEXT("PCGGetLandscapeSettings"), {{TEXT("mode"),TEXT("Mode")},{TEXT("ignorepcggeneratedcomponents"),TEXT("bIgnorePCGGeneratedComponents")},{TEXT("alsooutputsinglepointdata"),TEXT("bAlsoOutputSinglePointData")},{TEXT("componentsmustoverlapself"),TEXT("bComponentsMustOverlapSelf")},{TEXT("getdataonallgrids"),TEXT("bGetDataOnAllGrids")},{TEXT("allowedgrids"),TEXT("AllowedGrids")},{TEXT("mergesinglepointdata"),TEXT("bMergeSinglePointData")},{TEXT("propertyname"),TEXT("PropertyName")},{TEXT("alwaysrequeryactors"),TEXT("bAlwaysRequeryActors")},{TEXT("silencesanitizedattributenamewarnings"),TEXT("bSilenceSanitizedAttributeNameWarnings")},{TEXT("silencereservedattributenamewarnings"),TEXT("bSilenceReservedAttributeNameWarnings")},{TEXT("trackactorsonlywithinbounds"),TEXT("bTrackActorsOnlyWithinBounds")},{TEXT("unbounded"),TEXT("bUnbounded")}}},
+            {TEXT("PCGSurfaceSamplerSettings"), {{TEXT("pointspersquaredmeter"),TEXT("PointsPerSquaredMeter")},{TEXT("pointextents"),TEXT("PointExtents")},
+                {TEXT("looseness"),TEXT("Looseness")},{TEXT("unbounded"),TEXT("bUnbounded")},{TEXT("applydensitytopoints"),TEXT("bApplyDensityToPoints")},
+                {TEXT("pointsteepness"),TEXT("PointSteepness")},{TEXT("keepzerodensitypoints"),TEXT("bKeepZeroDensityPoints")},{TEXT("uselegacygridcreationmethod"),TEXT("bUseLegacyGridCreationMethod")}}},
+            // ADP: graph-spec partial ProjectionParams dictionaries use typed native fields.
+            {TEXT("PCGProjectionSettings"), {{TEXT("projectionparams"),TEXT("ProjectionParams")},{TEXT("forcecollapsetopoint"),TEXT("bForceCollapseToPoint")},{TEXT("keepzerodensitypoints"),TEXT("bKeepZeroDensityPoints")}}},
+            // ADL: exact public own spatial-composition enum/bool fields; no execution/dynamic-pin writer.
+            {TEXT("PCGUnionSettings"), {{TEXT("type"),TEXT("Type")},{TEXT("densityfunction"),TEXT("DensityFunction")}}},
+            {TEXT("PCGInnerIntersectionSettings"), {{TEXT("densityfunction"),TEXT("DensityFunction")},{TEXT("keepzerodensitypoints"),TEXT("bKeepZeroDensityPoints")}}},
+            {TEXT("PCGOuterIntersectionSettings"), {{TEXT("densityfunction"),TEXT("DensityFunction")},{TEXT("ignorepinswithnoinput"),TEXT("bIgnorePinsWithNoInput")},{TEXT("keepzerodensitypoints"),TEXT("bKeepZeroDensityPoints")}}},
+            {TEXT("PCGDifferenceSettings"), {{TEXT("densityfunction"),TEXT("DensityFunction")},{TEXT("mode"),TEXT("Mode")},
+                {TEXT("diffmetadata"),TEXT("bDiffMetadata")},{TEXT("keepzerodensitypoints"),TEXT("bKeepZeroDensityPoints")}}},
+            {TEXT("PCGTransformPointsSettings"), {{TEXT("applytoattribute"),TEXT("bApplyToAttribute")},{TEXT("attributename"),TEXT("AttributeName")},
+                {TEXT("offsetmin"),TEXT("OffsetMin")},{TEXT("offsetmax"),TEXT("OffsetMax")},{TEXT("absoluteoffset"),TEXT("bAbsoluteOffset")},
+                {TEXT("rotationmin"),TEXT("RotationMin")},{TEXT("rotationmax"),TEXT("RotationMax")},{TEXT("absoluterotation"),TEXT("bAbsoluteRotation")},
+                {TEXT("scalemin"),TEXT("ScaleMin")},{TEXT("scalemax"),TEXT("ScaleMax")},{TEXT("absolutescale"),TEXT("bAbsoluteScale")},
+                {TEXT("uniformscale"),TEXT("bUniformScale")},{TEXT("recomputeseed"),TEXT("bRecomputeSeed")}}},
             {TEXT("PCGPointExtentsModifierSettings"), {{TEXT("extents"),TEXT("Extents")},{TEXT("mode"),TEXT("Mode")}}},
             {TEXT("PCGBoundsModifierSettings"), {{TEXT("mode"),TEXT("Mode")},{TEXT("boundsmin"),TEXT("BoundsMin")},
                 {TEXT("boundsmax"),TEXT("BoundsMax")},{TEXT("affectsteepness"),TEXT("bAffectSteepness")},{TEXT("steepness"),TEXT("Steepness")}}},
@@ -462,10 +483,10 @@ namespace
         const FString* NativeName = Fields ? Fields->Find(Token(PropertyName)) : nullptr;
         if (!NativeName || Class->GetPathName() != TEXT("/Script/PCG.") + Class->GetName() ||
             !Class->HasAllClassFlags(CLASS_Native) || Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
-        { Error = Outcome(false, TEXT("pcg_setting_contract_unsupported"), TEXT("Only the existing exact native CPU settings slice and PointExtentsModifier/BoundsModifier authored fields are admitted")); return false; }
+        { Error = Outcome(false, TEXT("pcg_setting_contract_unsupported"), TEXT("Requires an exact finite native field from the existing PCG family, PointExtents/Bounds, TransformPoints13, or SurfaceSampler8/Difference4 and Union2/InnerIntersection2/OuterIntersection3; deprecated/custom/inherited extras remain incomplete")); return false; }
         C.Property = FindFProperty<FProperty>(Class, FName(**NativeName));
         if (!C.Property || C.Property->ArrayDim != 1 || !C.Property->HasAnyPropertyFlags(CPF_BlueprintVisible | CPF_Edit) ||
-            (C.Property->HasAnyPropertyFlags(CPF_EditConst | CPF_Deprecated) || (C.Property->HasAnyPropertyFlags(CPF_Transient) && !CubelessPCGUE58::IsDensityFilterEditorDebugProperty(Class, C.Property))) ||
+            (C.Property->HasAnyPropertyFlags(CPF_EditConst | CPF_Deprecated) || (C.Property->HasAnyPropertyFlags(CPF_Transient) && !CubelessPCGUE58::IsDensityFilterEditorDebugProperty(Class, C.Property)&&!SamplingEditorDebugProperty(Class,C.Property))) ||
             EnumHasAnyFlags(PropertyAccessUtil::CanGetPropertyValue(C.Property), EPropertyAccessResultFlags::PermissionDenied) ||
             EnumHasAnyFlags(PropertyAccessUtil::CanSetPropertyValue(C.Property, PropertyAccessUtil::EditorReadOnlyFlags,
                 PropertyAccessUtil::IsObjectTemplate(C.Settings)), EPropertyAccessResultFlags::PermissionDenied))
@@ -481,6 +502,10 @@ namespace
     TSharedPtr<FJsonValue> VectorValue(const FVector& Value)
     { return MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{
         MakeShared<FJsonValueNumber>(Value.X), MakeShared<FJsonValueNumber>(Value.Y), MakeShared<FJsonValueNumber>(Value.Z)}); }
+    FJson RotatorJson(const FRotator& Value)
+    {FJson Row=MakeShared<FJsonObject>();Row->SetNumberField(TEXT("pitch"),Value.Pitch);Row->SetNumberField(TEXT("yaw"),Value.Yaw);Row->SetNumberField(TEXT("roll"),Value.Roll);return Row;}
+    TSharedPtr<FJsonValue> RotatorValue(const FRotator& Value)
+    {return MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{MakeShared<FJsonValueNumber>(Value.Pitch),MakeShared<FJsonValueNumber>(Value.Yaw),MakeShared<FJsonValueNumber>(Value.Roll)});}
     TSharedPtr<FJsonValue> StructValue(UScriptStruct* Struct, const void* Value)
     {
         FString Text; Struct->ExportText(Text, Value, Value, nullptr, PPF_None, nullptr);
@@ -510,8 +535,39 @@ namespace
         Array = CastField<FArrayProperty>(Property); Inner = Array ? CastField<FStructProperty>(Array->Inner) : nullptr;
         return Inner && Property->GetName() == TEXT("PointsToCreate") && (Fresh ? (Inner->Struct.IsResolved() && Inner->Struct==FPCGPoint::StaticStruct() && FPCGPoint::StaticStruct()->GetStructureSize()==sizeof(FPCGPoint)) : (Inner->Struct->GetPathName() == TEXT("/Script/PCG.PCGPoint") && Inner->Struct->GetStructureSize() == sizeof(FPCGPoint)));
     }
+    // Installed PCGProjectionParams.h: eight nondeprecated authored members.
+    // This is the graph-spec dictionary contract, not native raw ImportText.
+    const TMap<FString,FString>& ProjectionFields()
+    {
+        static const TMap<FString,FString> Fields={{TEXT("projectpositions"),TEXT("bProjectPositions")},{TEXT("projectrotations"),TEXT("bProjectRotations")},{TEXT("projectscales"),TEXT("bProjectScales")},{TEXT("colorblendmode"),TEXT("ColorBlendMode")},{TEXT("attributelist"),TEXT("AttributeList")},{TEXT("attributemode"),TEXT("AttributeMode")},{TEXT("attributemergeoperation"),TEXT("AttributeMergeOperation")},{TEXT("tagmergeoperation"),TEXT("TagMergeOperation")}};return Fields;
+    }
+    bool ProjectionProperty(FProperty* P)
+    {
+        auto* S=CastField<FStructProperty>(P);return S&&P->GetFName()==TEXT("ProjectionParams")&&P->GetOwnerStruct()&&P->GetOwnerStruct()->GetPathName().Equals(TEXT("/Script/PCG.PCGProjectionSettings"),ESearchCase::CaseSensitive)&&S->Struct.IsResolved()&&S->Struct==FPCGProjectionParams::StaticStruct()&&P->GetSize()==sizeof(FPCGProjectionParams)&&P->ArrayDim==1;
+    }
+    bool ProjectionString(const FString& S){if(S.Len()>65536)return false;for(TCHAR C:S)if(C==0)return false;return true;}
+    FProperty* ProjectionField(const FString& Name)
+    {
+        const auto& Fields=ProjectionFields();const FString T=Token(Name);const FString* Native=Fields.Find(T);
+        if(!Native)for(const auto& E:Fields)if(Name.Equals(E.Value,ESearchCase::IgnoreCase)){Native=&E.Value;break;}
+        if(!Native)return nullptr;auto* Owner=FPCGProjectionParams::StaticStruct();FProperty* P=FindFProperty<FProperty>(Owner,FName(**Native));
+        if(!P||P->GetOwnerStruct()!=Owner||P->ArrayDim!=1||P->HasSetterOrGetter()||!P->HasAllPropertyFlags(CPF_Edit|CPF_BlueprintVisible)||P->HasAnyPropertyFlags(CPF_EditConst|CPF_Deprecated|CPF_Transient))return nullptr;
+        if(P->GetFName()==TEXT("AttributeList"))return P->GetClass()==FStrProperty::StaticClass()&&P->GetSize()==sizeof(FString)?P:nullptr;
+        if(P->GetFName()==TEXT("bProjectPositions")||P->GetFName()==TEXT("bProjectRotations")||P->GetFName()==TEXT("bProjectScales")){auto* B=CastField<FBoolProperty>(P);return B&&B->IsNativeBool()&&P->GetSize()==sizeof(bool)?P:nullptr;}
+        auto* E=CastField<FEnumProperty>(P);auto* U=E?E->GetUnderlyingProperty():nullptr;
+        return E&&U&&U->GetOwner<FProperty>()==P&&U->GetClass()==FByteProperty::StaticClass()&&U->ArrayDim==1&&P->GetSize()==sizeof(uint8)&&U->GetSize()==sizeof(uint8)?P:nullptr;
+    }
+    bool SameProjection(const FPCGProjectionParams& A,const FPCGProjectionParams& B)
+    {return A.bProjectPositions==B.bProjectPositions&&A.bProjectRotations==B.bProjectRotations&&A.bProjectScales==B.bProjectScales&&A.ColorBlendMode==B.ColorBlendMode&&A.AttributeList.Equals(B.AttributeList,ESearchCase::CaseSensitive)&&A.AttributeMode==B.AttributeMode&&A.AttributeMergeOperation==B.AttributeMergeOperation&&A.TagMergeOperation==B.TagMergeOperation;}
     bool ReadSetting(FProperty* Property, const void* Value, TSharedPtr<FJsonValue>& Out,TFunctionRef<bool()>* FreshCurrent=nullptr)
     {
+        if(ProjectionProperty(Property))
+        {
+            if(FreshCurrent&&!(*FreshCurrent)())return false;const FPCGProjectionParams Copy=*static_cast<const FPCGProjectionParams*>(Value);FJson Row=MakeShared<FJsonObject>();
+            for(const auto& Field:ProjectionFields()){FProperty* P=ProjectionField(Field.Value);if(!P)return false;TSharedPtr<FJsonValue> V;auto* Observer=CastField<FEnumProperty>(P)?FreshCurrent:nullptr;if(!ReadSetting(P,P->ContainerPtrToValuePtr<void>(&Copy),V,Observer))return false;if(Observer&&!(*Observer)())return false;if(ProjectionField(Field.Value)!=P)return false;Row->SetField(Field.Value,V);}
+            if(FreshCurrent&&!(*FreshCurrent)())return false;if(!SameProjection(Copy,*static_cast<const FPCGProjectionParams*>(Value)))return false;Out=MakeShared<FJsonValueObject>(Row);return true;
+        }
+        if(auto* String=CastField<FStrProperty>(Property)){const FString Copy=String->GetPropertyValue(Value);if(!ProjectionString(Copy))return false;Out=MakeShared<FJsonValueString>(Copy);return true;}
         FNumericProperty* Storage = nullptr;
         UEnum* NativeEnum=PropertyEnum(Property,Storage);TStrongObjectPtr<UEnum> EnumHold(nullptr);if(FreshCurrent){if(!(*FreshCurrent)())return false;if(NativeEnum){if(!ObservedObject(NativeEnum))return false;EnumHold.Reset(NativeEnum);}}
         if (UEnum* Enum = NativeEnum)
@@ -530,6 +586,8 @@ namespace
         if (auto* Name = CastField<FNameProperty>(Property)) { Out = MakeShared<FJsonValueString>(Name->GetPropertyValue(Value).ToString()); return true; }
         if (auto* Struct = CastField<FStructProperty>(Property); Struct && (FreshCurrent ? (Struct->Struct.IsResolved() && Struct->Struct==TBaseStructure<FVector>::Get() && TBaseStructure<FVector>::Get()->GetStructureSize()==sizeof(FVector)) : (Struct->Struct->GetPathName() == TEXT("/Script/CoreUObject.Vector") && Struct->Struct->GetStructureSize() == sizeof(FVector))))
         { const FVector& Vector = *static_cast<const FVector*>(Value); if (Vector.ContainsNaN()) return false; Out = VectorValue(Vector); return true; }
+        if(auto* Struct=CastField<FStructProperty>(Property);Struct&&Struct->Struct.IsResolved()&&Struct->Struct==TBaseStructure<FRotator>::Get()&&Struct->Struct->GetStructureSize()==sizeof(FRotator))
+        {const auto& R=*static_cast<const FRotator*>(Value);if(!FMath::IsFinite(R.Pitch)||!FMath::IsFinite(R.Yaw)||!FMath::IsFinite(R.Roll))return false;Out=RotatorValue(R);return true;}
         FArrayProperty* Array = nullptr; FStructProperty* Inner = nullptr;
         if (!PointArray(Property, Array, Inner,FreshCurrent!=nullptr)) return false;
         FScriptArrayHelper Helper(Array, Value); if (Helper.Num() > 128) return false;
@@ -549,6 +607,15 @@ namespace
         if (!Value.IsValid() || !Value->TryGetArray(Values) || Values->Num() != 3 || !Number((*Values)[0],X) ||
             !Number((*Values)[1],Y) || !Number((*Values)[2],Z)) return false;
         Out = FVector(X,Y,Z); return true;
+    }
+    // Legacy dict values are partial struct updates. Preflight validates only the supplied components;
+    // the writer merges against the actual constructed settings, never assumed CDO/literal defaults.
+    bool MathComponents(const TSharedPtr<FJsonValue>& Input,const TCHAR* A,const TCHAR* B,const TCHAR* C,double& X,double& Y,double& Z,bool& Partial)
+    {
+        if(!Input)return false;Partial=Input->Type==EJson::Object;
+        if(!Partial){FVector V;if(!Vector(Input,V))return false;X=V.X;Y=V.Y;Z=V.Z;return true;}
+        const auto O=Input->AsObject();if(!O||O->Values.Num()>3)return false;
+        for(const auto& P:O->Values){double N=0;if(!Number(P.Value,N))return false;const FString K=Token(FString(P.Key));if(K==A)X=N;else if(K==B)Y=N;else if(K==C)Z=N;else return false;}return true;
     }
     bool PreparePoints(const TSharedPtr<FJsonValue>& Input, FStructProperty* Inner, TSharedPtr<FJsonValue>& Payload, TSharedPtr<FJsonValue>& Expected, TArray<FPCGPoint>& ExpectedPoints,TFunctionRef<bool()>* FreshCurrent=nullptr)
     {
@@ -608,8 +675,28 @@ namespace
         }
         Payload=MakeShared<FJsonValueArray>(JsonRows); Expected=MakeShared<FJsonValueArray>(ExpectedRows); return true;
     }
-    bool PrepareSetting(FProperty* Property, const TSharedPtr<FJsonValue>& Input, TSharedPtr<FJsonValue>& Payload, TSharedPtr<FJsonValue>& Expected, TArray<FPCGPoint>& ExpectedPoints,TFunctionRef<bool()>* FreshCurrent=nullptr)
+    bool PrepareSetting(FProperty* Property, const TSharedPtr<FJsonValue>& Input, TSharedPtr<FJsonValue>& Payload, TSharedPtr<FJsonValue>& Expected, TArray<FPCGPoint>& ExpectedPoints,TFunctionRef<bool()>* FreshCurrent=nullptr,const void* ExistingValue=nullptr)
     {
+        if(ProjectionProperty(Property))
+        {
+            if(!Input||Input->Type!=EJson::Object||Input->AsObject()->Values.Num()>8)return false;if(FreshCurrent&&!(*FreshCurrent)())return false;
+            // Own the FString-bearing value before any reflected Enum callback.
+            const FPCGProjectionParams Copy=ExistingValue?*static_cast<const FPCGProjectionParams*>(ExistingValue):FPCGProjectionParams();
+            FJson Request=MakeShared<FJsonObject>(),Whole=MakeShared<FJsonObject>();
+            if(ExistingValue){TSharedPtr<FJsonValue> Prior;if(!ReadSetting(Property,&Copy,Prior,FreshCurrent))return false;Whole=MakeShared<FJsonObject>(*Prior->AsObject());}
+            TSet<FName> Seen;
+            for(const auto& Pair:Input->AsObject()->Values)
+            {
+                FProperty* Child=ProjectionField(FString(Pair.Key));if(!Child||Seen.Contains(Child->GetFName()))return false;Seen.Add(Child->GetFName());
+                TSharedPtr<FJsonValue> Native,Wanted;TArray<FPCGPoint> Ignored;
+                auto* Observer=CastField<FEnumProperty>(Child)?FreshCurrent:nullptr;
+                if(!PrepareSetting(Child,Pair.Value,Native,Wanted,Ignored,Observer,ExistingValue?Child->ContainerPtrToValuePtr<void>(&Copy):nullptr))return false;
+                if(Observer&&!(*Observer)())return false;if(ProjectionField(FString(Pair.Key))!=Child)return false;Request->SetField(Child->GetName(),Native);Whole->SetField(Child->GetName(),Wanted);
+            }
+            if(FreshCurrent&&!(*FreshCurrent)())return false;if(ExistingValue&&!SameProjection(Copy,*static_cast<const FPCGProjectionParams*>(ExistingValue)))return false;
+            Payload=MakeShared<FJsonValueObject>(Request);Expected=MakeShared<FJsonValueObject>(Whole);return true;
+        }
+        if(CastField<FStrProperty>(Property)){FString V;if(!Input||Input->Type!=EJson::String||!Input->TryGetString(V)||!ProjectionString(V))return false;Payload=Expected=MakeShared<FJsonValueString>(V);return true;}
         FNumericProperty* Storage = nullptr;
         UEnum* NativeEnum=PropertyEnum(Property,Storage);TStrongObjectPtr<UEnum> EnumHold(nullptr);if(FreshCurrent){if(!(*FreshCurrent)())return false;if(NativeEnum){if(!ObservedObject(NativeEnum))return false;EnumHold.Reset(NativeEnum);}}
         if (UEnum* Enum = NativeEnum)
@@ -626,7 +713,11 @@ namespace
         { FString N; if (Input->Type!=EJson::String || !Input->TryGetString(N) || !Bounded(N,true)) return false;
             Payload=MakeShared<FJsonValueString>(N); Expected=MakeShared<FJsonValueString>(FName(*N).ToString()); return true; }
         if (auto* Struct=CastField<FStructProperty>(Property); Struct && (FreshCurrent ? (Struct->Struct.IsResolved() && Struct->Struct==TBaseStructure<FVector>::Get() && TBaseStructure<FVector>::Get()->GetStructureSize()==sizeof(FVector)) : (Struct->Struct->GetPathName()==TEXT("/Script/CoreUObject.Vector") && Struct->Struct->GetStructureSize()==sizeof(FVector))))
-        { FVector V; if (!Vector(Input,V)) return false; Payload=MakeShared<FJsonValueObject>(VectorJson(V)); Expected=VectorValue(V); return true; }
+        {if(Input&&Input->Type==EJson::Object&&Property->GetOwnerStruct()->GetPathName()!=TEXT("/Script/PCG.PCGTransformPointsSettings")&&Property->GetOwnerStruct()->GetPathName()!=TEXT("/Script/PCG.PCGSurfaceSamplerSettings"))return false;FVector V=ExistingValue?*static_cast<const FVector*>(ExistingValue):FVector::ZeroVector;bool Partial=false;if(!MathComponents(Input,TEXT("x"),TEXT("y"),TEXT("z"),V.X,V.Y,V.Z,Partial))return false;
+            if(Partial&&!ExistingValue){Payload=Expected=Input;}else{Payload=MakeShared<FJsonValueObject>(VectorJson(V));Expected=VectorValue(V);}return true;}
+        if(auto* Struct=CastField<FStructProperty>(Property);Struct&&Struct->Struct.IsResolved()&&Struct->Struct==TBaseStructure<FRotator>::Get()&&Struct->Struct->GetStructureSize()==sizeof(FRotator))
+        {FRotator V=ExistingValue?*static_cast<const FRotator*>(ExistingValue):FRotator::ZeroRotator;bool Partial=false;if(!MathComponents(Input,TEXT("pitch"),TEXT("yaw"),TEXT("roll"),V.Pitch,V.Yaw,V.Roll,Partial))return false;
+            if(Partial&&!ExistingValue){Payload=Expected=Input;}else{Payload=MakeShared<FJsonValueObject>(RotatorJson(V));Expected=RotatorValue(V);}return true;}
         FArrayProperty* Array=nullptr; FStructProperty* Inner=nullptr;
         return PointArray(Property,Array,Inner,FreshCurrent!=nullptr) && PreparePoints(Input,Inner,Payload,Expected,ExpectedPoints,FreshCurrent);
     }
@@ -777,6 +868,7 @@ FString CubelessPCGUE58::InspectSetting(const FString& GraphPath, const FString&
 FString CubelessPCGUE58::ApplySetting(const FString& GraphPath, const FString& NodeId, const FString& PropertyName, const FString& ValueJson)
 {
     FSettingContext C; FJson Error; if (!Setting(GraphPath,NodeId,PropertyName,C,Error)) return Encode(Error);
+    if(C.Settings->GetClass()->GetPathName().Equals(TEXT("/Script/PCG.PCGProjectionSettings"),ESearchCase::CaseSensitive))return Encode(Outcome(false,TEXT("pcg_projection_native_raw_pending"),TEXT("Projection nested dictionaries are enrolled in graph-spec only; the original native raw ImportText/Structural contract remains incomplete.")));
     // The domain admits persistent target creation/ownership before this leaf;
     // it stays fail-closed until the new native route is actually verified.
     TStrongObjectPtr<UPCGGraph> Keep(C.Owner); const bool bDirty=C.Owner->GetPackage()->IsDirty();
@@ -785,7 +877,7 @@ FString CubelessPCGUE58::ApplySetting(const FString& GraphPath, const FString& N
         return Encode(Outcome(false,TEXT("pcg_setting_value_json_invalid"),TEXT("Expected one bounded JSON value; no dispatch")));
     TSharedPtr<FJsonValue> Payload,Expected;
     TArray<FPCGPoint> ExpectedPoints;
-    if (!PrepareSetting(C.Property,Parsed[0],Payload,Expected,ExpectedPoints))
+    if (!PrepareSetting(C.Property,Parsed[0],Payload,Expected,ExpectedPoints,nullptr,C.Property->ContainerPtrToValuePtr<void>(C.Settings)))
         return Encode(Outcome(false,TEXT("pcg_setting_type_invalid"),TEXT("Pinned native property requires an exact finite primitive/enum/vector or bounded public PCGPoint payload; no conversion/write fallback")));
     FJson Before,GraphBefore;
     if (!CaptureSettingFields(C,Before) || !CaptureGraphSnapshot(C.Owner,GraphBefore,Error))
@@ -864,7 +956,7 @@ namespace
             !Class->HasAllClassFlags(CLASS_Native)||Class->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists))return nullptr;
         FProperty* P=nullptr;for(auto Super=Class->GetSuperStructIterator();Super&&!P;++Super)for(TFieldIterator<FProperty> It(*Super,EFieldIterationFlags::None);It;++It)if(It->GetFName()==FName(**NativeName)){P=*It;break;}
         return P&&P->ArrayDim==1&&P->HasAnyPropertyFlags(CPF_Edit|CPF_BlueprintVisible)&&
-            !P->HasAnyPropertyFlags(CPF_EditConst|CPF_Deprecated)&&(!P->HasAnyPropertyFlags(CPF_Transient)||CubelessPCGUE58::IsDensityFilterEditorDebugProperty(Class,P))&&!P->HasSetterOrGetter()?P:nullptr;
+            !P->HasAnyPropertyFlags(CPF_EditConst|CPF_Deprecated)&&(!P->HasAnyPropertyFlags(CPF_Transient)||CubelessPCGUE58::IsDensityFilterEditorDebugProperty(Class,P)||SamplingEditorDebugProperty(Class,P))&&!P->HasSetterOrGetter()?P:nullptr;
     }
     bool FreshFields(const FSettingContext& C,FJson& Values,TFunctionRef<bool()> Current)
     {
@@ -931,7 +1023,7 @@ bool CubelessPCGUE58::PrepareFreshSettings(UClass* Class,const FJson& Input,FJso
         // PA standalone enum writers consume this already-validated canonical
         // native payload; no factory construction admission is implied.
         if(Class->GetPathName().Equals(TEXT("/Script/PCG.PCGPointExtentsModifierSettings"),ESearchCase::CaseSensitive)||Class->GetPathName().Equals(TEXT("/Script/PCG.PCGBoundsModifierSettings"),ESearchCase::CaseSensitive))Row->SetField(TEXT("payload"),Payload);
-        Row->SetField(TEXT("requested"),Pair.Value);Row->SetField(TEXT("expected"),Expected);Plans->SetObjectField(FString(Pair.Key),Row);Plans->RemoveField(TEXT("preflight_input_field"));
+        Row->SetBoolField(TEXT("transient_editor_state"),SamplingEditorDebugProperty(Class,P));if(SamplingEditorDebugProperty(Class,P))Row->SetBoolField(TEXT("serialized_persistence_verified"),false);Row->SetBoolField(TEXT("partial_struct_request"),CastField<FStructProperty>(P)!=nullptr&&Pair.Value->Type==EJson::Object);Row->SetField(TEXT("requested"),Pair.Value);Row->SetField(TEXT("expected"),Expected);Plans->SetObjectField(FString(Pair.Key),Row);Plans->RemoveField(TEXT("preflight_input_field"));
     }
     return Current();
 }
@@ -943,25 +1035,51 @@ bool CubelessPCGUE58::ApplyFreshSetting(UPCGGraph* Owner,UPCGNode* Member,const 
     UPCGSettings* S=Member->GetSettings();if(!Current()||!S||!FreshInterfaceMatches(Member,S)||S->GetOuter()!=Member||S->GetPackage()!=Owner->GetPackage())return false;
     TStrongObjectPtr<UPCGSettings> Hold(S);FSettingContext C;C.Owner=Owner;C.Member=Member;C.Settings=S;FString CanonicalAlias;C.Property=FreshProperty(S->GetClass(),Name,&CanonicalAlias);if(!C.Property)return false;
     TSharedPtr<FJsonValue> Payload,Expected;TArray<FPCGPoint> Points;FProperty* P=C.Property;
-    const bool Prepared=PrepareSetting(P,Input,Payload,Expected,Points,&Current);
+    const bool Prepared=PrepareSetting(P,Input,Payload,Expected,Points,&Current,P->ContainerPtrToValuePtr<void>(S));
     if(!Current()||FreshProperty(S->GetClass(),Name)!=P||!Prepared)return false;
     FJson Before;if(!FreshFields(C,Before,Current))return false;
     Receipt->SetStringField(TEXT("property"),Name);Receipt->SetStringField(TEXT("native_property"),P->GetName());Receipt->SetField(TEXT("expected"),Expected);
     Receipt->SetObjectField(TEXT("settings_contract_before"),Before);
-    const bool Equal=JsonValueText(Before->TryGetField(CanonicalAlias))==JsonValueText(Expected);TArray<FName> Names;bool Returned=true;
+    Receipt->SetBoolField(TEXT("transient_editor_state"),SamplingEditorDebugProperty(S->GetClass(),P));if(SamplingEditorDebugProperty(S->GetClass(),P))Receipt->SetBoolField(TEXT("serialized_persistence_verified"),false);Receipt->SetBoolField(TEXT("partial_struct_merged_from_actual"),CastField<FStructProperty>(P)!=nullptr&&Input->Type==EJson::Object);
+    const bool Equal=JsonValueText(Before->TryGetField(CanonicalAlias)).Equals(JsonValueText(Expected),ProjectionProperty(P)?ESearchCase::CaseSensitive:ESearchCase::IgnoreCase);TArray<FName> Names;bool Returned=true;
     Receipt->SetBoolField(TEXT("write_attempted"),!Equal);
     if(!Equal)
     {
         if(!Current())return false;FJson Request=MakeShared<FJsonObject>();Request->SetField(P->GetName(),Payload);
-        Returned=UToolsetLibrary::SetObjectProperties(S,Encode(Request),Names,EBypassContainerCheck::No);
-        Receipt->SetBoolField(TEXT("write_returned"),Returned);Receipt->SetBoolField(TEXT("write_call_returned"),true);
+        FArrayProperty* PointField=nullptr;FStructProperty* PointElement=nullptr;
+        if(PointArray(P,PointField,PointElement,true))
+        {
+            // This request replaces an entire preplanned native point array. It is
+            // not an insertion whose index can be inferred from changed JSON elements.
+            // Keep initialized owned point storage across the public editor callback.
+            const uint64 InnerFlags=PointElement->GetPropertyFlags();const int32 InnerOffset=PointElement->GetOffset_ForInternal();
+            const auto InnerType=PointElement->Struct;TStrongObjectPtr<UScriptStruct> HeldType(FPCGPoint::StaticStruct());
+            if(!Current()||!HeldType.IsValid()||InnerType!=HeldType.Get())return false;
+            const TArray<FPCGPoint> Replacement=Points;
+            Receipt->SetStringField(TEXT("write_route"),TEXT("public_editor_typed_point_array_replacement"));
+            Receipt->SetNumberField(TEXT("replacement_count"),Replacement.Num());
+            const auto Access=PropertyAccessUtil::SetPropertyValue_Object(P,S,P,&Replacement,INDEX_NONE,
+                PropertyAccessUtil::EditorReadOnlyFlags,EPropertyAccessChangeNotifyMode::Default);
+            Returned=Access==EPropertyAccessResultFlags::Success;
+            Receipt->SetBoolField(TEXT("write_returned"),Returned);Receipt->SetBoolField(TEXT("write_call_returned"),true);
+            // Pointer membership is checked before reading a descriptor after callback.
+            if(!Current()||FreshProperty(S->GetClass(),Name)!=P||PointField->Inner!=PointElement)return false;
+            if(PointElement->GetOwner<FProperty>()!=P||PointElement->ArrayDim!=1||PointElement->GetSize()!=sizeof(FPCGPoint)||
+                PointElement->GetPropertyFlags()!=InnerFlags||PointElement->GetOffset_ForInternal()!=InnerOffset||
+                !PointElement->Struct.IsResolved()||PointElement->Struct!=InnerType)return false;
+        }
+        else
+        {
+            Returned=UToolsetLibrary::SetObjectProperties(S,Encode(Request),Names,EBypassContainerCheck::No);
+            Receipt->SetBoolField(TEXT("write_returned"),Returned);Receipt->SetBoolField(TEXT("write_call_returned"),true);
+        }
         if(!Current())return false;
     }
     Receipt->SetBoolField(TEXT("property_write_skipped_equal_value"),Equal);
     if(FreshProperty(S->GetClass(),Name)!=P||!FreshInterfaceMatches(Member,S))return false;
     FJson After;if(!FreshFields(C,After,Current))return false;
     FArrayProperty* A=nullptr;FStructProperty* Inner=nullptr;
-    const bool Match=PointArray(P,A,Inner,true)?P->Identical(P->ContainerPtrToValuePtr<void>(S),&Points,PPF_None):JsonValueText(After->TryGetField(CanonicalAlias))==JsonValueText(Expected);
+    const bool Match=PointArray(P,A,Inner,true)?P->Identical(P->ContainerPtrToValuePtr<void>(S),&Points,PPF_None):JsonValueText(After->TryGetField(CanonicalAlias)).Equals(JsonValueText(Expected),ProjectionProperty(P)?ESearchCase::CaseSensitive:ESearchCase::IgnoreCase);
     if(!Current())return false;
     const bool Other=UnrelatedSettingFieldsPreserved(Before,After,CanonicalAlias);
     Receipt->SetObjectField(TEXT("settings_contract_after"),After);Receipt->SetField(TEXT("actual"),After->TryGetField(CanonicalAlias));
@@ -979,9 +1097,9 @@ bool CubelessPCGUE58::VerifyFreshSettings(UPCGGraph* Owner,UPCGNode* Member,cons
     for(const auto& Pair:Input->Values)
     {
         FString CanonicalAlias;FProperty* P=FreshProperty(S->GetClass(),FString(Pair.Key),&CanonicalAlias);if(!P)return false;TSharedPtr<FJsonValue> Payload,Expected;TArray<FPCGPoint> Points;
-        const bool Prepared=PrepareSetting(P,Pair.Value,Payload,Expected,Points,&Current);if(!Current()||FreshProperty(S->GetClass(),FString(Pair.Key))!=P||!Prepared)return false;
+        const bool Prepared=PrepareSetting(P,Pair.Value,Payload,Expected,Points,&Current,P->ContainerPtrToValuePtr<void>(S));if(!Current()||FreshProperty(S->GetClass(),FString(Pair.Key))!=P||!Prepared)return false;
         FArrayProperty* Array=nullptr;FStructProperty* Inner=nullptr;
-        const bool Match=PointArray(P,Array,Inner,true)?P->Identical(P->ContainerPtrToValuePtr<void>(S),&Points,PPF_None):JsonValueText(Actual->TryGetField(CanonicalAlias))==JsonValueText(Expected);
+        const bool Match=PointArray(P,Array,Inner,true)?P->Identical(P->ContainerPtrToValuePtr<void>(S),&Points,PPF_None):JsonValueText(Actual->TryGetField(CanonicalAlias)).Equals(JsonValueText(Expected),ProjectionProperty(P)?ESearchCase::CaseSensitive:ESearchCase::IgnoreCase);
         if(!Current())return false;FJson Row=MakeShared<FJsonObject>();Row->SetField(TEXT("expected"),Expected);Row->SetField(TEXT("actual"),Actual->TryGetField(CanonicalAlias));Row->SetBoolField(TEXT("verified"),Match);Receipt->SetObjectField(FString(Pair.Key),Row);if(!Match)return false;
     }
     return Current();
@@ -1441,23 +1559,46 @@ namespace
                 if (!E->InputPin.IsResolved() || !E->OutputPin.IsResolved()) return false; UPCGPin* A = E->InputPin.Get(); UPCGPin* B = E->OutputPin.Get();
                 if (!Pins.ContainsByPredicate([&](const FPinRow& R) { return R.P == A; }) || !Pins.ContainsByPredicate([&](const FPinRow& R) { return R.P == B; }) || !A->Edges.Contains(E) || !B->Edges.Contains(E)) return false; Edges.Add({E, A, B});
             }
-            const FString ClassPath = C.Settings->GetClass()->GetPathName(); const bool Noise = ClassPath.Equals(TEXT("/Script/PCG.PCGAttributeNoiseSettings"), ESearchCase::CaseSensitive); const bool Filter = ClassPath.Equals(TEXT("/Script/PCG.PCGAttributeFilteringSettings"), ESearchCase::CaseSensitive);
-            if ((!Noise && !Filter) || C.Settings->GetClass()->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists)) return Fail(TEXT("pcg_selector_assignment_unsupported"), TEXT("Native assignment supports only exact constructible Noise/Filtering selector roles"));
-            for (const auto& N : Nodes)
+            UClass* SelectedClass=C.Settings->GetClass();
+            if(SelectedClass->GetPathName()!=TEXT("/Script/PCG.")+SelectedClass->GetName()
+                ||!SelectedClass->IsChildOf(UPCGSettings::StaticClass())||!SelectedClass->HasAllClassFlags(CLASS_Native)
+                ||SelectedClass->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||SelectedClass->IsEditorOnly())
+                return Fail(TEXT("pcg_selector_assignment_unsupported"),TEXT("Requires an exact constructible native runtime /Script/PCG settings class; generated/custom settings remain incomplete"));
+            for(const auto& N:Nodes)
             {
-                const FString CP = N.S->GetClass()->GetPathName(); const bool IsNoise = CP.Equals(TEXT("/Script/PCG.PCGAttributeNoiseSettings"), ESearchCase::CaseSensitive); const bool IsFilter = CP.Equals(TEXT("/Script/PCG.PCGAttributeFilteringSettings"), ESearchCase::CaseSensitive);
-                if (!IsNoise && !IsFilter) continue;
-                for (const TCHAR* Key : IsNoise ? TArray<const TCHAR*>{TEXT("InputSource"), TEXT("OutputTarget")} : TArray<const TCHAR*>{TEXT("TargetAttribute"), TEXT("ThresholdAttribute")})
+                UClass* Class=N.S->GetClass();
+                if(Class->GetPathName()!=TEXT("/Script/PCG.")+Class->GetName())continue;
+                // Discover concrete scalar selector roles from native reflection;
+                // inherited fields keep their actual declaring class, not the
+                // selected derived settings class as an invented owner.
+                for(TFieldIterator<FProperty> It(Class);It;++It)
                 {
-                    FStructProperty* P = FindFProperty<FStructProperty>(N.S->GetClass(), Key); const bool IsOutput = FString(Key).Equals(TEXT("OutputTarget"), ESearchCase::CaseSensitive);
-                    UScriptStruct* Expected = IsOutput ? FPCGAttributePropertyOutputSelector::StaticStruct() : FPCGAttributePropertyInputSelector::StaticStruct();
-                    if (!P || P->GetOwnerStruct() != N.S->GetClass() || P->ArrayDim != 1 || P->HasSetterOrGetter() || P->HasAnyPropertyFlags(CPF_EditConst | CPF_Deprecated | CPF_Transient) || !P->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || !P->Struct.IsResolved() || P->Struct != Expected || P->GetSize() != (IsOutput ? sizeof(FPCGAttributePropertyOutputSelector) : sizeof(FPCGAttributePropertyInputSelector)) || !NativeType(Expected)) return Fail(TEXT("pcg_selector_assignment_property_invalid"), TEXT("Exact editable declared selector struct/owner/layout was not verified"));
-                    FSelectorRow R; R.S = N.S; R.P = P; R.Before.bOutput = R.Expected.bOutput = IsOutput; R.Before.Copy(P->ContainerPtrToValuePtr<void>(N.S)); R.Expected = R.Before;
-                    if (N.N == C.Member && Token(P->GetName()) == Token(Name)) { if (Selected != INDEX_NONE) return false; Selected = Selectors.Num(); C.Property = P; C.Selector = P->ContainerPtrToValuePtr<FPCGAttributePropertySelector>(N.S); }
+                    FStructProperty* P=CastField<FStructProperty>(*It);
+                    if(!P||!P->Struct.IsResolved())continue;
+                    UScriptStruct* Type=P->Struct.Get();
+                    const bool IsOutput=Type==FPCGAttributePropertyOutputSelector::StaticStruct();
+                    if(!IsOutput&&Type!=FPCGAttributePropertyInputSelector::StaticStruct())continue;
+                    UClass* Declaring=Cast<UClass>(P->GetOwnerStruct());
+                    if(!Declaring||!Class->IsChildOf(Declaring)||Declaring->GetPathName()!=TEXT("/Script/PCG.")+Declaring->GetName()
+                        ||P->ArrayDim!=1||P->HasSetterOrGetter()||P->HasAnyPropertyFlags(CPF_EditConst|CPF_Deprecated|CPF_Transient)
+                        ||!P->HasAllPropertyFlags(CPF_Edit|CPF_BlueprintVisible)
+                        ||P->GetSize()!=(IsOutput?sizeof(FPCGAttributePropertyOutputSelector):sizeof(FPCGAttributePropertyInputSelector)))
+                    {
+                        if(N.N==C.Member&&Token(P->GetName())==Token(Name))
+                            return Fail(TEXT("pcg_selector_assignment_property_invalid"),TEXT("Selected scalar selector native declaration/editability/layout was not verified"));
+                        continue;
+                    }
+                    if(!NativeType(Declaring)||!NativeType(Type))return false;
+                    FSelectorRow R;R.S=N.S;R.P=P;R.Before.bOutput=R.Expected.bOutput=IsOutput;
+                    R.Before.Copy(P->ContainerPtrToValuePtr<void>(N.S));R.Expected=R.Before;
+                    if(N.N==C.Member&&Token(P->GetName())==Token(Name))
+                    {if(Selected!=INDEX_NONE)return Fail(TEXT("pcg_selector_assignment_property_ambiguous"),TEXT("Selector property token matches multiple admitted scalar fields"));Selected=Selectors.Num();C.Property=P;C.Selector=P->ContainerPtrToValuePtr<FPCGAttributePropertySelector>(N.S);}
                     Selectors.Add(MoveTemp(R));
                 }
             }
-            if (Selected == INDEX_NONE || !NativeEnum(StaticEnum<EPCGAttributePropertySelection>()) || !NativeEnum(StaticEnum<EPCGPointProperties>()) || !NativeEnum(StaticEnum<EPCGExtraProperties>()) || !NativeType(FPCGDataTypeIdentifier::StaticStruct())) return Fail(TEXT("pcg_selector_assignment_unsupported"), TEXT("Property must be one of the exact four supported native selector roles"));
+            if(Selected==INDEX_NONE||!NativeEnum(StaticEnum<EPCGAttributePropertySelection>())||!NativeEnum(StaticEnum<EPCGPointProperties>())||!NativeEnum(StaticEnum<EPCGExtraProperties>())||!NativeType(FPCGDataTypeIdentifier::StaticStruct()))
+                return Fail(TEXT("pcg_selector_assignment_unsupported"),TEXT("Requires an editable native scalar InputSelector/OutputSelector property. Custom selector structs and selectors inside containers remain incomplete"));
+            Result->SetStringField(TEXT("selector_assignment_scope"),TEXT("Reflected scalar native /Script/PCG InputSelector/OutputSelector roles, including actual native declaring ancestors; selected and admitted sibling selectors, graph identities/topology and existing finite settings fields are preserved. Arbitrary other settings values, custom/generated settings or selector structs, container selectors and runtime generation remain incomplete."));
             bReady = true; if (!Raw()) return false;
             for (auto& N : Nodes) if (SettingFields().Contains(N.S->GetClass()->GetName()))
             { FSettingContext V; V.Owner = C.Owner; V.Member = N.N; V.Settings = N.S; if (!FreshFields(V, N.Finite, [this] { return Raw(); })) return false; }

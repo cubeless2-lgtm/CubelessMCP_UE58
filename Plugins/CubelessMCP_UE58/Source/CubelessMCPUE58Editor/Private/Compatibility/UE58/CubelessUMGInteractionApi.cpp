@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessUMGInteractionApi.h"
+#include "Compatibility/UE58/CubelessEditorApi.h"
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
@@ -363,7 +364,7 @@ FResult AddSliders(const FString& WidgetName,const FString& SlidersJson)
     R.Data->SetBoolField(TEXT("old_selected_source_preserved"),Preserved);R.Data->SetBoolField(TEXT("current_slider_postcondition"),Selected);if(!Preserved||!Selected) { Fail(R,TEXT("umg_slider_postcondition_failed"),TEXT("Actual compiler/save returned; current slider/preserved-source postcondition failed"));return R; }if(!R.Compiled.IsSet()||!*R.Compiled) { Fail(R,TEXT("umg_slider_compile_failed"),TEXT("Actual final Editor compile failed; forced save result and legacy response retained"));return R; }if(!R.bSaved) { Fail(R,TEXT("umg_slider_save_failed"),TEXT("Forced save returned false; no second save"));return R; }R.bSuccess=R.bPostconditionPassed=true;R.Stage=TEXT("complete");return R;
 }
 
-FResult BindEvent(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName)
+static FResult BindEventWork(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName,const FString* NodePositionJson)
 {
     FResult R;Init(R,TEXT("bind_widget_event"));R.Data->SetStringField(TEXT("ignored_function_name"),FunctionName);R.Data->SetBoolField(TEXT("original_function_name_ignored"),true);R.Data->SetBoolField(TEXT("SDK_UI_jump_suppressed"),true);if(!Admit(R,{WidgetName,WidgetComponentName,EventName,FunctionName})) { return R; }FActiveScope Scope;Count(R,TEXT("transaction_calls"));FScopedTransaction Tx(FText::FromString(TEXT("MCP bind_widget_event")));
     const FString Component=WidgetComponentName.TrimStartAndEnd();if(Component.Len()>=NAME_SIZE||EventName.Len()>=NAME_SIZE) { Fail(R,TEXT("umg_binding_name_too_long"),TEXT("Reference names must fit FName before initial compiler or lookup"));return R; }
@@ -386,8 +387,57 @@ FResult BindEvent(const FString& WidgetName,const FString& WidgetComponentName,c
     }
     if(!Loaded(Existing)) { Fail(R,TEXT("umg_binding_event_creation_failed"),TEXT("Failed to create/reacquire event node; helper prefix retained without retry/cleanup"));bool OK=false;End(BP,R,Before,OK);return R; }TStrongObjectPtr<const UK2Node_ComponentBoundEvent> KeepNode(Existing);if(!Loaded(Existing->GetGraph())||Existing->GetGraph()->GetTypedOuter<UBlueprint>()!=BP) { Fail(R,TEXT("umg_binding_returned_graph_invalid"),TEXT("Actual returned bound event graph must remain owned; no second creation"));bool OK=false;End(BP,R,Before,OK);return R; }
     const FGuid Guid=Existing->NodeGuid;const FName BoundName=Existing->CustomFunctionName;const FString GraphPath=Existing->GetGraph()->GetPathName();R.Data->SetStringField(TEXT("bound_event_guid"),Guid.ToString());R.Data->SetStringField(TEXT("bound_event_graph"),GraphPath);R.Data->SetStringField(TEXT("bound_function"),Existing->CustomFunctionName.ToString());
+    TSharedRef<FJsonObject> PreservationBefore=Before;int32 ExpectedX=Existing->NodePosX,ExpectedY=Existing->NodePosY;
+    if(NodePositionJson)
+    {
+        R.Stage=TEXT("bound_event_position");auto PositionReceipt=MakeShared<FJsonObject>();R.Data->SetObjectField(TEXT("raw_bound_event_position"),PositionReceipt);
+        PositionReceipt->SetNumberField(TEXT("x_before"),ExpectedX);PositionReceipt->SetNumberField(TEXT("y_before"),ExpectedY);
+        PositionReceipt->SetNumberField(TEXT("direct_position_assignments"),0);PositionReceipt->SetBoolField(TEXT("node_modify_requested"),false);
+        TStrongObjectPtr<UEdGraph> HoldGraph(Existing->GetGraph());TStrongObjectPtr<UClass> HoldNodeClass(Existing->GetClass());
+        const auto CurrentNode=[&]()->bool
+        {
+            if(!IsEditorGameThread()||IsPlaySessionActive()||!Loaded(BP)||BP!=KeepBP.Get()||!Loaded(KeepTree.Get())||BP->WidgetTree!=KeepTree.Get()
+                ||!Loaded(Existing)||Existing!=KeepNode.Get()||Existing->GetClass()!=HoldNodeClass.Get()||!Loaded(HoldNodeClass.Get())
+                ||!Loaded(HoldGraph.Get())||Existing->GetGraph()!=HoldGraph.Get()||Existing->GetOuter()!=HoldGraph.Get()||HoldGraph->GetTypedOuter<UBlueprint>()!=BP
+                ||!HoldGraph->Nodes.Contains(const_cast<UK2Node_ComponentBoundEvent*>(Existing))||Existing->NodeGuid!=Guid||Existing->CustomFunctionName!=BoundName
+                ||Existing->ComponentPropertyName!=MemberName||Existing->DelegatePropertyName!=FName(*EventName))
+            {R.bChangeStateKnown=false;Fail(R,TEXT("umg_binding_position_target_unknown"),TEXT("Held bound-event/graph/source role changed; no more position, compile/save, observation or retry"));return false;}
+            return true;
+        };
+        if(!CurrentNode())return R;
+        TSharedPtr<FJsonValue> Box;if(!BoxValue(*NodePositionJson,Box,R)||Box->Type!=EJson::Object)
+        {if(R.ErrorCode.IsEmpty())Fail(R,TEXT("umg_binding_position_carrier_invalid"),TEXT("Private position object required"));bool OK=false;End(BP,R,Before,OK);return R;}
+        const auto Position=Box->AsObject();for(const auto& Pair:Position->Values){const FString Key(Pair.Key.ToView());if(Key!=TEXT("node_pos_x")&&Key!=TEXT("node_pos_y"))
+        {Fail(R,TEXT("umg_binding_position_carrier_invalid"),TEXT("Only original independent node_pos_x/y fields admitted"));bool OK=false;End(BP,R,Before,OK);return R;}}
+        int32 Assigned=0;bool AssignedX=false,AssignedY=false;
+        for(const TCHAR* Axis:{TEXT("node_pos_x"),TEXT("node_pos_y")})
+        {
+            double Value=0;const bool Read=Position->TryGetNumberField(Axis,Value);PositionReceipt->SetBoolField(FString(Axis)+TEXT("_present"),Position->HasField(Axis));PositionReceipt->SetBoolField(FString(Axis)+TEXT("_number_read"),Read);
+            if(!Read)continue;
+            // UE56/58 TryGetNumberField also accepts SDK numeric strings/bools.
+            // Keep the ordered X-then-Y prefix; undefined int casts are not emulated.
+            if(!FMath::IsFinite(Value)||FMath::TruncToDouble(Value)<MIN_int32||FMath::TruncToDouble(Value)>MAX_int32)
+            {Fail(R,TEXT("umg_binding_position_cast_pending"),TEXT("Original out-of-int32/nonfinite position cast remains incomplete; actual initial-compile/event/earlier-axis prefix retained, save not attempted"));bool OK=false;End(BP,R,Before,OK);return R;}
+            if(!CurrentNode())return R;const int32 Converted=static_cast<int32>(Value);auto* Mutable=const_cast<UK2Node_ComponentBoundEvent*>(Existing);R.bMutationAttempted=true;
+            if(FStringView(Axis)==TEXT("node_pos_x")){R.bChanged|=Mutable->NodePosX!=Converted;Mutable->NodePosX=Converted;ExpectedX=Converted;AssignedX=true;}
+            else{R.bChanged|=Mutable->NodePosY!=Converted;Mutable->NodePosY=Converted;ExpectedY=Converted;AssignedY=true;}
+            PositionReceipt->SetNumberField(FString(Axis)+TEXT("_converted_int32"),Converted);PositionReceipt->SetNumberField(TEXT("direct_position_assignments"),++Assigned);if(!CurrentNode())return R;
+        }
+        PositionReceipt->SetNumberField(TEXT("x_after"),ExpectedX);PositionReceipt->SetNumberField(TEXT("y_after"),ExpectedY);
+        if(Reused&&Assigned)
+        {
+            // Project only the two authored coordinates of this exact existing
+            // GUID into the expected DTO; retain every pin/class/other node cell.
+            const auto Graphs=Before->GetObjectField(TEXT("graph_rows"));const TSharedPtr<FJsonObject>* OldGraph=nullptr;const TSharedPtr<FJsonObject>* OldNode=nullptr;
+            if(!Graphs->TryGetObjectField(GraphPath,OldGraph)||!(*OldGraph)->GetObjectField(TEXT("nodes"))->TryGetObjectField(Guid.ToString(),OldNode))
+            {Fail(R,TEXT("umg_binding_position_before_missing"),TEXT("Reused bound-event has no complete original before row; actual position/compiler prefix retained without save"));bool OK=false;End(BP,R,Before,OK);return R;}
+            auto GraphCopy=MakeShared<FJsonObject>(**OldGraph),NodesCopy=MakeShared<FJsonObject>(*(*OldGraph)->GetObjectField(TEXT("nodes"))),NodeCopy=MakeShared<FJsonObject>(**OldNode),GraphRowsCopy=MakeShared<FJsonObject>(*Graphs);
+            if(AssignedX)NodeCopy->SetNumberField(TEXT("x"),ExpectedX);if(AssignedY)NodeCopy->SetNumberField(TEXT("y"),ExpectedY);NodesCopy->SetObjectField(Guid.ToString(),NodeCopy);GraphCopy->SetObjectField(TEXT("nodes"),NodesCopy);GraphRowsCopy->SetObjectField(GraphPath,GraphCopy);
+            PreservationBefore=MakeShared<FJsonObject>(*Before);PreservationBefore->SetObjectField(TEXT("graph_rows"),GraphRowsCopy);PositionReceipt->SetBoolField(TEXT("existing_node_only_xy_projection"),true);
+        }
+    }
     Save(BP,Package,R);auto Legacy=MakeShared<FJsonObject>();Legacy->SetBoolField(TEXT("success"),true);Legacy->SetStringField(TEXT("path"),Package);Legacy->SetStringField(TEXT("asset_path"),WidgetObjectPathFromPackage(Package));Legacy->SetStringField(TEXT("widget_name"),Component);Legacy->SetStringField(TEXT("event_name"),EventName);Legacy->SetStringField(TEXT("node_guid"),Guid.ToString());R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
-    R.Stage=TEXT("after_save_observation");bool OK=false;const auto After=End(BP,R,Before,OK);if(!OK) { return R; }const bool Preserved=Preserve(Before,After,nullptr,{},Reused?FString():GraphPath,Reused?FString():Guid.ToString());Count(R,TEXT("find_bound_event_calls"));const UK2Node_ComponentBoundEvent* Current=FKismetEditorUtilities::FindBoundEventForComponent(BP,FName(*EventName),FName(*Component));Count(R,TEXT("find_bound_event_returns"));bool Selected=Loaded(Current)&&Loaded(Current->GetGraph())&&Current->GetGraph()->GetTypedOuter<UBlueprint>()==BP&&Current->GetGraph()->GetPathName().Equals(GraphPath,ESearchCase::CaseSensitive)&&Current->NodeGuid==Guid&&Current->ComponentPropertyName==FName(*Component)&&Current->DelegatePropertyName==FName(*EventName)&&Loaded(Current->DelegateOwnerClass)&&Current->CustomFunctionName==BoundName;
+    R.Stage=TEXT("after_save_observation");bool OK=false;const auto After=End(BP,R,Before,OK);if(!OK) { return R; }const bool Preserved=Preserve(PreservationBefore,After,nullptr,{},Reused?FString():GraphPath,Reused?FString():Guid.ToString());Count(R,TEXT("find_bound_event_calls"));const UK2Node_ComponentBoundEvent* Current=FKismetEditorUtilities::FindBoundEventForComponent(BP,FName(*EventName),FName(*Component));Count(R,TEXT("find_bound_event_returns"));bool Selected=Loaded(Current)&&Loaded(Current->GetGraph())&&Current->GetGraph()->GetTypedOuter<UBlueprint>()==BP&&Current->GetGraph()->GetPathName().Equals(GraphPath,ESearchCase::CaseSensitive)&&Current->NodeGuid==Guid&&Current->ComponentPropertyName==FName(*Component)&&Current->DelegatePropertyName==FName(*EventName)&&Loaded(Current->DelegateOwnerClass)&&Current->CustomFunctionName==BoundName&&(!NodePositionJson||(Current->NodePosX==ExpectedX&&Current->NodePosY==ExpectedY));
     if(Selected)
     {
         UFunction* CurrentSignature=Current->FindEventSignatureFunction();TStrongObjectPtr<UFunction> KeepCurrentSignature(CurrentSignature);const UEdGraphSchema_K2* Schema=GetDefault<UEdGraphSchema_K2>();if(!Loaded(CurrentSignature)||CurrentSignature->GetFName()!=SignatureName) { Selected=false; }
@@ -396,4 +446,9 @@ FResult BindEvent(const FString& WidgetName,const FString& WidgetComponentName,c
     bool GeneratedBinding=false;if(Selected&&Loaded(BP->GeneratedClass.Get())) { UBlueprintGeneratedClass* Class=Cast<UBlueprintGeneratedClass>(BP->GeneratedClass.Get());if(Class) { for(UDynamicBlueprintBinding* D:Class->DynamicBindingObjects) { Count(R,TEXT("generated_binding_reads"));if(!Loaded(D)) { Selected=false;break; }if(UComponentDelegateBinding* B=Cast<UComponentDelegateBinding>(D)) { for(const auto& V:B->ComponentDelegateBindings) { if(V.ComponentPropertyName==FName(*Component)&&V.DelegatePropertyName==FName(*EventName)&&V.FunctionNameToBind==Current->CustomFunctionName) { GeneratedBinding=true; } } } } } }
     R.Data->SetBoolField(TEXT("old_selected_source_preserved"),Preserved);R.Data->SetBoolField(TEXT("current_bound_event_postcondition"),Selected);R.Data->SetBoolField(TEXT("generated_component_binding_verified"),GeneratedBinding);if(!Preserved||!Selected||!GeneratedBinding) { Fail(R,TEXT("umg_binding_postcondition_failed"),TEXT("Actual compiler/save returned; bound-event/signature/generated binding or preserved source proof failed"));return R; }if(!InitialOK||!R.Compiled.IsSet()||!*R.Compiled) { Fail(R,TEXT("umg_binding_compile_failed"),TEXT("Actual initial/final compiler predicate failed; real forced-save and legacy response retained"));return R; }if(!R.bSaved) { Fail(R,TEXT("umg_binding_save_failed"),TEXT("Forced save returned false; no replay"));return R; }R.bSuccess=R.bPostconditionPassed=true;R.Stage=TEXT("complete");return R;
 }
+FResult BindEvent(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName)
+{return BindEventWork(WidgetName,WidgetComponentName,EventName,FunctionName,nullptr);}
+FResult BindEventRaw(const FString& WidgetName,const FString& WidgetComponentName,const FString& EventName,const FString& FunctionName,const FString& NodePositionJson)
+{return BindEventWork(WidgetName,WidgetComponentName,EventName,FunctionName,&NodePositionJson);}
+
 }

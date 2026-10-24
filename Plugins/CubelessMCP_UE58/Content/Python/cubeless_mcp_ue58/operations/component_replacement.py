@@ -84,13 +84,13 @@ def _run_action(result, arguments, checkpoint_callback=None):
     result["changes"] = [{"kind": IDENTITY, "asset_path": arguments["blueprint_path"], "component_name": arguments["component_name"],
         "attempted": None, "change_state_known": False, "changed": None, "outcome": "unknown_until_native_response"}]
     try:
-        native = api.replace_blueprint_component_class(**arguments)
+        native = (api.replace_blueprint_component_class_raw if "require_scene_compatibility" in arguments else api.replace_blueprint_component_class)(**arguments)
     except Exception as error:
         if getattr(error, "native_call_returned", False):
             result["data"].update(native_result_returned=True, native_raw_result=getattr(error, "native_raw_result", None))
             result["stage"] = "returned_component_replacement_operation"
             callback(result)
-        if getattr(error, "code", "") == "native_component_replacement_api_unavailable":
+        if getattr(error, "code", "") in ("native_component_replacement_api_unavailable", "native_component_replacement_raw_api_unavailable"):
             result["data"].update(native_dispatched=False, native_mutation_attempted=False,
                 mutation_state_unknown=False, mutation_performed=False)
             result["changes"] = []
@@ -122,3 +122,15 @@ def replace_blueprint_component_class_action(result, blueprint_name, component_n
         sphere_radius=-1.0, dry_run=True, compile=True, save=True, refresh_nodes=True, checkpoint_callback=None):
     _run_action(result, _arguments(blueprint_name, component_name, new_component_class, sphere_radius,
         dry_run, compile, save, refresh_nodes), checkpoint_callback)
+
+
+# Original C++ command-only flag: fixed Raw9 producer, not a new Named schema.
+def replace_blueprint_component_class_raw_action(result, blueprint_name, component_name, new_component_class,
+        sphere_radius=-1.0, dry_run=True, compile=True, save=True, refresh_nodes=True,
+        require_scene_compatibility=True, checkpoint_callback=None):
+    arguments = _arguments(blueprint_name, component_name, new_component_class, sphere_radius,
+        dry_run, compile, save, refresh_nodes)
+    if type(require_scene_compatibility) is not bool:
+        raise OperationError("component_replace_scene_flag_invalid", "Raw require_scene_compatibility must be a converted exact bool")
+    arguments["require_scene_compatibility"] = require_scene_compatibility
+    _run_action(result, arguments, checkpoint_callback)

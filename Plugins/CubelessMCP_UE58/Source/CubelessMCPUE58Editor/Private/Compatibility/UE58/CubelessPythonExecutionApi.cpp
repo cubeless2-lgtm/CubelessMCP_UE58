@@ -1,10 +1,12 @@
 #include "Compatibility/UE58/CubelessPythonExecutionApi.h"
 
 #include "Dom/JsonValue.h"
+#include "CoreGlobals.h"
 #include "Editor.h"
 #include "Editor/EditorEngine.h"
 #include "Editor/Transactor.h"
 #include "Editor/TransBuffer.h"
+#include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
 #include "IPythonScriptPlugin.h"
 #include "InterchangeManager.h"
@@ -29,6 +31,82 @@ bool Live(const UObject* Object)
 {
     return Object && IsValid(Object) && !Object->HasAnyFlags(
         RF_BeginDestroyed | RF_FinishDestroyed | RF_NeedLoad | RF_NeedPostLoad);
+}
+// One concrete synchronous Batch owner, not a general transaction/job service.
+// There is deliberately no destructor which could close a foreign transaction.
+struct FBatchTransaction
+{
+    TStrongObjectPtr<UEditorEngine> Editor;
+    TStrongObjectPtr<UTransBuffer> Buffer;
+    TStrongObjectPtr<UWorld> World;
+    const FTransaction* Transaction = nullptr;
+    FGuid TransactionId, TransactionOperationId;
+    FString ScopeId, OwnerOperationId, Context;
+    uint64 Generation = 0, Frame = 0;
+    int32 BeforeDepth = 0, ExpectedDepth = 0, BeginIndex = INDEX_NONE;
+    bool Ready = false, Quarantined = false, BeginCalled = false, EndCalled = false, ControlBusy = false;
+    FString Failure;
+
+    bool EditorCurrent() const
+    {
+        return IsInGameThread() && !GExitPurge && !IsEngineExitRequested() && !IsGarbageCollecting()
+            && !UE::IsSavingPackage() && AdmissionActive && AdmissionGeneration == Generation
+            && GFrameCounter == Frame && GEditor == Editor.Get() && Live(Editor.Get())
+            && Live(Buffer.Get()) && Buffer->GetClass() == UTransBuffer::StaticClass()
+            && Editor->Trans.IsResolved() && Editor->Trans.Get() == Buffer.Get()
+            && Editor->PlayWorld.IsResolved() && Editor->PlayWorld.Get() == nullptr
+            && !GIsTransacting && Live(World.Get())
+            && Editor->GetEditorWorldContext().World() == World.Get();
+    }
+    bool Current() const
+    {
+        if (!Ready || Quarantined || ControlBusy || EndCalled || !EditorCurrent() || Buffer->ActiveCount != ExpectedDepth
+            || Buffer->UndoCount != 0 || Buffer->UndoBuffer.IsEmpty()
+            || &Buffer->UndoBuffer.Last().Get() != Transaction) { return false; }
+        const FTransactionContext Copied = Transaction->GetContext();
+        return Copied.TransactionId == TransactionId && Copied.OperationId == TransactionOperationId
+            && Copied.Context == Context;
+    }
+    TSharedRef<FJsonObject> Receipt(bool Success) const
+    {
+        auto Out = MakeShared<FJsonObject>();
+        Out->SetBoolField(TEXT("success"), Success);
+        Out->SetStringField(TEXT("scope_id"), ScopeId);
+        Out->SetStringField(TEXT("owner_operation_id"), OwnerOperationId);
+        Out->SetStringField(TEXT("transaction_context"), Context);
+        Out->SetStringField(TEXT("transaction_id"), TransactionId.ToString());
+        Out->SetStringField(TEXT("transaction_operation_id"), TransactionOperationId.ToString());
+        Out->SetNumberField(TEXT("depth_before"), BeforeDepth);
+        Out->SetNumberField(TEXT("expected_depth"), ExpectedDepth);
+        Out->SetNumberField(TEXT("begin_index"), BeginIndex);
+        Out->SetNumberField(TEXT("begin_calls"), BeginCalled ? 1 : 0);
+        Out->SetNumberField(TEXT("end_calls"), EndCalled ? 1 : 0);
+        Out->SetBoolField(TEXT("scope_quarantined"), Quarantined);
+        if (Quarantined) { Out->SetField(TEXT("scope_open"), MakeShared<FJsonValueNull>()); }
+        else { Out->SetBoolField(TEXT("scope_open"), Ready && !EndCalled); }
+        Out->SetBoolField(TEXT("scope_outcome_unknown"), Quarantined);
+        Out->SetBoolField(TEXT("automatic_retry"), false);
+        Out->SetBoolField(TEXT("atomic_rollback"), false);
+        Out->SetBoolField(TEXT("across_frames_supported"), false);
+        Out->SetBoolField(TEXT("global_callback_purity_verified"), false);
+        if (!Success)
+        {
+            Out->SetStringField(TEXT("error_code"), Quarantined ? TEXT("batch_transaction_quarantined") : TEXT("batch_transaction_unavailable"));
+            Out->SetStringField(TEXT("error"), Failure);
+        }
+        return Out;
+    }
+};
+TUniquePtr<FBatchTransaction> BatchTransaction;
+
+TSharedRef<FJsonObject> BatchRejected(const TCHAR* Code, const TCHAR* Message)
+{
+    auto Out = MakeShared<FJsonObject>();
+    Out->SetBoolField(TEXT("success"), false); Out->SetStringField(TEXT("error_code"), Code);
+    Out->SetStringField(TEXT("error"), Message); Out->SetBoolField(TEXT("scope_outcome_unknown"), false);
+    Out->SetBoolField(TEXT("scope_open"), false); Out->SetBoolField(TEXT("scope_quarantined"), false);
+    Out->SetNumberField(TEXT("begin_calls"), 0); Out->SetNumberField(TEXT("end_calls"), 0);
+    Out->SetBoolField(TEXT("automatic_retry"), false); return Out;
 }
 void Strings(const TSharedRef<FJsonObject>& Out, const TCHAR* Key, const TArray<FString>& Values)
 {
@@ -339,10 +417,153 @@ bool IsExecuting() { return IsInGameThread() && ActiveExecutionDepth > 0; }
 void Activate() { if (IsInGameThread()) { ++AdmissionGeneration; AdmissionActive = true; } }
 void Deactivate() { if (IsInGameThread()) { AdmissionActive = false; ++AdmissionGeneration; } }
 
+TSharedRef<FJsonObject> BeginBatchTransaction(const FString& OperationId)
+{
+    if (!IsInGameThread() || GExitPurge || IsEngineExitRequested() || IsGarbageCollecting()
+        || UE::IsSavingPackage() || !AdmissionActive || !Live(GEditor)
+        || !GEditor->PlayWorld.IsResolved() || GEditor->PlayWorld.Get() != nullptr || GIsTransacting)
+    { return BatchRejected(TEXT("batch_transaction_editor_unavailable"), TEXT("Idle current Editor transaction scope is unavailable; no Begin call.")); }
+    if (BatchTransaction)
+    { return BatchRejected(TEXT("batch_transaction_scope_exists"), TEXT("A previous batch transaction is active or quarantined; no new Begin or close is dispatched.")); }
+    if (!GEditor->Trans.IsResolved() || !Live(GEditor->Trans.Get())
+        || GEditor->Trans->GetClass() != UTransBuffer::StaticClass())
+    { return BatchRejected(TEXT("batch_transaction_class_pending"), TEXT("Exact native UTransBuffer required; custom transactors remain incomplete.")); }
+    auto Owner = MakeUnique<FBatchTransaction>();
+    Owner->Editor.Reset(GEditor); Owner->Buffer.Reset(static_cast<UTransBuffer*>(GEditor->Trans.Get()));
+    Owner->World.Reset(GEditor->GetEditorWorldContext().World());
+    Owner->Generation = AdmissionGeneration; Owner->Frame = GFrameCounter;
+    Owner->ScopeId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    Owner->OwnerOperationId = OperationId; Owner->BeforeDepth = Owner->Buffer->ActiveCount;
+    if (!Owner->EditorCurrent() || Owner->BeforeDepth < 0 || Owner->BeforeDepth == MAX_int32
+        || (Owner->BeforeDepth > 0 && (Owner->Buffer->UndoCount || Owner->Buffer->UndoBuffer.IsEmpty())))
+    { return BatchRejected(TEXT("batch_transaction_initial_state_invalid"), TEXT("Actual initial transaction owner/depth is unavailable; no Begin call.")); }
+    // Existing outer transactions retain their identity. A fresh batch uses a
+    // unique context so a Begin callback cannot replace it unnoticed.
+    const FTransaction* Prior = Owner->BeforeDepth ? &Owner->Buffer->UndoBuffer.Last().Get() : nullptr;
+    FGuid PriorId, PriorOperation;
+    if (Prior)
+    {
+        const FTransactionContext Copied = Prior->GetContext();
+        PriorId = Copied.TransactionId; PriorOperation = Copied.OperationId; Owner->Context = Copied.Context;
+    }
+    else { Owner->Context = TEXT("CubelessBatch_") + Owner->ScopeId; }
+    BatchTransaction = MoveTemp(Owner); auto& Scope = *BatchTransaction;
+    Scope.BeginCalled = true; Scope.ControlBusy = true;
+    Scope.BeginIndex = Scope.Editor->BeginTransaction(*Scope.Context, FText::FromString(TEXT("MCP batch")), nullptr);
+    Scope.ControlBusy = false;
+    if (Scope.EditorCurrent() && Scope.BeginIndex == Scope.BeforeDepth
+        && Scope.Buffer->ActiveCount == Scope.BeforeDepth + 1 && !Scope.Buffer->UndoCount
+        && !Scope.Buffer->UndoBuffer.IsEmpty())
+    {
+        Scope.Transaction = &Scope.Buffer->UndoBuffer.Last().Get();
+        const FTransactionContext Copied = Scope.Transaction->GetContext();
+        if (Copied.Context == Scope.Context && (!Prior || (Scope.Transaction == Prior
+            && Copied.TransactionId == PriorId && Copied.OperationId == PriorOperation)))
+        {
+            Scope.TransactionId = Copied.TransactionId; Scope.TransactionOperationId = Copied.OperationId;
+            Scope.ExpectedDepth = Scope.BeforeDepth + 1; Scope.Ready = true;
+            return Scope.Receipt(true);
+        }
+    }
+    Scope.Quarantined = true;
+    Scope.Failure = TEXT("Begin returned without the captured expected transaction role; no speculative End or retry.");
+    return Scope.Receipt(false);
+}
+
+TSharedRef<FJsonObject> ObserveBatchTransaction(const FString& ScopeId, const FString& Action)
+{
+    // Invalid control requests never clear, adopt or close an existing scope.
+    if (!IsInGameThread())
+    { return BatchRejected(TEXT("batch_transaction_wrong_thread"), TEXT("Batch transaction controls require the original game thread.")); }
+    if (!BatchTransaction || BatchTransaction->ScopeId != ScopeId
+        || (Action != TEXT("check") && Action != TEXT("end") && Action != TEXT("abandon")))
+    { return BatchRejected(TEXT("batch_transaction_scope_mismatch"), TEXT("Unknown batch scope/control; no SDK operation dispatched.")); }
+    auto& Scope = *BatchTransaction;
+    // Begin/End broadcasts may reenter Python before ActiveCount changes. The
+    // reentrant request must neither close nor clear the outer owner's storage.
+    if (Scope.ControlBusy || Scope.EndCalled)
+    { return BatchRejected(TEXT("batch_transaction_control_busy"), TEXT("Native batch Begin/End is already entered; no reentrant control or scope release.")); }
+    if (Action == TEXT("abandon"))
+    {
+        Scope.Quarantined = true; Scope.Failure = TEXT("Batch observer was lost; transaction retained without any further Editor SDK call.");
+        return Scope.Receipt(false);
+    }
+    if (!Scope.Current())
+    {
+        Scope.Quarantined = true; Scope.Failure = TEXT("Batch Editor/frame/transaction/depth/ID/context changed; no End, continuation SDK or retry.");
+        return Scope.Receipt(false);
+    }
+    if (Action == TEXT("check")) { return Scope.Receipt(true); }
+    // Scope ownership, not child success, decides whether mandatory closing is
+    // safe. Never Cancel: known/partial child mutations remain user-undoable.
+    // End callbacks may remove the buffer entry. Retain this exact transaction
+    // for the post-End no-op/transient versus recorded-Undo distinction.
+    const TSharedRef<FTransaction> EndingTransaction = Scope.Buffer->UndoBuffer.Last();
+    Scope.EndCalled = true; Scope.ControlBusy = true;
+    const int32 EndDepth = Scope.Editor->EndTransaction();
+    Scope.ControlBusy = false;
+    const bool Closed = Scope.EditorCurrent() && EndDepth == Scope.ExpectedDepth
+        && Scope.Buffer->ActiveCount == Scope.BeforeDepth;
+    bool WasTransient = false;
+    if (Closed && Scope.BeforeDepth == 0)
+    {
+        WasTransient = EndingTransaction->IsTransient();
+        if (!Scope.EditorCurrent() || Scope.Buffer->ActiveCount != 0)
+        { Scope.Quarantined = true; }
+        else if (WasTransient)
+        {
+            // UTransBuffer::End removes only this ineffective entry and may
+            // restore the previous Redo stack. Empty buffer is a normal case.
+            Scope.Quarantined = Scope.Buffer->UndoBuffer.Contains(EndingTransaction);
+        }
+        else if (Scope.Buffer->UndoCount || Scope.Buffer->UndoBuffer.IsEmpty()
+            || &Scope.Buffer->UndoBuffer.Last().Get() != &EndingTransaction.Get())
+        { Scope.Quarantined = true; }
+        else
+        {
+            const FTransactionContext Copied = EndingTransaction->GetContext();
+            // EndOperation invalidates OperationId only on outermost End.
+            Scope.Quarantined = Copied.TransactionId != Scope.TransactionId
+                || Copied.OperationId.IsValid() || Copied.Context != Scope.Context;
+        }
+    }
+    if (Closed && Scope.BeforeDepth)
+    {
+        // A nested batch must leave exactly the prior outer operation alive.
+        if (Scope.Buffer->UndoCount || Scope.Buffer->UndoBuffer.IsEmpty()
+            || &Scope.Buffer->UndoBuffer.Last().Get() != Scope.Transaction)
+        { Scope.Quarantined = true; }
+        else
+        {
+            const FTransactionContext Copied = Scope.Transaction->GetContext();
+            Scope.Quarantined = Copied.TransactionId != Scope.TransactionId
+                || Copied.OperationId != Scope.TransactionOperationId || Copied.Context != Scope.Context;
+        }
+    }
+    if (!Closed || Scope.Quarantined)
+    {
+        Scope.Quarantined = true; Scope.Failure = TEXT("End returned but original depth/owner restoration was not certified; no second End or retry.");
+        auto Out = Scope.Receipt(false); Out->SetNumberField(TEXT("end_return_depth"), EndDepth); return Out;
+    }
+    auto Out = Scope.Receipt(true); Out->SetNumberField(TEXT("end_return_depth"), EndDepth);
+    Out->SetNumberField(TEXT("depth_after"), Scope.Buffer->ActiveCount);
+    Out->SetBoolField(TEXT("scope_closed"), true);
+    Out->SetBoolField(TEXT("outer_noop_or_transient"), Scope.BeforeDepth == 0 && WasTransient);
+    Out->SetBoolField(TEXT("recorded_undo_entry_preserved"), Scope.BeforeDepth == 0 && !WasTransient);
+    Out->SetBoolField(TEXT("nested_outer_identity_preserved"), Scope.BeforeDepth > 0);
+    // End may legally remove a no-op/transient outer transaction and restore
+    // its previous Redo stack (EditorTransaction.cpp UTransBuffer::End).
+    Out->SetNumberField(TEXT("undo_buffer_count_after"), Scope.Buffer->UndoBuffer.Num());
+    Out->SetNumberField(TEXT("redo_count_after"), Scope.Buffer->UndoCount);
+    BatchTransaction.Reset(); return Out;
+}
+
 TSharedRef<FJsonObject> Execute(const FRequest& Request, const FDispatch& Dispatch)
 {
     auto Error = [&](const TCHAR* Code, const FString& Message)
     { auto Out = Unexecuted(Code, Message); if (ValidPolicy(Request.InterchangePolicy)) { PolicyMetadata(Request, Dispatch, Out); } return Out; };
+    if (IsInGameThread() && BatchTransaction && BatchTransaction->Quarantined)
+    { return Error(TEXT("batch_transaction_quarantined"), TEXT("A batch transaction requires reconciliation; no Python execution or new command transaction.")); }
     if (!IsInGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || !Live(GEditor))
     { return Error(TEXT("editor_shutdown_in_progress"), TEXT("Live Editor game thread outside exit/GC required before Python execution")); }
     if (!AdmissionActive) { return Error(TEXT("python_execution_not_dispatched"), TEXT("Editor module Python execution admission is inactive")); }

@@ -22,3 +22,19 @@ FString UCubelessPythonExecutionLibrary::ExecutePython(const FString& Code, cons
     FJsonSerializer::Serialize(Actual, TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output));
     return Output;
 }
+
+FString UCubelessPythonExecutionLibrary::BeginBatchTransaction(const FString& OperationId)
+{
+    auto Actual = Cubeless::UE58::PythonExecution::BeginBatchTransaction(OperationId);
+    FString Output;
+    FJsonSerializer::Serialize(Actual, TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output));
+    return Output;
+}
+
+FString UCubelessPythonExecutionLibrary::ObserveBatchTransaction(const FString& ScopeId, const FString& Action)
+{
+    auto Actual = Cubeless::UE58::PythonExecution::ObserveBatchTransaction(ScopeId, Action);
+    FString Output;
+    FJsonSerializer::Serialize(Actual, TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Output));
+    return Output;
+}

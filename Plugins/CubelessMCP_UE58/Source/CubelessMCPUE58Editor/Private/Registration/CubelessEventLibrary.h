@@ -9,7 +9,11 @@ class UCubelessEventLibrary : public UBlueprintFunctionLibrary
     GENERATED_BODY()
 public:
     UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore))
+    static FString AddBlueprintEventInResolvedGraph(const FString& RequestJson);
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore))
     static FString InspectSavedActorParent(const FString& ClassPath);
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore))
+    static FString InspectSavedObjectParent(const FString& ClassPath);
     UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore))
     static FString AddBlueprintEventNode(const FString& GraphPath, const FString& EventName, int32 X, int32 Y);
     UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore))

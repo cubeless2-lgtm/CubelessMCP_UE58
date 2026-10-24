@@ -37,6 +37,7 @@
 #include "EngineUtils.h"
 #include "LevelUtils.h"
 #include "Misc/PackageName.h"
+#include "Misc/Paths.h"
 #include "ScopedTransaction.h"
 #include "Editor/TransBuffer.h"
 #include "PhysicsEngine/BodyInstance.h"
@@ -51,12 +52,49 @@
 
 namespace Cubeless::UE58::Actor
 {
+// ACJ-v2: NewlyCreated alone is not a complete on-disk-existence test. The
+// regular successful SavePackage path clears it, while autosave/procedural paths
+// differ (SavePackage2.cpp3597..3615). Observe the actual mounted .umap instead;
+// this is a file-backed editing admission, never a claim of save success or
+// memory/disk content equality. Dirty memory is legitimate for the original
+// Actor batch workflow, exactly as it is for a normal-flag saved map.
+struct FFileBackedNewMapWitness
+{
+    TStrongObjectPtr<UPackage> Package;FString PackageName,Filename;
+    bool Initialized=false,NewMap=false;
+    TSharedRef<FJsonObject> Receipt=MakeShared<FJsonObject>();
+    bool Current(UWorld* World,ULevel* Level)
+    {
+        if(!IsValid(World)||!IsValid(Level))return false;
+        UPackage* P=Level->GetOutermost();if(!IsValid(P)||P->HasAnyPackageFlags(PKG_EditorOnly))return false;
+        const uint32 Flags=uint32(P->GetPackageFlags());const uint32 NewMapFlags=uint32(PKG_ContainsMap|PKG_NewlyCreated);
+        if(Initialized)
+        {
+            if(!NewMap)return (Flags&uint32(PKG_NewlyCreated))==0; // unchanged original normal-flag admission
+            Receipt->SetBoolField(TEXT("current_dirty"),P->IsDirty());Receipt->SetNumberField(TEXT("current_package_flags"),Flags);
+            return P==Package.Get()&&P->GetClass()==UPackage::StaticClass()&&P->GetName().Equals(PackageName,ESearchCase::CaseSensitive)&&World->GetOutermost()==P&&Level->OwningWorld==World&&World->PersistentLevel.IsResolved()&&World->PersistentLevel.Get()==Level&&World->GetCurrentLevel()==Level&&(Flags==NewMapFlags||Flags==uint32(PKG_ContainsMap));
+        }
+        Receipt->SetBoolField(TEXT("newly_created_present"),(Flags&uint32(PKG_NewlyCreated))!=0);
+        if((Flags&uint32(PKG_NewlyCreated))==0){Initialized=true;return true;}
+        // No lazy resolving, package load, flag clearing, dirty clearing, save,
+        // repair, global cache or source/instance baseline rebinding occurs.
+        const FString Name=P->GetName();FString DiskFile;
+        const bool Shape=Flags==NewMapFlags&&P->GetClass()==UPackage::StaticClass()&&World->GetOutermost()==P&&Level->OwningWorld==World&&World->PersistentLevel.IsResolved()&&World->PersistentLevel.Get()==Level&&World->GetCurrentLevel()==Level&&Name.StartsWith(TEXT("/Game/"))&&Name.Len()<NAME_SIZE&&FPackageName::IsValidLongPackageName(Name,false);
+        const bool Exists=Shape&&FPackageName::DoesPackageExist(Name,&DiskFile,false);
+        const bool MapExtension=Exists&&FPaths::GetExtension(DiskFile,true).Equals(FPackageName::GetMapPackageExtension(),ESearchCase::IgnoreCase);
+        const int64 Bytes=MapExtension?IFileManager::Get().FileSize(*DiskFile):-1;
+        Receipt->SetStringField(TEXT("package"),Name);Receipt->SetNumberField(TEXT("initial_package_flags"),Flags);Receipt->SetBoolField(TEXT("initial_dirty"),P->IsDirty());Receipt->SetBoolField(TEXT("exact_game_map_shape"),Shape);Receipt->SetBoolField(TEXT("disk_exists"),Exists);Receipt->SetBoolField(TEXT("map_extension"),MapExtension);Receipt->SetStringField(TEXT("disk_filename"),DiskFile);Receipt->SetNumberField(TEXT("disk_file_size"),double(Bytes));Receipt->SetBoolField(TEXT("memory_disk_content_equality_claimed"),false);Receipt->SetBoolField(TEXT("save_success_inferred"),false);Receipt->SetBoolField(TEXT("dirty_memory_allowed"),true);
+        if(!Shape||!MapExtension||Bytes<=0){Receipt->SetBoolField(TEXT("admitted"),false);return false;}
+        Package.Reset(P);PackageName=Name;Filename=DiskFile;Initialized=true;NewMap=true;Receipt->SetBoolField(TEXT("admitted"),true);return true;
+    }
+};
 // QA: a separate concrete lease, stored behind the existing operation-local scope.
 // It admits only a direct Actor Blueprint with one stock SCS Scene root (plus its optional stock editor visualization sprite) and no
-// authored variable/interface or nonempty lifecycle bytecode. No BP script runs
+// authored nonprimitive variable/interface or nonempty lifecycle bytecode. No BP script runs
 // are inferred from a transform result; opaque Engine callbacks stay opaque.
 struct FBlueprintActorMutation
 {
+    FFileBackedNewMapWitness NewMapWitness;
     TWeakObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;TStrongObjectPtr<ULevel> Level;TStrongObjectPtr<AActor> Actor;
     TStrongObjectPtr<UBlueprint> Blueprint;TStrongObjectPtr<UPackage> Package;TStrongObjectPtr<UClass> Class,Skeleton;
     TStrongObjectPtr<AActor> CDO;TStrongObjectPtr<USimpleConstructionScript> SCS;TStrongObjectPtr<USCS_Node> SCSNode;TStrongObjectPtr<USceneComponent> Template,Root;
@@ -69,6 +107,16 @@ struct FBlueprintActorMutation
     FString FailureCode,FailureStage;TSharedRef<FJsonObject> Data=MakeShared<FJsonObject>();
     FObjectProperty* ComponentProperty=nullptr;FObjectProperty* SkeletonProperty=nullptr;
     struct FField{FProperty* P;UStruct* Owner;FFieldClass* Class;FName Name;uint64 Flags;int32 Dim,Offset,Size;UObject* Binding;};TArray<FField> Fields,SkeletonFields;
+    // ACJ: declaration, CDO backing values and instance overrides are separate
+    // baselines. No construction, getter/exporter, compile or CDO creation here.
+    struct FOwnScalar
+    {
+        FBPVariableDescription Declaration;FProperty* Generated=nullptr;FProperty* SkeletonProperty=nullptr;
+        uint8 GeneratedBoolSize=0,GeneratedBoolOffset=0,GeneratedBoolByteMask=0,GeneratedBoolFieldMask=0;
+        uint8 SkeletonBoolSize=0,SkeletonBoolOffset=0,SkeletonBoolByteMask=0,SkeletonBoolFieldMask=0;
+        FString CDOValue,InstanceValue;FText CDOText,InstanceText;bool ResetByConstruction=false;
+    };
+    TArray<FOwnScalar> OwnScalars;bool OwnScalarsReady=false,OwnEditorTransformDispatched=false;
     struct FOther{TStrongObjectPtr<AActor> Actor;TStrongObjectPtr<USceneComponent> Root;UClass* Class;UObject* Outer;FString Path,Label;FTransform Transform;TArray<FName> Tags;bool Selected;};TArray<FOther> Others;
     struct FGraph{TStrongObjectPtr<UEdGraph> Graph;FGuid Guid;UObject* Outer;UClass* Schema;TArray<UEdGraphNode*> Nodes;};
     struct FPin{UEdGraphPin* P;FGuid Guid;FName Name;EEdGraphPinDirection Direction;FEdGraphPinType Type;FString Raw,Auto;FText Text;UObject* Default;TArray<UEdGraphPin*> Links;uint32 Flags;};
@@ -335,7 +383,7 @@ struct FBlueprintActorMutation
     bool AuthoredTransform=false,UXReacquiring=false,UXPlanned=false;
     bool UXLogicalText=false,UXHoldText=false;TArray<FString> UXLogicalValues;
     TArray<int32> UXParents;TArray<FTransform> UXWorlds,UXRelatives;
-    TArray<bool> UXAbsoluteScale;TArray<TStrongObjectPtr<USceneComponent>> UXRetired;
+    TArray<bool> UXAbsoluteLocation,UXAbsoluteRotation,UXAbsoluteScale;TArray<TStrongObjectPtr<USceneComponent>> UXRetired;
     TArray<UObject*> UXRetiredAddresses;
     EObjectFlags UXActorFlags=RF_NoFlags;
     TStrongObjectPtr<UTransBuffer> UXTransactor;const FTransaction* UXOwnTransaction=nullptr;
@@ -356,7 +404,7 @@ struct FBlueprintActorMutation
         auto Token=[&](const FString& V){if(V.Len()>65536)return false;for(TCHAR C:V)if(C==0)return false;UWToken(Out,V);return true;};
         return Token(Empty?TEXT("native_empty"):TEXT("identified_base"))&&Token(LexToString(FTextInspector::GetFlags(Copy)))&&Token(Source?*Source:TEXT(""))&&Token(Namespace.IsSet()?TEXT("set:")+Namespace.GetValue():TEXT("unset"))&&Token(Key.IsSet()?TEXT("set:")+Key.GetValue():TEXT("unset"));
     }
-    static bool UXScale(const FVector& S){return !S.ContainsNaN()&&S.X>0&&S.X<=1.0e12&&S.X==S.Y&&S.Y==S.Z;}
+    static bool UXScale(const FVector& S){return !S.ContainsNaN();}
     bool UXFlags(UObject* O,EObjectFlags Expected,const TCHAR* Stage)
     {
         const EObjectFlags Actual=O->GetFlags();
@@ -373,15 +421,15 @@ struct FBlueprintActorMutation
     {
         if(!AuthoredTransform)return true;
         if(!Check(TEXT("before_authored_transform_plan")))return false;
-        if(!UXScale(BeforeTransform.GetScale3D())||!UXScale(Desired.GetScale3D()))return UWFail(TEXT("plan_authored_transform"),ActorPath,TEXT("root scale"),TEXT("finite positive uniform scale; wider original-valid scale pending"),Desired.GetScale3D().ToString());
-        UXParents.Reset();UXWorlds.Reset();UXRelatives.Reset();UXAbsoluteScale.Reset();UXLogicalValues.Reset();UXActorFlags=Actor->GetFlags();
+        if(!UXScale(BeforeTransform.GetScale3D())||!UXScale(Desired.GetScale3D()))return UWFail(TEXT("plan_authored_transform"),ActorPath,TEXT("root scale"),TEXT("finite per-axis scale, including nonuniform, negative and zero axes"),Desired.GetScale3D().ToString());
+        UXParents.Reset();UXWorlds.Reset();UXRelatives.Reset();UXAbsoluteLocation.Reset();UXAbsoluteRotation.Reset();UXAbsoluteScale.Reset();UXLogicalValues.Reset();UXActorFlags=Actor->GetFlags();
         for(const auto& E:AuthoredComponents)
         {
             auto* C=E.Object.Get();const bool Visual=!AuthoredNodes.ContainsByPredicate([&](const FUWSCS& N){return N.Instance==C;});
-            if(!UXComponentReady(C)||!E.Socket.IsNone()||C->IsUsingAbsoluteLocation()||C->IsUsingAbsoluteRotation()||(!Visual&&C->IsUsingAbsoluteScale())||!UXScale(E.Relative.GetScale3D()))return UWFail(TEXT("plan_authored_transform"),E.Path,TEXT("transform role"),TEXT("no socket/absolute location or rotation/simulation/weld; uniform local scale"),TEXT("wider original-valid transform role pending"));
+            if(!UXComponentReady(C)||!E.Socket.IsNone()||!UXScale(E.Relative.GetScale3D()))return UWFail(TEXT("plan_authored_transform"),E.Path,TEXT("transform role"),TEXT("no socket/simulation/weld; finite local scale3 and captured per-channel absolute flags"),TEXT("wider original-valid transform role pending"));
             const int32 Parent=E.Parent?AuthoredComponents.IndexOfByPredicate([&](const FUWScene& R){return R.Object.Get()==E.Parent;}):INDEX_NONE;
             if((C==Root.Get())!=(Parent==INDEX_NONE))return UWFail(TEXT("plan_authored_transform"),E.Path,TEXT("closed parent role"),TEXT("one own root"),TEXT("changed"));
-            UXParents.Add(Parent);UXRelatives.Add(C==Root.Get()?Desired:E.Relative);UXWorlds.Add(FTransform::Identity);UXAbsoluteScale.Add(C->IsUsingAbsoluteScale());
+            UXParents.Add(Parent);UXRelatives.Add(C==Root.Get()?Desired:E.Relative);UXWorlds.Add(FTransform::Identity);UXAbsoluteLocation.Add(C->IsUsingAbsoluteLocation());UXAbsoluteRotation.Add(C->IsUsingAbsoluteRotation());UXAbsoluteScale.Add(C->IsUsingAbsoluteScale());
             FString Logical;{TGuardValue<bool> Mode(UXLogicalText,true);if(!UWValues(C,false,Logical))return UWFail(TEXT("plan_authored_transform"),E.Path,TEXT("fresh value projection"),TEXT("native empty or identified Base FText; wider history remains valid pending"),TEXT("unrepresentable authored value"));}UXLogicalValues.Add(MoveTemp(Logical));
             if(Visual)
             {
@@ -393,14 +441,28 @@ struct FBlueprintActorMutation
         for(int32 Pass=0;Pass<AuthoredComponents.Num();++Pass)
             for(int32 I=0;I<AuthoredComponents.Num();++I)if(!Done.Contains(I)&&(UXParents[I]==INDEX_NONE||Done.Contains(UXParents[I])))
             {
+                // SceneComponent.cpp CalcNewComponentToWorld_GeneralCase uses this
+                // same relative * parent operation, including FTransform's signed
+                // scale matrix path. Zero axes do not require an inverse here.
                 UXWorlds[I]=UXParents[I]==INDEX_NONE?Desired:UXRelatives[I]*UXWorlds[UXParents[I]];
                 FTransform BeforeWorld=UXParents[I]==INDEX_NONE?BeforeTransform:AuthoredComponents[I].Relative*AuthoredComponents[UXParents[I]].World;
-                if(UXAbsoluteScale[I]){UXWorlds[I].SetScale3D(UXRelatives[I].GetScale3D());BeforeWorld.SetScale3D(AuthoredComponents[I].Relative.GetScale3D());}
-                if(!BeforeWorld.Equals(AuthoredComponents[I].World,1.e-4)||UXWorlds[I].ContainsNaN())return UWFail(TEXT("plan_authored_transform"),AuthoredComponents[I].Path,TEXT("relative→world"),BeforeWorld.ToString(),AuthoredComponents[I].World.ToString());Done.Add(I);
+                // AAX: SceneComponent.cpp727 copies each absolute channel from
+                // NewRelativeTransform after relative*parent (same UE56.cpp696).
+                // These are authored modes, not a promise that every child
+                // follows the actor. Preserve all modes/relative values and
+                // project both before and after with the installed SDK order.
+                if(UXParents[I]!=INDEX_NONE)
+                {
+                    if(UXAbsoluteLocation[I]){UXWorlds[I].CopyTranslation(UXRelatives[I]);BeforeWorld.CopyTranslation(AuthoredComponents[I].Relative);}
+                    if(UXAbsoluteRotation[I]){UXWorlds[I].CopyRotation(UXRelatives[I]);BeforeWorld.CopyRotation(AuthoredComponents[I].Relative);}
+                    if(UXAbsoluteScale[I]){UXWorlds[I].CopyScale3D(UXRelatives[I]);BeforeWorld.CopyScale3D(AuthoredComponents[I].Relative);}
+                }
+                if(BeforeWorld.ContainsNaN()||!BeforeWorld.Equals(AuthoredComponents[I].World,1.e-4))return UWFail(TEXT("plan_authored_transform"),AuthoredComponents[I].Path,TEXT("captured relative->world"),BeforeWorld.ToString(),AuthoredComponents[I].World.ToString());
+                if(UXWorlds[I].ContainsNaN())return UWFail(TEXT("plan_authored_transform"),AuthoredComponents[I].Path,TEXT("planned relative->world"),TEXT("finite Engine FTransform projection"),UXWorlds[I].ToString());Done.Add(I);
             }
         if(Done.Num()!=AuthoredComponents.Num())return UWFail(TEXT("plan_authored_transform"),ActorPath,TEXT("parent closure"),TEXT("acyclic closed tree"),TEXT("incomplete"));
         UXPlanned=true;Data->SetBoolField(TEXT("authored_scs_transform_scope"),true);Data->SetBoolField(TEXT("authored_scs_delete_scope"),false);Data->SetNumberField(TEXT("transform_epsilon"),1.e-4);
-        Data->SetStringField(TEXT("scope"),TEXT("Own bounded native Engine Scene SCS transform; source/template/GUID unchanged; captured instance editable overrides and child relative values preserved. Root desired and child world planned; component roles retired before setter and reacquired by fresh compiled binding/parent. Original direct setter vs existing editor movement remain distinct. Wider callbacks, physics/socket/absolute/nonuniform/custom/inherited behavior remain pending."));return Check(TEXT("authored_transform_plan_complete"));
+        Data->SetStringField(TEXT("scope"),TEXT("Own bounded native Engine Scene SCS transform with finite general per-axis scale, including nonuniform, negative and zero axes; source/template/GUID unchanged; captured instance editable overrides and child relative values preserved. Root desired and child world use Engine FTransform relative*parent semantics, including signed-scale matrix handling and the installed per-channel absolute translation/rotation/scale projection for authored or stock visualization children. Each captured absolute flag and authored relative value is preserved; absolute channels need not follow actor movement. No arbitrary affine/shear exactness or attached-world inverse is claimed. Component roles retired before setter and reacquired by fresh compiled binding/parent. Original direct setter vs existing editor movement remain distinct. Absolute-mode combinations, editor reconstruction and persistence usage remain validation pending. Wider callbacks, physics/socket/custom/inherited behavior remain pending."));return Check(TEXT("authored_transform_plan_complete"));
     }
     bool UXTransactionCurrent()const
     {
@@ -465,6 +527,9 @@ struct FBlueprintActorMutation
             const auto& E=AuthoredComponents[I];auto* C=Fresh[I].Get();const bool Same=C==E.Object.Get();const FUWSCS* Source=AuthoredNodes.FindByPredicate([&](const FUWSCS& N){return N.Instance==E.Object.Get();});
             if(OriginalDirect&&!Same)return UWFail(Stage,E.Path,TEXT("direct setter component"),TEXT("same physical component"),TEXT("changed"));
             if(!Live(C)||C->GetClass()!=E.Class||C->GetOuter()!=Actor.Get()||C->GetOwner()!=Actor.Get()||C->GetWorld()!=World.Get()||C->CreationMethod!=E.Creation||C->GetAttachSocketName()!=E.Socket||C->IsRegistered()!=E.Registered||!UXComponentReady(C))return UWFail(Stage,E.Path,TEXT("returned component role"),TEXT("captured logical role"),TEXT("changed"));
+            const int32 ExpectedAbsolute=(UXAbsoluteLocation[I]?1:0)|(UXAbsoluteRotation[I]?2:0)|(UXAbsoluteScale[I]?4:0);
+            const int32 ActualAbsolute=(C->IsUsingAbsoluteLocation()?1:0)|(C->IsUsingAbsoluteRotation()?2:0)|(C->IsUsingAbsoluteScale()?4:0);
+            if(ActualAbsolute!=ExpectedAbsolute)return UWFail(Stage,E.Path,TEXT("returned absolute channels (location=1,rotation=2,scale=4)"),LexToString(ExpectedAbsolute),LexToString(ActualAbsolute));
             EObjectFlags ExpectedFlags=E.Flags;
             if(!Same)ExpectedFlags=Source?EObjectFlags(Source->Source.Flags&~(RF_ArchetypeObject|RF_Transactional|RF_WasLoaded|RF_Public|RF_InheritableComponentTemplate)):EObjectFlags((Fresh[UXParents[I]]->GetFlags()&RF_Transactional)|RF_Transient|RF_TextExportTransient);
             if(C->GetFlags()!=ExpectedFlags||(Source&&C->GetFName()!=E.Name))return UWFail(Stage,E.Path,TEXT("returned name/flags"),LexToString(uint32(ExpectedFlags)),LexToString(uint32(C->GetFlags())));
@@ -478,7 +543,7 @@ struct FBlueprintActorMutation
             }
             FString Values;{TGuardValue<bool> HoldText(UXHoldText,!Same);if(!UWValues(C,false,Values)||(Same&&Values!=E.Values))return UWFail(Stage,E.Path,TEXT("instance editable overrides"),TEXT("captured non-transform values"),TEXT("changed"));}
             FUWScene R;R.Object.Reset(C);R.Class=E.Class;R.Outer=Actor.Get();R.Name=C->GetFName();R.Socket=E.Socket;R.Flags=ExpectedFlags;R.Creation=E.Creation;R.Parent=Parent;for(const auto& H:Children)R.Children.Add(H.Get());R.Relative=UXRelatives[I];R.World=UXWorlds[I];R.Path=C->GetPathName();R.Values=MoveTemp(Values);R.Registered=E.Registered;Next.Add(MoveTemp(R));
-            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("before_path"),E.Path);J->SetStringField(TEXT("after_path"),C->GetPathName());J->SetBoolField(TEXT("physical_component_changed"),!Same);J->SetStringField(TEXT("expected_world"),UXWorlds[I].ToString());J->SetStringField(TEXT("actual_world"),C->GetComponentTransform().ToString());Receipts.Add(MakeShared<FJsonValueObject>(J));
+            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("before_path"),E.Path);J->SetStringField(TEXT("after_path"),C->GetPathName());J->SetBoolField(TEXT("physical_component_changed"),!Same);J->SetNumberField(TEXT("expected_absolute_channels"),ExpectedAbsolute);J->SetNumberField(TEXT("actual_absolute_channels"),ActualAbsolute);J->SetStringField(TEXT("absolute_channel_bits"),TEXT("location=1,rotation=2,scale=4"));J->SetStringField(TEXT("expected_world"),UXWorlds[I].ToString());J->SetStringField(TEXT("actual_world"),C->GetComponentTransform().ToString());Receipts.Add(MakeShared<FJsonValueObject>(J));
         }
         const int32 RootIndex=AuthoredComponents.IndexOfByPredicate([&](const FUWScene& E){return E.Object.Get()==Root.Get();});if(RootIndex==INDEX_NONE||!RootSlot(Actor.Get(),Fresh[RootIndex].Get()))return Fail(Stage,TEXT("actor_authored_returned_root_changed"));
         for(auto& N:AuthoredNodes){const int32 I=AuthoredComponents.IndexOfByPredicate([&](const FUWScene& E){return E.Object.Get()==N.Instance;});N.Instance=Fresh[I].Get();}
@@ -500,7 +565,7 @@ struct FBlueprintActorMutation
             }
             TStrongObjectPtr<UEditorActorSubsystem> Subsystem;
             if(!OriginalDirect){Subsystem.Reset(Editor->GetEditorSubsystem<UEditorActorSubsystem>());if(!Check(TEXT("after_authored_subsystem"))||!Live(Subsystem.Get()))return Fail(TEXT("after_authored_subsystem"),TEXT("actor_authored_subsystem_unavailable"));}
-            ExpectedTransform=Desired;Dispatched=true;UXReacquiring=true;
+            ExpectedTransform=Desired;Dispatched=true;OwnEditorTransformDispatched=!OriginalDirect;UXReacquiring=true;
             for(const auto& E:AuthoredComponents){UXRetired.Emplace(E.Object.Get());UXRetiredAddresses.Add(E.Object.Get());}
             Count(TEXT("transform_calls"));Data->SetStringField(TEXT("transform_writer"),OriginalDirect?TEXT("AActor::SetActorTransform original direct"):TEXT("EditorActorSubsystem::SetActorTransform existing editor movement"));
             Accepted=OriginalDirect?Actor->SetActorTransform(Desired):Subsystem->SetActorTransform(Actor.Get(),Desired);Data->SetBoolField(TEXT("transform_returned"),true);Data->SetBoolField(TEXT("transform_accepted"),Accepted);
@@ -592,15 +657,16 @@ struct FBlueprintActorMutation
     void Count(const TCHAR* K){double N=0;Data->TryGetNumberField(K,N);Data->SetNumberField(K,N+1);}
     bool Context(const TCHAR* Stage)
     {
+        Data->SetObjectField(TEXT("newly_created_map_admission"),NewMapWitness.Receipt);
         if(AuthoredHierarchy())
         {
             if(Stopped)return false;
             if(!IsInGameThread()||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!Live(Editor.Get())||GEditor!=Editor.Get()||!Live(World.Get())||!Live(Level.Get()))return Fail(Stage,TEXT("actor_authored_delete_phase_or_roles_changed"));
-            if(!Editor->PlayWorld.IsResolved()||Editor->PlayWorld.Get()!=nullptr||Editor->GetPIEWorldContext()||World->WorldType!=EWorldType::Editor||World->bIsTearingDown||Editor->GetEditorWorldContext().World()!=World.Get()||!World->PersistentLevel.IsResolved()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||Level->GetPackage()->HasAnyPackageFlags(PKG_NewlyCreated|PKG_EditorOnly))return Fail(Stage,TEXT("actor_authored_delete_context_changed"));
+            if(!Editor->PlayWorld.IsResolved()||Editor->PlayWorld.Get()!=nullptr||Editor->GetPIEWorldContext()||World->WorldType!=EWorldType::Editor||World->bIsTearingDown||Editor->GetEditorWorldContext().World()!=World.Get()||!World->PersistentLevel.IsResolved()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||!NewMapWitness.Current(World.Get(),Level.Get()))return Fail(Stage,TEXT("actor_authored_delete_context_changed"));
             if(AuthoredTransform&&!UXTransactionCurrent())return Fail(Stage,TEXT("actor_authored_transaction_changed"));
             return true;
         }
-        if(Stopped)return false;if(!IsInGameThread()||!Live(Editor.Get())||GEditor!=Editor.Get()||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||GEditor->PlayWorld||GEditor->GetPIEWorldContext()||!Live(World.Get())||!Live(Level.Get())||World->WorldType!=EWorldType::Editor||World->bIsTearingDown||GEditor->GetEditorWorldContext().World()!=World.Get()||!World->PersistentLevel.IsResolved()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||Level->GetPackage()->HasAnyPackageFlags(PKG_NewlyCreated|PKG_EditorOnly))return Fail(Stage,TEXT("actor_blueprint_context_changed"));return true;
+        if(Stopped)return false;if(!IsInGameThread()||!Live(Editor.Get())||GEditor!=Editor.Get()||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||GEditor->PlayWorld||GEditor->GetPIEWorldContext()||!Live(World.Get())||!Live(Level.Get())||World->WorldType!=EWorldType::Editor||World->bIsTearingDown||GEditor->GetEditorWorldContext().World()!=World.Get()||!World->PersistentLevel.IsResolved()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||!NewMapWitness.Current(World.Get(),Level.Get()))return Fail(Stage,TEXT("actor_blueprint_context_changed"));return true;
     }
     bool FieldInventory(UClass* C,TArray<FField>& Out)
     {
@@ -611,15 +677,94 @@ struct FBlueprintActorMutation
         TArray<FProperty*> Actual;for(TFieldIterator<FProperty> It(C,EFieldIterationFlags::None);It;++It){if(Actual.Num()>=64)return false;Actual.Add(*It);}if(Actual.Num()!=Expected.Num())return false;
         for(int32 I=0;I<Expected.Num();++I){const auto& E=Expected[I];if(Actual[I]!=E.P)return false;auto* P=E.P;if(P->GetOwnerStruct()!=E.Owner||P->GetOwnerProperty()!=P||P->GetClass()!=E.Class||P->GetFName()!=E.Name||uint64(P->GetPropertyFlags())!=E.Flags||P->ArrayDim!=E.Dim||P->GetOffset_ForInternal()!=E.Offset||P->GetSize()!=E.Size||P->HasSetterOrGetter())return false;if(auto* O=CastField<FObjectProperty>(P)){if(!O->PropertyClass.IsResolved()||O->PropertyClass.Get()!=E.Binding)return false;}else if(auto* S=CastField<FStructProperty>(P)){if(!S->Struct.IsResolved()||S->Struct.Get()!=E.Binding)return false;}}return true;
     }
+    static bool OwnPinSame(const FEdGraphPinType& A,const FEdGraphPinType& B)
+    {return A==B&&A.bIsUObjectWrapper==B.bIsUObjectWrapper&&A.bSerializeAsSinglePrecisionFloat==B.bSerializeAsSinglePrecisionFloat&&A.PinValueType.bTerminalIsUObjectWrapper==B.PinValueType.bTerminalIsUObjectWrapper;}
+    static bool OwnDeclarationSame(const FBPVariableDescription& A,const FBPVariableDescription& B)
+    {
+        if(A.VarName!=B.VarName||A.VarGuid!=B.VarGuid||!OwnPinSame(A.VarType,B.VarType)||!A.FriendlyName.Equals(B.FriendlyName,ESearchCase::CaseSensitive)||FTextInspector::GetFlags(A.Category)!=FTextInspector::GetFlags(B.Category)||FTextInspector::GetSharedDataId(A.Category)!=FTextInspector::GetSharedDataId(B.Category)||A.PropertyFlags!=B.PropertyFlags||A.RepNotifyFunc!=B.RepNotifyFunc||A.ReplicationCondition!=B.ReplicationCondition||!A.DefaultValue.Equals(B.DefaultValue,ESearchCase::CaseSensitive)||A.MetaDataArray.Num()!=B.MetaDataArray.Num())return false;
+        for(int32 I=0;I<A.MetaDataArray.Num();++I)if(A.MetaDataArray[I].DataKey!=B.MetaDataArray[I].DataKey||!A.MetaDataArray[I].DataValue.Equals(B.MetaDataArray[I].DataValue,ESearchCase::CaseSensitive))return false;
+        return true;
+    }
+    static bool OwnPrimitive(const FEdGraphPinType& T,FProperty* P)
+    {
+        // Match each actual compiled field, retaining independent captured owners.
+        if(!P||P->ArrayDim!=1||P->HasSetterOrGetter()||T.ContainerType!=EPinContainerType::None||T.bIsReference||T.bIsConst||T.bIsWeakPointer||T.bIsUObjectWrapper||!T.PinSubCategoryObject.IsExplicitlyNull()||!T.PinValueType.TerminalSubCategoryObject.IsExplicitlyNull()||!T.PinValueType.TerminalCategory.IsNone()||!T.PinValueType.TerminalSubCategory.IsNone()||T.PinValueType.bTerminalIsConst||T.PinValueType.bTerminalIsWeakPointer||T.PinValueType.bTerminalIsUObjectWrapper)return false;
+        const auto K=P->GetClass();const FName C=T.PinCategory,S=T.PinSubCategory;
+        if(C==UEdGraphSchema_K2::PC_Real)return (S==UEdGraphSchema_K2::PC_Float&&K==FFloatProperty::StaticClass())||(S==UEdGraphSchema_K2::PC_Double&&K==FDoubleProperty::StaticClass());
+        if(!S.IsNone())return false;
+        return (C==UEdGraphSchema_K2::PC_Boolean&&K==FBoolProperty::StaticClass())||(C==UEdGraphSchema_K2::PC_Int&&K==FIntProperty::StaticClass())||(C==UEdGraphSchema_K2::PC_Int64&&K==FInt64Property::StaticClass())||(C==UEdGraphSchema_K2::PC_Name&&K==FNameProperty::StaticClass())||(C==UEdGraphSchema_K2::PC_String&&K==FStrProperty::StaticClass())||(C==UEdGraphSchema_K2::PC_Text&&K==FTextProperty::StaticClass());
+    }
+    static bool OwnBool(FProperty* P,uint8& Size,uint8& Offset,uint8& ByteMask,uint8& FieldMask,bool Capture)
+    {
+        if(P->GetClass()!=FBoolProperty::StaticClass())return true;const auto* B=static_cast<FBoolProperty*>(P);
+        if(Capture){Size=B->GetBoolFieldSize();Offset=B->GetByteOffset();ByteMask=B->GetByteMask();FieldMask=B->GetFieldMask();return true;}
+        return Size==B->GetBoolFieldSize()&&Offset==B->GetByteOffset()&&ByteMask==B->GetByteMask()&&FieldMask==B->GetFieldMask();
+    }
+    static bool OwnValue(FProperty* P,const UObject* Container,FString& Out,FText* HoldText=nullptr)
+    {
+        const void* Address=P->ContainerPtrToValuePtr<void>(Container);if(!Address)return false;const auto K=P->GetClass();
+        if(K==FBoolProperty::StaticClass())Out=static_cast<FBoolProperty*>(P)->GetPropertyValue(Address)?TEXT("true"):TEXT("false");
+        else if(K==FIntProperty::StaticClass()||K==FInt64Property::StaticClass())Out=LexToString(static_cast<FNumericProperty*>(P)->GetSignedIntPropertyValue(Address));
+        else if(K==FFloatProperty::StaticClass())Out=BytesToHex(static_cast<const uint8*>(Address),sizeof(float));
+        else if(K==FDoubleProperty::StaticClass())Out=BytesToHex(static_cast<const uint8*>(Address),sizeof(double));
+        else if(K==FNameProperty::StaticClass())Out=static_cast<const FName*>(Address)->ToString();
+        else if(K==FStrProperty::StaticClass()){const auto& V=*static_cast<const FString*>(Address);if(V.Len()>65536)return false;Out=V;}
+        else if(K==FTextProperty::StaticClass()){const auto& V=*static_cast<const FText*>(Address);if(HoldText)*HoldText=V;Out=FString::Printf(TEXT("%p:%u"),FTextInspector::GetSharedDataId(V),FTextInspector::GetFlags(V));}
+        else return false;return true;
+    }
+    bool CaptureOwnScalars()
+    {
+        const auto* B=Blueprint.Get();if(B->NewVariables.Num()>32)return false;TSet<FName> Names;TSet<FGuid> Guids;
+        for(const auto& D:B->NewVariables)
+        {
+            if(D.VarName.IsNone()||!D.VarGuid.IsValid()||Names.Contains(D.VarName)||Guids.Contains(D.VarGuid)||D.MetaDataArray.Num()>256||D.DefaultValue.Len()>65536||D.FriendlyName.Len()>65536)return false;
+            Names.Add(D.VarName);Guids.Add(D.VarGuid);
+            const auto* G=Fields.FindByPredicate([&](const FField& E){return E.Name==D.VarName;});const auto* S=SkeletonFields.FindByPredicate([&](const FField& E){return E.Name==D.VarName;});
+            if(!G||!S||!OwnPrimitive(D.VarType,G->P)||!OwnPrimitive(D.VarType,S->P)||G->Offset<0||G->Size<=0||G->Offset>Class->GetPropertiesSize()-G->Size||S->Offset<0||S->Size<=0||S->Offset>Skeleton->GetPropertiesSize()-S->Size)return false;
+            FOwnScalar E;E.Declaration=D;E.Generated=G->P;E.SkeletonProperty=S->P;
+            if(!OwnBool(E.Generated,E.GeneratedBoolSize,E.GeneratedBoolOffset,E.GeneratedBoolByteMask,E.GeneratedBoolFieldMask,true)||!OwnBool(E.SkeletonProperty,E.SkeletonBoolSize,E.SkeletonBoolOffset,E.SkeletonBoolByteMask,E.SkeletonBoolFieldMask,true)||!OwnValue(E.Generated,CDO.Get(),E.CDOValue,&E.CDOText)||!OwnValue(E.Generated,Actor.Get(),E.InstanceValue,&E.InstanceText))return false;
+            // ActorConstruction.cpp98..112: writable BP / not instance-editable
+            // scalar reset. This lease already fixes the world to Editor, not PIE.
+            const uint64 F=G->Flags;E.ResetByConstruction=(F&CPF_BlueprintVisible)!=0&&(F&CPF_BlueprintReadOnly)==0&&((F&CPF_DisableEditOnInstance)!=0||(F&CPF_Edit)==0);
+            OwnScalars.Add(MoveTemp(E));
+        }
+        OwnScalarsReady=true;Data->SetNumberField(TEXT("own_primitive_variable_count"),OwnScalars.Num());Data->SetBoolField(TEXT("own_cdo_instance_values_observed_separately"),true);
+        Data->SetStringField(TEXT("own_primitive_variable_scope"),TEXT("Own bool/int32/int64/float/double/Name/String/Text scalar declarations <=32, independent generated/skeleton descriptors and separate CDO/instance backing values. Editor movement alone may observe the exact ActorConstruction reset-to-CDO flag rule; direct setter/delete do not admit this reset. Arrays/struct/object/enum/inherited variables and nonempty lifecycle bytecode remain incomplete."));return true;
+    }
+    bool OwnSourceCurrent(const TCHAR* Stage)
+    {
+        if(!OwnScalarsReady||Blueprint->NewVariables.Num()!=OwnScalars.Num())return Fail(Stage,TEXT("actor_blueprint_own_variable_inventory_changed"));
+        for(int32 I=0;I<OwnScalars.Num();++I)
+        {
+            auto& E=OwnScalars[I];
+            // Complete root inventories/descriptors were compared by SourceCurrent
+            // before these borrowed property addresses or value cells are read.
+            if(!OwnDeclarationSame(Blueprint->NewVariables[I],E.Declaration)||!OwnBool(E.Generated,E.GeneratedBoolSize,E.GeneratedBoolOffset,E.GeneratedBoolByteMask,E.GeneratedBoolFieldMask,false)||!OwnBool(E.SkeletonProperty,E.SkeletonBoolSize,E.SkeletonBoolOffset,E.SkeletonBoolByteMask,E.SkeletonBoolFieldMask,false))return Fail(Stage,TEXT("actor_blueprint_own_variable_declaration_changed"),SourcePath,E.Declaration.VarName.ToString());
+            FString Actual;if(!OwnValue(E.Generated,CDO.Get(),Actual)||!Actual.Equals(E.CDOValue,ESearchCase::CaseSensitive))return Fail(Stage,TEXT("actor_blueprint_own_variable_cdo_changed"),CDOPath,E.Declaration.VarName.ToString(),E.CDOValue,Actual,true);
+        }return true;
+    }
+    bool OwnInstanceCurrent(const TCHAR* Stage)
+    {
+        // Accepted-delete retirement returns before this live actor reader.
+        TArray<TSharedPtr<FJsonValue>> Resets;
+        for(const auto& E:OwnScalars)
+        {
+            FString Actual;if(!OwnValue(E.Generated,Actor.Get(),Actual))return Fail(Stage,TEXT("actor_blueprint_own_variable_instance_unobservable"),ActorPath,E.Declaration.VarName.ToString());
+            if(Actual.Equals(E.InstanceValue,ESearchCase::CaseSensitive))continue;
+            if(!OwnEditorTransformDispatched||!E.ResetByConstruction||!Actual.Equals(E.CDOValue,ESearchCase::CaseSensitive))return Fail(Stage,TEXT("actor_blueprint_own_variable_instance_changed"),ActorPath,E.Declaration.VarName.ToString(),E.InstanceValue,Actual,true);
+            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("variable"),E.Declaration.VarName.ToString());J->SetStringField(TEXT("before"),E.InstanceValue);J->SetStringField(TEXT("actual"),Actual);J->SetStringField(TEXT("transition"),TEXT("editor_construction_writable_non_instance_editable_to_preserved_cdo"));Resets.Add(MakeShared<FJsonValueObject>(J));
+        }Data->SetArrayField(TEXT("own_primitive_observed_construction_resets"),Resets);return true;
+    }
     bool SourceCurrent(const TCHAR* Stage)
     {
         if(!Context(Stage))return false;auto* B=Blueprint.Get();
-        if(!Live(B)||B->GetClass()!=UBlueprint::StaticClass()||B->GetPackage()!=Package.Get()||B->GetOuter()!=Package.Get()||Package->IsDirty()||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->BlueprintType!=BPTYPE_Normal||!B->NewVariables.IsEmpty()||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=AActor::StaticClass()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()!=SCS.Get()||!B->GetPathName().Equals(SourcePath,ESearchCase::CaseSensitive))return Fail(Stage,TEXT("actor_blueprint_source_changed"));
+        if(!Live(B)||B->GetClass()!=UBlueprint::StaticClass()||B->GetPackage()!=Package.Get()||B->GetOuter()!=Package.Get()||Package->IsDirty()||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->BlueprintType!=BPTYPE_Normal||B->NewVariables.Num()>32||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=AActor::StaticClass()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()!=SCS.Get()||!B->GetPathName().Equals(SourcePath,ESearchCase::CaseSensitive))return Fail(Stage,TEXT("actor_blueprint_source_changed"));
         for(UClass* C:{Class.Get(),Skeleton.Get()})if(!Live(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||C->GetOuter()!=Package.Get()||C->GetSuperClass()!=AActor::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=B)return Fail(Stage,TEXT("actor_blueprint_source_class_changed"));
         const auto* GeneratedBP=static_cast<UBlueprintGeneratedClass*>(Class.Get());const auto* SkeletonBP=static_cast<UBlueprintGeneratedClass*>(Skeleton.Get());
         if(GeneratedBP->UberGraphFramePointerProperty!=GeneratedFrame||SkeletonBP->UberGraphFramePointerProperty!=SkeletonFrame||!GeneratedBP->SimpleConstructionScript.IsResolved()||GeneratedBP->SimpleConstructionScript.Get()!=SCS.Get())return Fail(Stage,TEXT("actor_blueprint_compiler_source_binding_changed"));
         if(!GeneratedBP->DynamicBindingObjects.IsEmpty()||!GeneratedBP->ComponentTemplates.IsEmpty()||!GeneratedBP->Timelines.IsEmpty()||!B->ComponentTemplates.IsEmpty()||!B->Timelines.IsEmpty())return Fail(Stage,TEXT("actor_blueprint_source_callbacks_changed"));
         if(Class->GetFlags()!=ClassFlags||Skeleton->GetFlags()!=SkeletonFlags||Class->GetClassFlags()!=ClassTypeFlags||Skeleton->GetClassFlags()!=SkeletonTypeFlags||!Class->GetPathName().Equals(ClassPath,ESearchCase::CaseSensitive)||!Skeleton->GetPathName().Equals(SkeletonPath,ESearchCase::CaseSensitive)||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject.Get()!=CDO.Get()||!Live(CDO.Get())||CDO->GetClass()!=Class.Get()||CDO->GetPackage()!=Package.Get()||CDO->GetOuter()!=CDOOuter||CDO->GetFlags()!=CDOFlags||!CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)||!RootSlot(CDO.Get(),CDORoot.Get())||(CDORoot.IsValid()&&!Live(CDORoot.Get()))||!CDO->GetActorTransform().Equals(CDOTransform,0.0)||CDO->Tags!=CDOTags||!FieldsCurrent(Class.Get(),Fields)||!FieldsCurrent(Skeleton.Get(),SkeletonFields))return Fail(Stage,TEXT("actor_blueprint_source_signature_changed"));
+        if(!OwnSourceCurrent(Stage))return false;
         if(AuthoredHierarchy()){if(!AuthoredSourceCurrent(Stage))return false;}
         else
         {
@@ -641,6 +786,7 @@ struct FBlueprintActorMutation
         if(TargetCount!=(Retired?0:1)||Present.Num()!=Others.Num()+(Retired?0:1))return Fail(Stage,TEXT("actor_blueprint_level_membership_changed"));
         for(const auto& E:Others){AActor* A=E.Actor.Get();if(!Present.Contains(A)||!Live(A)||A->GetClass()!=E.Class||A->GetOuter()!=E.Outer||A->GetLevel()!=Level.Get()||!A->GetPathName().Equals(E.Path,ESearchCase::CaseSensitive)||!RootSlot(A,E.Root.Get())||(E.Root.IsValid()&&!Live(E.Root.Get()))||!A->GetActorTransform().Equals(E.Transform,0.0)||A->Tags!=E.Tags||!A->GetActorLabel(false).Equals(E.Label,ESearchCase::CaseSensitive)||A->IsSelectedInEditor()!=E.Selected)return Fail(Stage,TEXT("actor_blueprint_unselected_changed"),E.Path,TEXT("captured basic actor state"));}
         if(Retired)return true;AActor* A=Actor.Get();if(!Live(A)||A->GetClass()!=Class.Get()||A->GetOuter()!=Level.Get()||A->GetLevel()!=Level.Get()||!A->GetPathName().Equals(ActorPath,ESearchCase::CaseSensitive)||A->Tags!=ActorTags||A->GetOwner()||A->IsTemplate()||A->IsChildActor()||A->IsPackageExternal()||A->HasAnyFlags(RF_Transient)||A->bIsEditorOnlyActor||!A->IsEditable()||A->IsLockLocation())return Fail(Stage,TEXT("actor_blueprint_instance_changed"));
+        if(!OwnInstanceCurrent(Stage))return false;
         if(AuthoredTransform)
         {
             if(!UXFlags(A,UXActorFlags,Stage))return UWFail(Stage,ActorPath,TEXT("actor flags"),LexToString(uint32(UXActorFlags)),LexToString(uint32(A->GetFlags())));
@@ -705,7 +851,7 @@ struct FBlueprintActorMutation
     {
         AuthoredDelete=InAuthoredDelete;AuthoredTransform=InAuthoredTransform;
         Data->SetBoolField(TEXT("native_blueprint_actor_scope"),true);Data->SetBoolField(TEXT("admission_complete"),false);
-        Data->SetStringField(TEXT("scope"),TEXT("Loaded saved-clean direct Actor Blueprint; one stock SCS Scene root plus optional exact native editor visualization Billboard; own variables/interfaces 0; absent or empty UCS/Destroyed/EndPlay bytecode. Captured source/graph/pin/basic-other-actor state; logical Scene role after public editor transform; accepted delete retires selected fields. Opaque callback internals/runtime/GC/full inherited-property proof remain incomplete."));
+        Data->SetStringField(TEXT("scope"),TEXT("Loaded saved-clean direct Actor Blueprint; one stock SCS Scene root plus optional exact native editor visualization Billboard; bounded own primitive scalar variables; interfaces 0; absent or empty UCS/Destroyed/EndPlay bytecode. Captured source/graph/pin/basic-other-actor state; logical Scene role after public editor transform; accepted delete retires selected fields. Opaque callback internals/runtime/GC/full inherited-property proof remain incomplete."));
         Editor=GEditor;World.Reset(Before.World.Get());Level.Reset(Before.Level.Get());Actor.Reset(Before.Target.Get());NativeRootProperty=FindFProperty<FObjectProperty>(AActor::StaticClass(),FName(TEXT("RootComponent")));
         if(!Context(TEXT("bind_context"))||!Live(Actor.Get()))return false;
         auto* A=Actor.Get();Class.Reset(A->GetClass());
@@ -713,7 +859,7 @@ struct FBlueprintActorMutation
         UObject* Owner=Class->ClassGeneratedBy.Get();Holds.Emplace(Owner);Blueprint.Reset(Cast<UBlueprint>(Owner));
         if(!Live(Blueprint.Get())||Blueprint->GetClass()!=UBlueprint::StaticClass())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_source_pending"));
         auto* B=Blueprint.Get();Package.Reset(B->GetPackage());SourcePath=B->GetPathName();ClassPath=Class->GetPathName();Data->SetStringField(TEXT("source_path"),SourcePath);
-        if(!Live(Package.Get())||!Package->GetName().StartsWith(TEXT("/Game/"))||Package->IsDirty()||B->GetOuter()!=Package.Get()||B->BlueprintType!=BPTYPE_Normal||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||!B->NewVariables.IsEmpty()||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=AActor::StaticClass()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->SimpleConstructionScript.IsResolved())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_source_profile_pending"));
+        if(!Live(Package.Get())||!Package->GetName().StartsWith(TEXT("/Game/"))||Package->IsDirty()||B->GetOuter()!=Package.Get()||B->BlueprintType!=BPTYPE_Normal||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->NewVariables.Num()>32||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=AActor::StaticClass()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->SimpleConstructionScript.IsResolved())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_source_profile_pending"));
         Skeleton.Reset(B->SkeletonGeneratedClass.GetGCPtr().Get());SCS.Reset(B->SimpleConstructionScript.Get());
         const auto* GeneratedBP=static_cast<UBlueprintGeneratedClass*>(Class.Get());
         if(!GeneratedBP->DynamicBindingObjects.IsEmpty()||!GeneratedBP->ComponentTemplates.IsEmpty()||!GeneratedBP->Timelines.IsEmpty()||!B->ComponentTemplates.IsEmpty()||!B->Timelines.IsEmpty())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_dynamic_bindings_pending"));
@@ -757,6 +903,7 @@ struct FBlueprintActorMutation
             if(!Live(Other)||Others.Num()>=10000)return Fail(TEXT("bind_other_actors"),TEXT("actor_blueprint_other_actor_unavailable"));
             FOther Row;Row.Actor.Reset(Other);Row.Root.Reset(Other->GetRootComponent());Row.Class=Other->GetClass();Holds.Emplace(Row.Class);Row.Outer=Other->GetOuter();Row.Path=Other->GetPathName();Row.Label=Other->GetActorLabel(false);Row.Transform=Other->GetActorTransform();Row.Tags=Other->Tags;Row.Selected=Other->IsSelectedInEditor();Others.Add(MoveTemp(Row));
         }
+        if(!CaptureOwnScalars())return Fail(TEXT("bind_own_variables"),TEXT("actor_blueprint_own_primitive_variables_pending"),SourcePath,TEXT("own scalar declarations/CDO/instance values"));
         Bound=true;if(!InstanceCurrent(TEXT("bind_complete_roles")))return false;
         TArray<TSharedPtr<FJsonValue>> Rows;bool LifecycleSafe=true;
         for(const FName Name:{FName(TEXT("UserConstructionScript")),FName(TEXT("ReceiveDestroyed")),FName(TEXT("ReceiveEndPlay"))})
@@ -822,7 +969,7 @@ struct FBlueprintActorMutation
         Count(TEXT("level_modify_calls"));Level->Modify(false);if(!Check(TEXT("after_blueprint_level_modify")))return false;
         Count(TEXT("actor_modify_calls"));Actor->Modify(false);if(!Check(TEXT("after_blueprint_actor_modify")))return false;
         Count(TEXT("root_modify_calls"));Root->Modify(false);if(!Check(TEXT("after_blueprint_root_modify")))return false;
-        ExpectedTransform=Desired;Dispatched=true;Reacquiring=true;Count(TEXT("transform_calls"));
+        ExpectedTransform=Desired;Dispatched=true;OwnEditorTransformDispatched=true;Reacquiring=true;Count(TEXT("transform_calls"));
         const bool Accepted=Subsystem->SetActorTransform(Actor.Get(),Desired);Data->SetBoolField(TEXT("transform_returned"),true);Data->SetBoolField(TEXT("transform_accepted"),Accepted);
         if(!Accepted){Data->SetBoolField(TEXT("transform_false_readback_suppressed"),true);return Fail(TEXT("after_blueprint_transform_false"),TEXT("actor_blueprint_transform_outcome_unknown"));}
         if(!ReacquireRoot(TEXT("after_blueprint_transform")))return true;
@@ -834,6 +981,7 @@ struct FBlueprintActorMutation
 // Keep the existing public EditorActorSubsystem writer; do not synthesize detach calls.
 struct FParentActorDeleteMutation
 {
+    FFileBackedNewMapWitness NewMapWitness;
     TWeakObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;TStrongObjectPtr<ULevel> Level;
     TStrongObjectPtr<AActor> Parent;TStrongObjectPtr<USceneComponent> ParentRoot;
     TStrongObjectPtr<UEditorActorSubsystem> Subsystem;TStrongObjectPtr<USelection> Selection;TStrongObjectPtr<ULayersSubsystem> Layers;
@@ -856,10 +1004,11 @@ struct FParentActorDeleteMutation
     }
     bool Context(const TCHAR* Stage)
     {
+        Data->SetObjectField(TEXT("newly_created_map_admission"),NewMapWitness.Receipt);
         if(Stopped)return false;
         if(!IsInGameThread()||!GEditor||GEditor!=Editor.Get()||!Live(Editor.Get())||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||GEditor->PlayWorld||GEditor->GetPIEWorldContext()||!Live(World.Get())||!Live(Level.Get())||World->bIsTearingDown||World->WorldType!=EWorldType::Editor)
             return Bad(Stage,TEXT("actor_parent_delete_context_lost"),ParentPath,TEXT("editor_context"),TEXT("captured idle live Editor"),TEXT("unavailable"));
-        if(GEditor->GetEditorWorldContext().World()!=World.Get()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||Level->GetPackage()->HasAnyPackageFlags(PKG_NewlyCreated|PKG_EditorOnly))
+        if(GEditor->GetEditorWorldContext().World()!=World.Get()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||!NewMapWitness.Current(World.Get(),Level.Get()))
             return Bad(Stage,TEXT("actor_parent_delete_level_changed"),ParentPath,TEXT("level_role"),TEXT("same saved unlocked persistent level"),TEXT("changed"));
         return true;
     }
@@ -936,6 +1085,7 @@ struct FParentActorDeleteMutation
 // UB: one concrete native StaticMeshActor hierarchy transform lease. No detach/delete writer.
 struct FParentActorTransformMutation
 {
+    FFileBackedNewMapWitness NewMapWitness;
     using FComponentRole=FParentActorDeleteMutation::FComponentRole;
     using FSceneRole=FParentActorDeleteMutation::FSceneRole;
     TWeakObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;TStrongObjectPtr<ULevel> Level;
@@ -963,10 +1113,11 @@ struct FParentActorTransformMutation
     }
     bool Context(const TCHAR* Stage)
     {
+        Data->SetObjectField(TEXT("newly_created_map_admission"),NewMapWitness.Receipt);
         if(Stopped||Rejected)return false;
         if(!IsInGameThread()||!GEditor||GEditor!=Editor.Get()||!Live(Editor.Get())||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||GEditor->PlayWorld||GEditor->GetPIEWorldContext()||!Live(World.Get())||!Live(Level.Get())||World->bIsTearingDown||World->WorldType!=EWorldType::Editor)
             return Bad(Stage,TEXT("actor_parent_transform_context_lost"),TEXT(""),TEXT("editor_context"),TEXT("same idle live Editor/world"),TEXT("unavailable"));
-        if(GEditor->GetEditorWorldContext().World()!=World.Get()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||Level->GetPackage()->HasAnyPackageFlags(PKG_NewlyCreated|PKG_EditorOnly))
+        if(GEditor->GetEditorWorldContext().World()!=World.Get()||World->PersistentLevel.Get()!=Level.Get()||World->GetCurrentLevel()!=Level.Get()||Level->OwningWorld!=World.Get()||World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())||!NewMapWitness.Current(World.Get(),Level.Get()))
             return Bad(Stage,TEXT("actor_parent_transform_level_changed"),TEXT(""),TEXT("level_role"),TEXT("same saved unlocked persistent level"),TEXT("changed"));return true;
     }
     bool Pin(UObject* O)
@@ -1098,6 +1249,7 @@ struct FParentActorTransformMutation
 
 struct FTargetPointMutation
 {
+    FFileBackedNewMapWitness NewMapWitness;
     TSharedPtr<FParentActorTransformMutation> ParentTransform;
     TSharedPtr<FBlueprintActorMutation> BlueprintActor;
     TSharedPtr<FParentActorDeleteMutation> ParentDelete;
@@ -1128,6 +1280,7 @@ struct FTargetPointMutation
     void Count(const TCHAR* K){double N=0;Data->TryGetNumberField(K,N);Data->SetNumberField(K,N+1);}
     bool Context(const TCHAR* Stage)
     {
+        Data->SetObjectField(TEXT("newly_created_map_admission"),NewMapWitness.Receipt);
         if(Stopped){return false;}if(!IsInGameThread()||!GEditor||GEditor!=Editor.Get()||!Live(Editor.Get())||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()
             ||GEditor->PlayWorld||GEditor->GetPIEWorldContext()||!Live(World.Get())||!Live(Level.Get())||World->WorldType!=EWorldType::Editor||World->bIsTearingDown)
         {return Fail(Stage,TEXT("actor_target_point_context_changed"));}
@@ -1363,7 +1516,7 @@ struct FTargetPointMutation
         // Same native eligibility as Prepare, repeated after each returned callback.
         // Exact ATargetPoint uses AActor's public editor-only bit; no virtual IsEditorOnly call.
         if(World->GetLevels().Num()!=1||World->IsPartitionedWorld()||Level->IsUsingExternalActors()||FLevelUtils::IsLevelLocked(Level.Get())
-            ||Level->GetPackage()->HasAnyPackageFlags(PKG_NewlyCreated|PKG_EditorOnly))
+            ||!NewMapWitness.Current(World.Get(),Level.Get()))
         {return Fail(Stage,TEXT("actor_target_point_level_eligibility_changed"));}
         if(Retired){return AttachedDeleteMode?AttachmentCurrent(Stage):true;}
         if(Target->GetClass()!=(OriginalNativeMode?OriginalNativeClass:ATargetPoint::StaticClass())||Target->GetLevel()!=Level.Get()||Target->GetRootComponent()!=Root.Get()||Root->GetAttachParent()!=(AttachedMode?ParentRoot.Get():nullptr))
@@ -1632,11 +1785,13 @@ bool PrepareMutation(const FRequest& Request, const FState& Before, FPreparedMut
     const uint32 LevelPackageFlags=HasLevel?uint32(Level->GetOutermost()->GetPackageFlags()):0;
     const bool GamePath=Before.LevelPath.StartsWith(TEXT("/Game/")),BoundedPath=Before.LevelPath.Len()<NAME_SIZE;
     const bool DiskExists=FPackageName::DoesPackageExist(Before.LevelPath);
-    if(!HasWorld||!HasLevel||!CurrentMatches||LevelCount!=1||Partitioned||External||Locked||!GamePath||!BoundedPath||(LevelPackageFlags&uint32(PKG_NewlyCreated|PKG_EditorOnly))!=0||!DiskExists)
+    FFileBackedNewMapWitness NewMapWitness;const bool PackageFlagsAllowed=HasWorld&&HasLevel&&NewMapWitness.Current(World,Level);
+    if(Before.Snapshot.IsValid())Before.Snapshot->SetObjectField(TEXT("newly_created_map_admission"),NewMapWitness.Receipt);
+    if(!HasWorld||!HasLevel||!CurrentMatches||LevelCount!=1||Partitioned||External||Locked||!GamePath||!BoundedPath||!PackageFlagsAllowed||!DiskExists)
     {
         if(Before.Snapshot.IsValid())
         {
-            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),TEXT("prepare_mutation_level"));J->SetBoolField(TEXT("operands_observed"),true);J->SetStringField(TEXT("world_path"),GetPathNameSafe(World));J->SetStringField(TEXT("level_path"),GetPathNameSafe(Level));J->SetStringField(TEXT("current_level_path"),HasWorld?GetPathNameSafe(World->GetCurrentLevel()):FString());J->SetStringField(TEXT("persistent_level_path"),HasWorld?GetPathNameSafe(World->PersistentLevel.Get()):FString());J->SetStringField(TEXT("input_level_package"),Before.LevelPath);J->SetBoolField(TEXT("world_present"),HasWorld);J->SetBoolField(TEXT("level_present"),HasLevel);J->SetBoolField(TEXT("current_matches"),CurrentMatches);J->SetNumberField(TEXT("level_count"),LevelCount);J->SetNumberField(TEXT("package_flags"),double(LevelPackageFlags));J->SetNumberField(TEXT("forbidden_package_flags"),double(uint32(PKG_NewlyCreated|PKG_EditorOnly)));J->SetBoolField(TEXT("disk_exists"),DiskExists);J->SetBoolField(TEXT("locked"),Locked);J->SetBoolField(TEXT("world_partition"),Partitioned);J->SetBoolField(TEXT("external_actors"),External);J->SetBoolField(TEXT("game_path"),GamePath);J->SetBoolField(TEXT("bounded_path"),BoundedPath);J->SetBoolField(TEXT("writer_entered"),false);
+            auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),TEXT("prepare_mutation_level"));J->SetBoolField(TEXT("operands_observed"),true);J->SetStringField(TEXT("world_path"),GetPathNameSafe(World));J->SetStringField(TEXT("level_path"),GetPathNameSafe(Level));J->SetStringField(TEXT("current_level_path"),HasWorld?GetPathNameSafe(World->GetCurrentLevel()):FString());J->SetStringField(TEXT("persistent_level_path"),HasWorld?GetPathNameSafe(World->PersistentLevel.Get()):FString());J->SetStringField(TEXT("input_level_package"),Before.LevelPath);J->SetBoolField(TEXT("world_present"),HasWorld);J->SetBoolField(TEXT("level_present"),HasLevel);J->SetBoolField(TEXT("current_matches"),CurrentMatches);J->SetNumberField(TEXT("level_count"),LevelCount);J->SetNumberField(TEXT("package_flags"),double(LevelPackageFlags));J->SetNumberField(TEXT("forbidden_package_flags"),double(uint32(PKG_NewlyCreated|PKG_EditorOnly)));J->SetBoolField(TEXT("package_flags_allowed"),PackageFlagsAllowed);J->SetBoolField(TEXT("disk_exists"),DiskExists);J->SetBoolField(TEXT("locked"),Locked);J->SetBoolField(TEXT("world_partition"),Partitioned);J->SetBoolField(TEXT("external_actors"),External);J->SetBoolField(TEXT("game_path"),GamePath);J->SetBoolField(TEXT("bounded_path"),BoundedPath);J->SetBoolField(TEXT("writer_entered"),false);
             Before.Snapshot->SetObjectField(TEXT("mutation_level_admission"),J);
         }
         return SetError(Code, Error, TEXT("actor_level_unsupported"), TEXT("Mutations require one saved /Game persistent level, current= persistent, unlocked, non-World-Partition and without external actors/streaming levels."));

@@ -61,7 +61,7 @@ void Init(FResult& R)
     auto Calls = MakeShared<FJsonObject>();
     for (const TCHAR* Key : {TEXT("asset_load_calls"),TEXT("asset_load_returns"),TEXT("class_load_calls"),TEXT("class_find_calls"),
         TEXT("default_model_calls"),TEXT("asset_reference_calls"),TEXT("find_pin_calls"),TEXT("pin_default_projection_calls"),
-        TEXT("is_valid_default_calls"),TEXT("clamp_default_calls"),TEXT("getter_identity_checks"),TEXT("completed_diagnostics"),
+        TEXT("is_valid_default_calls"),TEXT("clamp_default_calls"),TEXT("child_default_normalize_calls"),TEXT("child_default_normalize_returns"),TEXT("getter_identity_checks"),TEXT("completed_diagnostics"),
         TEXT("get_or_create_controller_calls"),TEXT("get_controller_calls"),TEXT("set_pin_default_calls"),TEXT("set_pin_default_returns_true"),
         TEXT("auto_vm_recompile_requests"),TEXT("mark_package_dirty_calls"),TEXT("request_init_calls"),
         TEXT("explicit_compile_calls"),TEXT("explicit_save_calls"),TEXT("explicit_modify_calls"),TEXT("runtime_execution_calls")})
@@ -940,40 +940,43 @@ bool WriterProposal(FInventory& I,URigVMPin* P,const FString& Proposal,bool Resi
     }
     return I.Member(P);
 }
-// SDK SetPinDefaultValue recursively visits existing array elements and struct
-// member pairs. Bound that exact proposal closure before any row is authored.
-// Protected PostProcessDefaultValue is not called. Only its structural text
-// normalization is projected; opaque generated struct defaults with child arrays
-// and resize=False are explicitly refused rather than guessed.
+// YJ: UE58 compatibility wrapper for the installed protected static SDK hook.
+// No Controller instance, UObject subclass registration, base-to-derived cast or
+// Engine API modification is involved; the helper is never instantiated.
+struct FChildDefaultNormalizationAccess : URigVMController
+{
+    static void Normalize(const URigVMPin* Pin,FString& Value)
+    { PostProcessDefaultValue(Pin,Value); }
+};
+// SDK SetPinDefaultValue normalizes each recursive child before applying it
+// (RigVMController.cpp10385/10411). Reuse that hook rather than guessing the
+// constructor-generated defaults of nested structs containing arrays.
 bool ChildText(FInventory& I,URigVMPin* Pin,FString& Value,bool Resize)
 {
-    if(!I.Member(Pin)){return false;}
-    const bool StringType=Pin->IsStringType();if(!I.Member(Pin)){return false;}
-    if((Value==TEXT("None")||Value==TEXT("\"None\""))&&!StringType){Value.Reset();}
-    const bool Struct=Pin->IsStruct();if(!I.Member(Pin)){return false;}
-    const bool Array=Pin->IsArray();if(!I.Member(Pin)){return false;}
-    if(Struct||Array)
-    {
-        UScriptStruct* Type=Pin->GetScriptStruct();if((Type&&!I.Object(Type))||!I.Member(Pin)){return false;}
-        const bool NativeText=Type&&(Type->StructFlags&(STRUCT_ImportTextItemNative|STRUCT_ExportTextItemNative))!=0;
-        if(!Value.IsEmpty()&&!NativeText&&(Value[0]!=TCHAR('(')||Value[Value.Len()-1]!=TCHAR(')'))){Value.Reset();}
-    }
-    if(Array&&Value.IsEmpty()){Value=TEXT("()");}
-    else if(Struct&&(Value.IsEmpty()||Value==TEXT("()"))&&!Resize)
-    {
-        TArray<URigVMPin*> Pending=Pin->GetSubPins();TSet<URigVMPin*> Seen;
-        while(!Pending.IsEmpty())
-        {
-            URigVMPin* Child=Pending.Pop(EAllowShrinking::No);
-            if(!I.Step()||Seen.Contains(Child)||!I.Member(Child)||Seen.Num()>=SafetyRows)
-            {return I.C.Bad(TEXT("Generated struct-default source closure is unreadable or exceeds finite bounds"));}
-            Seen.Add(Child);const bool ChildArray=Child->IsArray();if(!I.Member(Child)){return false;}
-            if(ChildArray)
-            {return I.C.Bad(TEXT("Protected struct-default generation contains a child array while resize_arrays=False; opaque size cannot be verified before writing"));}
-            Pending.Append(Child->GetSubPins());if(!I.Member(Child)){return false;}
-        }
-    }
-    return I.Member(Pin);
+    (void)Resize; // Existing recursive setter closure still enforces resize=False sizes.
+    if(!I.Member(Pin))return false;
+    if(!ProposalBound(Value))return I.C.Bad(TEXT("Child default normalization input exceeds the finite proposal bounds"));
+    const bool IsStruct=Pin->IsStruct();if(!I.Member(Pin))return false;
+    UScriptStruct* Type=IsStruct?Pin->GetScriptStruct():nullptr;
+    if(!I.Member(Pin)||(Type&&!I.Object(Type)))return false;
+    auto& R=I.C.R;
+    R.Data->SetStringField(TEXT("child_default_normalization_scope"),TEXT("Cubeless UE58 non-instantiated forwarding wrapper for protected static URigVMController::PostProcessDefaultValue, not a new Engine public API. Recursive preflight may invoke SDK struct default constructors/export or type/default getters before the target setter; it is not pure, not a target writer, and total opaque SDK effects remain unknown. Actual setter repeats its own SDK normalization; no original input is rewritten."));
+    R.Stage=TEXT("preflight_child_default_normalization");
+    R.Data->SetBoolField(TEXT("child_default_normalization_entered"),true);
+    R.Data->SetBoolField(TEXT("child_default_normalization_returned"),false);
+    R.Data->SetBoolField(TEXT("child_default_normalization_output_adopted"),false);
+    Count(R,TEXT("child_default_normalize_calls"));
+    FChildDefaultNormalizationAccess::Normalize(Pin,Value);
+    Count(R,TEXT("child_default_normalize_returns"));
+    R.Data->SetNumberField(TEXT("last_child_normalized_text_chars"),Value.Len());
+    R.Data->SetBoolField(TEXT("child_default_normalization_returned"),true);
+    R.Data->SetBoolField(TEXT("child_default_normalization_output_adopted"),false);
+    // The inventory owns the pin/type through the opaque call. Do not inspect the
+    // receiver or normalized output as current until the existing owner fence closes.
+    if(!I.Member(Pin)||(Type&&!I.Identity(Type)))return false;
+    if(!ProposalBound(Value))return I.C.Bad(TEXT("SDK-normalized child default exceeds the finite text/nesting bounds; no target setter was dispatched"));
+    R.Data->SetBoolField(TEXT("child_default_normalization_output_adopted"),true);
+    return true;
 }
 bool SetterClosure(FInventory& I,FControllerView& Controller,URigVMPin* Pin,const FString& Proposal,bool Resize,
     int32 Depth,TSet<URigVMPin*>& Active,int32& Visits)

@@ -32,6 +32,7 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Editor.h"
 #include "Engine/World.h"
+#include "GameFramework/Actor.h"
 #include "Internationalization/Text.h"
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_Event.h"
@@ -44,6 +45,11 @@ namespace
 using FResult=Function::FResult;
 namespace Pin=Function::Pin;
 constexpr int32 MaxGraphs=256,MaxNodes=2048;
+// WQ is request-local to the three existing dispatcher lifecycle operations.
+const TFunction<bool(UBlueprint*,UEdGraph*)>* GeneratedParentAdmission=nullptr;
+const TFunction<bool()>* GeneratedParentFence=nullptr;
+const TFunction<bool(const TCHAR*)>* GeneratedParentBorrowStop=nullptr;
+bool GeneratedParentCurrent(){return !GeneratedParentFence||(*GeneratedParentFence)();}
 void Count(FResult& R,const TCHAR* Key) { R.Data->SetNumberField(Key,R.Data->GetNumberField(Key)+1); }
 
 bool Fail(FResult& R,const TCHAR* Code,const FString& Error) { R.bSuccess=R.bPostconditionPassed=false;R.ErrorCode=Code;R.Error=Error;return false; }
@@ -145,6 +151,8 @@ bool OwnerScope(UBlueprint* BP,UEdGraph* G,FResult& R)
     int32 Depth=0;
     for(UClass* C=BP->ParentClass;C;C=C->GetSuperClass())
     {
+        if(Loaded(C)&&C->GetClass()==UBlueprintGeneratedClass::StaticClass()&&GeneratedParentAdmission)
+        {if(!(*GeneratedParentAdmission)(BP,G))return false;break;}
         const FString Package=C->GetOutermost()->GetName();
         if(++Depth>64||!Loaded(C)||!C->HasAnyClassFlags(CLASS_Native)||C->ClassGeneratedBy||C->IsEditorOnly()
             ||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)
@@ -177,18 +185,37 @@ TSharedRef<FJsonObject> DescribeGraph(UBlueprint* BP, UEdGraph* G)
 
 TSharedRef<FJsonObject> DescribeNode(UEdGraphNode* Node)
 {
+    if(!GeneratedParentCurrent())return MakeShared<FJsonObject>();
+    // Hold only this observation's physical borrow. Compilation/placement is
+    // outside this read, so legitimate subsequent pin regeneration is allowed.
+    const bool Guarded=GeneratedParentFence!=nullptr;
+    const TStrongObjectPtr<UEdGraphNode> ObserverNode(Guarded&&Loaded(Node)?Node:nullptr);
+    const TStrongObjectPtr<UEdGraph> ObserverGraph(Guarded&&Loaded(Node)?Node->GetGraph():nullptr);
+    UObject* ObserverOuter=Guarded&&Loaded(Node)?Node->GetOuter():nullptr;
+    const bool ObserverMember=Guarded&&ObserverGraph.IsValid()&&ObserverGraph->Nodes.Contains(Node);
+    const TArray<UEdGraphPin*> ObserverPins=Guarded&&Loaded(Node)?Node->Pins:TArray<UEdGraphPin*>();
+    auto BorrowCurrent=[&]()->bool
+    {
+        if(!GeneratedParentCurrent())return false;if(!Guarded)return true;
+        bool Valid=Loaded(ObserverNode.Get())&&ObserverNode.Get()==Node&&Loaded(ObserverGraph.Get())&&Node->GetOuter()==ObserverOuter&&Node->GetGraph()==ObserverGraph.Get()&&ObserverGraph->Nodes.Contains(Node)==ObserverMember&&Node->Pins==ObserverPins;
+        if(Valid)for(auto* P:ObserverPins)if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=Node){Valid=false;break;}
+        return Valid||(GeneratedParentBorrowStop&&(*GeneratedParentBorrowStop)(TEXT("node_observer_borrow")));
+    };
+    if(!BorrowCurrent())return MakeShared<FJsonObject>();
     auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("node_id"), Node->NodeGuid.ToString(EGuidFormats::Digits));
     J->SetStringField(TEXT("node_guid"), Node->NodeGuid.ToString(EGuidFormats::Digits)); J->SetStringField(TEXT("object_path"), Node->GetPathName());
     J->SetStringField(TEXT("node_class"), Node->GetClass()->GetPathName()); J->SetStringField(TEXT("node_name"), Node->GetName());
     J->SetNumberField(TEXT("x"), Node->NodePosX); J->SetNumberField(TEXT("y"), Node->NodePosY);
     TArray<TSharedPtr<FJsonValue>> Pins;
-    for (UEdGraphPin* P : Node->Pins)
+    const auto& PinRows=Guarded?ObserverPins:Node->Pins;for (UEdGraphPin* P : PinRows)
     {
         if (!P) { continue; } auto Q = MakeShared<FJsonObject>(); Q->SetStringField(TEXT("name"), P->PinName.ToString());
         Q->SetStringField(TEXT("pin_id"), P->PinId.ToString(EGuidFormats::Digits)); Q->SetStringField(TEXT("direction"), P->Direction == EGPD_Input ? TEXT("input") : TEXT("output"));
-        Q->SetObjectField(TEXT("pin_type"), Pin::Describe(P->PinType)); Q->SetBoolField(TEXT("orphaned"), P->bOrphanedPin);
+        const FEdGraphPinType ObservedType=P->PinType;const auto Type=Pin::Describe(ObservedType);if(!BorrowCurrent())return J;
+        Q->SetObjectField(TEXT("pin_type"),Type); Q->SetBoolField(TEXT("orphaned"), P->bOrphanedPin);
         Q->SetStringField(TEXT("default_value"), P->DefaultValue); Q->SetStringField(TEXT("default_object"), P->DefaultObject ? P->DefaultObject->GetPathName() : TEXT(""));
-        Q->SetStringField(TEXT("default_text"), P->DefaultTextValue.ToString()); TArray<TSharedPtr<FJsonValue>> Links;
+        const FText ObservedText=P->DefaultTextValue;const FString DefaultText=ObservedText.ToString();if(!BorrowCurrent())return J;
+        Q->SetStringField(TEXT("default_text"),DefaultText); TArray<TSharedPtr<FJsonValue>> Links;
         for (UEdGraphPin* Other : P->LinkedTo)
         {
             if (!Other || !IsValid(Other->GetOwningNodeUnchecked())) { continue; } auto Link = MakeShared<FJsonObject>();
@@ -199,7 +226,7 @@ TSharedRef<FJsonObject> DescribeNode(UEdGraphNode* Node)
     }
     J->SetArrayField(TEXT("pins"), Pins);
     if (const UK2Node_CallFunction* Call = Cast<UK2Node_CallFunction>(Node))
-    { const UFunction* F = Call->GetTargetFunction(); J->SetStringField(TEXT("function_path"), F ? F->GetPathName() : TEXT("")); }
+    { const UFunction* F = Call->GetTargetFunction();if(!BorrowCurrent())return J; J->SetStringField(TEXT("function_path"), F ? F->GetPathName() : TEXT("")); }
     if (const UK2Node_CustomEvent* Event = Cast<UK2Node_CustomEvent>(Node))
     {
         J->SetStringField(TEXT("custom_event_name"), Event->CustomFunctionName.ToString());
@@ -212,6 +239,7 @@ TSharedRef<FJsonObject> DescribeNode(UEdGraphNode* Node)
 
 bool Capture(UBlueprint* BP, UEdGraph* G, TSharedRef<FJsonObject>& Out, FResult& R)
 {
+    if(!GeneratedParentCurrent())return false;
     Out = MakeShared<FJsonObject>(); Out->SetStringField(TEXT("blueprint"), BP->GetPathName()); Out->SetBoolField(TEXT("dirty"), BP->GetOutermost()->IsDirty());
     Out->SetNumberField(TEXT("blueprint_status"), static_cast<int32>(BP->Status.GetValue()));
     TArray<UEdGraph*> Graphs; BP->GetAllGraphs(Graphs);
@@ -228,11 +256,12 @@ bool Capture(UBlueprint* BP, UEdGraph* G, TSharedRef<FJsonObject>& Out, FResult&
     {
         if (!Graphs.Contains(G) || G->Nodes.Num() > MaxNodes) { return Fail(R, TEXT("function_graph_state_invalid"), TEXT("Target graph is no longer owned by the Blueprint or exceeds 2048 nodes.")); }
         TArray<TSharedPtr<FJsonValue>> Nodes; TSet<FGuid> NodeGuids;
-        for (UEdGraphNode* N : G->Nodes)
+        const auto HeldNodes=G->Nodes;for (const auto& Slot:HeldNodes)
         {
+            UEdGraphNode* N=Slot.Get();const TStrongObjectPtr<UEdGraphNode> Held(Loaded(N)?N:nullptr);if(!GeneratedParentCurrent())return false;
             if (!IsValid(N) || !N->NodeGuid.IsValid() || NodeGuids.Contains(N->NodeGuid) || N->Pins.Num() > 512)
             { return Fail(R, TEXT("function_node_identity_invalid"), TEXT("A graph node identity/pin budget is invalid; observation is incomplete.")); }
-            NodeGuids.Add(N->NodeGuid); Nodes.Add(MakeShared<FJsonValueObject>(DescribeNode(N)));
+            NodeGuids.Add(N->NodeGuid); Nodes.Add(MakeShared<FJsonValueObject>(DescribeNode(N)));if(!GeneratedParentCurrent())return false;
         }
         Out->SetObjectField(TEXT("graph"), DescribeGraph(BP, G)); Out->SetArrayField(TEXT("nodes"), Nodes);
     }
@@ -248,13 +277,14 @@ bool DispatcherName(const FString& Input,FString& Out,FResult& R)
 TSharedRef<FJsonObject> Variables(UBlueprint* BP,FResult& R)
 {
     Count(R,TEXT("variable_observation_calls"));auto J=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Rows;bool Complete=BP->NewVariables.Num()<=256;
-    if(Complete) { for(const auto& V:BP->NewVariables) { FString Text;FBPVariableDescription::StaticStruct()->ExportText(Text,&V,nullptr,BP,PPF_None,nullptr);if(Text.Len()>32768) { Complete=false;break; }auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("name"),V.VarName.ToString());Q->SetStringField(TEXT("guid"),V.VarGuid.ToString());Q->SetStringField(TEXT("reflected_descriptor"),Text);Rows.Add(MakeShared<FJsonValueObject>(Q)); } }J->SetArrayField(TEXT("ordered_descriptors"),Rows);J->SetBoolField(TEXT("complete"),Complete);return J;
+    const auto Copied=GeneratedParentFence?BP->NewVariables:TArray<FBPVariableDescription>();const auto& Descriptors=GeneratedParentFence?Copied:BP->NewVariables;
+    if(Complete) { for(const auto& V:Descriptors) { FString Text;FBPVariableDescription::StaticStruct()->ExportText(Text,&V,nullptr,BP,PPF_None,nullptr);if(!GeneratedParentCurrent()){J->SetBoolField(TEXT("complete"),false);return J;}if(Text.Len()>32768) { Complete=false;break; }auto Q=MakeShared<FJsonObject>();Q->SetStringField(TEXT("name"),V.VarName.ToString());Q->SetStringField(TEXT("guid"),V.VarGuid.ToString());Q->SetStringField(TEXT("reflected_descriptor"),Text);Rows.Add(MakeShared<FJsonValueObject>(Q)); } }J->SetArrayField(TEXT("ordered_descriptors"),Rows);J->SetBoolField(TEXT("complete"),Complete);return J;
 }
 
 bool BlueprintState(UBlueprint* BP,TSharedRef<FJsonObject>& Out,FResult& R)
 {
-    Count(R,TEXT("blueprint_capture_calls"));Out=MakeShared<FJsonObject>();const auto V=Variables(BP,R);Out->SetObjectField(TEXT("variables"),V);if(!V->GetBoolField(TEXT("complete"))) { return Fail(R,TEXT("dispatcher_variable_observation_incomplete"),TEXT("Descriptor snapshot exceeds finite256/32768 bounds.")); }
-    TArray<UEdGraph*> Graphs;BP->GetAllGraphs(Graphs);if(Graphs.Num()>64) { return Fail(R,TEXT("dispatcher_graph_budget"),TEXT("Full selected owned graph preservation scope is64 graphs.")); }
+    Count(R,TEXT("blueprint_capture_calls"));Out=MakeShared<FJsonObject>();const auto V=Variables(BP,R);if(!GeneratedParentCurrent())return false;Out->SetObjectField(TEXT("variables"),V);if(!V->GetBoolField(TEXT("complete"))) { return Fail(R,TEXT("dispatcher_variable_observation_incomplete"),TEXT("Descriptor snapshot exceeds finite256/32768 bounds.")); }
+    TArray<UEdGraph*> Graphs;BP->GetAllGraphs(Graphs);if(!GeneratedParentCurrent())return false;if(Graphs.Num()>64) { return Fail(R,TEXT("dispatcher_graph_budget"),TEXT("Full selected owned graph preservation scope is64 graphs.")); }
     TArray<TSharedPtr<FJsonValue>> Rows;int32 Nodes=0;for(UEdGraph* G:Graphs)
     { if(!Loaded(G)||!G->GetSchema()||G->GetSchema()->GetClass()!=UEdGraphSchema_K2::StaticClass()||(Nodes+=G->Nodes.Num())>4096) { return Fail(R,TEXT("dispatcher_graph_observation_incomplete"),TEXT("Loaded exact K2 graphs within total4096-node scope required.")); }auto Q=MakeShared<FJsonObject>();Count(R,TEXT("graph_capture_calls"));if(!Capture(BP,G,Q,R)) { Out->SetArrayField(TEXT("graph_states"),Rows);return false; }Rows.Add(MakeShared<FJsonValueObject>(Q)); }Out->SetArrayField(TEXT("graph_states"),Rows);Out->SetBoolField(TEXT("dirty"),BP->GetOutermost()->IsDirty());Out->SetNumberField(TEXT("blueprint_status"),BP->Status.GetValue());return true;
 }
@@ -1090,11 +1120,110 @@ FResult WidgetLifecycle(int32 Kind,const FString& Path,const FString& Requested,
     Run();if(!W.Stopped&&R.bChangeStateKnown)Current(TEXT("transaction_publication"));return R;
 }
 
+// The parent classes are readonly sources. Leaf compiler classes/CDOs can be
+// regenerated by Assign; they are reacquired from the same held Blueprint.
+struct FGeneratedDispatcherParents
+{
+    struct FFieldRole{FProperty* P=nullptr;FFieldClass* Kind=nullptr;FName Name;uint64 Flags=0;int32 Offset=0,Size=0,Dim=0;FString Value;UFunction* DelegateSignature=nullptr;};
+    struct FClassRole
+    {
+        TStrongObjectPtr<UBlueprintGeneratedClass> Class;TStrongObjectPtr<UObject> Default;
+        UClass* Super=nullptr;FString Path;int32 Size=0;TArray<FFieldRole> Fields;
+    };
+    struct FParent
+    {
+        TStrongObjectPtr<UBlueprint> BP;TStrongObjectPtr<UPackage> Package;TStrongObjectPtr<UClass> Parent;
+        FClassRole Generated,Skeleton;FString Path;TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();
+        TArray<TStrongObjectPtr<UEdGraph>> Graphs;TArray<TArray<TObjectPtr<UEdGraphNode>>> Nodes;
+        TArray<TArray<TArray<UEdGraphPin*>>> Pins;
+    };
+    FResult& R;TStrongObjectPtr<UBlueprint> Target;TStrongObjectPtr<UEdGraph> Graph;TStrongObjectPtr<UClass> LeafGenerated,LeafSkeleton,LeafSkeletonParent;
+    TStrongObjectPtr<UPackage> TargetPackage;FString TargetPath,GraphPath;FGuid GraphId;
+    TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;TStrongObjectPtr<UClass> Parent;
+    TArray<TUniquePtr<FParent>> Parents;TArray<TStrongObjectPtr<UObject>> Holds;
+    TStrongObjectPtr<UEdGraphNode> Added;bool Active=false,Stopped=false;int32 AllowedDelta=0;
+    TArray<TObjectPtr<UEdGraphNode>> OldNodes;
+    explicit FGeneratedDispatcherParents(FResult& In):R(In){}
+    bool Stop(const TCHAR* Why,const FString& Object=FString())
+    {
+        if(!Stopped){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("stage"),R.Stage);J->SetStringField(TEXT("object"),Object);J->SetStringField(TEXT("property"),Why);R.Data->SetObjectField(TEXT("generated_dispatcher_first_mismatch"),J);Fail(R,TEXT("dispatcher_generated_parent_scope_changed"),TEXT("Generated parent/source or local writer role changed; actual prefix retained with no further lifecycle SDK, cleanup, compile, save or retry."));}
+        Stopped=true;R.bSuccess=R.bPostconditionPassed=R.bChangeStateKnown=false;R.Data->SetBoolField(TEXT("generated_dispatcher_followup_sdk_stopped"),true);return false;
+    }
+    bool ClassCurrent(const FClassRole& C,UBlueprint* B)
+    {
+        auto* K=C.Class.Get();if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||K->GetSuperClass()!=C.Super||K->GetPathName()!=C.Path||K->GetPropertiesSize()!=C.Size||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=B||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=C.Default.Get())return Stop(TEXT("parent_class_cdo_role"),C.Path);
+        if(C.Default.Get()&&(!Loaded(C.Default.Get())||C.Default->GetClass()!=K||!C.Default->HasAnyFlags(RF_ClassDefaultObject)))return Stop(TEXT("parent_cdo_role"),C.Path);
+        int32 I=0;for(TFieldIterator<FProperty> It(K,EFieldIterationFlags::None);It;++It,++I){if(!C.Fields.IsValidIndex(I))return Stop(TEXT("parent_field_inventory"),C.Path);const auto& F=C.Fields[I];auto* P=*It;if(P!=F.P||P->GetOwnerStruct()!=K||P->GetClass()!=F.Kind||P->GetFName()!=F.Name||uint64(P->GetPropertyFlags())!=F.Flags||P->GetOffset_ForInternal()!=F.Offset||P->GetSize()!=F.Size||P->ArrayDim!=F.Dim||P->HasSetterOrGetter())return Stop(TEXT("parent_field_role"),C.Path);if(auto* D=CastField<FMulticastDelegateProperty>(P))if(!D->SignatureFunction.IsResolved()||D->SignatureFunction.Get()!=F.DelegateSignature||(F.DelegateSignature&&!Loaded(F.DelegateSignature)))return Stop(TEXT("parent_delegate_signature_role"),C.Path);}return I==C.Fields.Num()||Stop(TEXT("parent_field_count"),C.Path);
+    }
+    bool LeafClass(UClass* K)
+    {return Loaded(K)&&K->GetClass()==UBlueprintGeneratedClass::StaticClass()&&K->ClassGeneratedBy.IsResolved()&&K->ClassGeneratedBy.Get()==Target.Get()&&Loaded(K->GetSuperClass())&&K->ClassDefaultObject.IsResolved()&&(!K->ClassDefaultObject.Get()||(Loaded(K->ClassDefaultObject.Get())&&K->ClassDefaultObject->GetClass()==K));}
+    bool Current()
+    {
+        if(!Active)return !Stopped;if(Stopped)return false;
+        if(!IsEditorGameThread()||IsPlaySessionActive()||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!Loaded(Editor.Get())||GEditor!=Editor.Get()||!Loaded(World.Get())||World->bIsTearingDown||GEditor->GetEditorWorldContext().World()!=World.Get())return Stop(TEXT("editor_world"));
+        if(!Loaded(Target.Get())||!Loaded(Parent.Get())||!Loaded(TargetPackage.Get())||Target->GetPackage()!=TargetPackage.Get()||Target->GetPathName()!=TargetPath||!Target->ParentClass.GetGCPtr().IsResolved()||Target->ParentClass.Get()!=Parent.Get()||Target->bBeingCompiled||Target->bQueuedForCompilation||Target->bIsRegeneratingOnLoad||!Target->GeneratedClass.GetGCPtr().IsResolved()||!Target->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!LeafClass(Target->GeneratedClass.Get())||!LeafClass(Target->SkeletonGeneratedClass.Get())||Target->GeneratedClass->GetSuperClass()!=Parent.Get()||Target->SkeletonGeneratedClass->GetSuperClass()!=LeafSkeletonParent.Get())return Stop(TEXT("leaf_class_roles"));
+        LeafGenerated.Reset(Target->GeneratedClass.Get());LeafSkeleton.Reset(Target->SkeletonGeneratedClass.Get());
+        if(!Loaded(Graph.Get())||Graph->GetPathName()!=GraphPath||Graph->GraphGuid!=GraphId||FBlueprintEditorUtils::FindBlueprintForGraph(Graph.Get())!=Target.Get()||Graph->Nodes.Num()<OldNodes.Num()||Graph->Nodes.Num()>OldNodes.Num()+AllowedDelta)return Stop(TEXT("local_graph_membership"));
+        for(int32 I=0;I<OldNodes.Num();++I)if(!Loaded(OldNodes[I].Get())||Graph->Nodes[I]!=OldNodes[I])return Stop(TEXT("local_old_node_membership"));
+        if(Added.Get()&&(!Loaded(Added.Get())||Added->GetOuter()!=Graph.Get()||Added->GetGraph()!=Graph.Get()||(AllowedDelta>0&&!Graph->Nodes.Contains(Added.Get()))))return Stop(TEXT("allocated_node_owner"));
+        for(const auto& Ptr:Parents)
+        {
+            const auto& P=*Ptr;auto* B=P.BP.Get();if(!Loaded(B)||B->GetPathName()!=P.Path||B->GetPackage()!=P.Package.Get()||!Loaded(P.Package.Get())||P.Package->IsDirty()||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.Get()!=P.Parent.Get()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.Get()!=P.Generated.Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.Get()!=P.Skeleton.Class.Get()||!ClassCurrent(P.Generated,B)||!ClassCurrent(P.Skeleton,B))return Stop(TEXT("readonly_parent_role"),P.Path);
+            for(int32 I=0;I<P.Graphs.Num();++I){auto* G=P.Graphs[I].Get();if(!Loaded(G)||G->Nodes!=P.Nodes[I])return Stop(TEXT("parent_graph_nodes"),P.Path);for(int32 N=0;N<P.Nodes[I].Num();++N){auto* Node=P.Nodes[I][N].Get();if(!Loaded(Node)||Node->GetOuter()!=G||Node->Pins!=P.Pins[I][N])return Stop(TEXT("parent_pin_inventory"),P.Path);for(auto* Pin:P.Pins[I][N])if(!Pin||Pin->WasTrashed()||Pin->GetOwningNodeUnchecked()!=Node)return Stop(TEXT("parent_pin_lifetime"),P.Path);}}
+        }return true;
+    }
+    bool BindClass(FClassRole& Out,UBlueprintGeneratedClass* K,UBlueprint* B)
+    {
+        if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=B||!K->ClassDefaultObject.IsResolved())return Stop(TEXT("parent_class_binding"));Out.Class.Reset(K);Out.Default.Reset(K->ClassDefaultObject.Get());Out.Super=K->GetSuperClass();Out.Path=K->GetPathName();Out.Size=K->GetPropertiesSize();Holds.Emplace(Out.Super);
+        for(TFieldIterator<FProperty> It(K,EFieldIterationFlags::None);It;++It){auto* P=*It;if(Out.Fields.Num()>=256||P->HasSetterOrGetter()||P->GetOwnerStruct()!=K||P->ArrayDim<1||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>Out.Size)return Stop(TEXT("parent_field_scope"));FFieldRole F;F.P=P;F.Kind=P->GetClass();F.Name=P->GetFName();F.Flags=uint64(P->GetPropertyFlags());F.Offset=P->GetOffset_ForInternal();F.Size=P->GetSize();F.Dim=P->ArrayDim;if(auto* D=CastField<FMulticastDelegateProperty>(P)){if(!D->SignatureFunction.IsResolved())return Stop(TEXT("parent_delegate_signature_unresolved"));F.DelegateSignature=D->SignatureFunction.Get();if(F.DelegateSignature){if(!Loaded(F.DelegateSignature))return Stop(TEXT("parent_delegate_signature_unavailable"));Holds.Emplace(F.DelegateSignature);}}Out.Fields.Add(MoveTemp(F));}
+        return ClassCurrent(Out,B);
+    }
+    bool Defaults(FClassRole& C,UBlueprint* B,bool CaptureValues)
+    {
+        if(!ClassCurrent(C,B))return false;if(!C.Default.Get())return true;
+        for(auto& F:C.Fields){if(F.P->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated))continue;FString Value;const bool Exported=F.P->ExportText_Direct(Value,F.P->ContainerPtrToValuePtr<void>(C.Default.Get()),nullptr,C.Default.Get(),PPF_None);if(!Current())return false;if(!Exported||!ClassCurrent(C,B)||Value.Len()>65536)return Stop(TEXT("parent_default_observation"),C.Path);if(CaptureValues)F.Value=MoveTemp(Value);else if(!Value.Equals(F.Value,ESearchCase::CaseSensitive))return Stop(TEXT("readonly_parent_default"),C.Path+TEXT(".")+F.Name.ToString());}return true;
+    }
+    bool Bind(UBlueprint* B,UEdGraph* G)
+    {
+        if(Active)return Target.Get()==B&&Graph.Get()==G&&Current();
+        if(!Loaded(B)||!Loaded(G)||B->BlueprintType!=BPTYPE_Normal||!B->ParentClass.GetGCPtr().IsResolved()||!Loaded(B->ParentClass.Get())||!B->ParentClass->IsChildOf(AActor::StaticClass())||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!Loaded(B->SkeletonGeneratedClass.Get()))return Stop(TEXT("generated_actor_profile"));
+        Target.Reset(B);Graph.Reset(G);TargetPackage.Reset(B->GetPackage());TargetPath=B->GetPathName();GraphPath=G->GetPathName();GraphId=G->GraphGuid;Parent.Reset(B->ParentClass.Get());LeafSkeletonParent.Reset(B->SkeletonGeneratedClass->GetSuperClass());Editor.Reset(GEditor);World.Reset(GEditor->GetEditorWorldContext().World());OldNodes=G->Nodes;for(const auto& N:OldNodes)Holds.Emplace(N.Get());Active=true;
+        TSet<UClass*> Seen;UClass* At=Parent.Get();
+        while(Loaded(At)&&At->GetClass()==UBlueprintGeneratedClass::StaticClass())
+        {
+            if(Parents.Num()>=16||Seen.Contains(At)||!At->ClassGeneratedBy.IsResolved())return Stop(TEXT("parent_chain_bound"));Seen.Add(At);auto* Source=Cast<UBlueprint>(At->ClassGeneratedBy.Get());
+            if(!Loaded(Source)||Source==B||Source->GetClass()!=UBlueprint::StaticClass()||Source->BlueprintType!=BPTYPE_Normal||!Source->GetPathName().StartsWith(TEXT("/Game/"))||Source->GetPackage()==B->GetPackage()||Source->GetPackage()->IsDirty()||Source->Status!=BS_UpToDate||!Source->ParentClass.GetGCPtr().IsResolved()||!Source->GeneratedClass.GetGCPtr().IsResolved()||Source->GeneratedClass.Get()!=At||!Source->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Stop(TEXT("saved_loaded_parent_required"));
+            auto P=MakeUnique<FParent>();P->BP.Reset(Source);P->Package.Reset(Source->GetPackage());P->Parent.Reset(Source->ParentClass.Get());P->Path=Source->GetPathName();
+            if(!BindClass(P->Generated,static_cast<UBlueprintGeneratedClass*>(At),Source)||!BindClass(P->Skeleton,Cast<UBlueprintGeneratedClass>(Source->SkeletonGeneratedClass.Get()),Source))return false;
+            TArray<UEdGraph*> Graphs;Source->GetAllGraphs(Graphs);if(Graphs.Num()>64)return Stop(TEXT("parent_graph_bound"));for(auto* PG:Graphs){if(!Loaded(PG)||PG->Nodes.Num()>MaxNodes)return Stop(TEXT("parent_graph_role"));P->Graphs.Emplace(PG);P->Nodes.Add(PG->Nodes);TArray<TArray<UEdGraphPin*>> Pins;for(const auto& Slot:PG->Nodes){auto* N=Slot.Get();if(!Loaded(N)||N->GetOuter()!=PG)return Stop(TEXT("parent_node_role"));Holds.Emplace(N);Pins.Add(N->Pins);}P->Pins.Add(MoveTemp(Pins));}
+            auto* Captured=P.Get();Parents.Add(MoveTemp(P));if(!Current()||!Defaults(Captured->Generated,Source,true)||!Defaults(Captured->Skeleton,Source,true)||!BlueprintState(Source,Captured->Before,R)||!Current())return false;At=Source->ParentClass.Get();
+        }
+        for(int32 Depth=0;At;At=At->GetSuperClass()){if(++Depth>64||!Loaded(At)||!At->HasAnyClassFlags(CLASS_Native)||At->IsEditorOnly()||(At->GetPackage()->GetName()!=TEXT("/Script/Engine")&&At->GetPackage()->GetName()!=TEXT("/Script/CoreUObject")))return Stop(TEXT("native_parent_root"));Holds.Emplace(At);}
+        Active=true;R.Data->SetBoolField(TEXT("generated_parent_dispatcher_lifecycle_supported"),true);R.Data->SetNumberField(TEXT("readonly_generated_parents"),Parents.Num());R.Data->SetBoolField(TEXT("generated_parent_additional_outer_transaction"),false);R.Data->SetStringField(TEXT("generated_parent_preservation_scope"),TEXT("Loaded saved Actor ancestors, their actual generated/skeleton superclass and nullable CDO roles, own reflected default text and authored graph/variable states. Leaf CDO defaults are independent. Assign implicit leaf compilation may replace generated caches. No parent writer, new transaction, load, explicit compile/save, deep referenced-object purity, standalone Undo or full inheritance parity is claimed."));return Current();
+    }
+    bool Final()
+    {
+        if(!Current())return false;for(auto& Ptr:Parents){auto& P=*Ptr;auto Now=MakeShared<FJsonObject>();if(!Defaults(P.Generated,P.BP.Get(),false)||!Defaults(P.Skeleton,P.BP.Get(),false)||!BlueprintState(P.BP.Get(),Now,R)||!Current())return false;if(!Equal(MakeShared<FJsonValueObject>(P.Before),MakeShared<FJsonValueObject>(Now)))return Stop(TEXT("readonly_parent_authored_state"),P.Path);}R.Data->SetBoolField(TEXT("generated_parent_sources_preserved"),true);return true;
+    }
+};
+
 FResult Lifecycle(int32 Kind,const FString& Path,const FString& Requested,const FString& PositionJson,const FString& GraphName,const FString& GraphId,const FString& GraphKind,bool Create)
 {
     FResult R;Init(R);const bool Assign=Kind==0,Clear=Kind==2;const TCHAR* KindName=Assign?TEXT("assign"):Clear?TEXT("clear"):TEXT("unbind");R.Data->SetStringField(TEXT("node_kind"),KindName);
-    if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("dispatcher_editor_invalid"),TEXT("Idle Editor game thread required."));return R; }Count(R,TEXT("outer_transaction_calls"));FScopedTransaction Tx(NSLOCTEXT("CubelessMCP","DispatcherLifecycle","Add Blueprint Dispatcher Lifecycle Node"));FString Name;if(!DispatcherName(Requested,Name,R)) { return R; }R.Data->SetStringField(TEXT("dispatcher_name"),Name);int32 XY[2]={0,0};FString Projected;if(!Position(PositionJson,XY,Projected,R)) { return R; }
-    UBlueprint* BP=nullptr;UEdGraph* G=nullptr;TSharedPtr<FJsonObject> BeforeGraph;if(!Graph(Path,GraphName,GraphId,GraphKind,Create,BP,G,BeforeGraph,R)) { return R; }const TStrongObjectPtr<UBlueprint> KeepBP(BP);const TStrongObjectPtr<UEdGraph> KeepGraph(G);const FGuid GraphGuid=G->GraphGuid;auto* P=Property(BP,FName(*Name),R);R.Data->SetObjectField(TEXT("property_before"),PropertyJson(P,R));
+    if(!IsEditorGameThread()||IsPlaySessionActive()) { Fail(R,TEXT("dispatcher_editor_invalid"),TEXT("Idle Editor game thread required."));return R; }
+    if(GeneratedParentAdmission){Fail(R,TEXT("dispatcher_generated_reentry"),TEXT("Generated dispatcher lifecycle already active; no nested writer."));return R;}
+    FString LoadedPath=Path;if(LoadedPath.StartsWith(TEXT("/Game/"))&&!LoadedPath.Contains(TEXT(".")))LoadedPath+=TEXT(".")+FPackageName::GetShortName(LoadedPath);
+    auto* LoadedBP=FindObject<UBlueprint>(nullptr,*LoadedPath);
+    const bool GeneratedRequest=Loaded(LoadedBP)&&LoadedBP->ParentClass.GetGCPtr().IsResolved()&&Loaded(LoadedBP->ParentClass.Get())&&LoadedBP->ParentClass->GetClass()==UBlueprintGeneratedClass::StaticClass();
+    FGeneratedDispatcherParents Parents(R);TFunction<bool(UBlueprint*,UEdGraph*)> Admission=[&](UBlueprint* B,UEdGraph* G){return GeneratedRequest&&B==LoadedBP&&Parents.Bind(B,G);};TFunction<bool()> CurrentScope=[&](){return Parents.Current();};TFunction<bool(const TCHAR*)> BorrowStop=[&](const TCHAR* Why){return Parents.Stop(Why);};
+    TGuardValue<const TFunction<bool(UBlueprint*,UEdGraph*)>*> AdmissionLease(GeneratedParentAdmission,GeneratedRequest?&Admission:nullptr);
+    TGuardValue<const TFunction<bool()>*> SourceLease(GeneratedParentFence,GeneratedRequest?&CurrentScope:nullptr);
+    TGuardValue<const TFunction<bool(const TCHAR*)>*> BorrowLease(GeneratedParentBorrowStop,GeneratedRequest?&BorrowStop:nullptr);
+    // The original native helper has no outer transaction. Do not introduce a
+    // destructor End into this new scope; Batch retains its separate owner.
+    TUniquePtr<FScopedTransaction> Tx;if(!GeneratedRequest){Count(R,TEXT("outer_transaction_calls"));Tx=MakeUnique<FScopedTransaction>(NSLOCTEXT("CubelessMCP","DispatcherLifecycle","Add Blueprint Dispatcher Lifecycle Node"));}
+    FString Name;if(!DispatcherName(Requested,Name,R)) { return R; }R.Data->SetStringField(TEXT("dispatcher_name"),Name);int32 XY[2]={0,0};FString Projected;if(!Position(PositionJson,XY,Projected,R)) { return R; }
+    UBlueprint* BP=nullptr;UEdGraph* G=nullptr;TSharedPtr<FJsonObject> BeforeGraph;if(!Graph(Path,GraphName,GraphId,GraphKind,GeneratedRequest?false:Create,BP,G,BeforeGraph,R)) { return R; }if(!Parents.Current())return R;const TStrongObjectPtr<UBlueprint> KeepBP(BP);const TStrongObjectPtr<UEdGraph> KeepGraph(G);const FGuid GraphGuid=G->GraphGuid;auto* P=Property(BP,FName(*Name),R);R.Data->SetObjectField(TEXT("property_before"),PropertyJson(P,R));
     if(!P||!P->HasAllPropertyFlags(CPF_BlueprintAssignable)||!Loaded(P->SignatureFunction)||!Loaded(P->GetOwnerClass())) { Fail(R,TEXT("dispatcher_property_unavailable"),TEXT("Original lifecycle requires BlueprintAssignable property and current loaded signature/owner after graph resolution."));return R; }
     const TStrongObjectPtr<UClass> KeepOwner(P->GetOwnerClass());const TStrongObjectPtr<UFunction> KeepSignature(P->SignatureFunction);const auto SigBefore=Signature(P->SignatureFunction,R);R.Data->SetObjectField(TEXT("signature_before"),SigBefore);TArray<FName> ParamNames;TArray<FEdGraphPinType> ParamTypes;TArray<TStrongObjectPtr<UObject>> KeepTypes;
     uint32 GridSize=0;int32 EventXY[2]={0,0};if(Assign)
@@ -1106,29 +1235,30 @@ FResult Lifecycle(int32 Kind,const FString& Path,const FString& Requested,const 
     const bool Super=Class&&(Assign?Class->GetSuperClass()&&Class->GetSuperClass()->GetPathName().Equals(TEXT("/Script/BlueprintGraph.K2Node_AddDelegate"),ESearchCase::CaseSensitive)&&Class->GetSuperClass()->GetSuperClass()==UK2Node_BaseMCDelegate::StaticClass():Class->GetSuperClass()==UK2Node_BaseMCDelegate::StaticClass());
     if(!Loaded(Class)||!Super||!Class->HasAnyClassFlags(CLASS_Native)||Class->ClassGeneratedBy||Class->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)) { Fail(R,TEXT("dispatcher_node_class_unavailable"),TEXT("Exact loaded native delegate derived class required; no unexported derived imports or forced module load."));return R; }
     const TStrongObjectPtr<UClass> KeepClass(Class);const auto ClassBefore=Source(Class,R);R.Data->SetObjectField(TEXT("node_class_source_before"),ClassBefore);TSharedRef<FJsonObject> Before=MakeShared<FJsonObject>();if(!BlueprintState(BP,Before,R)) { return R; }R.Data->SetObjectField(TEXT("before_blueprint_state"),Before);
-    R.Stage=TEXT("allocate_node");R.bMutationAttempted=true;R.bChangeStateKnown=false;Count(R,TEXT("node_allocation_calls"));auto* N=NewObject<UK2Node_BaseMCDelegate>(G,Class);Count(R,TEXT("node_allocation_returns"));const TStrongObjectPtr<UK2Node_BaseMCDelegate> KeepNode(N);R.Data->SetStringField(TEXT("allocated_node_path"),GetPathNameSafe(N));if(!N) { Fail(R,TEXT("dispatcher_node_allocation_failed"),TEXT("NewObject returnedNull; allocation prefix retained."));return R; }
-    const bool Self=!P->GetOwnerClass()||(BP->SkeletonGeneratedClass&&BP->SkeletonGeneratedClass->IsChildOf(P->GetOwnerClass()));R.Data->SetBoolField(TEXT("self_context"),Self);Count(R,TEXT("set_from_property_calls"));N->SetFromProperty(P,Self,P->GetOwnerClass());Count(R,TEXT("set_from_property_returns"));UEdGraphNode* Base=N;Count(R,TEXT("compatibility_calls"));const bool Compatible=Base->IsCompatibleWithGraph(G);R.Data->SetBoolField(TEXT("graph_compatible"),Compatible);
+    if(!Parents.Current())return R;R.Stage=TEXT("allocate_node");R.bMutationAttempted=true;R.bChangeStateKnown=false;Count(R,TEXT("node_allocation_calls"));auto* N=NewObject<UK2Node_BaseMCDelegate>(G,Class);Count(R,TEXT("node_allocation_returns"));if(GeneratedRequest)R.Data->SetBoolField(TEXT("generated_node_allocation_returned_nonnull"),N!=nullptr);if(!Parents.Current())return R;if(GeneratedRequest&&(!Loaded(N)||N->GetOuter()!=G))return Parents.Stop(TEXT("returned_node_lifetime_owner")),R;const TStrongObjectPtr<UK2Node_BaseMCDelegate> KeepNode(N);Parents.Added.Reset(N);R.Data->SetStringField(TEXT("allocated_node_path"),GetPathNameSafe(N));if(!Parents.Current())return R;if(!N) { Fail(R,TEXT("dispatcher_node_allocation_failed"),TEXT("NewObject returnedNull; allocation prefix retained."));return R; }
+    if(GeneratedRequest){P=Property(BP,FName(*Name),R);if(!P||!Loaded(P->GetOwnerClass())||!Loaded(P->SignatureFunction))return Parents.Stop(TEXT("current_delegate_before_binding")),R;}
+    const bool Self=!P->GetOwnerClass()||(BP->SkeletonGeneratedClass&&BP->SkeletonGeneratedClass->IsChildOf(P->GetOwnerClass()));R.Data->SetBoolField(TEXT("self_context"),Self);Count(R,TEXT("set_from_property_calls"));N->SetFromProperty(P,Self,P->GetOwnerClass());Count(R,TEXT("set_from_property_returns"));if(!Parents.Current())return R;UEdGraphNode* Base=N;Count(R,TEXT("compatibility_calls"));const bool Compatible=Base->IsCompatibleWithGraph(G);R.Data->SetBoolField(TEXT("graph_compatible"),Compatible);if(!Parents.Current())return R;
     if(!Compatible) { R.Data->SetObjectField(TEXT("allocated_node_prefix"),DescribeNode(Base));Fail(R,TEXT("dispatcher_graph_incompatible"),TEXT("Original refusal follows node allocation and reference assignment. No added Destroy/atomic cleanup."));return R; }
-    Base->NodePosX=XY[0];Base->NodePosY=XY[1];R.Stage=TEXT("place_node");Count(R,TEXT("graph_add_node_calls"));G->AddNode(Base,true);Count(R,TEXT("new_guid_calls"));Base->CreateNewGuid();R.Data->SetStringField(TEXT("created_node_path"),Base->GetPathName());R.Data->SetStringField(TEXT("created_node_guid"),Base->NodeGuid.ToString(EGuidFormats::Digits));
+    Base->NodePosX=XY[0];Base->NodePosY=XY[1];R.Stage=TEXT("place_node");Count(R,TEXT("graph_add_node_calls"));Parents.AllowedDelta=1;G->AddNode(Base,true);if(!Parents.Current())return R;Count(R,TEXT("new_guid_calls"));Base->CreateNewGuid();if(!Parents.Current())return R;R.Data->SetStringField(TEXT("created_node_path"),Base->GetPathName());R.Data->SetStringField(TEXT("created_node_guid"),Base->NodeGuid.ToString(EGuidFormats::Digits));
     if(Assign)
     {
-        Count(R,TEXT("allocate_pins_calls"));Base->AllocateDefaultPins();R.Data->SetObjectField(TEXT("after_allocate_node"),DescribeNode(Base));
+        Count(R,TEXT("allocate_pins_calls"));Base->AllocateDefaultPins();if(!Parents.Current())return R;R.Data->SetObjectField(TEXT("after_allocate_node"),DescribeNode(Base));if(!Parents.Current())return R;
         if(!N->GetDelegatePin()||N->GetDelegatePin()->Direction!=EGPD_Input||N->GetDelegatePin()->PinType.PinCategory!=UEdGraphSchema_K2::PC_Delegate||!N->GetDelegatePin()->LinkedTo.IsEmpty()) { Observe(BP,G,Base,Before,nullptr,R);Fail(R,TEXT("dispatcher_assign_delegate_pin_unavailable"),TEXT("SDK Assign dereferences allocated delegate pin; unavailable pin preserves accepted node prefix without PostPlaced or cleanup."));return R; }
-        R.Stage=TEXT("post_placed_with_implicit_event");Count(R,TEXT("post_placed_calls"));Base->PostPlacedNewNode();Count(R,TEXT("post_placed_returns"));R.Data->SetObjectField(TEXT("after_post_placed_node"),DescribeNode(Base));TSet<FString> OldPaths;for(const auto& V:BeforeGraph->GetArrayField(TEXT("nodes"))) { OldPaths.Add(V->AsObject()->GetStringField(TEXT("object_path"))); }TArray<TSharedPtr<FJsonValue>> Prefix;for(UEdGraphNode* Candidate:G->Nodes) { if(Loaded(Candidate)&&!OldPaths.Contains(Candidate->GetPathName())) { Prefix.Add(MakeShared<FJsonValueObject>(DescribeNode(Candidate))); } }R.Data->SetArrayField(TEXT("post_placed_new_node_prefix"),Prefix);
+        R.Stage=TEXT("post_placed_with_implicit_event");Count(R,TEXT("post_placed_calls"));Parents.AllowedDelta=Assign?2:1;Base->PostPlacedNewNode();Count(R,TEXT("post_placed_returns"));if(!Parents.Current())return R;R.Data->SetObjectField(TEXT("after_post_placed_node"),DescribeNode(Base));if(!Parents.Current())return R;TSet<FString> OldPaths;for(const auto& V:BeforeGraph->GetArrayField(TEXT("nodes"))) { OldPaths.Add(V->AsObject()->GetStringField(TEXT("object_path"))); }TArray<TSharedPtr<FJsonValue>> Prefix;for(UEdGraphNode* Candidate:G->Nodes) { if(Loaded(Candidate)&&!OldPaths.Contains(Candidate->GetPathName())) { Prefix.Add(MakeShared<FJsonValueObject>(DescribeNode(Candidate)));if(!Parents.Current())return R; } }R.Data->SetArrayField(TEXT("post_placed_new_node_prefix"),Prefix);
     }
-    else { Count(R,TEXT("post_placed_calls"));Base->PostPlacedNewNode();Count(R,TEXT("post_placed_returns"));Count(R,TEXT("allocate_pins_calls"));Base->AllocateDefaultPins();Count(R,TEXT("reconstruct_calls"));Base->ReconstructNode(); }
-    if(Assign) { R.Stage=TEXT("mark_structural");Structural(BP,R); }else { Mark(BP,R); }
-    const bool Observed=Observe(BP,G,Base,Before,nullptr,R);auto* Current=Property(BP,FName(*Name),R);R.Data->SetObjectField(TEXT("property_after"),PropertyJson(Current,R));const auto SigAfter=Signature(Current?Current->SignatureFunction.Get():nullptr,R);R.Data->SetObjectField(TEXT("signature_after"),SigAfter);const auto ClassAfter=Source(Class,R);R.Data->SetObjectField(TEXT("node_class_source_after"),ClassAfter);const bool SourceSame=Equal(MakeShared<FJsonValueObject>(SigBefore),MakeShared<FJsonValueObject>(SigAfter))&&Equal(MakeShared<FJsonValueObject>(ClassBefore),MakeShared<FJsonValueObject>(ClassAfter));R.Data->SetBoolField(TEXT("native_class_signature_preserved"),SourceSame);
+    else { Count(R,TEXT("post_placed_calls"));Parents.AllowedDelta=Assign?2:1;Base->PostPlacedNewNode();Count(R,TEXT("post_placed_returns"));if(!Parents.Current())return R;Count(R,TEXT("allocate_pins_calls"));Base->AllocateDefaultPins();if(!Parents.Current())return R;Count(R,TEXT("reconstruct_calls"));Base->ReconstructNode();if(!Parents.Current())return R; }
+    if(Assign) { R.Stage=TEXT("mark_structural");Structural(BP,R); }else { Mark(BP,R); }if(!Parents.Current())return R;
+    const bool Observed=Observe(BP,G,Base,Before,nullptr,R);if(!Parents.Current())return R;auto* Current=Property(BP,FName(*Name),R);R.Data->SetObjectField(TEXT("property_after"),PropertyJson(Current,R));const auto SigAfter=Signature(Current?Current->SignatureFunction.Get():nullptr,R);if(!Parents.Current())return R;R.Data->SetObjectField(TEXT("signature_after"),SigAfter);const auto ClassAfter=Source(Class,R);R.Data->SetObjectField(TEXT("node_class_source_after"),ClassAfter);const bool SourceSame=Equal(MakeShared<FJsonValueObject>(SigBefore),MakeShared<FJsonValueObject>(SigAfter))&&Equal(MakeShared<FJsonValueObject>(ClassBefore),MakeShared<FJsonValueObject>(ClassAfter));R.Data->SetBoolField(TEXT("native_class_signature_preserved"),SourceSame);
     bool Pins=DelegatePins(N,Current,Clear,Assign,R),Compound=!Assign;UK2Node_CustomEvent* E=nullptr;
     if(Assign)
     {
         TArray<UK2Node_CustomEvent*> AddedEvents;TSet<FString> OldPaths;for(const auto& V:BeforeGraph->GetArrayField(TEXT("nodes"))) { OldPaths.Add(V->AsObject()->GetStringField(TEXT("object_path"))); }
         for(UEdGraphNode* Candidate:G->Nodes) { if(Candidate&&!OldPaths.Contains(Candidate->GetPathName())) { if(auto* Event=Cast<UK2Node_CustomEvent>(Candidate)) { AddedEvents.Add(Event); } } }
-        R.Data->SetNumberField(TEXT("implicit_custom_events_observed"),AddedEvents.Num());TArray<TSharedPtr<FJsonValue>> Events;for(auto* Event:AddedEvents) { auto J=DescribeNode(Event);J->SetObjectField(TEXT("event_details"),EventDetails(Event,R));Events.Add(MakeShared<FJsonValueObject>(J)); }R.Data->SetArrayField(TEXT("implicit_custom_event_prefix"),Events);
+        R.Data->SetNumberField(TEXT("implicit_custom_events_observed"),AddedEvents.Num());TArray<TSharedPtr<FJsonValue>> Events;for(auto* Event:AddedEvents) { const TStrongObjectPtr<UK2Node_CustomEvent> HoldEvent(Event);auto J=DescribeNode(Event);if(!Parents.Current())return R;J->SetObjectField(TEXT("event_details"),EventDetails(Event,R));if(!Parents.Current())return R;Events.Add(MakeShared<FJsonValueObject>(J)); }R.Data->SetArrayField(TEXT("implicit_custom_event_prefix"),Events);
         if(AddedEvents.Num()==1) { E=AddedEvents[0];UEdGraphNode* EventBase=E;auto* In=N->GetDelegatePin();auto* Out=EventBase->FindPin(UK2Node_Event::DelegateOutputName,EGPD_Output);Compound=TypedEvent(E,ParamNames,ParamTypes,true,R)&&In&&Out&&In->LinkedTo.Num()==1&&Out->LinkedTo.Num()==1&&In->LinkedTo[0]==Out&&Out->LinkedTo[0]==In&&E->NodePosX==EventXY[0]&&E->NodePosY==EventXY[1]&&E->HasAnyFlags(RF_Transactional); }
         R.Data->SetBoolField(TEXT("assign_event_link_verified"),Compound);R.Data->SetNumberField(TEXT("expected_event_x"),EventXY[0]);R.Data->SetNumberField(TEXT("expected_event_y"),EventXY[1]);
     }
-    Legacy(Base,BP,G,KindName,Name,Current?Current->SignatureFunction.Get():nullptr,R);
+    Legacy(Base,BP,G,KindName,Name,Current?Current->SignatureFunction.Get():nullptr,R);if(!Parents.Current()||(GeneratedRequest&&!Parents.Final()))return R;
     if(!Observed) { return R; }if(!Current||N->GetProperty()!=Current||N->GetDelegateSignature()!=Current->SignatureFunction||!Pins||!Compound||!SourceSame||Base->GetClass()!=Class||Base->NodePosX!=XY[0]||Base->NodePosY!=XY[1]||G->GraphGuid!=GraphGuid||R.Data->GetNumberField(TEXT("observed_new_node_count"))!=(Assign?2:1)) { Fail(R,TEXT("dispatcher_lifecycle_postcondition_failed"),TEXT("Actual selected delegate/event/signature/link/position prefix differs; no automatic Destroy/rollback/compile/save."));return R; }
     R.bSuccess=R.bPostconditionPassed=true;R.Stage=TEXT("complete");return R;
 }

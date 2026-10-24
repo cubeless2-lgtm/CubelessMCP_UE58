@@ -13,6 +13,7 @@ import time
 
 from cubeless_mcp_ue58.compatibility.ue58 import batch as engine
 from cubeless_mcp_ue58.compatibility.ue58.blueprint import ensure_editor_idle
+from cubeless_mcp_ue58.compatibility.ue58.json_value import number_to_legacy_string, try_get_legacy_bool
 from . import blueprint, graph, component, variables, graph_variables, functions, blueprint_duplicates, events, pin_defaults
 from .state import OperationError, checkpoint, fail, mutate, new_result
 
@@ -47,6 +48,74 @@ def _map_function_action(result, **arguments):
 def _array_function_action(result, **arguments):
     from .arrays import add_blueprint_array_function_node_action
     return add_blueprint_array_function_node_action(result, **arguments)
+
+
+def _status_window_action(result, checkpoint_callback=None, **arguments):
+    from .status_window import show_ieta_connection_status_action
+    return show_ieta_connection_status_action(result, checkpoint_callback=checkpoint_callback, **arguments)
+
+
+def _status_window_observation(row):
+    child = row["response"]
+    data = child["data"]
+    dispatched = data.get("native_dispatched") is True
+    unknown = (dispatched and data.get("ui_state_known") is not True
+        or data.get("parent_receiver_or_context_lost") is True
+        or data.get("batch_transaction_scope_lost") is True)
+    row.update(status="success" if child["success"] else "error",
+        mutation_attempted=False, mutation_performed=False,
+        mutation_state_unknown=bool(unknown), mutation_state_scope="editor_status_UI_only",
+        asset_mutation_attempted=False, ui_call_dispatched=dispatched,
+        ui_state_known=data.get("ui_state_known") is True,
+        ui_changed=data.get("ui_changed") if not unknown else None,
+        full_engine_effect_state_verified=False,
+        command_may_still_be_in_flight=False,
+        error=child["error"], error_code=child["error_code"])
+
+
+def _status_window_legacy_params(params):
+    # Bridge reads only these two optional TryGetString fields; progress and
+    # unknown keys are ignored, including names of private adapter fields.
+    values = {"text": "", "command": "", "progress": 1.0}
+    for key in ("text", "command"):
+        value = params.get(key)
+        if type(value) is str:values[key] = value
+        elif type(value) is bool:values[key] = "true" if value else "false"
+        elif type(value) in (int, float):values[key] = number_to_legacy_string(value)
+    return values
+
+
+def _ai_behavior_inspection_action(result, checkpoint_callback=None, **arguments):
+    from . import ai_behavior_inspection
+    prepared = ai_behavior_inspection._arguments(**arguments)
+    def observe(observed, stage):
+        if observed["data"].get("native_result_returned") is True:
+            observed["stage"] = "returned_ai_behavior_inspection_operation"
+        if checkpoint_callback:checkpoint_callback(observed)
+    return ai_behavior_inspection._action(result, prepared, observe)
+
+
+def _ai_discovery_search_action(result, **arguments):
+    """Existing public Search core; adapt its read callback to this parent."""
+    from . import ai_discovery
+    parent_checkpoint = arguments.pop("checkpoint_callback", None)
+    def observe(observed, stage=None):
+        data = observed["data"]
+        unknown = data.get("read_outcome_unknown") is True
+        data.update(change_state_known=not unknown, mutation_state_unknown=unknown)
+        if unknown:data["mutation_performed"] = None
+        observed["stage"] = stage or "returned_ai_discovery_read"
+        if parent_checkpoint:parent_checkpoint(observed)
+    try:
+        return ai_discovery.search_ai_behavior_tree_node_classes_action(result,
+            **arguments, checkpoint_callback=observe)
+    finally:
+        # A failed SDK observation is not proof of zero metadata/cache effects.
+        # No retry or next Batch command is allowed after an unknown receipt.
+        data = result["data"]
+        unknown = data.get("read_outcome_unknown") is True
+        data.update(change_state_known=not unknown, mutation_state_unknown=unknown)
+        if unknown:data["mutation_performed"] = None
 
 
 def _ai_action(name):
@@ -193,6 +262,27 @@ def _audio_action(name):
 def _blueprint_make_struct_action(result, **arguments):
     from .blueprint_make_struct import add_blueprint_make_struct_node_action
     return add_blueprint_make_struct_node_action(result, **arguments)
+
+
+def _volume_texture_batch_action(result, checkpoint_callback=None, **arguments):
+    result["data"].update(native_mutation_attempted=False, mutation_performed=False,
+        mutation_state_unknown=False, native_dispatched=False)
+    raise OperationError("batch_volume_texture_official_async_required",
+        "Volume texture Batch jobs require the official async execute_batch route; synchronous Direct completion remains incomplete")
+
+
+def _skeletal_read_action(name):
+    def dispatch(result, **arguments):
+        from . import skeletal
+        return getattr(skeletal, name + "_action")(result, **arguments)
+    return dispatch
+
+
+def _material_graph_action(name):
+    def dispatch(result, checkpoint_callback=None, **arguments):
+        from . import material
+        return material._batch_graph_action(result, name, arguments, checkpoint_callback)
+    return dispatch
 
 
 def _material_compilation_action(result, **arguments):
@@ -1216,17 +1306,36 @@ def _custom_event_signature_action(result, **arguments):
 # UY: direct domain actions only; these are not calls to a guarded Named Toolset.
 _ACTOR_BATCH_TOOLS = (
     "CubelessActorTools.delete_actor", "CubelessActorTools.set_actor_transform",
-    "CubelessActorTools.set_actor_transform_original", "CubelessActorTools.spawn_blueprint_actor")
+    "CubelessActorTools.set_actor_transform_original", "CubelessActorTools.spawn_blueprint_actor",
+    "CubelessActorTools.spawn_actor", "CubelessActorTools.create_actor")
+_ACTOR_BATCH_READ_TOOLS = (
+    "CubelessActorTools.get_actors_in_level", "CubelessActorTools.find_actors_by_name",
+    "CubelessActorTools.get_actor_properties")
 
 
 def _actor_batch_action(method):
-    if method not in ("delete_actor", "set_actor_transform", "set_actor_transform_original", "spawn_blueprint_actor"):
-        raise OperationError("batch_actor_action_invalid", "Only the original three Actor operations and distinct current transform adapter are admitted")
+    if method not in ("delete_actor", "set_actor_transform", "set_actor_transform_original", "spawn_blueprint_actor",
+            "spawn_actor", "create_actor", "get_actors_in_level", "find_actors_by_name", "get_actor_properties"):
+        raise OperationError("batch_actor_action_invalid", "Only the fixed original Actor actions and current transform adapter are admitted")
     def dispatch(result, **arguments):
         from . import actor
         parent_checkpoint = arguments.pop("checkpoint_callback", None)
         try:
+            if method == "create_actor":
+                return actor.spawn_actor_action(result, **arguments, checkpoint_callback=parent_checkpoint, identity="create_actor")
             return getattr(actor, method + "_action")(result, **arguments, checkpoint_callback=parent_checkpoint)
+        except Exception as error:
+            if method in ("spawn_actor", "create_actor", "get_actors_in_level", "find_actors_by_name", "get_actor_properties"):
+                # A missing/malformed Native receipt is not evidence of a zero-effect read.
+                # Pure Python argument validation and unavailable bindings never entered SDK.
+                stage = result.get("stage")
+                pure_error = getattr(error, "code", "") in ("invalid_actor_input", "invalid_actor_vector",
+                    "actor_type_unsupported", "native_actor_api_unavailable")
+                if not pure_error and type(result["data"].get("native_outcome")) is not dict and (
+                        stage == "native_read" or stage == "native_mutation" or
+                        stage == "before_snapshot" and "before_snapshot" not in result["data"]):
+                    result["data"]["actor_batch_dispatch_unknown"] = True
+            raise
         finally:
             native = result["data"].get("native_outcome")
             if type(native) is dict:
@@ -1291,7 +1400,7 @@ def _actor_batch_observation(row):
         attempted = any(change.get("attempted") is True for change in child["changes"])
         performed = None if attempted else False
         in_flight = child["data"].get("command_may_still_be_in_flight") is True
-        unknown = attempted or in_flight
+        unknown = attempted or in_flight or child["data"].get("actor_batch_dispatch_unknown") is True
     row.update(status="success" if child["success"] else "error", mutation_attempted=attempted,
         mutation_performed=performed, mutation_state_unknown=unknown,
         command_may_still_be_in_flight=in_flight, error=child["error"], error_code=child["error_code"])
@@ -1305,6 +1414,27 @@ def _python_execution_action(method):
 
 
 _CAPABILITIES = {
+    "CubelessStatusWindowTools.show_ieta_connection_status": _entry(_status_window_action, "ui_only", {
+        "text": ((str,), "흥, Unreal MCP 연결은 확인했어."),
+        "command": ((str,), "이에타"), "progress": ((int, float), 1.0)}),
+    "CubelessAITools.inspect_ai_behavior_assets": _entry(_ai_behavior_inspection_action, "read_load", {
+        "behavior_tree_path": ((str,), "/Game/Cubeless/AI/Smoke/BT_AIDummyPatrolChase.BT_AIDummyPatrolChase"),
+        "blackboard_path": ((str,), "/Game/Cubeless/AI/Smoke/BB_AIDummyPatrolChase.BB_AIDummyPatrolChase"),
+        "timeout_seconds": ((int,), 60)}),
+    "CubelessActorTools.get_actors_in_level": _entry(_actor_batch_action("get_actors_in_level"), "read_world", {
+        "expected_level_path": ((str, type(None)), None)}),
+    "CubelessActorTools.find_actors_by_name": _entry(_actor_batch_action("find_actors_by_name"), "read_world", {
+        "pattern": _S, "expected_level_path": ((str, type(None)), None)}),
+    "CubelessActorTools.get_actor_properties": _entry(_actor_batch_action("get_actor_properties"), "read_world", {
+        "name": _S, "expected_level_path": ((str, type(None)), None)}),
+    "CubelessActorTools.spawn_actor": _entry(_actor_batch_action("spawn_actor"), "write", {
+        "name": _S, "type": _S, "location_json": ((str,), "[0,0,0]"),
+        "rotation_json": ((str,), "[0,0,0]"), "scale_json": ((str,), "[1,1,1]"),
+        "expected_level_path": ((str, type(None)), None)}),
+    "CubelessActorTools.create_actor": _entry(_actor_batch_action("create_actor"), "write", {
+        "name": _S, "type": _S, "location_json": ((str,), "[0,0,0]"),
+        "rotation_json": ((str,), "[0,0,0]"), "scale_json": ((str,), "[1,1,1]"),
+        "expected_level_path": ((str, type(None)), None)}),
     "CubelessActorTools.delete_actor": _entry(_actor_batch_action("delete_actor"), "write", {
         "name": _S, "expected_level_path": ((str, type(None)), None)}),
     "CubelessActorTools.set_actor_transform": _entry(_actor_batch_action("set_actor_transform"), "write", {
@@ -1507,6 +1637,42 @@ _CAPABILITIES = {
         "asset_path": _S, "properties": ((dict,), _REQUIRED), "save": ((bool,), True)}),
     "CubelessDataAssetTools.create_data_asset": _entry(_data_asset_action("create_data_asset"), "write", {
         "asset_path": _S, "class_path": _S, "save": ((bool,), True)}),
+    "CubelessSkeletalTools.list_skeleton_bones": _entry(_skeletal_read_action("list_skeleton_bones"), "read_load", {
+        "skeleton_path": _S, "bone_name_contains": ((str,), ""), "max_bones": ((int,), 500)}),
+    "CubelessSkeletalTools.list_skeletal_sockets": _entry(_skeletal_read_action("list_skeletal_sockets"), "read_load", {
+        "skeleton_path": _S}),
+    'CubelessVolumeTextureTools.create_volume_texture_from_2d_sheet_mcp': _entry(_volume_texture_batch_action, "write", {
+        'source_texture_path': ((str,), _REQUIRED), 'target_volume_texture_path': ((str,), _REQUIRED), 'tile_size_x': ((int,), 128), 'tile_size_y': ((int,), 128), 'dry_run': ((bool,), False), 'overwrite_existing': ((bool,), False), 'save_asset': ((bool,), True), 'srgb': ((bool, type(None)), None), 'compression_settings': ((str,), 'TC_VectorDisplacementmap'), 'mip_gen_settings': ((str,), 'TMGS_NoMipmaps'), 'never_stream': ((bool,), True), 'virtual_texture_streaming': ((bool,), False), 'address_mode': ((str,), 'TA_Wrap')}),
+    'CubelessVolumeTextureTools.create_volume_texture_from_raw_rgba16_sheet_mcp': _entry(_volume_texture_batch_action, "write", {
+        'raw_file_path': ((str,), _REQUIRED), 'source_texture_path': ((str,), _REQUIRED), 'target_volume_texture_path': ((str,), _REQUIRED), 'sheet_size_x': ((int,), 2048), 'sheet_size_y': ((int,), 1024), 'tile_size_x': ((int,), 128), 'tile_size_y': ((int,), 128), 'dry_run': ((bool,), False), 'overwrite_existing': ((bool,), False), 'save_assets': ((bool,), True), 'srgb': ((bool,), False), 'source_compression_settings': ((str,), 'TC_Default'), 'volume_compression_settings': ((str,), 'TC_VectorDisplacementmap'), 'source_mip_gen_settings': ((str,), 'TMGS_FromTextureGroup'), 'volume_mip_gen_settings': ((str,), 'TMGS_NoMipmaps'), 'never_stream_volume': ((bool,), True), 'virtual_texture_streaming': ((bool,), False), 'address_mode': ((str,), 'TA_Wrap')}),
+    "CubelessMaterialTools.analyze_material_graph": _entry(_material_graph_action("analyze_material_graph"), "read_load", {
+        "material_path": _S, "graph_type": ((str,), "auto"), "include_nodes": ((bool,), False),
+        "include_usage": ((bool,), True), "max_referencers": ((int,), 25)}),
+    "CubelessMaterialTools.list_material_collection_parameter_nodes": _entry(_material_graph_action("list_material_collection_parameter_nodes"), "read_load", {
+        "material_path": _S, "graph_type": ((str,), "auto")}),
+    "CubelessMaterialTools.get_material_parameter_collection_values": _entry(_material_graph_action("get_material_parameter_collection_values"), "read_load", {
+        "collection_path": _S, "parameter_names": ((list, type(None)), None),
+        "include_asset_defaults": ((bool,), True), "include_runtime": ((bool,), True)}),
+    "CubelessMaterialTools.add_custom_material_node": _entry(_material_graph_action("add_custom_material_node"), "write", {
+        "material_path": _S, "code": _S, "output_type": ((str,), "CMOT_Float3"), "inputs_json": ((str,), "[]"),
+        "description": ((str, type(None)), None), "graph_type": ((str,), "auto"), "node_position_json": ((str,), "[0,0]"),
+        "additional_defines_json": ((str,), "[]"), "include_file_paths_json": ((str,), "[]")}),
+    "CubelessMaterialTools.resolve_material_graph": _entry(_material_graph_action("resolve_material_graph"), "read_load", {
+        "material_path": _S, "graph_type": ((str,), "auto")}),
+    "CubelessMaterialTools.list_material_nodes": _entry(_material_graph_action("list_material_nodes"), "read_load", {
+        "material_path": _S, "graph_type": ((str,), "auto"), "node_type": ((str,), ""), "desc_contains": ((str,), ""), "include_pins": ((bool,), True)}),
+    "CubelessMaterialTools.add_material_node": _entry(_material_graph_action("add_material_node"), "write", {
+        "material_path": _S, "expression_class": _S, "graph_type": ((str,), "auto"), "node_position": ((list, type(None)), None), "selected_asset": ((str, type(None)), None), "properties_json": ((str, type(None)), None)}),
+    "CubelessMaterialTools.set_material_node_property": _entry(_material_graph_action("set_material_node_property"), "write", {
+        "material_path": _S, "node_id": _S, "property_name": _S, "value_json": _S, "graph_type": ((str,), "auto")}),
+    "CubelessMaterialTools.connect_material_nodes": _entry(_material_graph_action("connect_material_nodes"), "write", {
+        "material_path": _S, "from_node_id": _S, "to_node_id": _S, "to_input": _S, "from_output": ((str,), ""), "graph_type": ((str,), "auto")}),
+    "CubelessMaterialTools.connect_material_property": _entry(_material_graph_action("connect_material_property"), "write", {
+        "material_path": _S, "from_node_id": _S, "property": _S, "from_output": ((str,), "")}),
+    "CubelessMaterialTools.delete_material_node": _entry(_material_graph_action("delete_material_node"), "write", {
+        "material_path": _S, "node_id": _S, "graph_type": ((str,), "auto")}),
+    "CubelessMaterialTools.layout_material_nodes": _entry(_material_graph_action("layout_material_nodes"), "write", {
+        "material_path": _S, "graph_type": ((str,), "auto")}),
     "CubelessMaterialTools.compile_and_save_material": _entry(_material_compilation_action, "write", {
         "material_path": _S, "graph_type": ((str,), "auto"), "save": ((bool,), True)}),
     "CubelessDataTableTools.get_datatable_schema": _entry(_datatable_action("get_datatable_schema"), "read_load", {
@@ -1559,6 +1725,11 @@ _CAPABILITIES = {
     "CubelessAudioTools.create_basic_metasound_source": _entry(_audio_action("create_basic_metasound_source"), "write", {
         "name": _S, "package_path": ((str,), "/Game/Audio/MetaSounds"), "oscillator": ((str,), "sine"),
         "frequency": ((int, float), 440.0), "output_format": ((str,), "mono")}),
+    "CubelessAITools.search_ai_behavior_tree_node_classes": _entry(
+        _ai_discovery_search_action, "read", {
+            "category": ((str,), "all"), "query": ((str,), ""),
+            "include_abstract": ((bool,), False), "max_results": ((int,), 200),
+            "timeout_seconds": ((int,), 60)}),
     "CubelessAITools.remove_ai_blackboard_key": _entry(
         _ai_action("remove_ai_blackboard_key"), "write", {
             "blackboard_path": _S, "key_name": _S,
@@ -3782,7 +3953,7 @@ _CAPABILITIES = {
         'field_actor_name': ((str,), 'Chaos_AnchorField'),
         'box_center': ((list, type(None)), None),
         'box_extent': ((list, type(None)), None),
-        'field_magnitude': ((int,), 1),
+        'field_magnitude': ((int,), 2),
         'save_level': ((bool,), True),
     }),
     "CubelessChaosTraceStrainTools.trigger_trace_external_strain": _entry(_chaos_trace_strain_action("trigger_trace_external_strain"), "runtime_write", {
@@ -4390,13 +4561,11 @@ def _rigvm_topology_legacy_paths(params, error_code="rigvm_topology_legacy_scala
 def _rigvm_link_validation_legacy_params(params):
     values = _rigvm_topology_legacy_paths(params, "rigvm_link_validation_legacy_scalar_path_unsupported")
     # Original key presence, including null, masks the hidden enable_type_casting alias.
-    # Preserve valid hidden booleans; do not approximate UE FString/number/invalid AsBool coercion.
+    # Original HasField/GetBoolField: present unconvertible JSON initializes false,
+    # including when the omitted-field default is true. Canonical types stay exact.
     if "allow_type_casting" not in values and "enable_type_casting" in values:
-        alias = values["enable_type_casting"]
-        if type(alias) is not bool:
-            raise OperationError("rigvm_link_validation_legacy_bool_coercion_unsupported",
-                "Legacy nonboolean enable_type_casting coercion is unsupported; use an explicit boolean. No action executed.")
-        values["allow_type_casting"] = alias
+        read_success, alias = try_get_legacy_bool(values["enable_type_casting"])
+        values["allow_type_casting"] = alias if read_success else False
     values.pop("enable_type_casting", None)
     return values
 
@@ -4405,20 +4574,16 @@ def _rigvm_link_writer_legacy_params(params):
     values = _rigvm_topology_legacy_paths(params, "rigvm_link_writer_legacy_scalar_path_unsupported")
     for formal, alias in (("allow_type_casting", "enable_type_casting"), ("save_asset", "save")):
         if formal not in values and alias in values:
-            if type(values[alias]) is not bool:
-                raise OperationError("rigvm_link_writer_legacy_bool_coercion_unsupported",
-                    "Legacy nonboolean alias coercion is unsupported; use exact booleans. No action executed.")
-            values[formal] = values[alias]
+            read_success, converted = try_get_legacy_bool(values[alias])
+            values[formal] = converted if read_success else False
         values.pop(alias, None)
     # Original dry_run OR validate_only short-circuits a true formal dry_run.
     # Invalid formal types remain for normal schema rejection; an alias cannot mask them.
     if "validate_only" in values:
         dry = values.get("dry_run", False)
         if type(dry) is bool and not dry:
-            if type(values["validate_only"]) is not bool:
-                raise OperationError("rigvm_link_writer_legacy_bool_coercion_unsupported",
-                    "Legacy nonboolean validate_only coercion is unsupported; use an exact boolean. No action executed.")
-            values["dry_run"] = values["validate_only"]
+            read_success, converted = try_get_legacy_bool(values["validate_only"])
+            values["dry_run"] = converted if read_success else False
         values.pop("validate_only", None)
     return values
 
@@ -4427,20 +4592,16 @@ def _rigvm_pin_default_writer_legacy_params(params):
     values = _rigvm_topology_legacy_paths(params, "rigvm_pin_default_writer_legacy_scalar_path_unsupported")
     for formal, alias in (("save_asset", "save"),):
         if formal not in values and alias in values:
-            if type(values[alias]) is not bool:
-                raise OperationError("rigvm_pin_default_writer_legacy_bool_coercion_unsupported",
-                    "Legacy nonboolean alias coercion is unsupported; use exact booleans. No action executed.")
-            values[formal] = values[alias]
+            read_success, converted = try_get_legacy_bool(values[alias])
+            values[formal] = converted if read_success else False
         values.pop(alias, None)
     # Original dry_run OR validate_only short-circuits a true formal dry_run.
     # Invalid formal types remain for normal schema rejection; an alias cannot mask them.
     if "validate_only" in values:
         dry = values.get("dry_run", False)
         if type(dry) is bool and not dry:
-            if type(values["validate_only"]) is not bool:
-                raise OperationError("rigvm_pin_default_writer_legacy_bool_coercion_unsupported",
-                    "Legacy nonboolean validate_only coercion is unsupported; use an exact boolean. No action executed.")
-            values["dry_run"] = values["validate_only"]
+            read_success, converted = try_get_legacy_bool(values["validate_only"])
+            values["dry_run"] = converted if read_success else False
         values.pop("validate_only", None)
     # Shared UE56 parser tries hidden pins only when neither public array is selected.
     if type(values.get("pin_defaults")) is not list and type(values.get("defaults")) is not list and "pins" in values:
@@ -4471,6 +4632,2222 @@ def _controlrig_transient_probe_legacy_params(params):
     return values
 
 
+_VOLUME_TEXTURE_LEGACY_COMMANDS = {name: "CubelessVolumeTextureTools." + name for name in (
+    "create_volume_texture_from_2d_sheet_mcp", "create_volume_texture_from_raw_rgba16_sheet_mcp")}
+
+
+def _volume_texture_legacy_params(command, params):
+    """ProjectCommands696..749 and Volume2 raw defaults, not canonical coercion.
+
+    Boolean fields use HasTypedField<Boolean>, not TryGetBool. The 2D srgb None
+    carrier deliberately preserves omission/source.SRGB in the existing SDK.
+    Numeric strings and out-of-range rounding remain explicit unsupported raw
+    variants; no Python parser substitutes for FString.IsNumeric/TCString.Atod.
+    """
+    fields = _CAPABILITIES[_VOLUME_TEXTURE_LEGACY_COMMANDS[command]]["fields"]
+    values = {}
+    error = None
+    for key, (types, default) in fields.items():
+        value = params.get(key)
+        fallback = "" if default is _REQUIRED else copy.deepcopy(default)
+        values[key] = fallback
+        if key not in params:
+            if default is _REQUIRED and error is None:
+                error = {"code": "batch_volume_texture_raw_variant_pending",
+                    "message": "Missing required parameter: " + key}
+            continue
+        if types == (bool,) or types == (bool, type(None)):
+            # Non-Boolean, including null/number/string, retains original default.
+            if type(value) is bool:
+                values[key] = value
+            continue
+        if types == (int,):
+            if value is None or type(value) in (list, dict):
+                continue  # Base FJsonValue::TryGetNumber fails; keep default.
+            try:
+                if type(value) not in (bool, int, float):
+                    raise ValueError("numeric string parsing remains incomplete")
+                number = float(value)  # Original DOM double; Boolean TryGetNumber is 0/1.
+                if not math.isfinite(number):
+                    raise ValueError("finite double required")
+                rounded = math.floor(number + 0.5)  # FMath::RoundToInt(double), not Python round.
+                if not -(2 ** 31) <= rounded < 2 ** 31:
+                    raise ValueError("original rounding/narrowing outside int32 remains incomplete")
+                values[key] = max(0, rounded)
+            except (ValueError, OverflowError) as failure:
+                if error is None:
+                    error = {"code": "batch_volume_texture_raw_variant_pending",
+                        "message": "Original dimension conversion for '" + key + "' is incomplete: " + str(failure)}
+            continue
+        if types == (str,):
+            try:
+                if type(value) is str:
+                    text = value
+                elif type(value) is bool:
+                    text = "true" if value else "false"
+                elif type(value) in (int, float):
+                    text = number_to_legacy_string(value)
+                else:
+                    text = ""  # TryGetString fails for null/array/object.
+                if default is _REQUIRED:
+                    values[key] = text.strip()
+                    if not values[key] and error is None:
+                        error = {"code": "batch_volume_texture_raw_variant_pending",
+                            "message": "Missing required parameter: " + key}
+                elif text != "":
+                    values[key] = text  # Optional GetStringParam keeps whitespace, defaults empty.
+            except OperationError as failure:
+                if error is None:
+                    error = {"code": "batch_volume_texture_raw_variant_pending",
+                        "message": "Original string conversion for '" + key + "' is incomplete: " + str(failure)}
+            continue
+        if error is None:
+            error = {"code": "batch_volume_texture_raw_variant_pending",
+                "message": "Original volume texture raw variant for '" + key + "' remains incomplete"}
+    return values, error
+
+
+_ACTOR_CORE_LEGACY_COMMANDS = {name: "CubelessActorTools." + name for name in (
+    "spawn_actor", "create_actor", "get_actors_in_level", "find_actors_by_name", "get_actor_properties")}
+
+
+def _actor_core_legacy_params(command, params):
+    """Original actor core fields only; keep new scoped public guard out of raw input."""
+    fields = _CAPABILITIES[_ACTOR_CORE_LEGACY_COMMANDS[command]]["fields"]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    required = (("type", "name") if command in ("spawn_actor", "create_actor") else
+        ("pattern",) if command == "find_actors_by_name" else ("name",) if command == "get_actor_properties" else ())
+    error = None
+    for key in required:
+        value = params.get(key)
+        if type(value) is str:values[key] = value
+        elif type(value) is bool:values[key] = "true" if value else "false"
+        elif type(value) in (int, float):
+            try:
+                values[key] = number_to_legacy_string(value)
+            except Exception as failure:
+                if error is None:
+                    error = {"code": "batch_actor_string_conversion_pending",
+                        "message": "Original numeric string conversion for '" + key + "' was not completed: " + str(failure)}
+        elif error is None:error = {"message": "Missing '" + key + "' parameter"}
+    if command in ("spawn_actor", "create_actor"):
+        try:
+            values.update(_actor_spawn_legacy_params({key:params[key] for key in ("location", "rotation", "scale") if key in params}))
+        except OperationError as failure:
+            if error is None:error = {"code": failure.code, "message": str(failure)}
+    return values, error
+
+
+_SKELETAL_READ_LEGACY_COMMANDS = {
+    "list_skeleton_bones": "CubelessSkeletalTools.list_skeleton_bones",
+    "list_skeletal_sockets": "CubelessSkeletalTools.list_skeletal_sockets",
+}
+
+
+def _skeletal_read_legacy_params(command, params):
+    """The two original reads, not mesh-active sockets or a new skeleton API."""
+    values = {"skeleton_path": ""}
+    error = None
+    def original_string(key, default=None):
+        nonlocal error
+        value = params.get(key)
+        if type(value) is str:return value
+        if type(value) is bool:return "true" if value else "false"
+        if type(value) in (int, float):
+            try:
+                return number_to_legacy_string(value)
+            except Exception as failure:
+                if error is None:
+                    error = {"code": "batch_skeletal_string_conversion_pending",
+                        "message": "Original numeric string conversion for '" + key + "' was not completed: " + str(failure)}
+                return default
+        return default
+    path = original_string("skeleton_path")
+    if path is None or not path:
+        if error is None:
+            error = {"message": "Missing 'skeleton_path' parameter (Skeleton or SkeletalMesh path)"}
+    else:values["skeleton_path"] = path
+    if command == "list_skeleton_bones":
+        values.update(bone_name_contains=original_string("bone_name_contains", ""), max_bones=500)
+        value = params.get("max_bones")
+        # Original HasTypedField<Number> excludes Boolean/String/null, which keep 500.
+        if type(value) in (int, float):
+            try:
+                number = float(value)  # Original JSON number double, then explicit int32 cast.
+                if not math.isfinite(number) or not -(2 ** 31) <= math.trunc(number) < 2 ** 31:
+                    raise ValueError()
+                values["max_bones"] = min(4096, max(1, math.trunc(number)))
+            except (ValueError, OverflowError):
+                if error is None:
+                    error = {"code": "batch_skeletal_limit_conversion_pending",
+                        "message": "Original out-of-int32 max_bones conversion remains incomplete; supply a finite int32-range number"}
+    return values, error
+
+
+_SKELETAL_PHYSICS_LEGACY_COMMAND = "create_skeletal_physics_asset"
+_SKELETAL_PHYSICS_CANONICAL = "CubelessSkeletalPhysicsTools.create_skeletal_physics_asset"
+
+
+def _skeletal_physics_legacy_params(params):
+    """Original raw15 into the existing typed core; no generator, retry or child journal."""
+    fields = _CAPABILITIES[_SKELETAL_PHYSICS_CANONICAL]["fields"]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (_, default) in fields.items()}
+    error = None
+    def original_string(value):
+        if type(value) is str:return value
+        if type(value) is bool:return "true" if value else "false"
+        if type(value) in (int, float):return number_to_legacy_string(value)
+        return None
+    for key in ("skeletal_mesh_path", "target_physics_asset_path"):
+        try:
+            value = original_string(params.get(key))
+            if value is None or value == "":
+                if error is None:error = {"message": "Missing '" + key + "' parameter"}
+            else:values[key] = value
+        except Exception as failure:
+            if error is None:error = {"code": "batch_skeletal_physics_string_conversion_pending", "message": "Original JSON string conversion for '" + key + "' was not completed: " + str(failure)}
+    raw = params.get("expected_bones")
+    if type(raw) is list:
+        converted = []
+        for item in raw:
+            try:
+                value = original_string(item)
+                if value is None or not value.strip():
+                    if error is None:error = {"code": "batch_skeletal_physics_bone_variant_pending", "message": "Original expected_bones validation follows source resolution; malformed raw bone entries remain incomplete"}
+                    break
+                converted.append(value)
+            except Exception as failure:
+                if error is None:error = {"code": "batch_skeletal_physics_string_conversion_pending", "message": "Original bone string conversion was not completed: " + str(failure)}
+                break
+        values["expected_bones"] = converted
+    if "kinematic_root_bone" in params:
+        try:
+            value = original_string(params["kinematic_root_bone"])
+            if value == "":
+                if error is None:error = {"code": "batch_skeletal_physics_root_variant_pending", "message": "Original explicitly empty kinematic_root_bone is invalid after source lookup; the typed core's omitted-root fallback must not replace it"}
+            elif value is not None:values["kinematic_root_bone"] = value
+        except Exception as failure:
+            if error is None:error = {"code": "batch_skeletal_physics_string_conversion_pending", "message": "Original root string conversion was not completed: " + str(failure)}
+    for key in ("dry_run", "overwrite_existing", "disable_collision", "root_kinematic", "save"):
+        if key not in params:continue
+        try:
+            read_success, converted = try_get_legacy_bool(params[key])
+            if read_success:values[key] = converted  # TryGetBool failure preserves the initialized original default.
+        except Exception as failure:
+            if error is None:error = {"code": "batch_skeletal_physics_boolean_conversion_pending", "message": "Original JSON boolean conversion for '" + key + "' was not completed: " + str(failure)}
+    # Original HasTypedField<Number> excludes Boolean/String/null/container values.
+    # Unchanged Native core owns float32 conversion, Clamp/Max and finite checks.
+    for key in ("swing1_limit_degrees", "swing2_limit_degrees", "twist_limit_degrees", "linear_damping", "angular_damping", "tip_mass_scale"):
+        if type(params.get(key)) in (int, float):values[key] = params[key]
+    return values, error
+
+
+_MATERIAL_GRAPH_LEGACY_COMMANDS = {name: "CubelessMaterialTools." + name for name in (
+    "resolve_material_graph", "list_material_nodes", "add_material_node", "set_material_node_property",
+    "connect_material_nodes", "connect_material_property", "delete_material_node", "layout_material_nodes",
+    "analyze_material_graph", "list_material_collection_parameter_nodes", "get_material_parameter_collection_values", "add_custom_material_node")}
+
+
+def _material_graph_legacy_params(command, params):
+    """Exact original required-field order; one JSON encoding, no child journal."""
+    fields = _CAPABILITIES[_MATERIAL_GRAPH_LEGACY_COMMANDS[command]]["fields"]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    required = {
+        "resolve_material_graph": ("material_path",), "list_material_nodes": ("material_path",),
+        "analyze_material_graph": ("material_path",), "list_material_collection_parameter_nodes": ("material_path",),
+        "get_material_parameter_collection_values": ("collection_path",), "add_custom_material_node": ("material_path", "code"),
+        "add_material_node": ("material_path", "expression_class"),
+        "set_material_node_property": ("material_path", "node_id", "property_name"),
+        "connect_material_nodes": ("material_path", "from_node_id", "to_node_id", "to_input"),
+        "connect_material_property": ("material_path", "from_node_id", "property"),
+        "delete_material_node": ("material_path", "node_id"), "layout_material_nodes": ("material_path",),
+    }[command]
+    error = None
+    def original_string(key):
+        nonlocal error
+        value = params.get(key)
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            try:
+                return number_to_legacy_string(value)
+            except Exception as failure:
+                if error is None:
+                    error = {"code": "batch_material_string_conversion_pending",
+                        "message": "Original numeric string conversion for '" + key + "' was not completed: " + str(failure)}
+                return ""
+        return None
+    for key in required:
+        value = original_string(key)
+        if value is None:
+            if error is None:
+                error = {"message": "Missing '" + key + "' parameter"}
+        else:
+            values[key] = value
+    for key in ("graph_type", "node_type", "desc_contains", "from_output", "selected_asset"):
+        if key in fields:
+            value = original_string(key)
+            values[key] = "" if value is None else value
+    if command == "add_custom_material_node":
+        if error is None and not values["code"].strip():error = {"message": "Custom material code cannot be empty"}
+        for key in ("output_type", "description"):
+            value = original_string(key)
+            if value is not None:values[key] = value
+        for key in ("inputs", "additional_defines", "include_file_paths"):
+            raw = params.get(key)
+            values[key + "_json"] = json.dumps(raw if type(raw) is list else [], ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        position, position_error = _material_graph_legacy_params("add_material_node",
+            {"material_path": values["material_path"], "expression_class": "", **({"node_position": params["node_position"]} if "node_position" in params else {})})
+        values["node_position_json"] = json.dumps(position["node_position"], separators=(",", ":"))
+        if error is None:error = position_error
+    if command in ("analyze_material_graph", "get_material_parameter_collection_values"):
+        keys = ("include_nodes", "include_usage") if command == "analyze_material_graph" else ("include_asset_defaults", "include_runtime")
+        for key in keys:
+            if key not in params:continue
+            value = params[key]
+            try:
+                read_success, converted = try_get_legacy_bool(value)
+                values[key] = converted if read_success else False  # Present GetBoolField failure initializes false, not the omitted-field default.
+            except Exception as failure:
+                if error is None:error = {"code": "batch_material_boolean_conversion_pending", "message": "Original JSON boolean conversion for '" + key + "' was not completed: " + str(failure)}
+    if command == "analyze_material_graph" and "max_referencers" in params:
+        raw = params["max_referencers"]
+        try:
+            if type(raw) not in (bool, int, float):raise ValueError()
+            number = float(raw)
+            if not math.isfinite(number) or not -(2 ** 31) <= math.trunc(number) < 2 ** 31:raise ValueError()
+            values["max_referencers"] = math.trunc(number)
+        except (ValueError, OverflowError):
+            if error is None:error = {"code": "batch_material_limit_conversion_pending", "message": "Original max_referencers AsNumber/int32 variants outside finite numeric values remain incomplete"}
+    if command == "get_material_parameter_collection_values":
+        values["parameter_names"] = []
+        raw = params.get("parameter_names")
+        if type(raw) is list:
+            for item in raw:
+                if type(item) is str:name = item.strip()
+                elif type(item) is bool:name = "true" if item else "false"
+                elif type(item) in (int, float):
+                    try:
+                        name = number_to_legacy_string(item)
+                    except Exception as failure:
+                        if error is None:error = {"code": "batch_material_string_conversion_pending", "message": "Original numeric parameter_names string conversion was not completed: " + str(failure)}
+                        continue
+                else:continue
+                if name:values["parameter_names"].append(name)
+    if command == "list_material_nodes":
+        value = params.get("include_pins", True)
+        try:
+            read_success, converted = try_get_legacy_bool(value)
+            values["include_pins"] = converted if read_success else False
+        except Exception as failure:
+            if error is None:
+                error = {"code": "batch_material_boolean_conversion_pending",
+                    "message": "Original JSON boolean include_pins conversion was not completed: " + str(failure)}
+    if command == "set_material_node_property":
+        if "value" not in params:
+            if error is None:
+                error = {"message": "Missing 'value' parameter"}
+            values["value_json"] = "null"  # Only a shape placeholder; never dispatched.
+        else:
+            values["value_json"] = json.dumps(params["value"], ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    if command == "add_material_node":
+        properties = params.get("properties")
+        values["properties_json"] = json.dumps(properties if type(properties) is dict else {},
+            ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        position = params.get("node_position")
+        values["node_position"] = [0, 0]
+        if type(position) is list and len(position) >= 2:
+            converted = []
+            for component in position[:2]:
+                try:
+                    if type(component) not in (int, float):
+                        raise ValueError()
+                    number = struct.unpack("f", struct.pack("f", float(component)))[0]
+                    if not math.isfinite(number) or not -(2 ** 31) <= math.trunc(number) < 2 ** 31:
+                        raise ValueError()
+                    converted.append(math.trunc(number))
+                except (ValueError, OverflowError, struct.error):
+                    if error is None:
+                        error = {"code": "batch_material_position_variant_pending",
+                            "message": "Original node_position conversion requires finite numeric float32 coordinates fitting int32; other original variants remain incomplete"}
+                    break
+            if len(converted) == 2:
+                values["node_position"] = converted
+        elif type(position) is str:
+            if error is None:
+                error = {"code": "batch_material_position_variant_pending",
+                    "message": "Original string node_position parsing remains incomplete; use two numeric coordinates"}
+    return values, error
+
+
+_AUDIO_LEGACY_COMMANDS = {
+    "audio_list_assets": "CubelessAudioTools.list_audio_assets",
+    "audio_inspect_asset": "CubelessAudioTools.inspect_audio_asset",
+    "audio_create_sound_cue_from_wave": "CubelessAudioTools.create_sound_cue_from_wave",
+    "audio_create_basic_metasound_source": "CubelessAudioTools.create_basic_metasound_source",
+}
+
+
+def _audio_legacy_params(command, params):
+    """Original Audio validators/Get* defaults; no Engine call or new capability.
+
+    Invalid original fields become an item failure at dispatch, so the original
+    stop_on_error policy applies. Unknown input keys are never internal metadata.
+    """
+    canonical = _AUDIO_LEGACY_COMMANDS[command]
+    fields = _CAPABILITIES[canonical]["fields"]
+    # Native validation order differs from the public wrapper's argument order.
+    order = {
+        "audio_list_assets": ("directory", "recursive", "max_results", "offset"),
+        "audio_inspect_asset": ("asset_path",),
+        "audio_create_sound_cue_from_wave": ("name", "package_path", "sound_wave_path"),
+        "audio_create_basic_metasound_source": ("name", "package_path", "oscillator", "output_format", "frequency"),
+    }[command]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    error = None
+    for key in order:
+        if key not in params:
+            continue
+        value = params[key]
+        types = fields[key][0]
+        expected = "string" if types == (str,) else "boolean" if types == (bool,) else "number"
+        valid_type = (type(value) is str if expected == "string" else type(value) is bool
+            if expected == "boolean" else type(value) in (int, float))
+        message = None
+        if not valid_type:
+            message = "'" + key + "' must be a JSON " + expected
+        elif expected == "number":
+            try:
+                number = float(value)  # The original JSON number is a double.
+            except (ValueError, OverflowError):
+                number = math.inf
+            integer = key in ("max_results", "offset")
+            if (not math.isfinite(number) or integer and
+                    (number != math.trunc(number) or not -(2 ** 31) <= number < 2 ** 31)):
+                message = "'" + key + "' must be a finite " + ("32-bit integer" if integer else "number")
+            else:
+                value = int(number) if integer else number
+        if message is not None:
+            if error is None:
+                error = {"code": "audio_invalid_parameter_type", "message": message}
+            continue
+        values[key] = value.strip() if expected == "string" else value
+    return values, error
+
+
+_STATE_TREE_LEGACY_COMMANDS = {
+    "state_tree_list_assets": "CubelessStateTreeTools.list_state_trees",
+    "state_tree_inspect_asset": "CubelessStateTreeTools.inspect_state_tree",
+    "state_tree_create_asset": "CubelessStateTreeTools.create_state_tree",
+    "state_tree_add_state": "CubelessStateTreeTools.add_state_tree_state",
+    "state_tree_compile_asset": "CubelessStateTreeTools.compile_state_tree",
+}
+
+
+def _state_tree_legacy_params(command, params):
+    """Preserve this provider's TryGet* and outer Add dry_run validation order."""
+    fields = _CAPABILITIES[_STATE_TREE_LEGACY_COMMANDS[command]]["fields"]
+    order = {
+        "state_tree_list_assets": ("directory", "recursive", "max_results", "offset"),
+        "state_tree_inspect_asset": ("asset_path", "max_states"),
+        "state_tree_create_asset": ("name", "package_path", "schema"),
+        "state_tree_add_state": ("dry_run", "asset_path", "state_name", "parent_path", "state_type", "selection_behavior"),
+        "state_tree_compile_asset": ("asset_path", "save"),
+    }[command]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    error = None
+    for raw_key in order:
+        if raw_key not in params:
+            continue
+        key = "schema_type" if raw_key == "schema" else raw_key
+        value = params[raw_key]
+        types = fields[key][0]
+        message = None
+        if types == (str,):
+            if type(value) is not str:
+                message = "'" + raw_key + "' must be a string"
+            else:
+                value = value.strip()
+        elif types == (bool,):
+            if type(value) is not bool:
+                message = "'" + raw_key + "' must be a boolean"
+        else:
+            try:
+                number = float(value) if type(value) in (int, float) else math.inf
+            except (ValueError, OverflowError):
+                number = math.inf
+            if (not math.isfinite(number) or number != math.trunc(number)
+                    or not -(2 ** 31) <= number < 2 ** 31):
+                message = "'" + raw_key + "' must be a finite 32-bit integer"
+            else:
+                value = int(number)
+        if message is not None:
+            if error is None:
+                error = {"code": "state_tree_command_failed", "message": message}
+            continue
+        values[key] = value
+    return values, error
+
+
+_AI_LEGACY_COMMANDS = {
+    "inspect_ai_behavior_assets": "CubelessAITools.inspect_ai_behavior_assets",
+    "ai_inspect_asset_structure": "CubelessAITools.inspect_ai_asset_structure",
+    "ai_create_blackboard_asset": "CubelessAITools.create_ai_blackboard_asset",
+    "ai_add_blackboard_key": "CubelessAITools.add_ai_blackboard_key",
+    "ai_remove_blackboard_key": "CubelessAITools.remove_ai_blackboard_key",
+    "ai_search_behavior_tree_node_classes": "CubelessAITools.search_ai_behavior_tree_node_classes",
+    "ai_create_behavior_tree_asset": "CubelessAITools.create_ai_behavior_tree_asset",
+    "ai_set_behavior_tree_blackboard": "CubelessAITools.set_ai_behavior_tree_blackboard",
+    "ai_create_eqs_query": "CubelessAITools.create_ai_eqs_query",
+    "create_ai_patrol_chase_behavior_assets": "CubelessAITools.create_ai_patrol_chase_behavior_assets",
+    "configure_ai_controller_perception": "CubelessAITools.configure_ai_controller_perception",
+}
+
+
+def _ai_legacy_params(command, params):
+    """Original AI Strings-then-Bools validators and native Get* defaults."""
+    fields = _CAPABILITIES[_AI_LEGACY_COMMANDS[command]]["fields"]
+    order = {
+        "ai_inspect_asset_structure": ("asset_path",),
+        "inspect_ai_behavior_assets": ("behavior_tree_path", "blackboard_path"),
+        "ai_create_blackboard_asset": ("asset_root", "asset_name", "save_asset"),
+        "ai_add_blackboard_key": ("blackboard_path", "key_name", "key_type", "base_class", "enum_path", "instance_synced", "save_asset"),
+        "ai_remove_blackboard_key": ("blackboard_path", "key_name", "save_asset"),
+        "ai_search_behavior_tree_node_classes": ("category", "query", "include_abstract", "max_results"),
+        "ai_create_behavior_tree_asset": ("asset_root", "asset_name", "blackboard_path", "save_asset"),
+        "ai_set_behavior_tree_blackboard": ("behavior_tree_path", "blackboard_path", "save_asset"),
+        "ai_create_eqs_query": ("asset_root", "asset_name", "save_asset"),
+        "create_ai_patrol_chase_behavior_assets": ("asset_root", "behavior_tree_name", "blackboard_name", "target_actor_key", "patrol_location_key", "tree_shape",
+            "replace_existing", "save_assets", "acceptable_radius", "alert_wait_seconds", "face_precision_degrees"),
+        "configure_ai_controller_perception": ("controller_blueprint", "component_name", "replace_existing_config", "save_blueprint", "detect_enemies", "detect_neutrals", "detect_friendlies",
+            "sight_radius", "lose_sight_radius", "peripheral_vision_angle_degrees", "max_age"),
+    }[command]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    if command == "ai_add_blackboard_key":
+        values.update(key_type="bool", base_class="", enum_path="")
+    elif command == "ai_create_behavior_tree_asset":
+        values["blackboard_path"] = ""
+    error = None
+    for key in order:
+        if key not in params:
+            continue
+        value = params[key]
+        # The AI provider validates Strings, then Bools, then Numbers before
+        # Get* defaults. Search's Number is an integral finite JSON double in
+        # signed-int32 range, including 2.0; booleans/strings are not Numbers.
+        if command == "ai_search_behavior_tree_node_classes" and key == "max_results":
+            message = None
+            if type(value) not in (int, float):
+                message = "'max_results' must be a JSON number"
+            else:
+                try:number = float(value)
+                except (OverflowError, ValueError):number = math.inf
+                if (not math.isfinite(number) or number != math.trunc(number)
+                        or not -(2 ** 31) <= number < 2 ** 31):
+                    message = "'max_results' must be a finite 32-bit integer"
+            if message is not None:
+                if error is None:error = {"message": message}
+            else:
+                # Keep the original value until the existing Native 1..500
+                # clamp; no Python clamp, truthiness or transport timeout.
+                values[key] = int(number)
+            continue
+        if command in ("create_ai_patrol_chase_behavior_assets", "configure_ai_controller_perception") and fields[key][0] == (int, float):
+            message = None
+            if type(value) not in (int, float):
+                message = "'" + key + "' must be a JSON number"
+            else:
+                try:
+                    number = float(value)
+                except (OverflowError, ValueError):
+                    number = math.inf
+                # Original ValidateAIParameterTypes uses the JSON double before
+                # the handler's float cast/clamp. Keep the first String/Bool/
+                # Number error and never dispatch an invalid row.
+                if not math.isfinite(number) or abs(number) > float.fromhex("0x1.fffffep+127"):
+                    message = "'" + key + "' must be a finite 32-bit float"
+            if message is not None:
+                if error is None:
+                    error = {"message": message}
+            else:
+                values[key] = value
+            continue
+        expected = "boolean" if fields[key][0] == (bool,) else "string"
+        if type(value) is not (bool if expected == "boolean" else str):
+            if error is None:
+                # Native AI validation has no error_code; keep that raw receipt
+                # separate from the Batch adapter's own machine error code.
+                error = {"message": "'" + key + "' must be a JSON " + expected}
+            continue
+        values[key] = value.strip() if expected == "string" else value
+    if command == "configure_ai_controller_perception" and "lose_sight_radius" not in params:
+        # Original default is the clamped float32 SightRadius + 250.0f,
+        # not the Named wrapper's fixed 1150.0. No asset read-fill is involved.
+        import struct
+        radius = struct.unpack("!f", struct.pack("!f", max(0.0, float(values["sight_radius"]))))[0]
+        values["lose_sight_radius"] = struct.unpack("!f", struct.pack("!f", radius + 250.0))[0]
+    # timeout_seconds belongs to the old outer Python transport, not these raw
+    # Native commands. Caller-supplied timeout/unknown/private keys stay ignored.
+    return values, error
+
+
+_NETWORKING_LEGACY_COMMANDS = {
+    "networking_inspect_blueprint_settings": "CubelessBlueprintNetworkingTools.inspect_blueprint_networking_settings",
+    "networking_set_blueprint_settings": "CubelessBlueprintNetworkingTools.set_blueprint_networking_settings",
+}
+
+
+_COMPONENT_LEGACY_COMMANDS = {
+    name: "CubelessComponentTools." + name for name in (
+        "list_blueprint_components", "get_component_property", "set_component_property", "set_static_mesh_properties", "set_physics_properties", "add_component_to_blueprint")
+}
+
+
+def _component_legacy_params(method, params):
+    """Original local-SCS query/value entry; concrete component actions own work.
+
+    Raw property_value is JSON once, including explicit null. Extra Named read
+    budgets were never read by the original CPP and retain canonical defaults.
+    """
+    if method == "add_component_to_blueprint":
+        return component._raw_add_batch_params(params)
+    if method == "set_static_mesh_properties":
+        return component._raw_static_mesh_batch_params(params)
+    if method == "set_physics_properties":
+        return component._raw_physics_batch_params(params)
+    absent = object()
+    fields = _CAPABILITIES[_COMPONENT_LEGACY_COMMANDS[method]]["fields"]
+    selected = {}
+    for key, (types, default) in fields.items():
+        if key in ("max_components", "max_value_chars"):
+            selected[key] = copy.deepcopy(default)
+            continue
+        if key == "property_value_json":
+            if "property_value" not in params:
+                raise OperationError("batch_component_value_required", "Missing 'property_value' parameter")
+            selected[key] = json.dumps(params["property_value"], ensure_ascii=False, allow_nan=False)
+            continue
+        value = params.get(key, absent)
+        if type(value) is bool:
+            value = "true" if value else "false"
+        elif type(value) in (int, float):
+            value = number_to_legacy_string(value)
+        elif type(value) is not str:
+            value = absent
+        if value is absent:
+            if default is _REQUIRED:
+                raise OperationError("batch_component_string_required", "Missing '" + key + "' parameter")
+            value = "" if key == "component_name" else copy.deepcopy(default)
+        selected[key] = value
+    return selected
+
+
+_BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS = {
+    name: "CubelessBlueprintGraphTools." + name for name in (
+        "resolve_blueprint_graph", "add_blueprint_function_parameter", "add_blueprint_return_node",
+        "add_blueprint_variable_get_node", "add_blueprint_variable_set_node",
+        "add_blueprint_call_function_node", "add_blueprint_dynamic_cast_node",
+        "add_blueprint_make_struct_node", "add_blueprint_break_struct_node",
+        "add_blueprint_loop_node", "add_blueprint_array_function_node", "add_blueprint_make_array_node",
+        "add_blueprint_event_node", "add_blueprint_input_key_node")
+}
+# The concrete original Raw12 custom-event route preserves Any geometry and
+# typed signatures; do not silently substitute the older bounded Graph13 API.
+_BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS["add_blueprint_custom_event_node"] = "CubelessBlueprintEventTools.add_blueprint_custom_event_node"
+_BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS["set_blueprint_custom_event_metadata"] = "CubelessBlueprintGraphTools.set_blueprint_custom_event_metadata"
+
+_BLUEPRINT_ANNOTATION_LAYOUT_LEGACY_COMMANDS = {
+    "add_blueprint_comment_box": "CubelessBlueprintAnnotationTools.add_blueprint_comment_box",
+    "set_blueprint_node_comment": "CubelessBlueprintAnnotationTools.set_blueprint_node_comment",
+    "set_blueprint_function_description": "CubelessBlueprintAnnotationTools.set_blueprint_function_description",
+    "set_blueprint_node_positions": "CubelessBlueprintQueryLayoutTools.set_blueprint_node_positions",
+}
+_BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS.update(_BLUEPRINT_ANNOTATION_LAYOUT_LEGACY_COMMANDS)
+
+
+def _blueprint_annotation_layout_legacy_params(method, params):
+    """Original annotation aliases/style and atomic guarded update-array entry.
+
+    Only source representation conversion occurs here. Existing concrete actions
+    retain graph lifecycle, all-row guards, partial effects and compile/save.
+    """
+    import re
+    import struct
+    fields = _CAPABILITIES[_BLUEPRINT_ANNOTATION_LAYOUT_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+
+    def string(value, fallback=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return fallback
+
+    def text(*keys, default=absent):
+        for key in keys:
+            result = string(params.get(key, absent))
+            if result is not absent:
+                return result  # First successful empty string also wins.
+        if default is absent:
+            raise OperationError("batch_annotation_string_required", "Missing '" + keys[0] + "' parameter")
+        return default
+
+    def flag(key, default, try_default=False):
+        if key not in params:
+            return default
+        read, result = try_get_legacy_bool(params[key])
+        return result if read else default if try_default else False
+
+    def scalar(value, prefix=False):
+        if prefix:
+            value = value.strip()
+            if re.match(r'[+-]?(nan|inf)', value, re.IGNORECASE):
+                raise OperationError("batch_annotation_geometry_pending", "Original nonfinite text geometry remains incomplete")
+            match = re.match(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?', value)
+            value = float(match.group(0)) if match else 0.0
+        elif type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (ValueError, OverflowError) as error:
+                raise OperationError("batch_annotation_geometry_pending", "Original numeric conversion remains incomplete") from error
+        elif type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0
+        else:
+            value = 0.0
+        try:
+            value = struct.unpack('f', struct.pack('f', value))[0]
+        except (OverflowError, struct.error) as error:
+            raise OperationError("batch_annotation_geometry_pending", "Original out-of-float32 geometry remains incomplete") from error
+        if not math.isfinite(value):
+            raise OperationError("batch_annotation_geometry_pending", "Original nonfinite geometry remains incomplete")
+        return value
+
+    def geometry(key):
+        if key not in params:
+            return None
+        value = params[key]
+        if type(value) is list and len(value) >= 2:
+            result = [scalar(value[0]), scalar(value[1])]
+        else:
+            raw = string(value, "").strip()
+            for opening, closing in (("[", "]"), ("(", ")")):
+                if raw.startswith(opening):
+                    raw = raw[1:]
+                if raw.endswith(closing):
+                    raw = raw[:-1]
+            parts = [part for part in raw.split(',') if part]
+            result = [scalar(parts[0], True), scalar(parts[1], True)] if len(parts) >= 2 else [0.0, 0.0]
+        if any(not -2147483648 <= item <= 2147483647 for item in result):
+            raise OperationError("batch_annotation_geometry_pending", "Original int32 position/size conversion remains incomplete")
+        return result  # Keep fractional size: Native rounds it, not truncates.
+
+    result = {"blueprint_name": text("blueprint_name"), "graph_name": text("graph_name", default=""),
+        "graph_id": text("graph_id", default=""), "graph_type": text("graph_type", default="")}
+    if method == "set_blueprint_node_positions":
+        result["graph_name"] = result["graph_name"].strip()
+        result["graph_id"] = result["graph_id"].strip()
+        if not result["graph_name"] and not result["graph_id"]:
+            raise OperationError("batch_annotation_graph_required", "set_blueprint_node_positions requires an explicit 'graph_name' or 'graph_id'")
+        if type(params.get("updates")) is not list:
+            raise OperationError("batch_annotation_updates_required", "Missing 'updates' array")
+        result["updates"] = copy.deepcopy(params["updates"])
+        result.update(dry_run=flag("dry_run", True), compile=flag("compile", False), save=flag("save", False))
+        return result  # Never filter/rewrite rows, GUIDs, guards or coordinates.
+    create = flag("create_graph_if_missing", False)
+    if method != "add_blueprint_comment_box" and create:
+        raise OperationError("batch_annotation_graph_creation_pending", "Original raw graph-creation option is not carried by this Named annotation action; valid functionality remains incomplete")
+    if method == "set_blueprint_function_description":
+        result["description"] = text("description", "tooltip", "comment")
+    elif method == "set_blueprint_node_comment":
+        result.update(node_id=text("node_id"), node_comment=text("node_comment", "comment_text", "comment"),
+            comment_bubble_visible=flag("comment_bubble_visible", True, True), comment_bubble_pinned=flag("comment_bubble_pinned", False, True))
+    else:
+        result.update(comment_text=text("comment_text", "node_comment", "comment"), node_position=geometry("node_position"), size=geometry("size"),
+            comment_bubble_visible=flag("comment_bubble_visible", False, True), color_comment_bubble=flag("color_comment_bubble", False, True),
+            node_details=text("node_details", default=""), create_graph_if_missing=create)
+        value = params.get("font_size", absent)
+        font = 18
+        if type(value) is str:
+            match = re.match(r'\s*([+-]?[0-9]+)', value)
+            font = int(match.group(1)) if match else 0
+            if not -2147483648 <= font <= 2147483647:
+                raise OperationError("batch_annotation_font_pending", "Original overflowing string int32 conversion remains incomplete")
+        elif type(value) in (int, float, bool):
+            try:
+                number = float(value)
+            except (OverflowError, ValueError):
+                number = math.inf
+            if math.isfinite(number) and -2147483648 <= number <= 2147483647:
+                font = math.floor(number + .5) if number >= 0 else math.ceil(number - .5)
+        result["font_size"] = max(1, min(1000, font))
+        mode = text("move_mode", default="")
+        result["move_mode"] = "group" if not mode or mode.lower() in ("group", "group_movement") else "no_group"
+        color = params.get("comment_color")
+        result["comment_color"] = [scalar(color[0]), scalar(color[1]), scalar(color[2]), scalar(color[3]) if len(color) >= 4 else 1.0] if type(color) is list and len(color) >= 3 else None
+        ids = params.get("node_ids")
+        result["node_ids"] = [value for item in ids if (value := string(item, ""))] if type(ids) is list else None
+    return result
+
+
+def _blueprint_graph_core_legacy_params(method, params):
+    """Original graph selectors/member positions/signature entry contracts.
+
+    Graph discovery/creation, variable resolution, pin reconstruction and actual
+    partial edits remain in existing concrete functions/member-node actions.
+    """
+    if method in _BLUEPRINT_ANNOTATION_LAYOUT_LEGACY_COMMANDS:
+        return _blueprint_annotation_layout_legacy_params(method, params)
+    if method == "set_blueprint_custom_event_metadata":
+        from . import custom_event_metadata
+        return custom_event_metadata._raw_batch_params(params)[0]
+    import re
+    import struct
+    absent = object()
+    fields = _CAPABILITIES[_BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS[method]]["fields"]
+    selected = {}
+    member = method in ("add_blueprint_variable_get_node", "add_blueprint_variable_set_node")
+    parameter = method == "add_blueprint_function_parameter"
+    custom_event = method == "add_blueprint_custom_event_node"
+    input_key = method == "add_blueprint_input_key_node"
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def component(value, text_prefix=False):
+        if text_prefix:
+            value = value.strip()
+            if re.match(r'[+-]?(nan|inf)', value, re.IGNORECASE):
+                raise OperationError("batch_graph_core_position_pending", "Original nonfinite text coordinate remains incomplete")
+            match = re.match(r'[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?', value)
+            value = float(match.group(0)) if match else 0.0
+        elif type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (OverflowError, ValueError) as error:
+                raise OperationError("batch_graph_core_position_pending", "Original double coordinate conversion remains incomplete") from error
+        elif type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0
+        else:
+            value = 0.0  # FJsonValue::AsNumber failure yields initialized zero.
+        try:
+            # CommonUtils.cpp1203 stores an explicit float before NodePos int32.
+            value = struct.unpack('f', struct.pack('f', value))[0]
+        except (OverflowError, struct.error) as error:
+            raise OperationError("batch_graph_core_position_pending", "Original out-of-float32 coordinate remains incomplete") from error
+        if not math.isfinite(value) or not -2147483648 <= value <= 2147483647:
+            raise OperationError("batch_graph_core_position_pending", "Original nonfinite/out-of-int32 coordinate remains incomplete")
+        return math.trunc(value)
+
+    def position():
+        if "node_position" not in params:
+            return None  # Return default320; member default0 in existing actions.
+        value = params["node_position"]
+        if type(value) is list and len(value) >= 2:
+            return [component(value[0]), component(value[1])]
+        text = string(value, "").strip()
+        for opening, closing in (("[", "]"), ("(", ")")):
+            if text.startswith(opening):
+                text = text[1:]
+            if text.endswith(closing):
+                text = text[:-1]
+        parts = [part for part in text.split(',') if part]
+        return [component(parts[0], True), component(parts[1], True)] if len(parts) >= 2 else [0, 0]
+
+    def integer(value, key):
+        # Shared.h8769: typed Number only, RoundToInt then double-nearly-equal
+        # with installed UE_DOUBLE_SMALL_NUMBER=1e-8 in both UE56 and UE58.
+        if type(value) not in (int, float):
+            raise OperationError("batch_graph_core_integer_invalid", "'" + key + "' must be a number")
+        try:
+            number = float(value)
+        except (ValueError, OverflowError) as error:
+            raise OperationError("batch_graph_core_integer_pending", "Original int32 conversion remains incomplete") from error
+        if not math.isfinite(number) or not -2147483648 <= number <= 2147483647:
+            raise OperationError("batch_graph_core_integer_pending", "Original nonfinite/out-of-int32 conversion remains incomplete")
+        rounded = math.floor(number + .5)
+        if abs(number - rounded) > 1.e-8:
+            raise OperationError("batch_graph_core_integer_invalid", "'" + key + "' must be an integer")
+        return rounded
+
+    make_array = method == "add_blueprint_make_array_node"
+    loop = method == "add_blueprint_loop_node"
+    if make_array:
+        if "is_array" in params:
+            read, nested = try_get_legacy_bool(params["is_array"])
+            if read and nested:
+                raise OperationError("batch_graph_core_nested_array_invalid", "Nested array literals are not supported")
+        # Original HasField priority rejects explicit null/nonarray even when
+        # a lower-priority alias happens to contain a valid array.
+        values_key = "values" if "values" in params else "element_defaults" if "element_defaults" in params else None
+        if values_key is not None and type(params[values_key]) is not list:
+            raise OperationError("batch_graph_core_array_values_invalid", "'" + values_key + "' must be an array")
+
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if custom_event and key == "node_position":
+            selected[key] = copy.deepcopy(params.get(key))  # Existing Raw12 Native parses original Any geometry.
+        elif bool in types:
+            if value is absent:
+                selected[key] = copy.deepcopy(default)
+            else:
+                read, parsed = try_get_legacy_bool(value)
+                # Original InputKey uses TryGetBoolField with initialized
+                # defaults; CustomEvent records successful optional presence.
+                selected[key] = parsed if read else (copy.deepcopy(default) if input_key or custom_event else False)
+        elif key in ("node_position", "node_position_json"):
+            point = position()
+            encoded_position = key.endswith("_json") or make_array
+            selected[key] = (json.dumps(point) if point is not None else copy.deepcopy(default)) if encoded_position else point
+        elif key in ("input_count", "first_index", "last_index"):
+            selected[key] = None if value is absent else integer(value, key)
+        elif make_array and key in ("values", "element_defaults"):
+            selected[key] = (json.dumps(params[values_key], ensure_ascii=False, allow_nan=False)
+                if key == values_key else None)
+        elif loop and key in ("element_type", "type_object", "enum_type"):
+            selected[key] = None  # Original ForLoop never reads Named ForEach descriptors.
+        elif key in ("x", "y"):
+            selected[key] = copy.deepcopy(default)  # Not original raw input keys.
+        elif key == "param_defaults_json":
+            defaults = params.get("param_defaults")
+            if type(defaults) is not dict:
+                defaults = params.get("params")
+            # Raw native TryGetObjectField fallback, not Named JSON text parsing.
+            selected[key] = json.dumps(defaults if type(defaults) is dict else {}, ensure_ascii=False, allow_nan=False)
+        elif key == "default_value_json":
+            if "default_value" not in params:
+                selected[key] = None
+            elif params["default_value"] is None:
+                raise OperationError("batch_graph_core_null_default_pending", "Raw function parameter null default requires a presence-preserving carrier; support remains incomplete")
+            else:
+                selected[key] = json.dumps(params["default_value"], ensure_ascii=False, allow_nan=False)
+        else:
+            # Raw graph selection defaults to no selector, including for
+            # parameter/return actions whose Named default is graph_type=function.
+            fallback = "" if key in ("graph_name", "graph_id", "graph_type") else copy.deepcopy(default)
+            value = string(value)
+            if custom_event and key == "custom_event_name" and value is absent:
+                value = string(params.get("event_name", absent))
+            if custom_event and key == "signature_source_delegate_name" and value is absent:
+                value = string(params.get("native_delegate_name", absent))
+            if custom_event and key == "native_delegate_name":
+                value = ""  # CPP first-success alias already resolved, including empty primary.
+            if key == "function_class" and value is absent:
+                # Original TryGetString aliases stop at the first successful
+                # scalar conversion, including an explicit empty primary.
+                for alias in ("class_name", "target_class", "target"):
+                    value = string(params.get(alias, absent))
+                    if value is not absent:
+                        break
+            if value is absent:
+                if default is _REQUIRED:
+                    raise OperationError("batch_graph_core_string_required", "Missing '" + key + "' parameter")
+                value = fallback
+            selected[key] = value
+    if loop:
+        selected["loop_type"] = selected["loop_type"] or "for_loop"
+        kind = selected["loop_type"].strip().lower().replace(" ", "").replace("_", "").replace("-", "")
+        if kind not in ("for", "forloop"):
+            raise OperationError("batch_graph_core_loop_type_invalid", "Unsupported loop_type; original supports for_loop only")
+    if parameter or method in ("add_blueprint_array_function_node", "add_blueprint_make_array_node"):
+        descriptor = selected["parameter_type"] if parameter else selected["element_type"]
+        kind = descriptor.strip().lower().replace(" ", "").replace("_", "").replace("-", "")
+        if kind in ("enum", "byteenum"):
+            selected["type_object"] = ""
+            for key in ("type_object", "enum_type", "enum_path"):
+                value = string(params.get(key, absent), "").strip()
+                if value:
+                    selected["type_object"] = value
+                    break
+            if not parameter:
+                selected["enum_type"] = None  # Original enum alias resolved above.
+    return selected
+
+
+_BLUEPRINT_LIFECYCLE_LEGACY_COMMANDS = {
+    name: "CubelessBlueprintTools." + name for name in (
+        "create_blueprint", "duplicate_blueprint_to_temp", "compile_blueprint",
+        "compile_and_save_blueprint", "compile_and_validate_blueprint")
+}
+
+
+def _blueprint_lifecycle_legacy_params(method, params):
+    """Original factory/duplicate/compiler entry rules, using existing actions.
+
+    No class resolution, factory/duplicate/compiler call, package save or retry
+    occurs here. Existing action guards and actual failure receipts stay intact.
+    """
+    fields = _CAPABILITIES[_BLUEPRINT_LIFECYCLE_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+    selected = {}
+    create = method == "create_blueprint"
+    duplicate = method == "duplicate_blueprint_to_temp"
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if bool in types:
+            read, parsed = try_get_legacy_bool(value) if value is not absent else (False, False)
+            # Duplicate GetJsonBoolParam retains default on invalid values;
+            # compile helpers use HasField/GetBoolField and then false.
+            selected[key] = parsed if read else copy.deepcopy(default) if duplicate or value is absent else False
+        elif create and key == "parent_class":
+            value = string(value, "")
+            selected[key] = value if value else "Actor"  # Original optional parent.
+        elif create and key == "package_path":
+            if value is absent:
+                selected[key] = copy.deepcopy(default)
+            else:
+                value = string(value)
+                if value is absent:
+                    raise OperationError("batch_blueprint_create_package_invalid", "'package_path' must be a string")
+                value = value.strip()
+                if not value:
+                    raise OperationError("batch_blueprint_create_package_invalid", "'package_path' cannot be empty")
+                selected[key] = value  # Existing API owns /Game/path validity.
+        elif duplicate and key == "required_root":
+            value = string(value, "")
+            selected[key] = value if value else copy.deepcopy(default)
+        else:
+            value = string(value)
+            if value is absent:
+                if default is _REQUIRED:
+                    raise OperationError("batch_blueprint_lifecycle_string_required", "Missing '" + key + "' parameter")
+                value = copy.deepcopy(default)
+            selected[key] = value
+    return selected
+
+
+_BLUEPRINT_VARIABLE_CORE_LEGACY_COMMANDS = {
+    name: "CubelessBlueprintTools." + name for name in (
+        "add_blueprint_variable", "inspect_blueprint_variables", "inspect_blueprint_variable_metadata",
+        "set_blueprint_variable_default")
+}
+
+
+def _blueprint_variable_core_legacy_params(method, params):
+    """Original member-variable JSON contract into concrete variable actions.
+
+    No type/CDO/Blueprint access occurs here. Native owns typed default import,
+    declaration/metadata writes and actual compile/save/partial-result evidence.
+    """
+    absent = object()
+    fields = _CAPABILITIES[_BLUEPRINT_VARIABLE_CORE_LEGACY_COMMANDS[method]]["fields"]
+    add = method == "add_blueprint_variable"
+    selected = {}
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if key == "default_value_json":
+            if "default_value" not in params:
+                if not add:
+                    raise OperationError("batch_blueprint_variable_default_required", "Missing 'default_value' parameter")
+                selected[key] = None
+            else:
+                selected[key] = json.dumps(params["default_value"], ensure_ascii=False, allow_nan=False)
+        elif key == "metadata_json":
+            metadata = params.get("metadata")
+            # Original TryGetObjectField ignores nonobjects, and the loop skips
+            # null/container rows instead of rejecting an entire declaration.
+            metadata = {name: value for name, value in metadata.items() if type(value) in (str, bool, int, float)} if type(metadata) is dict else {}
+            selected[key] = json.dumps(metadata, ensure_ascii=False, allow_nan=False)
+        elif bool in types:
+            if key == "is_transient":
+                selected[key] = False  # Additive UE58 option absent from the original handler.
+            else:
+                # NodeShared GetBoolParam and is_exposed both use HasField /
+                # GetBoolField. Raw SetDefault compile/save initialize false.
+                fallback = False if not add else copy.deepcopy(default)
+                if value is absent:
+                    selected[key] = fallback
+                else:
+                    read, parsed = try_get_legacy_bool(value)
+                    selected[key] = parsed if read else False
+        else:
+            value = string(value)
+            if value is absent:
+                if default is _REQUIRED:
+                    raise OperationError("batch_blueprint_variable_string_required", "Missing '" + key + "' parameter")
+                # Optional authoring strings with a present invalid JSON value
+                # follow original GetStringParam's empty-string fallback.
+                value = "" if key in params else copy.deepcopy(default)
+            selected[key] = value
+    if method == "inspect_blueprint_variable_metadata":
+        # Original read-only metadata handler trims both required selectors.
+        selected["blueprint_name"] = selected["blueprint_name"].strip()
+        selected["variable_name"] = selected["variable_name"].strip()
+    if add:
+        kind = selected["variable_type"].strip().lower().replace(" ", "").replace("_", "").replace("-", "")
+        if kind in ("enum", "byteenum"):
+            selected["type_object"] = ""
+            # Shared GetEnumTypeParam(preferred=type_object): first nonempty
+            # trimmed TryGetString among preferred, enum_type, enum_path.
+            for key in ("type_object", "enum_type", "enum_path"):
+                value = string(params.get(key, absent), "").strip()
+                if value:
+                    selected["type_object"] = value
+                    break
+    return selected
+
+
+_BLUEPRINT_MAINTENANCE_LEGACY_COMMANDS = {
+    name: "CubelessBlueprintTools." + name for name in (
+        "remove_blueprint_variable", "set_blueprint_category_sorting", "replace_blueprint_component_class")
+}
+
+
+def _blueprint_maintenance_legacy_params(method, params):
+    """Original raw Blueprint maintenance inputs, using concrete lifecycle APIs.
+
+    Does not resolve a Blueprint, mutate/retire templates, refresh structural
+    state or compile/save. Native actions retain actual partial outcomes.
+    """
+    import re
+    absent = object()
+    fields = _CAPABILITIES[_BLUEPRINT_MAINTENANCE_LEGACY_COMMANDS[method]]["fields"]
+    category = method == "set_blueprint_category_sorting"
+    selected = {}
+
+    def string(value):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return absent
+
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if bool in types:
+            read, converted = try_get_legacy_bool(value) if value is not absent else (False, False)
+            # Node category uses HasField/GetBoolField; component replacement
+            # GetJsonBoolParam uses TryGetBool and preserves initialized true.
+            selected[key] = converted if read else False if category and value is not absent else copy.deepcopy(default)
+        elif key == "category_order":
+            # Original ignores nonarrays and nonstring array rows. Preserve
+            # string whitespace/root-delimiters for existing Native FName logic.
+            selected[key] = [item for item in value if type(item) is str] if type(value) is list else None
+        elif key == "sphere_radius":
+            parsed = absent
+            if type(value) in (bool, int, float):
+                try:
+                    parsed = float(value)
+                except (ValueError, OverflowError) as error:
+                    raise OperationError("batch_component_replace_radius_pending", "Original double radius conversion remains incomplete") from error
+            elif type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+                try:
+                    parsed = float(value)
+                except ValueError:
+                    parsed = 0.0
+            if parsed is not absent and not math.isfinite(parsed):
+                raise OperationError("batch_component_replace_radius_pending", "Original nonfinite/float-overflow radius remains incomplete")
+            # Original explicit negative radius means zero. Existing Named
+            # negative sentinel means omitted/derive from old shape defaults.
+            selected[key] = copy.deepcopy(default) if parsed is absent else max(0.0, parsed)
+        else:
+            value = string(value)
+            if value is absent:
+                fallback = {"new_component_class": "component_type", "category_to_front": "category"}.get(key)
+                if fallback:
+                    value = string(params.get(fallback, absent))
+            if value is absent:
+                if default is _REQUIRED:
+                    raise OperationError("batch_blueprint_maintenance_string_required", "Missing '" + key + "' parameter")
+                value = copy.deepcopy(default)
+            selected[key] = value
+    return selected
+
+
+_NIAGARA_STACK_ENTRY_LEGACY_COMMANDS = {
+    "duplicate_or_attach_emitter_from_source": "CubelessNiagaraEmitterTools.duplicate_or_attach_emitter_from_source",
+    "add_niagara_stock_module_to_stack": "CubelessNiagaraModuleTools.add_niagara_stock_module_to_stack",
+    "set_niagara_module_inputs_batch": "CubelessNiagaraModuleTools.set_niagara_module_inputs_batch",
+}
+
+
+def _niagara_stack_entry_legacy_params(method, params):
+    """Original emitter/stock/ordered-RapidIteration entry normalization only.
+
+    Keep Native localization, duplicate checks, partial writes and final single
+    compile/save in the existing concrete APIs and asynchronous batch job.
+    """
+    import re
+    absent = object()
+    fields = _CAPABILITIES[_NIAGARA_STACK_ENTRY_LEGACY_COMMANDS[method]]["fields"]
+    selected = {}
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def number(value):
+        if type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (OverflowError, ValueError) as error:
+                raise OperationError("batch_niagara_stack_number_pending", "Original finite double conversion remains incomplete") from error
+            if not math.isfinite(value):
+                raise OperationError("batch_niagara_stack_number_pending", "Original finite double required")
+            return value
+        if type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0
+            if not math.isfinite(value):
+                raise OperationError("batch_niagara_stack_number_pending", "Original finite numeric string required")
+            return value
+        return absent
+
+    def index(value):
+        if type(value) is str:
+            # Installed JsonValue.h465 int32 string overload uses Lex/Atoi.
+            match = re.match(r'[ \t\r\n\v\f]*([+-]?[0-9]+)', value)
+            converted = int(match.group(1)) if match else 0
+        else:
+            converted = number(value)
+            # TryConvertNumber checks bounds before rounding; failure retains
+            # original initialized INDEX_NONE, rather than reporting overflow.
+            if converted is absent or not -2147483648 <= converted <= 2147483647:
+                return None
+            converted = math.floor(converted + .5) if converted >= 0 else math.ceil(converted - .5)
+        if not -2147483648 <= converted <= 2147483647:
+            raise OperationError("batch_niagara_stack_index_pending", "Original platform-specific out-of-int32 string selector remains incomplete")
+        return None if converted == -1 else converted
+
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if key == "edits":
+            if type(value) is not list or not value:
+                raise OperationError("batch_niagara_stack_edits_required", "Missing non-empty 'edits' array")
+            selected[key] = copy.deepcopy(value)
+        elif bool in types:
+            read, parsed = try_get_legacy_bool(value) if value is not absent else (False, False)
+            selected[key] = parsed if read else copy.deepcopy(default)
+        elif int in types and type(None) in types:
+            selected[key] = index(value) if value is not absent else None
+        elif float in types:
+            parsed = number(value)
+            selected[key] = copy.deepcopy(default) if parsed is absent else parsed
+        else:
+            value = string(value)
+            if value is absent:
+                fallback_key = {"target_system_path": "system_path", "module_script_path": "script_path"}.get(key)
+                if fallback_key:
+                    value = string(params.get(fallback_key, absent))
+            if value is absent:
+                if default is _REQUIRED:
+                    raise OperationError("batch_niagara_stack_string_required", "Missing '" + key + "' parameter")
+                value = copy.deepcopy(default)
+            # Original stock module path strips before load/dependency checks.
+            selected[key] = value.strip() if key == "module_script_path" and type(value) is str else value
+    if method == "set_niagara_module_inputs_batch":
+        selected["timeout_seconds"] = min(60.0, max(0.0, selected["timeout_seconds"]))
+        selected["poll_interval_seconds"] = min(1.0, max(0.02, selected["poll_interval_seconds"]))
+        inherited = ("emitter_index", "emitter_name", "module_index", "module_name",
+            "module_node_guid", "input_name", "value", "overwrite_existing")
+        root = {key: copy.deepcopy(params[key]) for key in inherited if key in params}
+        rows = []
+        for edit in selected["edits"]:
+            if type(edit) is not dict:
+                rows.append(edit)  # Native reports ordered malformed rows.
+                continue
+            effective = {**copy.deepcopy(root), **edit}
+            operation = string(edit.get("operation", absent), selected["operation"])
+            # Part5.cpp3020: upsert only defaults overwrite=True when neither
+            # original root nor row contains that key, including explicit null.
+            if operation.lower() == "upsert" and "overwrite_existing" not in edit and "overwrite_existing" not in params:
+                effective["overwrite_existing"] = True
+            rows.append(effective)
+        selected["edits"] = rows
+    return selected
+
+
+_NIAGARA_USER_PARAMETER_LEGACY_COMMANDS = {
+    name: "CubelessNiagaraParameterTools." + name for name in (
+        "inspect_niagara_user_parameters", "set_niagara_user_parameter", "upsert_niagara_user_parameters")
+}
+
+
+def _niagara_user_parameter_legacy_params(method, params):
+    """Original User store inputs into existing typed Native processing.
+
+    Preserve ordered rows, every per-row key/value/null and stop/continue flags.
+    No row prefilter, setter, load, compile, save or repeat dispatch occurs here.
+    """
+    fields = _CAPABILITIES[_NIAGARA_USER_PARAMETER_LEGACY_COMMANDS[method]]["fields"]
+    selected = {}
+    absent = object()
+    for key, (types, default) in fields.items():
+        if key == "value_json":
+            if "value" not in params:
+                raise OperationError("batch_niagara_user_parameter_value_required", "Missing 'value' parameter")
+            # JSON null is a present FJsonValueNull, distinct from missing key.
+            selected[key] = json.dumps(params["value"], ensure_ascii=False, allow_nan=False)
+        elif key == "parameters_json":
+            if type(params.get("parameters")) is not list:
+                raise OperationError("batch_niagara_user_parameter_array_required", "Missing 'parameters' array")
+            # Native owns per-row aliases/types/values/partial prefix. A later
+            # malformed row must not erase a valid earlier row at this entry.
+            selected[key] = json.dumps(params["parameters"], ensure_ascii=False, allow_nan=False)
+        elif bool in types:
+            value = params.get(key, absent)
+            read, parsed = try_get_legacy_bool(value) if value is not absent else (False, False)
+            selected[key] = parsed if read else copy.deepcopy(default)
+        else:
+            value = params.get(key, absent)
+            if type(value) is bool:
+                value = "true" if value else "false"
+            elif type(value) in (int, float):
+                value = number_to_legacy_string(value)
+            elif type(value) is not str:
+                raise OperationError("batch_niagara_user_parameter_string_required", "Missing '" + key + "' parameter")
+            selected[key] = value
+    return selected
+
+
+_PCG_CORE_LEGACY_COMMANDS = {
+    name: "CubelessPCGTools." + name for name in (
+        "set_pcg_attribute_selector", "compile_or_notify_pcg_graph", "save_pcg_graph",
+        "create_pcg_graph_from_spec")
+}
+
+
+def _pcg_core_legacy_params(method, params):
+    """Existing concrete PCG actions, preserving native-vs-public-Python inputs.
+
+    No PCG setting, selector struct, graph notification or asset is accessed here.
+    Domain actions keep ownership of their existing actual partial/save receipts.
+    """
+    absent = object()
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def required(key, fallback=None):
+        value = string(params.get(key, absent))
+        if value is absent and fallback is not None:
+            value = string(params.get(fallback, absent))
+        if value is absent:
+            raise OperationError("batch_pcg_legacy_string_required", "Missing '" + key + "' parameter")
+        return value
+
+    if method == "create_pcg_graph_from_spec":
+        # Original pcg_tools.py public Python composite, not a C++ command.
+        # Its template substitutes repr(bool(flag)); JSON text is not a spec.
+        spec = params.get("graph_spec")
+        if type(spec) is not dict:
+            raise OperationError("pcg_invalid_graph_spec", "graph_spec must be an object")
+        return {"graph_spec_json": json.dumps(spec, ensure_ascii=False, allow_nan=False),
+            "overwrite_existing": bool(params.get("overwrite_existing", False)),
+            "allow_overwrite_non_temp": bool(params.get("allow_overwrite_non_temp", False)),
+            "save": bool(params.get("save", True)), "dry_run": bool(params.get("dry_run", False))}
+    selected = {"graph_path": required("graph_path")}
+    if method != "set_pcg_attribute_selector":
+        return selected
+    selected.update(node_id=required("node_id"),
+        selector_property_name=required("selector_property_name", "property_name"))
+    kind = string(params.get("selector_type", absent), "")
+    if not kind:
+        kind = string(params.get("selection", absent), "")
+    for key in ("attribute_name", "selected_property_name", "domain_name", "point_property", "extra_property"):
+        value = string(params.get(key, absent))
+        if value is absent and key == "selected_property_name":
+            value = string(params.get("target_property_name", absent))
+        selected[key] = None if value is absent else value
+    if not kind:
+        for key, token in (("attribute_name", "attribute"), ("selected_property_name", "property"),
+                ("point_property", "point_property"), ("extra_property", "extra_property")):
+            if selected[key] is not None:
+                kind = token
+                break
+    selected["selector_type"] = kind
+    required_key = {"attribute": "attribute_name", "property": "selected_property_name",
+        "point_property": "point_property", "point": "point_property", "extra_property": "extra_property",
+        "extra": "extra_property"}.get(kind.lower())
+    if required_key is not None and selected[required_key] is None:
+        # Do not turn a missing native required field into a valid empty FName
+        # through the existing Named adapter's None-to-empty representation.
+        raise OperationError("batch_pcg_legacy_selector_field_required", "selector_type='" + kind + "' requires '" + required_key + "'")
+    for key, default in (("reset_extra_names", True), ("save", True), ("dry_run", False)):
+        if key not in params:
+            selected[key] = default
+        else:
+            read, value = try_get_legacy_bool(params[key])
+            selected[key] = value if read else False  # JsonBoolOrDefault HasField/AsBool.
+    extra = params.get("extra_names", absent)
+    # Original TryGetArrayField ignores wrong container types; typed row errors
+    # remain visible to the existing concrete selector validator, not filtered.
+    selected["extra_names_json"] = json.dumps(extra, ensure_ascii=False, allow_nan=False) if type(extra) is list else None
+    return selected
+
+
+_MATERIAL_MAINTENANCE_LEGACY_COMMANDS = {
+    name: "CubelessMaterialTools." + name for name in (
+        "mirror_material_parameter_collection", "replace_material_collection_references",
+        "replace_material_collection_parameters", "replace_material_texture_references",
+        "compile_and_save_material", "refresh_material_cached_expression_data",
+        "expand_material_function_calls", "set_material_parameter_collection_values",
+        "set_material_parameter_collection_sync", "set_material_texture_sample_sampler_type_mcp")
+}
+
+
+def _material_maintenance_legacy_params(method, params):
+    """Original Material maintenance/MPC scalar and container entry contracts.
+
+    Reuse existing concrete actions; this performs no asset/graph/compiler/save
+    operation and creates no controller, ticker, continuation or extra journal.
+    """
+    import re
+    fields = _CAPABILITIES[_MATERIAL_MAINTENANCE_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def number(value):
+        if type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (ValueError, OverflowError) as error:
+                raise OperationError("batch_material_legacy_number_pending", "Original finite-double conversion remains incomplete") from error
+            if not math.isfinite(value):
+                raise OperationError("batch_material_legacy_number_pending", "Finite original numeric conversion required")
+            return value
+        if type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0  # Original IsNumeric sign/dot-only string, then Atod.
+            if not math.isfinite(value):
+                raise OperationError("batch_material_legacy_number_pending", "Original finite numeric string conversion required")
+            return value
+        return absent
+
+    def flag(key, default):
+        if key not in params:
+            return default
+        if method == "set_material_texture_sample_sampler_type_mcp":
+            # ProjectCommands GetBoolParam uses typed Boolean, unlike the
+            # MaterialCommands HasField + GetBoolField below.
+            return params[key] if type(params[key]) is bool else default
+        read, value = try_get_legacy_bool(params[key])
+        return value if read else False  # Present null/container AsBool yields false.
+
+    def names(value):
+        # Original GetOptionalParameterNameFilter only reads typed arrays.
+        # JSON-text arrays must not become an active filter at this raw entry.
+        if type(value) is not list:
+            return None
+        return [string(item, "") for item in value]
+
+    selected = {}
+    sync = method == "set_material_parameter_collection_sync"
+    if sync:
+        action = string(params.get("action", absent), "enable")
+        selected = {key: copy.deepcopy(default) for key, (_, default) in fields.items()}
+        selected["action"] = action
+        if action.lower() not in ("enable", "start"):
+            # Status/stop/unknown actions return before the original enable
+            # body. Ignore its arguments instead of rejecting or activating it.
+            return selected
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if sync and key == "action":
+            continue
+        if bool in types:
+            selected[key] = flag(key, copy.deepcopy(default))
+        elif key == "parameter_names":
+            selected[key] = names(value)
+        elif key in ("scalars", "vectors"):
+            # Original TryGetObjectField ignores all non-object values. The
+            # existing Named JSON-text lane must not reinterpret them as edits.
+            selected[key] = copy.deepcopy(value) if type(value) is dict else None
+        elif key == "max_passes":
+            parsed = number(value)
+            if parsed is absent:
+                selected[key] = 8 if selected.get("recursive", True) else 1
+            else:
+                integer = math.trunc(parsed)
+                if not -2147483648 <= integer <= 2147483647:
+                    raise OperationError("batch_material_legacy_max_passes_pending", "Original out-of-range int32 max_passes cast remains incomplete")
+                selected[key] = min(64, max(1, integer))
+        elif key == "interval_seconds":
+            parsed = number(value)
+            selected[key] = copy.deepcopy(default) if value is absent else 0.0 if parsed is absent else parsed
+            # Existing Native retains original float32/.01 clamp.
+        elif dict in types:
+            if type(value) is not dict:
+                raise OperationError("batch_material_legacy_object_required", "Missing '" + key + "' object parameter")
+            selected[key] = copy.deepcopy(value)
+        else:
+            fallback = "" if key == "graph_type" else copy.deepcopy(default)
+            value = string(value, absent)
+            if value is absent:
+                if default is _REQUIRED or sync and key in ("source_collection_path", "target_collection_path"):
+                    raise OperationError("batch_material_legacy_string_required", "Missing '" + key + "' parameter")
+                value = fallback
+            if method == "set_material_texture_sample_sampler_type_mcp" and key == "sampler_type" and not value:
+                value = copy.deepcopy(default)  # Original GetStringParam nonempty rule.
+            selected[key] = value
+    return selected
+
+
+_SKELETAL_EDIT_LEGACY_COMMANDS = {
+    **{name: "CubelessSkeletalTools." + name for name in (
+        "add_skeletal_socket", "set_skeletal_socket", "remove_skeletal_socket",
+        "set_bone_translation_retargeting")},
+    **{name: "CubelessSkeletalPhysicsTools." + name for name in (
+        "create_skeletal_bone_constraint_fixture", "inspect_skeletal_bone_constraint_fixture")},
+}
+
+
+def _skeletal_edit_legacy_params(method, params):
+    """Original Socket/Retarget/Constraint inputs into existing concrete actions.
+
+    Presence-only socket fields must not turn an explicit invalid value into
+    omission. This does not load skeletons, create fixtures, change a world or
+    alter the existing Native writer/notification/save/partial-result logic.
+    """
+    fields = _CAPABILITIES[_SKELETAL_EDIT_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+    selected = {}
+    fixture_create = method == "create_skeletal_bone_constraint_fixture"
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if bool in types:
+            # Source save/recursive/dry_run/collision/simulation flags all use
+            # HasTypedField<Boolean>, preserving each initialized default.
+            selected[key] = value if type(value) is bool else copy.deepcopy(default)
+        elif list in types:
+            # Original VectorFromJsonArray distinguishes missing from explicit
+            # null, unlike the existing optional Named None representation.
+            if value is absent:
+                selected[key] = copy.deepcopy(default)
+            elif type(value) is not list:
+                raise OperationError("batch_skeletal_legacy_vector_invalid", "'" + key + "' must be a three-component array when present")
+            else:
+                selected[key] = copy.deepcopy(value)
+        elif int in types or float in types:
+            selected[key] = value if type(value) in (int, float) else copy.deepcopy(default)
+        else:
+            if type(value) is bool:
+                value = "true" if value else "false"
+            elif type(value) in (int, float):
+                value = number_to_legacy_string(value)
+            elif type(value) is not str:
+                if default is _REQUIRED:
+                    raise OperationError("batch_skeletal_legacy_string_required", "Missing '" + key + "' parameter")
+                value = copy.deepcopy(default)
+            if method == "set_skeletal_socket" and key in ("bone_name", "new_socket_name") and key in params and not value:
+                raise OperationError("batch_skeletal_legacy_present_name_invalid", "'" + key + "' must be a non-empty string when present")
+            # Source fixture lambdas use these defaults for empty TryGetString.
+            if fixture_create and key in ("actor_name", "bone_name1", "bone_name2", "constraint_component_name") and not value:
+                value = copy.deepcopy(default)
+            if key == "world_context":
+                value = value.lower()  # Original Equals(...,IgnoreCase); no trim.
+            selected[key] = value
+    return selected
+
+
+_DATA_LEGACY_COMMANDS = {
+    **{name: "CubelessDataTableTools." + name for name in (
+        "get_datatable_schema", "list_datatable_rows", "get_datatable_row",
+        "add_or_update_datatable_row", "remove_datatable_row", "create_datatable")},
+    **{name: "CubelessDataAssetTools." + name for name in (
+        "get_data_asset", "set_data_asset_properties", "create_data_asset")},
+}
+
+
+def _data_legacy_params(method, params):
+    """Original DataCommands9 JSON-DOM inputs into their existing actions.
+
+    No row/property import, class/struct discovery or engine mutation occurs
+    here. Preserve full objects and original source params independently of
+    the existing finite Native implementation and its actual partial receipts.
+    """
+    fields = _CAPABILITIES[_DATA_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+    selected = {}
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if key in ("save", "include_values"):
+            # Original HasTypedField<Boolean>: strings, numbers and null do
+            # not override the initialized true value.
+            selected[key] = value if type(value) is bool else True
+        elif key == "max_rows":
+            # Original typed-number cast truncates before Clamp1..5000.
+            # Do not invent a result for an out-of-range C++ int32 cast.
+            if type(value) not in (int, float):
+                selected[key] = 200
+            else:
+                try:
+                    number = float(value)
+                    if not math.isfinite(number):
+                        raise ValueError("finite double required")
+                    integer = math.trunc(number)
+                    if not -2147483648 <= integer <= 2147483647:
+                        raise ValueError("int32 conversion is out of range")
+                except (OverflowError, ValueError) as error:
+                    raise OperationError("batch_data_legacy_max_rows_conversion_pending",
+                        "Original out-of-range max_rows conversion remains incomplete; no Data command dispatched") from error
+                selected[key] = min(5000, max(1, integer))
+        elif dict in types:
+            if type(value) is not dict:
+                raise OperationError("batch_data_legacy_object_required", "Missing '" + key + "' object parameter")
+            selected[key] = copy.deepcopy(value)
+        else:
+            if type(value) is bool:
+                value = "true" if value else "false"
+            elif type(value) in (int, float):
+                value = number_to_legacy_string(value)
+            elif type(value) is not str:
+                if default is _REQUIRED:
+                    raise OperationError("batch_data_legacy_string_required", "Missing '" + key + "' parameter")
+                value = copy.deepcopy(default)
+            selected[key] = value
+    return selected
+
+
+_SEQUENCER_LEGACY_COMMANDS = {
+    name: "CubelessSequencerTools." + name for name in (
+        "create_level_sequence", "get_level_sequence_info", "add_level_sequence_actor_binding",
+        "add_level_sequence_transform_keys", "add_level_sequence_camera_cut",
+        "set_level_sequence_playback_range", "remove_level_sequence_binding",
+        "add_level_sequence_float_property_keys", "add_level_sequence_subsequence",
+        "open_level_sequence_in_editor")
+}
+
+
+def _sequencer_legacy_params(method, params):
+    """Original JSON-DOM admission into existing concrete Sequencer actions.
+
+    Whole params/absence remain on the command row. The source handler's typed
+    numeric/default and typed bool save rules differ from general TryGet*:
+    notably save="false" still uses the original default True.
+    """
+    fields = _CAPABILITIES[_SEQUENCER_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+    selected = {}
+    for key, (types, default) in fields.items():
+        value = params.get(key, absent)
+        if key == "save":
+            selected[key] = value if type(value) is bool else True
+        elif key == "keys":
+            # Original TryGetArrayField never parses a JSON-text string.
+            # Keep complete typed rows untouched; the existing concrete
+            # argument/core path owns row validation and finite support bounds.
+            if type(value) is not list:
+                raise OperationError("batch_sequencer_legacy_keys_invalid", "Missing 'keys' array")
+            selected[key] = copy.deepcopy(value)
+        elif int in types or float in types:
+            # Source Create accepts only EJson::Number and otherwise retains
+            # defaults; Camera/Range/Subsequence require typed numeric fields.
+            if type(value) not in (int, float):
+                if default is _REQUIRED:
+                    raise OperationError("batch_sequencer_legacy_numeric_required", "Missing numeric '" + key + "'")
+                value = copy.deepcopy(default)
+            selected[key] = value
+        else:
+            # FJsonObject::TryGetStringField accepts strings, booleans and
+            # numbers. Reuse the installed SDK formatter for numeric strings.
+            if type(value) is bool:
+                value = "true" if value else "false"
+            elif type(value) in (int, float):
+                value = number_to_legacy_string(value)
+            elif type(value) is not str:
+                if default is _REQUIRED:
+                    raise OperationError("batch_sequencer_legacy_string_required", "Missing '" + key + "' parameter")
+                value = copy.deepcopy(default)
+            selected[key] = value
+    return selected
+
+
+_WIDGET_LEGACY_COMMANDS = {
+    "set_text_block_binding": "CubelessUMGTextBindingTools.set_text_block_binding",
+    "analyze_blueprint_widget_fallbacks_mcp": "CubelessBlueprintWidgetFallbackTools.analyze_blueprint_widget_fallbacks_mcp",
+}
+
+_UMG_COMPOSITION_LEGACY_COMMANDS = {
+    **{name: "CubelessUMGAuthoringTools." + name for name in (
+        "create_umg_widget_blueprint", "add_text_block_to_widget", "add_button_to_widget")},
+    **{name: "CubelessUMGUtilityTools." + name for name in (
+        "add_checkbox_to_widget", "add_widget_to_viewport")},
+    **{name: "CubelessUMGInteractionTools." + name for name in (
+        "add_sliders_to_widget", "bind_widget_event")},
+}
+_WIDGET_LEGACY_COMMANDS.update(_UMG_COMPOSITION_LEGACY_COMMANDS)
+
+
+def _umg_composition_legacy_params(method, params):
+    """Original UMG alias priority/omission to existing concrete compositions.
+
+    Checkbox preserves the full command object; slider descriptors are opaque.
+    No widget loading, compile/save, row repair, runtime widget or retry here.
+    """
+    import re
+    absent = object()
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def any_string(*keys, default=absent):
+        for key in keys:
+            value = string(params.get(key, absent))
+            if value is not absent:
+                return value.strip()  # Original TryGetStringFieldAny trims, including empty primary.
+        if default is absent:
+            raise OperationError("batch_umg_composition_string_required", "Missing '" + keys[0] + "' parameter")
+        return default
+
+    def number(value):
+        if type(value) in (int, float, bool):
+            try:
+                result = float(value)
+            except (OverflowError, ValueError) as error:
+                raise OperationError("batch_umg_composition_number_pending", "Original double conversion remains incomplete") from error
+        elif type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                result = float(value)
+            except ValueError:
+                result = 0.0
+        else:
+            return False, 0.0
+        if not math.isfinite(result):
+            raise OperationError("batch_umg_composition_number_pending", "Original nonfinite double conversion remains incomplete")
+        return True, result
+
+    def geometry(key):
+        value = params.get(key)
+        # Native existing [] carrier means no array with two axes, matching
+        # original omission/null/nonarray/short-array slot-setter omission.
+        if type(value) is not list or len(value) < 2:
+            return []
+        return [number(value[0])[1], number(value[1])[1]]
+
+    if method == "add_checkbox_to_widget":
+        return {"params": copy.deepcopy(params)}, "original_cpp_checkbox_full_object"
+    if method == "create_umg_widget_blueprint":
+        return dict(widget_name=any_string("name", "widget_name", "blueprint_name"),
+            path=any_string("path", "package_path", default="/Game/Widgets"),
+            parent_class=string(params.get("parent_class", absent), "UserWidget")), "original_cpp_create_keys_default_Widgets"
+    target = any_string("blueprint_name", "widget_blueprint", "widget_path", "widget_name", "name")
+    if method == "add_sliders_to_widget":
+        if type(params.get("sliders")) is not list:
+            raise OperationError("batch_umg_composition_sliders_required", "'sliders' must be a non-empty array")
+        return dict(widget_name=target, sliders=copy.deepcopy(params["sliders"])), "original_cpp_slider_descriptors_whole"
+    if method == "add_widget_to_viewport":
+        value = params.get("z_order", absent)
+        z = 0
+        if type(value) is str:
+            match = re.match(r'\s*([+-]?[0-9]+)', value)
+            z = int(match.group(1)) if match else 0
+            if not -2147483648 <= z <= 2147483647:
+                raise OperationError("batch_umg_composition_z_order_pending", "Original overflowing string int32 conversion remains incomplete")
+        else:
+            read, value = number(value)
+            if read and -2147483648 <= value <= 2147483647:
+                z = math.floor(value + .5) if value >= 0 else math.ceil(value - .5)
+        return dict(widget_name=target, z_order=z), "original_cpp_class_readiness_only"
+    name_key = "text_block_name" if method == "add_text_block_to_widget" else "button_name" if method == "add_button_to_widget" else "widget_component_name"
+    aliases = (name_key, "component_name") if method != "add_button_to_widget" else (name_key, "component_name", "widget_component_name")
+    name = any_string(*aliases, default=absent) if any(string(params.get(key, absent)) is not absent for key in aliases) else absent
+    if name is absent:
+        allowed_fallback = method == "add_text_block_to_widget" or "blueprint_name" in params
+        name = string(params.get("widget_name", absent)) if allowed_fallback else absent
+        if name is absent:
+            raise OperationError("batch_umg_composition_string_required", "Missing '" + name_key + "' parameter")
+        if name != name.strip():
+            raise OperationError("batch_umg_composition_name_pending", "Original untrimmed widget_name fallback is outside the current trimmed Native component-name carrier")
+    if method == "bind_widget_event":
+        event = string(params.get("event_name", absent))
+        if event is absent:
+            raise OperationError("batch_umg_composition_string_required", "Missing event_name parameter")
+        # Original CPP ignores function_name. Named's falsey name repair is also
+        # ignored by its Native entry, so do not invent validation of this key.
+        position = {key: copy.deepcopy(params[key]) for key in ("node_pos_x", "node_pos_y") if key in params}
+        return dict(widget_name=target, widget_component_name=name, event_name=event, function_name="",
+            __legacy_umg_event_position=position), "original_cpp_bound_event_keys_raw_position"
+    fields = _CAPABILITIES[_UMG_COMPOSITION_LEGACY_COMMANDS[method]]["fields"]
+    result = {key: copy.deepcopy(default) for key, (types, default) in fields.items() if default is not _REQUIRED}
+    result.update(widget_name=target, **{name_key: name},
+        text=string(params.get("text", absent), "New Text Block" if method == "add_text_block_to_widget" else name),
+        position=geometry("position"), size=geometry("size"))
+    # Original handlers do not read font/color/background_color; retain only
+    # harmless canonical placeholders, never validate/apply ignored raw style.
+    return result, "original_cpp_text_button_keys_ignored_style"
+
+
+def _widget_legacy_params(method, params):
+    """Connect original raw key contracts to the existing repaired Native API.
+
+    Whole original params remain on the command row. No asset, source/member,
+    binding, root/pair/report, compiler or save operation is performed here.
+    """
+    absent = object()
+
+    def string(value, default=absent):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)  # Existing read-only SDK conversion.
+        return default
+
+    def required(key, message):
+        value = string(params.get(key, absent))
+        if value is absent:
+            raise OperationError("batch_widget_legacy_parameter_missing", message)
+        return value
+
+    if method in _UMG_COMPOSITION_LEGACY_COMMANDS:
+        return _umg_composition_legacy_params(method, params)
+    if method == "analyze_blueprint_widget_fallbacks_mcp":
+        # Original GetStringParam keeps nonempty TryGetString values, otherwise
+        # its _MCP default. Root normalization/validation stays in Native.
+        suffix = string(params.get("suffix", absent), "_MCP") or "_MCP"
+        return dict(source_root=required("source_root", "Missing required parameter: source_root"),
+            target_root=required("target_root", "Missing required parameter: target_root"),
+            suffix=suffix), "original_root_keys"
+    if method != "set_text_block_binding":
+        raise OperationError("batch_widget_legacy_command_invalid", "Only the two original Widget commands are admitted")
+    if "blueprint_name" in params or "binding_name" in params:
+        # Native UE56 requires these three keys. The Python wrapper instead
+        # used four different public keys and failed before loading. Preserve
+        # Native key precedence for mixed inputs, and its /Game/Widgets path.
+        blueprint_name = required("blueprint_name", "Missing blueprint_name parameter")
+        text_block = required("widget_name", "Missing widget_name parameter")
+        binding = required("binding_name", "Missing binding_name parameter")
+        values = dict(widget_name="/Game/Widgets/" + blueprint_name + "." + blueprint_name,
+            text_block_name=text_block, binding_property=binding,
+            binding_type=string(params.get("binding_type", absent), "Text"))
+        return values, "original_cpp_keys_to_existing_Text_property_path_repair"
+    # This is the original Python public request, connected to the already
+    # implemented key-mismatch repair rather than the old broken getter graph.
+    return dict(widget_name=required("widget_name", "Missing widget_name parameter"),
+        text_block_name=required("text_block_name", "Missing text_block_name parameter"),
+        binding_property=required("binding_property", "Missing binding_property parameter"),
+        binding_type=string(params.get("binding_type", absent), "Text")), "original_wrapper_keys_to_existing_Text_property_path_repair"
+
+
+_SCRATCH_LEGACY_COMMANDS = {
+    name: "CubelessNiagaraScratchTools." + name for name in (
+        "create_or_duplicate_scratch_pad_module", "add_scratch_pad_module_to_stack",
+        "add_niagara_scratch_pad_parameter_write", "insert_niagara_scratch_pad_custom_hlsl_for_pin",
+        "rewire_niagara_custom_hlsl_input_to_module_parameter")
+}
+
+
+def _scratch_legacy_params(method, params):
+    """Original typed JSON values become only the existing Registry wire slots.
+
+    Exact original params/absence are retained on the command row separately.
+    This does not claim all C++ raw scalar coercions, aliases or wider Native
+    support are implemented. Existing strict scalar admission remains explicit.
+    """
+    fields = _CAPABILITIES[_SCRATCH_LEGACY_COMMANDS[method]]["fields"]
+    selected = {key: copy.deepcopy(value) for key, value in params.items() if key in fields}
+    if method == "add_niagara_scratch_pad_parameter_write":
+        # Raw C++ tests key presence, unlike the public Python wrapper's
+        # nonempty-default rule. An explicit empty string must still suppress
+        # value. Use the existing JSON-string value lane, whose Native branch
+        # preserves literal strings including empty; never fall back to value.
+        if "default_value" not in params and "value" not in params:
+            raise OperationError("niagara_scratch_raw_value_required", "Missing 'default_value' or 'value' parameter")
+        chosen = params["default_value"] if "default_value" in params else params["value"]
+        if chosen is None:
+            raise OperationError("niagara_scratch_raw_value_invalid", "Unsupported JSON type for Niagara pin default value")
+        selected["default_value"] = ""
+        selected["value"] = json.dumps(chosen, ensure_ascii=False,
+            allow_nan=False, separators=(",", ":"))
+    elif method == "insert_niagara_scratch_pad_custom_hlsl_for_pin":
+        # Original command arrays are typed JSON lists; Named wire inputs are
+        # optional JSON text. Encode exactly once, including [] versus null.
+        for key in ("inputs", "user_parameter_inputs", "parameter_inputs"):
+            if key in selected and selected[key] is not None:
+                selected[key] = json.dumps(selected[key], ensure_ascii=False,
+                    allow_nan=False, separators=(",", ":"))
+    return selected
+
+
+def _rigid_chain_legacy_params(params):
+    from . import rigid_constraint_chain
+    rigid_constraint_chain._references(params, "params")
+    fields = _CAPABILITIES["CubelessBlueprintTools.ensure_blueprint_rigid_constraint_chain"]["fields"]
+    values = {key: ([] if list in types else "") if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    if type(params.get("blueprint_name")) is str:values["blueprint_name"] = params["blueprint_name"]
+    read, dry_run = try_get_legacy_bool(params.get("dry_run"))
+    values["dry_run"] = dry_run if read else True
+    return values
+
+
+def _pawn_legacy_params(params):
+    from . import pawn
+    prepared, ignored_json = pawn._raw_batch_params(params)
+    fields = _CAPABILITIES["CubelessBlueprintTools.set_pawn_properties"]["fields"]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    values["blueprint_name"] = prepared["blueprint_path"]
+    return values
+
+
+def _actor_tick_legacy_settings(params):
+    keys = ("tick_hz", "tick_interval", "can_ever_tick", "start_with_tick_enabled",
+        "allow_tick_on_dedicated_server", "tick_even_when_paused", "dry_run", "compile", "save", "refresh_nodes")
+    return {key: copy.deepcopy(params[key]) for key in keys if key in params}
+
+
+def _actor_tick_legacy_params(params):
+    from . import niagara_event_stage_authoring
+    niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+    fields = _CAPABILITIES["CubelessBlueprintTools.set_blueprint_actor_tick_settings"]["fields"]
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    if type(params.get("blueprint_name")) is str:values["blueprint_name"] = params["blueprint_name"]
+    read, dry = try_get_legacy_bool(params.get("dry_run"))
+    values["dry_run"] = dry if read else True
+    return values
+
+
+_ANIM_GRAPH_DEMO_LEGACY_COMMANDS = {
+    "ensure_anim_graph_modify_bone_demo": "CubelessAnimGraphAuthoringTools.ensure_anim_graph_modify_bone_demo",
+    "ensure_anim_graph_modify_curve_demo": "CubelessAnimGraphAuthoringTools.ensure_anim_graph_modify_curve_demo",
+    "ensure_anim_graph_trail_demo": "CubelessAnimGraphAuthoringTools.ensure_anim_graph_trail_demo",
+    "ensure_anim_graph_secondary_motion_chain": "CubelessAnimGraphAuthoringTools.ensure_anim_graph_secondary_motion_chain",
+}
+
+
+def _anim_graph_demo_legacy_params(method, params):
+    """Original four composite command inputs, not a replacement graph writer.
+
+    The existing private JSON slots keep Any/vector/curve input and omission
+    distinct. Public placeholders are used only to validate the fixed action's
+    shape; the raw row is rechecked before one existing Native dispatch.
+    """
+    from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+    _reject_legacy_command_dependency_refs(params)
+    import re
+    fields = _CAPABILITIES[_ANIM_GRAPH_DEMO_LEGACY_COMMANDS[method]]["fields"]
+    absent = object()
+
+    def text(key, default=absent):
+        value = params.get(key, absent)
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        if default is absent:
+            raise OperationError("batch_anim_graph_demo_string_required", "Missing '" + key + "' parameter")
+        return default
+
+    def flag(key, default, get_field=False):
+        if key not in params:
+            return default
+        read, value = try_get_legacy_bool(params[key])
+        return value if read else False if get_field else default
+
+    def number(key, default, require_number=False):
+        if key not in params:
+            return default
+        value = params[key]
+        if type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (ValueError, OverflowError) as error:
+                raise OperationError("batch_anim_graph_demo_number_pending", "Original double conversion remains incomplete: " + key) from error
+        elif type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0  # Original FString IsNumeric/Atod sign/dot-only case.
+        elif require_number:
+            raise OperationError("batch_anim_graph_demo_number_invalid", "'" + key + "' must be a number")
+        else:
+            value = 0.0  # Original HasField + GetNumberField failure fallback.
+        if not math.isfinite(value):
+            raise OperationError("batch_anim_graph_demo_number_pending", "Original finite numeric carrier required: " + key)
+        return value
+
+    def encoded(key):
+        return json.dumps(params[key], ensure_ascii=False, allow_nan=False, separators=(",", ":")) if key in params else ""
+
+    values = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+        for key, (types, default) in fields.items()}
+    values["blueprint_name"] = text("blueprint_name")
+    # Raw graph resolution receives empty missing selectors, unlike Named defaults.
+    for key in ("graph_name", "graph_id", "graph_type"):
+        values[key] = text(key, "")
+    if flag("create_graph_if_missing", False, True):
+        raise OperationError("batch_anim_graph_demo_graph_creation_pending", "Original graph creation option has no existing carrier; valid variant remains incomplete")
+    carriers = {}
+    if method == "ensure_anim_graph_modify_bone_demo":
+        values.update(bone_name=text("bone_name", "head"), rotation=None,
+            replace_existing=flag("replace_existing", False, True), allow_non_sample=flag("allow_non_sample", False))
+        carriers["rotation_json"] = encoded("rotation")
+    elif method == "ensure_anim_graph_modify_curve_demo":
+        # The original parser can consume an object and an array from the two
+        # aliases in sequence. One existing JSON slot cannot preserve both.
+        obj = next((key for key in ("curve_values", "curves") if type(params.get(key)) is dict), None)
+        arr = next((key for key in ("curve_values", "curves") if type(params.get(key)) is list), None)
+        if obj is not None and arr is not None:
+            raise OperationError("batch_anim_graph_demo_mixed_curve_sources_pending", "Original simultaneous object/array curve upsert remains incomplete; neither source is discarded")
+        selected = obj if obj is not None else arr
+        carriers["curve_values_json"] = encoded(selected) if selected is not None else ""
+        values.update(curve_values=None, alpha=number("alpha", 1.0), apply_mode=text("apply_mode", "Add"),
+            replace_existing=flag("replace_existing", False), allow_non_sample=flag("allow_non_sample", False))
+    elif method == "ensure_anim_graph_trail_demo":
+        length = number("chain_length", 2.0)
+        # Original FMath::RoundToInt(double), then Max(2); do not substitute
+        # JSON's integer TryGetNumber overload or Python bankers rounding.
+        rounded = math.floor(length + 0.5)
+        if not -2147483648 <= rounded <= 2147483647:
+            raise OperationError("batch_anim_graph_demo_chain_length_pending", "Original overflowing SDK RoundToInt remains incomplete")
+        values.update(trail_bone=text("trail_bone", "VB VBHead"), base_joint=text("base_joint", "head"),
+            chain_length=max(2, rounded), chain_bone_axis=text("chain_bone_axis", "X"), fake_velocity=None)
+        carriers["fake_velocity_json"] = encoded("fake_velocity")
+        for key, default in (("alpha", 1.0), ("relaxation_speed_scale", 1.0), ("stretch_limit", 0.0), ("max_delta_time", 0.0)):
+            values[key] = number(key, default)
+        for key, default in (("replace_existing", False), ("allow_non_sample", False), ("invert_chain_bone_axis", False),
+                ("reorient_parent_to_child", True), ("actor_space_fake_velocity", False), ("limit_stretch", False)):
+            values[key] = flag(key, default)
+    else:
+        values.update(dynamics_type=text("dynamics_type", "anim_dynamics"), root_bone=text("root_bone", ""),
+            chain_end_bone=text("chain_end_bone", ""), gravity=None, body_extents=None)
+        carriers.update(gravity_json=encoded("gravity"), body_extents_json=encoded("body_extents"))
+        for key, default in (("alpha", 1.0), ("angular_limit_degrees", 60.0), ("linear_damping", 0.75),
+                ("angular_damping", 0.75), ("kawaii_damping", 0.08), ("kawaii_stiffness", 0.03)):
+            values[key] = number(key, default, True)
+        # Shared GetBoolParam is HasField+GetBoolField: present null becomes
+        # false even where omission defaults true. This is not TryGetBool/init.
+        for key, default in (("replace_existing", True), ("allow_non_sample", False), ("compile", True), ("save", True)):
+            values[key] = flag(key, default, True)
+    return values, carriers
+
+
+def _anim_graph_demo_raw_action(result, command, arguments, checkpoint_callback):
+    method = command.get("legacy_original_command")
+    raw = command.get("legacy_original_params")
+    if (method not in _ANIM_GRAPH_DEMO_LEGACY_COMMANDS or type(raw) is not dict
+            or command.get("type") != _ANIM_GRAPH_DEMO_LEGACY_COMMANDS[method]
+            or command.get("legacy_anim_graph_demo_raw") is not True):
+        raise OperationError("batch_anim_graph_demo_identity_invalid", "Exact original composite command context required; no dispatch")
+    expected, carriers = _anim_graph_demo_legacy_params(method, raw)
+    identity = lambda value: json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True)
+    if identity(expected) != identity(arguments):
+        raise OperationError("batch_anim_graph_demo_identity_invalid", "Original composite arguments changed; no dispatch")
+    from . import anim_graph_bone_demo, anim_graph_modify_curve_demo, anim_graph_trail_demo, anim_graph_secondary_motion
+    domain = {
+        "ensure_anim_graph_modify_bone_demo": anim_graph_bone_demo,
+        "ensure_anim_graph_modify_curve_demo": anim_graph_modify_curve_demo,
+        "ensure_anim_graph_trail_demo": anim_graph_trail_demo,
+        "ensure_anim_graph_secondary_motion_chain": anim_graph_secondary_motion,
+    }[method]
+    prepared = domain._arguments(method, arguments)
+    prepared["hidden"].update(carriers)
+    result["data"].update(original_raw_composite_params=copy.deepcopy(raw),
+        raw_vector_curve_JSON_omission_and_null_native_owned=True,
+        adapter_public_arguments_are_fixed_shape_placeholders=True,
+        original_composite_action_and_actual_partial_prefix_reused=True,
+        full_original_raw_composite_parity_verified=False)
+    domain._run_action(result, prepared, checkpoint_callback=checkpoint_callback)
+
+
+_ANIM_ASSET_CONTRACT_LEGACY_COMMANDS = {
+    "create_anim_blueprint_sample": "CubelessAnimGraphAuthoringTools.create_anim_blueprint_sample",
+    "inspect_anim_state_machine_transitions": "CubelessAnimStateMachineInspectionTools.inspect_anim_state_machine_transitions",
+    "inspect_animation_asset_metadata_guarded": "CubelessAnimationAssetMetadataTools.inspect_animation_asset_metadata_guarded",
+    "inspect_physics_asset_constraints_guarded": "CubelessPhysicsAssetInspectionTools.inspect_physics_asset_constraints_guarded",
+}
+
+
+def _anim_asset_contract_legacy_params(method, params):
+    """Original creator and guarded inspection inputs into existing exact APIs.
+
+    This does not create/load/inspect assets or replace any Native result guard.
+    Keep the full raw row separately from these fixed-carrier conversions.
+    """
+    from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+    _reject_legacy_command_dependency_refs(params)
+    import re
+    absent = object()
+    fields = _CAPABILITIES[_ANIM_ASSET_CONTRACT_LEGACY_COMMANDS[method]]["fields"]
+
+    def text(key, default=absent):
+        value = params.get(key, absent)
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return "true" if value else "false"
+        if type(value) in (int, float):
+            return number_to_legacy_string(value)
+        return default
+
+    def flag(key, default):
+        if key not in params:
+            return default
+        read, value = try_get_legacy_bool(params[key])
+        return value if read else False  # Shared HasField/GetBool, not TryBool/init.
+
+    def number(value):
+        if type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (ValueError, OverflowError) as error:
+                raise OperationError("batch_anim_asset_number_pending", "Original double conversion remains incomplete") from error
+        elif type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0
+        else:
+            return absent
+        if not math.isfinite(value):
+            raise OperationError("batch_anim_asset_number_pending", "Original nonfinite numeric conversion remains incomplete")
+        return value
+
+    def integer(key, default, minimum, maximum, integer_field=False):
+        if key not in params:
+            return default
+        raw = params[key]
+        if integer_field and type(raw) is str:
+            # GetIntegerField dispatches directly to FJsonValueString's int32
+            # Lex/Atoi overload; this differs from TryGetNumber(double).
+            match = re.match(r'\s*([+-]?[0-9]+)', raw)
+            result = int(match.group(1)) if match else 0
+            if not -2147483648 <= result <= 2147483647:
+                raise OperationError("batch_anim_asset_integer_pending", "Original overflowing string int32 conversion remains incomplete")
+        else:
+            value = number(raw)
+            if integer_field:
+                # GetIntegerField initializes zero; numeric int32 conversion
+                # checks source range then uses RoundHalfFromZero.
+                result = 0 if value is absent or not -2147483648 <= value <= 2147483647 else math.floor(value + .5) if value >= 0 else math.ceil(value - .5)
+            else:
+                # GetClampedIntParam initializes the default, TryGetNumber
+                # double, then SDK RoundToInt(double) before the final Clamp.
+                value = float(default) if value is absent else value
+                result = math.floor(value + .5)
+                if not -2147483648 <= result <= 2147483647:
+                    raise OperationError("batch_anim_asset_integer_pending", "Original overflowing SDK RoundToInt remains incomplete")
+        return max(minimum, min(maximum, result))
+
+    def normalized_empty(path):
+        # Only the creator's alias choice uses this projection. The selected
+        # raw path is still normalized/validated by Native. Mirrors installed
+        # PackageName.cpp3353/3395 and original Shared12147; no source load.
+        quote = path.find("'")
+        if 0 <= quote < len(path) - 1 and path.endswith("'"):
+            path = path[quote + 1:-1]
+        path = path.strip()
+        if path.startswith('"'):
+            path = path[1:]
+        if path.endswith('"'):
+            path = path[:-1]
+        path = path.replace("\\", "/").split(".", 1)[0]
+        while "//" in path:
+            path = path.replace("//", "/")
+        return not path.rstrip("/")
+
+    values = {}
+    for key, (types, default) in fields.items():
+        if types == (bool,):
+            values[key] = flag(key, default)
+        elif types == (str,):
+            selected = text(key)
+            if selected is absent:
+                selected = "" if default is _REQUIRED else default
+            values[key] = selected
+    if method == "create_anim_blueprint_sample":
+        if normalized_empty(values["target_anim_bp_path"]):
+            values["target_anim_bp_path"] = text("target_blueprint_path", "")
+        # Presence wins, including explicit null false over save=true.
+        values["save_asset"] = flag("save_asset", flag("save", False))
+    elif method == "inspect_anim_state_machine_transitions":
+        values["max_rule_graph_nodes"] = integer("max_rule_graph_nodes", 256, -1, 2048, True)
+    elif method == "inspect_animation_asset_metadata_guarded":
+        primary = text("asset_path")
+        if primary is absent:
+            primary = text("animation_asset")
+        if primary is absent:
+            raise OperationError("batch_anim_asset_path_required", "Missing 'asset_path' parameter")
+        values["asset_path"] = primary  # First successful empty string still wins.
+        for key, default, maximum in (("max_notifies", 256, 1024), ("max_curves", 256, 1024),
+                ("max_curve_keys_per_curve", 0, 256), ("max_markers", 256, 1024), ("max_sections", 128, 256),
+                ("max_slots", 64, 128), ("max_segments_per_slot", 256, 512)):
+            values[key] = integer(key, default, 0, maximum)
+    else:
+        for key, default, maximum in (("max_bodies", 128, 4096), ("max_constraints", 128, 4096),
+                ("max_profiles_per_item", 16, 256), ("max_shapes_per_body", 32, 512)):
+            values[key] = integer(key, default, 0, maximum)
+    return values
+
+
 def _normalize(commands_json, stop_on_error):
     if type(stop_on_error) is not bool:
         raise OperationError("batch_invalid_stop_on_error", "stop_on_error must be a boolean")
@@ -4495,6 +6872,51 @@ def _normalize(commands_json, stop_on_error):
             raise OperationError("batch_nested", f"commands[{index}]: nested batches are not supported")
         if type(name) is not str or not name:
             raise OperationError("batch_invalid_entry", f"commands[{index}].type must be a nonempty string")
+        anim_asset_contract_original_command = name if name in _ANIM_ASSET_CONTRACT_LEGACY_COMMANDS else None
+        if anim_asset_contract_original_command is not None:
+            name = _ANIM_ASSET_CONTRACT_LEGACY_COMMANDS[anim_asset_contract_original_command]
+        anim_graph_demo_original_command = name if name in _ANIM_GRAPH_DEMO_LEGACY_COMMANDS else None
+        if anim_graph_demo_original_command is not None:
+            name = _ANIM_GRAPH_DEMO_LEGACY_COMMANDS[anim_graph_demo_original_command]
+        rigid_chain_original_command = name if name == "ensure_blueprint_rigid_constraint_chain" else None
+        if rigid_chain_original_command is not None:
+            name = "CubelessBlueprintTools.ensure_blueprint_rigid_constraint_chain"
+        pawn_original_command = name if name == "set_pawn_properties" else None
+        if pawn_original_command is not None:
+            name = "CubelessBlueprintTools.set_pawn_properties"
+        actor_tick_original_command = name if name == "set_blueprint_actor_tick_settings" else None
+        if actor_tick_original_command is not None:
+            name = "CubelessBlueprintTools.set_blueprint_actor_tick_settings"
+        status_window_original_command = name if name == "ieta_status" else None
+        if status_window_original_command is not None:
+            name = "CubelessStatusWindowTools.show_ieta_connection_status"
+        volume_texture_original_command = name if name in _VOLUME_TEXTURE_LEGACY_COMMANDS else None
+        if volume_texture_original_command is not None:
+            name = _VOLUME_TEXTURE_LEGACY_COMMANDS[volume_texture_original_command]
+        actor_core_original_command = name if name in _ACTOR_CORE_LEGACY_COMMANDS else None
+        if actor_core_original_command is not None:
+            name = _ACTOR_CORE_LEGACY_COMMANDS[actor_core_original_command]
+        skeletal_physics_original_command = name if name == _SKELETAL_PHYSICS_LEGACY_COMMAND else None
+        if skeletal_physics_original_command is not None:
+            name = _SKELETAL_PHYSICS_CANONICAL
+        skeletal_read_original_command = name if name in _SKELETAL_READ_LEGACY_COMMANDS else None
+        if skeletal_read_original_command is not None:
+            name = _SKELETAL_READ_LEGACY_COMMANDS[skeletal_read_original_command]
+        material_graph_original_command = name if name in _MATERIAL_GRAPH_LEGACY_COMMANDS else None
+        if material_graph_original_command is not None:
+            name = _MATERIAL_GRAPH_LEGACY_COMMANDS[material_graph_original_command]
+        networking_original_command = name if name in _NETWORKING_LEGACY_COMMANDS else None
+        if networking_original_command is not None:
+            name = _NETWORKING_LEGACY_COMMANDS[networking_original_command]
+        ai_original_command = name if name in _AI_LEGACY_COMMANDS else None
+        if ai_original_command is not None:
+            name = _AI_LEGACY_COMMANDS[ai_original_command]
+        state_tree_original_command = name if name in _STATE_TREE_LEGACY_COMMANDS else None
+        if state_tree_original_command is not None:
+            name = _STATE_TREE_LEGACY_COMMANDS[state_tree_original_command]
+        audio_original_command = name if name in _AUDIO_LEGACY_COMMANDS else None
+        if audio_original_command is not None:
+            name = _AUDIO_LEGACY_COMMANDS[audio_original_command]
         actor_original_command = name if name in ("delete_actor", "set_actor_transform", "spawn_blueprint_actor") else None
         if actor_original_command is not None:
             name = "CubelessActorTools." + ("set_actor_transform_original" if actor_original_command == "set_actor_transform" else actor_original_command)
@@ -4577,6 +6999,51 @@ def _normalize(commands_json, stop_on_error):
             name = "CubelessNiagaraFactoryBootstrapTools." + niagara_factory_bootstrap_raw_method
 
         niagara_resource_bindings_raw_method = {'set_niagara_render_target2d_module_input': 'set_niagara_render_target2d_module_input', 'set_niagara_texture2d_module_input': 'set_niagara_texture2d_module_input', 'set_niagara_scratch_pad_function_input_default': 'set_niagara_scratch_pad_function_input_default', 'link_niagara_scratch_pad_pin_to_user_parameter': 'link_niagara_scratch_pad_pin_to_user_parameter'}.get(name)
+        component_original_command = name if name in _COMPONENT_LEGACY_COMMANDS else None
+        if component_original_command is not None:
+            name = _COMPONENT_LEGACY_COMMANDS[component_original_command]
+        blueprint_graph_core_original_command = name if name in _BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS else None
+        if blueprint_graph_core_original_command is not None:
+            name = _BLUEPRINT_GRAPH_CORE_LEGACY_COMMANDS[blueprint_graph_core_original_command]
+        blueprint_lifecycle_original_command = name if name in _BLUEPRINT_LIFECYCLE_LEGACY_COMMANDS else None
+        if blueprint_lifecycle_original_command is not None:
+            name = _BLUEPRINT_LIFECYCLE_LEGACY_COMMANDS[blueprint_lifecycle_original_command]
+        blueprint_variable_core_original_command = name if name in _BLUEPRINT_VARIABLE_CORE_LEGACY_COMMANDS else None
+        if blueprint_variable_core_original_command is not None:
+            name = _BLUEPRINT_VARIABLE_CORE_LEGACY_COMMANDS[blueprint_variable_core_original_command]
+        blueprint_maintenance_original_command = name if name in _BLUEPRINT_MAINTENANCE_LEGACY_COMMANDS else None
+        if blueprint_maintenance_original_command is not None:
+            name = _BLUEPRINT_MAINTENANCE_LEGACY_COMMANDS[blueprint_maintenance_original_command]
+        niagara_stack_entry_original_command = name if name in _NIAGARA_STACK_ENTRY_LEGACY_COMMANDS else None
+        if niagara_stack_entry_original_command is not None:
+            name = _NIAGARA_STACK_ENTRY_LEGACY_COMMANDS[niagara_stack_entry_original_command]
+        niagara_user_parameter_original_command = name if name in _NIAGARA_USER_PARAMETER_LEGACY_COMMANDS else None
+        if niagara_user_parameter_original_command is not None:
+            name = _NIAGARA_USER_PARAMETER_LEGACY_COMMANDS[niagara_user_parameter_original_command]
+        pcg_core_original_command = name if name in _PCG_CORE_LEGACY_COMMANDS else None
+        if pcg_core_original_command is not None:
+            name = _PCG_CORE_LEGACY_COMMANDS[pcg_core_original_command]
+        material_maintenance_original_command = name if name in _MATERIAL_MAINTENANCE_LEGACY_COMMANDS else None
+        if material_maintenance_original_command is not None:
+            name = _MATERIAL_MAINTENANCE_LEGACY_COMMANDS[material_maintenance_original_command]
+        skeletal_edit_original_command = name if name in _SKELETAL_EDIT_LEGACY_COMMANDS else None
+        if skeletal_edit_original_command is not None:
+            name = _SKELETAL_EDIT_LEGACY_COMMANDS[skeletal_edit_original_command]
+        data_original_command = name if name in _DATA_LEGACY_COMMANDS else None
+        if data_original_command is not None:
+            name = _DATA_LEGACY_COMMANDS[data_original_command]
+        sequencer_original_command = name if name in _SEQUENCER_LEGACY_COMMANDS else None
+        if sequencer_original_command is not None:
+            name = _SEQUENCER_LEGACY_COMMANDS[sequencer_original_command]
+        widget_original_command = name if name in _WIDGET_LEGACY_COMMANDS else None
+        if widget_original_command is not None:
+            name = _WIDGET_LEGACY_COMMANDS[widget_original_command]
+        niagara_scratch_original_command = name if name in _SCRATCH_LEGACY_COMMANDS else None
+        if niagara_scratch_original_command is not None:
+            name = _SCRATCH_LEGACY_COMMANDS[niagara_scratch_original_command]
+        niagara_simulation_stage_raw_method = name if name in ("add_niagara_grid_simulation_stage", "set_niagara_simulation_stage_settings") else None
+        if niagara_simulation_stage_raw_method is not None:
+            name = "CubelessNiagaraSimulationStageTools." + niagara_simulation_stage_raw_method
         niagara_scratch_stack_authoring_raw_method = {'add_niagara_scratch_pad_module_input': 'add_niagara_scratch_pad_module_input', 'add_niagara_scratch_pad_assignment_module_to_stack': 'add_niagara_scratch_pad_assignment_module_to_stack', 'wrap_niagara_scratch_pad_output_with_stack_context': 'wrap_niagara_scratch_pad_output_with_stack_context'}.get(name)
         niagara_event_stage_authoring_raw_method = {'inspect_niagara_simulation_stages': 'inspect_niagara_simulation_stages', 'inspect_niagara_event_handlers': 'inspect_niagara_event_handlers', 'add_niagara_event_handler': 'add_niagara_event_handler'}.get(name)
         niagara_promotion_raw_method = {'audit_niagara_promotion_candidate': 'audit_niagara_promotion_candidate', 'promote_niagara_system_candidate': 'promote_niagara_system_candidate'}.get(name)
@@ -4731,6 +7198,70 @@ def _normalize(commands_json, stop_on_error):
         fields = _CAPABILITIES[name]["fields"]
         if type(params) is not dict:
             raise OperationError("batch_invalid_entry_params", f"commands[{index}].params must be an object or null")
+        anim_asset_contract_original_params = copy.deepcopy(params) if anim_asset_contract_original_command is not None else None
+        if anim_asset_contract_original_params is not None:
+            params = _anim_asset_contract_legacy_params(anim_asset_contract_original_command, anim_asset_contract_original_params)
+        anim_graph_demo_original_params = copy.deepcopy(params) if anim_graph_demo_original_command is not None else None
+        if anim_graph_demo_original_params is not None:
+            params, ignored_carriers = _anim_graph_demo_legacy_params(anim_graph_demo_original_command, anim_graph_demo_original_params)
+        rigid_chain_original_params = copy.deepcopy(params) if rigid_chain_original_command is not None else None
+        if rigid_chain_original_params is not None:
+            params = _rigid_chain_legacy_params(rigid_chain_original_params)
+        pawn_original_params = copy.deepcopy(params) if pawn_original_command is not None else None
+        if pawn_original_params is not None:
+            params = _pawn_legacy_params(pawn_original_params)
+        actor_tick_original_params = copy.deepcopy(params) if actor_tick_original_command is not None else None
+        if actor_tick_original_command is not None:
+            params = _actor_tick_legacy_params(params)
+        status_window_original_params = copy.deepcopy(params) if status_window_original_command is not None else None
+        if status_window_original_command is not None:
+            params = _status_window_legacy_params(params)
+        volume_texture_original_params = copy.deepcopy(params) if volume_texture_original_command is not None else None
+        volume_texture_legacy_error = None
+        if volume_texture_original_command is not None:
+            params, volume_texture_legacy_error = _volume_texture_legacy_params(volume_texture_original_command, params)
+        actor_core_original_params = copy.deepcopy(params) if actor_core_original_command is not None else None
+        skeletal_physics_original_params = copy.deepcopy(params) if skeletal_physics_original_command is not None else None
+        skeletal_physics_legacy_error = None
+        if skeletal_physics_original_command is not None:
+            params, skeletal_physics_legacy_error = _skeletal_physics_legacy_params(params)
+        actor_core_legacy_error = None
+        if actor_core_original_command is not None:
+            params, actor_core_legacy_error = _actor_core_legacy_params(actor_core_original_command, params)
+        skeletal_read_original_params = copy.deepcopy(params) if skeletal_read_original_command is not None else None
+        skeletal_read_legacy_error = None
+        if skeletal_read_original_command is not None:
+            params, skeletal_read_legacy_error = _skeletal_read_legacy_params(skeletal_read_original_command, params)
+        material_graph_original_params = copy.deepcopy(params) if material_graph_original_command is not None else None
+        material_graph_legacy_error = None
+        if material_graph_original_command is not None:
+            params, material_graph_legacy_error = _material_graph_legacy_params(material_graph_original_command, params)
+        networking_original_params = copy.deepcopy(params) if networking_original_command is not None else None
+        if networking_original_command is not None:
+            # Typed placeholders satisfy the existing capability shape only;
+            # actual dispatch uses the retained original raw object below.
+            # No field (including dry_run/null/unknown) is prevalidated here.
+            params = {key: "" if default is _REQUIRED else copy.deepcopy(default)
+                for key, (types, default) in fields.items()}
+            if type(networking_original_params.get("blueprint_name")) is str:
+                params["blueprint_name"] = networking_original_params["blueprint_name"]
+            if networking_original_command == "networking_set_blueprint_settings":
+                raw_dry_run = networking_original_params.get("dry_run", True)
+                # Classification only: malformed requests remain conservative
+                # writes, while the untouched raw value is validated by Native.
+                params["dry_run"] = raw_dry_run if type(raw_dry_run) is bool else False
+        ai_original_params = copy.deepcopy(params) if ai_original_command is not None else None
+        ai_legacy_error = None
+        if ai_original_command is not None:
+            params, ai_legacy_error = _ai_legacy_params(ai_original_command, params)
+        state_tree_original_params = copy.deepcopy(params) if state_tree_original_command is not None else None
+        state_tree_legacy_error = None
+        if state_tree_original_command is not None:
+            params, state_tree_legacy_error = _state_tree_legacy_params(state_tree_original_command, params)
+        audio_original_params = copy.deepcopy(params) if audio_original_command is not None else None
+        audio_legacy_error = None
+        if audio_original_command is not None:
+            params, audio_legacy_error = _audio_legacy_params(audio_original_command, params)
         actor_original_params = copy.deepcopy(params) if actor_original_command is not None else None
         if actor_original_command == "spawn_blueprint_actor":
             params = _actor_spawn_legacy_params(params)
@@ -5041,7 +7572,96 @@ def _normalize(commands_json, stop_on_error):
             else:
                 params = niagara_factory_bootstrap.normalize_public_mcp_arguments(name.rsplit(".", 1)[1], params)
 
+        component_original_params = None
+        if component_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            component_original_params = copy.deepcopy(params)
+            params = _component_legacy_params(component_original_command, params)
+        blueprint_graph_core_original_params = None
+        if blueprint_graph_core_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            blueprint_graph_core_original_params = copy.deepcopy(params)
+            params = _blueprint_graph_core_legacy_params(blueprint_graph_core_original_command, params)
+        blueprint_lifecycle_original_params = None
+        if blueprint_lifecycle_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            blueprint_lifecycle_original_params = copy.deepcopy(params)
+            params = _blueprint_lifecycle_legacy_params(blueprint_lifecycle_original_command, params)
+        blueprint_variable_core_original_params = None
+        if blueprint_variable_core_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            blueprint_variable_core_original_params = copy.deepcopy(params)
+            params = _blueprint_variable_core_legacy_params(blueprint_variable_core_original_command, params)
+        blueprint_maintenance_original_params = None
+        if blueprint_maintenance_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            blueprint_maintenance_original_params = copy.deepcopy(params)
+            params = _blueprint_maintenance_legacy_params(blueprint_maintenance_original_command, params)
+        niagara_stack_entry_original_params = None
+        if niagara_stack_entry_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            niagara_stack_entry_original_params = copy.deepcopy(params)
+            params = _niagara_stack_entry_legacy_params(niagara_stack_entry_original_command, params)
+        niagara_user_parameter_original_params = None
+        if niagara_user_parameter_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            niagara_user_parameter_original_params = copy.deepcopy(params)
+            params = _niagara_user_parameter_legacy_params(niagara_user_parameter_original_command, params)
+        pcg_core_original_params = None
+        if pcg_core_original_command is not None:
+            from .niagara_event_stage_authoring import _reject_legacy_command_dependency_refs
+            _reject_legacy_command_dependency_refs(params)
+            pcg_core_original_params = copy.deepcopy(params)
+            params = _pcg_core_legacy_params(pcg_core_original_command, params)
+        material_maintenance_original_params = None
+        if material_maintenance_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            material_maintenance_original_params = copy.deepcopy(params)
+            params = _material_maintenance_legacy_params(material_maintenance_original_command, params)
+        skeletal_edit_original_params = None
+        if skeletal_edit_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            skeletal_edit_original_params = copy.deepcopy(params)
+            params = _skeletal_edit_legacy_params(skeletal_edit_original_command, params)
+        data_original_params = None
+        if data_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            data_original_params = copy.deepcopy(params)
+            params = _data_legacy_params(data_original_command, params)
+        sequencer_original_params = None
+        if sequencer_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            sequencer_original_params = copy.deepcopy(params)
+            params = _sequencer_legacy_params(sequencer_original_command, params)
+        widget_original_params = None
+        widget_legacy_route = None
+        widget_event_position = None
+        if widget_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            widget_original_params = copy.deepcopy(params)
+            params, widget_legacy_route = _widget_legacy_params(widget_original_command, params)
+            if widget_original_command == "bind_widget_event":
+                widget_event_position = params.pop("__legacy_umg_event_position")
+        niagara_scratch_original_params = None
+        if niagara_scratch_original_command is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            niagara_scratch_original_params = copy.deepcopy(params)
+            params = _scratch_legacy_params(niagara_scratch_original_command, params)
         niagara_resource_bindings_legacy = None
+        niagara_simulation_stage_legacy = None
         niagara_scratch_stack_authoring_legacy = None
         niagara_event_stage_authoring_legacy = None
         niagara_promotion_legacy = None
@@ -5109,6 +7729,16 @@ def _normalize(commands_json, stop_on_error):
                 params = {key: ("" if default is _REQUIRED else copy.deepcopy(default)) for key, (_, default) in public.items()}
             else:
                 params = niagara_scratch_stack_authoring.normalize_public_mcp_arguments(name.rsplit(".", 1)[1], params)
+        if niagara_simulation_stage_raw_method is not None:
+            from . import niagara_event_stage_authoring
+            niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
+            # Retain the complete original command, including absence, wrong
+            # types and ignored keys. Conversion occurs inside the child flow;
+            # canonical Named contracts keep their existing strict admission.
+            niagara_simulation_stage_legacy = copy.deepcopy(params)
+            public = _CAPABILITIES[name]["fields"]
+            params = {key: ("" if default is _REQUIRED else copy.deepcopy(default))
+                for key, (_, default) in public.items()}
         if name in ('CubelessNiagaraEventStageTools.inspect_niagara_simulation_stages', 'CubelessNiagaraEventStageTools.inspect_niagara_event_handlers', 'CubelessNiagaraEventStageTools.add_niagara_event_handler'):
             from . import niagara_event_stage_authoring
             niagara_event_stage_authoring._reject_legacy_command_dependency_refs(params)
@@ -5508,9 +8138,8 @@ def _normalize(commands_json, stop_on_error):
                         raise OperationError("anim_bp_locomotion_driver_legacy_path_unsupported", "Selected source alias must be an exact string; no action executed")
                     params["source_anim_bp_path"] = candidate
             if "save_asset" not in params and "save" in params:
-                if type(params["save"]) is not bool:
-                    raise OperationError("anim_bp_locomotion_driver_legacy_bool_unsupported", "Selected save alias must be exact bool; no action executed")
-                params["save_asset"] = params["save"]
+                read_success, converted = try_get_legacy_bool(params["save"])
+                params["save_asset"] = converted if read_success else False
             params.pop("save", None)
             # Only hidden-command key omission inherits global create, before defaults.
             # Named public optional flags keep their original explicit True defaults.
@@ -5535,9 +8164,8 @@ def _normalize(commands_json, stop_on_error):
                     params["source_anim_bp_path"] = candidate
             for public, alias in (("save_asset", "save"), ("replace_existing_root_link", "replace_existing")):
                 if public not in params and alias in params:
-                    if type(params[alias]) is not bool:
-                        raise OperationError("anim_state_machine_variant_legacy_bool_unsupported", "Selected legacy boolean alias must be exact; no action executed")
-                    params[public] = params[alias]
+                    read_success, converted = try_get_legacy_bool(params[alias])
+                    params[public] = converted if read_success else False
                 params.pop(alias, None)
             # Missing/null/empty/raw states and transitions, entry key presence,
             # target normalization, graph selectors and shorthand stay Native-owned.
@@ -5558,9 +8186,8 @@ def _normalize(commands_json, stop_on_error):
             # Presence wins over these aliases even for false canonical values.
             for public, alias in (("replace_existing_links", "replace_existing_sample_graph"), ("require_input_pose_pin", "require_linked_input_pose"), ("save_asset", "save")):
                 if public not in params and alias in params:
-                    if type(params[alias]) is not bool:
-                        raise OperationError("linked_anim_graph_variant_legacy_bool_unsupported", "Legacy selected boolean alias must be exact; no action executed")
-                    params[public] = params[alias]
+                    read_success, converted = try_get_legacy_bool(params[alias])
+                    params[public] = converted if read_success else False
                 params.pop(alias, None)
             # Target fallback must follow the Engine path normalizer, not Python truthiness.
             # Keep graph values and unsupported Layer key presence for this one Native operation.
@@ -5581,7 +8208,8 @@ def _normalize(commands_json, stop_on_error):
                     params[public] = alias_value
             alias_resample = params.pop("resample", False)
             if type(alias_resample) is not bool and params.get("force_resample", False) is not True:
-                raise OperationError("blendspace_variant_legacy_bool_unsupported", "Legacy resample must be an exact boolean; no action executed")
+                read_success, converted = try_get_legacy_bool(alias_resample)
+                alias_resample = converted if read_success else False
             if type(params.get("force_resample", False)) is bool:
                 params["force_resample"] = params.get("force_resample", False) or alias_resample
             blendspace_variant_legacy = {key: params[key] for key in ("axis_edits", "sample_edits", "add_samples") if key in params}
@@ -5596,7 +8224,8 @@ def _normalize(commands_json, stop_on_error):
                 params["blendspace_path"] = alias_path
             alias_missing = params.pop("allow_missing_samples", False)
             if type(alias_missing) is not bool and params.get("allow_missing_bones", False) is not True:
-                raise OperationError("blendspace_pose_grid_legacy_bool_unsupported", "Legacy allow_missing_samples must be an exact boolean; no action executed")
+                read_success, converted = try_get_legacy_bool(alias_missing)
+                alias_missing = converted if read_success else False
             if type(params.get("allow_missing_bones", False)) is bool:
                 params["allow_missing_bones"] = params.get("allow_missing_bones", False) or alias_missing
             blendspace_grid_legacy = {key: params[key] for key in ("blendspaces", "samples", "sample_bones", "sample_sockets", "bones", "sockets", "blendspace_name") if key in params}
@@ -5714,6 +8343,84 @@ def _normalize(commands_json, stop_on_error):
                 value = ""
             values[key] = value
         entry = {"type": name, "params": values}
+        if anim_asset_contract_original_params is not None:
+            entry["legacy_original_command"] = anim_asset_contract_original_command
+            entry["legacy_original_params"] = anim_asset_contract_original_params
+            entry["legacy_anim_asset_contract"] = "Original creator/guarded-inspection aliases, HasField flags and SDK integer conversion/default/clamp; existing concrete Native create/inspect/partial/compile-save/report paths"
+            entry["legacy_anim_asset_remaining_scope"] = "Existing Native source/class/load/error-order/path/name/budget/lifetime scope, platform/Unicode numeric conversion and full raw/cold/runtime behavior remain incomplete; no source asset mutation is implied by read-only API labels"
+        if anim_graph_demo_original_params is not None:
+            entry["legacy_original_command"] = anim_graph_demo_original_command
+            entry["legacy_original_params"] = anim_graph_demo_original_params
+            entry["legacy_anim_graph_demo_raw"] = True
+            entry["legacy_anim_graph_demo_scope"] = "Four original lowercase composite commands reuse existing Native field/node/link/compile-save and actual partial-prefix actions; unchanged Named inputs/CAP440"
+            entry["legacy_anim_graph_demo_remaining_scope"] = "Graph creation flag, simultaneous curve object+array aliases, Native loader/error-order/type/source/bounds/Unicode numeric variants and full raw/cold/runtime equivalence remain incomplete; no full-feature completion claim"
+        if rigid_chain_original_params is not None:
+            entry["legacy_original_command"] = rigid_chain_original_command
+            entry["legacy_original_params"] = rigid_chain_original_params
+            entry["legacy_raw_native_entry"] = True
+            entry["legacy_rigid_chain_raw"] = True
+            entry["legacy_rigid_chain_contract"] = "Original typed/presence/default settings and ordered opaque body rows; one Native chain author/verification/full compile/save and returned partial prefix, unchanged Named normalization"
+            entry["legacy_rigid_chain_remaining_scope"] = "Existing Native class/root/name/body/asset/constraint/lifecycle/transaction bounds, original loader/error order, Unicode numeric strings and full raw/cold/Chaos/runtime parity remain incomplete"
+        if pawn_original_params is not None:
+            entry["legacy_original_command"] = pawn_original_command
+            entry["legacy_original_params"] = pawn_original_params
+            entry["legacy_raw_native_entry"] = True
+            entry["legacy_pawn_raw"] = True
+            entry["legacy_pawn_contract"] = "Original HasField five ordered properties including explicit null Bool false, per-property enum failures continue, raw empty request error after target admission; existing one transaction/MarkModified/actual prefix, no explicit compile/save"
+            entry["legacy_pawn_remaining_scope"] = "Existing finite native/generated Pawn parent/CDO/lifetime/path/load/readback bounds, enum platform narrowing and full raw/cold/runtime equivalence remain incomplete; no public Named input changes"
+        if actor_tick_original_params is not None:
+            entry["legacy_original_command"] = actor_tick_original_command
+            entry["legacy_original_params"] = actor_tick_original_params
+            entry["legacy_actor_tick_raw"] = True
+            entry["legacy_actor_tick_settings"] = _actor_tick_legacy_settings(actor_tick_original_params)
+            entry["legacy_actor_tick_remaining_scope"] = "Original actual compile+refresh and wider parent/compiler CanEverTick eligibility remain incomplete; no broad parity or runtime claim"
+        if volume_texture_original_command is not None:
+            entry["legacy_original_command"] = volume_texture_original_command
+            entry["legacy_original_params"] = volume_texture_original_params
+            if volume_texture_legacy_error is not None:
+                entry["legacy_volume_texture_parameter_error"] = volume_texture_legacy_error
+        if actor_core_original_command is not None:
+            entry["legacy_original_command"] = actor_core_original_command
+            entry["legacy_original_params"] = actor_core_original_params
+            if actor_core_legacy_error is not None:
+                entry["legacy_actor_core_parameter_error"] = actor_core_legacy_error
+        if skeletal_physics_original_command is not None:
+            entry["legacy_original_command"] = skeletal_physics_original_command
+            entry["legacy_original_params"] = skeletal_physics_original_params
+            if skeletal_physics_legacy_error is not None:
+                entry["legacy_skeletal_physics_parameter_error"] = skeletal_physics_legacy_error
+        if status_window_original_command is not None:
+            entry["legacy_original_command"] = status_window_original_command
+            entry["legacy_original_params"] = status_window_original_params
+        if skeletal_read_original_command is not None:
+            entry["legacy_original_command"] = skeletal_read_original_command
+            entry["legacy_original_params"] = skeletal_read_original_params
+            if skeletal_read_legacy_error is not None:
+                entry["legacy_skeletal_read_parameter_error"] = skeletal_read_legacy_error
+        if material_graph_original_command is not None:
+            entry["legacy_original_command"] = material_graph_original_command
+            entry["legacy_original_params"] = material_graph_original_params
+            if material_graph_legacy_error is not None:
+                entry["legacy_material_graph_parameter_error"] = material_graph_legacy_error
+        if networking_original_command is not None:
+            entry["legacy_original_command"] = networking_original_command
+            entry["legacy_original_params"] = networking_original_params
+            entry["legacy_raw_native_entry"] = True
+        if ai_original_command is not None:
+            entry["legacy_original_command"] = ai_original_command
+            entry["legacy_original_params"] = ai_original_params
+            if ai_legacy_error is not None:
+                entry["legacy_ai_parameter_error"] = ai_legacy_error
+        if state_tree_original_command is not None:
+            entry["legacy_original_command"] = state_tree_original_command
+            entry["legacy_original_params"] = state_tree_original_params
+            if state_tree_legacy_error is not None:
+                entry["legacy_state_tree_parameter_error"] = state_tree_legacy_error
+        if audio_original_command is not None:
+            entry["legacy_original_command"] = audio_original_command
+            entry["legacy_original_params"] = audio_original_params
+            if audio_legacy_error is not None:
+                entry["legacy_audio_parameter_error"] = audio_legacy_error
         if actor_original_params is not None:
             entry["legacy_original_params"] = actor_original_params
         if chaos_solver_settings_original is not None:
@@ -5940,6 +8647,114 @@ def _normalize(commands_json, stop_on_error):
             values["_public_input"] = pcg_graph_authoring_raw_method is None
         if niagara_resource_bindings_legacy is not None:
             values["_legacy_command_params"] = niagara_resource_bindings_legacy
+        if component_original_params is not None:
+            entry["legacy_original_command"] = component_original_command
+            entry["legacy_original_params"] = component_original_params
+            entry["legacy_component_contract"] = "Original TryString selectors and empty optional list filter; property_value key presence including null/containers/literal JSON text encoded once, unchanged canonical read budgets; existing component query/writer/checkpoint/actual outcome routes"
+            entry["legacy_component_remaining_scope"] = "Existing local reachable-SCS inventory, component/property/type/value/name/path and depth/length budgets, inherited/CDO/default inspection and struct/enum/container setter variants, source late error/load order and class-specific notification behavior remain limited; full legacy/cold/runtime equivalence remains incomplete"
+            if component_original_command == "add_component_to_blueprint":
+                entry["legacy_raw_add_presence"] = True
+                entry["legacy_component_contract"] = "Original ignored component_properties; CreateNode keeps constructor defaults, then only present location/rotation/scale setters in source order before explicit Parent.AddChildNode or SCS.AddNode, then full compile without save; fixed private route, unchanged Named defaults"
+                entry["legacy_component_remaining_scope"] = "Common inactive native Engine scene and movement profiles; specialized Niagara/PCG/CAC/HISM/Widget/light/generated source lifecycle variants, original arbitrary class discovery/name behavior, JSON/float bounds and full legacy/cold/runtime parity remain incomplete"
+            if component_original_command == "set_static_mesh_properties":
+                entry["legacy_raw_static_mesh_presence"] = True
+                entry["legacy_component_contract"] = "Original HasField static_mesh/material omission and SDK scalar string conversion; mesh load/set then material load/set then MarkBlueprintAsModified, missing/wrong-type assets recorded and skipped, no compile/save; one private original-row journal"
+                entry["legacy_component_remaining_scope"] = "Existing finite native StaticMesh/HISM template, runtime asset/dependency/slot/lifetime protections and value/name/path/carrier bounds remain; unsupported subclasses/unsafe references and full legacy/cold/runtime equivalence are incomplete. Raw Add and Physics presence are not implemented here."
+            if component_original_command == "set_physics_properties":
+                entry["legacy_raw_physics_presence"] = True
+                entry["legacy_component_contract"] = "Original HasField simulate/mass/linear/angular order and SDK Boolean/number-to-float32 conversion at each requested stage, ignored gravity_enabled, final MarkBlueprintAsModified even with omitted fields; private one-operation Native path, unchanged Named full defaults"
+                entry["legacy_component_remaining_scope"] = "Existing inactive native StaticMesh/Sphere/Box/Capsule body template, ownership/context/disk protections and bounded JSON/finite-float conversion scope; other primitive subclasses/live/welded/physics/runtime variants remain incomplete. Raw Add presence is not implemented here."
+        if blueprint_graph_core_original_params is not None:
+            entry["legacy_original_command"] = blueprint_graph_core_original_command
+            entry["legacy_original_params"] = blueprint_graph_core_original_params
+            entry["legacy_blueprint_graph_core_contract"] = "Original empty graph selectors/HasField bool, function-default JSON/enum aliases, call class aliases and typed param_defaults/params priority, CommonUtils float32/truncate position with omitted Return320 versus explicit-null0"
+            entry["legacy_blueprint_graph_core_remaining_scope"] = "Raw function null default carrier and member graph creation remain incomplete; existing callable opt-in/struct/class/member/default/name/position bounds, failure cleanup and load/error ordering, scalar Unicode/overflow, event auto-creation, compiler callbacks and full legacy/cold/runtime equivalence remain incomplete"
+            if blueprint_graph_core_original_command in ("add_blueprint_loop_node", "add_blueprint_array_function_node", "add_blueprint_make_array_node"):
+                entry["legacy_blueprint_graph_core_contract"] = "Original ForLoop-only/ignored typed-ForEach options; typed numeric nearly-int32 indices/count, HasField values versus element_defaults priority/typed arrays/nested-array rejection, existing graph/position/default/enum normalization"
+                entry["legacy_blueprint_graph_core_remaining_scope"] = "Existing element/operation/default/graph/name/position bounds and post-allocation versus prevalidation failure/cleanup order, scalar Unicode/overflow, compiler callbacks and full legacy/cold/runtime equivalence remain incomplete"
+            if blueprint_graph_core_original_command in ("add_blueprint_event_node", "add_blueprint_input_key_node", "add_blueprint_custom_event_node"):
+                entry["legacy_blueprint_graph_core_contract"] = "Original event selectors and CommonUtils position; InputKey TryGetBool initialized defaults; CustomEvent original Raw12 Any position, first-success name/delegate aliases and nullable successful CallInEditor presence, existing typed-signature/reuse/partial Native route"
+                entry["legacy_blueprint_graph_core_remaining_scope"] = "Existing event/key/name/path/graph and ordinary event/input geometry bounds, supported native event/delegate/Widget signature profiles, loader/error order, whole-raw dependency guards and SDK Unicode/overflow remain limited; metadata description-presence carrier and full legacy/cold/runtime equivalence remain incomplete"
+            if blueprint_graph_core_original_command == "set_blueprint_custom_event_metadata":
+                entry["legacy_blueprint_raw_metadata_presence"] = True
+                entry["legacy_blueprint_graph_core_contract"] = "Original description/tooltip/comment first-success TryString including explicit empty, primary event-name empty fallback, HasField CallInEditor including null-to-False, compile default from description presence; private normalized-row carrier only, unchanged Named defaults"
+                entry["legacy_blueprint_graph_core_remaining_scope"] = "Existing exact own parameterless single-custom-event/current generated function profile, text/path/name bounds and load/error ordering remain limited; wider typed/net/override/multiple/Widget events and complete legacy/cold/runtime equivalence remain incomplete"
+        if blueprint_lifecycle_original_params is not None:
+            entry["legacy_original_command"] = blueprint_lifecycle_original_command
+            entry["legacy_original_params"] = blueprint_lifecycle_original_params
+            entry["legacy_blueprint_lifecycle_contract"] = "Original TryGetString selectors, optional Actor parent and explicit package-path presence, duplicate TryGetBool/default required_root, compiler HasField bool and compile-only fixed no-save/no-refresh"
+            entry["legacy_blueprint_lifecycle_remaining_scope"] = "Original unresolved-parent fallback to Actor is not implemented; existing factory creation policy, parent/name/path/required-root/duplicate bounds and source dirty/overwrite restrictions, load/error order, compiler diagnostics and full legacy/cold/runtime equivalence remain incomplete"
+        if blueprint_variable_core_original_params is not None:
+            entry["legacy_original_command"] = blueprint_variable_core_original_command
+            entry["legacy_original_params"] = blueprint_variable_core_original_params
+            entry["legacy_blueprint_variable_core_contract"] = "Original TryGetString selectors; Add default key omission versus JSON payload, scalar-only typed metadata and enum aliases, HasField Bool; raw SetDefault compile/save default False versus unchanged Named True"
+            entry["legacy_blueprint_variable_core_remaining_scope"] = "Explicit raw Add default null is pending presence-preserving carrier; existing declaration/type/default/name/path/metadata/GUID bounds and error ordering, generated property/CDO/compiler callbacks and full legacy/cold/runtime equivalence remain incomplete"
+            if (blueprint_variable_core_original_command == "add_blueprint_variable"
+                    and "default_value" in blueprint_variable_core_original_params
+                    and blueprint_variable_core_original_params["default_value"] is None):
+                # Private normalized-row context, never a public input field.
+                # Other rows retain their exact prior replay fingerprints.
+                entry["legacy_blueprint_raw_null_default"] = True
+                entry["legacy_blueprint_variable_core_remaining_scope"] = "Raw Add explicit null reaches existing Native typed-default validation through a private original-row carrier; other type/name/path/GUID bounds, null variants, engine error order and full legacy/cold/runtime equivalence remain incomplete"
+        if blueprint_maintenance_original_params is not None:
+            entry["legacy_original_command"] = blueprint_maintenance_original_command
+            entry["legacy_original_params"] = blueprint_maintenance_original_params
+            entry["legacy_blueprint_maintenance_contract"] = "Original TryGetString selectors/aliases; category typed-array string filtering and HasField bool; replacement TryGetBool initialized defaults, explicit negative-radius zero versus omitted derive sentinel"
+            entry["legacy_blueprint_maintenance_remaining_scope"] = "Original require_scene_compatibility is carried only by the fixed Raw9 helper, preserving Named8/default-true; a native shape leaf under an own non-default Scene root to direct generated ActorComponent is admitted, while root/child-bearing/reverse category changes and general class/template, scalar/array/name bounds, load/error order, full legacy, compiler callback fanout and cold/runtime equivalence remain incomplete"
+        if niagara_stack_entry_original_params is not None:
+            entry["legacy_original_command"] = niagara_stack_entry_original_command
+            entry["legacy_original_params"] = niagara_stack_entry_original_params
+            entry["legacy_niagara_stack_entry_contract"] = "Original TryGetString aliases, TryGetBool optional enabled/defaults, int32 selector rounding/defaults, and ordered module-batch root/row inheritance plus upsert overwrite key-presence and compile-wait clamps"
+            entry["legacy_niagara_stack_entry_remaining_scope"] = "Existing Native loaded paths, below-minus-one emitter selectors, localization/value/class/duplicate/row bounds and load/error order, scalar Unicode/platform overflow, Batch async and full legacy/cold/runtime equivalence remain incomplete"
+        if niagara_user_parameter_original_params is not None:
+            entry["legacy_original_command"] = niagara_user_parameter_original_command
+            entry["legacy_original_params"] = niagara_user_parameter_original_params
+            entry["legacy_niagara_user_parameter_contract"] = "Original TryGetString selectors, Set value key-presence including null, Upsert typed ordered array with unchanged row aliases/invalid rows, and TryGetBool initialized defaults"
+            entry["legacy_niagara_user_parameter_remaining_scope"] = "Existing Native loaded-path/name/type/value/class bounds, raw scalar SDK conversion, per-row processing and load/error order, Batch async compile behavior, cold/runtime behavior and full legacy equivalence remain incomplete"
+        if pcg_core_original_params is not None:
+            entry["legacy_original_command"] = pcg_core_original_command
+            entry["legacy_original_params"] = pcg_core_original_params
+            entry["legacy_pcg_core_origin"] = "public Python composite pcg_tools.py948" if pcg_core_original_command == "create_pcg_graph_from_spec" else "FUnrealMCPPCGCommands native command"
+            entry["legacy_pcg_core_contract"] = "Native TryGetString/aliases/selector presence and inference/HasField bool/typed extra_names, or public Python graph_spec object with bool(flag) template substitution"
+            entry["legacy_pcg_core_remaining_scope"] = "Existing graph/class/selector/spec bounds and loader/error ordering; explicit empty-domain preservation, invalid extra_names after partial selector edit, Batch async behavior, full public/Native legacy equivalence and cold/runtime behavior remain incomplete"
+        if material_maintenance_original_params is not None:
+            entry["legacy_original_command"] = material_maintenance_original_command
+            entry["legacy_original_params"] = material_maintenance_original_params
+            entry["legacy_material_raw_contract"] = "Original Material HasField/AsBool flags vs Project typed flags, typed objects/filter arrays, expansion recursion/count defaults, MPC sync raw enable default and ignored inactive body"
+            entry["legacy_material_remaining_scope"] = "Existing Native class/graph/value bounds, invalid replacement-row handling, raw numeric Unicode/overflow, load/error order, ordinary Batch async coverage, future ticks/render/runtime/cold behavior and full legacy equivalence remain incomplete"
+        if skeletal_edit_original_params is not None:
+            entry["legacy_original_command"] = skeletal_edit_original_command
+            entry["legacy_original_params"] = skeletal_edit_original_params
+            entry["legacy_skeletal_raw_contract"] = "Original typed flags/defaults, TryGetString selectors, presence-only socket names/transforms, fixture empty-name defaults and case-insensitive world context"
+            entry["legacy_skeletal_remaining_scope"] = "Existing Native skeleton/socket/retarget/world/lifetime support, raw vector item bool/numeric-string coercion, validation/load order, runtime/cold behavior and full legacy equivalence remain incomplete"
+        if data_original_params is not None:
+            entry["legacy_original_command"] = data_original_command
+            entry["legacy_original_params"] = data_original_params
+            entry["legacy_data_raw_contract"] = "Original TryGetString paths/names, typed object rows/properties, typed Boolean save/include_values and typed-number truncation/clamp max_rows"
+            entry["legacy_data_remaining_scope"] = "Existing Native class/struct/value support, validation/load order, platform out-of-range cast, runtime/cold behavior and full legacy equivalence remain incomplete"
+        if sequencer_original_params is not None:
+            entry["legacy_original_command"] = sequencer_original_command
+            entry["legacy_original_params"] = sequencer_original_params
+            entry["legacy_sequencer_raw_scalar_rules"] = "Original typed EJson::Number frames/defaults, typed EJson::Boolean save/defaultTrue, TryGetString selectors and typed keys arrays"
+            if sequencer_original_command in ("add_level_sequence_transform_keys", "add_level_sequence_float_property_keys"):
+                entry["legacy_sequencer_ordered_keys"] = sequencer_original_command
+            entry["legacy_sequencer_remaining_scope"] = "Existing concrete API support bounds, loader/validation order, key-row partial mutation differences, UI/playback/render/cold behavior and full legacy equivalence remain incomplete"
+        if widget_original_params is not None:
+            entry["legacy_original_command"] = widget_original_command
+            entry["legacy_original_params"] = widget_original_params
+            entry["legacy_widget_entry_route"] = widget_legacy_route
+            if widget_event_position is not None:
+                entry["legacy_umg_event_position"] = copy.deepcopy(widget_event_position)
+            entry["legacy_widget_native_backend_scope"] = "Existing concrete Native Text PropertyPath repair or seven-count diagnostic/report; compile/save/partial receipts remain Native-owned, full legacy support incomplete"
+        if niagara_scratch_original_params is not None:
+            entry["legacy_original_command"] = niagara_scratch_original_command
+            entry["legacy_original_params"] = niagara_scratch_original_params
+            entry["legacy_scratch_wire_value_encoding"] = "typed original value/list to existing optional Registry JSON text; original scalar coercion and wider Native support remain incomplete"
+        if niagara_simulation_stage_legacy is not None:
+            entry["legacy_original_command"] = niagara_simulation_stage_raw_method
+            entry["legacy_original_params"] = copy.deepcopy(niagara_simulation_stage_legacy)
+            entry["legacy_raw_native_entry"] = True
+            values["_legacy_command_params"] = niagara_simulation_stage_legacy
         if niagara_scratch_stack_authoring_legacy is not None:
             values["_legacy_command_params"] = niagara_scratch_stack_authoring_legacy
         if niagara_event_stage_authoring_legacy is not None:
@@ -6139,6 +8954,8 @@ def _command_effect(command):
         params=command["params"];raw=params.get("_legacy_command_params")
         selected=raw if type(raw) is dict else params
         if selected.get("dry_run",True) is True:return "read_world"
+    if _volume_texture_batch_command(command) and command["params"].get("dry_run") is True:
+        return "read_load"
     return _CAPABILITIES[command["type"]]["effect"]
 
 
@@ -6177,7 +8994,10 @@ def _chaos_cache_session_snapshot(row, data):
 
 
 def _observation(row):
-    if row["type"] in _ACTOR_BATCH_TOOLS:
+    if row["type"] == "CubelessStatusWindowTools.show_ieta_connection_status":
+        _status_window_observation(row)
+        return
+    if row["type"] in _ACTOR_BATCH_TOOLS or row["type"] in _ACTOR_BATCH_READ_TOOLS:
         _actor_batch_observation(row)
         return
     child = row["response"]
@@ -6300,6 +9120,12 @@ def _aggregate(result, summary):
     values = [row.get("mutation_performed") for row in rows]
     summary["mutation_performed"] = True if True in values else None if None in values else False
     summary["mutation_state_unknown"] = any(row.get("mutation_state_unknown", False) for row in rows)
+    if summary["transaction"].get("scope_outcome_unknown"):
+        summary.update(mutation_state_unknown=True, forced_stop=True,
+            stop_reason=summary["stop_reason"] or "batch_transaction_quarantined")
+        result["data"].update(mutation_state_unknown=True, change_state_known=False,
+            workflow_recovery_required=True, do_not_retry=True,
+            batch_transaction_quarantine=engine.quarantined_scope())
     summary["command_may_still_be_in_flight"] = any(row.get("command_may_still_be_in_flight", False) for row in rows)
     summary["partial_mutation"] = bool((summary["failed"] or summary["forced_stop"] or summary["not_run"]) and
                                        (summary["mutation_attempted"] or summary["mutation_state_unknown"]))
@@ -6314,27 +9140,29 @@ def _aggregate(result, summary):
     result["retry"].update({"automatic_retry": False,
         "duplicate_risk": "unknown_outcome" if summary["mutation_state_unknown"] else "batch_mutations_would_repeat" if summary["mutation_attempted"] else "none_observed",
         "policy": "Same ID returns the historical complete response. Interrupted IDs never resume; inspect journal and assets before a new ID."})
+    ui_rows = [row for row in rows if row["type"] == "CubelessStatusWindowTools.show_ieta_connection_status"]
+    if ui_rows:
+        summary["ui_status"] = {"scope": "owned_editor_status_window_only",
+            "call_dispatched": any(row.get("ui_call_dispatched") for row in ui_rows),
+            "changed": any(row.get("ui_changed") is True for row in ui_rows),
+            "state_unknown": any(row.get("mutation_state_unknown") for row in ui_rows),
+            "full_engine_effect_state_verified": False}
+        if summary["ui_status"]["call_dispatched"]:
+            summary["do_not_retry"] = True
+            if not summary["mutation_attempted"] and not summary["mutation_state_unknown"]:
+                result["retry"]["duplicate_risk"] = "status_window_update_would_repeat"
 
 
 def _run(result, commands, stop_on_error, _compile_status_owner=None):
     summary = _summary(commands, stop_on_error)
-    if any(c["type"] in ("execute_python", "CubelessPythonExecutionTools.execute_unreal_python") for c in commands):
-        # Arbitrary script can retire/change the Editor/transaction. Do not open
-        # an outer ScopedEditorTransaction whose destructor cannot honor the
-        # native unknown-stop/own-transaction identity and depth checks.
-        summary["transaction"].update(batch_scope_skipped_for_python_execution=True,
-            transaction_scope="per_child_native_scopes_without_outer_batch_transaction",
-            grouping_preserved=False, full_batch_transaction_contract_complete=False,
-            reason="Arbitrary Python may change transaction/Editor roles; unguarded outer cleanup is unsafe",
-            original_single_undo_grouping="valid_original_contract_pending")
-    if any(c["type"] in _ACTOR_BATCH_TOOLS for c in commands):
-        # Actor delegates/current loss can retire the Editor/transaction too.
-        # Preserve actual Native stop state without an unguarded Python exit.
-        summary["transaction"].update(batch_scope_skipped_for_actor_operations=True,
-            transaction_scope="per_child_native_scopes_without_outer_batch_transaction",
-            grouping_preserved=False, full_batch_transaction_contract_complete=False,
-            actor_scope_reason="Actor SDK callbacks may invalidate Editor/transaction roles; outer unguarded cleanup is unsafe",
-            original_single_undo_grouping="valid_original_contract_pending")
+    guarded_batch_requested = (_compile_status_owner is None and summary["transaction"]["scope_requested"]
+        and any(c["type"] in _ACTOR_BATCH_TOOLS or c["type"] in (
+            "execute_python", "CubelessPythonExecutionTools.execute_unreal_python") for c in commands))
+    guarded_scope = None
+    if guarded_batch_requested:
+        summary["transaction"].update(guarded_native_synchronous_batch_requested=True,
+            full_batch_transaction_contract_complete=False, group_undo_verified=False,
+            original_single_undo_grouping="native_scope_implementation_usage_validation_pending")
     if _compile_status_owner is not None:
         summary["transaction"].update(batch_scope_skipped_for_compile_status_wait=True,
             transaction_scope="per_child_native_scopes_without_outer_batch_transaction",
@@ -6342,7 +9170,11 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
             original_single_undo_grouping="valid_original_contract_pending")
         summary["compile_status_continuation"] = dict(exact_method="inspect_niagara_compile_status",
             exact_factory_methods=["create_empty_niagara_system", "create_basic_sprite_niagara_system"],
-            parent_journal_only=True, child_journals_created=0, HN_wait_seconds=0.0,
+            exact_recipe_methods=[name.rsplit(".", 1)[-1] for name in _RECIPE_BATCH_METHODS],
+            exact_stage_methods=[name.rsplit(".", 1)[-1] for name in sorted(_STAGE_BATCH_METHODS)],
+            exact_scratch_module_methods=[_SCRATCH_MODULE_BATCH_METHOD.rsplit(".", 1)[-1]],
+            parent_journal_only=True, child_journals_created=0, HN_wait_seconds=0.0, DX_wait_seconds=0.0,
+            exact_volume_methods=list(_VOLUME_TEXTURE_LEGACY_COMMANDS),
             active_dispatch_budget_seconds=BETWEEN_STEP_BUDGET_SECONDS, HN_timeout_changed=False)
     result["data"]["batch"] = summary
     started = time.perf_counter()
@@ -6414,18 +9246,29 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
         _compile_status_batch_current(_compile_status_owner)
 
     def persist(stage):
+        if guarded_scope is not None:
+            guarded_scope.check()
         if _compile_status_owner is not None:
             _compile_status_batch_current(_compile_status_owner)
         result["stage"] = stage
         # Sequence in the snapshot names the checkpoint being persisted.
         summary["checkpoint_sequence"] += 1
-        checkpoint(result)
+        try:
+            checkpoint(result)
+        except Exception:
+            if guarded_scope is not None:
+                guarded_scope.observer_failed()
+            raise
+        if guarded_scope is not None:
+            guarded_scope.check()
         if _compile_status_owner is not None:
             _compile_status_batch_current(_compile_status_owner)
 
     def run_steps():
         nonlocal suspended_seconds
         for index, command in enumerate(commands):
+            if guarded_scope is not None:
+                guarded_scope.check()
             if index and time.perf_counter() - started - suspended_seconds >= BETWEEN_STEP_BUDGET_SECONDS:
                 summary.update(forced_stop=True, stop_reason="between_step_time_budget", stopped_at_index=index)
                 break
@@ -6435,6 +9278,8 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                    "phase": "step_intent", "status": "pending", "mutation_attempted": False,
                    "mutation_performed": False, "mutation_state_unknown": False,
                    "response": child, "elapsed_seconds": 0.0}
+            if "legacy_original_command" in command:
+                row["legacy_original_command"] = command["legacy_original_command"]
             if "legacy_original_params" in command:
                 row["legacy_original_params"] = command["legacy_original_params"]
             if "legacy_raw_native_entry" in command:
@@ -6445,7 +9290,13 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
             child_started = time.perf_counter()
 
             def before_mutation(observed):
-                if row["type"] in _ACTOR_BATCH_TOOLS and observed["data"].get("actor_batch_native_result_returned") is True:
+                if row["type"] == "CubelessStatusWindowTools.show_ieta_connection_status":
+                    _status_window_observation(row)
+                    row["phase"] = "engine_returned" if observed["stage"] == "returned_status_window_operation" else "ui_intent"
+                    _aggregate(result, summary)
+                    persist(f"batch[{index}]:observed:{observed['stage']}")
+                    return
+                if (row["type"] in _ACTOR_BATCH_TOOLS or row["type"] in _ACTOR_BATCH_READ_TOOLS) and observed["data"].get("actor_batch_native_result_returned") is True:
                     _actor_batch_observation(row)
                     row["phase"] = "engine_returned"
                     _aggregate(result, summary)
@@ -8080,6 +10931,36 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                     _aggregate(result, summary)
                     persist(f"batch[{index}]:observed:{observed['stage']}")
                     return
+                if (_volume_texture_batch_command(command)
+                        and observed["data"].get("native_snapshot_returned") is True
+                        and type(observed["data"].get("native_outcome")) is dict):
+                    row.update(phase="engine_returned",
+                        mutation_attempted=observed["data"].get("native_mutation_attempted", False),
+                        mutation_performed=observed["data"].get("mutation_performed"),
+                        mutation_state_unknown=observed["data"].get("mutation_state_unknown") is True)
+                    _aggregate(result, summary)
+                    persist(f"batch[{index}]:observed:{observed['stage']}")
+                    return
+                if (row["type"] in _SKELETAL_READ_LEGACY_COMMANDS.values()
+                        and observed["stage"] == "returned_skeletal_read"
+                        and observed["data"].get("native_result_returned") is True):
+                    row.update(phase="engine_returned",
+                        mutation_attempted=observed["data"]["native_mutation_attempted"],
+                        mutation_performed=observed["data"]["mutation_performed"],
+                        mutation_state_unknown=observed["data"]["mutation_state_unknown"])
+                    _aggregate(result, summary)
+                    persist(f"batch[{index}]:observed:{observed['stage']}")
+                    return
+                if (row["type"] in _MATERIAL_GRAPH_LEGACY_COMMANDS.values()
+                        and observed["stage"] == "returned_material_graph_operation"
+                        and observed["data"].get("native_result_returned") is True):
+                    row.update(phase="engine_returned",
+                        mutation_attempted=observed["data"]["native_mutation_attempted"],
+                        mutation_performed=observed["data"]["mutation_performed"],
+                        mutation_state_unknown=observed["data"]["mutation_state_unknown"])
+                    _aggregate(result, summary)
+                    persist(f"batch[{index}]:observed:{observed['stage']}")
+                    return
                 if (row["type"] == "CubelessMaterialTools.compile_and_save_material"
                         and observed["stage"] == "returned_material_compilation_operation"
                         and observed["data"].get("native_result_returned") is True):
@@ -8256,6 +11137,16 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                     _aggregate(result, summary)
                     persist(f"batch[{index}]:observed:{observed['stage']}")
                     return
+                if (row["type"] == "CubelessAITools.search_ai_behavior_tree_node_classes"
+                        and observed["stage"] == "returned_ai_discovery_read"
+                        and observed["data"].get("engine_read_returned") is True):
+                    row.update(phase="engine_returned",
+                        mutation_attempted=observed["data"]["native_mutation_attempted"],
+                        mutation_performed=observed["data"].get("mutation_performed"),
+                        mutation_state_unknown=observed["data"].get("mutation_state_unknown") is True)
+                    _aggregate(result, summary)
+                    persist(f"batch[{index}]:observed:{observed['stage']}")
+                    return
                 if (row["type"] == "CubelessAITools.remove_ai_blackboard_key"
                         and observed["stage"] == "returned_ai_blackboard_remove_operation"
                         and observed["data"].get("native_result_returned") is True):
@@ -8276,6 +11167,16 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                         mutation_attempted=observed["data"]["native_mutation_attempted"],
                         mutation_performed=observed["data"]["mutation_performed"],
                         mutation_state_unknown=observed["data"]["mutation_state_unknown"])
+                    _aggregate(result, summary)
+                    persist(f"batch[{index}]:observed:{observed['stage']}")
+                    return
+                if (row["type"] == "CubelessAITools.inspect_ai_behavior_assets"
+                        and observed["stage"] == "returned_ai_behavior_inspection_operation"
+                        and observed["data"].get("native_result_returned") is True):
+                    row.update(phase="engine_returned",
+                        mutation_attempted=observed["data"]["native_mutation_attempted"],
+                        mutation_performed=observed["data"].get("mutation_performed"),
+                        mutation_state_unknown=observed["data"].get("mutation_state_unknown") is True)
                     _aggregate(result, summary)
                     persist(f"batch[{index}]:observed:{observed['stage']}")
                     return
@@ -8324,7 +11225,11 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                 persist(f"batch[{index}]:before:{observed['stage']}")
                 for change in observed["changes"]:
                     change["attempted"] = True
+                # Restore the exact returned-key set in the same dict objects;
+                # intent-only fields must not leak into later native outcomes.
+                observed["compile"].clear()
                 observed["compile"].update(compile_state)
+                observed["save"].clear()
                 observed["save"].update(save_state)
                 row["mutation_attempted"] = True
                 row["phase"] = "engine_call_or_readback"
@@ -8336,27 +11241,247 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                 summary["dispatched_count"] += 1
                 row["phase"] = "action_preflight"
                 arguments = {**command["params"], **capability["fixed"]}
+                volume_texture_error = (command.get("legacy_volume_texture_parameter_error")
+                    if command.get("legacy_original_command") in _VOLUME_TEXTURE_LEGACY_COMMANDS else None)
+                if volume_texture_error is not None:
+                    child["stage"] = "volume_texture_parameter_validation"
+                    child["data"].update(native_mutation_attempted=False, mutation_performed=False,
+                        mutation_state_unknown=False, change_state_known=True, native_dispatched=False,
+                        automatic_retries=0, original_input_variant_incomplete=True,
+                        adapter_error_code=volume_texture_error["code"], original_native_error_code_present=False)
+                    raise OperationError(volume_texture_error["code"], volume_texture_error["message"])
+                actor_core_error = (command.get("legacy_actor_core_parameter_error")
+                    if command.get("legacy_original_command") in _ACTOR_CORE_LEGACY_COMMANDS else None)
+                if actor_core_error is not None:
+                    child["stage"] = "actor_core_parameter_validation"
+                    child["data"].update(native_mutation_attempted=False, mutation_performed=False,
+                        mutation_state_unknown=False, change_state_known=True, native_dispatched=False,
+                        automatic_retries=0, actor_core_legacy_parameter_rejected=True,
+                        adapter_error_code=actor_core_error.get("code", "batch_actor_core_legacy_parameter_validation_failed"),
+                        original_native_error_code_present=False)
+                    if "code" not in actor_core_error:
+                        child["data"]["legacy_result"] = {"success": False, "error": actor_core_error["message"]}
+                    else:child["data"]["original_input_variant_incomplete"] = True
+                    raise OperationError(child["data"]["adapter_error_code"], actor_core_error["message"])
+                skeletal_physics_error = (command.get("legacy_skeletal_physics_parameter_error")
+                    if command.get("legacy_original_command") == _SKELETAL_PHYSICS_LEGACY_COMMAND else None)
+                if skeletal_physics_error is not None:
+                    child["stage"] = "skeletal_physics_parameter_validation"
+                    child["data"].update(native_mutation_attempted=False, mutation_performed=False,
+                        mutation_state_unknown=False, change_state_known=True, native_dispatched=False,
+                        automatic_retries=0, skeletal_physics_legacy_parameter_rejected=True,
+                        adapter_error_code=skeletal_physics_error.get("code", "batch_skeletal_physics_legacy_parameter_validation_failed"),
+                        original_native_error_code_present=False)
+                    if "code" not in skeletal_physics_error:
+                        child["data"]["legacy_result"] = {"success": False, "error": skeletal_physics_error["message"]}
+                    else:child["data"]["original_input_variant_incomplete"] = True
+                    raise OperationError(child["data"]["adapter_error_code"], skeletal_physics_error["message"])
+                skeletal_read_error = (command.get("legacy_skeletal_read_parameter_error")
+                    if command.get("legacy_original_command") in _SKELETAL_READ_LEGACY_COMMANDS else None)
+                if skeletal_read_error is not None:
+                    child["stage"] = "skeletal_read_parameter_validation"
+                    child["data"].update(native_mutation_attempted=False, mutation_performed=False,
+                        mutation_state_unknown=False, change_state_known=True, native_dispatched=False,
+                        automatic_retries=0, skeletal_read_legacy_parameter_rejected=True,
+                        adapter_error_code=skeletal_read_error.get("code", "batch_skeletal_read_legacy_parameter_validation_failed"),
+                        original_native_error_code_present=False)
+                    if "code" not in skeletal_read_error:
+                        child["data"]["legacy_result"] = {"success": False, "error": skeletal_read_error["message"]}
+                    else:child["data"]["original_input_variant_incomplete"] = True
+                    raise OperationError(child["data"]["adapter_error_code"], skeletal_read_error["message"])
+                material_error = (command.get("legacy_material_graph_parameter_error")
+                    if command.get("legacy_original_command") in _MATERIAL_GRAPH_LEGACY_COMMANDS else None)
+                if material_error is not None:
+                    child["stage"] = "material_graph_parameter_validation"
+                    child["data"].update(native_mutation_attempted=False,
+                        mutation_performed=False, mutation_state_unknown=False,
+                        change_state_known=True, native_dispatched=False, automatic_retries=0,
+                        material_graph_legacy_parameter_rejected=True,
+                        adapter_error_code=material_error.get("code", "batch_material_legacy_parameter_validation_failed"),
+                        original_native_error_code_present=False)
+                    if "code" not in material_error:
+                        child["data"]["legacy_result"] = {"success": False, "error": material_error["message"]}
+                    else:
+                        child["data"]["original_input_variant_incomplete"] = True
+                    raise OperationError(child["data"]["adapter_error_code"], material_error["message"])
+                audio_error = (command.get("legacy_audio_parameter_error")
+                    if command.get("legacy_original_command") in _AUDIO_LEGACY_COMMANDS else None)
+                state_tree_error = (command.get("legacy_state_tree_parameter_error")
+                    if command.get("legacy_original_command") in _STATE_TREE_LEGACY_COMMANDS else None)
+                ai_error = (command.get("legacy_ai_parameter_error")
+                    if command.get("legacy_original_command") in _AI_LEGACY_COMMANDS else None)
+                legacy_error = (audio_error if audio_error is not None else
+                    state_tree_error if state_tree_error is not None else ai_error)
+                if legacy_error is not None:
+                    domain = "audio" if audio_error is not None else "state_tree" if state_tree_error is not None else "ai"
+                    child["stage"] = domain + "_parameter_validation"
+                    receipt = {"success": False, "error": legacy_error["message"],
+                        "mutation_attempted": False, "mutation_performed": False,
+                        "mutation_state_unknown": False, "changed": False}
+                    if ai_error is None:
+                        receipt["error_code"] = legacy_error["code"]
+                    if audio_error is not None:
+                        receipt["partial_mutation"] = False
+                    elif state_tree_error is not None:
+                        receipt["message"] = legacy_error["message"]
+                    child["data"].update(native_mutation_attempted=False,
+                        mutation_performed=False, mutation_state_unknown=False,
+                        change_state_known=True, native_dispatched=False,
+                        automatic_retries=0, legacy_result=receipt)
+                    child["data"][domain + "_legacy_parameter_rejected"] = True
+                    error_code = legacy_error.get("code", "batch_ai_legacy_parameter_validation_failed")
+                    if ai_error is not None:
+                        child["data"].update(adapter_error_code=error_code,
+                            original_native_error_code_present=False)
+                    raise OperationError(error_code, legacy_error["message"])
                 if _compile_status_owner is not None:
                     _compile_status_batch_current(_compile_status_owner)
-                if _compile_status_owner is not None and _compile_status_batch_wait(command):
-                    if _factory_batch_command(command):
+                if command.get("legacy_original_command") in _MATERIAL_GRAPH_LEGACY_COMMANDS:
+                    from . import material
+                    material._batch_graph_action(child, command["legacy_original_command"], arguments,
+                        before_mutation, legacy_properties_order=True)
+                elif command.get("legacy_anim_graph_demo_raw") is True:
+                    _anim_graph_demo_raw_action(child, command, arguments, before_mutation)
+                elif command.get("legacy_rigid_chain_raw") is True:
+                    raw = command.get("legacy_original_params")
+                    if (command.get("type") != "CubelessBlueprintTools.ensure_blueprint_rigid_constraint_chain"
+                            or command.get("legacy_original_command") != "ensure_blueprint_rigid_constraint_chain"
+                            or type(raw) is not dict or arguments != _rigid_chain_legacy_params(raw)):
+                        raise OperationError("rigid_chain_raw_context_invalid", "Only the original normalized rigid-chain row may dispatch its raw body contract")
+                    from . import rigid_constraint_chain
+                    rigid_constraint_chain._raw_batch_action(child, raw, checkpoint_callback=before_mutation)
+                elif command.get("legacy_original_command") == "bind_widget_event":
+                    raw = command.get("legacy_original_params")
+                    if row["type"] != "CubelessUMGInteractionTools.bind_widget_event" or type(raw) is not dict:
+                        raise OperationError("batch_umg_event_position_identity_invalid", "Exact original raw bind command required; no dispatch")
+                    expected, route = _widget_legacy_params("bind_widget_event", raw)
+                    position = expected.pop("__legacy_umg_event_position")
+                    identity = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
+                    if (identity(expected) != identity(arguments)
+                            or identity(position) != identity(command.get("legacy_umg_event_position"))
+                            or route != command.get("legacy_widget_entry_route")):
+                        raise OperationError("batch_umg_event_position_identity_invalid", "Original raw position or normalized bind identity changed; no dispatch")
+                    from . import umg_interaction
+                    umg_interaction.bind_widget_event_raw_action(child, **arguments,
+                        raw_node_position=copy.deepcopy(position), checkpoint_callback=before_mutation)
+                elif command.get("legacy_pawn_raw") is True:
+                    raw = command.get("legacy_original_params")
+                    if (command.get("type") != "CubelessBlueprintTools.set_pawn_properties"
+                            or command.get("legacy_original_command") != "set_pawn_properties"
+                            or type(raw) is not dict or arguments != _pawn_legacy_params(raw)):
+                        raise OperationError("pawn_raw_context_invalid", "Only the original normalized Pawn row may dispatch its raw presence contract")
+                    from . import pawn
+                    pawn._raw_batch_action(child, raw, checkpoint_callback=before_mutation)
+                elif command.get("legacy_actor_tick_raw") is True:
+                    raw = command.get("legacy_original_params")
+                    if (row["type"] != "CubelessBlueprintTools.set_blueprint_actor_tick_settings"
+                            or command.get("legacy_original_command") != "set_blueprint_actor_tick_settings" or type(raw) is not dict):
+                        raise OperationError("batch_actor_tick_raw_identity_invalid", "Exact original Tick command required before dispatch")
+                    identity = lambda value: json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
+                    settings = _actor_tick_legacy_settings(raw)
+                    if (identity(arguments) != identity(_actor_tick_legacy_params(raw))
+                            or identity(settings) != identity(command.get("legacy_actor_tick_settings"))):
+                        raise OperationError("batch_actor_tick_raw_identity_invalid", "Original Tick presence/arguments changed; no dispatch")
+                    from . import blueprint_defaults
+                    blueprint_defaults.set_blueprint_actor_tick_settings_raw_action(child,
+                        blueprint_name=arguments["blueprint_name"], raw_settings=settings,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_original_command") in _NETWORKING_LEGACY_COMMANDS:
+                    from . import blueprint_networking
+                    blueprint_networking._raw_input_action(child, command["type"].rsplit(".", 1)[-1],
+                        command["legacy_original_params"], checkpoint_callback=before_mutation)
+                elif command.get("legacy_original_command") == "replace_blueprint_component_class":
+                    # The original command-only ninth flag never changes Named8
+                    # or the CAP440 schema. Recheck the normalized row before
+                    # carrying just its original TryGetBool/default-true value.
+                    raw = command.get("legacy_original_params")
+                    if (command.get("type") != "CubelessBlueprintTools.replace_blueprint_component_class"
+                            or type(raw) is not dict
+                            or arguments != _blueprint_maintenance_legacy_params("replace_blueprint_component_class", raw)):
+                        raise OperationError("component_replace_raw_context_invalid", "Only the original normalized replacement row may dispatch Raw9")
+                    read, value = try_get_legacy_bool(raw.get("require_scene_compatibility"))
+                    from .component_replacement import replace_blueprint_component_class_raw_action
+                    replace_blueprint_component_class_raw_action(child, **arguments,
+                        require_scene_compatibility=value if read else True,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_sequencer_ordered_keys") in ("add_level_sequence_transform_keys", "add_level_sequence_float_property_keys"):
+                    if command["legacy_sequencer_ordered_keys"] == "add_level_sequence_transform_keys":
+                        from . import sequencer as ordered_keys_domain
+                    else:
+                        from . import sequencer_float as ordered_keys_domain
+                    ordered_keys_domain._raw_ordered_key_action(child, command, arguments,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_raw_add_presence") is True:
+                    component._raw_add_batch_action(child, command, arguments,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_raw_physics_presence") is True:
+                    component._raw_physics_batch_action(child, command, arguments,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_raw_static_mesh_presence") is True:
+                    component._raw_static_mesh_batch_action(child, command, arguments,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_blueprint_raw_metadata_presence") is True:
+                    from . import custom_event_metadata
+                    custom_event_metadata._raw_batch_action(child, command, arguments,
+                        checkpoint_callback=before_mutation)
+                elif command.get("legacy_blueprint_raw_null_default") is True:
+                    # Only the original normalized Add-null row may retain JSON
+                    # null. The private action independently verifies provenance.
+                    variables._add_blueprint_variable_raw_null_action(child, command, arguments,
+                        checkpoint_callback=before_mutation)
+                elif _compile_status_owner is not None and _compile_status_batch_wait(command):
+                    if _volume_texture_batch_command(command):
+                        from . import volume_texture
+                        if command.get("legacy_original_command") in _VOLUME_TEXTURE_LEGACY_COMMANDS:
+                            arguments["_legacy_command_params"] = copy.deepcopy(command["legacy_original_params"])
+                        flow = volume_texture._BatchVolumeTextureFlow(child, arguments, before_mutation,
+                            command["type"].rsplit(".", 1)[-1], lambda: _compile_status_batch_current(_compile_status_owner))
+                    elif _factory_batch_command(command):
                         from . import niagara_factory_bootstrap
                         flow = niagara_factory_bootstrap._BatchFactoryBootstrapFlow(child, arguments, before_mutation,
                             command["type"].rsplit(".", 1)[-1], lambda: _compile_status_batch_current(_compile_status_owner))
+                    elif _scratch_module_batch_command(command):
+                        flow = _BatchScratchModuleInputFlow(child, arguments, before_mutation,
+                            command["type"].rsplit(".", 1)[-1],
+                            lambda: _compile_status_batch_current(_compile_status_owner),
+                            lambda active, job, allow: _volume_texture_batch_cancel_current(_compile_status_owner, active, job, allow))
+                    elif _stage_batch_command(command):
+                        flow = _BatchSimulationStageFlow(child, arguments, before_mutation,
+                            command["type"].rsplit(".", 1)[-1],
+                            lambda: _compile_status_batch_current(_compile_status_owner),
+                            lambda active, job, allow: _volume_texture_batch_cancel_current(_compile_status_owner, active, job, allow))
+                    elif _graph_cleanup_batch_command(command):
+                        flow = _BatchGraphCleanupFlow(child, arguments, before_mutation,
+                            command["type"].rsplit(".", 1)[-1],
+                            lambda: _compile_status_batch_current(_compile_status_owner),
+                            lambda active, job, allow: _volume_texture_batch_cancel_current(_compile_status_owner, active, job, allow))
+                    elif _scratch_user_recipe_batch_command(command):
+                        from . import niagara_scratch_user_recipes
+                        flow = niagara_scratch_user_recipes._BatchScratchUserRecipeFlow(child, arguments, before_mutation,
+                            command["type"].rsplit(".", 1)[-1],
+                            lambda: _compile_status_batch_current(_compile_status_owner),
+                            lambda active, job, allow: _volume_texture_batch_cancel_current(_compile_status_owner, active, job, allow))
+                    elif _recipe_batch_command(command):
+                        flow = _BatchRecipeWaitFlow(child, arguments, before_mutation,
+                            command["type"].rsplit(".", 1)[-1],
+                            lambda: _compile_status_batch_current(_compile_status_owner),
+                            lambda active, job, allow: _volume_texture_batch_cancel_current(_compile_status_owner, active, job, allow))
                     else:
                         from . import niagara_authoring_inspection
                         flow = niagara_authoring_inspection._BatchCompileStatusFlow(child, arguments, before_mutation)
                     _compile_status_owner["flow"] = flow  # Retain before the first SDK boundary.
                     try:
                         if not flow.start(True):
-                            row["phase"] = "awaiting_owned_HN_factory_bootstrap" if _factory_batch_command(command) else "awaiting_owned_HN_compile_status"
+                            row["phase"] = "awaiting_owned_DX_volume_texture" if _volume_texture_batch_command(command) else "awaiting_owned_HN_factory_bootstrap" if _factory_batch_command(command) else "awaiting_owned_ModuleInput" if _scratch_module_batch_command(command) else "awaiting_owned_IB_stage" if _stage_batch_command(command) else "awaiting_owned_HN_recipe" if _recipe_batch_command(command) else "awaiting_owned_HN_compile_status"
                             persist(f"batch[{index}]:pending_compile_status")
                             paused_at = time.perf_counter()
                             try:
                                 yield flow
                             finally:
-                                suspended_seconds += time.perf_counter() - paused_at
-                                summary["compile_status_continuation"]["HN_wait_seconds"] = round(suspended_seconds, 6)
+                                waited = time.perf_counter() - paused_at
+                                suspended_seconds += waited
+                                wait_key = "DX_wait_seconds" if _volume_texture_batch_command(command) else "HN_wait_seconds"
+                                summary["compile_status_continuation"][wait_key] = round(summary["compile_status_continuation"].get(wait_key, 0.0) + waited, 6)
                     except Exception as error:
                         flow.fail(error)
                         raise
@@ -8371,6 +11496,14 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                 fail(child, error)
             row["elapsed_seconds"] = round(time.perf_counter() - child_started, 6)
             row["phase"] = "returned"
+            if guarded_scope is not None and not guarded_scope.observer_lost:
+                try:
+                    guarded_scope.check()
+                except Exception as error:
+                    child["data"]["action_response_before_batch_scope_loss"] = copy.deepcopy(child)
+                    child["data"].update(mutation_state_unknown=True, change_state_known=False,
+                        batch_transaction_scope_lost=True, do_not_retry=True)
+                    fail(child, error)
             _observation(row)
             if _compile_status_owner is not None:
                 active_flow = _compile_status_owner.get("flow")
@@ -8407,9 +11540,24 @@ def _run(result, commands, stop_on_error, _compile_status_owner=None):
                 break
 
     def finish_steps():
+        nonlocal guarded_scope
         # Content-only explicit writers own native transactions for guarded cleanup.
         # Mixed writers retain the existing outer scope and native safety refusal.
-        if (summary["transaction"]["scope_requested"] and not summary["transaction"]["native_owned_content_only"]
+        if guarded_batch_requested:
+            try:
+                persist("batch_transaction:before_begin")
+                with engine.guarded_transaction(result["operation_id"], summary["transaction"]) as scope:
+                    guarded_scope = scope
+                    persist("batch_transaction:begun")
+                    yield from run_steps()
+                    persist("batch_transaction:before_end")
+            except Exception as error:
+                summary.update(forced_stop=True, stop_reason=getattr(error, "code", "batch_transaction_failed"))
+                _aggregate(result, summary)
+                raise
+            finally:
+                guarded_scope = None
+        elif (summary["transaction"]["scope_requested"] and not summary["transaction"]["native_owned_content_only"]
                 and not summary["transaction"].get("batch_scope_skipped_for_python_execution", False)
                 and not summary["transaction"].get("batch_scope_skipped_for_actor_operations", False)
                 and _compile_status_owner is None):
@@ -8447,9 +11595,27 @@ def execute_batch(commands_json, stop_on_error=True, operation_id=None):
         return result
     arguments = {"manifest_version": MANIFEST_VERSION, "commands": commands, "stop_on_error": stop_on_error}
     result = mutate("execute_batch", arguments, operation_id, lambda output: _run(output, commands, stop_on_error))
+    quarantine = engine.quarantined_scope()
+    if quarantine is not None:
+        # Preserve the existing global mutation-busy boundary after mutate's
+        # normal finally releases its slot. No subsequent workflow may nest in
+        # the unresolved outer transaction; only explicit root reconciliation
+        # or a new Editor generation can recover it.
+        from . import state
+        if state._active_operation is None:
+            state._active_operation = "batch_transaction_quarantined:" + quarantine["operation_id"]
+        if not result["retry"].get("replayed"):
+            result["data"].update(batch_transaction_quarantine=quarantine, mutation_state_unknown=True,
+                change_state_known=False, workflow_recovery_required=True, do_not_retry=True)
+            result["retry"].update(duplicate_risk="unknown_transaction_scope", automatic_retry=False)
+            result["success"] = False
     if not result["success"] and "batch" in result["data"]:
         result["data"]["batch"]["success"] = False
     return result
+
+
+def _volume_texture_batch_command(command):
+    return command["type"] in _VOLUME_TEXTURE_LEGACY_COMMANDS.values()
 
 
 def _factory_batch_command(command):
@@ -8458,13 +11624,653 @@ def _factory_batch_command(command):
         "CubelessNiagaraFactoryBootstrapTools.create_basic_sprite_niagara_system")
 
 
+_RECIPE_BATCH_METHODS = {
+    "CubelessNiagaraRendererTools.cleanup_niagara_renderers": False,
+    "CubelessNiagaraParameterCollectionTools.remap_niagara_script_parameter_collection_references": True,
+    "CubelessNiagaraModuleInputPathTools.remove_niagara_unused_module_input_path": True,
+    "CubelessNiagaraModuleInputPathTools.set_niagara_module_input_user_parameter": False,
+    "CubelessNiagaraModuleInputPathTools.set_niagara_array_data_interface_module_input_user_parameter": False,
+}
+
+
+def _recipe_batch_command(command):
+    return command["type"] in _RECIPE_BATCH_METHODS
+
+
+class _BatchRecipeWaitFlow:
+    """Five original HN leaves under one existing Batch journal and ticker."""
+    def __init__(self, result, arguments, checkpoint_callback, method, parent_current, cancel_current):
+        from . import niagara_scratch_user_recipes as recipes
+        if method not in recipes._MODULE_INPUT_BINDINGS:
+            raise OperationError('batch_recipe_method_invalid', 'Only the existing HN cleanup/remap/removal/binding5 leaves are admitted')
+        self.r = self.result = result
+        self.method, self.callback = method, checkpoint_callback
+        self.parent_current, self.cancel_current = parent_current, cancel_current
+        self.job = None
+        self.in_flight = self.lost = self.cancel_entered = self.job_reference_verified = False
+        self.checkpoint_failure_stop_permitted = False
+        self.binding = recipes._single_path_domain(method)
+        original = {key: copy.deepcopy(arguments[key]) for key in self.binding.PUBLIC_FIELDS[method] if key in arguments}
+        self.args, self.original, self.legacy = self.binding._arguments(method, original,
+            arguments.get('_legacy_command_params'), arguments.get('_public_input', False))
+        self.args['concrete_native_job'] = True
+        self.entry = dict(journal=self, method=method, snapshot_calls=0, tick_callbacks=0,
+            job_reference_verified=False, last_checkpoint_revision=None)
+        self.binding._context(result, method, self.args, self.original, self.legacy)
+        result['data'].update(parent_journal_only=True, child_journals_created=0,
+            native_start_dispatched=False, native_dispatched=False, native_start_returned=False,
+            native_snapshot_returned=False, native_mutation_attempted=False,
+            execution_mutation_attempted=False, mutation_performed=False,
+            mutation_state_unknown=False, change_state_known=True)
+
+    def unsafe(self, error):
+        self.lost = True
+        self.r['data'].update(change_state_known=False, mutation_state_unknown=True,
+            mutation_performed=None, do_not_retry=True, workflow_recovery_required=True)
+        return error
+
+    def current(self):
+        if self.lost:
+            raise OperationError('batch_recipe_observation_lost', 'Native observation loss is sticky; no next Job SDK')
+        try:self.parent_current()
+        except Exception as error:raise self.unsafe(error)
+
+    def checkpoint(self):
+        try:
+            self.current()
+            if self.callback:self.callback(self.r)
+            self.current()
+        except Exception as error:
+            self.checkpoint_failure_stop_permitted = True
+            raise self.unsafe(error)
+
+    def _unadopted(self, error, native=None):
+        if native is None:native = getattr(error, 'native_decoded_result', None)
+        raw = native.get('_raw_native_json') if type(native) is dict else None
+        if raw is None:raw = getattr(error, 'native_raw_result', None)
+        if type(native) is dict or getattr(error, 'native_snapshot_returned', False):
+            self.r['data'].update(native_snapshot_returned=True,
+                unadopted_returned_native_snapshot=copy.deepcopy(native),
+                unadopted_returned_native_raw_result=raw,
+                returned_native_snapshot_adopted=False, returned_native_current_verified=False)
+
+    def start(self, asynchronous):
+        from ..compatibility.ue58 import niagara_scratch_user_recipes as native_api
+        if asynchronous is not True:
+            raise OperationError('batch_recipe_official_async_required', 'Original HN waits require the official Batch continuation')
+        self.current()
+        self.r['stage'] = 'before_owned_HN_recipe_checkpoint'
+        if self.callback:self.callback(self.r)
+        self.current()
+        self.r['data'].update(native_start_dispatched=True, native_dispatched=True,
+            native_mutation_attempted=None, execution_mutation_attempted=None,
+            mutation_performed=None, mutation_state_unknown=True, change_state_known=False)
+        self.in_flight = True
+        try:
+            self.job = native_api.start_job(self.method, self.args['params'], current_callback=self.current)
+            self.entry.update(job=self.job, job_reference_verified=True)
+            self.job_reference_verified = True
+            self.r['data']['native_start_returned'] = True
+            self.current()
+        except Exception as error:
+            if getattr(error, 'native_start_returned', False):
+                self.job = getattr(error, 'native_returned_job', self.job)
+                self.entry['job'] = self.job
+                self.r['data']['native_start_returned'] = True
+            if getattr(error, 'native_start_dispatched', None) is False:
+                self.in_flight = False
+                self.r['data'].update(native_start_dispatched=False, native_dispatched=False,
+                    native_mutation_attempted=False, execution_mutation_attempted=False,
+                    mutation_performed=False, mutation_state_unknown=False, change_state_known=True)
+            else:self.unsafe(error)
+            raise
+        return False
+
+    def poll(self):
+        from ..compatibility.ue58 import niagara_scratch_user_recipes as native_api
+        from . import niagara_authoring_inspection as checkpoints
+        self.current()
+        self.checkpoint_failure_stop_permitted = False
+        self.entry['snapshot_calls'] += 1
+        self.entry['tick_callbacks'] += 1
+        native = None
+        adopted = False
+        try:
+            native = native_api.snapshot(self.job, self.method, current_callback=self.current)
+            self.current()
+            data = native['data'];job_id = data['native_job_id']
+            if self.entry.get('native_job_id') is not None and self.entry['native_job_id'] != job_id:
+                raise OperationError('batch_recipe_job_identity_changed', 'Another Job publication was returned; no restart')
+            revision = data['native_checkpoint_revision'];previous = self.entry['last_checkpoint_revision']
+            if previous is not None and revision < previous:
+                raise OperationError('batch_recipe_revision_regressed', 'Same-job meaningful revision regressed; no restart')
+            self.entry['native_job_id'] = job_id
+            prior_compile, prior_save = copy.deepcopy(self.r['compile']), copy.deepcopy(self.r['save'])
+            self.binding._adopt(self.r, self.method, self.args, self.original, self.legacy, native)
+            adopted = True
+            for group, prior, fields in (('compile', prior_compile, ('requested','attempted')), ('save', prior_save, ('requested','attempted','saved'))):
+                for field in fields:self.r[group][field] = prior.get(field) is True or self.r[group].get(field) is True
+            terminal = data['native_job_terminal']
+            self.r['data'].update(parent_journal_only=True, child_journals_created=0,
+                native_snapshot_returned=True, returned_native_snapshot_adopted=True,
+                returned_native_current_verified=True, native_job_id=job_id,
+                native_terminal_observed=terminal, command_may_still_be_in_flight=not terminal,
+                deferred_terminal_wait_completion_unverified=not terminal)
+            self.current()
+            if terminal:self.in_flight = False
+            checkpoints._checkpoint_native(self.entry, native, force=terminal)
+        except Exception as error:
+            if not adopted:self._unadopted(error, native)
+            else:self.r['data']['adapter_failure_after_native_adoption'] = True
+            raise self.unsafe(error)
+        if not terminal:return False
+        self.in_flight = False
+        self.r.update(success=native['success'], error_code=native.get('error_code',''), error=native.get('error',''))
+        if native['success'] and (not native['postcondition_passed'] or not native['change_state_known'] or not data['operation_complete']):
+            fail(self.r, OperationError('batch_recipe_terminal_unverified', 'Native success lacks terminal known bounded mutation/compile/save postconditions'))
+        self.r['data'].update(workflow_recovery_required=not native['change_state_known'],
+            command_may_still_be_in_flight=False, cancel_acknowledgement_is_not_shared_compiler_stop=True)
+        if self.r['success']:self.r['stage'] = 'complete'
+        return True
+
+    def fail(self, error):
+        if self.checkpoint_failure_stop_permitted and self.in_flight and self.job_reference_verified and not self.cancel_entered:
+            try:
+                job = self.job
+                self.cancel_current(self, job, True)
+                self.cancel_entered = True
+                self.r['data']['owned_cancel_after_failure_attempts'] = 1
+                acknowledged = job.cancel_job('Stop exact owned ' + self.method + ' next writers after Batch checkpoint failure: ' + str(error)[:700])
+                self.r['data'].update(owned_cancel_after_failure_returned=True,
+                    owned_cancel_acknowledgement=acknowledged if type(acknowledged) is bool else None)
+                self.cancel_current(self, job, True)
+            except Exception as cancel_error:self.r['data']['owned_cancel_after_failure_error'] = str(cancel_error)[:700]
+        fail(self.r, error)
+        if self.in_flight or self.lost:
+            self.r['data'].update(mutation_state_unknown=True, change_state_known=False,
+                mutation_performed=None, workflow_recovery_required=True, do_not_retry=True)
+        self.r['data']['command_may_still_be_in_flight'] = self.in_flight
+        self.r['retry'].update(automatic_retry=False, duplicate_risk='owned_HN_recipe_Batch_no_replay')
+        return self.r
+
+
+_STAGE_BATCH_METHODS = {
+    "CubelessNiagaraSimulationStageTools.add_niagara_grid_simulation_stage",
+    "CubelessNiagaraSimulationStageTools.set_niagara_simulation_stage_settings",
+}
+
+
+def _stage_batch_command(command):
+    return command["type"] in _STAGE_BATCH_METHODS
+
+
+class _BatchSimulationStageFlow(_BatchRecipeWaitFlow):
+    """The two existing IB jobs under the existing Batch parent and ticker."""
+    def __init__(self, result, arguments, checkpoint_callback, method, parent_current, cancel_current):
+        from . import niagara_simulation_stages as stages
+        if method not in (stages.IDENTITY, stages.SETTINGS_IDENTITY):
+            raise OperationError('batch_stage_method_invalid', 'Only original Stage Add/Settings jobs are admitted')
+        self.r = self.result = result
+        self.method, self.callback = method, checkpoint_callback
+        self.parent_current, self.cancel_current = parent_current, cancel_current
+        self.job = None
+        self.in_flight = self.lost = self.cancel_entered = self.job_reference_verified = False
+        self.checkpoint_failure_stop_permitted = False
+        self.legacy = copy.deepcopy(arguments.get('_legacy_command_params'))
+        original = copy.deepcopy(self.legacy if self.legacy is not None else arguments)
+        result['data'].update(native_start_dispatched=False, native_dispatched=False,
+            native_start_returned=False, native_snapshot_returned=False,
+            native_mutation_attempted=False, execution_mutation_attempted=False,
+            mutation_performed=False, mutation_state_unknown=False, change_state_known=True,
+            legacy_command_params=copy.deepcopy(self.legacy))
+        if self.legacy is not None:
+            native_args = stages._raw_batch_arguments(method, self.legacy, self.current)
+        elif method == stages.IDENTITY:
+            native_args = stages._arguments(**arguments, _named_job=True)
+        else:
+            native_args = stages._settings_arguments(**arguments)
+        self.args = native_args
+        self.entry = dict(journal=self, method=method, snapshot_calls=0, tick_callbacks=0,
+            job_reference_verified=False, last_checkpoint_revision=None,
+            public=dict(arguments=original, original=original, args=dict(params=native_args)))
+        stages._named_context(result, method, self.entry['public'])
+        self._batch_context()
+        result['data'].update(native_start_dispatched=False, native_dispatched=False,
+            native_start_returned=False, native_snapshot_returned=False,
+            native_mutation_attempted=False, execution_mutation_attempted=False,
+            mutation_performed=False, mutation_state_unknown=False, change_state_known=True)
+
+    def _batch_context(self):
+        self.r['data'].update(entry_route='official_Batch_owned_IB_job',
+            async_entry='official_Batch_owned_IB_job', parent_journal_only=True,
+            child_journals_created=0, Batch_async_continuation_implemented=True,
+            Raw_Batch_async_continuation_implemented=self.legacy is not None,
+            raw_lowercase_stage_alias_connected=self.legacy is not None,
+            raw_lowercase_stage_alias_parity=False,
+            raw_stage_conversion_scope='Original scalar defaults/presence/count precedence into the existing normalized IB carrier; Native support/bounds and multi-error ordering remain incomplete',
+            legacy_command_params=copy.deepcopy(self.legacy), automatic_action_retry=False,
+            atomic_rollback=False, global_compiler_cancel_attempted=False)
+
+    def start(self, asynchronous):
+        from ..compatibility.ue58 import niagara_event_stage_authoring as native_api
+        if asynchronous is not True:
+            raise OperationError('batch_stage_official_async_required', 'Stage jobs require the official Batch continuation')
+        self.current()
+        self.r['stage'] = 'before_owned_IB_stage_checkpoint'
+        self.checkpoint()
+        self.r['data'].update(native_start_dispatched=True, native_dispatched=True,
+            native_mutation_attempted=None, execution_mutation_attempted=None,
+            mutation_performed=None, mutation_state_unknown=True, change_state_known=False)
+        self.in_flight = True
+        try:
+            self.job = native_api.start_job(self.method, self.args, current_callback=self.current)
+            self.entry.update(job=self.job, job_reference_verified=True)
+            self.job_reference_verified = True
+            self.r['data']['native_start_returned'] = True
+            self.current()
+        except Exception as error:
+            if getattr(error, 'native_start_returned', False):
+                self.job = getattr(error, 'native_returned_job', self.job)
+                self.entry['job'] = self.job
+                self.r['data']['native_start_returned'] = True
+            if getattr(error, 'native_start_dispatched', None) is False:
+                self.in_flight = False
+                self.r['data'].update(native_start_dispatched=False, native_dispatched=False,
+                    native_mutation_attempted=False, execution_mutation_attempted=False,
+                    mutation_performed=False, mutation_state_unknown=False, change_state_known=True)
+            else:self.unsafe(error)
+            raise
+        return False
+
+    def poll(self):
+        from ..compatibility.ue58 import niagara_event_stage_authoring as native_api
+        from . import niagara_event_stage_authoring as stages
+        self.current()
+        self.checkpoint_failure_stop_permitted = False
+        self.entry['snapshot_calls'] += 1
+        self.entry['tick_callbacks'] += 1
+        native = None
+        adopted = False
+        try:
+            native = native_api.snapshot(self.job, self.method, current_callback=self.current)
+            self.current()
+            # Reject an inadmissible receipt before it can overwrite an earlier
+            # confirmed compile/save prefix. Keep the returned DTO unadopted.
+            job_id = native['data']['native_job_id']
+            prior_id = self.entry.get('native_job_id')
+            if prior_id is not None and job_id != prior_id:
+                raise OperationError('batch_stage_job_identity_changed', 'Snapshot belongs to another Stage job; no replay')
+            revision = native['data']['native_checkpoint_revision']
+            previous = self.entry.get('last_checkpoint_revision')
+            if previous is not None and revision < previous:
+                raise OperationError('batch_stage_revision_regressed', 'Stage snapshot revision regressed; confirmed prefix retained')
+            stages._async_adopt(self.entry, native)
+            adopted = True
+            self.r['data'].update(change_state_known=native['change_state_known'],
+                execution_mutation_attempted=native['mutation_attempted'])
+            self._batch_context()
+            terminal = native['data']['native_job_terminal']
+            self.r['data'].update(returned_native_snapshot_adopted=True,
+                returned_native_current_verified=True)
+            self.current()
+            if terminal:self.in_flight = False
+            stages._checkpoint_native(self.entry, native, force=terminal)
+        except Exception as error:
+            if not adopted:self._unadopted(error, native)
+            else:self.r['data']['adapter_failure_after_native_adoption'] = True
+            raise self.unsafe(error)
+        if not terminal:return False
+        self.r.update(success=native['success'], error_code=native.get('error_code',''), error=native.get('error',''))
+        if native['success'] and (not native['postcondition_passed'] or not native['change_state_known'] or not native['data']['operation_complete']):
+            fail(self.r, OperationError('batch_stage_terminal_unverified', 'Native success lacks terminal known Stage/compile/save postconditions'))
+        self.r['data'].update(workflow_recovery_required=not native['change_state_known'],
+            command_may_still_be_in_flight=False, cancel_acknowledgement_is_not_shared_compiler_stop=True)
+        if self.r['success']:self.r['stage'] = 'complete'
+        return True
+
+    def fail(self, error):
+        super().fail(error)
+        self.r['retry']['duplicate_risk'] = 'owned_IB_stage_Batch_no_replay'
+        return self.r
+
+
+_SCRATCH_MODULE_BATCH_METHOD = "CubelessNiagaraScratchStackAuthoringTools.add_niagara_scratch_pad_module_input"
+
+
+def _scratch_module_batch_command(command):
+    return command["type"] == _SCRATCH_MODULE_BATCH_METHOD
+
+
+class _BatchScratchModuleInputFlow(_BatchRecipeWaitFlow):
+    """The existing ModuleInput job under the existing Batch parent/ticker."""
+    def __init__(self, result, arguments, checkpoint_callback, method, parent_current, cancel_current):
+        from . import niagara_scratch_stack_authoring as scratch
+        if method != scratch.ASYNC_METHODS[0]:
+            raise OperationError('batch_scratch_module_method_invalid', 'Only the original ModuleInput job is admitted')
+        self.r = self.result = result
+        self.method, self.callback = method, checkpoint_callback
+        self.parent_current, self.cancel_current = parent_current, cancel_current
+        self.job = None
+        self.in_flight = self.lost = self.cancel_entered = self.job_reference_verified = False
+        self.checkpoint_failure_stop_permitted = False
+        original = {key: copy.deepcopy(arguments[key]) for key in scratch.PUBLIC_FIELDS[method] if key in arguments}
+        self.args, self.original, self.legacy = scratch._arguments(method, original,
+            arguments.get('_legacy_command_params'), arguments.get('_public_input', False))
+        self.entry = dict(journal=self, method=method, snapshot_calls=0, tick_callbacks=0,
+            job_reference_verified=False, last_checkpoint_revision=None)
+        scratch._context(result, method, self.args, self.original, self.legacy)
+        self._batch_context()
+        result['data'].update(native_start_dispatched=False, native_dispatched=False,
+            native_start_returned=False, native_snapshot_returned=False,
+            native_mutation_attempted=False, execution_mutation_attempted=False,
+            mutation_performed=False, mutation_state_unknown=False, change_state_known=True)
+
+    def _batch_context(self):
+        self.r['data'].update(async_entry='official_Batch_owned_ModuleInput_job',
+            parent_journal_only=True, child_journals_created=0,
+            Batch_async_continuation_implemented=True,
+            Raw_Batch_async_continuation_implemented=self.legacy is not None,
+            module_input_compile_wait_save_order_Native_owned=True,
+            automatic_action_retry=False, atomic_rollback=False,
+            global_compiler_cancel_attempted=False)
+
+    def start(self, asynchronous):
+        from ..compatibility.ue58 import niagara_scratch_stack_authoring as native_api
+        if asynchronous is not True:
+            raise OperationError('batch_scratch_module_official_async_required', 'ModuleInput waits require the official Batch continuation')
+        self.current()
+        self.r['stage'] = 'before_niagara_scratch_stack_authoring_checkpoint'
+        self.checkpoint()
+        self.r['data'].update(native_start_dispatched=True, native_dispatched=True,
+            native_mutation_attempted=None, execution_mutation_attempted=None,
+            mutation_performed=None, mutation_state_unknown=True, change_state_known=False)
+        self.in_flight = True
+        try:
+            self.job = native_api.start_job(self.method, self.args['params'], current_callback=self.current)
+            self.entry.update(job=self.job, job_reference_verified=True)
+            self.job_reference_verified = True
+            self.r['data']['native_start_returned'] = True
+            self.current()
+        except Exception as error:
+            if getattr(error, 'native_start_returned', False):
+                self.job = getattr(error, 'native_returned_job', self.job)
+                self.entry['job'] = self.job
+                self.r['data']['native_start_returned'] = True
+            if getattr(error, 'native_start_dispatched', None) is False:
+                self.in_flight = False
+                self.r['data'].update(native_start_dispatched=False, native_dispatched=False,
+                    native_mutation_attempted=False, execution_mutation_attempted=False,
+                    mutation_performed=False, mutation_state_unknown=False, change_state_known=True)
+            else:self.unsafe(error)
+            raise
+        return False
+
+    def poll(self):
+        from ..compatibility.ue58 import niagara_scratch_stack_authoring as native_api
+        from . import niagara_scratch_stack_authoring as scratch
+        self.current()
+        self.checkpoint_failure_stop_permitted = False
+        self.entry['snapshot_calls'] += 1
+        self.entry['tick_callbacks'] += 1
+        native = None
+        adopted = False
+        receipt_rejected = False
+        try:
+            native = native_api.snapshot(self.job, self.method, current_callback=self.current)
+            self.current()
+            data = native['data'];job_id = data['native_job_id']
+            if self.entry.get('native_job_id') is not None and self.entry['native_job_id'] != job_id:
+                receipt_rejected = True
+                raise OperationError('batch_scratch_module_job_identity_changed', 'Another Job publication was returned; no restart')
+            revision = data['native_checkpoint_revision'];previous = self.entry['last_checkpoint_revision']
+            if previous is not None and revision < previous:
+                receipt_rejected = True
+                raise OperationError('batch_scratch_module_revision_regressed', 'Same-job meaningful revision regressed; no restart')
+            self.entry['native_job_id'] = job_id
+            prior_compile, prior_save = copy.deepcopy(self.r['compile']), copy.deepcopy(self.r['save'])
+            # Preserve the actual raw alias/default/partial result. The Named-only
+            # async adopter intentionally passes legacy=None and is not used here.
+            scratch._adopt(self.r, self.method, self.args, self.original, self.legacy, native)
+            adopted = True
+            for group, prior, fields in (('compile', prior_compile, ('requested','attempted')), ('save', prior_save, ('requested','attempted','saved'))):
+                for field in fields:self.r[group][field] = prior.get(field) is True or self.r[group].get(field) is True
+            self.r['data'].update(change_state_known=native['change_state_known'],
+                execution_mutation_attempted=native['mutation_attempted'])
+            self._batch_context()
+            terminal = data['native_job_terminal']
+            self.r['data'].update(native_snapshot_returned=True,
+                returned_native_snapshot_adopted=True, returned_native_current_verified=True,
+                native_job_id=job_id, native_terminal_observed=terminal,
+                command_may_still_be_in_flight=not terminal,
+                deferred_terminal_wait_completion_unverified=not terminal)
+            self.current()
+            if terminal:self.in_flight = False
+            scratch._checkpoint_native(self.entry, native, force=terminal)
+        except Exception as error:
+            if not adopted:
+                self._unadopted(error, native)
+                if native is not None and not hasattr(error, 'native_decoded_result'):
+                    error.native_decoded_result = native
+                    error.native_snapshot_returned = True
+                # Same held Job's typed actual compile/save prefix can survive
+                # an adapter/current failure, without adopting terminal success.
+                # snapshot may fail its parent-current fence after decoding,
+                # before this flow's normal ID/revision checks are reached.
+                prefix_receipt = native if type(native) is dict else getattr(error, 'native_decoded_result', None)
+                prefix_data = prefix_receipt.get('data') if type(prefix_receipt) is dict else None
+                if type(prefix_data) is dict:
+                    prefix_id = prefix_data.get('native_job_id')
+                    prefix_revision = prefix_data.get('native_checkpoint_revision')
+                    prior_id = self.entry.get('native_job_id')
+                    prior_revision = self.entry.get('last_checkpoint_revision')
+                    if (prior_id is not None and prefix_id != prior_id
+                            or type(prefix_revision) in (int, float) and prior_revision is not None and prefix_revision < prior_revision):
+                        receipt_rejected = True
+                if not receipt_rejected:
+                    scratch._preserve_snapshot_error(self.entry, error)
+                else:
+                    self.r['data']['inadmissible_identity_or_revision_prefix_not_merged'] = True
+            else:self.r['data']['adapter_failure_after_native_adoption'] = True
+            raise self.unsafe(error)
+        if not terminal:return False
+        self.r.update(success=native['success'], error_code=native.get('error_code',''), error=native.get('error',''))
+        if native['success'] and (not native['postcondition_passed'] or not native['change_state_known'] or not data['operation_complete']):
+            fail(self.r, OperationError('batch_scratch_module_terminal_unverified', 'Native success lacks terminal known ModuleInput/compile/wait/save postconditions'))
+        self.r['data'].update(workflow_recovery_required=not native['change_state_known'],
+            command_may_still_be_in_flight=False, cancel_acknowledgement_is_not_shared_compiler_stop=True)
+        if self.r['success']:self.r['stage'] = 'complete'
+        return True
+
+    def fail(self, error):
+        super().fail(error)
+        self.r['retry']['duplicate_risk'] = 'owned_ModuleInput_Batch_no_replay'
+        return self.r
+
+
+_SCRATCH_USER_RECIPE_BATCH_METHODS = frozenset(
+    "CubelessNiagaraScratchUserRecipeTools." + name for name in (
+        "create_niagara_scratch_pad_vec2_user_parameter_module",
+        "create_niagara_scratch_pad_color_user_parameter_module",
+        "create_niagara_scratch_pad_bool_user_parameter_module",
+        "create_niagara_scratch_pad_bool_visible_toggle_module",
+        "create_niagara_visible_scratch_pad_snow_seed"))
+
+
+def _scratch_user_recipe_batch_command(command):
+    return command["type"] in _SCRATCH_USER_RECIPE_BATCH_METHODS
+
+
+_GRAPH_CLEANUP_BATCH_METHODS = frozenset(
+    "CubelessNiagaraCleanupTools." + name for name in (
+        "remove_niagara_modules", "remove_niagara_parameter_map_set_nodes",
+        "remove_niagara_orphan_parameter_map_get_nodes", "remove_niagara_simulation_stage",
+        "remove_niagara_scratch_pad_script"))
+
+
+def _graph_cleanup_batch_command(command):
+    return command["type"] in _GRAPH_CLEANUP_BATCH_METHODS
+
+
+class _BatchGraphCleanupFlow(_BatchRecipeWaitFlow):
+    """The original five cleanup jobs; existing Batch parent owns every wait and lease."""
+    def __init__(self,result,arguments,checkpoint_callback,method,parent_current,cancel_current):
+        from . import niagara_cleanup as cleanup, niagara_graph_cleanup_async as asynchronous
+        if method not in asynchronous.METHODS:
+            raise OperationError('batch_graph_cleanup_method_invalid','Only the original five graph cleanup jobs are admitted')
+        self.r=self.result=result
+        self.method,self.callback=method,checkpoint_callback
+        self.parent_current,self.cancel_current=parent_current,cancel_current
+        self.job=None
+        self.in_flight=self.lost=self.cancel_entered=self.job_reference_verified=False
+        self.checkpoint_failure_stop_permitted=False
+        original={key:copy.deepcopy(arguments[key]) for key in cleanup.PUBLIC_FIELDS[method] if key in arguments}
+        self.args,self.original,self.legacy=cleanup._arguments(method,original,
+            arguments.get('_legacy_command_params'),arguments.get('_public_input',False))
+        self.current()
+        if asynchronous._QUARANTINED:
+            raise OperationError('batch_graph_cleanup_quarantined','Existing unknown cleanup job requires reconciliation; no new writer')
+        from ..compatibility.ue58 import niagara_graph_cleanup_async as native_api
+        if not all(value is True for value in native_api.binding_status().values()):
+            raise OperationError('niagara_graph_cleanup_job_native_unavailable','Exact existing Native cleanup job bindings are required; no fallback')
+        self.current()
+        self.entry=dict(journal=self,method=method,snapshot_calls=0,tick_callbacks=0,
+            job_reference_verified=False,last_checkpoint_revision=None)
+        cleanup._context(result,method,self.args,self.original,self.legacy)
+        self._batch_context()
+        result['data'].update(native_start_dispatched=False,native_dispatched=False,
+            native_start_returned=False,native_snapshot_returned=False,
+            native_mutation_attempted=False,execution_mutation_attempted=False,
+            mutation_performed=False,mutation_state_unknown=False,change_state_known=True)
+
+    def current(self):
+        super().current()
+        from . import niagara_graph_cleanup_async as asynchronous
+        if not asynchronous._ACTIVE:
+            raise self.unsafe(OperationError('batch_graph_cleanup_lifecycle_retired','Exact cleanup lifecycle retired; no next Job SDK'))
+
+    def _batch_context(self):
+        self.r['data'].update(async_entry='official_Batch_owned_graph_cleanup_job',
+            parent_journal_only=True,child_journals_created=0,
+            Batch_async_continuation_implemented=True,
+            Raw_Batch_async_continuation_implemented=self.legacy is not None,
+            cleanup_compile_wait_save_order_Native_owned=True,
+            automatic_action_retry=False,atomic_rollback=False,
+            global_compiler_cancel_attempted=False)
+
+    def start(self,asynchronous):
+        from ..compatibility.ue58 import niagara_graph_cleanup_async as native_api
+        if asynchronous is not True:
+            raise OperationError('batch_graph_cleanup_official_async_required','Original cleanup waits require the existing official Batch continuation')
+        self.current()
+        self.r['stage']='before_niagara_cleanup_checkpoint'
+        self.r['data'].update(native_start_dispatch_intent=True,mutation_state_unknown=True,
+            change_state_known=False,mutation_performed=None)
+        self.checkpoint()
+        self.r['data'].update(native_start_dispatched=True,native_dispatched=True,
+            native_mutation_attempted=None,execution_mutation_attempted=None)
+        self.in_flight=True
+        try:
+            self.job=native_api.start_job(self.method,self.args['params'],current_callback=self.current)
+            self.entry.update(job=self.job,job_reference_verified=True)
+            self.job_reference_verified=True
+            self.r['data']['native_start_returned']=True
+            self.current()
+            self.checkpoint()
+        except Exception as error:
+            if getattr(error,'native_start_returned',False):
+                self.job=getattr(error,'native_returned_job',self.job)
+                self.entry['job']=self.job
+                self.r['data']['native_start_returned']=True
+            if getattr(error,'native_start_dispatched',None) is False:
+                self.in_flight=False
+                if not self.lost:
+                    self.r['data'].update(native_start_dispatched=False,native_dispatched=False,
+                        native_mutation_attempted=False,execution_mutation_attempted=False,
+                        mutation_performed=False,mutation_state_unknown=False,change_state_known=True)
+            else:self.unsafe(error)
+            raise
+        return False
+
+    def poll(self):
+        from ..compatibility.ue58 import niagara_graph_cleanup_async as native_api
+        from . import niagara_graph_cleanup_async as checkpoints, niagara_cleanup as cleanup
+        self.current()
+        self.checkpoint_failure_stop_permitted=False
+        self.entry['snapshot_calls']+=1
+        self.entry['tick_callbacks']+=1
+        native=None;adopted=False
+        try:
+            native=native_api.snapshot(self.job,self.method,current_callback=self.current)
+            self.current()
+            data=native['data'];job_id=data['native_job_id']
+            if self.entry.get('native_job_id') is not None and self.entry['native_job_id']!=job_id:
+                raise OperationError('batch_graph_cleanup_job_identity_changed','Snapshot belongs to another cleanup job; no replay')
+            revision=data['native_checkpoint_revision'];previous=self.entry['last_checkpoint_revision']
+            if previous is not None and revision<previous:
+                raise OperationError('batch_graph_cleanup_revision_regressed','Same-job meaningful revision regressed; confirmed prefix retained')
+            self.entry['native_job_id']=job_id
+            prior_compile,prior_save=copy.deepcopy(self.r['compile']),copy.deepcopy(self.r['save'])
+            # Preserve the raw full-params entry. Named-only adoption passes
+            # legacy=None and must not erase the original command identity.
+            cleanup._adopt(self.r,self.method,self.args,self.original,self.legacy,native)
+            adopted=True
+            for group,prior,fields in (('compile',prior_compile,('requested','attempted')),('save',prior_save,('requested','attempted','saved'))):
+                for field in fields:self.r[group][field]=prior.get(field) is True or self.r[group].get(field) is True
+            self._batch_context()
+            terminal=data['native_job_terminal']
+            self.r['data'].update(native_snapshot_returned=True,
+                returned_native_snapshot_adopted=True,returned_native_current_verified=True,
+                native_job_id=job_id,native_terminal_observed=terminal,
+                command_may_still_be_in_flight=not terminal,
+                deferred_terminal_wait_completion_unverified=not terminal)
+            self.current()
+            if terminal:self.in_flight=False
+            checkpoints._checkpoint_native(self.entry,native,force=terminal)
+        except Exception as error:
+            if not adopted:self._unadopted(error,native)
+            else:self.r['data']['adapter_failure_after_native_adoption']=True
+            raise self.unsafe(error)
+        if not terminal:return False
+        self.r.update(success=native['success'],error_code=native.get('error_code',''),error=native.get('error',''))
+        if native['success'] and (not native['postcondition_passed'] or not native['change_state_known'] or not data['operation_complete']):
+            fail(self.r,OperationError('batch_graph_cleanup_terminal_unverified','Native success lacks terminal known removal/compile/save postconditions'))
+        self.r['data'].update(workflow_recovery_required=not native['change_state_known'],
+            command_may_still_be_in_flight=False,cancel_acknowledgement_is_not_shared_compiler_stop=True)
+        if self.r['success']:self.r['stage']='complete'
+        return True
+
+    def fail(self,error):
+        super().fail(error)
+        self.r['retry']['duplicate_risk']='owned_graph_cleanup_Batch_no_replay'
+        return self.r
+
+
 def _compile_status_batch_wait(command):
+    if _graph_cleanup_batch_command(command):
+        parameters = command["params"]
+        raw = parameters.get("_legacy_command_params")
+        value = raw.get("wait_for_completion", False) if type(raw) is dict else parameters.get("wait_for_completion", False)
+        # Original TryGetBool/default-False remains Native-owned; all raw
+        # strings use the job without replacing their exact string value.
+        if type(value) is bool:return value
+        if type(value) in (int, float):return value != 0
+        return type(raw) is dict and type(value) is str
+    if _scratch_user_recipe_batch_command(command):
+        from . import niagara_scratch_user_recipes as recipes
+        method = command["type"].rsplit(".", 1)[-1]
+        parameters = command["params"]
+        values = recipes._values(method, parameters, parameters.get("_public_input", False), parameters.get("_legacy_command_params"))
+        return recipes._requires_continuation(method, values)
+    if _stage_batch_command(command):return True
+    if _volume_texture_batch_command(command):return True
     factory = _factory_batch_command(command)
-    if not factory and command["type"] != "CubelessNiagaraAuthoringInspectionTools.inspect_niagara_compile_status":
+    recipe = _recipe_batch_command(command)
+    scratch_module = _scratch_module_batch_command(command)
+    if not factory and not recipe and not scratch_module and command["type"] != "CubelessNiagaraAuthoringInspectionTools.inspect_niagara_compile_status":
         return False
     parameters = command["params"]
     raw = parameters.get("_legacy_command_params")
-    default = factory  # Original factory2 GetBoolParam defaults wait to True.
+    default = _RECIPE_BATCH_METHODS[command["type"]] if recipe else factory  # Original Native defaults, not Python truthiness.
     value = raw.get("wait_for_completion", default) if type(raw) is dict else parameters.get("wait_for_completion", default)
     # UE TryGetBool accepts booleans, nonzero numbers and FString::ToBool.
     # All strings take the owned job route without replacing their exact value.
@@ -8479,12 +12285,15 @@ def _compile_status_batch_wait(command):
     return False
 
 
-# VD: only the existing compile-status HN workflow may suspend this parent.
+# Existing exact inspector/factory/Volume and original HN recipe leaves share this parent.
 # The existing compile-status ticker owns scheduling; there is no public job
 # protocol, worker thread, new child journal or generic async action scheduler.
 _COMPILE_STATUS_BATCH_ACTIVE = False
 _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE = False
 _COMPILE_STATUS_BATCH_FACTORY_ACTIVE = False
+_COMPILE_STATUS_BATCH_VOLUME_ACTIVE = False
+_COMPILE_STATUS_BATCH_STAGE_ACTIVE = False
+_COMPILE_STATUS_BATCH_SCRATCH_ACTIVE = False
 _COMPILE_STATUS_BATCH_ENTRY = None
 _COMPILE_STATUS_BATCH_RETAINED = None
 
@@ -8543,27 +12352,67 @@ class _CompileStatusBatchParentJournal:
             self.owned = False
 
 
-def compile_status_batch_status(factory=False):
+def compile_status_batch_status(factory=False, volume=False, stage=False, scratch=False):
     def belongs(entry):
-        return entry is not None and entry.get("requires_factory" if factory else "requires_inspection", not factory)
-    return dict(active=_COMPILE_STATUS_BATCH_FACTORY_ACTIVE if factory else _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE,
+        return entry is not None and entry.get("requires_scratch" if scratch else "requires_stage" if stage else "requires_volume" if volume else "requires_factory" if factory else "requires_inspection", not scratch and not stage and not factory and not volume)
+    return dict(active=_COMPILE_STATUS_BATCH_SCRATCH_ACTIVE if scratch else _COMPILE_STATUS_BATCH_STAGE_ACTIVE if stage else _COMPILE_STATUS_BATCH_VOLUME_ACTIVE if volume else _COMPILE_STATUS_BATCH_FACTORY_ACTIVE if factory else _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE,
         pending_count=int(belongs(_COMPILE_STATUS_BATCH_ENTRY)),
         quarantined_count=int(belongs(_COMPILE_STATUS_BATCH_RETAINED)), parent_journal_only=True,
-        scheduling="existing_exact_inspection_or_factory_ticker", general_async_framework=False)
+        scheduling="existing_exact_inspection_factory_volume_stage_or_ModuleInput_ticker", general_async_framework=False)
 
 
-def activate_compile_status_batches(factory=False):
-    global _COMPILE_STATUS_BATCH_ACTIVE, _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE, _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
-    active = _COMPILE_STATUS_BATCH_FACTORY_ACTIVE if factory else _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE
+def activate_compile_status_batches(factory=False, volume=False, stage=False, scratch=False):
+    global _COMPILE_STATUS_BATCH_ACTIVE, _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE, _COMPILE_STATUS_BATCH_FACTORY_ACTIVE, _COMPILE_STATUS_BATCH_VOLUME_ACTIVE, _COMPILE_STATUS_BATCH_STAGE_ACTIVE, _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE
+    active = _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE if scratch else _COMPILE_STATUS_BATCH_STAGE_ACTIVE if stage else _COMPILE_STATUS_BATCH_VOLUME_ACTIVE if volume else _COMPILE_STATUS_BATCH_FACTORY_ACTIVE if factory else _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE
     if not active:
         if _COMPILE_STATUS_BATCH_ENTRY is not None or _COMPILE_STATUS_BATCH_RETAINED is not None:
             raise OperationError("batch_compile_status_retained", "Reconcile retained Batch before lifecycle activation")
-        if factory:
+        if scratch:
+            _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE = True
+        elif stage:
+            _COMPILE_STATUS_BATCH_STAGE_ACTIVE = True
+        elif volume:
+            _COMPILE_STATUS_BATCH_VOLUME_ACTIVE = True
+        elif factory:
             _COMPILE_STATUS_BATCH_FACTORY_ACTIVE = True
         else:
             _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE = True
         _COMPILE_STATUS_BATCH_ACTIVE = True
-    return compile_status_batch_status(factory)
+    return compile_status_batch_status(factory, volume, stage, scratch)
+
+
+def _volume_texture_batch_cancel_current(entry, flow, job, allow_checkpoint_failure=False):
+    """Exact parent lease during Volume retirement; the retired domain is not reactivated."""
+    import os
+    import threading
+    from . import state
+    lease = entry.get("volume_cancel_lease")
+    if type(lease) is not tuple or len(lease) != 8:
+        raise OperationError("batch_volume_cancel_lease_missing", "No original Volume parent admission lease; cancellation withheld")
+    journal, output, result, context, path, owner_thread, operation_id, fingerprint = lease
+    def exact():
+        if (entry.get("parent_context_lost") or _COMPILE_STATUS_BATCH_ENTRY is not entry
+                or _COMPILE_STATUS_BATCH_RETAINED is not None
+                or entry.get("metadata_only_quarantine") or entry.get("delivery_entered")
+                or entry.get("journal_finalized") or threading.get_ident() != owner_thread
+                or entry.get("owner_thread") != owner_thread or entry.get("journal") is not journal
+                or entry.get("output") is not output or entry.get("result") is not result
+                or entry.get("context") is not context or result.get("operation_id") != operation_id
+                or state._active_operation != operation_id or not journal.owned or journal.final_entered
+                or journal.result is not result or journal.path != path
+                or entry.get("flow") is not flow or flow.job is not job
+                or (flow.lost and not (allow_checkpoint_failure and getattr(flow, "checkpoint_failure_stop_permitted", False)))
+                or not flow.in_flight or not flow.job_reference_verified):
+            raise OperationError("batch_volume_cancel_lease_lost", "Exact parent/Job ownership changed; cancellation withheld")
+        with path.open(encoding="utf-8") as stream:
+            record = json.load(stream)
+        if (record.get("operation_id") != operation_id or record.get("operation") != "execute_batch"
+                or record.get("state") != "started" or record.get("process_id") != os.getpid()
+                or record.get("fingerprint") != fingerprint):
+            raise OperationError("batch_volume_cancel_journal_lost", "Parent started journal ownership changed; cancellation withheld")
+    exact()
+    context.admit()  # Includes the original strong CU output anchor, not entry['output'] alone.
+    exact()  # An Engine callback may replace slots/receiver/journal while admitting context.
 
 
 def _compile_status_batch_current(entry):
@@ -8576,7 +12425,10 @@ def _compile_status_batch_current(entry):
         if state._active_operation != expected_slot:
             raise OperationError("batch_compile_status_slot_lost", "Exact parent operation slot changed; no next Engine action")
         if (entry.get("requires_inspection", True) and not _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE
-                or entry.get("requires_factory", False) and not _COMPILE_STATUS_BATCH_FACTORY_ACTIVE):
+                or entry.get("requires_factory", False) and not _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
+                or entry.get("requires_volume", False) and not _COMPILE_STATUS_BATCH_VOLUME_ACTIVE
+                or entry.get("requires_stage", False) and not _COMPILE_STATUS_BATCH_STAGE_ACTIVE
+                or entry.get("requires_scratch", False) and not _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE):
             raise OperationError("batch_compile_status_domain_lost", "Required exact inspection/factory lifecycle retired; no next action")
         context = entry.get("context")
         if context is None:
@@ -8585,7 +12437,10 @@ def _compile_status_batch_current(entry):
         if (not _COMPILE_STATUS_BATCH_ACTIVE or _COMPILE_STATUS_BATCH_ENTRY is not entry
                 or state._active_operation != expected_slot
                 or entry.get("requires_inspection", True) and not _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE
-                or entry.get("requires_factory", False) and not _COMPILE_STATUS_BATCH_FACTORY_ACTIVE):
+                or entry.get("requires_factory", False) and not _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
+                or entry.get("requires_volume", False) and not _COMPILE_STATUS_BATCH_VOLUME_ACTIVE
+                or entry.get("requires_stage", False) and not _COMPILE_STATUS_BATCH_STAGE_ACTIVE
+                or entry.get("requires_scratch", False) and not _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE):
             raise OperationError("batch_compile_status_lease_lost", "Parent lease changed during context observation")
     except Exception as error:
         entry["parent_context_lost"] = True
@@ -8688,7 +12543,7 @@ def _advance_compile_status_batch(entry, error=None):
     entry["waiting"] = True
 
 
-def tick_compile_status_batch(delta_seconds, factory=False):
+def tick_compile_status_batch(delta_seconds, factory=False, volume=False, stage=False, scratch=False):
     entry = _COMPILE_STATUS_BATCH_ENTRY
     if not _COMPILE_STATUS_BATCH_ACTIVE or entry is None:
         return
@@ -8702,7 +12557,10 @@ def tick_compile_status_batch(delta_seconds, factory=False):
         return
     if entry.get("waiting"):
         flow = entry["flow"]
-        if (flow.method in ("create_empty_niagara_system", "create_basic_sprite_niagara_system")) != factory:
+        flow_volume = flow.method in _VOLUME_TEXTURE_LEGACY_COMMANDS
+        flow_stage = flow.method in {name.rsplit(".", 1)[-1] for name in _STAGE_BATCH_METHODS}
+        flow_scratch = flow.method == _SCRATCH_MODULE_BATCH_METHOD.rsplit(".", 1)[-1]
+        if flow_scratch != scratch or not scratch and (flow_stage != stage or not stage and (flow_volume != volume or not volume and (flow.method in ("create_empty_niagara_system", "create_basic_sprite_niagara_system")) != factory)):
             return  # Only this exact domain ticker may observe the retained job.
         try:
             _compile_status_batch_current(entry)
@@ -8716,16 +12574,22 @@ def tick_compile_status_batch(delta_seconds, factory=False):
             _advance_compile_status_batch(entry)
 
 
-def shutdown_compile_status_batches(factory=False):
-    global _COMPILE_STATUS_BATCH_ACTIVE, _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE, _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
+def shutdown_compile_status_batches(factory=False, volume=False, stage=False, scratch=False):
+    global _COMPILE_STATUS_BATCH_ACTIVE, _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE, _COMPILE_STATUS_BATCH_FACTORY_ACTIVE, _COMPILE_STATUS_BATCH_VOLUME_ACTIVE, _COMPILE_STATUS_BATCH_STAGE_ACTIVE, _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE
     global _COMPILE_STATUS_BATCH_ENTRY, _COMPILE_STATUS_BATCH_RETAINED
-    if factory:
+    if scratch:
+        _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE = False
+    elif stage:
+        _COMPILE_STATUS_BATCH_STAGE_ACTIVE = False
+    elif volume:
+        _COMPILE_STATUS_BATCH_VOLUME_ACTIVE = False
+    elif factory:
         _COMPILE_STATUS_BATCH_FACTORY_ACTIVE = False
     else:
         _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE = False
-    _COMPILE_STATUS_BATCH_ACTIVE = _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE or _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
+    _COMPILE_STATUS_BATCH_ACTIVE = _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE or _COMPILE_STATUS_BATCH_FACTORY_ACTIVE or _COMPILE_STATUS_BATCH_VOLUME_ACTIVE or _COMPILE_STATUS_BATCH_STAGE_ACTIVE or _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE
     entry = _COMPILE_STATUS_BATCH_ENTRY
-    if entry is not None and entry.get("requires_factory" if factory else "requires_inspection", not factory):
+    if entry is not None and entry.get("requires_scratch" if scratch else "requires_stage" if stage else "requires_volume" if volume else "requires_factory" if factory else "requires_inspection", not scratch and not stage and not factory and not volume):
         entry["result"]["data"].update(lifecycle_interrupted=True, mutation_state_unknown=True, do_not_retry=True)
         entry["metadata_only_quarantine"] = True
         _COMPILE_STATUS_BATCH_RETAINED = entry
@@ -8733,26 +12597,39 @@ def shutdown_compile_status_batches(factory=False):
     # Engine shutdown: metadata only; no iterator resume/close, Job/asset/CU/save.
 
 
-def deactivate_compile_status_batches(reason, factory=False):
-    global _COMPILE_STATUS_BATCH_ACTIVE, _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE, _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
-    if factory:
+def deactivate_compile_status_batches(reason, factory=False, volume=False, stage=False, scratch=False):
+    global _COMPILE_STATUS_BATCH_ACTIVE, _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE, _COMPILE_STATUS_BATCH_FACTORY_ACTIVE, _COMPILE_STATUS_BATCH_VOLUME_ACTIVE, _COMPILE_STATUS_BATCH_STAGE_ACTIVE, _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE
+    if scratch:
+        _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE = False
+    elif stage:
+        _COMPILE_STATUS_BATCH_STAGE_ACTIVE = False
+    elif volume:
+        _COMPILE_STATUS_BATCH_VOLUME_ACTIVE = False
+    elif factory:
         _COMPILE_STATUS_BATCH_FACTORY_ACTIVE = False
     else:
         _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE = False
-    _COMPILE_STATUS_BATCH_ACTIVE = _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE or _COMPILE_STATUS_BATCH_FACTORY_ACTIVE
+    _COMPILE_STATUS_BATCH_ACTIVE = _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE or _COMPILE_STATUS_BATCH_FACTORY_ACTIVE or _COMPILE_STATUS_BATCH_VOLUME_ACTIVE or _COMPILE_STATUS_BATCH_STAGE_ACTIVE or _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE
     entry = _COMPILE_STATUS_BATCH_ENTRY
-    if entry is not None and entry.get("requires_factory" if factory else "requires_inspection", not factory):
+    if entry is not None and entry.get("requires_scratch" if scratch else "requires_stage" if stage else "requires_volume" if volume else "requires_factory" if factory else "requires_inspection", not scratch and not stage and not factory and not volume):
         flow = entry.get("flow")
         if flow is not None:
-            if flow.job is not None and flow.in_flight and not flow.lost and not entry.get("parent_context_lost") and not flow.cancel_entered:
+            if (flow.job is not None and flow.in_flight and not flow.lost and not entry.get("parent_context_lost") and not flow.cancel_entered
+                    and (flow.method not in _VOLUME_TEXTURE_LEGACY_COMMANDS and flow.method not in {name.rsplit(".",1)[-1] for name in (*_RECIPE_BATCH_METHODS, *_STAGE_BATCH_METHODS, *_SCRATCH_USER_RECIPE_BATCH_METHODS, *_GRAPH_CLEANUP_BATCH_METHODS, _SCRATCH_MODULE_BATCH_METHOD)} or flow.job_reference_verified)):
                 flow.cancel_entered = True
                 try:
                     context = entry.get("context")
                     if context is None:
                         raise OperationError("batch_compile_status_context_missing", "No context lease for cooperative cancellation")
-                    context.admit()  # Explicit lifecycle retirement; no next action is admitted.
-                    flow.job.cancel_job(reason)  # Cooperative local job only; not compiler cancellation.
-                    context.admit()
+                    if flow.method in _VOLUME_TEXTURE_LEGACY_COMMANDS or flow.method in {name.rsplit(".",1)[-1] for name in (*_RECIPE_BATCH_METHODS, *_STAGE_BATCH_METHODS, *_SCRATCH_USER_RECIPE_BATCH_METHODS, *_GRAPH_CLEANUP_BATCH_METHODS, _SCRATCH_MODULE_BATCH_METHOD)}:
+                        cancel_job = flow.job
+                        _volume_texture_batch_cancel_current(entry, flow, cancel_job)
+                        cancel_job.cancel_job(reason)  # Only the exact verified admission/Job lease may retire.
+                        _volume_texture_batch_cancel_current(entry, flow, cancel_job)
+                    else:
+                        context.admit()  # Existing HN lifecycle retirement remains unchanged.
+                        flow.job.cancel_job(reason)
+                        context.admit()
                 except Exception as error:
                     entry["cancel_error"] = str(error)
                     entry["parent_context_lost"] = True
@@ -8772,11 +12649,11 @@ def deactivate_compile_status_batches(reason, factory=False):
             summary.update(success=False, forced_stop=True, stop_reason="batch_compile_status_lifecycle_interrupted")
             _aggregate(result, summary)
         _finish_compile_status_batch(entry)
-    return compile_status_batch_status(factory)
+    return compile_status_batch_status(factory, volume, stage, scratch)
 
 
 def execute_batch_mcp(commands_json, stop_on_error=True, operation_id=None):
-    """Existing official schema; exact original inspector/factory waits may suspend."""
+    """Existing official schema; exact original HN/factory/Volume waits may suspend."""
     global _COMPILE_STATUS_BATCH_ENTRY
     import threading
     from . import niagara_authoring_inspection
@@ -8795,19 +12672,31 @@ def execute_batch_mcp(commands_json, stop_on_error=True, operation_id=None):
         if not needs_wait:
             return niagara_authoring_inspection.completed_result(execute_batch(commands_json, stop_on_error, operation_id))
         requires_factory = any(_factory_batch_command(c) and _compile_status_batch_wait(c) for c in commands)
-        requires_inspection = any(not _factory_batch_command(c) and _compile_status_batch_wait(c) for c in commands)
+        requires_inspection = any(not _factory_batch_command(c) and not _volume_texture_batch_command(c) and not _stage_batch_command(c) and not _scratch_module_batch_command(c) and _compile_status_batch_wait(c) for c in commands)
+        requires_volume = any(_volume_texture_batch_command(c) for c in commands)
+        requires_stage = any(_stage_batch_command(c) for c in commands)
+        requires_scratch = any(_scratch_module_batch_command(c) and _compile_status_batch_wait(c) for c in commands)
+        if requires_scratch:
+            from . import niagara_scratch_stack_authoring
+        if requires_stage:
+            from . import niagara_event_stage_authoring
+        if requires_volume:
+            from . import volume_texture
         if requires_factory:
             from . import niagara_factory_bootstrap
         if (not _COMPILE_STATUS_BATCH_ACTIVE
                 or requires_inspection and (not _COMPILE_STATUS_BATCH_INSPECTION_ACTIVE or not niagara_authoring_inspection._ACTIVE)
-                or requires_factory and (not _COMPILE_STATUS_BATCH_FACTORY_ACTIVE or not niagara_factory_bootstrap._ACTIVE)):
+                or requires_factory and (not _COMPILE_STATUS_BATCH_FACTORY_ACTIVE or not niagara_factory_bootstrap._ACTIVE)
+                or requires_volume and (not _COMPILE_STATUS_BATCH_VOLUME_ACTIVE or not volume_texture._ACTIVE)
+                or requires_stage and (not _COMPILE_STATUS_BATCH_STAGE_ACTIVE or not niagara_event_stage_authoring._ACTIVE)
+                or requires_scratch and (not _COMPILE_STATUS_BATCH_SCRATCH_ACTIVE or not niagara_scratch_stack_authoring._ACTIVE)):
             raise OperationError("batch_compile_status_inactive_or_retained", "Required exact inspection/factory lifecycle must be active and unowned")
         journal = _CompileStatusBatchParentJournal(commands, stop_on_error, operation_id)
         if journal.replay is not None:
             return niagara_authoring_inspection.completed_result(journal.replay)
         entry = dict(output=output, journal=journal, result=journal.result, flow=None,
             owner_thread=threading.get_ident(), waiting=False,
-            requires_factory=requires_factory, requires_inspection=requires_inspection)
+            requires_factory=requires_factory, requires_inspection=requires_inspection, requires_volume=requires_volume, requires_stage=requires_stage, requires_scratch=requires_scratch)
         _COMPILE_STATUS_BATCH_ENTRY = entry
         # Reuse the existing public HF context/anchor for only parent Editor,
         # world and CU receiver identity. Assets are owned by their child APIs.
@@ -8816,6 +12705,13 @@ def execute_batch_mcp(commands_json, stop_on_error=True, operation_id=None):
             from ..compatibility.ue58 import pcg_utilities as parent_context_api
             entry["context"] = parent_context_api._Context(context_receipt, None)
             entry["context"].pin(output)
+            if requires_volume or requires_stage or requires_scratch or any((_recipe_batch_command(c) or _scratch_user_recipe_batch_command(c) or _graph_cleanup_batch_command(c)) and _compile_status_batch_wait(c) for c in commands):
+                import hashlib
+                fingerprint = hashlib.sha256(json.dumps({"name": "execute_batch", "arguments": {
+                    "manifest_version": MANIFEST_VERSION, "commands": commands,
+                    "stop_on_error": stop_on_error}}, sort_keys=True).encode("utf-8")).hexdigest()
+                entry["volume_cancel_lease"] = (journal, output, journal.result, entry["context"],
+                    journal.path, entry["owner_thread"], journal.result["operation_id"], fingerprint)
             _compile_status_batch_current(entry)
         except Exception:
             entry["parent_context_lost"] = True

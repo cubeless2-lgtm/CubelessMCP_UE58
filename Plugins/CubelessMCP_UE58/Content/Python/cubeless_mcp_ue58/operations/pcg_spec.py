@@ -84,6 +84,67 @@ def _path(value):
         raise OperationError("pcg_asset_path_too_long" if type(value) is str and len(value.encode("utf-16-le")) // 2 >= 1024 else "pcg_invalid_asset_path", str(error)) from error
 
 
+def _finite_spec_settings(settings, settings_class):
+    """Preserve admitted legacy math/Name coercion without Unreal observation.
+
+    Partial struct dictionaries keep unspecified components for the Native
+    writer to merge from the actual settings value. Invalid conversions remain
+    raw so the existing Native preparation receipt owns the failure boundary.
+    """
+    data_source = settings_class in ("PCGDataFromActorSettings", "/Script/PCG.PCGDataFromActorSettings",
+        "PCGGetLandscapeSettings", "/Script/PCG.PCGGetLandscapeSettings")
+    # UE56 coerce_value resolves exported PCG Python enum tokens. The finite
+    # native converter consumes authored enum names from PCGDataFromActor.h17-27.
+    data_source_modes = {
+        "PARSE_ACTOR_COMPONENTS": "ParseActorComponents", "GET_SINGLE_POINT": "GetSinglePoint",
+        "GET_DATA_FROM_PROPERTY": "GetDataFromProperty", "GET_DATA_FROM_PCG_COMPONENT": "GetDataFromPCGComponent",
+        "GET_DATA_FROM_PCG_COMPONENT_OR_PARSE_COMPONENTS": "GetDataFromPCGComponentOrParseComponents",
+        "GET_ACTOR_REFERENCE": "GetActorReference", "GET_COMPONENTS_REFERENCE": "GetComponentsReference",
+        "GET_POINT_DATA": "GetPointData",
+    }
+    projection = settings_class in ("PCGProjectionSettings", "/Script/PCG.PCGProjectionSettings")
+    transform_points = settings_class in ("PCGTransformPointsSettings", "/Script/PCG.PCGTransformPointsSettings")
+    math_fields = (("offsetmin", "offsetmax", "rotationmin", "rotationmax", "scalemin", "scalemax")
+        if transform_points else ("pointextents",))
+    normalized = {}
+    for name, value in settings.items():
+        token = name.replace("_", "").lower()
+        if projection and token == "projectionparams" and type(value) is dict:
+            value = dict(value)
+            # Mirrors the legacy enum_value_from_string lookup on exported
+            # PCG enum tokens. Omitted members stay omitted for actual-value merge.
+            enums = {
+                "colorblendmode": ("SourceValue", "TargetValue", "Add", "Subtract", "Multiply"),
+                "attributemode": ("ExcludeAttributes", "IncludeAttributes"),
+                "attributemergeoperation": ("Min", "Max", "Sub", "Add", "Mul", "Div", "SourceValue", "TargetValue"),
+                "tagmergeoperation": ("Source", "Target", "Both"),
+            }
+            for child, item in value.items():
+                if type(item) is str:
+                    token_item = item.split(".")[-1].replace("_", "").casefold()
+                    for native in enums.get(child.replace("_", "").casefold(), ()):
+                        if token_item == native.casefold():
+                            value[child] = native
+                            break
+        elif token in math_fields:
+            if type(value) is list and len(value) >= 3:
+                try:
+                    components = [float(component) for component in value[:3]]
+                except (ValueError, TypeError, OverflowError):
+                    pass
+                else:
+                    if all(math.isfinite(component) for component in components):
+                        value = components
+        elif transform_points and token == "attributename" and value is not None and type(value) is not dict:
+            # coerce_value(Name, value) uses safe_unreal_name(str(value)); a
+            # dictionary belongs to the legacy recursive-setting path instead.
+            value = str(value)
+        elif data_source and token == "mode" and type(value) is str:
+            value = data_source_modes.get(value.split(".")[-1].upper(), value)
+        normalized[name] = value
+    return normalized
+
+
 def _spec(text, overwrite_existing, allow_overwrite_non_temp, save, dry_run):
     document = _json(text, "graph_spec_json")
     if type(document) is not dict:
@@ -113,6 +174,9 @@ def _spec(text, overwrite_existing, allow_overwrite_non_temp, save, dry_run):
         known.update(identities)
         settings_class = _text(node.get("settings_class") or node.get("class"), "settings_class")
         reject_tool_reference(settings_class)
+        if settings_class in ("TransformPointsSettings", "SurfaceSamplerSettings", "DifferenceSettings"):
+            # Legacy resolver also tries the native PCG-prefixed reflected name.
+            settings_class = "PCG" + settings_class
         position = node.get("position") or node.get("node_position") or [index * 320, 0]
         if type(position) is not list or len(position) != 2 or any(type(item) is not int or not -(2**31) <= item < 2**31 for item in position):
             raise OperationError("pcg_position_invalid", "position must contain two int32 values without fractional truncation")
@@ -120,6 +184,11 @@ def _spec(text, overwrite_existing, allow_overwrite_non_temp, save, dry_run):
         if type(settings) is not dict:
             raise OperationError("pcg_settings_invalid", "Node settings must be an object")
         _values(settings, "settings")
+        if settings_class in ("PCGTransformPointsSettings", "/Script/PCG.PCGTransformPointsSettings",
+                "PCGSurfaceSamplerSettings", "/Script/PCG.PCGSurfaceSamplerSettings",
+                "PCGDataFromActorSettings", "/Script/PCG.PCGDataFromActorSettings",
+                "PCGGetLandscapeSettings", "/Script/PCG.PCGGetLandscapeSettings"):
+            settings = _finite_spec_settings(settings, settings_class)
         inline = {key: copy.deepcopy(node[key]) for key in (
             "mesh_entries", "static_mesh_entries", "spawner_mesh_entries", "mesh_selector") if key in node}
         _values(inline, "inline mesh configuration")
@@ -462,7 +531,9 @@ _FINITE_NATIVE_FRESH_CLASSES = frozenset((
     "PCGCreatePointsGridSettings", "PCGCreatePointsSettings", "PCGDistanceSettings",
     "PCGDensityRemapSettings", "PCGDensityFilterSettings", "PCGAttributeNoiseSettings",
     "PCGAttributeFilteringSettings", "PCGGetActorPropertySettings", "PCGRandomChoiceSettings",
-    "PCGPointExtentsModifierSettings", "PCGBoundsModifierSettings", "PCGStaticMeshSpawnerSettings"))
+    "PCGPointExtentsModifierSettings", "PCGBoundsModifierSettings", "PCGStaticMeshSpawnerSettings",
+    "PCGTransformPointsSettings", "PCGSurfaceSamplerSettings", "PCGDifferenceSettings",
+    "PCGDataFromActorSettings", "PCGGetLandscapeSettings", "PCGProjectionSettings"))
 
 
 def _finite_native_fresh_profile(values):
@@ -479,11 +550,12 @@ def _finite_native_fresh_profile(values):
     return True
 
 
-def _create_finite_native(result, values, callback=None):
+def _create_native_graph(result, values, callback=None, request_owned_general=False):
     """Adopt one native composite receipt without subsequent UObject observation."""
+    route = "request_owned_native_fresh" if request_owned_general else "finite_native_fresh"
     package = values["asset_path"]
-    result["data"].update(construction_route="finite_native_fresh", global_construction_gate_changed=False,
-        construction_available=False, finite_native_profile_selected=True, native_result_returned=False,
+    result["data"].update(construction_route=route, global_construction_gate_changed=False,
+        construction_available=False, finite_native_profile_selected=not request_owned_general, request_owned_general_selected=request_owned_general, native_result_returned=False,
         api_dependency="public UE58 native PCG/AssetTools/UFactory APIs in one Editor-only finite JSON leaf; official Registry registration only; no nested MCP/ServerRPC or generic executor",
         native_dispatched=False, automatic_retries=0, atomic_rollback=False,
         asset_path=package, requested_node_count=len(values["nodes"]), requested_edge_count=len(values["edges"]),
@@ -503,7 +575,7 @@ def _create_finite_native(result, values, callback=None):
     result["data"]["native_dispatched"] = True
     result["stage"] = "finite_native_constructor"
     try:
-        native = api.create_finite_native_graph(values, result["operation_id"])
+        native = api.create_finite_native_graph(values, result["operation_id"], request_owned_general=request_owned_general)
     except Exception as error:
         if getattr(error, "native_call_returned", False):
             result["data"].update(native_result_returned=True, native_raw_result=getattr(error, "native_raw_result", None))
@@ -561,7 +633,10 @@ def _create_finite_native(result, values, callback=None):
         raise OperationError("pcg_native_constructor_incomplete", "Native construction remains incomplete; no follow-up SDK call or replay")
     if not native["success"]:
         raise OperationError(native.get("error_code") or "pcg_native_constructor_failed", native.get("error") or "Native finite constructor failed; actual prefix retained")
-    if (data.get("construction_route") != "finite_native_fresh" or data.get("global_construction_gate_changed") is not False
+    if (data.get("construction_route") != route or data.get("global_construction_gate_changed") is not False
+            or request_owned_general and (data.get("request_owned_current_proof") is not True
+                or data.get("Python_PCG_UObject_wrappers_used") is not False
+                or data.get("general_native_constructor_profile") is not True)
             or not known or native["postcondition_passed"] is not True
             or effective_save and result["validation"].get("complete_dependency_scan") != "passed"):
         result["data"].update(outcome_unknown=True, mutation_state_unknown=True, change_state_known=False, mutation_performed=None)
@@ -583,149 +658,10 @@ def _create_finite_native(result, values, callback=None):
 
 def _create(result, values, callback=None):
     _base(result)
-    if _finite_native_fresh_profile(values):
-        return _create_finite_native(result, values, callback)
-    package = values["asset_path"]
-    result["data"].update(asset_path=package, construction_available=api.construction_available(),
-        transient_graph_construction_attempted=False, transient_graph_construction_performed=False,
-        transient_outcome_unknown=False, persistent_target_factory_attempted=False,
-        persistent_target_mutation_performed=False, mutation_scope="none",
-        transient_preflight_executed=False, transient_preflight_verified=False)
-    result["stage"] = "construction_health_gate"
-    # Domain and batch entry points both reach this guard before context/target
-    # observation or class/scratch construction. Registration alone is not a gate.
-    api.require_construction_health()
-    result["data"].update(asset_path=package, editor_before=api.context(), requested_node_count=len(values["nodes"]),
-        requested_edge_count=len(values["edges"]), save_requested=values["save"], saved=False,
-        overwrite_existing_requested=values["overwrite_existing"], allow_overwrite_non_temp_requested=values["allow_overwrite_non_temp"],
-        dry_run=values["dry_run"], transient_graph_construction_attempted=False,
-        transient_graph_construction_performed=False, transient_outcome_unknown=False,
-        persistent_target_factory_attempted=False, persistent_target_mutation_performed=False,
-        mutation_scope="none", transient_preflight_verified=False)
-    initial = api.target_state(package)
-    result["data"]["target_before"] = initial
-    if values["dry_run"] and api.exists(initial):
-        result["data"].update(dry_run=True, target_exists=api.exists(initial), can_execute=not api.exists(initial),
-            can_execute_basis="existing target is preserved; class/property/pin execution preflight not run",
-            full_execution_readiness_verified=False,
-            would_create_new=not api.exists(initial), would_rebuild_existing=False, would_overwrite=False,
-            transient_preflight_executed=False, blocked_reason="Existing targets are never overwritten" if api.exists(initial) else "")
-        result.update(success=True, stage="complete")
-        return
-    if api.exists(initial):
-        raise OperationError("pcg_existing_target_overwrite_unsupported" if values["overwrite_existing"] else "pcg_asset_exists",
-            "Existing registry/loaded/file/directory target is preserved; build to an unused candidate path")
-    result["data"]["creation_policy"] = api.creation_policy()
-    api.require_helpers("inspect_connection", "inspect_settings_class")
-    _progress(result, callback, "settings_class_preflight", "class_admission_before_transient_allocation")
-    try:
-        settings_classes, result["data"]["settings_class_admissions"] = api.prepare_settings_classes(values["nodes"])
-    except Exception as error:
-        observation = getattr(error, "observation", None)
-        if type(observation) is dict:
-            result["data"]["settings_class_admission_failure"] = observation
-        result["data"]["transient_graph_construction_attempted"] = False
-        raise
-    _progress(result, callback, "settings_classes_admitted", "class_admission_before_transient_allocation",
-        admitted_class_count=len(settings_classes))
-    result["data"].update(transient_graph_construction_attempted=True, transient_outcome_unknown=True,
-        mutation_attempted=True, mutation_scope="transient_graph_only", outcome_unknown=True)
-    _progress(result, callback, "transient_preflight:allocate_graph", "transient_preflight",
-        leaf="new_object_PCGGraph", persistent_target_factory_attempted=False)
-    scratch = None
-    try:
-        scratch = api.transient_graph()
-        result["data"].update(transient_graph_construction_performed=True, mutation_performed=True,
-            transient_graph_path=scratch.get_path_name())
-        _build(scratch, values, settings_classes, result, callback, transient=True)
-        result["data"].update(transient_outcome_unknown=False, outcome_unknown=False)
-        _progress(result, callback, "transient_preflight:build_verified", "transient_preflight",
-            verified_node_count=len(values["nodes"]), verified_edge_count=len(values["edges"]))
-    except Exception as error:
-        result["data"].update(preflight_graph_transient=True, target_unchanged=api.target_state(package) == initial,
-            preflight_error_code=getattr(error, "code", "pcg_preflight_exception"))
-        result["retry"]["duplicate_risk"] = "transient_scope_requires_inspection; no_persistent_factory_dispatched"
-        raise OperationError("pcg_graph_spec_preflight_failed", str(error)) from error
-    _progress(result, callback, "transient_preflight:preservation_readback", "transient_preflight")
-    _preserved(result, package)
-    result["data"]["target_after_preflight"] = api.target_state(package)
-    if result["data"]["target_after_preflight"] != initial:
-        result["data"]["outcome_unknown"] = True
-        raise OperationError("pcg_target_changed_during_preflight", "Target state changed; no asset factory dispatched")
-    result["data"].update(transient_preflight_verified=True, transient_preflight_executed=True, target_unchanged=True)
-    _progress(result, callback, "transient_preflight:verified_before_target_factory", "transient_preflight_verified",
-        persistent_target_factory_attempted=False, target_unchanged=True)
-    if values["dry_run"]:
-        result["data"].update(target_exists=False, can_execute=True,
-            can_execute_basis="exact admitted classes, transient node/settings/edge readbacks and unchanged target; persistent factory/generation not executed",
-            full_execution_readiness_verified=False, would_create_new=True, would_rebuild_existing=False,
-            would_overwrite=False, blocked_reason="", persistence_attempted=False, persistence_performed=False)
-        result["save"].update(requested=False, attempted=False, saved=False, status="not_run_dry_run")
-        result["validation"].update(status="transient_spec_and_edges_readback_passed",
-            complete_dependency_scan="not_run_no_persistent_asset", disk_reload="not_run", packaged_runtime="not_run")
-        result.update(success=True, stage="complete")
-        return
-    result["stage"] = "create_target"
-    change = {"kind": "create_pcg_graph_from_spec", "asset_path": package, "attempted": False, "created": False}
-    result["changes"].append(change)
-    _persist(result, callback)
-    def factory_dispatch():
-        change.update(attempted=True, created=None)
-        result["data"].update(mutation_attempted=True, outcome_unknown=True,
-            persistent_target_factory_attempted=True, mutation_scope="persistent_target_and_transient_preflight")
-        _progress(result, callback, "persistent_target:factory_dispatch", "persistent_target",
-            leaf="asset_tools_create_asset", transient_preflight_verified=True)
-
-    graph = None
-    try:
-        graph = api.create_graph(package, factory_dispatch)
-        change.update(created=True, object_path=graph.get_path_name())
-        result["data"].update(mutation_performed=True, persistent_target_mutation_performed=True,
-            created_new_asset=True, rebuilt_existing=False, object_path=graph.get_path_name())
-        built = _build(graph, values, settings_classes, result, callback)
-        result["data"]["graph_after"] = built["snapshot"]
-        result["data"]["sanitized_descriptions"] = api.sanitize_descriptions(graph)
-        result["data"]["outcome_unknown"] = False
-        _persist(result, callback)
-        if values["save"]:
-            _save(result, graph, package, callback)
-            result["stage"] = "dependency_audit"
-            audit = api.audit(package, values["forbidden_dependency_prefixes"])
-            result["data"].update(audit)
-            result["validation"]["complete_dependency_scan"] = "passed"
-            if audit["forbidden_dependency_hits"]:
-                raise OperationError("pcg_forbidden_dependency", "Saved graph contains a requested forbidden dependency")
-        else:
-            result["save"]["requested"] = False
-            result["validation"]["complete_dependency_scan"] = "not_run_unsaved"
-            result["data"]["save_file"] = api.file_state(package)
-            if result["data"]["save_file"]["exists"]:
-                result["data"]["outcome_unknown"] = True
-                raise OperationError("pcg_unrequested_persistence", "Unsaved creation produced an unexpected disk file")
-        _preserved(result, package)
-        result["validation"].update(status="loaded_spec_and_edges_readback_passed", disk_reload="not_run", packaged_runtime="not_run",
-            settings_float_tolerance={"relative": 1e-6, "absolute": 1e-12})
-        result.update(success=True, stage="complete")
-    except Exception:
-        if not change["attempted"]:
-            change["created"] = False
-            result["data"].update(mutation_attempted=result["data"]["transient_graph_construction_attempted"],
-                mutation_performed=result["data"]["transient_graph_construction_performed"],
-                outcome_unknown=result["data"]["transient_outcome_unknown"])
-        try:
-            result["data"]["actual_target_state_on_failure"] = api.target_state(package)
-        except Exception as observe_error:
-            result["data"]["target_observation_error"] = str(observe_error)
-            if change["attempted"]:
-                result["data"]["outcome_unknown"] = True
-        if graph is not None:
-            result["data"]["partial_target_modified"] = True
-            try:
-                result["data"]["partial_graph"] = api.snapshot(graph)
-                result["data"]["actual_target_file"] = api.file_state(package)
-            except Exception as observe_error:
-                result["data"].update(partial_observation_error=str(observe_error), outcome_unknown=True)
-        raise
+    # Both routes keep PCG graph/node/pin/edge objects inside the native request.
+    # Unsupported profiles never fall back to the historical Python construction.
+    return _create_native_graph(result, values, callback,
+        request_owned_general=not _finite_native_fresh_profile(values))
 
 
 def _selector_arguments(graph_path, node_id, selector_property_name, selector_type, attribute_name,

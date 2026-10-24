@@ -56,12 +56,15 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
     if _replacement is not None:
         api.replacement_current(_replacement, target=False)
     api.require_source(source, before, allow_dirty_source)
+    dirty_work = (_replacement.get("dirty_source_work") if _replacement is not None
+                  else api.prepare_dirty_source(source, before))
+    api.dirty_source_current(dirty_work)
     if _replacement is not None:
         api.replacement_current(_replacement, target=False)
         if _source_comparison_state(before) != _source_comparison_state(_replacement["initial_source"]):
             result["data"]["mutation_state_unknown"] = True
             raise OperationError("duplicate_replacement_source_changed", "Original source changed during fresh duplicate preflight; no new source baseline or duplicate")
-    source_audit = api.dependency_audit(source_path)
+    source_audit = api.dependency_audit(source_path, dirty_work) if dirty_work is not None else api.dependency_audit(source_path)
     if _replacement is not None:
         api.replacement_current(_replacement, target=False)
     data = result["data"]
@@ -74,6 +77,8 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
         source_lineage_scope="result/journal only; no asset metadata added",
         observation_scope="exact source file/loaded snapshots; clone class/guarded runtime parent including saved Actor parent-chain source hashes, K2 topology, variable descriptors/current CDO; component template properties, comment content, arbitrary callbacks and live BlueprintGuid are not fully audited",
         editor_selection_effect="engine duplication may deselect the source; selection is not restored or verified")
+    if dirty_work is not None:
+        data["dirty_source_admission"] = dirty_work["receipt"]
     if _replacement is not None:
         # Durable fresh-action checkpoints must retain the earlier REAL deletion,
         # rather than temporarily publishing the fresh-only no-mutation defaults.
@@ -87,7 +92,9 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
     def verify_source(after_source=None):
         if _replacement is not None:
             api.replacement_current(_replacement, target=False)
+        api.dirty_source_current(dirty_work)
         after_source = api.capture(source) if after_source is None else after_source
+        api.dirty_source_current(dirty_work)
         if _replacement is not None:
             api.replacement_current(_replacement, target=False)
         data["source_after"] = after_source
@@ -120,6 +127,12 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
         data["pending_mutation"] = {"dispatch_state_at_checkpoint": "not_yet_dispatched", "target_package": target}
         persist(result)
         result["changes"].append(change)
+        if dirty_work is None:
+            dispatch_started()  # Retain the existing clean-source call boundary.
+
+    def dispatch_started():
+        # No engine getters here: the dirty-source SDK wrapper calls this only
+        # after every guard, so a pre-dispatch refusal remains an uncalled writer.
         change.update(attempted=True, created=None)
         data.update(mutation_performed=True if _replacement is not None and data["replacement"]["deleted"] is True else None, mutation_state_unknown=True)
         implicit.update(attempted=None, duplicate_call_attempted=True, status="unknown_until_duplicate_returns")
@@ -132,7 +145,10 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
         implicit.update(attempted=True if created else None, duplicate_returned=True,
             status="duplicate_returned" if created else "duplicate_returned_without_asset")
 
-    clone = api.duplicate(source, target, before_dispatch, after_return, _replacement) if _replacement is not None else api.duplicate(source, target, before_dispatch, after_return)
+    if dirty_work is not None:
+        clone = api.duplicate(source, target, before_dispatch, after_return, _replacement, source_work=dirty_work, dispatch_started=dispatch_started)
+    else:
+        clone = api.duplicate(source, target, before_dispatch, after_return, _replacement) if _replacement is not None else api.duplicate(source, target, before_dispatch, after_return)
     if clone is None:
         raise OperationError("duplicate_failed", "Engine returned no duplicate; inspect target package and journal before any new request")
     if _replacement is not None:
@@ -167,6 +183,14 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
             if api.semantic_content(observed) != api.semantic_content(before):
                 validation["clone_content"] = "failed"
                 raise OperationError("duplicate_content_failed", "Observed clone graph/variable/class content differs after scoped identity normalization; raw source/target observations retained")
+            if dirty_work is not None:
+                check["check"] = "dirty_RAM_namespace"
+                api.dirty_source_current(dirty_work)
+                namespace = str(clone.get_editor_property("blueprint_namespace"))
+                api.dirty_source_current(dirty_work)
+                dirty_work["receipt"]["clone_namespace"] = namespace
+                if namespace != dirty_work["namespace"]:
+                    raise OperationError("duplicate_dirty_namespace_failed", "Observed clone authored namespace differs from the held source RAM value; actual created/compile/save prefix retained")
             check["check"] = "generated_class_identity"
             if basic["generated_class"] != basic["asset_path"] + "_C":
                 raise OperationError("duplicate_generated_class_failed", "Duplicate generated class is not owned by the target asset")
@@ -192,7 +216,9 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
         data["mutation_state_unknown"] = True
         if _replacement is not None:
             api.replacement_clone_current(_replacement, clone)
+        api.dirty_source_current(dirty_work, full=True)
         blueprint.compile_blueprint_action(result, target, save, True, persist)
+        api.dirty_source_current(dirty_work, full=True)
         if _replacement is not None:
             api.replacement_clone_current(_replacement, clone)
         data["compile_result"] = {key: data[key] for key in ("compiled", "validation_pass", "status", "diagnostics", "saved") if key in data}
@@ -203,12 +229,14 @@ def duplicate_blueprint_to_temp_action(result, blueprint_name, target_path, requ
         if _replacement is not None:
             api.replacement_clone_current(_replacement, clone)
         persist(result)
-        result["save"].update(attempted=True, saved=None, status="unknown_until_save_returns")
-        data["mutation_state_unknown"] = True
         if _replacement is not None:
             api.replacement_clone_current(_replacement, clone)
+        api.dirty_source_current(dirty_work, full=True)
+        result["save"].update(attempted=True, saved=None, status="unknown_until_save_returns")
+        data["mutation_state_unknown"] = True
         saved = api.save(clone)
         result["save"].update(saved=saved, status="saved" if saved else "save_failed")
+        api.dirty_source_current(dirty_work, full=True)
         if _replacement is not None and saved:
             api.replacement_clone_current(_replacement, clone)
         if not saved:
@@ -235,8 +263,12 @@ def _replacement_action(result, source_path, target, root, dry_run, allow_dirty_
     source = api.blueprint.resolve_blueprint(source_path)
     before = api.capture(source)
     api.require_source(source, before, allow_dirty_source)
-    audit = api.dependency_audit(source_path)
+    dirty_work = api.prepare_dirty_source(source, before)
+    audit = api.dependency_audit(source_path, dirty_work) if dirty_work is not None else api.dependency_audit(source_path)
+    api.dirty_source_current(dirty_work)
     work = api.prepare_replacement(source, before, target, not dry_run)
+    work["dirty_source_work"] = dirty_work
+    api.dirty_source_current(dirty_work)
     data = result["data"]
     target_before = copy.deepcopy(work["target_before"])
     replacement = {"delete_attempted": False, "delete_returned": False, "deleted": False,
@@ -254,12 +286,16 @@ def _replacement_action(result, source_path, target, root, dry_run, allow_dirty_
         target_before=target_before, policy=policy, source_dependency_audit=audit, replacement=replacement,
         full_legacy_parity=False, mutation_performed=False, mutation_state_unknown=False,
         write_scope="dry_run_no_asset_mutation" if dry_run else "temp_blueprint_delete_then_duplicate")
+    if dirty_work is not None:
+        data["dirty_source_admission"] = dirty_work["receipt"]
     persist = checkpoint_callback or state.checkpoint
 
     def source_current(label):
         try:
             api.replacement_current(work, target=not work["retired"])
+            api.dirty_source_current(dirty_work)
             actual = api.capture(source)
+            api.dirty_source_current(dirty_work)
             api.replacement_current(work, target=not work["retired"])
         except Exception:
             data["mutation_state_unknown"] = True

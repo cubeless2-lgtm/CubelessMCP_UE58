@@ -4,8 +4,8 @@ from cubeless_mcp_ue58.compatibility.ue58 import skeletal as api
 from . import state
 from .state import OperationError
 
-def _read(name,path,contains='',max_bones=500):
-    result=state.new_result();result['data'].update(operation=name,read_only=True,native_dispatched=False,native_result_returned=False,
+def _read_action(result,name,path,contains='',max_bones=500,checkpoint_callback=None):
+    result['data'].update(operation=name,read_only=True,native_dispatched=False,native_result_returned=False,
         native_mutation_attempted=False,mutation_state_unknown=False,mutation_performed=False,adapter_explicit_load_calls=0)
     try:
         if type(path) is not str or type(contains) is not str or type(max_bones) is not int or not -(2**31)<=max_bones<2**31:
@@ -22,6 +22,7 @@ def _read(name,path,contains='',max_bones=500):
         result['changes']=[] if native['change_state_known'] and native['changed'] is False else [{'kind':'skeletal_read_scope_drift','attempted':native['mutation_attempted'],
             'change_state_known':native['change_state_known'],'changed':native['changed'] if native['change_state_known'] else None}]
         result['stage']='returned_skeletal_read';result['validation'].update(status='native_skeletal_read_postcondition',native_postcondition_passed=native['postcondition_passed'])
+        if checkpoint_callback is not None:checkpoint_callback(result)
         if native['mutation_attempted'] or native['compile_attempted'] or native['save_attempted']:
             raise OperationError('unexpected_skeletal_read_work','Unexpected actual work retained; no second action')
         if not native['success']:raise OperationError(native.get('error_code') or 'skeletal_read_failed',native.get('error') or 'Native read prefix retained')
@@ -30,7 +31,21 @@ def _read(name,path,contains='',max_bones=500):
     except Exception as error:
         if getattr(error,'native_call_returned',False):result['data'].update(native_result_returned=True,native_raw_result=getattr(error,'native_raw_result',None))
         if getattr(error,'code','')=='native_skeletal_read_unavailable':result['data'].update(native_dispatched=False,mutation_state_unknown=False,mutation_performed=False)
-        return state.fail(result,error)
+        raise
+
+def _read(name,path,contains='',max_bones=500):
+    result=state.new_result()
+    try:return _read_action(result,name,path,contains,max_bones)
+    except Exception as error:return state.fail(result,error)
+
+
+def list_skeleton_bones_action(result,skeleton_path,bone_name_contains='',max_bones=500,checkpoint_callback=None):
+    return _read_action(result,api.BINDINGS[0],skeleton_path,bone_name_contains,max_bones,checkpoint_callback)
+
+
+def list_skeletal_sockets_action(result,skeleton_path,checkpoint_callback=None):
+    return _read_action(result,api.BINDINGS[1],skeleton_path,checkpoint_callback=checkpoint_callback)
+
 
 def list_skeleton_bones(skeleton_path,bone_name_contains='',max_bones=500):return _read(api.BINDINGS[0],skeleton_path,bone_name_contains,max_bones)
 def list_skeletal_sockets(skeleton_path):return _read(api.BINDINGS[1],skeleton_path)

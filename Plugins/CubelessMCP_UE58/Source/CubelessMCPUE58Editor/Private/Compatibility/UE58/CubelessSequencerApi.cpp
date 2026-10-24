@@ -5,6 +5,13 @@
 #include "Channels/MovieSceneDoubleChannel.h"
 #include "Channels/MovieSceneFloatChannel.h"
 #include "LevelSequence.h"
+#include "LevelSequenceDirector.h"
+#include "Internationalization/Text.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "EdGraph/EdGraphPin.h"
 #include "Misc/FrameRate.h"
 #include "Misc/PackageName.h"
 #include "MovieScene.h"
@@ -22,6 +29,12 @@
 #include "Sections/MovieSceneFloatSection.h"
 #include "Tracks/MovieScene3DTransformTrack.h"
 #include "Tracks/MovieSceneFloatTrack.h"
+#include "Tracks/MovieSceneSkeletalAnimationTrack.h"
+#include "Tracks/MovieSceneAudioTrack.h"
+#include "Sections/MovieSceneSkeletalAnimationSection.h"
+#include "Sections/MovieSceneAudioSection.h"
+#include "Animation/AnimSequence.h"
+#include "Sound/SoundWave.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
@@ -40,6 +53,7 @@
 #include "Sections/MovieSceneCameraCutSection.h"
 #include "Tracks/MovieSceneCameraCutTrack.h"
 #include "MovieSceneFrameMigration.h"
+#include "MovieSceneTimeHelpers.h"
 #include "Algo/Sort.h"
 
 #include "Editor.h"
@@ -264,6 +278,63 @@ FString BindingName(UMovieScene* Scene, const FGuid& Id)
     if (const auto* P = Scene->FindPossessable(Id)) { return P->GetName(); }
     if (const auto* S = Scene->FindSpawnable(Id)) { return S->GetName(); } return FString();
 }
+// ZF: these are retained child clips, not playback/evaluation or new clip factories.
+// In particular Audio::CacheChannelProxy calls SetupSoundInputParameters and must
+// not be invoked merely to observe a readonly source. Copy the public channels.
+int32 SubsequenceClipKind(UMovieSceneTrack* Track)
+{
+    if(!Loaded(Track))return 0;
+    return Track->GetClass()==UMovieSceneSkeletalAnimationTrack::StaticClass()?1:Track->GetClass()==UMovieSceneAudioTrack::StaticClass()?2:0;
+}
+bool SubsequenceClipSlot(UMovieSceneSection* Section,int32 Kind,TObjectPtr<UObject>& Source)
+{
+    Source=nullptr;
+    if(!Loaded(Section))return false;
+    if(Kind==1)
+    {
+        if(Section->GetClass()!=UMovieSceneSkeletalAnimationSection::StaticClass())return false;
+        const auto& Params=static_cast<UMovieSceneSkeletalAnimationSection*>(Section)->Params;
+        if(!Params.Animation.IsResolved()||!Params.MirrorDataTable.IsResolved()||Params.MirrorDataTable!=nullptr||Params.PlayRate.GetType()!=EMovieSceneTimeWarpType::FixedPlayRate||!FMath::IsFinite(Params.PlayRate.AsFixedPlayRate()))return false;
+        Source=Params.Animation;return true;
+    }
+    if(Kind!=2||Section->GetClass()!=UMovieSceneAudioSection::StaticClass())return false;
+    auto* SoundField=FindFProperty<FObjectProperty>(UMovieSceneAudioSection::StaticClass(),TEXT("Sound"));
+    auto* AttenuationField=FindFProperty<FObjectProperty>(UMovieSceneAudioSection::StaticClass(),TEXT("AttenuationSettings"));
+    if(!SoundField||!AttenuationField||SoundField->GetOwnerClass()!=UMovieSceneAudioSection::StaticClass()||AttenuationField->GetOwnerClass()!=UMovieSceneAudioSection::StaticClass()||SoundField->ArrayDim!=1||AttenuationField->ArrayDim!=1)return false;
+    const auto SoundSlot=SoundField->GetObjectPtrPropertyValue_InContainer(Section),AttenuationSlot=AttenuationField->GetObjectPtrPropertyValue_InContainer(Section);
+    if(!SoundSlot.IsResolved()||!AttenuationSlot.IsResolved()||AttenuationSlot!=nullptr)return false;
+    Source=SoundSlot;return true;
+}
+bool SubsequenceClipReference(UMovieSceneSection* Section,int32 Kind,UObject*& Source)
+{
+    TObjectPtr<UObject> Slot;Source=nullptr;if(!SubsequenceClipSlot(Section,Kind,Slot))return false;
+    Source=Slot.Get();return true; // Only initial/admitted observation; caller immediately holds the returned role.
+}
+bool SubsequenceClipChannels(UMovieSceneSection* Section,int32 Kind,TSharedRef<FJsonObject>& Out,const TFunction<bool()>& Current={})
+{
+    if(Current&&!Current())return false;UObject* Source=nullptr;const bool ReferenceRead=SubsequenceClipReference(Section,Kind,Source);TStrongObjectPtr<UObject> ReturnedSource(Source);
+    if(!ReferenceRead||(Current&&!Current()))return false;
+    Out->SetStringField(TEXT("source"),Source?Source->GetPathName():TEXT(""));
+    if(Kind==1)
+    {
+        const FMovieSceneSkeletalAnimationParams Params=static_cast<UMovieSceneSkeletalAnimationSection*>(Section)->Params;
+        FMovieSceneFloatChannel Weight=Params.Weight;auto Curve=MakeShared<FJsonObject>();
+        if(!Channel(&Weight,TEXT("Weight"),Curve)||(Current&&!Current()))return false;
+        Out->SetObjectField(TEXT("weight"),Curve);Out->SetStringField(TEXT("fixed_play_rate"),LexToString(Params.PlayRate.AsFixedPlayRate()));
+        return true; // Params and section authored offsets/flags are in the existing reflected snapshot.
+    }
+    auto* Audio=static_cast<UMovieSceneAudioSection*>(Section);int32 InputCount=0;
+    Audio->ForEachInput([&InputCount](FName,const FMovieSceneFloatChannel&){++InputCount;});
+    Audio->ForEachInput([&InputCount](FName,const FMovieSceneBoolChannel&){++InputCount;});
+    Audio->ForEachInput([&InputCount](FName,const FMovieSceneIntegerChannel&){++InputCount;});
+    Audio->ForEachInput([&InputCount](FName,const FMovieSceneStringChannel&){++InputCount;});
+    Audio->ForEachInput([&InputCount](FName,const FMovieSceneAudioTriggerChannel&){++InputCount;});
+    if(InputCount!=0||(Current&&!Current()))return false; // Parameterized sound-input families remain pending, rather than populating them here.
+    FMovieSceneFloatChannel Volume=Audio->GetSoundVolumeChannel(),Pitch=Audio->GetPitchMultiplierChannel();
+    auto VolumeRow=MakeShared<FJsonObject>(),PitchRow=MakeShared<FJsonObject>();
+    if(!Channel(&Volume,TEXT("SoundVolume"),VolumeRow)||(Current&&!Current())||!Channel(&Pitch,TEXT("PitchMultiplier"),PitchRow)||(Current&&!Current()))return false;
+    Out->SetObjectField(TEXT("volume"),VolumeRow);Out->SetObjectField(TEXT("pitch_multiplier"),PitchRow);return true;
+}
 struct FCameraInsertionScope;
 struct FCameraMaintenanceScope;
 bool CameraMaintenanceCheck(FCameraMaintenanceScope* Scope,const TCHAR* Stage,bool SaveReturned=false);
@@ -281,9 +352,210 @@ bool CameraSectionIdentity(UMovieSceneCameraCutTrack* Track,UMovieSceneCameraCut
 const TArray<UMovieSceneSection*>& CameraSections(UMovieSceneCameraCutTrack* Track);
 bool CameraInsertionActive=false,CameraInsertionQuarantined=false;
 bool CameraInsertionCheck(FCameraInsertionScope* Scope,const TCHAR* Stage,bool SaveReturned=false);
+// WR: the standard Director is an embedded Blueprint (SequenceEditor creates it
+// with Sequence as Outer). Observe its authored source, not compiler/search caches.
+struct FDirectorReadScope
+{
+    TStrongObjectPtr<ULevelSequence> Sequence;TStrongObjectPtr<UBlueprint> Blueprint;
+    TStrongObjectPtr<UClass> Generated,Skeleton,Parent;TStrongObjectPtr<UObject> GeneratedDefault,SkeletonDefault;
+    UClass* GeneratedSuper=nullptr;UClass* SkeletonSuper=nullptr;
+    TStrongObjectPtr<UClass> SerializedDirectorClass;FObjectProperty* DirectorClassField=nullptr;
+    FFieldClass* DirectorClassKind=nullptr;int32 DirectorClassOffset=0;uint64 DirectorClassFlags=0;
+    bool DirectorClassGeneratedTransition=false;
+    TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;
+    struct FHold{TStrongObjectPtr<UObject> Object;UClass* Class=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Path;EObjectFlags Flags=RF_NoFlags;};
+    TArray<FHold> Holds;TArray<UEdGraph*> Graphs;TMap<UEdGraph*,TArray<UEdGraphNode*>> Nodes;
+    TSharedPtr<FJsonObject> Baseline,FirstMismatch;bool Ready=false,Stopped=false,Observing=false;
+    bool Bad(const FString& Object,const TCHAR* Property,const FString& Expected,const FString& Actual)
+    {
+        if(!Stopped){FirstMismatch=MakeShared<FJsonObject>();FirstMismatch->SetStringField(TEXT("object"),Object);FirstMismatch->SetStringField(TEXT("property"),Property);FirstMismatch->SetStringField(TEXT("expected"),Expected);FirstMismatch->SetStringField(TEXT("actual"),Actual);}
+        Stopped=true;return false;
+    }
+    bool Apply(FResult& R,const TCHAR* Stage)
+    {
+        if(!Stopped)return true;if(FirstMismatch.IsValid())R.Data->SetObjectField(TEXT("director_first_mismatch"),FirstMismatch);
+        R.Stage=Stage;R.bKnown=false;R.bPost=false;
+        return Fail(R,TEXT("sequencer_director_source_changed_or_pending"),TEXT("Existing Director source/current observation failed or is outside the admitted profile; actual operation/save prefix retained. No Director creation, compile, execution, load or retry."));
+    }
+    bool Pin(UObject* O)
+    {
+        if(!Loaded(O)||!Loaded(O->GetClass())||(O->GetOuter()&&!Loaded(O->GetOuter())))return Bad(TEXT("Director"),TEXT("held_object"),TEXT("loaded object/class/actual outer"),TEXT("unavailable"));
+        for(const auto& H:Holds)if(H.Object.Get()==O)return true;
+        if(Holds.Num()>1024)return Bad(TEXT("Director"),TEXT("object_bound"),TEXT("<=1024"),LexToString(Holds.Num()));
+        FHold H;H.Object.Reset(O);H.Class=O->GetClass();H.Outer=O->GetOuter();H.Package=O->GetPackage();H.Path=O->GetPathName();H.Flags=O->GetFlags();Holds.Add(MoveTemp(H));return true;
+    }
+    bool Gather(TArray<UEdGraph*>& Out,TMap<UEdGraph*,TArray<UEdGraphNode*>>& Members)
+    {
+        if(!Blueprint.IsValid())return false;
+        const auto AddRoot=[&](const auto& Roots)->bool{for(const auto& Slot:Roots){if(!Slot.IsResolved())return Bad(Blueprint->GetPathName(),TEXT("graph_resolved"),TEXT("already loaded root graph"),TEXT("unresolved"));auto* G=Slot.Get();if(G&&!Out.Contains(G))Out.Add(G);}return true;};
+        if(Blueprint->GetExtensions().Num()||!Blueprint->ComponentTemplates.IsEmpty()||!Blueprint->Timelines.IsEmpty())return Bad(Blueprint->GetPathName(),TEXT("extended_director_profile_pending"),TEXT("ordinary Director without extension/component/timeline owned source"),TEXT("additional owned source requires implementation"));
+        if(!AddRoot(Blueprint->UbergraphPages)||!AddRoot(Blueprint->FunctionGraphs)||!AddRoot(Blueprint->MacroGraphs)||!AddRoot(Blueprint->DelegateSignatureGraphs))return false;
+        auto* InterfaceField=FindFProperty<FClassProperty>(FBPInterfaceDescription::StaticStruct(),TEXT("Interface"));
+        for(const auto& Interface:Blueprint->ImplementedInterfaces)
+        {
+            if(!InterfaceField)return Bad(Blueprint->GetPathName(),TEXT("interface_descriptor"),TEXT("native class field"),TEXT("missing"));
+            const auto Slot=InterfaceField->GetObjectPtrPropertyValue_InContainer(&Interface);if(!Slot.IsResolved())return Bad(Blueprint->GetPathName(),TEXT("interface_resolved"),TEXT("already loaded nullable interface"),TEXT("unresolved"));if(Slot.Get()&&!Pin(Slot.Get()))return false;
+            if(!AddRoot(Interface.Graphs))return false;
+        }
+        for(int32 I=0;I<Out.Num();++I)
+        {
+            auto* G=Out[I];if(Out.Num()>64||!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||!G->IsIn(Blueprint.Get()))return Bad(Blueprint->GetPathName(),TEXT("owned_graph"),TEXT("<=64 loaded standard graphs embedded under Director"),TEXT("custom/external/unavailable"));
+            if(!AddRoot(G->SubGraphs))return false;
+            TArray<UEdGraphNode*> Rows;
+            for(const auto& Slot:G->Nodes){if(!Slot.IsResolved())return Bad(G->GetPathName(),TEXT("node_resolved"),TEXT("loaded node"),TEXT("unresolved"));auto* N=Slot.Get();if(!Loaded(N)||N->GetGraph()!=G||!N->GetClass()->HasAnyClassFlags(CLASS_Native)||Rows.Contains(N))return Bad(G->GetPathName(),TEXT("node_owner"),TEXT("unique loaded native node in actual graph"),TEXT("custom/duplicate/unavailable"));Rows.Add(N);}
+            if(Rows.Num()>256)return Bad(G->GetPathName(),TEXT("node_bound"),TEXT("<=256"),LexToString(Rows.Num()));
+            Rows.Sort([](const UEdGraphNode& A,const UEdGraphNode& B){return A.GetPathName()<B.GetPathName();});Members.Add(G,MoveTemp(Rows));
+        }
+        Out.Sort([](const UEdGraph& A,const UEdGraph& B){return A.GetPathName()<B.GetPathName();});return true;
+    }
+    static bool ReadSlot(ULevelSequence* Owner,UBlueprint*& Value)
+    {
+        auto* Field=FindFProperty<FObjectProperty>(ULevelSequence::StaticClass(),TEXT("DirectorBlueprint"));
+        if(!Loaded(Owner)||!Field||Field->GetOwnerClass()!=ULevelSequence::StaticClass()||Field->ArrayDim!=1||Field->HasSetterOrGetter())return false;
+        const auto Slot=Field->GetObjectPtrPropertyValue_InContainer(Owner);if(!Slot.IsResolved())return false;
+        auto* Object=Slot.Get();Value=Cast<UBlueprint>(Object);return !Object||Value;
+    }
+    bool ReadDirectorClass(UClass*& Value,bool Capture=false)
+    {
+        auto* Field=FindFProperty<FObjectProperty>(ULevelSequence::StaticClass(),TEXT("DirectorClass"));
+        if(!Field||Field->GetOwnerClass()!=ULevelSequence::StaticClass()||Field->ArrayDim!=1||Field->ElementSize!=sizeof(TObjectPtr<UClass>)||Field->HasSetterOrGetter()
+            ||!Field->PropertyClass.IsResolved()||Field->PropertyClass.Get()!=UClass::StaticClass())return Bad(Sequence->GetPathName(),TEXT("serialized_director_class_descriptor"),TEXT("native resolved UClass slot"),TEXT("unavailable/changed"));
+        if(!Capture&&(Field!=DirectorClassField||Field->GetClass()!=DirectorClassKind||Field->GetOffset_ForInternal()!=DirectorClassOffset||uint64(Field->GetPropertyFlags())!=DirectorClassFlags))
+            return Bad(Sequence->GetPathName(),TEXT("serialized_director_class_layout"),TEXT("captured actual descriptor/layout"),TEXT("changed"));
+        const auto Slot=Field->GetObjectPtrPropertyValue_InContainer(Sequence.Get());if(!Slot.IsResolved())return Bad(Sequence->GetPathName(),TEXT("serialized_director_class_resolved"),TEXT("already resolved nullable class"),TEXT("unresolved"));
+        auto* Object=Slot.Get();Value=Cast<UClass>(Object);if(Object&&(!Value||!Loaded(Value)))return Bad(Sequence->GetPathName(),TEXT("serialized_director_class_loaded"),TEXT("loaded nullable UClass"),TEXT("unavailable"));
+        if(Capture){DirectorClassField=Field;DirectorClassKind=Field->GetClass();DirectorClassOffset=Field->GetOffset_ForInternal();DirectorClassFlags=uint64(Field->GetPropertyFlags());}
+        return true;
+    }
+    bool Plain(bool Saved=false)
+    {
+        if(Stopped)return false;
+        if(!IsInGameThread()||IsGarbageCollecting()||GExitPurge||IsEngineExitRequested()||UE::IsSavingPackage()||GEditor!=Editor.Get()||!Loaded(Editor.Get())||!Loaded(World.Get())||GEditor->PlayWorld||GEditor->GetEditorWorldContext().World()!=World.Get()||World->bIsTearingDown)
+            return Bad(TEXT("Director"),TEXT("editor_world"),TEXT("same idle Editor/world outside GC/save"),TEXT("changed"));
+        for(auto& H:Holds)
+        {
+            auto* O=H.Object.Get();if(!Loaded(O)||!Loaded(H.Class)||(H.Outer&&!Loaded(H.Outer))||O->GetClass()!=H.Class||O->GetOuter()!=H.Outer||O->GetPackage()!=H.Package||O->GetPathName()!=H.Path)return Bad(H.Path,TEXT("identity_class_outer"),TEXT("captured actual object/owner"),TEXT("changed"));
+            const auto Flags=O->GetFlags();if(Flags!=H.Flags){const uint32 Added=uint32(Flags)&~uint32(H.Flags),Removed=uint32(H.Flags)&~uint32(Flags);if(!Saved||Removed||(Added&~uint32(RF_WasLoaded|RF_LoadCompleted)))return Bad(H.Path,TEXT("flags"),LexToString(uint32(H.Flags)),LexToString(uint32(Flags)));H.Flags=Flags;}
+        }
+        UBlueprint* CurrentDirector=nullptr;
+        if(!Sequence.IsValid()||!Blueprint.IsValid()||!ReadSlot(Sequence.Get(),CurrentDirector)||CurrentDirector!=Blueprint.Get()||!Blueprint->GeneratedClass.GetGCPtr().IsResolved()||!Blueprint->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!Blueprint->ParentClass.GetGCPtr().IsResolved()
+            ||Blueprint->GeneratedClass.Get()!=Generated.Get()||Blueprint->SkeletonGeneratedClass.Get()!=Skeleton.Get()||Blueprint->ParentClass.Get()!=Parent.Get()
+            ||Blueprint->bBeingCompiled||Blueprint->bIsRegeneratingOnLoad||Blueprint->bQueuedForCompilation||Blueprint->Status!=BS_UpToDate)
+            return Bad(Blueprint.IsValid()?Blueprint->GetPathName():TEXT("Director"),TEXT("blueprint_class_roles"),TEXT("same idle up-to-date Generated/Skeleton/Parent slots"),TEXT("changed or compilation required"));
+        if(!Generated->ClassGeneratedBy.IsResolved()||Generated->ClassGeneratedBy.Get()!=Blueprint.Get()||!Skeleton->ClassGeneratedBy.IsResolved()||Skeleton->ClassGeneratedBy.Get()!=Blueprint.Get()
+            ||Generated->GetSuperClass()!=GeneratedSuper||Skeleton->GetSuperClass()!=SkeletonSuper)return Bad(Blueprint->GetPathName(),TEXT("generated_source_parent"),TEXT("captured actual Generated/Skeleton declaring roles"),TEXT("changed"));
+        UClass* CurrentDirectorClass=nullptr;if(!ReadDirectorClass(CurrentDirectorClass))return false;
+        if(CurrentDirectorClass!=SerializedDirectorClass.Get())
+        {
+            // LevelSequence::SetDirectorBlueprint / OnDirectorRecompiled assign exactly
+            // the same BP's current GeneratedClass. Preserve an initial null/stale
+            // role, but permit only that source-backed transition, never arbitrary null/class.
+            if(CurrentDirectorClass!=Generated.Get()||!CurrentDirectorClass->ClassGeneratedBy.IsResolved()||CurrentDirectorClass->ClassGeneratedBy.Get()!=Blueprint.Get())
+                return Bad(Sequence->GetPathName(),TEXT("serialized_director_class"),SerializedDirectorClass.IsValid()?SerializedDirectorClass->GetPathName():TEXT("null"),CurrentDirectorClass?CurrentDirectorClass->GetPathName():TEXT("null"));
+            if(!Pin(CurrentDirectorClass))return false;SerializedDirectorClass.Reset(CurrentDirectorClass);DirectorClassGeneratedTransition=true;
+        }
+        if(Generated->GetDefaultObject(false)!=GeneratedDefault.Get()||Skeleton->GetDefaultObject(false)!=SkeletonDefault.Get())return Bad(Blueprint->GetPathName(),TEXT("existing_cdo_roles"),TEXT("captured nullable existing CDOs; no creation"),TEXT("changed"));
+        if(Ready){TArray<UEdGraph*> Now;TMap<UEdGraph*,TArray<UEdGraphNode*>> Members;if(!Gather(Now,Members))return false;if(Now!=Graphs)return Bad(Blueprint->GetPathName(),TEXT("graph_membership"),TEXT("captured owned graph set"),TEXT("changed"));for(auto* G:Graphs)if(Members.FindChecked(G)!=Nodes.FindChecked(G))return Bad(G->GetPathName(),TEXT("node_membership"),TEXT("captured owned node set"),TEXT("changed"));}
+        return true;
+    }
+    bool Fields(UObject* O,const TSet<FName>& Extra,TSharedRef<FJsonObject>& Out,bool Saved)
+    {
+        TSet<FName> Skip=Extra;
+        for(TFieldIterator<FProperty> It(O->GetClass());It;++It)if(It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_SkipSerialization))Skip.Add(It->GetFName());
+        const TFunction<bool()> Current=[this,Saved]{return Plain(Saved);};
+        return ObjectProperties(O,Skip,Out,Current)||Bad(O->GetPathName(),TEXT("authored_fields"),TEXT("complete bounded current field export"),TEXT("incomplete"));
+    }
+    static FString PinKey(const UEdGraphPin* P)
+    {
+        FString Key=LexToString(uint8(P->Direction))+TEXT(":")+P->PinName.ToString();int32 Depth=0;
+        for(auto* ParentPin=P->ParentPin;ParentPin;ParentPin=ParentPin->ParentPin){if(++Depth>16||!P->GetOwningNodeUnchecked()->Pins.Contains(ParentPin))return FString();Key=ParentPin->PinName.ToString()+TEXT("/")+Key;}
+        return Key;
+    }
+    bool Observe(TSharedRef<FJsonObject>& Out,bool Saved=false)
+    {
+        if(!Plain(Saved))return false;if(Observing)return true;TGuardValue<bool> Guard(Observing,true);
+        auto BPFields=MakeShared<FJsonObject>();
+        const TSet<FName> Skip={TEXT("GeneratedClass"),TEXT("SkeletonGeneratedClass"),TEXT("UbergraphPages"),TEXT("FunctionGraphs"),TEXT("MacroGraphs"),TEXT("DelegateSignatureGraphs"),TEXT("IntermediateGeneratedGraphs"),TEXT("LastEditedDocuments"),TEXT("UpgradeNotesLog"),TEXT("CachedUDSDependencies"),TEXT("CachedDependencies"),TEXT("CachedNames")};
+        if(!Fields(Blueprint.Get(),Skip,BPFields,Saved))return false;Out->SetObjectField(TEXT("blueprint_authored_fields"),BPFields);
+        const auto Roots=[&](const auto& Slots){TArray<FString> Names;for(const auto& Slot:Slots)if(Slot.Get())Names.Add(Slot.Get()->GetPathName());Names.Sort();TArray<TSharedPtr<FJsonValue>> Values;for(const auto& Name:Names)Values.Add(MakeShared<FJsonValueString>(Name));return Values;};
+        auto RootRoles=MakeShared<FJsonObject>();RootRoles->SetArrayField(TEXT("ubergraph"),Roots(Blueprint->UbergraphPages));RootRoles->SetArrayField(TEXT("functions"),Roots(Blueprint->FunctionGraphs));RootRoles->SetArrayField(TEXT("macros"),Roots(Blueprint->MacroGraphs));RootRoles->SetArrayField(TEXT("delegate_signatures"),Roots(Blueprint->DelegateSignatureGraphs));Out->SetObjectField(TEXT("graph_roles"),RootRoles);
+        for(const auto& Role: {TPair<const TCHAR*,UObject*>(TEXT("generated_cdo"),GeneratedDefault.Get()),TPair<const TCHAR*,UObject*>(TEXT("skeleton_cdo"),SkeletonDefault.Get())})
+        {
+            auto Defaults=MakeShared<FJsonObject>();if(Role.Value&&!Fields(Role.Value,{},Defaults,Saved))return false;Out->SetObjectField(Role.Key,Defaults);
+        }
+        // Logical pin addresses/links: no physical Pins array order or pin allocation
+        // identity is made an authored invariant. Ambiguous same-name split pins
+        // remain incomplete instead of inventing occurrence/order semantics.
+        const auto PinAddresses=[&](TMap<const UEdGraphPin*,FString>& Addresses)->bool
+        {
+            for(auto* G:Graphs)for(auto* N:Nodes.FindChecked(G))
+            {
+                TSet<FString> Names;for(auto* P:N->Pins){if(!P||P->GetOwningNodeUnchecked()!=N||P->WasTrashed())return Bad(N->GetPathName(),TEXT("pin_current"),TEXT("live owned pin"),TEXT("invalid"));const FString Key=PinKey(P);if(Key.IsEmpty()||Names.Contains(Key))return Bad(N->GetPathName(),TEXT("logical_pin_key"),TEXT("unique name/direction/split path"),Key);Names.Add(Key);Addresses.Add(P,N->GetPathName()+TEXT("|")+Key);}
+            }
+            return true;
+        };
+        auto GraphRows=MakeShared<FJsonObject>();Out->SetObjectField(TEXT("authored_graphs"),GraphRows);
+        for(auto* G:Graphs)
+        {
+            auto Row=MakeShared<FJsonObject>(),Props=MakeShared<FJsonObject>();if(!Fields(G,{TEXT("Nodes"),TEXT("SubGraphs")},Props,Saved))return false;Row->SetObjectField(TEXT("fields"),Props);Row->SetArrayField(TEXT("subgraphs"),Roots(G->SubGraphs));
+            auto NodeRows=MakeShared<FJsonObject>();Row->SetObjectField(TEXT("nodes"),NodeRows);GraphRows->SetObjectField(G->GetPathName(),Row);
+            for(auto* N:Nodes.FindChecked(G))
+            {
+                auto Node=MakeShared<FJsonObject>(),Values=MakeShared<FJsonObject>();if(!Fields(N,{TEXT("ErrorType"),TEXT("ErrorMsg"),TEXT("bHasCompilerMessage")},Values,Saved))return false;Node->SetObjectField(TEXT("fields"),Values);auto Pins=MakeShared<FJsonObject>();Node->SetObjectField(TEXT("logical_pins"),Pins);NodeRows->SetObjectField(N->GetPathName(),Node);
+                TMap<const UEdGraphPin*,FString> InitialAddresses;if(!PinAddresses(InitialAddresses))return false;
+                TArray<FString> CurrentKeys;for(auto* P:N->Pins)CurrentKeys.Add(PinKey(P));CurrentKeys.Sort();
+                for(const auto& Key:CurrentKeys)
+                {
+                    if(!Plain(Saved))return false;
+                    TMap<const UEdGraphPin*,FString> Addresses;if(!PinAddresses(Addresses))return false;
+                    UEdGraphPin* P=nullptr;for(auto* Candidate:N->Pins)if(PinKey(Candidate)==Key){P=Candidate;break;}
+                    if(!P)return Bad(N->GetPathName(),TEXT("logical_pin_inventory"),Key,TEXT("missing"));
+                    auto Pin=MakeShared<FJsonObject>();Pin->SetStringField(TEXT("default_value"),P->DefaultValue);// AutogeneratedDefaultValue is schema/compiler derived; authored DefaultValue remains protected.
+                    // Copy all physical-pin data before any observer callback; reacquire by logical key next iteration.
+                    const FText TextCopy=P->DefaultTextValue;FEdGraphPinType Type=P->PinType;
+                    if(!P->DefaultObject.IsResolved()||!P->PinType.PinSubCategoryMemberReference.MemberParent.IsResolved()||P->PinType.PinSubCategoryObject.IsStale()||P->PinType.PinValueType.TerminalSubCategoryObject.IsStale())return Bad(N->GetPathName(),TEXT("pin_reference_resolved"),TEXT("already resolved nullable pin references"),TEXT("unresolved"));
+                    auto* DefaultObject=P->DefaultObject.Get();auto* SubType=P->PinType.PinSubCategoryObject.Get();auto* Member=P->PinType.PinSubCategoryMemberReference.MemberParent.Get();auto* Terminal=P->PinType.PinValueType.TerminalSubCategoryObject.Get();if((DefaultObject&&!PinRef(DefaultObject))||(SubType&&!PinRef(SubType))||(Member&&!PinRef(Member))||(Terminal&&!PinRef(Terminal)))return false;
+                    Pin->SetStringField(TEXT("default_object"),DefaultObject?DefaultObject->GetPathName():FString());
+                    TArray<FString> Links;for(auto* Link:P->LinkedTo){const auto* Target=Addresses.Find(Link);if(!Target)return Bad(N->GetPathName(),TEXT("pin_link"),TEXT("current pin inside captured Director graphs"),TEXT("external or retired"));Links.Add(*Target);}Links.Sort();TArray<TSharedPtr<FJsonValue>> LinkJson;for(const auto& Link:Links)LinkJson.Add(MakeShared<FJsonValueString>(Link));Pin->SetArrayField(TEXT("links"),LinkJson);
+                    FString DefaultText;FTextStringHelper::WriteToBuffer(DefaultText,TextCopy);if(!Plain(Saved))return false;Pin->SetStringField(TEXT("default_text"),DefaultText);
+                    auto TypeRow=MakeShared<FJsonObject>();const TFunction<bool()> Current=[this,Saved]{return Plain(Saved);};TSet<FName> TypeSkip;for(TFieldIterator<FProperty> It(FEdGraphPinType::StaticStruct());It;++It)if(It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_SkipSerialization))TypeSkip.Add(It->GetFName());if(!Properties(FEdGraphPinType::StaticStruct(),&Type,N,TypeSkip,TypeRow,Current))return Bad(N->GetPathName(),TEXT("pin_type"),TEXT("bounded reflected pin type"),TEXT("incomplete"));Pin->SetObjectField(TEXT("type"),TypeRow);Pins->SetObjectField(Key,Pin);
+                }
+            }
+        }
+        if(!Plain(Saved))return false;
+        if(Baseline.IsValid()&&!CameraLiteral(MakeShared<FJsonValueObject>(Baseline),MakeShared<FJsonValueObject>(Out),0))return Bad(Blueprint->GetPathName(),TEXT("authored_source"),Text(Baseline.ToSharedRef()),Text(Out));
+        if(!Baseline.IsValid())Baseline=Out;return true;
+    }
+    bool PinRef(UObject* O){return Pin(O);}
+    bool Bind(ULevelSequence* In)
+    {
+        Editor.Reset(GEditor);if(!Loaded(Editor.Get()))return Bad(TEXT("Director"),TEXT("editor"),TEXT("loaded Editor"),TEXT("unavailable"));World.Reset(GEditor->GetEditorWorldContext().World());Sequence.Reset(In);
+        auto* Field=FindFProperty<FObjectProperty>(ULevelSequence::StaticClass(),TEXT("DirectorBlueprint"));
+        if(!Field||Field->GetOwnerClass()!=ULevelSequence::StaticClass()||Field->HasSetterOrGetter())return Bad(In->GetPathName(),TEXT("director_slot"),TEXT("native DirectorBlueprint property"),TEXT("unavailable"));
+        const auto Slot=Field->GetObjectPtrPropertyValue_InContainer(In);if(!Slot.IsResolved())return Bad(In->GetPathName(),TEXT("director_resolved"),TEXT("already resolved after original sequence load"),TEXT("unresolved"));
+        auto* BP=Cast<UBlueprint>(Slot.Get());Blueprint.Reset(BP);
+        if(!Loaded(BP)||BP->GetClass()!=UBlueprint::StaticClass()||BP->GetOuter()!=In||BP->BlueprintType!=BPTYPE_Normal||BP->Status!=BS_UpToDate||BP->bBeingCompiled||BP->bIsRegeneratingOnLoad||BP->bQueuedForCompilation
+            ||!BP->ParentClass.GetGCPtr().IsResolved()||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved())
+            return Bad(In->GetPathName(),TEXT("director_profile_pending"),TEXT("loaded up-to-date ordinary Sequence-owned Director Blueprint"),TEXT("other ownership/class/status or unresolved source"));
+        Parent.Reset(BP->ParentClass.Get());Generated.Reset(BP->GeneratedClass.Get());Skeleton.Reset(BP->SkeletonGeneratedClass.Get());
+        if(!Loaded(Parent.Get())||!Parent->HasAnyClassFlags(CLASS_Native)||!Parent->IsChildOf(ULevelSequenceDirector::StaticClass())||!Loaded(Generated.Get())||!Loaded(Skeleton.Get())
+            ||!Generated->ClassGeneratedBy.IsResolved()||Generated->ClassGeneratedBy.Get()!=BP||!Skeleton->ClassGeneratedBy.IsResolved()||Skeleton->ClassGeneratedBy.Get()!=BP)
+            return Bad(BP->GetPathName(),TEXT("director_generated_roles_pending"),TEXT("loaded generated/skeleton with actual native Director parent"),TEXT("missing or inherited/custom source"));
+        UClass* InitialDirectorClass=nullptr;if(!ReadDirectorClass(InitialDirectorClass,true))return false;SerializedDirectorClass.Reset(InitialDirectorClass);
+        if(InitialDirectorClass&&!Pin(InitialDirectorClass))return false;
+        GeneratedSuper=Generated->GetSuperClass();SkeletonSuper=Skeleton->GetSuperClass();
+        if((GeneratedSuper&&!Pin(GeneratedSuper))||(SkeletonSuper&&!Pin(SkeletonSuper)))return false;
+        GeneratedDefault.Reset(Generated->GetDefaultObject(false));SkeletonDefault.Reset(Skeleton->GetDefaultObject(false));
+        for(UObject* O:{static_cast<UObject*>(In),static_cast<UObject*>(BP),static_cast<UObject*>(Parent.Get()),static_cast<UObject*>(Generated.Get()),static_cast<UObject*>(Skeleton.Get())})if(!Pin(O))return false;
+        if((GeneratedDefault.IsValid()&&!Pin(GeneratedDefault.Get()))||(SkeletonDefault.IsValid()&&!Pin(SkeletonDefault.Get())))return false;
+        if(!Gather(Graphs,Nodes))return false;for(auto* G:Graphs){if(!Pin(G)||!Pin(G->GetClass()))return false;for(auto* N:Nodes.FindChecked(G))if(!Pin(N)||!Pin(N->GetClass()))return false;}
+        Ready=true;auto State=MakeShared<FJsonObject>();return Observe(State);
+    }
+};
 struct FContext
 {
     ULevelSequence* Sequence = nullptr; UMovieScene* Scene = nullptr;
+    TUniquePtr<FDirectorReadScope> Director;bool DirectorRequired=false;
     TStrongObjectPtr<ULevelSequence> KeepSequence;TStrongObjectPtr<UMovieScene> KeepScene;TStrongObjectPtr<UEditorEngine> ResolveEditor;TStrongObjectPtr<UWorld> ResolveWorld;TStrongObjectPtr<UPackage> ResolvePackage;FString ResolvePath;
     FGuid Binding; UMovieSceneTrack* Track = nullptr; UMovieSceneSection* Section = nullptr;
     TSharedRef<FJsonObject> Before = MakeShared<FJsonObject>();
@@ -295,9 +567,19 @@ struct FContext
     bool bMixedRemoval = false; // UA collateral spawnable/folder/tag snapshot, selected parentless possessable only.
     bool bHierarchyRemoval = false; // UM selected parentless Actor; copied child parent GUIDs stay literal.
     bool bCamera = false;
+    bool bSubsequenceClips = false; // ZF child / ADJ removal readonly clip observers; never a new clip writer.
+    bool bRemovalClips = false; // ADJ exact parent Audio/SkeletalAnimation selected and collateral tracks.
     FCameraInsertionScope* CameraInsertion=nullptr; // JA concrete same-call scope, other routes stay null.
     FCameraMaintenanceScope* CameraMaintenance=nullptr; // JL CameraCut-preserving removal/subsequence only.
 };
+bool DirectorCurrent(FContext& C,FResult& R,const TCHAR* Stage,bool Saved=false)
+{
+    if(!C.Director){if(!C.DirectorRequired)return true;UBlueprint* Value=nullptr;if(FDirectorReadScope::ReadSlot(C.Sequence,Value)&&!Value)return true;R.bKnown=false;return Fail(R,TEXT("sequencer_director_unadmitted_role"),TEXT("Director appeared after initial admission; no further SDK or retry."));}
+    auto State=MakeShared<FJsonObject>();if(!C.Director->Observe(State,Saved))return C.Director->Apply(R,Stage);
+    R.Data->SetBoolField(TEXT("director_class_same_generated_transition_observed"),C.Director->DirectorClassGeneratedTransition);
+    return true;
+}
+bool DirectorAllowed(const FContext& C){UBlueprint* Value=nullptr;return FDirectorReadScope::ReadSlot(C.Sequence,Value)&&(!Value||C.Director.IsValid());}
 // RN primary-only resolver. Internal/adopted source rechecks retain find-only resolution.
 bool SequenceLoadActive=false;
 bool PrimaryResolveContext(const FContext& C)
@@ -355,7 +637,16 @@ bool Resolve(const FString& Path,FContext& C,FResult& R,bool PermitPrimaryLoad=f
     {
         if(!PrimaryResolvedCurrent(C,R))return false;R.bKnown=true;R.Data->SetBoolField(TEXT("primary_resolution_continuation_safe"),true);R.Data->SetStringField(TEXT("resolved_asset_path"),Path);R.Data->SetStringField(TEXT("resolved_asset_class"),C.Sequence->GetClass()->GetPathName());R.Data->SetStringField(TEXT("resolved_movie_scene_path"),C.Scene->GetPathName());
     }
-    R.Data->SetStringField(TEXT("sequence_path"),Path);R.Data->SetStringField(TEXT("movie_scene_path"),C.Scene->GetPathName());return true;
+    R.Data->SetStringField(TEXT("sequence_path"),Path);R.Data->SetStringField(TEXT("movie_scene_path"),C.Scene->GetPathName());
+    // Empty operation is the existing nested/sibling admission context of the same three maintenance APIs.
+    C.DirectorRequired=R.Operation.IsEmpty()||R.Operation==TEXT("add_level_sequence_camera_cut")||R.Operation==TEXT("add_level_sequence_subsequence")||R.Operation==TEXT("remove_level_sequence_binding");
+    if(!C.DirectorRequired)return true;
+    auto* DirectorField=FindFProperty<FObjectProperty>(ULevelSequence::StaticClass(),TEXT("DirectorBlueprint"));
+    if(!DirectorField)return Fail(R,TEXT("sequencer_director_slot_unavailable"),TEXT("Native DirectorBlueprint field unavailable."));
+    const auto DirectorSlot=DirectorField->GetObjectPtrPropertyValue_InContainer(C.Sequence);
+    if(!DirectorSlot.IsResolved())return Fail(R,TEXT("sequencer_director_resolved_required"),TEXT("Director reference must already be resolved after original primary resolution; no extra loader."));
+    if(DirectorSlot.Get()){C.Director=MakeUnique<FDirectorReadScope>();if(!C.Director->Bind(C.Sequence))return C.Director->Apply(R,TEXT("director_read_admission"));R.Data->SetBoolField(TEXT("director_collateral_readonly"),true);R.Data->SetStringField(TEXT("director_scope"),TEXT("Existing up-to-date standard Sequence-owned Director; loaded native-parent Generated/Skeleton/nullable existing CDO and authored graphs/defaults preserved. No Director creation, explicit compile/event execution/loader. Save search caches and transient compiler metadata are excluded. Other ownership/inherited/custom, extension/component/timeline source and ambiguous logical-pin profiles remain incomplete."));}
+    return true;
 }
 
 bool Tick(double DisplayFrame, const FContext& C, FFrameNumber& Out)
@@ -374,8 +665,9 @@ bool Tick(double DisplayFrame, const FContext& C, FFrameNumber& Out)
 }
 bool Snapshot(FContext& C, TSharedRef<FJsonObject>& J)
 {
-    const TFunction<bool()> Current=(C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval)?TFunction<bool()>([&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("nested_snapshot_export_return"));}):TFunction<bool()>();
+    const TFunction<bool()> Current=(C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bSubsequenceClips)?TFunction<bool()>([&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("nested_snapshot_export_return"));}):TFunction<bool()>();
     if(Current&&!Current())return false;
+    if(C.Director){auto Director=MakeShared<FJsonObject>();if(!C.Director->Observe(Director))return false;J->SetObjectField(TEXT("director_authored_source"),Director);}
     if (C.bFloat) { J->SetBoolField(TEXT("complete"), false); }
     if (!Loaded(C.Sequence) || !Loaded(C.Scene) || C.Sequence->GetMovieScene() != C.Scene || C.Scene->GetOuter() != C.Sequence) { return false; }
     auto Basis = MakeShared<FJsonObject>();
@@ -384,6 +676,7 @@ bool Snapshot(FContext& C, TSharedRef<FJsonObject>& J)
     if (C.bFloat) { SourceTypes.Add(UMovieSceneFloatTrack::StaticClass()); SourceTypes.Add(UMovieSceneFloatSection::StaticClass()); }
     if (C.bSubsequence) { SourceTypes.Add(UMovieSceneSubTrack::StaticClass()); SourceTypes.Add(UMovieSceneSubSection::StaticClass()); }
     if (C.bCamera) { SourceTypes.Add(UMovieSceneCameraCutTrack::StaticClass()); SourceTypes.Add(UMovieSceneCameraCutSection::StaticClass()); }
+    if (C.bSubsequenceClips) { SourceTypes.Append({UMovieSceneSkeletalAnimationTrack::StaticClass(),UMovieSceneSkeletalAnimationSection::StaticClass(),UMovieSceneAudioTrack::StaticClass(),UMovieSceneAudioSection::StaticClass()}); }
     for (UClass* Type : SourceTypes)
     {
         if (!Loaded(Type) || !Type->HasAnyClassFlags(CLASS_Native) || Type->GetOutermost()->IsDirty()) { return false; }
@@ -399,12 +692,12 @@ bool Snapshot(FContext& C, TSharedRef<FJsonObject>& J)
     J->SetObjectField(TEXT("playback_range"), Range(C.Scene->GetPlaybackRange()));
     auto SP = MakeShared<FJsonObject>(); auto MP = MakeShared<FJsonObject>();
     if (C.bFloat) { J->SetObjectField(TEXT("sequence_fields"), SP); J->SetObjectField(TEXT("movie_scene_fields"), MP); }
-    if (!ObjectProperties(C.Sequence, {}, SP,Current) || !ObjectProperties(C.Scene, { TEXT("ObjectBindings"), TEXT("PlaybackRange"), TEXT("EditorData") }, MP,Current)) { return false; }
+    if (!ObjectProperties(C.Sequence, C.Director?TSet<FName>{TEXT("CompiledData"),TEXT("DirectorClass")}:TSet<FName>{}, SP,Current) || !ObjectProperties(C.Scene, { TEXT("ObjectBindings"), TEXT("PlaybackRange"), TEXT("EditorData") }, MP,Current)) { return false; }
     J->SetObjectField(TEXT("sequence_fields"), SP); J->SetObjectField(TEXT("movie_scene_fields"), MP);
     auto EditorData = MakeShared<FJsonObject>();
     if (C.bFloat) { J->SetObjectField(TEXT("editor_data"), EditorData); }
     const FMovieSceneEditorData EditorCopy=C.Scene->GetEditorData();
-    if (!Properties(FMovieSceneEditorData::StaticStruct(), (C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval)?&EditorCopy:&C.Scene->GetEditorData(), C.Scene, {}, EditorData,Current)) { return false; }
+    if (!Properties(FMovieSceneEditorData::StaticStruct(), (C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bSubsequenceClips)?&EditorCopy:&C.Scene->GetEditorData(), C.Scene, {}, EditorData,Current)) { return false; }
     J->SetObjectField(TEXT("editor_data"), EditorData);
     const auto Bindings = static_cast<const UMovieScene*>(C.Scene)->GetBindings();
     const TArray<UMovieSceneTrack*> RootInventory=C.Scene->GetTracks();
@@ -465,17 +758,21 @@ bool SameField(const TSharedRef<FJsonObject>& A, const TSharedRef<FJsonObject>& 
 bool Before(FContext& C, FResult& R)
 {
     if (C.bFloat) { R.Data->SetObjectField(TEXT("before"), C.Before); }
+    if(!DirectorCurrent(C,R,TEXT("director_before_snapshot")))return false;
     if (!Snapshot(C, C.Before)) { return Fail(R, TEXT("sequencer_snapshot_incomplete"), TEXT("Bounded declarative snapshot/channel shape is not complete; no mutation was dispatched.")); }
+    if(!DirectorCurrent(C,R,TEXT("director_before_snapshot_return")))return false;
     R.Data->SetObjectField(TEXT("before"), C.Before); return true;
 }
 bool CaptureAfter(FContext& C, FResult& R, TSharedRef<FJsonObject>& After)
 {
     if (C.bFloat) { R.Data->SetObjectField(TEXT("after"), After); }
+    if(!DirectorCurrent(C,R,TEXT("director_after_snapshot")))return false;
     if (!Snapshot(C, After))
     {
         R.bKnown = false; R.Data->SetBoolField(TEXT("after_complete"), false);
         return Fail(R, TEXT("sequencer_post_state_unobservable"), TEXT("Mutation may be retained; the bounded post-state is incomplete. No rollback, retry, compile or save."));
     }
+    if(!DirectorCurrent(C,R,TEXT("director_after_snapshot_return")))return false;
     R.Data->SetObjectField(TEXT("after"), After); R.Data->SetBoolField(TEXT("after_complete"), true); R.bKnown = true;
     R.bChanged = !Same(C.Before, After); return true;
 }
@@ -499,14 +796,42 @@ bool ResolveBinding(FContext& C, const FString& Id, const FString& Label, FResul
     }
     return Fail(R, TEXT("sequencer_binding_not_found"), TEXT("Selector must identify a current binding; GUID membership is verified before any track allocation."));
 }
+// ACU: the original raw command retains row/group/axis order. Named callers
+// still pass strict ordinary row arrays and never create this first-row marker.
+bool UnpackOriginalKeyRows(const TSharedPtr<FJsonValue>& Root,const TCHAR* Kind,TArray<TSharedPtr<FJsonValue>>& RawRows,FResult& R)
+{
+    if(!Root||Root->Type!=EJson::Array||Root->AsArray().IsEmpty())return true;
+    const auto First=Root->AsArray()[0];if(!First||First->Type!=EJson::Object)return true;
+    const auto Header=First->AsObject();if(Header->HasField(TEXT("frame"))||!Header->HasField(TEXT("__cubeless_original_sequence_keys_v1")))return true;
+    FString Tag;const auto Original=Header->TryGetField(TEXT("first"));
+    if(Header->Values.Num()!=2||!Header->HasTypedField<EJson::String>(TEXT("__cubeless_original_sequence_keys_v1"))||!Header->TryGetStringField(TEXT("__cubeless_original_sequence_keys_v1"),Tag)||Tag!=Kind||!Original)
+        return Fail(R,TEXT("sequencer_raw_key_marker_invalid"),TEXT("Exact operation-specific internal first-row marker required; no key writer."));
+    RawRows=Root->AsArray();RawRows[0]=Original;
+    R.Data->SetBoolField(TEXT("original_raw_ordered_keys"),true);R.Data->SetBoolField(TEXT("raw_key_rows_prevalidated"),false);
+    R.Data->SetStringField(TEXT("raw_key_scope"),TEXT("Original typed frame and ordered row/group/axis conversion with actual insertion prefix, late invalid input without final MarkPackageDirty/save. Existing native sequence/track/section/source, finite rows/keys/time/value bounds and public exact-save protection remain. Wrong first section replacement, generated/custom sources, runtime/playback and full original scope remain incomplete."));return true;
+}
+bool OriginalKeyCurrent(FContext& C,FResult& R,bool Attached=true)
+{
+    if(!PrimaryResolvedCurrent(C,R))return false;
+    if(!C.Binding.IsValid()||!C.Scene->FindBinding(C.Binding))return ResolveStop(R,TEXT("sequencer_raw_key_binding_lost"),TEXT("Originally resolved binding GUID is no longer present after an SDK boundary; no next track/key writer or save."));
+    UClass* TrackClass=C.bFloat?UMovieSceneFloatTrack::StaticClass():UMovieScene3DTransformTrack::StaticClass();UClass* SectionClass=C.bFloat?UMovieSceneFloatSection::StaticClass():UMovieScene3DTransformSection::StaticClass();
+    if((C.Track&&(!Loaded(C.Track)||C.Track->GetClass()!=TrackClass||C.Track->GetOuter()!=C.Scene||!C.Scene->FindTracks(TrackClass,C.Binding).Contains(C.Track)))||(C.Section&&(!Loaded(C.Section)||C.Section->GetClass()!=SectionClass||C.Section->GetOuter()!=C.Track||C.Section->IsReadOnly()||(Attached&&(!C.Track||!C.Track->GetAllSections().Contains(C.Section))))))
+        return ResolveStop(R,TEXT("sequencer_raw_key_current_lost"),TEXT("Held selected native track/section ownership or membership changed at an SDK boundary; actual prefix retained, no next writer/save."));
+    return true;
+}
+bool OriginalKeyFailure(FResult& R,int32 RowIndex,const TCHAR* Group,int32 Axis,const TSharedPtr<FJsonValue>& Requested,const TCHAR* Code,const TCHAR* Error)
+{
+    auto J=MakeShared<FJsonObject>();J->SetNumberField(TEXT("row_index"),RowIndex);J->SetStringField(TEXT("group"),Group);J->SetNumberField(TEXT("axis"),Axis);J->SetField(TEXT("requested"),Requested?Requested:MakeShared<FJsonValueNull>());J->SetStringField(TEXT("stage"),R.Stage);R.Data->SetObjectField(TEXT("raw_key_first_failure"),J);return Fail(R,Code,Error);
+}
 struct FKeyRow { double DisplayFrame = 0; FFrameNumber Time; TOptional<double> Values[9]; };
-bool ParseKeys(const FString& Source, FContext& C, TArray<FKeyRow>& Rows, FResult& R)
+bool ParseKeys(const FString& Source, FContext& C, TArray<FKeyRow>& Rows, TArray<TSharedPtr<FJsonValue>>& RawRows, FResult& R)
 {
     TSharedPtr<FJsonValue> Root;
     if (Source.Len() > MaxText || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Source), Root) || !Root.IsValid() || Root->Type != EJson::Array)
     { return Fail(R, TEXT("sequencer_keys_json_invalid"), TEXT("keys_json must be a bounded nonempty array of finite key objects.")); }
     const auto& Input = Root->AsArray();
     if (Input.IsEmpty() || Input.Num() > MaxRows) { return Fail(R, TEXT("sequencer_keys_count_invalid"), TEXT("Provide 1..512 key rows.")); }
+    if(!UnpackOriginalKeyRows(Root,TEXT("transform"),RawRows,R))return false;if(!RawRows.IsEmpty())return true;
     for (const auto& Value : Input)
     {
         if (!Value.IsValid() || Value->Type != EJson::Object) { return Fail(R, TEXT("sequencer_key_row_invalid"), TEXT("Every row must be an object.")); }
@@ -615,7 +940,7 @@ bool MaintenanceDisk(ULevelSequence* Sequence, TSharedRef<FJsonObject>& J)
 }
 bool MaintenanceSnapshotBody(FContext& C, TSharedRef<FJsonObject>& J)
 {
-    const TFunction<bool()> Current=(C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval)?TFunction<bool()>([&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("nested_retained_export_return"));}):TFunction<bool()>();
+    const TFunction<bool()> Current=(C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bSubsequenceClips)?TFunction<bool()>([&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("nested_retained_export_return"));}):TFunction<bool()>();
     J->SetBoolField(TEXT("complete"), false);
     if (!Snapshot(C, J)) { return false; } J->SetBoolField(TEXT("complete"), false);
     auto Disk = MakeShared<FJsonObject>(); auto Dirty = MakeShared<FJsonObject>(); J->SetObjectField(TEXT("disk"), Disk); J->SetObjectField(TEXT("other_package_dirty"), Dirty);
@@ -648,14 +973,16 @@ bool MaintenanceSnapshotBody(FContext& C, TSharedRef<FJsonObject>& J)
 bool MaintenanceSnapshot(FContext& C,TSharedRef<FJsonObject>& J)
 {
     const bool Captured=MaintenanceSnapshotBody(C,J);
-    if(!Captured&&(C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval))CameraMaintenanceAbort(C.CameraMaintenance,TEXT("nested_source_observation_incomplete"));
+    if(!Captured&&(C.bNestedSubsequence||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bSubsequenceClips))CameraMaintenanceAbort(C.CameraMaintenance,TEXT("nested_source_observation_incomplete"));
     return Captured;
 }
 bool MaintenanceCapture(FContext& C, FResult& R, const TCHAR* Key, TSharedRef<FJsonObject>& Out)
 {
     R.Data->SetObjectField(Key, Out); R.Data->SetBoolField(TEXT("observations_complete"), false);
+    if(!DirectorCurrent(C,R,Key,R.bSaved))return false;
     if(!CameraInsertionCheck(C.CameraInsertion,Key)||!CameraMaintenanceCheck(C.CameraMaintenance,Key))return false;
     const bool Captured=MaintenanceSnapshot(C, Out);
+    if(!DirectorCurrent(C,R,Key,R.bSaved))return false;
     if(!CameraInsertionCheck(C.CameraInsertion,Key)||!CameraMaintenanceCheck(C.CameraMaintenance,Key))return false;
     if (!Captured)
     {
@@ -767,7 +1094,7 @@ bool MaintenanceSave(FContext& C, FResult& R, const TSharedRef<FJsonObject>& Exp
     auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("asset_path"), C.Sequence->GetPathName()); Receipt->SetBoolField(TEXT("attempted"), true); Receipt->SetBoolField(TEXT("only_if_dirty"), false); Receipt->SetStringField(TEXT("route"), TEXT("UEditorAssetLibrary::SaveLoadedAsset"));
     R.Data->SetArrayField(TEXT("save_calls"), { MakeShared<FJsonValueObject>(Receipt) });
     const bool Returned = UEditorAssetLibrary::SaveLoadedAsset(C.Sequence, false); Receipt->SetBoolField(TEXT("saved"), Returned); R.bSaved = Returned; R.Data->SetBoolField(TEXT("saved"), Returned);
-    if((C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval)&&!Returned)
+    if((C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bRemovalClips)&&!Returned)
     {
         CameraMaintenanceAbort(C.CameraMaintenance,TEXT("component_removal_save_returned_false"));
         R.Data->SetBoolField(TEXT("save_returned_success"),false);
@@ -841,7 +1168,7 @@ bool MaintenanceLeafInput(FContext& C,FResult& R)
     if(!Selected||!Selected->GetParent().IsValid())return true;
     const int32 Count=C.Scene->GetPossessableCount();
     if(Count<2||Count>MaxBindings)return Fail(R,TEXT("sequencer_component_leaf_shape_unsupported"),TEXT("Bounded selected component and existing parent possessable required."));
-    if(C.Scene->GetSpawnableCount()!=0||C.Scene->GetRootFolders().Num()!=0||C.Scene->AllTaggedBindings().Num()!=0||C.Sequence->GetDirectorBlueprint())
+    if(C.Scene->GetSpawnableCount()!=0||C.Scene->GetRootFolders().Num()!=0||C.Scene->AllTaggedBindings().Num()!=0||!DirectorAllowed(C))
         return Fail(R,TEXT("sequencer_component_leaf_shape_unsupported"),TEXT("Spawnable/folder/tagged/Director variants remain incomplete; no lease or writer entered."));
     const auto* Refs=C.Sequence->GetBindingReferences();if(!Refs||Refs->GetAllReferences().Num()>MaxBindings*16)return Fail(R,TEXT("sequencer_component_leaf_references_unsupported"),TEXT("Bounded ordinary locator references required."));
     for(const auto& Ref:Refs->GetAllReferences())if(!Ref.CustomBinding.IsResolved()||Ref.CustomBinding.Get()!=nullptr)return Fail(R,TEXT("sequencer_component_leaf_custom_binding_unsupported"),TEXT("Custom bindings remain incomplete."));
@@ -969,11 +1296,11 @@ bool MaintenanceRemoveAdmission(FContext& C, FResult& R, TSharedRef<FJsonObject>
     if (!Binding || Binding->GetTracks().Num() > MaxTracks) { return Fail(R, TEXT("sequencer_remove_binding_shape_unsupported"), TEXT("Current selected binding and bounded track list required.")); }
     for (UMovieSceneTrack* Track : Binding->GetTracks())
     {
-        if (!Loaded(Track) || Track->GetOuter() != C.Scene || (Track->GetClass() != UMovieScene3DTransformTrack::StaticClass() && Track->GetClass() != UMovieSceneFloatTrack::StaticClass()) || Track->GetDecorations().Num() != 0)
-        { return Fail(R, TEXT("sequencer_remove_binding_track_unsupported"), TEXT("Only exact native Transform/Float tracks without lifetime decorations are admitted; custom tracks and callback variants remain incomplete.")); }
+        if (!Loaded(Track) || Track->GetOuter() != C.Scene || (Track->GetClass() != UMovieScene3DTransformTrack::StaticClass() && Track->GetClass() != UMovieSceneFloatTrack::StaticClass() && !(C.bRemovalClips&&SubsequenceClipKind(Track))) || Track->GetDecorations().Num() != 0)
+        { return Fail(R, TEXT("sequencer_remove_binding_track_unsupported"), TEXT("Only exact native Transform/Float or admitted Audio/SkeletalAnimation tracks without lifetime decorations are admitted; custom tracks and callback variants remain incomplete.")); }
         for (UMovieSceneSection* Section : Track->GetAllSections())
         {
-            if (!Loaded(Section) || Section->GetOuter() != Track || Section->GetDecorations().Num() != 0 || (Track->GetClass() == UMovieScene3DTransformTrack::StaticClass() ? Section->GetClass() != UMovieScene3DTransformSection::StaticClass() : Section->GetClass() != UMovieSceneFloatSection::StaticClass()))
+            if (!Loaded(Section) || Section->GetOuter() != Track || Section->GetDecorations().Num() != 0 || (C.bRemovalClips&&SubsequenceClipKind(Track) ? (SubsequenceClipKind(Track)==1 ? Section->GetClass()!=UMovieSceneSkeletalAnimationSection::StaticClass() : Section->GetClass()!=UMovieSceneAudioSection::StaticClass()) : (Track->GetClass() == UMovieScene3DTransformTrack::StaticClass() ? Section->GetClass() != UMovieScene3DTransformSection::StaticClass() : Section->GetClass() != UMovieSceneFloatSection::StaticClass())))
             { return Fail(R, TEXT("sequencer_remove_binding_section_unsupported"), TEXT("Only exact native owned sections without lifetime decorations are admitted.")); }
         }
         C.MaintenanceTracks.Emplace(Track);
@@ -986,15 +1313,21 @@ bool MaintenanceRemoveAdmission(FContext& C, FResult& R, TSharedRef<FJsonObject>
     if (AllTracks.Num() > MaxTracks) { return Fail(R, TEXT("sequencer_remove_binding_track_unsupported"), TEXT("Total track budget exceeded before mutation.")); }
     for (UMovieSceneTrack* Track : AllTracks)
     {
-        if (!Loaded(Track) || Track->GetOuter() != C.Scene || (Track->GetClass() != UMovieScene3DTransformTrack::StaticClass() && Track->GetClass() != UMovieSceneFloatTrack::StaticClass()&&!MaintenanceMixedSpawnTrack(C,Track))) { return Fail(R, TEXT("sequencer_remove_binding_external_track_unsupported"), TEXT("Camera/attachment/subsequence/custom track reference variants remain incomplete; all current tracks must be native scalar/transform tracks.")); }
+        if (!Loaded(Track) || Track->GetOuter() != C.Scene || (Track->GetClass() != UMovieScene3DTransformTrack::StaticClass() && Track->GetClass() != UMovieSceneFloatTrack::StaticClass()&&!(C.bRemovalClips&&SubsequenceClipKind(Track))&&!MaintenanceMixedSpawnTrack(C,Track))) { return Fail(R, TEXT("sequencer_remove_binding_external_track_unsupported"), TEXT("Camera/attachment/subsequence/custom track reference variants remain incomplete; all current tracks must be admitted native scalar/transform or Audio/SkeletalAnimation tracks.")); }
         for (UMovieSceneSection* Section : Track->GetAllSections())
         {
             auto Typed = MakeShared<FJsonObject>(); FMovieSceneFloatChannel* Scalar = nullptr; TArray<FMovieSceneDoubleChannel*> Transforms;
             const bool Spawn=MaintenanceMixedSpawnTrack(C,Track);
+            const int32 ClipKind=C.bRemovalClips?SubsequenceClipKind(Track):0;
             bool Supported=false;
-            if(Spawn){if(Loaded(Section)&&(Section->GetClass()==UMovieSceneBoolSection::StaticClass()||Section->GetClass()==UMovieSceneSpawnSection::StaticClass())&&Section->GetOuter()==Track&&Section->GetDecorations().Num()==0){const auto& Channel=static_cast<UMovieSceneBoolSection*>(Section)->GetChannel();const auto Times=Channel.GetTimes();const auto Values=Channel.GetValues();Supported=Times.Num()==Values.Num()&&Times.Num()<=MaxKeys;for(int32 I=1;Supported&&I<Times.Num();++I)Supported=Times[I]>=Times[I-1];}}
+            if(ClipKind)
+            {
+                const TFunction<bool()> Current=[&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("removal_clip_channel_admission_return"));};
+                Supported=Loaded(Section)&&Section->GetOuter()==Track&&Section->GetDecorations().IsEmpty()&&SubsequenceClipChannels(Section,ClipKind,Typed,Current);
+            }
+            else if(Spawn){if(Loaded(Section)&&(Section->GetClass()==UMovieSceneBoolSection::StaticClass()||Section->GetClass()==UMovieSceneSpawnSection::StaticClass())&&Section->GetOuter()==Track&&Section->GetDecorations().Num()==0){const auto& Channel=static_cast<UMovieSceneBoolSection*>(Section)->GetChannel();const auto Times=Channel.GetTimes();const auto Values=Channel.GetValues();Supported=Times.Num()==Values.Num()&&Times.Num()<=MaxKeys;for(int32 I=1;Supported&&I<Times.Num();++I)Supported=Times[I]>=Times[I-1];}}
             else Supported=Track->GetClass() == UMovieSceneFloatTrack::StaticClass() ? FloatChannel(Section, Scalar, Typed) : TransformChannels(Section, Transforms, Typed);
-            if (!Supported) { return Fail(R, TEXT("sequencer_remove_binding_external_channel_unsupported"), TEXT("All current native scalar/transform channels must have the finite ordinary shape; custom/constraint channel overrides remain incomplete.")); }
+            if (!Supported) { return Fail(R, TEXT("sequencer_remove_binding_external_channel_unsupported"), TEXT("All current admitted native scalar/transform/clip channels must have the finite ordinary shape; custom/constraint channel overrides remain incomplete.")); }
         }
     }
     FArrayProperty* PossessablesProperty = FindFProperty<FArrayProperty>(C.Scene->GetClass(), TEXT("Possessables")); FStructProperty* Inner = PossessablesProperty ? CastField<FStructProperty>(PossessablesProperty->Inner) : nullptr;
@@ -1004,10 +1337,10 @@ bool MaintenanceRemoveAdmission(FContext& C, FResult& R, TSharedRef<FJsonObject>
     { return Fail(R, TEXT("sequencer_remove_binding_storage_unobservable"), TEXT("Exact native reflected array/reference layouts are required for read-only expected-copy exports; no private storage write is used.")); }
     FUpgradedLevelSequenceBindingReferences RemainingReferences; static_cast<FMovieSceneBindingReferences&>(RemainingReferences) = *References; R.Data->SetNumberField(TEXT("expected_reference_copy_removal_calls"), 1); RemainingReferences.RemoveBinding(C.Binding);
     R.Data->SetObjectField(TEXT("removal_expected_possessables_export"), ExpectedPossessables); R.Data->SetObjectField(TEXT("removal_expected_binding_references_export"), ExpectedReferences);
-    const TFunction<bool()> Current=(C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval)?TFunction<bool()>([&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("component_removal_expected_export"));}):TFunction<bool()>();
+    const TFunction<bool()> Current=(C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bRemovalClips)?TFunction<bool()>([&C]{return CameraMaintenancePlainCheck(C.CameraMaintenance,TEXT("component_removal_expected_export"));}):TFunction<bool()>();
     if (!MaintenanceExportExpected(PossessablesProperty, &Remaining, C.Scene, ExpectedPossessables,Current) || !MaintenanceExportExpected(ReferencesProperty, &RemainingReferences, C.Sequence, ExpectedReferences,Current))
-    { if(C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval)CameraMaintenanceAbort(C.CameraMaintenance,TEXT("component_remove_expected_export_incomplete")); return Fail(R, TEXT("sequencer_remove_binding_expected_unobservable"), TEXT("The bounded expected public-copy removal cannot be exported before mutation.")); }
-    if(!C.bLeafRemoval&&!C.bHierarchyRemoval)R.Data->SetStringField(TEXT("removal_scope"), TEXT("Selected flat native possessable/local Transform or Float tracks are removed. UA additionally observes collateral native legacy spawnable declarations or nonselected SpawnableActorBinding/plain Actor templates, SpawnTrack/BoolSection, leaf folders and fixed root tags under the same fenced snapshot. Selected custom/spawnable, nested template/component/folder/hierarchy/custom callbacks and reference rewrites remain valid incomplete. No physical object deletion/GC/evaluation is claimed."));
+    { if(C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.bRemovalClips)CameraMaintenanceAbort(C.CameraMaintenance,TEXT("component_remove_expected_export_incomplete")); return Fail(R, TEXT("sequencer_remove_binding_expected_unobservable"), TEXT("The bounded expected public-copy removal cannot be exported before mutation.")); }
+    if(!C.bLeafRemoval&&!C.bHierarchyRemoval)R.Data->SetStringField(TEXT("removal_scope"), TEXT("Selected flat native possessable/local Transform, Float or admitted Audio/SkeletalAnimation tracks are removed. UA additionally observes collateral native legacy spawnable declarations or nonselected SpawnableActorBinding/plain Actor templates, SpawnTrack/BoolSection, leaf folders and fixed root tags under the same fenced snapshot. Selected custom/spawnable, nested template/component/folder/hierarchy/custom callbacks and reference rewrites remain valid incomplete. No physical object deletion/GC/evaluation is claimed."));
     return true;
 }
 // Removal-only exact JSON structure comparison: object map enumeration is not
@@ -1106,10 +1439,11 @@ FString ApplyPlaybackRange(const FString& SequencePath, double PlaybackStartFram
 
 FString AddTransformKeys(const FString& SequencePath, const FString& KeysJson, const FString& BindingId, const FString& ActorLabel)
 {
-    FResult R; Init(R, TEXT("add_level_sequence_transform_keys")); FContext C; TArray<FKeyRow> Rows;
+    FResult R; Init(R, TEXT("add_level_sequence_transform_keys")); FContext C; TArray<FKeyRow> Rows; TArray<TSharedPtr<FJsonValue>> RawRows;
     R.Data->SetNumberField(TEXT("keys_added"), 0); R.Data->SetNumberField(TEXT("scalar_keys_added"), 0);
     R.Data->SetBoolField(TEXT("created_track"), false); R.Data->SetBoolField(TEXT("created_section"), false);
-    if (!Resolve(SequencePath, C, R,true) || !ResolveBinding(C, BindingId, ActorLabel, R) || !ParseKeys(KeysJson, C, Rows, R)) { return Encode(R); }
+    if (!Resolve(SequencePath, C, R,true) || !ResolveBinding(C, BindingId, ActorLabel, R) || !ParseKeys(KeysJson, C, Rows, RawRows, R)) { return Encode(R); }
+    const bool OriginalRaw=!RawRows.IsEmpty();const int32 RequestedRows=OriginalRaw?RawRows.Num():Rows.Num();
     C.Track = C.Scene->FindTrack(UMovieScene3DTransformTrack::StaticClass(), C.Binding);
     if (C.Track)
     {
@@ -1130,27 +1464,29 @@ FString AddTransformKeys(const FString& SequencePath, const FString& KeysJson, c
         if (Requested + ExistingCount > MaxKeys)
         { Fail(R, TEXT("sequencer_channel_key_budget_exceeded"), TEXT("All requested axis counts must fit the 8192-key bound before allocation or mutation.")); return Encode(R); }
     }
-    if (!Before(C, R)) { return Encode(R); }
-    R.Stage = TEXT("mutate"); R.bAttempted = true; C.Sequence->Modify(); C.Scene->Modify();
+    TStrongObjectPtr<UMovieSceneTrack> RawTrackHold;TStrongObjectPtr<UMovieSceneSection> RawSectionHold;
+    if(OriginalRaw){RawTrackHold.Reset(C.Track);RawSectionHold.Reset(C.Section);if(!OriginalKeyCurrent(C,R))return Encode(R);}
+    if (!Before(C, R)) { return Encode(R); }if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
+    R.Stage = TEXT("mutate"); R.bAttempted = true;if(OriginalRaw)R.bKnown=false; C.Sequence->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); C.Scene->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     bool NewTrack = false, NewSection = false;
     if (!C.Track)
     {
         C.Track = C.Scene->AddTrack(UMovieScene3DTransformTrack::StaticClass(), C.Binding); NewTrack = C.Track != nullptr;
-        R.Data->SetBoolField(TEXT("created_track"), NewTrack);
+        R.Data->SetBoolField(TEXT("created_track"), NewTrack);if(OriginalRaw){RawTrackHold.Reset(C.Track);if(!OriginalKeyCurrent(C,R))return Encode(R);}
     }
     if (!Loaded(C.Track) || C.Track->GetClass() != UMovieScene3DTransformTrack::StaticClass() || C.Track->GetOuter() != C.Scene)
     {
         auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }
         Fail(R, TEXT("sequencer_transform_track_creation_failed"), TEXT("Public AddTrack did not return the exact owned native track; any observed prefix remains retained.")); return Encode(R);
     }
-    C.Track->Modify(); TStrongObjectPtr<UMovieSceneSection> KeepSection;
+    C.Track->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); TStrongObjectPtr<UMovieSceneSection> KeepSection;
     if (!C.Section)
     {
         // Base virtual dispatch avoids an unexported MinimalAPI derived override symbol.
         C.Section = C.Track->CreateNewSection(); KeepSection.Reset(C.Section);
-        R.Data->SetBoolField(TEXT("section_allocation_returned"), C.Section != nullptr);
+        R.Data->SetBoolField(TEXT("section_allocation_returned"), C.Section != nullptr);if(OriginalRaw&&!OriginalKeyCurrent(C,R,false))return Encode(R);
         if (Loaded(C.Section) && C.Section->GetClass() == UMovieScene3DTransformSection::StaticClass() && C.Section->GetOuter() == C.Track)
-        { C.Track->AddSection(*C.Section); C.Section->SetRange(TRange<FFrameNumber>::All()); NewSection = true; R.Data->SetBoolField(TEXT("created_section"), true); }
+        { C.Track->AddSection(*C.Section);if(OriginalRaw){R.Data->SetBoolField(TEXT("section_attachment_returned"),true);NewSection=true;R.Data->SetBoolField(TEXT("created_section"),true);if(!OriginalKeyCurrent(C,R))return Encode(R);} C.Section->SetRange(TRange<FFrameNumber>::All());if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); NewSection = true; R.Data->SetBoolField(TEXT("created_section"), true); }
     }
     R.Data->SetStringField(TEXT("track_path"), C.Track->GetPathName());
     if (!Loaded(C.Section) || C.Section->GetClass() != UMovieScene3DTransformSection::StaticClass() || C.Section->GetOuter() != C.Track
@@ -1159,28 +1495,56 @@ FString AddTransformKeys(const FString& SequencePath, const FString& KeysJson, c
         auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }
         Fail(R, TEXT("sequencer_transform_section_creation_failed"), TEXT("Public section creation/attachment did not yield the exact owned writable first section; observed prefix remains retained.")); return Encode(R);
     }
-    R.Data->SetStringField(TEXT("section_path"), C.Section->GetPathName()); C.Section->Modify();
+    R.Data->SetStringField(TEXT("section_path"), C.Section->GetPathName()); C.Section->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     TArray<FMovieSceneDoubleChannel*> Channels; auto Initial = MakeShared<FJsonObject>();
     if (!TransformChannels(C.Section, Channels, Initial))
     {
         auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }
         Fail(R, TEXT("sequencer_transform_channels_unsupported"), TEXT("Requires exact ordered nine native Double channels plus unchanged Float Weight; overrides/constraint channels remain outside this cohort.")); return Encode(R);
     }
+    if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     R.Data->SetObjectField(TEXT("channels_before_insertion"), Initial);
     TArray<FMovieSceneDoubleChannel> Expected; for (auto* Ch : Channels) { Expected.Add(*Ch); }
     int32 ScalarCount = 0; TArray<TSharedPtr<FJsonValue>> Insertions;
-    for (int32 I = 0; I < Rows.Num(); ++I)
+    for (int32 I = 0; I < RequestedRows; ++I)
     {
-        auto Row = MakeShared<FJsonObject>(); Row->SetNumberField(TEXT("row_index"), I); Row->SetNumberField(TEXT("display_frame"), Rows[I].DisplayFrame); Row->SetNumberField(TEXT("tick"), Rows[I].Time.Value);
+        FKeyRow OriginalRow;TSharedPtr<FJsonObject> Input;const TArray<TSharedPtr<FJsonValue>>* GroupValues=nullptr;
+        if(OriginalRaw)
+        {
+            R.Stage=TEXT("raw_key_row");const auto Value=RawRows[I];
+            if(!Value||Value->Type!=EJson::Object||!Value->AsObject()->HasTypedField<EJson::Number>(TEXT("frame")))
+            {OriginalKeyFailure(R,I,TEXT("frame"),INDEX_NONE,Value,TEXT("sequencer_raw_key_row_invalid"),TEXT("Each key must be an object with a numeric 'frame'"));break;}
+            Input=Value->AsObject();OriginalRow.DisplayFrame=Input->GetNumberField(TEXT("frame"));
+            if(!Tick(OriginalRow.DisplayFrame,C,OriginalRow.Time))
+            {OriginalKeyFailure(R,I,TEXT("frame"),INDEX_NONE,Input->TryGetField(TEXT("frame")),TEXT("sequencer_frame_out_of_range"),TEXT("Original display-frame conversion exceeds the finite native time profile; earlier insertions remain."));break;}
+        }
+        FKeyRow& Key=OriginalRaw?OriginalRow:Rows[I];
+        auto Row = MakeShared<FJsonObject>(); Row->SetNumberField(TEXT("row_index"), I); Row->SetNumberField(TEXT("display_frame"), Key.DisplayFrame); Row->SetNumberField(TEXT("tick"), Key.Time.Value);
         TArray<TSharedPtr<FJsonValue>> AxisRows;
         for (int32 Axis = 0; Axis < 9; ++Axis)
         {
-            if (!Rows[I].Values[Axis].IsSet()) { continue; }
+            if(OriginalRaw)
+            {
+                const TCHAR* Groups[]={TEXT("location"),TEXT("rotation"),TEXT("scale")};const TCHAR* Group=Groups[Axis/3];
+                if(Axis%3==0)
+                {
+                    GroupValues=nullptr;
+                    // Original TryGetArrayField silently skips absent/non-array groups.
+                    if(Input->TryGetArrayField(Group,GroupValues)&&GroupValues&&GroupValues->Num()!=3)
+                    {OriginalKeyFailure(R,I,Group,INDEX_NONE,Input->TryGetField(Group),TEXT("sequencer_raw_vector_shape_invalid"),TEXT("location/rotation/scale must be 3-element arrays when present"));break;}
+                }
+                if(!GroupValues)continue;
+                const auto Value=(*GroupValues)[Axis%3];const double Number=Value?Value->AsNumber():0.0;
+                if(!FMath::IsFinite(Number))
+                {OriginalKeyFailure(R,I,Group,Axis%3,Value,TEXT("sequencer_raw_axis_value_pending"),TEXT("Original AsNumber axis is outside finite channel storage; previous axes remain, no later writer/save."));break;}
+                Key.Values[Axis]=Number;
+            }
+            if (!Key.Values[Axis].IsSet()) { continue; }
             if (Channels[Axis]->GetTimes().Num() >= MaxKeys)
             { Fail(R, TEXT("sequencer_channel_key_budget_exceeded"), TEXT("Channel key bound reached after a known retained prefix; remaining rows are not replayed.")); break; }
-            const int32 ExpectedIndex = Expected[Axis].AddCubicKey(Rows[I].Time, Rows[I].Values[Axis].GetValue(), RCTM_Auto);
-            const int32 Index = Channels[Axis]->AddCubicKey(Rows[I].Time, Rows[I].Values[Axis].GetValue(), RCTM_Auto); ++ScalarCount;
-            auto AJ = MakeShared<FJsonObject>(); AJ->SetStringField(TEXT("channel"), ChannelNames[Axis]); AJ->SetNumberField(TEXT("insert_index"), Index); AJ->SetNumberField(TEXT("value"), Rows[I].Values[Axis].GetValue()); AxisRows.Add(MakeShared<FJsonValueObject>(AJ));
+            const int32 ExpectedIndex = Expected[Axis].AddCubicKey(Key.Time, Key.Values[Axis].GetValue(), RCTM_Auto);
+            const int32 Index = Channels[Axis]->AddCubicKey(Key.Time, Key.Values[Axis].GetValue(), RCTM_Auto); ++ScalarCount;
+            auto AJ = MakeShared<FJsonObject>(); AJ->SetStringField(TEXT("channel"), ChannelNames[Axis]); AJ->SetNumberField(TEXT("insert_index"), Index); AJ->SetNumberField(TEXT("value"), Key.Values[Axis].GetValue()); AxisRows.Add(MakeShared<FJsonValueObject>(AJ));
             auto Actual = MakeShared<FJsonObject>(); auto Wanted = MakeShared<FJsonObject>();
             if (Index != ExpectedIndex || !Channel(Channels[Axis], ChannelNames[Axis], Actual) || !Channel(&Expected[Axis], ChannelNames[Axis], Wanted) || !Same(Actual, Wanted))
             { Fail(R, TEXT("sequencer_cubic_insert_postcondition_failed"), TEXT("Actual insertion/order/Cubic/Auto tangent data differs from the public native channel-copy result; the prefix is retained.")); break; }
@@ -1190,8 +1554,8 @@ FString AddTransformKeys(const FString& SequencePath, const FString& KeysJson, c
         if (!R.Code.IsEmpty()) { break; }
         R.Data->SetNumberField(TEXT("keys_added"), I + 1);
     }
-    C.Sequence->MarkPackageDirty();
-    auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }
+    if(!OriginalRaw||R.Code.IsEmpty()){C.Sequence->MarkPackageDirty();if(OriginalRaw){R.Data->SetNumberField(TEXT("mark_package_dirty_calls"),1);if(!OriginalKeyCurrent(C,R))return Encode(R);}}else R.Data->SetNumberField(TEXT("mark_package_dirty_calls"),0);
+    auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     const bool Preserved = KeyStructurePreserved(C, After, NewTrack, NewSection);
     R.Data->SetBoolField(TEXT("nonselected_state_preserved"), Preserved);
     auto FinalChannels = MakeShared<FJsonObject>(); TArray<FMovieSceneDoubleChannel*> Final;
@@ -1205,7 +1569,7 @@ FString AddTransformKeys(const FString& SequencePath, const FString& KeysJson, c
     R.Data->SetBoolField(TEXT("weight_channel_preserved"), Typed && SameField(Initial, FinalChannels, TEXT("weight_channel")));
     R.Data->SetBoolField(TEXT("native_cubic_channels_verified"), Exact); R.Data->SetBoolField(TEXT("duplicate_tick_insertion_supported"), true);
     R.Data->SetStringField(TEXT("rotation_axis_order"), TEXT("Roll,Pitch,Yaw -> Rotation.X,Rotation.Y,Rotation.Z"));
-    R.Data->SetNumberField(TEXT("requested_key_rows"), Rows.Num()); R.Data->SetNumberField(TEXT("cubic_interpolation_value"), static_cast<uint8>(RCIM_Cubic));
+    R.Data->SetNumberField(TEXT("requested_key_rows"), RequestedRows); R.Data->SetNumberField(TEXT("cubic_interpolation_value"), static_cast<uint8>(RCIM_Cubic));
     R.Data->SetNumberField(TEXT("auto_tangent_mode_value"), static_cast<uint8>(RCTM_Auto));
     R.bPost = R.Code.IsEmpty() && Preserved && Exact && (!NewSection || C.Section->GetRange() == TRange<FFrameNumber>::All());
     if (R.Code.IsEmpty() && !R.bPost) { Fail(R, TEXT("sequencer_transform_keys_postcondition_failed"), TEXT("Target channels or unrelated bindings/tracks/sections changed unexpectedly; no rollback, compile, save or retry occurred.")); }
@@ -1229,10 +1593,11 @@ FString AddFloatPropertyKeys(const FString& SequencePath, const FString& Propert
     if (!Native(UMovieSceneFloatTrack::StaticClass(), TEXT("/Script/MovieSceneTracks.MovieSceneFloatTrack")) || !Native(UMovieSceneFloatSection::StaticClass(), TEXT("/Script/MovieSceneTracks.MovieSceneFloatSection")))
     { Fail(R, TEXT("sequencer_float_native_source_invalid"), TEXT("Exact clean loaded native FloatTrack/FloatSection class basis required.")); return Encode(R); }
     struct FScalarKey { double Frame = 0; float Value = 0; FFrameNumber Time; };
-    TArray<FScalarKey> Rows; TSharedPtr<FJsonValue> Root;
+    TArray<FScalarKey> Rows; TSharedPtr<FJsonValue> Root;TArray<TSharedPtr<FJsonValue>> RawRows;
     if (KeysJson.Len() > MaxText || !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(KeysJson), Root) || !Root.IsValid() || Root->Type != EJson::Array || Root->AsArray().IsEmpty() || Root->AsArray().Num() > MaxRows)
     { Fail(R, TEXT("sequencer_float_keys_invalid"), TEXT("Provide bounded 1..512 scalar key objects; all finite input rows are admitted before mutation.")); return Encode(R); }
-    for (const auto& Input : Root->AsArray())
+    if(!UnpackOriginalKeyRows(Root,TEXT("float"),RawRows,R))return Encode(R);const bool OriginalRaw=!RawRows.IsEmpty();
+    if(!OriginalRaw)for (const auto& Input : Root->AsArray())
     {
         if (!Input.IsValid() || Input->Type != EJson::Object) { Fail(R, TEXT("sequencer_float_key_row_invalid"), TEXT("Every scalar key must be an object with numeric frame/value.")); return Encode(R); }
         const auto J = Input->AsObject(); const auto Frame = J->TryGetField(TEXT("frame")), Value = J->TryGetField(TEXT("value")); FScalarKey Row; double Number = 0;
@@ -1258,38 +1623,55 @@ FString AddFloatPropertyKeys(const FString& SequencePath, const FString& Propert
     R.Data->SetObjectField(TEXT("existing_channel_observation"), ExistingProof);
     if (C.Section && !FloatChannel(C.Section, Existing, ExistingProof)) { Fail(R, TEXT("sequencer_float_channel_unsupported"), TEXT("Exactly one anonymous native Float channel/current curve, null override registry and no extra channels required.")); return Encode(R); }
     if ((Existing ? Existing->GetTimes().Num() : 0) + Rows.Num() > MaxKeys) { Fail(R, TEXT("sequencer_channel_key_budget_exceeded"), TEXT("Existing and requested scalar keys must fit8192 before any allocation.")); return Encode(R); }
-    if (!Before(C, R)) { return Encode(R); }
+    TStrongObjectPtr<UMovieSceneTrack> RawTrackHold;TStrongObjectPtr<UMovieSceneSection> RawSectionHold;
+    if(OriginalRaw){RawTrackHold.Reset(C.Track);RawSectionHold.Reset(C.Section);if(!OriginalKeyCurrent(C,R))return Encode(R);}
+    if (!Before(C, R)) { return Encode(R); }if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     R.Stage = TEXT("mutate"); R.bAttempted = true; R.bKnown = false;
-    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 1); C.Sequence->Modify();
-    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 2); C.Scene->Modify(); bool NewTrack = false, NewSection = false;
+    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 1); C.Sequence->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
+    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 2); C.Scene->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); bool NewTrack = false, NewSection = false;
     if (!C.Track)
     {
-        R.Data->SetNumberField(TEXT("track_create_attempts"), 1); C.Track = C.Scene->AddTrack(UMovieSceneFloatTrack::StaticClass(), C.Binding); NewTrack = C.Track != nullptr; R.Data->SetBoolField(TEXT("created_track"), NewTrack);
-        if (Loaded(C.Track) && C.Track->GetClass() == UMovieSceneFloatTrack::StaticClass() && C.Track->GetOuter() == C.Scene) { static_cast<UMovieSceneFloatTrack*>(C.Track)->SetPropertyNameAndPath(FName(*PropertyName), PropertyPath); }
+        R.Data->SetNumberField(TEXT("track_create_attempts"), 1); C.Track = C.Scene->AddTrack(UMovieSceneFloatTrack::StaticClass(), C.Binding); NewTrack = C.Track != nullptr; R.Data->SetBoolField(TEXT("created_track"), NewTrack);if(OriginalRaw){RawTrackHold.Reset(C.Track);if(!OriginalKeyCurrent(C,R))return Encode(R);}
+        if (Loaded(C.Track) && C.Track->GetClass() == UMovieSceneFloatTrack::StaticClass() && C.Track->GetOuter() == C.Scene) { static_cast<UMovieSceneFloatTrack*>(C.Track)->SetPropertyNameAndPath(FName(*PropertyName), PropertyPath);if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); }
     }
     if (!Loaded(C.Track) || C.Track->GetClass() != UMovieSceneFloatTrack::StaticClass() || C.Track->GetOuter() != C.Scene)
     { auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); } Fail(R, TEXT("sequencer_float_track_creation_failed"), TEXT("Public AddTrack prefix did not produce exact owned native FloatTrack; no retry/save.")); return Encode(R); }
-    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 3); C.Track->Modify(); TStrongObjectPtr<UMovieSceneSection> KeepSection;
+    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 3); C.Track->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); TStrongObjectPtr<UMovieSceneSection> KeepSection;
     if (!C.Section)
     {
         // Public base virtual route, never an unexported MinimalAPI derived call.
-        R.Data->SetNumberField(TEXT("section_create_attempts"), 1); C.Section = C.Track->CreateNewSection(); KeepSection.Reset(C.Section); R.Data->SetBoolField(TEXT("section_allocation_returned"), C.Section != nullptr);
-        if (Loaded(C.Section) && C.Section->GetClass() == UMovieSceneFloatSection::StaticClass() && C.Section->GetOuter() == C.Track) { C.Track->AddSection(*C.Section); C.Section->SetRange(TRange<FFrameNumber>::All()); NewSection = true; R.Data->SetBoolField(TEXT("created_section"), true); }
+        R.Data->SetNumberField(TEXT("section_create_attempts"), 1); C.Section = C.Track->CreateNewSection(); KeepSection.Reset(C.Section); R.Data->SetBoolField(TEXT("section_allocation_returned"), C.Section != nullptr);if(OriginalRaw&&!OriginalKeyCurrent(C,R,false))return Encode(R);
+        if (Loaded(C.Section) && C.Section->GetClass() == UMovieSceneFloatSection::StaticClass() && C.Section->GetOuter() == C.Track) { C.Track->AddSection(*C.Section);if(OriginalRaw){R.Data->SetBoolField(TEXT("section_attachment_returned"),true);NewSection=true;R.Data->SetBoolField(TEXT("created_section"),true);if(!OriginalKeyCurrent(C,R))return Encode(R);} C.Section->SetRange(TRange<FFrameNumber>::All());if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); NewSection = true; R.Data->SetBoolField(TEXT("created_section"), true); }
     }
     R.Data->SetStringField(TEXT("track_path"), C.Track->GetPathName());
     if (!Loaded(C.Section) || C.Section->GetClass() != UMovieSceneFloatSection::StaticClass() || C.Section->GetOuter() != C.Track || !C.Track->GetAllSections().Contains(C.Section) || C.Section->IsReadOnly())
     { auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); } Fail(R, TEXT("sequencer_float_section_creation_failed"), TEXT("Public section allocation/attachment prefix differs; no retry/save.")); return Encode(R); }
-    R.Data->SetStringField(TEXT("section_path"), C.Section->GetPathName()); R.Data->SetNumberField(TEXT("explicit_modify_calls"), 4); C.Section->Modify(); FMovieSceneFloatChannel* Actual = nullptr; auto Initial = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("channel_before_insertion"), Initial);
+    R.Data->SetStringField(TEXT("section_path"), C.Section->GetPathName()); R.Data->SetNumberField(TEXT("explicit_modify_calls"), 4); C.Section->Modify();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R); FMovieSceneFloatChannel* Actual = nullptr; auto Initial = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("channel_before_insertion"), Initial);
     if (!FloatChannel(C.Section, Actual, Initial)) { auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); } Fail(R, TEXT("sequencer_float_channel_unsupported"), TEXT("Actual new/current scalar channel shape differs; retained factory prefix, no insertion/save.")); return Encode(R); }
+    if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     FMovieSceneFloatChannel Expected(*Actual); TArray<TSharedPtr<FJsonValue>> Insertions;
-    for (int32 I = 0; I < Rows.Num(); ++I)
+    const int32 RequestedRows=OriginalRaw?RawRows.Num():Rows.Num();
+    for (int32 I = 0; I < RequestedRows; ++I)
     {
-        auto Row = MakeShared<FJsonObject>(); Row->SetNumberField(TEXT("row_index"), I); Row->SetNumberField(TEXT("display_frame"), Rows[I].Frame); Row->SetNumberField(TEXT("tick"), Rows[I].Time.Value); Row->SetNumberField(TEXT("value"), Rows[I].Value);
-        const int32 ExpectedIndex = Expected.AddCubicKey(Rows[I].Time, Rows[I].Value, RCTM_Auto); R.Data->SetNumberField(TEXT("cubic_key_attempts"), I + 1); const int32 Index = Actual->AddCubicKey(Rows[I].Time, Rows[I].Value, RCTM_Auto); Row->SetNumberField(TEXT("insert_index"), Index); Insertions.Add(MakeShared<FJsonValueObject>(Row)); R.Data->SetArrayField(TEXT("insertions"), Insertions); R.Data->SetNumberField(TEXT("keys_added"), I + 1); R.Data->SetNumberField(TEXT("scalar_keys_added"), I + 1);
+        FScalarKey OriginalRow;
+        if(OriginalRaw)
+        {
+            R.Stage=TEXT("raw_key_row");const auto Value=RawRows[I];
+            if(!Value||Value->Type!=EJson::Object||!Value->AsObject()->HasTypedField<EJson::Number>(TEXT("frame"))||!Value->AsObject()->HasTypedField<EJson::Number>(TEXT("value")))
+            {OriginalKeyFailure(R,I,TEXT("frame/value"),INDEX_NONE,Value,TEXT("sequencer_raw_float_row_invalid"),TEXT("Each key must be an object with numeric 'frame' and 'value'"));break;}
+            const auto Input=Value->AsObject();OriginalRow.Frame=Input->GetNumberField(TEXT("frame"));const double Number=Input->GetNumberField(TEXT("value"));
+            if(!Tick(OriginalRow.Frame,C,OriginalRow.Time)||!FMath::IsFinite(Number)||FMath::Abs(Number)>static_cast<double>(MAX_flt))
+            {OriginalKeyFailure(R,I,TEXT("frame/value"),INDEX_NONE,Value,TEXT("sequencer_raw_float_storage_pending"),TEXT("Original key exceeds finite time/float32 storage profile; previous rows remain, no later writer/save."));break;}
+            OriginalRow.Value=static_cast<float>(Number);
+            if(Actual->GetTimes().Num()>=MaxKeys){OriginalKeyFailure(R,I,TEXT("value"),INDEX_NONE,Value,TEXT("sequencer_channel_key_budget_exceeded"),TEXT("Finite native key bound reached after retained row prefix; no replay/save."));break;}
+        }
+        FScalarKey& Key=OriginalRaw?OriginalRow:Rows[I];
+        auto Row = MakeShared<FJsonObject>(); Row->SetNumberField(TEXT("row_index"), I); Row->SetNumberField(TEXT("display_frame"), Key.Frame); Row->SetNumberField(TEXT("tick"), Key.Time.Value); Row->SetNumberField(TEXT("value"), Key.Value);
+        const int32 ExpectedIndex = Expected.AddCubicKey(Key.Time, Key.Value, RCTM_Auto); R.Data->SetNumberField(TEXT("cubic_key_attempts"), I + 1); const int32 Index = Actual->AddCubicKey(Key.Time, Key.Value, RCTM_Auto); Row->SetNumberField(TEXT("insert_index"), Index); Insertions.Add(MakeShared<FJsonValueObject>(Row)); R.Data->SetArrayField(TEXT("insertions"), Insertions); R.Data->SetNumberField(TEXT("keys_added"), I + 1); R.Data->SetNumberField(TEXT("scalar_keys_added"), I + 1);
         auto InsertionProof = MakeShared<FJsonObject>(), Wanted = MakeShared<FJsonObject>(); const bool Exact = Index == ExpectedIndex && Channel(Actual, TEXT("Value"), InsertionProof) && Channel(&Expected, TEXT("Value"), Wanted) && Same(InsertionProof, Wanted); Row->SetBoolField(TEXT("public_copy_insert_verified"), Exact);
         if (!Exact) { Fail(R, TEXT("sequencer_cubic_insert_postcondition_failed"), TEXT("Actual scalar duplicate insertion/order/Cubic/Auto tangent differs from public channel-copy result; known inserted prefix retained.")); break; }
     }
-    R.Data->SetNumberField(TEXT("mark_package_dirty_calls"), 1); C.Sequence->MarkPackageDirty(); auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }
+    if(!OriginalRaw||R.Code.IsEmpty()){R.Data->SetNumberField(TEXT("mark_package_dirty_calls"),1);C.Sequence->MarkPackageDirty();if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);} auto After = MakeShared<FJsonObject>(); if (!CaptureAfter(C, R, After)) { return Encode(R); }if(OriginalRaw&&!OriginalKeyCurrent(C,R))return Encode(R);
     const auto CurrentTracks = C.Scene->FindTracks(UMovieSceneFloatTrack::StaticClass(), C.Binding); TArray<TSharedPtr<FJsonValue>> TrackPaths, SectionPaths;
     for (UMovieSceneTrack* BoundTrack : CurrentTracks) { if (Loaded(BoundTrack)) { TrackPaths.Add(MakeShared<FJsonValueString>(BoundTrack->GetPathName())); } else { TrackPaths.Add(MakeShared<FJsonValueNull>()); } }
     bool Attached = Loaded(C.Track) && C.Track->GetClass() == UMovieSceneFloatTrack::StaticClass() && C.Track->GetOuter() == C.Scene && CurrentTracks.Contains(C.Track);
@@ -1305,7 +1687,7 @@ FString AddFloatPropertyKeys(const FString& SequencePath, const FString& Propert
     auto Final = MakeShared<FJsonObject>(), Wanted = MakeShared<FJsonObject>(); FMovieSceneFloatChannel* Current = nullptr; const bool Typed = Attached && FloatChannel(C.Section, Current, Final); R.Data->SetObjectField(TEXT("channel_after_insertion"), Final);
     auto ActualData = MakeShared<FJsonObject>(); const bool Exact = Typed && Channel(Current, TEXT("Value"), ActualData) && Channel(&Expected, TEXT("Value"), Wanted) && Same(ActualData, Wanted);
     const bool Property = Attached && static_cast<UMovieSceneFloatTrack*>(C.Track)->GetPropertyPath().ToString() == PropertyPath && static_cast<UMovieSceneFloatTrack*>(C.Track)->GetPropertyName() == FName(*PropertyName);
-    R.Data->SetBoolField(TEXT("native_cubic_channel_verified"), Exact); R.Data->SetBoolField(TEXT("property_binding_metadata_verified"), Property); R.Data->SetBoolField(TEXT("duplicate_tick_insertion_supported"), true); R.Data->SetNumberField(TEXT("requested_key_rows"), Rows.Num()); R.Data->SetNumberField(TEXT("cubic_interpolation_value"), static_cast<uint8>(RCIM_Cubic)); R.Data->SetNumberField(TEXT("auto_tangent_mode_value"), static_cast<uint8>(RCTM_Auto));
+    R.Data->SetBoolField(TEXT("native_cubic_channel_verified"), Exact); R.Data->SetBoolField(TEXT("property_binding_metadata_verified"), Property); R.Data->SetBoolField(TEXT("duplicate_tick_insertion_supported"), true); R.Data->SetNumberField(TEXT("requested_key_rows"), RequestedRows); R.Data->SetNumberField(TEXT("cubic_interpolation_value"), static_cast<uint8>(RCIM_Cubic)); R.Data->SetNumberField(TEXT("auto_tangent_mode_value"), static_cast<uint8>(RCTM_Auto));
     R.bPost = R.Code.IsEmpty() && Preserved && Exact && Property && (!NewSection || C.Section->GetRange() == TRange<FFrameNumber>::All());
     if (R.Code.IsEmpty() && !R.bPost) { Fail(R, TEXT("sequencer_float_keys_postcondition_failed"), TEXT("Actual scalar curve/property metadata or nonselected bindings/tracks/sections differ; no compile/save/rollback/retry.")); }
     if (R.bPost) { R.bSuccess = true; R.Stage = TEXT("complete"); } return Encode(R);
@@ -1391,8 +1773,86 @@ struct FCameraMaintenanceScope
     struct FSceneRole{FContext* Context=nullptr;UMovieSceneCameraCutTrack* Cut=nullptr;TArray<UMovieSceneTrack*> Roots;TArray<FBindingRole> Bindings;TRange<FFrameNumber> Playback;FFrameRate Display,Resolution;bool ReadOnly=false;FString CutPath;TSharedPtr<FJsonObject> CutFields;};
     struct FTrackRole{UMovieSceneTrack* Track=nullptr;TArray<UMovieSceneSection*> Sections;};
     struct FCutRole{UMovieSceneCameraCutTrack* Track=nullptr;UMovieSceneCameraCutSection* Section=nullptr;TRange<FFrameNumber> Range;FMovieSceneObjectBindingID Binding;};
+    struct FClipRole{UMovieSceneSection* Section=nullptr;int32 Kind=0;UObject* Source=nullptr;};
+    struct FClipSource{UObject* Asset=nullptr;TSharedPtr<FJsonObject> Before;};
     FContext& Parent;FContext* Child;FResult& R;TWeakObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;FString WorldPath;UPackage* TargetPackage=nullptr;
     TArray<FHeld> Held;TArray<FSceneRole> Scenes;TArray<FTrackRole> Tracks;TArray<FCutRole> Cuts;bool Stopped=false,Lease=false;
+    TArray<FClipRole> Clips;TArray<FClipSource> ClipSources;TSharedPtr<FJsonObject> ClipChannelsBefore;bool ClipsSealed=false,ObservingClips=false;
+    bool ClipPlain(const TCHAR* Stage)
+    {
+        for(const auto& Clip:Clips)
+        {
+            TObjectPtr<UObject> Actual;
+            // ObjectPtr.h shallow equality on resolved handles avoids a tracked read in Check's final pure fence.
+            if(!Loaded(Clip.Section)||!SubsequenceClipSlot(Clip.Section,Clip.Kind,Actual)||Actual!=Clip.Source)return Stop(Stage);
+        }
+        return true;
+    }
+    bool BindClip(UMovieSceneSection* Section,int32 Kind)
+    {
+        const TCHAR* Stage=TEXT("subsequence_clip_source_bind");UObject* Asset=nullptr;
+        // ADJ acquires a source hold from resolved slot metadata before any tracked read.
+        TObjectPtr<UObject> Slot;
+        const bool ReferenceRead=Parent.bRemovalClips?SubsequenceClipSlot(Section,Kind,Slot):SubsequenceClipReference(Section,Kind,Asset);
+        if(Parent.bRemovalClips&&ReferenceRead&&Slot!=nullptr)Asset=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),false);
+        TStrongObjectPtr<UObject> ReturnedAsset(Asset);
+        if(!ReferenceRead||!Context(Stage))return Stop(Stage);
+        if(Parent.bRemovalClips){TObjectPtr<UObject> Actual;if(!SubsequenceClipSlot(Section,Kind,Actual)||!Slot.IsResolved()||Slot.GetHandle()!=Actual.GetHandle()||(Slot!=nullptr&&(!Loaded(Asset)||TObjectPtr<UObject>(Asset).GetHandle()!=Slot.GetHandle())))return Stop(Stage);}
+        FClipRole Clip;Clip.Section=Section;Clip.Kind=Kind;Clip.Source=Asset;
+        if(Asset)
+        {
+            if(!Pin(Asset,Stage)||!Pin(Asset->GetClass(),Stage)||!Pin(Asset->GetPackage(),Stage))return false;
+            UClass* Expected=Kind==1?UAnimSequence::StaticClass():USoundWave::StaticClass();
+            const TCHAR* ExpectedPath=Kind==1?TEXT("/Script/Engine.AnimSequence"):TEXT("/Script/Engine.SoundWave");
+            UPackage* Package=Asset->GetPackage();
+            if(Asset->GetClass()!=Expected||!Native(Expected,ExpectedPath)||Asset->GetOuter()!=Package||Package==TargetPackage||!Package->IsFullyLoaded()||Package->IsDirty()||Package->HasAnyPackageFlags(PKG_PlayInEditor|PKG_EditorOnly|PKG_CompiledIn)||Asset->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||Asset->IsEditorOnly()||(!Package->GetName().StartsWith(TEXT("/Game/"))&&!Package->GetName().StartsWith(TEXT("/Engine/"))))return Stop(Stage);
+            bool Found=false;for(const auto& Source:ClipSources)Found|=Source.Asset==Asset;
+            if(!Found){FClipSource Source;Source.Asset=Asset;ClipSources.Add(MoveTemp(Source));}
+        }
+        Clips.Add(Clip);return ClipPlain(Stage);
+    }
+    bool ClipFiles(UObject* Asset,TSharedRef<FJsonObject>& Files)
+    {
+        FString Filename;if(!FPackageName::TryConvertLongPackageNameToFilename(Asset->GetPackage()->GetName(),Filename,FPackageName::GetAssetPackageExtension()))return false;
+        Filename=FPaths::ConvertRelativePathToFull(Filename);
+        // Retain package sidecar evidence as well as the header. No bulk/audio decode or stream request.
+        for(const TCHAR* Extension:{TEXT("uasset"),TEXT("uexp"),TEXT("ubulk"),TEXT("uptnl")})
+        {
+            const FString Path=FPaths::ChangeExtension(Filename,Extension);const int64 Size=IFileManager::Get().FileSize(*Path);
+            auto File=MakeShared<FJsonObject>();File->SetStringField(TEXT("path"),Path);File->SetBoolField(TEXT("exists"),Size>=0);File->SetNumberField(TEXT("bytes"),FMath::Max<int64>(Size,0));File->SetStringField(TEXT("sha1"),TEXT(""));Files->SetObjectField(Extension,File);
+            if(Size<0){if(FCString::Strcmp(Extension,TEXT("uasset"))==0)return false;continue;}
+            if((Size==0&&FCString::Strcmp(Extension,TEXT("uasset"))==0)||Size>64*1024*1024)return false;TArray<uint8> Bytes;if(!FFileHelper::LoadFileToArray(Bytes,*Path)||Bytes.Num()!=Size)return false;
+            uint8 Hash[FSHA1::DigestSize];FSHA1::HashBuffer(Bytes.GetData(),Bytes.Num(),Hash);File->SetStringField(TEXT("sha1"),BytesToHex(Hash,FSHA1::DigestSize));
+        }
+        return true;
+    }
+    bool ObserveClips(const TCHAR* Stage)
+    {
+        if(Clips.IsEmpty()||ObservingClips)return true;
+        TGuardValue<bool> Guard(ObservingClips,true);const TFunction<bool()> Fence=[this,Stage]{return Check(Stage,false,false);};
+        auto ClipState=MakeShared<FJsonObject>();
+        for(const auto& Clip:Clips)
+        {
+            auto Channels=MakeShared<FJsonObject>();
+            if(!SubsequenceClipChannels(Clip.Section,Clip.Kind,Channels,Fence))return Stop(Stage);
+            ClipState->SetObjectField(Clip.Section->GetPathName(),Channels);
+        }
+        R.Data->SetObjectField(Parent.bRemovalClips?TEXT("removal_readonly_clip_channels"):TEXT("subsequence_readonly_clip_channels"),ClipState);
+        if(ClipChannelsBefore.IsValid()&&!(Parent.bRemovalClips?CameraLiteral(MakeShared<FJsonValueObject>(ClipChannelsBefore),MakeShared<FJsonValueObject>(ClipState),0):Same(ClipChannelsBefore.ToSharedRef(),ClipState)))return SiblingStop(Stage,(Parent.bRemovalClips?Parent.Sequence:Child->Sequence)->GetPathName(),TEXT("Readonly clip references/weight/volume/pitch channels changed."),ClipChannelsBefore,ClipState);
+        if(!ClipChannelsBefore.IsValid())ClipChannelsBefore=ClipState;
+        auto Sources=MakeShared<FJsonObject>();R.Data->SetObjectField(Parent.bRemovalClips?(ClipsSealed?TEXT("removal_clip_sources_after"):TEXT("removal_clip_sources_before")):(ClipsSealed?TEXT("subsequence_clip_sources_after"):TEXT("subsequence_clip_sources_before")),Sources);
+        for(auto& Source:ClipSources)
+        {
+            if(!Fence())return false;auto Now=Identity(Source.Asset);auto Fields=MakeShared<FJsonObject>(),Files=MakeShared<FJsonObject>();
+            Sources->SetObjectField(Source.Asset->GetPathName(),Now);Now->SetObjectField(TEXT("authored_fields"),Fields);Now->SetObjectField(TEXT("package_files"),Files);
+            TSet<FName> Skip;
+            for(TFieldIterator<FProperty> It(Source.Asset->GetClass(),EFieldIteratorFlags::IncludeSuper);It;++It)if(It->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient))Skip.Add(It->GetFName());
+            if(!ObjectProperties(Source.Asset,Skip,Fields,Fence)||!ClipFiles(Source.Asset,Files)||!Fence())return Stop(Stage);
+            if(Source.Before.IsValid()&&!(Parent.bRemovalClips?CameraLiteral(MakeShared<FJsonValueObject>(Source.Before),MakeShared<FJsonValueObject>(Now),0):Same(Source.Before.ToSharedRef(),Now)))return SiblingStop(Stage,Source.Asset->GetPathName(),TEXT("Readonly clip source authored fields/package files changed; no playback, source write/save or retry."),Source.Before,Now);
+            if(!Source.Before.IsValid())Source.Before=Now;
+        }
+        ClipsSealed=true;R.Data->SetBoolField(Parent.bRemovalClips?TEXT("removal_clip_sources_preserved"):TEXT("subsequence_clip_sources_preserved"),true);return true;
+    }
     // Expected value copies predate the first reflected observer. Phase0: original;
     // phase1: possessable/binding removed, references unchanged; phase2: selected references removed.
     TArray<FMovieScenePossessable> LeafBefore,LeafRemaining;
@@ -1739,10 +2199,12 @@ struct FCameraMaintenanceScope
     {
         for(const auto& P:Tracks)if(P.Track==T)return true;
         if(!Pin(T,TEXT("camera_maintenance_track_bind")))return false;
-        if(T->GetClass()!=UMovieScene3DTransformTrack::StaticClass()&&T->GetClass()!=UMovieSceneFloatTrack::StaticClass()&&T->GetClass()!=UMovieSceneSubTrack::StaticClass()&&T->GetClass()!=UMovieSceneCameraCutTrack::StaticClass()&&!MaintenanceMixedSpawnTrack(Parent,T))return Stop(TEXT("camera_maintenance_track_class"));
+        const int32 ClipKind=((Parent.bRemovalClips&&T->GetOuter()==Parent.Scene)||(Child&&Child->bSubsequenceClips&&T->GetOuter()==Child->Scene))?SubsequenceClipKind(T):0;
+        if(T->GetClass()!=UMovieScene3DTransformTrack::StaticClass()&&T->GetClass()!=UMovieSceneFloatTrack::StaticClass()&&T->GetClass()!=UMovieSceneSubTrack::StaticClass()&&T->GetClass()!=UMovieSceneCameraCutTrack::StaticClass()&&!ClipKind&&!MaintenanceMixedSpawnTrack(Parent,T))return Stop(TEXT("camera_maintenance_track_class"));
+        if(Parent.bRemovalClips&&ClipKind&&(T->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||T->GetDecorations().Num()!=0))return Stop(TEXT("removal_clip_track_profile"));
         FTrackRole Row;Row.Track=T;
-        const auto& Current=T->GetAllSections();if(Current.Num()>MaxSections)return Stop(TEXT("camera_maintenance_section_budget"));
-        for(auto* S:Current){if(!Pin(S,TEXT("camera_maintenance_section_bind"))||S->GetOuter()!=T)return Stop(TEXT("camera_maintenance_section_bind"));Row.Sections.Add(S);}
+        const TArray<UMovieSceneSection*> Current=T->GetAllSections();if(Current.Num()>MaxSections)return Stop(TEXT("camera_maintenance_section_budget"));
+        for(auto* S:Current){if(!Pin(S,TEXT("camera_maintenance_section_bind"))||S->GetOuter()!=T)return Stop(TEXT("camera_maintenance_section_bind"));Row.Sections.Add(S);if(Parent.bRemovalClips&&ClipKind&&(S->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||S->GetDecorations().Num()!=0))return Stop(TEXT("removal_clip_section_profile"));if(ClipKind&&!BindClip(S,ClipKind))return false;}
         Tracks.Add(MoveTemp(Row));return true;
     }
     bool BindScene(FContext& C)
@@ -1751,7 +2213,7 @@ struct FCameraMaintenanceScope
         FSceneRole Row;Row.Context=&C;Row.Playback=C.Scene->GetPlaybackRange();Row.Display=C.Scene->GetDisplayRate();Row.Resolution=C.Scene->GetTickResolution();Row.ReadOnly=C.Scene->IsReadOnly();Row.Roots=C.Scene->GetTracks();
         auto* Base=C.Scene->GetCameraCutTrack();Row.Cut=Base&&Loaded(Base)&&Base->GetClass()==UMovieSceneCameraCutTrack::StaticClass()?static_cast<UMovieSceneCameraCutTrack*>(Base):nullptr;
         if(Base&&!Row.Cut)return Stop(TEXT("camera_maintenance_cut_class"));
-        if(Row.Roots.Num()>MaxTracks||static_cast<const UMovieScene*>(C.Scene)->GetBindings().Num()>MaxBindings||C.Sequence->GetDirectorBlueprint())return Stop(TEXT("camera_maintenance_scene_bound"));
+        if(Row.Roots.Num()>MaxTracks||static_cast<const UMovieScene*>(C.Scene)->GetBindings().Num()>MaxBindings||!DirectorAllowed(C))return Stop(TEXT("camera_maintenance_scene_bound"));
         for(auto* T:Row.Roots)if(!CaptureTrack(T))return false;
         for(const auto& B:static_cast<const UMovieScene*>(C.Scene)->GetBindings()){FBindingRole Binding;Binding.Guid=B.GetObjectGuid();Binding.Tracks=B.GetTracks();for(auto* T:Binding.Tracks)if(!CaptureTrack(T))return false;Row.Bindings.Add(MoveTemp(Binding));}
         if(Row.Cut)
@@ -1778,6 +2240,11 @@ struct FCameraMaintenanceScope
         if(Child&&(!Native(UMovieSceneSubTrack::StaticClass(),TEXT("/Script/MovieScene.MovieSceneSubTrack"))||!Native(UMovieSceneSubSection::StaticClass(),TEXT("/Script/MovieScene.MovieSceneSubSection"))))return Fail(R,TEXT("sequencer_subsequence_native_source_required"),TEXT("Exact loaded native runtime SubTrack/SubSection sources required."));
         for(UClass* Type:{ULevelSequence::StaticClass(),UMovieScene::StaticClass(),UMovieScene3DTransformTrack::StaticClass(),UMovieScene3DTransformSection::StaticClass(),UMovieSceneFloatTrack::StaticClass(),UMovieSceneFloatSection::StaticClass()})if(!Pin(Type,TEXT("camera_maintenance_native_source")))return false;
         if(Child&&(!Pin(UMovieSceneSubTrack::StaticClass(),TEXT("camera_maintenance_sub_source"))||!Pin(UMovieSceneSubSection::StaticClass(),TEXT("camera_maintenance_sub_source"))))return false;
+        if(Parent.bRemovalClips||(Child&&Child->bSubsequenceClips))
+        {
+            for(UClass* Type:{UMovieSceneSkeletalAnimationTrack::StaticClass(),UMovieSceneSkeletalAnimationSection::StaticClass(),UMovieSceneAudioTrack::StaticClass(),UMovieSceneAudioSection::StaticClass()})
+                if(!Native(Type,*FString::Printf(TEXT("/Script/MovieSceneTracks.%s"),*Type->GetName()))||!Pin(Type,TEXT("subsequence_clip_native_source")))return Stop(TEXT("subsequence_clip_native_source"));
+        }
         if(!BindScene(Parent)||(Child&&!BindScene(*Child)))return false;
         if(Nested)
         {
@@ -1787,7 +2254,14 @@ struct FCameraMaintenanceScope
         }
         if(Parent.bMixedRemoval){if(!BindLeaf(false)||!BindMixed()||!SealLeaf())return false;}else if(!BindLeaf())return false;
         R.Data->SetBoolField(TEXT("camera_maintenance_scope"),true);R.Data->SetBoolField(TEXT("camera_binding_literals_rewritten"),false);R.Data->SetBoolField(TEXT("SDK_internal_callback_atomicity_proven"),false);
-        return Check(TEXT("camera_maintenance_bound"));
+        if(!Check(TEXT("camera_maintenance_bound")))return false;
+        if(Parent.bRemovalClips||(Child&&Child->bSubsequenceClips))
+        {
+            R.Data->SetStringField(Parent.bRemovalClips?TEXT("removal_clip_scope"):TEXT("subsequence_clip_scope"),Parent.bRemovalClips?TEXT("Original possessable removal with exact native Audio/SkeletalAnimation selected or collateral tracks; their held sections/channels and nullable or already loaded clean persisted AnimSequence/SoundWave sources remain unchanged after declaration retirement. Fixed animation play-rate, no MirrorDataTable/attenuation reference and empty sound-input maps; original RemovePossessable/Unbind/dirty/save and actual partial failure order retained. No clip source writer/save/load, playback, channel-proxy/root-motion construction, physical object deletion or new callback atomicity guarantee. Wider clip sources/parameters/decorations/custom classes remain incomplete."):TEXT("Readonly exact native SkeletalAnimation/Audio tracks and sections in selected Child; nullable or already resolved loaded clean persisted AnimSequence/SoundWave assets in separate Game/Engine packages. Fixed animation play-rate, no MirrorDataTable/attenuation override reference, empty sound input maps. Copied weight/volume/pitch channels and existing section fields/attachment data preserved without channel proxy construction, playback, root-motion/locale lookup, clip authoring or source save. Bounded nontransient reflected source fields and uasset/uexp/ubulk/uptnl files are observed; transitive source dependency graphs, decoded/virtualized bulk payload and wider clip families remain incomplete."));
+            R.Data->SetBoolField(Parent.bRemovalClips?TEXT("removal_clip_source_write_dispatched"):TEXT("subsequence_clip_source_write_dispatched"),false);R.Data->SetBoolField(Parent.bRemovalClips?TEXT("removal_clip_channel_proxy_requested"):TEXT("subsequence_clip_channel_proxy_requested"),false);
+            if(!ObserveClips(TEXT("subsequence_clip_source_before")))return false;
+        }
+        return true;
     }
     bool Check(const TCHAR* Stage,bool SaveReturned=false,bool ObserveSiblings=true)
     {
@@ -1800,7 +2274,7 @@ struct FCameraMaintenanceScope
         for(const auto& Row:Scenes)
         {
             auto& C=*Row.Context;
-            if(C.Sequence->GetMovieScene()!=C.Scene||C.Scene->GetOuter()!=C.Sequence||C.Sequence->GetDirectorBlueprint()||C.Scene->IsReadOnly()!=Row.ReadOnly||C.Scene->GetPlaybackRange()!=Row.Playback||C.Scene->GetDisplayRate()!=Row.Display||C.Scene->GetTickResolution()!=Row.Resolution||C.Scene->GetCameraCutTrack()!=Row.Cut||C.Scene->GetTracks()!=Row.Roots)return Stop(Stage);
+            if(C.Sequence->GetMovieScene()!=C.Scene||C.Scene->GetOuter()!=C.Sequence||!DirectorCurrent(C,R,Stage,SaveReturned)||C.Scene->IsReadOnly()!=Row.ReadOnly||C.Scene->GetPlaybackRange()!=Row.Playback||C.Scene->GetDisplayRate()!=Row.Display||C.Scene->GetTickResolution()!=Row.Resolution||C.Scene->GetCameraCutTrack()!=Row.Cut||C.Scene->GetTracks()!=Row.Roots)return Stop(Stage);
             const auto& Bindings=static_cast<const UMovieScene*>(C.Scene)->GetBindings();if(Bindings.Num()!=Row.Bindings.Num())return Stop(Stage);
             for(int32 I=0;I<Bindings.Num();++I)if(Bindings[I].GetObjectGuid()!=Row.Bindings[I].Guid||Bindings[I].GetTracks()!=Row.Bindings[I].Tracks)return Stop(Stage);
             if(Row.Cut&&!CameraTrackIdentity(C,Row.Cut))return Stop(Stage);
@@ -1808,11 +2282,12 @@ struct FCameraMaintenanceScope
         for(const auto& Row:Tracks){const auto& Now=Row.Track->GetAllSections();if(Now!=Row.Sections)return Stop(Stage);}
         for(const auto& Cut:Cuts)if(!CameraSectionIdentity(Cut.Track,Cut.Section)||Cut.Section->GetRange()!=Cut.Range||Cut.Section->GetCameraBindingID()!=Cut.Binding)return Stop(Stage);
         if(Nested&&(!Child||!Nested->Current(*Child)))return Stop(Stage);
-        if(!LeafPlain(Stage)||!MixedPlain(Stage))return false;
+        if(!LeafPlain(Stage)||!MixedPlain(Stage)||!ClipPlain(Stage))return false;
         return !ObserveSiblings||(ObserveLeaf(Stage)&&ObserveMixed(Stage)&&CheckSiblingSnapshots(Stage));
     }
     bool Observe(FContext& C,const TSharedRef<FJsonObject>& State,const TCHAR* Stage)
     {
+        if(!ObserveClips(Stage))return false;
         for(auto& Row:Scenes)if(Row.Context==&C&&Row.Cut)
         {
             const auto Track=State->GetObjectField(TEXT("tracks"))->GetObjectField(Row.CutPath);
@@ -1928,7 +2403,7 @@ struct FCameraMaintenanceScope
         if(!Pin(Sequence,Stage)||!Pin(Sequence->GetPackage(),Stage))return false;
         const bool Resolved=Resolve(Sequence->GetPathName(),*Pending,Admission);if(!Check(Stage))return false;
         if(!Resolved||Pending->Sequence!=Sequence)return Fail(R,TEXT("sequencer_subsequence_sibling_unsupported"),Admission.Error.IsEmpty()?TEXT("Exact same loaded source identity is required."):Admission.Error);
-        if(Pending->Sequence->GetDirectorBlueprint()||Pending->Scene->GetTracks().Num()>MaxTracks||static_cast<const UMovieScene*>(Pending->Scene)->GetBindings().Num()>MaxBindings)
+        if(!DirectorAllowed(*Pending)||Pending->Scene->GetTracks().Num()>MaxTracks||static_cast<const UMovieScene*>(Pending->Scene)->GetBindings().Num()>MaxBindings)
             return Fail(R,TEXT("sequencer_subsequence_sibling_leaf_unsupported"),TEXT("Readonly siblings require a finite native leaf without Director Blueprint."));
         const auto LeafTrack=[](UMovieSceneTrack* Track){return Loaded(Track)&&(Track->GetClass()==UMovieSceneFloatTrack::StaticClass()||Track->GetClass()==UMovieScene3DTransformTrack::StaticClass());};
         for(auto* Track:Pending->Scene->GetTracks())if(!LeafTrack(Track))return Fail(R,TEXT("sequencer_subsequence_sibling_leaf_unsupported"),TEXT("Nested/custom sibling root tracks remain incomplete; this valid broader legacy behavior is not silently substituted."));
@@ -2018,7 +2493,12 @@ FString RemoveBinding(const FString& SequencePath, const FString& BindingId, con
     if (!Resolve(SequencePath, C, R,true) || !MaintenanceReady(C, R) || !MaintenanceResolveBinding(C, BindingId, ActorLabel, R)) { return Encode(R); }
     TUniquePtr<FCameraMaintenanceScope> Camera;
     if(!MaintenanceHierarchyInput(C,R)||!MaintenanceLeafInput(C,R)||!MaintenanceMixedInput(C,R))return Encode(R);
-    if(C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.Scene->GetCameraCutTrack()){Camera=MakeUnique<FCameraMaintenanceScope>(C,nullptr,R);if(!Camera->Bind())return Encode(R);}
+    // ADJ selects existing exact clip observers once; no source loader, evaluator or clip writer.
+    TArray<UMovieSceneTrack*> ClipInventory=C.Scene->GetTracks();for(const auto& Binding:static_cast<const UMovieScene*>(C.Scene)->GetBindings())ClipInventory.Append(Binding.GetTracks());
+    if(ClipInventory.Num()>MaxTracks){Fail(R,TEXT("sequencer_remove_binding_track_unsupported"),TEXT("Total track budget exceeded before clip admission."));return Encode(R);}
+    for(auto* Track:ClipInventory)C.bRemovalClips|=SubsequenceClipKind(Track)!=0;
+    C.bSubsequenceClips=C.bRemovalClips;
+    if(C.bRemovalClips||C.bLeafRemoval||C.bMixedRemoval||C.bHierarchyRemoval||C.Scene->GetCameraCutTrack()||C.Director.IsValid()){Camera=MakeUnique<FCameraMaintenanceScope>(C,nullptr,R);if(!Camera->Bind())return Encode(R);}
     TSharedPtr<FJsonObject> PublicationExpected;
     auto RunMutation=[&]()->FString
     {
@@ -2072,11 +2552,12 @@ FString RemoveBinding(const FString& SequencePath, const FString& BindingId, con
 
 namespace
 {
-bool SubsequenceOrdinaryTrack(UMovieSceneTrack* Track, UMovieScene* Scene, bool bAllowSub)
+bool SubsequenceOrdinaryTrack(UMovieSceneTrack* Track, UMovieScene* Scene, bool bAllowSub,bool bAllowClip=false,const TFunction<bool()>& ClipCurrent={})
 {
     if (!Loaded(Track) || Track->GetOuter() != Scene || Track->HasAnyFlags(RF_Transient | RF_ClassDefaultObject | RF_ArchetypeObject) || Track->IsEditorOnly() || Track->GetDecorations().Num() != 0) { return false; }
     const bool Sub = bAllowSub && Track->GetClass() == UMovieSceneSubTrack::StaticClass();
-    if (!Sub && Track->GetClass() != UMovieSceneFloatTrack::StaticClass() && Track->GetClass() != UMovieScene3DTransformTrack::StaticClass()) { return false; }
+    const int32 ClipKind=bAllowClip?SubsequenceClipKind(Track):0;
+    if (!Sub && !ClipKind && Track->GetClass() != UMovieSceneFloatTrack::StaticClass() && Track->GetClass() != UMovieScene3DTransformTrack::StaticClass()) { return false; }
     if (Track->GetAllSections().Num() >= MaxSections) { return false; }
     for (UMovieSceneSection* Section : Track->GetAllSections())
     {
@@ -2084,6 +2565,10 @@ bool SubsequenceOrdinaryTrack(UMovieSceneTrack* Track, UMovieScene* Scene, bool 
         if (Sub)
         {
             if (Section->GetClass() != UMovieSceneSubSection::StaticClass() || Section->GetRowIndex() < 0 || Section->GetRowIndex() >= MaxSections) { return false; }
+        }
+        else if(ClipKind)
+        {
+            auto Clip=MakeShared<FJsonObject>();if(!SubsequenceClipChannels(Section,ClipKind,Clip,ClipCurrent))return false;
         }
         else
         {
@@ -2095,7 +2580,7 @@ bool SubsequenceOrdinaryTrack(UMovieSceneTrack* Track, UMovieScene* Scene, bool 
 }
 bool SubsequenceSiblingLeafAdmission(FContext& C,FResult& R)
 {
-    if(C.Sequence->GetDirectorBlueprint())return Fail(R,TEXT("sequencer_subsequence_sibling_leaf_unsupported"),TEXT("Director sibling sources remain incomplete."));
+    if(!DirectorAllowed(C))return Fail(R,TEXT("sequencer_subsequence_sibling_leaf_unsupported"),TEXT("Director sibling sources remain incomplete."));
     const auto* References=C.Sequence->GetBindingReferences();
     if(!References||References->GetAllReferences().Num()>MaxBindings*16)return Fail(R,TEXT("sequencer_subsequence_sibling_reference_budget"),TEXT("Bounded existing sibling binding references are required."));
     for(const auto& Reference:References->GetAllReferences())if(Reference.CustomBinding)return Fail(R,TEXT("sequencer_subsequence_sibling_custom_binding_unsupported"),TEXT("Custom sibling bindings remain incomplete; no locator or world resolution is performed."));
@@ -2138,7 +2623,7 @@ bool SubsequenceNestedInput(FContext& Parent,FContext& Child,FNestedSubsequenceR
     if(Leaf==Parent.Sequence||Leaf==Child.Sequence||Leaf->GetPackage()==Parent.Sequence->GetPackage()||Leaf->GetPackage()==Child.Sequence->GetPackage())return Fail(R,TEXT("sequencer_subsequence_nested_alias_cycle"),TEXT("Fixed Parent/Child/Leaf asset and package identities must be distinct; no SDK recursive cycle query."));
     Role.SourceContext=MakeUnique<FContext>();FContext& LeafContext=*Role.SourceContext;FResult Admission;if(!Resolve(Leaf->GetPathName(),LeafContext,Admission))return Fail(R,TEXT("sequencer_subsequence_nested_loaded_leaf_required"),Admission.Error);
     Role.LeafScene.Reset(LeafContext.Scene);Admission.bSaveRequested=R.bSaveRequested;if(!MaintenanceReady(LeafContext,Admission))return Fail(R,Admission.Code.IsEmpty()?TEXT("sequencer_subsequence_nested_profile_unsupported"):*Admission.Code,Admission.Error);
-    if(Child.Sequence->GetDirectorBlueprint()||Leaf->GetDirectorBlueprint())return Fail(R,TEXT("sequencer_subsequence_nested_profile_unsupported"),TEXT("Director sources remain incomplete."));
+    if(!DirectorAllowed(Child)||!DirectorAllowed(*Role.SourceContext))return Fail(R,TEXT("sequencer_subsequence_nested_profile_unsupported"),TEXT("Director sources remain incomplete."));
     if(LeafContext.Scene->GetTracks().Num()>MaxTracks||static_cast<const UMovieScene*>(LeafContext.Scene)->GetBindings().Num()>MaxBindings)return Fail(R,TEXT("sequencer_subsequence_nested_profile_unsupported"),TEXT("Finite leaf inventory required."));
     TArray<UMovieSceneTrack*> LeafTracks=LeafContext.Scene->GetTracks();for(const auto& B:static_cast<const UMovieScene*>(LeafContext.Scene)->GetBindings())LeafTracks.Append(B.GetTracks());
     for(UMovieSceneTrack* T:LeafTracks)if(!Loaded(T)||(T->GetClass()!=UMovieSceneFloatTrack::StaticClass()&&T->GetClass()!=UMovieScene3DTransformTrack::StaticClass()))return Fail(R,TEXT("sequencer_subsequence_nested_depth_unsupported"),TEXT("Leaf root/bound tracks must be ordinary native Float/Transform; nested/deeper/cyclic/custom leaves remain incomplete."));
@@ -2162,7 +2647,7 @@ bool SubsequenceAdmission(FContext& Parent, FContext& Child, UMovieSceneSubTrack
     if (Parent.Sequence == Child.Sequence || Parent.Sequence->GetOutermost() == Child.Sequence->GetOutermost())
     { return Fail(R, TEXT("sequencer_subsequence_self_reference"), TEXT("Parent and child must be distinct native assets in separate packages; direct self/shared-package variants are refused before mutation.")); }
     if (Parent.Scene->IsReadOnly()) { return Fail(R, TEXT("sequencer_subsequence_parent_read_only"), TEXT("Current parent MovieScene must be writable before track/section dispatch; public subsection setters may refuse a read-only outer scene.")); }
-    if (Parent.Sequence->GetDirectorBlueprint() || Child.Sequence->GetDirectorBlueprint())
+    if (!DirectorAllowed(Parent) || !DirectorAllowed(Child))
     { return Fail(R, TEXT("sequencer_subsequence_variant_unsupported"), TEXT("Director Blueprint composition remains incomplete; exact bounded camera cuts are preserved separately without resolving/rebinding them.")); }
     for (FContext* Context : { &Parent, &Child })
     {
@@ -2204,8 +2689,9 @@ bool SubsequenceAdmission(FContext& Parent, FContext& Child, UMovieSceneSubTrack
         for (UMovieSceneTrack* Track : Tracks)
         {
             const bool IsCut=Track==Context->Scene->GetCameraCutTrack();
-            if (IsCut ? (!Loaded(Track)||Track->GetClass()!=UMovieSceneCameraCutTrack::StaticClass()||!CameraTrackIdentity(*Context,static_cast<UMovieSceneCameraCutTrack*>(Track))) : !SubsequenceOrdinaryTrack(Track, Context->Scene, Context==&Child&&Parent.CameraMaintenance&&Parent.CameraMaintenance->Nested&&Track==Parent.CameraMaintenance->Nested->Track.Get()))
-            { return Fail(R, TEXT("sequencer_subsequence_child_track_unsupported"), TEXT("Child and parent bound tracks must be ordinary native Scalar/Transform without decorations/custom channels; nested/cyclic/custom/subtrack variants remain incomplete.")); }
+            const TFunction<bool()> ClipCurrent=Context->bSubsequenceClips?TFunction<bool()>([Context]{return CameraMaintenancePlainCheck(Context->CameraMaintenance,TEXT("subsequence_clip_admission_read_return"));}):TFunction<bool()>();
+            if (IsCut ? (!Loaded(Track)||Track->GetClass()!=UMovieSceneCameraCutTrack::StaticClass()||!CameraTrackIdentity(*Context,static_cast<UMovieSceneCameraCutTrack*>(Track))) : !SubsequenceOrdinaryTrack(Track, Context->Scene, Context==&Child&&Parent.CameraMaintenance&&Parent.CameraMaintenance->Nested&&Track==Parent.CameraMaintenance->Nested->Track.Get(),Context==&Child&&Context->bSubsequenceClips,ClipCurrent))
+            { return Fail(R, TEXT("sequencer_subsequence_child_track_unsupported"), TEXT("Ordinary native Scalar/Transform or admitted readonly selected-child SkeletalAnimation/Audio clips required; custom channels, wider source references and unadmitted nested variants remain incomplete.")); }
             if (Context == &Child)
             {
                 ChildSections += Track->GetAllSections().Num(); if (ChildSections > MaxSections) { return Fail(R, TEXT("sequencer_subsequence_budget_exceeded"), TEXT("Child section budget exceeded.")); }
@@ -2347,12 +2833,20 @@ FString AddSubsequence(const FString& SequencePath, const FString& SubsequencePa
     { Fail(R, TEXT("sequencer_subsequence_duration_out_of_range"), TEXT("Native duration and StartTick+Duration must fit signed int32 before AddSequenceOnRow; zero floored duration is retained as an original valid quantization case.")); return Encode(R); }
     R.Data->SetNumberField(TEXT("start_frame"), StartFrame); R.Data->SetNumberField(TEXT("duration_frames"), DurationFrames);
     R.Data->SetNumberField(TEXT("start_tick"), Start.Value); R.Data->SetNumberField(TEXT("end_tick"), End.Value); R.Data->SetNumberField(TEXT("duration_ticks"), WideDuration);
+    // Discover only the original selected Child, before any reflected snapshot.
+    // Existing parent/sibling/nested leaf scope is deliberately unchanged.
+    TArray<UMovieSceneTrack*> ClipInventory=Child.Scene->GetTracks();
+    const TArray<FMovieSceneBinding> ClipBindings=static_cast<const UMovieScene*>(Child.Scene)->GetBindings();
+    for(const auto& Binding:ClipBindings){if(ClipInventory.Num()>MaxTracks)break;ClipInventory.Append(Binding.GetTracks());}
+    if(ClipInventory.Num()>MaxTracks){Fail(R,TEXT("sequencer_subsequence_budget_exceeded"),TEXT("Bounded selected-child root/bound inventory required before clip source capture."));return Encode(R);}
+    bool HasClips=false;for(auto* Candidate:ClipInventory)HasClips|=SubsequenceClipKind(Candidate)!=0;
+    if(HasClips){Parent.bSubsequenceClips=true;Child.bSubsequenceClips=true;}
     FNestedSubsequenceRole Nested;bool NestedActive=false;if(!SubsequenceNestedInput(Parent,Child,Nested,NestedActive,R))return Encode(R);
     if(NestedActive){Parent.bNestedSubsequence=true;Child.bNestedSubsequence=true;Parent.bSubsequence=true;Child.bSubsequence=true;}
     TUniquePtr<FCameraMaintenanceScope> Camera;
     const bool DifferentSibling=HasDifferentSubsequenceChild(Parent,Child);
     if(DifferentSibling)R.Data->SetBoolField(TEXT("different_child_sibling_requested"),true);
-    if(NestedActive||Parent.Scene->GetCameraCutTrack()||Child.Scene->GetCameraCutTrack()||DifferentSibling){Camera=MakeUnique<FCameraMaintenanceScope>(Parent,&Child,R);Camera->Nested=NestedActive?&Nested:nullptr;if(!Camera->Bind())return Encode(R);}
+    if(HasClips||NestedActive||Parent.Scene->GetCameraCutTrack()||Child.Scene->GetCameraCutTrack()||DifferentSibling||Parent.Director.IsValid()||Child.Director.IsValid()){Camera=MakeUnique<FCameraMaintenanceScope>(Parent,&Child,R);Camera->Nested=NestedActive?&Nested:nullptr;if(!Camera->Bind())return Encode(R);}
     if(NestedActive&&!Camera->AdmitSibling(Nested.Leaf.Get()))return Encode(R);
     TSharedPtr<FJsonObject> PublicationExpected,SourceExpected;
     auto RunMutation=[&]()->FString
@@ -2472,13 +2966,14 @@ bool CameraSectionIdentity(UMovieSceneCameraCutTrack* Track, UMovieSceneCameraCu
         && !Section->HasAnyFlags(RF_Transient | RF_ClassDefaultObject | RF_ArchetypeObject) && !Section->IsEditorOnly()
         && Section->GetDecorations().Num() == 0 && !Section->IsReadOnly() && Section->GetRowIndex() == 0;
 }
-TSharedRef<FJsonObject> CameraRetainedSection(UMovieSceneCameraCutSection* Section)
+TSharedRef<FJsonObject> CameraRetainedSection(UMovieSceneCameraCutSection* Section,const TFunction<bool()>& Current={})
 {
     auto Row = MakeShared<FJsonObject>(); Row->SetBoolField(TEXT("complete"), false); Row->SetBoolField(TEXT("exists"), Section != nullptr);
+    if(Current&&!Current())return Row;
     if (!Section) { Row->SetBoolField(TEXT("complete"), true); return Row; }
     if (!Loaded(Section) || Section->GetClass() != UMovieSceneCameraCutSection::StaticClass()) { return Row; }
     Row->SetObjectField(TEXT("identity"), Identity(Section)); auto Fields = MakeShared<FJsonObject>(); Row->SetObjectField(TEXT("fields"), Fields);
-    if (!ObjectProperties(Section, {}, Fields)) { return Row; }
+    if (!ObjectProperties(Section, {}, Fields,Current)) { return Row; }
     Row->SetObjectField(TEXT("range"), Range(Section->GetRange())); Row->SetNumberField(TEXT("row_index"), Section->GetRowIndex());
     Row->SetStringField(TEXT("binding_guid"), Section->GetCameraBindingID().GetGuid().ToString(EGuidFormats::DigitsWithHyphens));
     Row->SetBoolField(TEXT("complete"), true); return Row;
@@ -2499,6 +2994,40 @@ bool CameraLiteral(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>&
         for(int32 I=0;I<XKeys.Num();++I)if(!XKeys[I].Equals(YKeys[I],ESearchCase::CaseSensitive)||!CameraLiteral(X->TryGetField(XKeys[I]),Y->TryGetField(YKeys[I]),Depth+1))return false;return true;}
     default:return false;
     }
+}
+// YK: value-only projection of FindEndTimeForCameraCut (installed SDK).
+// Keep original physical order: the first future start wins, not the nearest.
+// Checked narrowing surrounds, rather than changes, the exact SDK arithmetic.
+bool CameraInitialEnd(const TRange<FFrameNumber>& Playback,const FFrameRate& Resolution,FFrameNumber Start,
+    const TArray<TRange<FFrameNumber>>& PhysicalRanges,FFrameNumber& Out,FResult& R)
+{
+    if(!Playback.GetLowerBound().IsInclusive()||Playback.GetUpperBound().IsOpen())
+        return Fail(R,TEXT("sequencer_camera_initial_range_unsupported"),TEXT("Finite playback with inclusive lower and closed exclusive/inclusive upper required; open endpoints remain incomplete."));
+    const int64 ExclusiveEnd=int64(Playback.GetUpperBoundValue().Value)+(Playback.GetUpperBound().IsInclusive()?1:0);
+    if(ExclusiveEnd>MAX_int32)
+        return Fail(R,TEXT("sequencer_camera_initial_end_overflow"),TEXT("Inclusive playback upper cannot be advanced safely by the native discrete-exclusive conversion; no mutation dispatched."));
+    Out=FMath::Max(UE::MovieScene::DiscreteExclusiveUpper(Playback),Start);
+    for(const auto& RangeValue:PhysicalRanges)
+    {
+        if(RangeValue.GetLowerBoundValue()>Start){Out=RangeValue.GetLowerBoundValue();break;}
+    }
+    bool Fallback=false;
+    if(Start==Out)
+    {
+        if(Resolution.Numerator<=0||Resolution.Denominator<=0)
+            return Fail(R,TEXT("sequencer_camera_fallback_rate_invalid"),TEXT("Positive native tick resolution required for the SDK half-second fallback."));
+        // Positive int32 numerator/denominator bounds keep AsFrameTime(.5f)
+        // below int32 saturation, including its float subframe normalization.
+        const FFrameTime HalfSecond=.5f*Resolution;
+        const int64 Sum=int64(Start.Value)+int64(HalfSecond.FrameNumber.Value);
+        if(Sum<MIN_int32||Sum>MAX_int32)
+            return Fail(R,TEXT("sequencer_camera_fallback_overflow"),TEXT("Native half-second fallback exceeds checked frame-number storage; no mutation dispatched."));
+        Out=(Start+HalfSecond).FrameNumber;Fallback=true;
+    }
+    R.Data->SetNumberField(TEXT("camera_sdk_initial_end_tick"),Out.Value);
+    R.Data->SetBoolField(TEXT("camera_sdk_half_second_fallback"),Fallback);
+    R.Data->SetBoolField(TEXT("camera_sdk_inclusive_playback_upper"),Playback.GetUpperBound().IsInclusive());
+    return true;
 }
 struct FCameraInsertionScope
 {
@@ -2583,7 +3112,7 @@ struct FCameraInsertionScope
     bool Check(const TCHAR* Stage,bool SaveReturned=false)
     {
         if(!IdentityCurrent(Stage,SaveReturned))return false;
-        if(C.Sequence->GetMovieScene()!=C.Scene||C.Scene->GetOuter()!=C.Sequence||C.Scene->IsReadOnly()||C.Sequence->GetDirectorBlueprint()
+        if(C.Sequence->GetMovieScene()!=C.Scene||C.Scene->GetOuter()!=C.Sequence||C.Scene->IsReadOnly()||!DirectorCurrent(C,R,Stage,SaveReturned)
             ||C.Scene->GetCameraCutTrack()!=Track||!CameraTrackIdentity(C,Track))
             return Stop(Stage,TEXT("sequencer_camera_insertion_routing_changed"),TEXT("Current writable sequence/scene/cut-track roles changed."));
         if(C.Scene->GetPlaybackRange()!=Playback||C.Scene->GetDisplayRate()!=Display||C.Scene->GetTickResolution()!=Resolution||C.Binding!=SelectedGuid||!C.Scene->FindBinding(SelectedGuid))
@@ -2653,7 +3182,6 @@ struct FCameraInsertionScope
         BindingSource.Reset(Source);
         if(!Pin(C.Sequence,TEXT("camera_insertion_capture"))||!Pin(C.Scene,TEXT("camera_insertion_capture"))||!Pin(Track,TEXT("camera_insertion_capture")))return false;
         const auto Current=CameraSections(Track);if(Current.IsEmpty()||Current.Num()>=MaxSections)return Fail(R,TEXT("sequencer_camera_insertion_bound"),TEXT("Existing bounded nonempty camera track required."));
-        InitialEnd=Playback.GetUpperBoundValue();bool EndFound=false;
         for(UMovieSceneSection* Row:Current)
         {
             auto* Cut=Loaded(Row)&&Row->GetClass()==UMovieSceneCameraCutSection::StaticClass()?static_cast<UMovieSceneCameraCutSection*>(Row):nullptr;
@@ -2662,8 +3190,8 @@ struct FCameraInsertionScope
             if(!CapturedRange.GetLowerBound().IsInclusive()||!CapturedRange.GetUpperBound().IsExclusive()||CapturedRange.GetLowerBoundValue()>=CapturedRange.GetUpperBoundValue()||Prior.Contains(Cut))
                 return Fail(R,TEXT("sequencer_camera_insertion_arrangement_unsupported"),TEXT("Unique native finite nonempty inclusive/exclusive section roles required; physical order, overlaps and equal starts are allowed."));
             Prior.Add(Cut);PriorRanges.Add(CapturedRange);ExpectedOrder.Add(Cut);ExpectedRanges.Add(CapturedRange);Bindings.Add(Cut->GetCameraBindingID());
-            if(!EndFound&&CapturedRange.GetLowerBoundValue()>Start){InitialEnd=CapturedRange.GetLowerBoundValue();EndFound=true;}
         }
+        if(!CameraInitialEnd(Playback,Resolution,Start,PriorRanges,InitialEnd,R))return false;
         UMovieSceneCameraCutSection* Predicted=nullptr;
         for(int32 I=0;I<Prior.Num();++I)if(PriorRanges[I]==TRange<FFrameNumber>(Start,InitialEnd)){Predicted=Prior[I];break;}
         if(Predicted!=ExistingReuse)return Fail(R,TEXT("sequencer_camera_reuse_plan_changed"),TEXT("Predispatch first matching start/end reuse differs from the copied original inventory."));
@@ -2706,11 +3234,9 @@ bool CameraAdmission(FContext& C, FFrameNumber Start, UMovieSceneCameraCutTrack*
     if (!Native(UMovieSceneCameraCutTrack::StaticClass(), TEXT("/Script/MovieSceneTracks.MovieSceneCameraCutTrack"))
         || !Native(UMovieSceneCameraCutSection::StaticClass(), TEXT("/Script/MovieSceneTracks.MovieSceneCameraCutSection")))
     { return Fail(R, TEXT("sequencer_camera_native_source_required"), TEXT("Exact loaded native runtime CameraCutTrack/CameraCutSection sources required.")); }
-    if (C.Scene->IsReadOnly() || C.Sequence->GetDirectorBlueprint())
+    if (C.Scene->IsReadOnly() || !DirectorAllowed(C))
     { return Fail(R, TEXT("sequencer_camera_variant_unsupported"), TEXT("Writable parent without Director Blueprint required; director/callback variants remain incomplete.")); }
     const auto Playback = C.Scene->GetPlaybackRange();
-    if (!Playback.GetLowerBound().IsInclusive() || !Playback.GetUpperBound().IsExclusive() || Start >= Playback.GetUpperBoundValue())
-    { return Fail(R, TEXT("sequencer_camera_initial_range_unsupported"), TEXT("Native predicted initial end must be the existing exclusive playback end beyond StartTick; half-second fallback/inclusive endpoint variants remain incomplete before dispatch.")); }
     const auto* References = C.Sequence->GetBindingReferences();
     if (!References || References->GetAllReferences().Num() > MaxBindings * 16)
     { return Fail(R, TEXT("sequencer_camera_reference_budget_exceeded"), TEXT("Bounded existing locator references required; no locator/world resolution runs.")); }
@@ -2724,16 +3250,16 @@ bool CameraAdmission(FContext& C, FFrameNumber Start, UMovieSceneCameraCutTrack*
     for (UMovieSceneTrack* Other : Ordinary)
     { if (!SubsequenceOrdinaryTrack(Other, C.Scene, false)) { return Fail(R, TEXT("sequencer_camera_other_track_unsupported"), TEXT("Ordinary root/bound tracks must be exact native Scalar/Transform without decorations/custom channels; nested/subtrack/other variants remain incomplete.")); } }
     UMovieSceneTrack* Existing = C.Scene->GetCameraCutTrack();
-    if (!Existing) { return true; }
+    if (!Existing) { FFrameNumber InitialEnd;return CameraInitialEnd(Playback,C.Scene->GetTickResolution(),Start,{},InitialEnd,R); }
     if (!Loaded(Existing) || Existing->GetClass() != UMovieSceneCameraCutTrack::StaticClass())
     { return Fail(R, TEXT("sequencer_camera_track_unsupported"), TEXT("Current cut track must be exact native CameraCutTrack.")); }
     Track = static_cast<UMovieSceneCameraCutTrack*>(Existing);
     if (!CameraTrackIdentity(C, Track) || CameraSections(Track).Num() >= MaxSections)
     { return Fail(R, TEXT("sequencer_camera_arrangement_unsupported"), TEXT("Bounded nonblend auto-managed native cut track required.")); }
-    if (CameraSections(Track).IsEmpty()) { return true; }
+    if (CameraSections(Track).IsEmpty()) { FFrameNumber InitialEnd;return CameraInitialEnd(Playback,C.Scene->GetTickResolution(),Start,{},InitialEnd,R); }
     // FindEndTimeForCameraCut reads the original physical array, then reuse
     // scans that same order for the first exact [Start,InitialEnd) match.
-    const auto Current=CameraSections(Track);FFrameNumber InitialEnd=Playback.GetUpperBoundValue();bool EndFound=false;
+    const auto Current=CameraSections(Track);FFrameNumber InitialEnd;TArray<TRange<FFrameNumber>> PhysicalRanges;
     TArray<UMovieSceneCameraCutSection*> Seen;
     for(auto* Base:Current)
     {
@@ -2742,8 +3268,9 @@ bool CameraAdmission(FContext& C, FFrameNumber Start, UMovieSceneCameraCutTrack*
         Seen.Add(Cut);const auto CapturedRange=Cut->GetRange();
         if(!CapturedRange.GetLowerBound().IsInclusive()||!CapturedRange.GetUpperBound().IsExclusive()||CapturedRange.GetLowerBoundValue()>=CapturedRange.GetUpperBoundValue())
             return Fail(R,TEXT("sequencer_camera_section_range_unsupported"),TEXT("Finite nonempty inclusive/exclusive prior ranges required; other endpoint forms remain incomplete."));
-        if(!EndFound&&CapturedRange.GetLowerBoundValue()>Start){InitialEnd=CapturedRange.GetLowerBoundValue();EndFound=true;}
+        PhysicalRanges.Add(CapturedRange);
     }
+    if(!CameraInitialEnd(Playback,C.Scene->GetTickResolution(),Start,PhysicalRanges,InitialEnd,R))return false;
     for(auto* Cut:Seen)if(Cut->GetRange()==TRange<FFrameNumber>(Start,InitialEnd)){Reused=Cut;break;}
     R.Data->SetBoolField(TEXT("expected_existing_section_reuse"),Reused!=nullptr);R.Data->SetBoolField(TEXT("camera_insertion_requested"),true);return true;
 }
@@ -2882,7 +3409,7 @@ FString AddCameraCut(const FString& SequencePath, double StartFrame, double EndF
     R.Data->SetBoolField(TEXT("internal_allocation_calls_independently_measured"), false);
     R.Data->SetStringField(TEXT("camera_section_counter_scope"), TEXT("New/reused returned native pointer relative to the complete predispatch selection and current membership; retirement means detachment from that current track, not UObject destruction/GC. Internal NewObject/Modify/delegate work is not independently instrumented."));
     R.Data->SetBoolField(TEXT("camera_actor_class_validated"), false); R.Data->SetBoolField(TEXT("camera_rendering_verified"), false); R.Data->SetArrayField(TEXT("retired_camera_section_paths"), TArray<TSharedPtr<FJsonValue>>());
-    R.Data->SetStringField(TEXT("camera_scope"), TEXT("Exact native nonblend row-zero auto-managed cut track. Empty or bounded unique finite inclusive/exclusive cuts in physical order, including overlap/equal starts: original first-greater FindEnd/first-exact reuse, SDK sorts and conditional previous-end/next-start adjustment, then requested SetRange. Reuse typed current proof is diagnostic only; original count+1 remains required for public success, so reuse can mutate/save then fail. Blended/non-auto/open-end/fallback/nested/custom/director variants remain incomplete. No camera Actor/render/evaluation proof."));
+    R.Data->SetStringField(TEXT("camera_scope"), TEXT("Exact native nonblend row-zero auto-managed cut track. Empty or bounded unique finite inclusive/exclusive cuts in physical order, including overlap/equal starts: original first-greater FindEnd/first-exact reuse, SDK sorts and conditional previous-end/next-start adjustment, then requested SetRange. Reuse typed current proof is diagnostic only; original count+1 remains required for public success, so reuse can mutate/save then fail. Finite inclusive playback upper and the native half-second initial fallback are admitted with checked arithmetic. Blended/non-auto/open-end/nested/custom/director variants remain incomplete. No camera Actor/render/evaluation proof."));
     R.Data->SetStringField(TEXT("changed_observation_scope"), TEXT("Actual bounded current camera-track/section declarative data delta; original legacy changed/performed/created_count are literal requested-operation semantics and independent of actual allocation/reuse counts. Dirty/signatures and complete source/file prefixes are retained separately."));
     if (!Resolve(SequencePath, C, R,true) || !MaintenanceReady(C, R) || !MaintenanceResolveBinding(C, BindingId, ActorLabel, R)) { return Encode(R); }
     FFrameNumber Start, End;
@@ -2895,38 +3422,44 @@ FString AddCameraCut(const FString& SequencePath, double StartFrame, double EndF
     R.Data->SetStringField(TEXT("sequence"), C.Sequence->GetPathName()); R.Data->SetStringField(TEXT("camera_binding_id"), C.Binding.ToString(EGuidFormats::DigitsWithHyphens));
     R.Data->SetNumberField(TEXT("start_frame"), StartFrame); R.Data->SetNumberField(TEXT("end_frame"), EndFrame); R.Data->SetNumberField(TEXT("start_tick"), Start.Value); R.Data->SetNumberField(TEXT("end_tick"), End.Value);
     const int32 BeforeCount = Track ? CameraSections(Track).Num() : 0; const FString PreviousPath = ExpectedReuse ? ExpectedReuse->GetPathName() : FString(); TStrongObjectPtr<UMovieSceneCameraCutSection> KeepPrevious(ExpectedReuse);
-    R.Data->SetNumberField(TEXT("camera_cut_section_count_before"), BeforeCount); R.Data->SetObjectField(TEXT("retained_previous_camera_section_before"), CameraRetainedSection(ExpectedReuse));
+    R.Data->SetNumberField(TEXT("camera_cut_section_count_before"), BeforeCount); R.Data->SetObjectField(TEXT("retained_previous_camera_section_before"), CameraRetainedSection(ExpectedReuse,C.Director?TFunction<bool()>([&]{return DirectorCurrent(C,R,TEXT("director_initial_retained_section_export"));}):TFunction<bool()>()));
     if (!MaintenanceCapture(C, R, TEXT("before_observation"), C.Before)) { return Encode(R); }
     auto BeforeInfo = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("before_info"), BeforeInfo);
     if (!MaintenanceInfo(C, BeforeInfo)) { Fail(R, TEXT("sequencer_camera_info_unobservable"), TEXT("Bounded loaded native before Info is incomplete before mutation.")); return Encode(R); } BeforeInfo->SetNumberField(TEXT("camera_cut_section_count"), BeforeCount);
     if (C.Before->GetNumberField(TEXT("section_count")) + (ExpectedReuse ? 0 : 1) > MaxSections || C.Before->GetNumberField(TEXT("track_count")) + (Track ? 0 : 1) > MaxTracks)
     { Fail(R, TEXT("sequencer_camera_budget_exceeded"), TEXT("Requested allocation must fit aggregate track/section budgets before mutation.")); return Encode(R); }
     TSharedPtr<FJsonObject> PublicationExpected;
+    const auto CameraCurrent=[&](const TCHAR* Stage,bool Saved=false){return DirectorCurrent(C,R,Stage,Saved)&&CameraInsertionCheck(C.CameraInsertion,Stage,Saved);};
     auto RunMutation=[&]()->FString
     {
     R.Stage = TEXT("mutate"); R.Data->SetNumberField(TEXT("outer_transaction_calls"), 1); FScopedTransaction Transaction(NSLOCTEXT("CubelessSequencer", "AddCameraCut", "Add Level Sequence Camera Cut"));
-    if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_transaction")))return Insertion?FString():Encode(R);
-    R.bAttempted = true; R.Data->SetNumberField(TEXT("explicit_modify_calls"), 1); if(Insertion)Insertion->PlanReuseModify(C.Sequence);C.Sequence->Modify();if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_sequence_modify")))return Insertion?FString():Encode(R);
-    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 2); if(Insertion)Insertion->PlanReuseModify(C.Scene);C.Scene->Modify();if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_scene_modify")))return Insertion?FString():Encode(R);bool CreatedTrack = false;
+    if(!CameraCurrent(TEXT("camera_insertion_after_transaction")))return Insertion?FString():Encode(R);
+    R.bAttempted = true; R.Data->SetNumberField(TEXT("explicit_modify_calls"), 1); if(Insertion)Insertion->PlanReuseModify(C.Sequence);C.Sequence->Modify();if(!CameraCurrent(TEXT("camera_insertion_after_sequence_modify")))return Insertion?FString():Encode(R);
+    R.Data->SetNumberField(TEXT("explicit_modify_calls"), 2); if(Insertion)Insertion->PlanReuseModify(C.Scene);C.Scene->Modify();if(!CameraCurrent(TEXT("camera_insertion_after_scene_modify")))return Insertion?FString():Encode(R);bool CreatedTrack = false;
     if (!Track) { R.Data->SetNumberField(TEXT("camera_track_create_attempts"), 1); Track = Cast<UMovieSceneCameraCutTrack>(C.Scene->AddCameraCutTrack(UMovieSceneCameraCutTrack::StaticClass())); CreatedTrack = Track != nullptr; R.Data->SetBoolField(TEXT("created_camera_track"), CreatedTrack); }
+    if(C.Director&&!DirectorCurrent(C,R,TEXT("director_camera_track_create_return")))return Insertion?FString():Encode(R);
     TStrongObjectPtr<UMovieSceneCameraCutTrack> KeepTrack(Track); auto Acquired = MakeShared<FJsonObject>();
     if (!MaintenanceCapture(C, R, TEXT("after_track_acquisition"), Acquired)) { return Insertion?FString():Encode(R); } R.bChanged = CameraSelectedChanged(C.Before, Acquired);
     if (!CameraTrackAcquired(C, Track, CreatedTrack, Acquired)) { Fail(R, TEXT("sequencer_camera_track_postcondition_failed"), TEXT("Current exact native track/factory prefix or protected parent state differs; no cut/save dispatch or retry.")); return Insertion?FString():Encode(R); }
-    R.Data->SetStringField(TEXT("camera_track_path"), Track->GetPathName()); R.Data->SetNumberField(TEXT("explicit_modify_calls"), 3); if(Insertion)Insertion->PlanReuseModify(Track);Track->Modify();if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_track_modify")))return Insertion?FString():Encode(R);
+    R.Data->SetStringField(TEXT("camera_track_path"), Track->GetPathName()); R.Data->SetNumberField(TEXT("explicit_modify_calls"), 3); if(Insertion)Insertion->PlanReuseModify(Track);Track->Modify();if(!CameraCurrent(TEXT("camera_insertion_after_track_modify")))return Insertion?FString():Encode(R);
     const FMovieSceneObjectBindingID WantedBinding{ UE::MovieScene::FRelativeObjectBindingID(C.Binding) }; const TRange<FFrameNumber> WantedRange(Start, End);
     if(Insertion&&Insertion->ExactReuse)Insertion->PlanReuseModify(ExpectedReuse,true);
-    R.Data->SetNumberField(TEXT("add_new_camera_cut_calls"), 1); UMovieSceneCameraCutSection* Section = Track->AddNewCameraCut(WantedBinding, Start);TStrongObjectPtr<UMovieSceneCameraCutSection> KeepSection(Section);R.Data->SetBoolField(TEXT("camera_section_returned"), Section != nullptr);if(Insertion&&Insertion->ExactReuse)R.Data->SetBoolField(TEXT("camera_cut_reuse_returned_same_pointer"),Section==ExpectedReuse);
+    R.Data->SetNumberField(TEXT("add_new_camera_cut_calls"), 1); UMovieSceneCameraCutSection* Section = Track->AddNewCameraCut(WantedBinding, Start);R.Data->SetBoolField(TEXT("camera_section_returned"),Section!=nullptr);
+    if(C.Director&&!DirectorCurrent(C,R,TEXT("director_add_new_camera_cut_return")))return Insertion?FString():Encode(R);
+    TStrongObjectPtr<UMovieSceneCameraCutSection> KeepSection(Section);if(Insertion&&Insertion->ExactReuse)R.Data->SetBoolField(TEXT("camera_cut_reuse_returned_same_pointer"),Section==ExpectedReuse);
     if(Insertion&&!Insertion->Adopt(Section,WantedBinding))return Insertion?FString():Encode(R);
-     R.Data->SetObjectField(TEXT("after_add_new_camera_cut_returned_section"), CameraRetainedSection(Section));
-    if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_return_observation")))return Insertion?FString():Encode(R);
+    if(C.Director&&!CameraCurrent(TEXT("director_before_retained_section_export")))return Insertion?FString():Encode(R);
+    const TFunction<bool()> RetainedCurrent=C.Director?TFunction<bool()>([&]{return CameraCurrent(TEXT("director_retained_section_export_return"));}):TFunction<bool()>();
+     R.Data->SetObjectField(TEXT("after_add_new_camera_cut_returned_section"), CameraRetainedSection(Section,RetainedCurrent));
+    if(!CameraCurrent(TEXT("camera_insertion_after_return_observation")))return Insertion?FString():Encode(R);
     if (Loaded(Section) && Section->GetClass() == UMovieSceneCameraCutSection::StaticClass() && Section->GetOuter() == Track)
     {
         R.Data->SetNumberField(TEXT("camera_section_reuse_observed_count"), Section == ExpectedReuse ? 1 : 0); R.Data->SetNumberField(TEXT("camera_section_new_membership_count"), Section != ExpectedReuse ? 1 : 0);
         R.Data->SetNumberField(TEXT("set_camera_section_range_calls"), 1);if(Insertion&&!Insertion->PlanFinalRange())return Insertion?FString():Encode(R);Section->SetRange(WantedRange);
-        if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_set_range")))return Insertion?FString():Encode(R);R.Data->SetStringField(TEXT("camera_cut_section_name"), Section->GetFName().ToString()); R.Data->SetStringField(TEXT("camera_section_path"), Section->GetPathName());
-        R.Data->SetNumberField(TEXT("mark_package_dirty_calls"), 1); C.Sequence->MarkPackageDirty();if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_after_dirty")))return Insertion?FString():Encode(R);
+        if(!CameraCurrent(TEXT("camera_insertion_after_set_range")))return Insertion?FString():Encode(R);R.Data->SetStringField(TEXT("camera_cut_section_name"), Section->GetFName().ToString()); R.Data->SetStringField(TEXT("camera_section_path"), Section->GetPathName());
+        R.Data->SetNumberField(TEXT("mark_package_dirty_calls"), 1); C.Sequence->MarkPackageDirty();if(!CameraCurrent(TEXT("camera_insertion_after_dirty")))return Insertion?FString():Encode(R);
     }
-    auto After = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("retained_previous_camera_section_after_mutation"), CameraRetainedSection(ExpectedReuse));
+    auto After = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("retained_previous_camera_section_after_mutation"), CameraRetainedSection(ExpectedReuse,C.Director?TFunction<bool()>([&]{return CameraCurrent(TEXT("director_previous_section_export_return"));}):TFunction<bool()>()));
     if (!MaintenanceCapture(C, R, TEXT("after_observation"), After)) { return Insertion?FString():Encode(R); } R.bChanged = CameraSelectedChanged(C.Before, After);PublicationExpected=After;
     const bool Current = CameraTrackIdentity(C, Track) && CameraSectionIdentity(Track, Section) && CameraSections(Track).Contains(Section);
     bool PreviousAttached = !ExpectedReuse || (CameraTrackIdentity(C, Track) && CameraSections(Track).Contains(ExpectedReuse));
@@ -2955,7 +3488,7 @@ FString AddCameraCut(const FString& SequencePath, double StartFrame, double EndF
     }
     auto AfterInfo = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("after_info"), AfterInfo);
     if (!MaintenanceInfo(C, AfterInfo)) { R.bKnown = false; Fail(R, TEXT("sequencer_camera_info_unobservable"), TEXT("Terminal loaded native Info is incomplete after retained mutation/save.")); return Insertion?FString():Encode(R); } AfterInfo->SetNumberField(TEXT("camera_cut_section_count"), AfterCount);
-    if(!CameraInsertionCheck(C.CameraInsertion,TEXT("camera_insertion_terminal_observation")))return Insertion?FString():Encode(R);
+    if(!CameraCurrent(TEXT("camera_insertion_terminal_observation")))return Insertion?FString():Encode(R);
     const bool Incremented = AfterCount == BeforeCount + 1, SaveGate = !bSave || R.bSaved; const bool Specific = Relocated && Incremented && FinalRangeOK && SaveGate;
     const bool TypedReuse=Insertion&&Insertion->ExactReuse;const bool ReuseVerified=TypedReuse&&Relocated&&FinalBindingOK&&FinalRangeOK&&AfterCount==BeforeCount&&Section==ExpectedReuse&&R.Data->GetNumberField(TEXT("camera_section_new_membership_count"))==0&&R.Data->GetNumberField(TEXT("camera_section_reuse_observed_count"))==1&&R.Data->GetNumberField(TEXT("camera_section_retirement_count"))==0&&R.Data->GetBoolField(TEXT("nonselected_state_preserved"))&&SaveGate;
     if(TypedReuse){R.Data->SetBoolField(TEXT("camera_cut_exact_reuse_verified"),ReuseVerified);R.Data->SetBoolField(TEXT("typed_engine_postcondition_passed"),ReuseVerified);R.Data->SetStringField(TEXT("public_success_authority"),TEXT("original_section_name_range_count_plus_one_save_postcondition; typed reuse observations do not override public success"));R.Data->SetBoolField(TEXT("camera_cut_reuse_count_preserved"),AfterCount==BeforeCount);R.Data->SetBoolField(TEXT("camera_cut_reuse_legacy_count_incremented"),Incremented);R.Data->SetStringField(TEXT("camera_cut_reuse_success_scope"),TEXT("Typed current reuse/name/range/binding/order/source/nonselected/save proof is diagnostic. Original count+1 is required for public success and remains false for reuse even after a requested successful save. Requested created_count=1 is not an actual allocation count; historical receipts are unchanged."));}

@@ -28,6 +28,7 @@
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Components/CanvasPanel.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/PackageName.h"
@@ -41,6 +42,15 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
 #include "Components/SceneComponent.h"
+#include "Components/PanelWidget.h"
+#include "Components/PanelSlot.h"
+#include "Components/CanvasPanelSlot.h"
+#include "Components/Button.h"
+#include "Components/ButtonSlot.h"
+#include "Components/TextBlock.h"
+#include "Fonts/SlateFontInfo.h"
+#include "UObject/SoftObjectPtr.h"
+#include "UObject/SparseDelegate.h"
 #include "UObject/Interface.h"
 
 namespace Cubeless::UE58::ParticleReceiver
@@ -776,6 +786,237 @@ struct FGameInterfaceWork
 {
     using FField=FWidgetInterfaceWork::FField;using FFunctionRole=FWidgetInterfaceWork::FFunctionRole;
     FResult& R;FWidgetInterfaceWork FieldReader;
+    // WU shares QG's source/signature/graph plan; only the concrete target owner differs.
+    bool WidgetTarget=false;UClass* TargetGeneratedMeta=nullptr;UClass* TargetSkeletonMeta=nullptr;
+    TStrongObjectPtr<UWidgetTree> WidgetTree;TStrongObjectPtr<UCanvasPanel> WidgetRoot;
+    FString WidgetTreePath,WidgetRootPath;TMap<FName,FGuid> WidgetGuids;
+    // ACX reuses ACH authored/runtime WidgetTree observation only for populated Game-BPI owners.
+    struct FTreeObject
+    {
+        TStrongObjectPtr<UObject> Object,Outer;TStrongObjectPtr<UClass> Class;
+        FString Relative,Path,Values,RuntimeValues;
+    };
+    struct FTreeState{TArray<FTreeObject> Objects;FString Shape,Runtime;};
+    FTreeState AuthoredTree;
+    struct FTreeField{FProperty* Property;FFieldClass* Class;UStruct* Owner;FName Name;uint64 Flags;int32 Offset,Size,Dim;bool Accessor;UStruct* Type;uint32 BoolLayout;FProperty* Inner;FProperty* Value;FProperty* RootProperty;};
+    TArray<FTreeField> TreeFields;
+    bool TreeReady=false,RichTree=false;int32 RootChildren=0;
+    static void TreeToken(FString& Out,const FString& Value){Out+=FString::FromInt(Value.Len())+TEXT(":")+Value;}
+    bool TreeNative(UClass* C)
+    {
+        return Live(C)&&C->HasAnyClassFlags(CLASS_Native)&&C->ClassGeneratedBy.IsResolved()&&!C->ClassGeneratedBy.Get()
+            &&Live(C->GetOuter())&&C->GetOuter()->GetPathName()==TEXT("/Script/UMG")&&!C->HasAnyClassFlags(CLASS_NewerVersionExists|CLASS_Deprecated);
+    }
+    bool TreeField(FProperty* P)
+    {
+        if(!P)return false;auto* K=P->GetClass();
+        const bool Plain=K==FBoolProperty::StaticClass()||K==FByteProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FUInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FUInt32Property::StaticClass()||K==FInt64Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass()||K==FNameProperty::StaticClass()||K==FStrProperty::StaticClass()||K==FTextProperty::StaticClass()||K==FObjectProperty::StaticClass()||K==FSoftObjectProperty::StaticClass()||K==FStructProperty::StaticClass()||K==FEnumProperty::StaticClass()||K==FArrayProperty::StaticClass()||K==FSetProperty::StaticClass()||K==FMapProperty::StaticClass()||K==FDelegateProperty::StaticClass()||K==FMulticastInlineDelegateProperty::StaticClass()||K==FMulticastSparseDelegateProperty::StaticClass();
+        if(!Plain||P->ArrayDim<1||P->ArrayDim>256||P->GetSize()<1)return false;
+        UStruct* Type=nullptr;uint32 BoolLayout=0;
+        if(K==FStructProperty::StaticClass()){auto* SP=static_cast<FStructProperty*>(P);if(!SP->Struct.IsResolved()||!Live(SP->Struct.Get()))return false;Type=SP->Struct.Get();}
+        if(K==FObjectProperty::StaticClass()){auto* OP=static_cast<FObjectProperty*>(P);if(!OP->PropertyClass.IsResolved()||!Live(OP->PropertyClass.Get()))return false;Type=OP->PropertyClass.Get();}
+        if(K==FBoolProperty::StaticClass()){const auto* B=static_cast<FBoolProperty*>(P);BoolLayout=uint32(B->GetBoolFieldSize())|(uint32(B->GetByteOffset())<<8)|(uint32(B->GetByteMask())<<16)|(uint32(B->GetFieldMask())<<24);}
+        FProperty* Inner=nullptr;FProperty* Value=nullptr;
+        if(K==FArrayProperty::StaticClass())Inner=static_cast<FArrayProperty*>(P)->Inner;
+        else if(K==FSetProperty::StaticClass())Inner=static_cast<FSetProperty*>(P)->ElementProp;
+        else if(K==FMapProperty::StaticClass()){Inner=static_cast<FMapProperty*>(P)->KeyProp;Value=static_cast<FMapProperty*>(P)->ValueProp;}
+        else if(K==FEnumProperty::StaticClass())Inner=static_cast<FEnumProperty*>(P)->GetUnderlyingProperty();
+        if(const auto* E=TreeFields.FindByPredicate([&](const FTreeField& V){return V.Property==P;}))return E->Class==K&&E->Owner==P->GetOwnerStruct()&&E->Name==P->GetFName()&&E->Flags==uint64(P->GetPropertyFlags())&&E->Offset==P->GetOffset_ForInternal()&&E->Size==P->GetSize()&&E->Dim==P->ArrayDim&&E->Accessor==P->HasSetterOrGetter()&&E->Type==Type&&E->BoolLayout==BoolLayout&&E->Inner==Inner&&E->Value==Value&&E->RootProperty==P->GetOwnerProperty();
+        if(TreeReady||TreeFields.Num()>=4096)return false;
+        auto* Owner=P->GetOwnerStruct();if(!Live(Owner))return false;Holds.Emplace(Owner);if(Type)Holds.Emplace(Type);
+        TreeFields.Add({P,K,Owner,P->GetFName(),uint64(P->GetPropertyFlags()),P->GetOffset_ForInternal(),P->GetSize(),P->ArrayDim,P->HasSetterOrGetter(),Type,BoolLayout,Inner,Value,P->GetOwnerProperty()});return true;
+    }
+    bool TreeReference(UObject* Value,UWidgetTree* InTree,FString& Out)
+    {
+        if(!Value){TreeToken(Out,TEXT("null"));return true;}if(!Live(Value))return false;
+        if(Value==InTree||Value->IsIn(InTree)){TreeToken(Out,TEXT("tree:")+Value->GetPathName(InTree));return true;}
+        const FString Ref=Value->GetPathName();if(!FWidgetInterfaceWork::Reference(Ref))return false;
+        if(!TreeReady)Holds.Emplace(Value);else if(!Holds.ContainsByPredicate([&](const auto& H){return H.Get()==Value;}))return false;
+        TreeToken(Out,TEXT("external:")+Ref);TreeToken(Out,Value->GetClass()->GetPathName());return true;
+    }
+    bool CompleteNumericPOD(UScriptStruct* S,int32 Depth)
+    {
+        if(Depth>16||!Live(S)||S->GetClass()!=UScriptStruct::StaticClass()||!S->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))||!FWidgetInterfaceWork::Reference(S->GetPathName()))return false;
+        const uint32 Required=uint32(STRUCT_IsPlainOldData)|uint32(STRUCT_NoDestructor);
+        const int32 Size=S->GetStructureSize();if((uint32(S->StructFlags)&Required)!=Required||Size<=0||Size>65536)return false;
+        TArray<uint8> Covered;Covered.Init(0,Size);int32 Count=0;
+        for(TFieldIterator<FProperty> It(S,EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
+        {
+            FProperty* Q=*It;if(++Count>256||!TreeField(Q)||Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization|CPF_EditorOnly))return false;
+            const int32 Offset=Q->GetOffset_ForInternal(),Span=Q->GetSize();if(Offset<0||Span<=0||int64(Offset)+Span>Size||int64(Q->ElementSize)*Q->ArrayDim!=Span)return false;
+            auto* K=Q->GetClass();
+            const bool Numeric=K==FByteProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FUInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FUInt32Property::StaticClass()||K==FInt64Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass();
+            if(!Numeric)
+            {
+                if(K!=FStructProperty::StaticClass())return false;auto* Nested=static_cast<FStructProperty*>(Q);if(!Nested->Struct.IsResolved()||!Live(Nested->Struct.Get())||Nested->Struct->GetStructureSize()!=Q->ElementSize||!CompleteNumericPOD(Nested->Struct.Get(),Depth+1))return false;
+            }
+            for(int32 I=Offset;I<Offset+Span;++I){if(Covered[I])return false;Covered[I]=1;}
+        }
+        if(Count==0||Covered.Contains(0))return false;
+        return true; // No padding, unreflected payload or object/container/bool storage is admitted.
+    }
+    bool TreeScalar(FProperty* P,const void* Data,UWidgetTree* InTree,FString& Out,int32 Depth,bool Runtime)
+    {
+        if(Depth>16||!TreeField(P)||!Data)return false;auto* K=P->GetClass();
+        if(K==FBoolProperty::StaticClass()){TreeToken(Out,static_cast<FBoolProperty*>(P)->GetPropertyValue(Data)?TEXT("1"):TEXT("0"));return true;}
+        if(K==FNameProperty::StaticClass()){TreeToken(Out,static_cast<const FName*>(Data)->ToString());return true;}
+        if(K==FStrProperty::StaticClass()){const auto& S=*static_cast<const FString*>(Data);if(S.Len()>65536)return false;TreeToken(Out,S);return true;}
+        if(K==FTextProperty::StaticClass())
+        {
+            const FText& T=*static_cast<const FText*>(Data);const FString* S=FTextInspector::GetSourceString(T);
+            const auto NS=FTextInspector::GetNamespace(T),Key=FTextInspector::GetKey(T);
+            TreeToken(Out,LexToString(FTextInspector::GetFlags(T)));TreeToken(Out,S?*S:TEXT(""));TreeToken(Out,NS.IsSet()?TEXT("set:")+NS.GetValue():TEXT("unset"));TreeToken(Out,Key.IsSet()?TEXT("set:")+Key.GetValue():TEXT("unset"));
+            // No display evaluation, namespace repair or native exporter is invoked.
+            if(!Runtime)TreeToken(Out,FString::Printf(TEXT("%p"),FTextInspector::GetSharedDataId(T)));
+            return S!=nullptr||FTextInspector::GetSharedDataId(T)==FTextInspector::GetSharedDataId(FText::GetEmpty());
+        }
+        if(K==FObjectProperty::StaticClass())
+        {
+            const auto* V=static_cast<const TObjectPtr<UObject>*>(Data);if(!V->IsResolved())return false;return TreeReference(V->Get(),InTree,Out);
+        }
+        if(K==FSoftObjectProperty::StaticClass()){const auto& V=*static_cast<const FSoftObjectPtr*>(Data);const FString Ref=V.ToSoftObjectPath().ToString();if(!Ref.IsEmpty()&&!FWidgetInterfaceWork::Reference(Ref))return false;TreeToken(Out,Ref);return true;}
+        if(K==FStructProperty::StaticClass())
+        {
+            auto* SP=static_cast<FStructProperty*>(P);if(!SP->Struct.IsResolved())return false;auto* S=SP->Struct.Get();
+            if(!Live(S)||S->GetClass()!=UScriptStruct::StaticClass()||!S->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))||!FWidgetInterfaceWork::Reference(S->GetPathName())||S->GetStructureSize()!=P->ElementSize)return false;
+            // Private native serialization/export state has no general reflected proof.
+            if((S->StructFlags&STRUCT_ExportTextItemNative)||((S->StructFlags&STRUCT_SerializeNative)&&S!=FFontOutlineSettings::StaticStruct()))
+            {
+                if(!CompleteNumericPOD(S,Depth))
+                {
+                    if(!R.Data->HasField(TEXT("widget_tree_pending_native_struct"))){R.Data->SetStringField(TEXT("widget_tree_pending_native_struct"),S->GetPathName());R.Data->SetNumberField(TEXT("widget_tree_pending_native_struct_flags"),uint32(S->StructFlags));R.Data->SetNumberField(TEXT("widget_tree_pending_native_struct_size"),S->GetStructureSize());}
+                    return false;
+                }
+                if(!TreeReady)R.Data->SetBoolField(TEXT("widget_tree_complete_numeric_pod_observed"),true);
+            }
+            if(!TreeReady)Holds.Emplace(S);TreeToken(Out,S->GetPathName());int32 Count=0;
+            for(TFieldIterator<FProperty> It(S,EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
+            {
+                auto* Q=*It;if(Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization)||(Runtime&&Q->HasAnyPropertyFlags(CPF_EditorOnly)))continue;
+                if(++Count>256||Q->GetOffset_ForInternal()<0||Q->GetOffset_ForInternal()+Q->GetSize()>S->GetStructureSize()||!TreeValue(Q,Q->ContainerPtrToValuePtr<void>(Data),InTree,Out,Depth+1,Runtime))return false;
+            }return Count>0;
+        }
+        if(K==FArrayProperty::StaticClass())
+        {
+            auto* A=static_cast<FArrayProperty*>(P);if(!TreeField(A->Inner))return false;FScriptArrayHelper H(A,Data);if(H.Num()>256)return false;TreeToken(Out,FString::FromInt(H.Num()));for(int32 I=0;I<H.Num();++I)if(!TreeValue(A->Inner,H.GetRawPtr(I),InTree,Out,Depth+1,Runtime))return false;return true;
+        }
+        if(K==FSetProperty::StaticClass())
+        {
+            auto* A=static_cast<FSetProperty*>(P);if(!TreeField(A->ElementProp))return false;FScriptSetHelper H(A,Data);if(H.Num()>256)return false;TArray<FString> Values;for(int32 I=0;I<H.GetMaxIndex();++I)if(H.IsValidIndex(I)){FString V;if(!TreeValue(A->ElementProp,H.GetElementPtr(I),InTree,V,Depth+1,Runtime))return false;Values.Add(MoveTemp(V));}Values.Sort();for(const auto& V:Values)TreeToken(Out,V);return true;
+        }
+        if(K==FMapProperty::StaticClass())
+        {
+            auto* A=static_cast<FMapProperty*>(P);if(!TreeField(A->KeyProp)||!TreeField(A->ValueProp))return false;FScriptMapHelper H(A,Data);if(H.Num()>256)return false;TArray<FString> Values;for(int32 I=0;I<H.GetMaxIndex();++I)if(H.IsValidIndex(I)){FString V;if(!TreeValue(A->KeyProp,H.GetKeyPtr(I),InTree,V,Depth+1,Runtime)||!TreeValue(A->ValueProp,H.GetValuePtr(I),InTree,V,Depth+1,Runtime))return false;Values.Add(MoveTemp(V));}Values.Sort();for(const auto& V:Values)TreeToken(Out,V);return true;
+        }
+        if(K==FDelegateProperty::StaticClass()){if(!static_cast<const FScriptDelegate*>(Data)->GetFunctionName().IsNone())return false;TreeToken(Out,TEXT("unbound"));return true;}
+        if(K==FMulticastSparseDelegateProperty::StaticClass()){if(static_cast<const FSparseDelegate*>(Data)->IsBound())return false;TreeToken(Out,TEXT("unbound"));return true;}
+        if(K==FMulticastInlineDelegateProperty::StaticClass())
+        {
+            const auto* D=static_cast<FMulticastDelegateProperty*>(P)->GetMulticastDelegate(Data);if(D&&D->IsBound())return false;TreeToken(Out,TEXT("unbound"));return true;
+        }
+        if(K==FEnumProperty::StaticClass())
+        {
+            auto* Inner=static_cast<FEnumProperty*>(P)->GetUnderlyingProperty();if(!TreeField(Inner)||Inner->GetSize()!=P->ElementSize)return false;
+        }
+        TreeToken(Out,BytesToHex(static_cast<const uint8*>(Data),P->ElementSize));return true;
+    }
+    bool TreeValue(FProperty* P,const void* Data,UWidgetTree* InTree,FString& Out,int32 Depth,bool Runtime)
+    {
+        if(!TreeField(P))return false;TreeToken(Out,P->GetName());TreeToken(Out,P->GetClass()->GetName());
+        for(int32 I=0;I<P->ArrayDim;++I)if(!TreeScalar(P,static_cast<const uint8*>(Data)+I*P->ElementSize,InTree,Out,Depth,Runtime)){if(!R.Data->HasField(TEXT("widget_tree_pending_property"))){R.Data->SetStringField(TEXT("widget_tree_pending_property"),P->GetPathName());R.Data->SetStringField(TEXT("widget_tree_pending_field_class"),P->GetClass()->GetName());}return false;}return Out.Len()<=1048576;
+    }
+    bool ReadWidgetTree(UWidgetTree* InTree,FTreeState& Out)
+    {
+        if(!Live(InTree)||InTree->GetClass()!=UWidgetTree::StaticClass()||!InTree->RootWidget.IsResolved()||!InTree->NamedSlotBindings.IsEmpty())return false;
+        auto* TreeRoot=InTree->RootWidget.Get();if(!Live(TreeRoot)||TreeRoot->GetClass()!=UCanvasPanel::StaticClass())return false;
+        TArray<UObject*> Objects;GetObjectsWithOuter(InTree,Objects,true);if(Objects.Num()>256)return false;
+        for(auto* O:Objects)
+        {
+            if(!Live(O)||(O->GetClass()!=UCanvasPanel::StaticClass()&&O->GetClass()!=UButton::StaticClass()&&O->GetClass()!=UTextBlock::StaticClass()&&O->GetClass()!=UCanvasPanelSlot::StaticClass()&&O->GetClass()!=UButtonSlot::StaticClass())||!TreeNative(O->GetClass()))return false;
+            FTreeObject Row;Row.Object.Reset(O);Row.Class.Reset(O->GetClass());Row.Outer.Reset(O->GetOuter());Row.Path=O->GetPathName();Row.Relative=O->GetPathName(InTree);Out.Objects.Add(MoveTemp(Row));
+        }
+        if(!Objects.Contains(TreeRoot))return false;Out.Objects.Sort([](const auto& A,const auto& B){return A.Relative<B.Relative;});
+        TSet<UWidget*> Seen;TArray<UWidget*> Pending;Pending.Add(TreeRoot);
+        for(int32 I=0;I<Pending.Num();++I)
+        {
+            auto* W=Pending[I];if(!Objects.Contains(W)||Seen.Contains(W)||W->GetOuter()!=InTree||!W->Slot.IsResolved())return false;Seen.Add(W);
+            if(W==TreeRoot){if(W->Slot.Get())return false;}
+            else{auto* Slot=W->Slot.Get();if(!Objects.Contains(Slot)||!Slot->Parent.IsResolved()||!Slot->Content.IsResolved()||Slot->Content.Get()!=W||!Live(Slot->Parent.Get())||!Objects.Contains(Slot->Parent.Get()))return false;}
+            TreeToken(Out.Shape,W->GetPathName(InTree));
+            if(auto* Panel=Cast<UPanelWidget>(W))
+            {
+                auto* SlotsField=FindFProperty<FArrayProperty>(UPanelWidget::StaticClass(),TEXT("Slots"));
+                if(!SlotsField||SlotsField->GetOwnerClass()!=UPanelWidget::StaticClass()||!TreeField(SlotsField)||SlotsField->Inner->GetClass()!=FObjectProperty::StaticClass()||!TreeField(SlotsField->Inner))return false;
+                FScriptArrayHelper Slots(SlotsField,SlotsField->ContainerPtrToValuePtr<void>(Panel));if(Slots.Num()>128)return false;
+                for(int32 K=0;K<Slots.Num();++K){const auto& H=*reinterpret_cast<const TObjectPtr<UPanelSlot>*>(Slots.GetRawPtr(K));if(!H.IsResolved()||!Objects.Contains(H.Get()))return false;auto* Slot=H.Get();if(!Slot->Parent.IsResolved()||Slot->Parent.Get()!=Panel||!Slot->Content.IsResolved()||!Objects.Contains(Slot->Content.Get())||!Slot->Content->Slot.IsResolved()||Slot->Content->Slot.Get()!=Slot)return false;Pending.Add(Slot->Content.Get());TreeToken(Out.Shape,Slot->GetPathName(InTree));}
+            }
+        }
+        int32 Widgets=0,Slots=0;for(auto* O:Objects){Widgets+=O->IsA<UWidget>()?1:0;Slots+=O->IsA<UPanelSlot>()?1:0;}if(Widgets!=Seen.Num()||Slots!=Widgets-1)return false;
+        for(auto& Row:Out.Objects)
+        {
+            auto* O=Row.Object.Get();TreeToken(Out.Runtime,Row.Relative);TreeToken(Out.Runtime,Row.Class->GetPathName());
+            for(TFieldIterator<FProperty> It(Row.Class.Get(),EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
+            {
+                auto* Q=*It;if(Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization))continue;
+                if(Q->GetOffset_ForInternal()<0||Q->GetOffset_ForInternal()+Q->GetSize()>Row.Class->GetPropertiesSize())return false;
+                if(!TreeValue(Q,Q->ContainerPtrToValuePtr<void>(O),InTree,Row.Values,0,false))return false;
+                if(!Q->HasAnyPropertyFlags(CPF_EditorOnly)&&!TreeValue(Q,Q->ContainerPtrToValuePtr<void>(O),InTree,Row.RuntimeValues,0,true))return false;
+            }TreeToken(Out.Runtime,Row.RuntimeValues);
+        }TreeToken(Out.Runtime,Out.Shape);return true;
+    }
+    bool WidgetTreeCurrent()
+    {
+        if(!TreeReady)return true;FTreeState Actual;if(!ReadWidgetTree(WidgetTree.Get(),Actual)||Actual.Shape!=AuthoredTree.Shape||Actual.Objects.Num()!=AuthoredTree.Objects.Num())return false;
+        for(int32 I=0;I<Actual.Objects.Num();++I){const auto& A=Actual.Objects[I];const auto& E=AuthoredTree.Objects[I];if(A.Object.Get()!=E.Object.Get()||A.Class.Get()!=E.Class.Get()||A.Outer.Get()!=E.Outer.Get()||A.Path!=E.Path||A.Values!=E.Values)return false;}return true;
+    }
+
+    struct FCompiledTree{UClass* Owner=nullptr;TStrongObjectPtr<UWidgetTree> Tree;TStrongObjectPtr<UWidget> Root;FString Path,RootPath;FTreeState State;};TArray<FCompiledTree> CompiledTrees;
+    FObjectProperty* CompiledTreeField=nullptr;int32 CompiledTreeOffset=0;
+    TArray<FBPVariableDescription> WidgetVariables;
+    bool WidgetVariablesCurrent()
+    {
+        if(Target->NewVariables.Num()!=WidgetVariables.Num())return false;
+        for(int32 I=0;I<WidgetVariables.Num();++I)
+        {
+            const auto& A=WidgetVariables[I];const auto& B=Target->NewVariables[I];
+            if(A.VarName!=B.VarName||A.VarGuid!=B.VarGuid||!SameType(A.VarType,B.VarType)||A.PropertyFlags!=B.PropertyFlags||!A.FriendlyName.Equals(B.FriendlyName,ESearchCase::CaseSensitive)||!A.DefaultValue.Equals(B.DefaultValue,ESearchCase::CaseSensitive)||A.RepNotifyFunc!=B.RepNotifyFunc||A.ReplicationCondition!=B.ReplicationCondition||A.MetaDataArray.Num()!=B.MetaDataArray.Num()||FTextInspector::GetFlags(A.Category)!=FTextInspector::GetFlags(B.Category)||FTextInspector::GetSharedDataId(A.Category)!=FTextInspector::GetSharedDataId(B.Category))return false;
+            for(int32 K=0;K<A.MetaDataArray.Num();++K)if(A.MetaDataArray[K].DataKey!=B.MetaDataArray[K].DataKey||!A.MetaDataArray[K].DataValue.Equals(B.MetaDataArray[K].DataValue,ESearchCase::CaseSensitive))return false;
+        }return true;
+    }
+    bool TreeFieldCurrent()
+    {
+        if(!CompiledTreeField||FindFProperty<FObjectProperty>(UWidgetBlueprintGeneratedClass::StaticClass(),TEXT("WidgetTree"))!=CompiledTreeField)return false;
+        return CompiledTreeField->GetOwnerClass()==UWidgetBlueprintGeneratedClass::StaticClass()&&CompiledTreeField->GetOffset_ForInternal()==CompiledTreeOffset&&CompiledTreeField->ArrayDim==1&&CompiledTreeField->GetSize()==sizeof(TObjectPtr<UWidgetTree>)&&CompiledTreeField->PropertyClass.IsResolved()&&CompiledTreeField->PropertyClass.Get()==UWidgetTree::StaticClass();
+    }
+    bool CaptureCompiledTrees(TArray<FCompiledTree>& Out)
+    {
+        if(!TreeFieldCurrent())return false;
+        for(UClass* C:{Generated.Get(),Skeleton.Get()})
+        {
+            if(!C->GetClass()->IsChildOf(UWidgetBlueprintGeneratedClass::StaticClass()))continue;
+            const auto* Slot=CompiledTreeField->ContainerPtrToValuePtr<TObjectPtr<UWidgetTree>>(C);if(!Slot->IsResolved())return false;FCompiledTree Row;Row.Owner=C;Row.Tree.Reset(Slot->Get());
+            if(Row.Tree.IsValid())
+            {
+                if(!Live(Row.Tree.Get())||Row.Tree->GetClass()!=UWidgetTree::StaticClass()||Row.Tree->GetOuter()!=C||!Row.Tree->RootWidget.IsResolved())return false;
+                Row.Path=Row.Tree->GetPathName();Row.Root.Reset(Row.Tree->RootWidget.Get());
+                if(Row.Root.IsValid()){if(!Live(Row.Root.Get())||Row.Root->GetClass()!=UCanvasPanel::StaticClass()||Row.Root->GetOuter()!=Row.Tree.Get())return false;Row.RootPath=Row.Root->GetPathName();if(RichTree&&!ReadWidgetTree(Row.Tree.Get(),Row.State))return false;}
+            }Out.Add(MoveTemp(Row));
+        }return true;
+    }
+    bool CompiledTreesCurrent()
+    {
+        if(!TreeFieldCurrent())return false;
+        for(const auto& Row:CompiledTrees)
+        {
+            if(Row.Owner!=Generated.Get()&&Row.Owner!=Skeleton.Get())return false;
+            const auto* Slot=CompiledTreeField->ContainerPtrToValuePtr<TObjectPtr<UWidgetTree>>(Row.Owner);if(!Slot->IsResolved()||Slot->Get()!=Row.Tree.Get())return false;
+            if(Row.Tree.IsValid()&&(!Live(Row.Tree.Get())||Row.Tree->GetClass()!=UWidgetTree::StaticClass()||Row.Tree->GetOuter()!=Row.Owner||!Row.Tree->GetPathName().Equals(Row.Path,ESearchCase::CaseSensitive)||!Row.Tree->RootWidget.IsResolved()||Row.Tree->RootWidget.Get()!=Row.Root.Get()))return false;
+            if(Row.Root.IsValid()&&(!Live(Row.Root.Get())||Row.Root->GetClass()!=UCanvasPanel::StaticClass()||Row.Root->GetOuter()!=Row.Tree.Get()||!Row.Root->GetPathName().Equals(Row.RootPath,ESearchCase::CaseSensitive)))return false;
+            if(RichTree&&Row.Root.IsValid()){FTreeState Actual;if(!ReadWidgetTree(Row.Tree.Get(),Actual)||Actual.Shape!=Row.State.Shape||Actual.Objects.Num()!=Row.State.Objects.Num())return false;for(int32 I=0;I<Actual.Objects.Num();++I){const auto& A=Actual.Objects[I];const auto& E=Row.State.Objects[I];if(A.Object.Get()!=E.Object.Get()||A.Class.Get()!=E.Class.Get()||A.Outer.Get()!=E.Outer.Get()||A.Path!=E.Path||A.Values!=E.Values)return false;}}
+        }return true;
+    }
+    UClass* TargetParent()const{return WidgetTarget?UUserWidget::StaticClass():AActor::StaticClass();}
+    UClass* TargetAssetClass()const{return WidgetTarget?UWidgetBlueprint::StaticClass():UBlueprint::StaticClass();}
     TStrongObjectPtr<UBlueprint> Source,Target;TStrongObjectPtr<UClass> Interface,SourceSkeleton,Generated,Skeleton;TStrongObjectPtr<UObject> SourceCDO,SourceSkelCDO,CDO,SkelCDO;
     TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;TStrongObjectPtr<UBlueprintEditorSettings> SavePolicy;TArray<TStrongObjectPtr<UObject>> Holds,Retired;
     FString SourcePath,TargetPath,InterfacePathValue,SourceSkeletonPath,GeneratedPath,SkeletonPath,SourceFile,TargetFile,SourceHash,TargetHash,ClassPolicy;
@@ -804,9 +1045,9 @@ struct FGameInterfaceWork
     {return !Stopped&&IsInGameThread()&&Live(Editor.Get())&&GEditor==Editor.Get()&&Live(World.Get())&&GEditor->GetEditorWorldContext().World()==World.Get()&&!GEditor->PlayWorld&&!GEditor->GetPIEWorldContext()&&!World->bIsTearingDown&&!GExitPurge&&!IsEngineExitRequested()&&!IsGarbageCollecting()&&!UE::IsSavingPackage();}
     static uint32 PinFlags(const UEdGraphPin* P){return uint32(P->bHidden)|(uint32(P->bOrphanedPin)<<1)|(uint32(P->bNotConnectable)<<2)|(uint32(P->bDefaultValueIsReadOnly)<<3)|(uint32(P->bDefaultValueIsIgnored)<<4)|(uint32(P->bAdvancedView)<<5)|(uint32(P->bDeprecated)<<6)|(uint32(P->bDisplayAsMutableRef)<<7)|(uint32(P->bAllowFriendlyName)<<8);}
     bool ClassRole(UClass* C,UBlueprint* B,UClass* Parent,const FString& Path)
-    {return Live(C)&&C->GetClass()==UBlueprintGeneratedClass::StaticClass()&&C->GetOuter()==B->GetPackage()&&C->GetPackage()==B->GetPackage()&&C->ClassGeneratedBy.IsResolved()&&C->ClassGeneratedBy.Get()==B&&C->GetSuperClass()==Parent&&C->GetPathName().Equals(Path,ESearchCase::CaseSensitive)&&!C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&C->ClassDefaultObject.IsResolved();}
-    static bool CDORole(UObject* O,UClass* C)
-    {return !O||(Live(O)&&O->GetClass()==C&&O->GetOuter()==C->GetOuter()&&O->GetPackage()==C->GetPackage()&&O->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)&&O->GetFName()==FName(*(TEXT("Default__")+C->GetName())));}
+    {return Live(C)&&C->GetClass()==(WidgetTarget&&B==Target.Get()?(C->GetPathName()==GeneratedPath?TargetGeneratedMeta:TargetSkeletonMeta):UBlueprintGeneratedClass::StaticClass())&&C->GetOuter()==B->GetPackage()&&C->GetPackage()==B->GetPackage()&&C->ClassGeneratedBy.IsResolved()&&C->ClassGeneratedBy.Get()==B&&C->GetSuperClass()==Parent&&C->GetPathName().Equals(Path,ESearchCase::CaseSensitive)&&!C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&C->ClassDefaultObject.IsResolved();}
+    bool CDORole(UObject* O,UClass* C)
+    {const EObjectFlags Required=WidgetTarget&&C->ClassGeneratedBy.Get()==Target.Get()?RF_ClassDefaultObject:RF_ClassDefaultObject|RF_ArchetypeObject;return !O||(Live(O)&&O->GetClass()==C&&O->GetOuter()==C->GetOuter()&&O->GetPackage()==C->GetPackage()&&O->HasAllFlags(Required)&&O->GetFName()==FName(*(TEXT("Default__")+C->GetName())));}
     static FMemberReference Reference(UK2Node* N)
     {if(auto* E=Cast<UK2Node_Event>(N))return E->EventReference;if(auto* E=Cast<UK2Node_FunctionEntry>(N))return E->FunctionReference;return static_cast<UK2Node_FunctionResult*>(N)->FunctionReference;}
     bool Capture(UEdGraph* G,FGraph& Out)
@@ -848,7 +1089,7 @@ struct FGameInterfaceWork
     }
     FString ReadClassPolicy()const
     {
-        FString Value;for(const UClass* Class:{Interface.Get(),SourceSkeleton.Get(),UInterface::StaticClass(),UObject::StaticClass(),AActor::StaticClass()}){if(!Live(Class))return TEXT("unavailable");Value+=LexToString(reinterpret_cast<UPTRINT>(Class))+TEXT(":")+LexToString(uint32(Class->ClassFlags));for(const TCHAR* Key:{TEXT("CannotImplementInterfaceInBlueprint"),TEXT("IsBlueprintBase"),TEXT("ProhibitedInterfaces")}){const FString Cell=Class->GetMetaData(Key);Value+=FString(Key)+TEXT(":")+(Class->HasMetaData(Key)?TEXT("1:"):TEXT("0:"))+LexToString(Cell.Len())+TEXT(":")+Cell;}}return Value;
+        FString Value;for(const UClass* Class:{Interface.Get(),SourceSkeleton.Get(),UInterface::StaticClass(),UObject::StaticClass(),TargetParent()}){if(!Live(Class))return TEXT("unavailable");Value+=LexToString(reinterpret_cast<UPTRINT>(Class))+TEXT(":")+LexToString(uint32(Class->ClassFlags));for(const TCHAR* Key:{TEXT("CannotImplementInterfaceInBlueprint"),TEXT("IsBlueprintBase"),TEXT("ProhibitedInterfaces")}){const FString Cell=Class->GetMetaData(Key);Value+=FString(Key)+TEXT(":")+(Class->HasMetaData(Key)?TEXT("1:"):TEXT("0:"))+LexToString(Cell.Len())+TEXT(":")+Cell;}}return Value;
     }
     bool SourceMethodsCurrent()
     {
@@ -877,15 +1118,27 @@ struct FGameInterfaceWork
         if(!Live(S)||S->GetClass()!=UBlueprint::StaticClass()||S->BlueprintType!=BPTYPE_Interface||S->GetPackage()->IsDirty()||S->Status!=BS_UpToDate||S->bBeingCompiled||S->bQueuedForCompilation||S->bIsRegeneratingOnLoad||S->bSuppressStructurallyModified||!S->ParentClass.GetGCPtr().IsResolved()||S->ParentClass.Get()!=UInterface::StaticClass()||!S->GeneratedClass.GetGCPtr().IsResolved()||S->GeneratedClass.Get()!=Interface.Get()||!S->SkeletonGeneratedClass.GetGCPtr().IsResolved()||S->SkeletonGeneratedClass.Get()!=SourceSkeleton.Get()||!S->UbergraphPages.IsEmpty()||!S->MacroGraphs.IsEmpty()||!S->DelegateSignatureGraphs.IsEmpty()||!S->ImplementedInterfaces.IsEmpty()||!S->NewVariables.IsEmpty())return Stop(TEXT("source_blueprint"),SourcePath,TEXT("changed"));
         if(!ClassRole(Interface.Get(),S,UInterface::StaticClass(),InterfacePathValue)||!ClassRole(SourceSkeleton.Get(),S,UInterface::StaticClass(),SourceSkeletonPath)||!Interface->HasAnyClassFlags(CLASS_Interface)||!SourceSkeleton->HasAnyClassFlags(CLASS_Interface)||Interface->ClassDefaultObject.Get()!=SourceCDO.Get()||SourceSkeleton->ClassDefaultObject.Get()!=SourceSkelCDO.Get()||!CDORole(SourceCDO.Get(),Interface.Get())||!CDORole(SourceSkelCDO.Get(),SourceSkeleton.Get())||!SourceMethodsCurrent())return Stop(TEXT("source_class_role"),TEXT("held interface classes/CDOs/signatures"),TEXT("changed"));
         const FString PolicyNow=ReadClassPolicy();if(!PolicyNow.Equals(ClassPolicy,ESearchCase::CaseSensitive))return Stop(TEXT("source_class_eligibility_policy"),ClassPolicy,PolicyNow);
-        if(!Live(B)||B->GetClass()!=UBlueprint::StaticClass()||!B->GetPathName().Equals(TargetPath,ESearchCase::CaseSensitive)||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.Get()!=AActor::StaticClass()||!B->NewVariables.IsEmpty()||B->FunctionGraphs!=BeforeFunctions||!B->MacroGraphs.IsEmpty()||!B->DelegateSignatureGraphs.IsEmpty()||B->UbergraphPages!=BeforeUber||!B->Timelines.IsEmpty()||B->ImplementedInterfaces.Num()!=ExpectedInterfaces)return Stop(TEXT("target_authored"),TargetPath,TEXT("changed"));
+        if(!Live(B)||B->GetClass()!=TargetAssetClass()||!B->GetPathName().Equals(TargetPath,ESearchCase::CaseSensitive)||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.Get()!=TargetParent()||(WidgetTarget?!WidgetVariablesCurrent():!B->NewVariables.IsEmpty())||B->FunctionGraphs!=BeforeFunctions||!B->MacroGraphs.IsEmpty()||!B->DelegateSignatureGraphs.IsEmpty()||B->UbergraphPages!=BeforeUber||!B->Timelines.IsEmpty()||B->ImplementedInterfaces.Num()!=ExpectedInterfaces)return Stop(TEXT("target_authored"),TargetPath,TEXT("changed"));
         if(!Writer&&(B->GetPackage()->IsDirty()||B->Status!=BS_UpToDate))return Stop(TEXT("target_preflight"),TEXT("saved-clean UpToDate"),TEXT("changed"));
         if(ExpectedInterfaces)
         {
             auto& Description=B->ImplementedInterfaces[0];if(!Description.Interface.GetGCPtr().IsResolved()||Description.Interface.Get()!=Interface.Get())return Stop(TEXT("interface_description"),TEXT("selected same interface"),TEXT("changed"));
             if(PlanReady){if(Description.Graphs.Num()!=RequiredGraphs)return Stop(TEXT("interface_graph_count"),LexToString(RequiredGraphs),LexToString(Description.Graphs.Num()));int32 GraphSlot=0;for(const auto& Method:Methods)if(Method.GraphRequired){if(!Description.Graphs[GraphSlot].IsResolved()||(Method.HasNew&&Description.Graphs[GraphSlot].Get()!=Method.NewGraph.Hold.Get()))return Stop(TEXT("interface_graph_slot"),Method.Name.ToString(),TEXT("different/unresolved"));++GraphSlot;}}
         }
+        if(WidgetTarget)
+        {
+            auto* W=static_cast<UWidgetBlueprint*>(B);
+            if(!W->WidgetTree.IsResolved()||W->WidgetTree.Get()!=WidgetTree.Get()||!Live(WidgetTree.Get())||WidgetTree->GetOuter()!=B||WidgetTree->GetPathName()!=WidgetTreePath
+                ||!WidgetTree->RootWidget.IsResolved()||WidgetTree->RootWidget.Get()!=WidgetRoot.Get()||!Live(WidgetRoot.Get())||WidgetRoot->GetClass()!=UCanvasPanel::StaticClass()
+                ||WidgetRoot->GetOuter()!=WidgetTree.Get()||WidgetRoot->GetPathName()!=WidgetRootPath||WidgetRoot->GetChildrenCount()!=RootChildren||!WidgetTreeCurrent()||!WidgetRoot->Slot.IsResolved()||WidgetRoot->Slot.Get()
+                ||!W->Bindings.IsEmpty()||!W->Animations.IsEmpty()||!W->WidgetVariableNameToGuidMap.OrderIndependentCompareEqual(WidgetGuids))
+                return Stop(TEXT("widget_authored_tree"),TEXT("same owned native Canvas tree, captured child topology/authored fields/variable GUIDs and no bindings or animations"),TEXT("changed"));
+        }
+        else
+        {
         if(!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()!=SCS.Get()||!Live(SCS.Get())||SCS->GetOuter()!=SCSOuter||SCS->GetAllNodes().Num()!=1||SCS->GetAllNodes()[0]!=RootNode.Get()||SCS->GetRootNodes().Num()!=1||SCS->GetRootNodes()[0]!=RootNode.Get()||!Live(RootNode.Get())||RootNode->VariableGuid!=RootGuid||RootNode->GetVariableName()!=RootName||!RootNode->GetChildNodes().IsEmpty()||!RootNode->ComponentClass.IsResolved()||RootNode->ComponentClass.Get()!=USceneComponent::StaticClass()||!RootNode->ComponentTemplate.IsResolved()||RootNode->ComponentTemplate.Get()!=RootTemplate.Get()||!Live(RootTemplate.Get())||RootTemplate->GetClass()!=USceneComponent::StaticClass()||RootTemplate->IsRegistered()||RootTemplate->GetOwner()||RootTemplate->GetWorld()||!RootTemplate->GetPathName().Equals(RootPath,ESearchCase::CaseSensitive))return Stop(TEXT("SCS_root_role"),TEXT("captured lone native Scene root"),TEXT("changed"));
-        if((!Rebinding||ClassesReady)&&(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.Get()!=Generated.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.Get()!=Skeleton.Get()||!ClassRole(Generated.Get(),B,AActor::StaticClass(),GeneratedPath)||!ClassRole(Skeleton.Get(),B,AActor::StaticClass(),SkeletonPath)||Generated->ClassDefaultObject.Get()!=CDO.Get()||Skeleton->ClassDefaultObject.Get()!=SkelCDO.Get()||!CDORole(CDO.Get(),Generated.Get())||!CDORole(SkelCDO.Get(),Skeleton.Get())))return Stop(TEXT("target_class_current"),TEXT("held generated/skeleton/CDO roles"),TEXT("changed"));
+        }
+        if((!Rebinding||ClassesReady)&&(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.Get()!=Generated.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.Get()!=Skeleton.Get()||!ClassRole(Generated.Get(),B,TargetParent(),GeneratedPath)||!ClassRole(Skeleton.Get(),B,TargetParent(),SkeletonPath)||Generated->ClassDefaultObject.Get()!=CDO.Get()||Skeleton->ClassDefaultObject.Get()!=SkelCDO.Get()||!CDORole(CDO.Get(),Generated.Get())||!CDORole(SkelCDO.Get(),Skeleton.Get())||(WidgetTarget&&RichTree&&!CompiledTreesCurrent())))return Stop(TEXT("target_class_current"),TEXT("held generated/skeleton/CDO roles"),TEXT("changed"));
         if(!Live(SavePolicy.Get())||!UBlueprintEditorSettings::StaticClass()->ClassDefaultObject.IsResolved()||UBlueprintEditorSettings::StaticClass()->ClassDefaultObject.Get()!=SavePolicy.Get()||SavePolicy->SaveOnCompile!=SoC_Never||SavePolicy->bExposeDeprecatedFunctions!=ExposeDeprecated)return Stop(TEXT("save_policy"),TEXT("captured Never/eligibility policy"),TEXT("changed"));
         for(const auto& Method:Methods)if(!Physical(Method.SourceGraph))return false;
         if(Rebinding&&!CandidatesReady)return true;if(!Physical(CandidatesReady?CandidateBefore:BeforeGraph)||!Physical(CandidatesReady?CandidateConstruction:Construction))return false;
@@ -904,7 +1157,27 @@ struct FGameInterfaceWork
     bool File(const FString& Filename,FString& Hash)
     {if(!Current())return false;const int64 Size=IFileManager::Get().FileSize(*Filename);TArray<uint8> Bytes;if(Size<1||Size>64*1024*1024||!FFileHelper::LoadFileToArray(Bytes,*Filename)||!Current()||Bytes.Num()!=Size)return Stop(TEXT("source_or_target_file"),TEXT("current readable bounded saved file"),Filename);FSHAHash H;FSHA1::HashBuffer(Bytes.GetData(),Bytes.Num(),H.Hash);Hash=H.ToString();return true;}
     bool RootSnapshot(FString& Out)
-    {if(!Current())return false;Out.Reset();TArray<FProperty*> Fields;for(TFieldIterator<FProperty> It(USceneComponent::StaticClass(),EFieldIterationFlags::IncludeSuper);It;++It){if(Fields.Num()>=1024)return Stop(TEXT("root_fields"),TEXT("bounded reflected root"),TEXT("too many"));Fields.Add(*It);}for(auto* P:Fields){TArray<FProperty*> Actual;for(TFieldIterator<FProperty> It(USceneComponent::StaticClass(),EFieldIterationFlags::IncludeSuper);It;++It)Actual.Add(*It);if(!Actual.Contains(P))return Stop(TEXT("root_field_membership"),TEXT("same own native field"),TEXT("changed"));const FString FieldName=P->GetName();FString Value;const bool Done=P->ExportText_InContainer(0,Value,RootTemplate.Get(),RootTemplate.Get(),RootTemplate.Get(),PPF_None);if(!Current()||!Done)return Stop(TEXT("root_export"),TEXT("returned complete current native field export"),TEXT("failed"));Out+=FieldName+TEXT(":")+LexToString(Value.Len())+TEXT(":")+Value;if(Out.Len()>1024*1024)return Stop(TEXT("root_export_bound"),TEXT("<=1MiB"),TEXT("too large"));}return true;}
+    {
+        if(WidgetTarget)
+        {
+            if(RichTree)
+            {
+                if(!Current())return false;Out=AuthoredTree.Runtime;
+                for(const auto& Row:AuthoredTree.Objects){TreeToken(Out,Row.Relative);TreeToken(Out,Row.Values);}return true;
+            }
+            if(!Current())return false;Out.Reset();TArray<FProperty*> Fields;
+            for(TFieldIterator<FProperty> It(UCanvasPanel::StaticClass(),EFieldIterationFlags::IncludeSuper);It;++It)
+            {if(Fields.Num()>=1024)return Stop(TEXT("widget_root_fields"),TEXT("<=1024 native fields"),TEXT("larger"));if(!It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_SkipSerialization))Fields.Add(*It);}
+            for(auto* P:Fields)
+            {
+                if(!Current())return false;TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(UCanvasPanel::StaticClass(),EFieldIterationFlags::IncludeSuper);It;++It)Now.Add(*It);
+                if(!Now.Contains(P)||P->HasSetterOrGetter()||P->ArrayDim!=1)return Stop(TEXT("widget_root_descriptor"),TEXT("same native scalar descriptor without accessor"),TEXT("different"));
+                const FString Name=P->GetName();FString Value;const bool Done=P->ExportText_InContainer(0,Value,WidgetRoot.Get(),WidgetRoot.Get(),WidgetRoot.Get(),PPF_None);
+                if(!Current()||!Done)return Stop(TEXT("widget_root_export"),TEXT("returned current export"),TEXT("failed"));Out+=Name+TEXT(":")+LexToString(Value.Len())+TEXT(":")+Value;
+                if(Out.Len()>1024*1024)return Stop(TEXT("widget_root_export_bound"),TEXT("<=1MiB"),TEXT("larger"));
+            }return Current();
+        }
+        if(!Current())return false;Out.Reset();TArray<FProperty*> Fields;for(TFieldIterator<FProperty> It(USceneComponent::StaticClass(),EFieldIterationFlags::IncludeSuper);It;++It){if(Fields.Num()>=1024)return Stop(TEXT("root_fields"),TEXT("bounded reflected root"),TEXT("too many"));Fields.Add(*It);}for(auto* P:Fields){TArray<FProperty*> Actual;for(TFieldIterator<FProperty> It(USceneComponent::StaticClass(),EFieldIterationFlags::IncludeSuper);It;++It)Actual.Add(*It);if(!Actual.Contains(P))return Stop(TEXT("root_field_membership"),TEXT("same own native field"),TEXT("changed"));const FString FieldName=P->GetName();FString Value;const bool Done=P->ExportText_InContainer(0,Value,RootTemplate.Get(),RootTemplate.Get(),RootTemplate.Get(),PPF_None);if(!Current()||!Done)return Stop(TEXT("root_export"),TEXT("returned complete current native field export"),TEXT("failed"));Out+=FieldName+TEXT(":")+LexToString(Value.Len())+TEXT(":")+Value;if(Out.Len()>1024*1024)return Stop(TEXT("root_export_bound"),TEXT("<=1MiB"),TEXT("too large"));}return true;}
     bool SourceSnapshot(TSharedRef<FJsonObject> Out)
     {
         if(!Current())return false;const bool Implementable=FKismetEditorUtilities::IsClassABlueprintImplementableInterface(Interface.Get());if(!Current())return false;const bool Can=FKismetEditorUtilities::CanBlueprintImplementInterface(Target.Get(),Interface.Get());if(!Current())return false;
@@ -943,8 +1216,20 @@ struct FGameInterfaceWork
     bool Reacquire(bool RequireProjection)
     {
         // Class and graph return roles are held before observation. Old compiler pins/classes are not re-read.
-        if(!Current())return false;if(!Target->GeneratedClass.GetGCPtr().IsResolved()||!Target->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Stop(TEXT("returned_class_slots"),TEXT("resolved current"),TEXT("unavailable"));TStrongObjectPtr<UClass> G(Target->GeneratedClass.Get()),K(Target->SkeletonGeneratedClass.Get());if(!ClassRole(G.Get(),Target.Get(),AActor::StaticClass(),GeneratedPath)||!ClassRole(K.Get(),Target.Get(),AActor::StaticClass(),SkeletonPath))return Stop(TEXT("returned_classes"),TEXT("own generated/skeleton logical roles"),TEXT("different"));TStrongObjectPtr<UObject> D(G->ClassDefaultObject.Get()),SD(K->ClassDefaultObject.Get());if(!CDORole(D.Get(),G.Get())||!CDORole(SD.Get(),K.Get()))return Stop(TEXT("returned_CDO"),TEXT("nullable actual class/default role"),TEXT("different"));
-        Retired.Emplace(Generated.Get());Retired.Emplace(Skeleton.Get());if(CDO.IsValid())Retired.Emplace(CDO.Get());if(SkelCDO.IsValid())Retired.Emplace(SkelCDO.Get());Generated=MoveTemp(G);Skeleton=MoveTemp(K);CDO=MoveTemp(D);SkelCDO=MoveTemp(SD);ClassesReady=true;
+        if(!Current())return false;if(!Target->GeneratedClass.GetGCPtr().IsResolved()||!Target->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Stop(TEXT("returned_class_slots"),TEXT("resolved current"),TEXT("unavailable"));TStrongObjectPtr<UClass> G(Target->GeneratedClass.Get()),K(Target->SkeletonGeneratedClass.Get());if(!ClassRole(G.Get(),Target.Get(),TargetParent(),GeneratedPath)||!ClassRole(K.Get(),Target.Get(),TargetParent(),SkeletonPath))return Stop(TEXT("returned_classes"),TEXT("own generated/skeleton logical roles"),TEXT("different"));TStrongObjectPtr<UObject> D(G->ClassDefaultObject.Get()),SD(K->ClassDefaultObject.Get());if(!CDORole(D.Get(),G.Get())||!CDORole(SD.Get(),K.Get()))return Stop(TEXT("returned_CDO"),TEXT("nullable actual class/default role"),TEXT("different"));
+        Retired.Emplace(Generated.Get());Retired.Emplace(Skeleton.Get());if(CDO.IsValid())Retired.Emplace(CDO.Get());if(SkelCDO.IsValid())Retired.Emplace(SkelCDO.Get());Generated=MoveTemp(G);Skeleton=MoveTemp(K);CDO=MoveTemp(D);SkelCDO=MoveTemp(SD);
+        if(WidgetTarget&&RichTree)
+        {
+            TArray<FCompiledTree> NewTrees;if(!CaptureCompiledTrees(NewTrees))return Stop(TEXT("returned_compiled_widget_tree"),TEXT("actual current owned nullable compiled trees"),TEXT("unavailable"));
+            if(NewTrees.Num()!=CompiledTrees.Num())return Stop(TEXT("returned_compiled_tree_inventory"),LexToString(CompiledTrees.Num()),LexToString(NewTrees.Num()));
+            for(int32 I=0;I<NewTrees.Num();++I)
+            {
+                const auto& N=NewTrees[I];const auto& E=CompiledTrees[I];
+                if(N.Root.IsValid()&&N.State.Runtime!=AuthoredTree.Runtime&&(!E.Root.IsValid()||N.State.Runtime!=E.State.Runtime))return Stop(TEXT("returned_compiled_tree_projection"),TEXT("prior runtime cache or protected authored source projection"),TEXT("different"));
+                if(!N.Root.IsValid()&&E.Root.IsValid())return Stop(TEXT("returned_compiled_tree_root"),TEXT("existing root remains present"),TEXT("lost"));
+            }CompiledTrees=MoveTemp(NewTrees);
+        }
+        ClassesReady=true;
         TSet<FName> FirstNew;int32 GraphSlot=0;
         for(auto& Method:Methods)
         {
@@ -955,11 +1240,11 @@ struct FGameInterfaceWork
             if(Method.HasNew&&Returned.Get()!=Method.NewGraph.Hold.Get())return Stop(TEXT("returned_graph_slot"),Method.NewGraph.Path,TEXT("different"));if(Returned.IsValid()&&!Live(Returned.Get()))return Stop(TEXT("returned_graph_lifetime"),Method.Name.ToString(),TEXT("unavailable"));
             if(Returned.IsValid()){if(!Capture(Returned.Get(),Method.CandidateNew))return false;if(!Method.HasNew){FirstNew.Add(Method.Name);Method.HasNew=true;Method.NewGraph.Hold.Reset(Returned.Get());}}else if(RequireProjection)return Stop(TEXT("returned_graph_missing"),Method.Name.ToString(),TEXT("null"));
         }
-        if(!Current()||!Capture(BeforeGraph.Hold.Get(),CandidateBefore))return false;if(Construction.Hold.IsValid()&&!Capture(Construction.Hold.Get(),CandidateConstruction))return false;CandidatesReady=true;
+        if(!Current())return false;if(BeforeGraph.Hold.IsValid()&&!Capture(BeforeGraph.Hold.Get(),CandidateBefore))return false;if(Construction.Hold.IsValid()&&!Capture(Construction.Hold.Get(),CandidateConstruction))return false;CandidatesReady=true;
         if(!Current()||!Texts(CandidateBefore)||(Construction.Hold.IsValid()&&!Texts(CandidateConstruction)))return false;for(auto& Method:Methods)if(Method.HasNew&&!Texts(Method.CandidateNew))return false;
-        if(!Logical(BeforeGraph,CandidateBefore)||(Construction.Hold.IsValid()&&!Logical(Construction,CandidateConstruction)))return false;
+        if((BeforeGraph.Hold.IsValid()&&!Logical(BeforeGraph,CandidateBefore))||(Construction.Hold.IsValid()&&!Logical(Construction,CandidateConstruction)))return false;
         for(auto& Method:Methods)if(Method.HasNew){if(!FirstNew.Contains(Method.Name)&&!Logical(Method.NewGraph,Method.CandidateNew))return false;if(RequireProjection&&!Projection(Method,Method.CandidateNew))return false;}
-        BeforeGraph=MoveTemp(CandidateBefore);if(Construction.Hold.IsValid())Construction=MoveTemp(CandidateConstruction);for(auto& Method:Methods)if(Method.HasNew)Method.NewGraph=MoveTemp(Method.CandidateNew);CandidatesReady=false;Rebinding=false;ClassesReady=false;return Current();
+        if(BeforeGraph.Hold.IsValid())BeforeGraph=MoveTemp(CandidateBefore);if(Construction.Hold.IsValid())Construction=MoveTemp(CandidateConstruction);for(auto& Method:Methods)if(Method.HasNew)Method.NewGraph=MoveTemp(Method.CandidateNew);CandidatesReady=false;Rebinding=false;ClassesReady=false;return Current();
     }
 
     static bool ScalarField(const FProperty* Field)
@@ -977,8 +1262,8 @@ struct FGameInterfaceWork
         Editor.Reset(GEditor);if(!IsInGameThread()||!Live(Editor.Get())||IsPlaySessionActive()||IsGarbageCollecting()||UE::IsSavingPackage())return Reject(TEXT("game_interface_editor_invalid"),TEXT("Idle Editor GT required."));World.Reset(GEditor->GetEditorWorldContext().World());if(!Context())return Reject(TEXT("game_interface_editor_invalid"),TEXT("Stable idle Editor required."));
         const FString ObjectPath=RequestedTarget.Contains(TEXT("."))?RequestedTarget:RequestedTarget+TEXT(".")+FPackageName::GetLongPackageAssetName(RequestedTarget);Target.Reset(FindObject<UBlueprint>(nullptr,*ObjectPath));Interface.Reset(FindObject<UClass>(nullptr,*RequestedInterface));
         if(!Interface.IsValid()){const FString Asset=RequestedInterface.Contains(TEXT("."))?RequestedInterface:RequestedInterface+TEXT(".")+FPackageName::GetLongPackageAssetName(RequestedInterface);TStrongObjectPtr<UBlueprint> Found(FindObject<UBlueprint>(nullptr,*Asset));if(Live(Found.Get())&&Found->GeneratedClass.GetGCPtr().IsResolved())Interface.Reset(Found->GeneratedClass.Get());}
-        if(!Live(Interface.Get())||Interface->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!Interface->ClassGeneratedBy.IsResolved())return Reject(TEXT("game_interface_loaded_source_required"),TEXT("Already loaded compiled Game Blueprint interface source required; no loader or CDO warming."));Source.Reset(Cast<UBlueprint>(Interface->ClassGeneratedBy.Get()));if(!Live(Source.Get())||!Live(Target.Get())||Source.Get()==Target.Get()||Source->GetPackage()==Target->GetPackage())return Reject(TEXT("game_interface_source_target_pending"),TEXT("Distinct loaded direct Game BPI and normal Actor assets required."));
-        auto* S=Source.Get();auto* B=Target.Get();SourcePath=S->GetPathName();TargetPath=B->GetPathName();InterfacePathValue=Interface->GetPathName();
+        if(!Live(Interface.Get())||Interface->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!Interface->ClassGeneratedBy.IsResolved())return Reject(TEXT("game_interface_loaded_source_required"),TEXT("Already loaded compiled Game Blueprint interface source required; no loader or CDO warming."));Source.Reset(Cast<UBlueprint>(Interface->ClassGeneratedBy.Get()));if(!Live(Source.Get())||!Live(Target.Get())||Source.Get()==Target.Get()||Source->GetPackage()==Target->GetPackage())return Reject(TEXT("game_interface_source_target_pending"),TEXT("Distinct loaded direct Game BPI and normal Actor/UserWidget assets required."));
+        auto* S=Source.Get();auto* B=Target.Get();WidgetTarget=B->GetClass()==UWidgetBlueprint::StaticClass();SourcePath=S->GetPathName();TargetPath=B->GetPathName();InterfacePathValue=Interface->GetPathName();
         if(S->GetClass()!=UBlueprint::StaticClass()||S->BlueprintType!=BPTYPE_Interface||S->Status!=BS_UpToDate||S->GetPackage()->IsDirty()||!S->ParentClass.GetGCPtr().IsResolved()||S->ParentClass.Get()!=UInterface::StaticClass()||!S->SkeletonGeneratedClass.GetGCPtr().IsResolved()||S->FunctionGraphs.Num()>32||!S->UbergraphPages.IsEmpty()||!S->MacroGraphs.IsEmpty()||!S->DelegateSignatureGraphs.IsEmpty()||!S->ImplementedInterfaces.IsEmpty()||!S->NewVariables.IsEmpty())return Reject(TEXT("game_interface_source_profile_pending"),TEXT("Saved-clean UpToDate direct-UInterface BPI with bounded own signature graphs; inherited/custom/Anim sources remain incomplete."));SourceSkeleton.Reset(S->SkeletonGeneratedClass.Get());SourceSkeletonPath=SourceSkeleton.IsValid()?SourceSkeleton->GetPathName():FString();
         if(!ClassRole(Interface.Get(),S,UInterface::StaticClass(),InterfacePathValue)||!ClassRole(SourceSkeleton.Get(),S,UInterface::StaticClass(),SourceSkeletonPath)||!Interface->HasAnyClassFlags(CLASS_Interface)||!SourceSkeleton->HasAnyClassFlags(CLASS_Interface))return Reject(TEXT("game_interface_source_class_pending"),TEXT("Exact own generated/skeleton interface roles required."));SourceCDO.Reset(Interface->ClassDefaultObject.Get());SourceSkelCDO.Reset(SourceSkeleton->ClassDefaultObject.Get());if(!CDORole(SourceCDO.Get(),Interface.Get())||!CDORole(SourceSkelCDO.Get(),SourceSkeleton.Get()))return Reject(TEXT("game_interface_source_CDO_role"),TEXT("Observed nullable interface CDO slots must retain actual role; no forced CDO allocation."));
         for(UClass* Class:{Interface.Get(),SourceSkeleton.Get()})for(TFieldIterator<UFunction> It(Class,EFieldIterationFlags::None);It;++It){auto& Order=Class==Interface.Get()?DeclOrder:SkelOrder;if(Order.Num()>=32)return Reject(TEXT("game_interface_function_bound"),TEXT("At most32 own functions; no literal sample count."));Order.Emplace(*It);}
@@ -991,12 +1276,49 @@ struct FGameInterfaceWork
             if(!Match||UsedGraphs.Contains(Match)||Match->GetOuter()!=S)return Reject(TEXT("game_interface_source_graph_pending"),TEXT("One own signature graph per compiled function required."));if(!Capture(Match,Method.SourceGraph))return false;UsedGraphs.Add(Match);Method.DeclDefaults=Defaults(Method.Decl);Method.SkelDefaults=Defaults(Method.SkelDecl);Methods.Add(MoveTemp(Method));
         }
         for(TFieldIterator<UFunction> It(Interface.Get(),EFieldIteratorFlags::IncludeSuper);It;++It){if(SDKOrder.Num()>=64)return Reject(TEXT("game_interface_sdk_function_bound"),TEXT("Bounded declared/inherited SDK iteration required."));SDKOrder.Emplace(*It);UClass* Owner=It->GetOuterUClass();if(Owner!=Interface.Get()){if(!Live(Owner)||(Owner!=UInterface::StaticClass()&&Owner!=UObject::StaticClass()))return Reject(TEXT("game_interface_inherited_source_pending"),TEXT("Only existing native UInterface/UObject inherited source roles are admitted."));Holds.Emplace(Owner);FFunctionRole Role;if(!BindFunction(*It,Owner,Role))return false;InheritedOwnerFlags.Add(Owner->ClassFlags);InheritedDefaults.Add(Defaults(Role));InheritedFunctions.Add(MoveTemp(Role));}}
-        if(B->GetClass()!=UBlueprint::StaticClass()||B->BlueprintType!=BPTYPE_Normal||B->Status!=BS_UpToDate||B->GetPackage()->IsDirty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.Get()!=AActor::StaticClass()||!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->NewVariables.IsEmpty()||B->FunctionGraphs.Num()>1||!B->MacroGraphs.IsEmpty()||!B->DelegateSignatureGraphs.IsEmpty()||B->UbergraphPages.Num()!=1||!B->UbergraphPages[0].IsResolved()||!B->Timelines.IsEmpty()||B->ImplementedInterfaces.Num()>1||!B->SimpleConstructionScript.IsResolved())return Reject(TEXT("game_interface_target_profile_pending"),TEXT("Saved-clean direct Actor with default EventGraph, no user functions/variables/macros/delegates/timelines; other owners remain incomplete."));
-        Generated.Reset(B->GeneratedClass.Get());Skeleton.Reset(B->SkeletonGeneratedClass.Get());if(!Live(Generated.Get())||!Live(Skeleton.Get()))return Reject(TEXT("game_interface_target_classes_pending"),TEXT("Existing current generated/skeleton roles required."));GeneratedPath=Generated->GetPathName();SkeletonPath=Skeleton->GetPathName();if(!ClassRole(Generated.Get(),B,AActor::StaticClass(),GeneratedPath)||!ClassRole(Skeleton.Get(),B,AActor::StaticClass(),SkeletonPath))return Reject(TEXT("game_interface_target_classes_pending"),TEXT("Current own generated/skeleton/CDO roles required."));CDO.Reset(Generated->ClassDefaultObject.Get());SkelCDO.Reset(Skeleton->ClassDefaultObject.Get());if(!CDORole(CDO.Get(),Generated.Get())||!CDORole(SkelCDO.Get(),Skeleton.Get()))return Reject(TEXT("game_interface_target_CDO_role"),TEXT("Nullable existing target CDO roles required."));
+        if(B->GetClass()!=TargetAssetClass()||B->BlueprintType!=BPTYPE_Normal||B->Status!=BS_UpToDate||B->GetPackage()->IsDirty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.Get()!=TargetParent()||!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||(WidgetTarget?B->NewVariables.Num()>64:!B->NewVariables.IsEmpty())||B->FunctionGraphs.Num()>(WidgetTarget?0:1)||!B->MacroGraphs.IsEmpty()||!B->DelegateSignatureGraphs.IsEmpty()||B->UbergraphPages.Num()>1||(!WidgetTarget&&B->UbergraphPages.Num()!=1)||!B->Timelines.IsEmpty()||B->ImplementedInterfaces.Num()>1)
+            return Reject(TEXT("game_interface_target_profile_pending"),TEXT("Saved-clean direct Actor/default SCS or direct UserWidget/known native Canvas-Button-Text tree with at most one default EventGraph; only captured widget descriptors, no user functions/macros/delegates/timelines. Wider valid owners remain incomplete."));
+        Generated.Reset(B->GeneratedClass.Get());Skeleton.Reset(B->SkeletonGeneratedClass.Get());if(!Live(Generated.Get())||!Live(Skeleton.Get()))return Reject(TEXT("game_interface_target_classes_pending"),TEXT("Existing current generated/skeleton roles required."));GeneratedPath=Generated->GetPathName();SkeletonPath=Skeleton->GetPathName();TargetGeneratedMeta=Generated->GetClass();TargetSkeletonMeta=Skeleton->GetClass();if(WidgetTarget&&(TargetGeneratedMeta!=UWidgetBlueprintGeneratedClass::StaticClass()||TargetSkeletonMeta!=UWidgetBlueprintGeneratedClass::StaticClass()))return Reject(TEXT("game_interface_widget_compiler_class_pending"),TEXT("Installed standard Widget generated/skeleton metaclasses required."));if(!ClassRole(Generated.Get(),B,TargetParent(),GeneratedPath)||!ClassRole(Skeleton.Get(),B,TargetParent(),SkeletonPath))return Reject(TEXT("game_interface_target_classes_pending"),TEXT("Current own generated/skeleton/CDO roles required."));CDO.Reset(Generated->ClassDefaultObject.Get());SkelCDO.Reset(Skeleton->ClassDefaultObject.Get());if(!CDORole(CDO.Get(),Generated.Get())||!CDORole(SkelCDO.Get(),Skeleton.Get()))return Reject(TEXT("game_interface_target_CDO_role"),TEXT("Nullable existing target CDO roles required."));
+        if(WidgetTarget)
+        {
+            auto* W=static_cast<UWidgetBlueprint*>(B);
+            if(!W->WidgetTree.IsResolved()||!Live(W->WidgetTree.Get())||W->WidgetTree->GetOuter()!=W||!W->Bindings.IsEmpty()||!W->Animations.IsEmpty())return Reject(TEXT("game_interface_widget_source_pending"),TEXT("Own resolved WidgetTree without bindings/animations required."));
+            WidgetTree.Reset(W->WidgetTree.Get());WidgetTreePath=WidgetTree->GetPathName();
+            if(!WidgetTree->RootWidget.IsResolved()||!Live(WidgetTree->RootWidget.Get())||WidgetTree->RootWidget->GetClass()!=UCanvasPanel::StaticClass())return Reject(TEXT("game_interface_widget_root_pending"),TEXT("Existing native Canvas root required; custom/non-admitted widget trees remain incomplete."));
+            WidgetRoot.Reset(static_cast<UCanvasPanel*>(WidgetTree->RootWidget.Get()));WidgetRootPath=WidgetRoot->GetPathName();WidgetGuids=W->WidgetVariableNameToGuidMap;
+            if(WidgetRoot->GetOuter()!=WidgetTree.Get()||!WidgetRoot->Slot.IsResolved()||WidgetRoot->Slot.Get())return Reject(TEXT("game_interface_widget_root_pending"),TEXT("Own native Canvas with null root Slot required."));
+            RootChildren=WidgetRoot->GetChildrenCount();RichTree=RootChildren>0;
+            if(RootChildren<0||RootChildren>64||(!RichTree&&!B->NewVariables.IsEmpty()))return Reject(TEXT("game_interface_widget_tree_pending"),TEXT("Existing empty Canvas profile or bounded Canvas/Button/Text source tree; wider valid owners remain incomplete."));
+            if(RichTree)
+            {
+                if(!ReadWidgetTree(WidgetTree.Get(),AuthoredTree))return Reject(TEXT("game_interface_widget_tree_pending"),TEXT("Existing ACH reader requires bounded exact Canvas/Button/Text and native slots with closed ownership and observable authored values; custom/opaque/bound variants remain incomplete."));
+                for(const auto& D:B->NewVariables)
+                {
+                    const auto* Widget=AuthoredTree.Objects.FindByPredicate([&](const FTreeObject& O){return O.Object->IsA<UWidget>()&&O.Object->GetFName()==D.VarName;});
+                    if(!Widget||D.VarType.PinCategory!=UEdGraphSchema_K2::PC_Object||D.VarType.ContainerType!=EPinContainerType::None||D.VarType.bIsReference||!D.VarType.PinSubCategoryObject.IsValid()||D.VarType.PinSubCategoryObject.Get()!=Widget->Class.Get())return Reject(TEXT("game_interface_widget_descriptor_pending"),TEXT("Only existing known native widget descriptors are admitted; arbitrary user variables remain incomplete."));
+                }
+                CompiledTreeField=FindFProperty<FObjectProperty>(UWidgetBlueprintGeneratedClass::StaticClass(),TEXT("WidgetTree"));
+                if(!CompiledTreeField)return Reject(TEXT("game_interface_widget_compiled_tree_pending"),TEXT("Existing native compiled WidgetTree descriptor required; no private member access."));
+                CompiledTreeOffset=CompiledTreeField->GetOffset_ForInternal();
+                if(!CaptureCompiledTrees(CompiledTrees))return Reject(TEXT("game_interface_widget_compiled_tree_pending"),TEXT("Actual separate nullable compiled WidgetTree/root roles required."));
+                TreeReady=true;
+            }
+            WidgetVariables=B->NewVariables;
+            Holds.Emplace(WidgetTree.Get());Holds.Emplace(WidgetRoot.Get());Holds.Emplace(UUserWidget::StaticClass());Holds.Emplace(UWidgetBlueprintGeneratedClass::StaticClass());
+        }
+        else
+        {
+        if(!B->SimpleConstructionScript.IsResolved())return Reject(TEXT("game_interface_target_SCS_pending"),TEXT("Already resolved Actor SCS required; no loader."));
         SCS.Reset(B->SimpleConstructionScript.Get());if(!Live(SCS.Get())||SCS->GetAllNodes().Num()!=1||SCS->GetRootNodes().Num()!=1||SCS->GetAllNodes()[0]!=SCS->GetRootNodes()[0])return Reject(TEXT("game_interface_target_SCS_pending"),TEXT("One own native Scene root required."));SCSOuter=SCS->GetOuter();RootNode.Reset(SCS->GetAllNodes()[0]);if(!Live(RootNode.Get())||!RootNode->ComponentClass.IsResolved()||RootNode->ComponentClass.Get()!=USceneComponent::StaticClass()||!RootNode->ComponentTemplate.IsResolved()||!RootNode->GetChildNodes().IsEmpty())return Reject(TEXT("game_interface_root_pending"),TEXT("Lone inactive native Scene root required."));RootTemplate.Reset(Cast<USceneComponent>(RootNode->ComponentTemplate.Get()));if(!Live(RootTemplate.Get())||RootTemplate->IsRegistered()||RootTemplate->GetOwner()||RootTemplate->GetWorld())return Reject(TEXT("game_interface_root_pending"),TEXT("Own inactive native Scene template required."));RootGuid=RootNode->VariableGuid;RootName=RootNode->GetVariableName();RootPath=RootTemplate->GetPathName();
-        if(!Capture(B->UbergraphPages[0].Get(),BeforeGraph))return false;for(const auto& Node:BeforeGraph.Nodes)if(Node.Class!=UK2Node_Event::StaticClass())return Reject(TEXT("game_interface_target_graph_pending"),TEXT("Only existing unlinked default Event nodes in the first target."));for(const auto& Node:BeforeGraph.Nodes)for(const auto& Pin:Node.Pins)if(!Pin.Links.IsEmpty())return Reject(TEXT("game_interface_target_graph_pending"),TEXT("Unlinked original events required."));
+        }
+        if(!B->UbergraphPages.IsEmpty())
+        {
+            if(!B->UbergraphPages[0].IsResolved()||!Capture(B->UbergraphPages[0].Get(),BeforeGraph))return false;
+            for(const auto& Node:BeforeGraph.Nodes)if(Node.Class!=UK2Node_Event::StaticClass())return Reject(TEXT("game_interface_target_graph_pending"),TEXT("Existing unlinked stock default Event nodes only; richer graphs remain incomplete."));
+            for(const auto& Node:BeforeGraph.Nodes)for(const auto& Pin:Node.Pins)if(!Pin.Links.IsEmpty())return Reject(TEXT("game_interface_target_graph_pending"),TEXT("Unlinked original default events required."));
+        }
         BeforeFunctions=B->FunctionGraphs;if(!BeforeFunctions.IsEmpty()){if(!BeforeFunctions[0].IsResolved()||BeforeFunctions[0]->GetFName()!=UEdGraphSchema_K2::FN_UserConstructionScript||!Capture(BeforeFunctions[0].Get(),Construction)||Construction.Nodes.Num()!=1||Construction.Nodes[0].Class!=UK2Node_FunctionEntry::StaticClass())return Reject(TEXT("game_interface_UCS_pending"),TEXT("Only actual empty stock UCS graph is admitted alongside the default EventGraph."));for(const auto& Pin:Construction.Nodes[0].Pins)if(!Pin.Links.IsEmpty())return Reject(TEXT("game_interface_UCS_pending"),TEXT("Stock UCS must have no authored links or body nodes."));}
-        BeforeUber=B->UbergraphPages;ExpectedInterfaces=B->ImplementedInterfaces.Num();WasImplemented=ExpectedInterfaces==1;SavePolicy.Reset(FindObject<UBlueprintEditorSettings>(nullptr,TEXT("/Script/BlueprintGraph.Default__BlueprintEditorSettings")));if(!Live(SavePolicy.Get())||SavePolicy->SaveOnCompile!=SoC_Never)return Reject(TEXT("game_interface_save_policy_unsafe"),TEXT("Existing SaveOnCompile=Never required; settings are not changed."));ExposeDeprecated=SavePolicy->bExposeDeprecatedFunctions;for(UClass* Class:{UInterface::StaticClass(),UObject::StaticClass(),AActor::StaticClass()})Holds.Emplace(Class);ClassPolicy=ReadClassPolicy();
+        BeforeUber=B->UbergraphPages;ExpectedInterfaces=B->ImplementedInterfaces.Num();WasImplemented=ExpectedInterfaces==1;SavePolicy.Reset(FindObject<UBlueprintEditorSettings>(nullptr,TEXT("/Script/BlueprintGraph.Default__BlueprintEditorSettings")));if(!Live(SavePolicy.Get())||SavePolicy->SaveOnCompile!=SoC_Never)return Reject(TEXT("game_interface_save_policy_unsafe"),TEXT("Existing SaveOnCompile=Never required; settings are not changed."));ExposeDeprecated=SavePolicy->bExposeDeprecatedFunctions;for(UClass* Class:{UInterface::StaticClass(),UObject::StaticClass(),TargetParent()})Holds.Emplace(Class);ClassPolicy=ReadClassPolicy();
         if(!Current()||!Texts(BeforeGraph)||(Construction.Hold.IsValid()&&!Texts(Construction)))return false;for(auto& Method:Methods)if(!Texts(Method.SourceGraph))return false;
         auto* SchemaClass=UEdGraphSchema_K2::StaticClass();if(!SchemaClass->ClassDefaultObject.IsResolved())return Reject(TEXT("game_interface_schema_unavailable"),TEXT("Existing resolved K2 schema CDO required."));TStrongObjectPtr<UObject> KeepSchema(SchemaClass->ClassDefaultObject.Get());if(!Live(KeepSchema.Get())||KeepSchema->GetClass()!=SchemaClass)return Reject(TEXT("game_interface_schema_unavailable"),TEXT("Exact native schema CDO required; no warming."));Holds.Emplace(KeepSchema.Get());const auto* Schema=static_cast<UEdGraphSchema_K2*>(KeepSchema.Get());
         for(auto& Method:Methods)
@@ -1016,8 +1338,9 @@ struct FGameInterfaceWork
         if(WasImplemented){const auto& Description=B->ImplementedInterfaces[0];int32 Slot=0;for(auto& Method:Methods)if(Method.GraphRequired){if(!Description.Graphs[Slot].IsResolved()||!Capture(Description.Graphs[Slot].Get(),Method.NewGraph))return false;Method.HasNew=true;++Slot;}}
         for(auto& Method:Methods){if(Method.HasNew){if(!Texts(Method.NewGraph)||!Projection(Method,Method.NewGraph))return false;}else if(Method.GraphRequired&&FindObject<UObject>(B,*Method.Name.ToString()))return Reject(TEXT("game_interface_function_name_conflict"),TEXT("Existing same-name target object conflicts; no writer dispatched."));}
         auto Snapshot=MakeShared<FJsonObject>();if(!SourceSnapshot(Snapshot))return false;if(!Snapshot->GetBoolField(TEXT("blueprint_implementable"))||!Snapshot->GetBoolField(TEXT("can_implement")))return Reject(TEXT("game_interface_public_eligibility_rejected"),TEXT("Actual public interface eligibility predicates rejected the source/owner."));R.Data->SetObjectField(TEXT("interface_source_before"),Snapshot);
+        if(WidgetTarget)for(TObjectIterator<UUserWidget> It;It;++It)if(Live(*It)&&!It->IsTemplate()&&It->IsA(Generated.Get()))return Reject(TEXT("game_interface_live_widget_pending"),TEXT("Loaded target UserWidget instances remain outside the asset-only structural profile."));
         for(TObjectIterator<AActor> It;It;++It)if(Live(*It)&&!It->IsTemplate()&&It->IsA(Generated.Get()))return Reject(TEXT("game_interface_live_actor_pending"),TEXT("Loaded target Actor instances remain outside first asset-only profile."));for(TObjectIterator<UBlueprintGeneratedClass> It;It;++It)if(Live(*It)&&*It!=Generated.Get()&&*It!=Skeleton.Get()&&It->IsChildOf(Generated.Get()))return Reject(TEXT("game_interface_derived_target_pending"),TEXT("Loaded derived target classes remain incomplete."));
-        SourceFile=FPackageName::LongPackageNameToFilename(S->GetPackage()->GetName(),FPackageName::GetAssetPackageExtension());TargetFile=FPackageName::LongPackageNameToFilename(B->GetPackage()->GetName(),FPackageName::GetAssetPackageExtension());if(!File(SourceFile,SourceHash)||!File(TargetFile,TargetHash)||!RootSnapshot(RootValues))return false;Ready=true;R.Data->SetStringField(TEXT("source_blueprint"),SourcePath);R.Data->SetStringField(TEXT("target_blueprint"),TargetPath);if(Methods.Num()==1)R.Data->SetStringField(TEXT("interface_function"),Methods[0].Name.ToString());R.Data->SetNumberField(TEXT("interface_function_count"),Methods.Num());R.Data->SetNumberField(TEXT("planned_interface_graph_count"),RequiredGraphs);R.Data->SetBoolField(TEXT("already_implemented_before"),WasImplemented);return Current();
+        SourceFile=FPackageName::LongPackageNameToFilename(S->GetPackage()->GetName(),FPackageName::GetAssetPackageExtension());TargetFile=FPackageName::LongPackageNameToFilename(B->GetPackage()->GetName(),FPackageName::GetAssetPackageExtension());if(!File(SourceFile,SourceHash)||!File(TargetFile,TargetHash)||!RootSnapshot(RootValues))return false;Ready=true;R.Data->SetBoolField(TEXT("game_interface_widget_target"),WidgetTarget);R.Data->SetStringField(TEXT("source_blueprint"),SourcePath);R.Data->SetStringField(TEXT("target_blueprint"),TargetPath);if(Methods.Num()==1)R.Data->SetStringField(TEXT("interface_function"),Methods[0].Name.ToString());R.Data->SetNumberField(TEXT("interface_function_count"),Methods.Num());R.Data->SetNumberField(TEXT("planned_interface_graph_count"),RequiredGraphs);R.Data->SetBoolField(TEXT("already_implemented_before"),WasImplemented);return Current();
     }
 
     FResult Run(const FString& RequestedTarget)
@@ -1031,7 +1354,7 @@ struct FGameInterfaceWork
         for(const auto& Method:Methods){if(Method.GraphRequired)Present&=Method.HasNew;if(Method.HasNew){++ObservedGraphs;auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("function_name"),Method.Name.ToString());Row->SetStringField(TEXT("path"),Method.NewGraph.Path);Row->SetStringField(TEXT("graph_guid"),Method.NewGraph.Guid.ToString());Row->SetStringField(TEXT("interface_guid"),Method.NewGraph.InterfaceId.ToString());Row->SetNumberField(TEXT("node_count"),Method.NewGraph.Nodes.Num());GraphRows.Add(MakeShared<FJsonValueObject>(Row));}}
         auto Legacy=MakeShared<FJsonObject>();Legacy->SetBoolField(TEXT("success"),true);Legacy->SetStringField(TEXT("blueprint_name"),RequestedTarget);Legacy->SetStringField(TEXT("interface_class"),InterfacePathValue);Legacy->SetStringField(TEXT("interface_class_path"),Interface->GetClassPathName().ToString());Legacy->SetBoolField(TEXT("added_or_already_present"),EngineReturn);Legacy->SetBoolField(TEXT("dirty_after"),Target->GetPackage()->IsDirty());R.Data->SetObjectField(TEXT("legacy_result"),Legacy);
         R.Data->SetBoolField(TEXT("interface_present_after"),Present);R.Data->SetNumberField(TEXT("interface_graph_count_after"),ObservedGraphs);R.Data->SetArrayField(TEXT("interface_graphs_after"),GraphRows);if(Methods.Num()==1&&Methods[0].HasNew){R.Data->SetStringField(TEXT("interface_graph_path"),Methods[0].NewGraph.Path);R.Data->SetStringField(TEXT("interface_graph_guid"),Methods[0].NewGraph.Guid.ToString());R.Data->SetStringField(TEXT("interface_guid"),Methods[0].NewGraph.InterfaceId.ToString());}R.Data->SetBoolField(TEXT("source_and_existing_graph_observed_unchanged"),true);R.Data->SetBoolField(TEXT("runtime_execution_verified"),false);R.Data->SetBoolField(TEXT("source_file_preserved"),true);R.Data->SetBoolField(TEXT("target_file_preserved"),true);
-        R.bChanged=Target->GetPackage()->IsDirty()||(!WasImplemented&&(Present||ObservedGraphs>0));R.bChangeStateKnown=true;R.bSuccess=R.bPostconditionPassed=Present&&(WasImplemented?!EngineReturn:EngineReturn);R.Stage=R.bSuccess?TEXT("complete"):TEXT("interface_sdk_failed_with_actual_prefix");if(!R.bSuccess)Reject(TEXT("game_interface_implementation_failed"),TEXT("Actual SDK false/partial and original explicit structural prefix retained; no retry or cleanup."));R.Data->SetStringField(TEXT("game_interface_scope"),TEXT("Saved-clean loaded direct-UInterface Game BPI with finite own primitive by-value functions -> saved-clean direct Actor/default Scene root/unlinked default events. Each actual override/event predicate determines interface graph0..N; each graph has Entry1 and Result only when the signature has output. Event signatures add no event/graph node. Source declarations/defaults/GUIDs and existing target graph/pin/root values remain guarded through SDK class/pin regeneration. No source load/CDO warming, full compile/save/runtime, inherited/container/reference/Anim/general owner parity."));return R;
+        R.bChanged=Target->GetPackage()->IsDirty()||(!WasImplemented&&(Present||ObservedGraphs>0));R.bChangeStateKnown=true;R.bSuccess=R.bPostconditionPassed=Present&&(WasImplemented?!EngineReturn:EngineReturn);R.Stage=R.bSuccess?TEXT("complete"):TEXT("interface_sdk_failed_with_actual_prefix");if(!R.bSuccess)Reject(TEXT("game_interface_implementation_failed"),TEXT("Actual SDK false/partial and original explicit structural prefix retained; no retry or cleanup."));R.Data->SetStringField(TEXT("game_interface_scope"),TEXT("Saved-clean loaded direct-UInterface Game BPI with finite own primitive by-value functions -> saved-clean direct Actor/default Scene root or direct UserWidget/empty Canvas or bounded native Canvas/Button/Text tree, with no/default unlinked events. Each actual override/event predicate determines interface graph0..N; each graph has Entry1 and Result only when the signature has output. Event signatures add no event/graph node. Source declarations/defaults/GUIDs and existing target graph/pin/root values remain guarded through SDK class/pin regeneration. No source load/CDO warming, full compile/save/runtime, inherited/container/reference/Anim/general owner parity. Populated Widget targets reuse ACH physical authored-tree/value/FText and variable-GUID protection with separate actual compiled trees; compiler returns allow only prior-cache or protected source runtime projection. Existing empty Canvas remains separate. No bindings/animations/arbitrary variables/user functions/live UI; custom/opaque/bound/wider trees remain incomplete and populated Game-BPI use awaits validation."));return R;
     }
 };
 static bool GameInterfaceRunning=false;

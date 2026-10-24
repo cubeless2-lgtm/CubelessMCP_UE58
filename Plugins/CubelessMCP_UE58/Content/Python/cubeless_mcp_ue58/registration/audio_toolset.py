@@ -28,10 +28,10 @@ class CubelessAudioTools(unreal.ToolsetDefinition):
     @toolset_registry.tool_call
     @staticmethod
     def inspect_audio_asset(asset_path: str) -> CubelessPythonOperationResult:
-        """Inspect one finite native SoundWave, SoundCue or conditional MetaSoundSource through the named EngineAPI helper. Original identity/kind/duration and applicable Wave/Cue fields are retained. Public resolution can load/PostLoad; SoundCue duration can refresh aggregate caches. Native repeated preservation observations start after initial resolution/duration, so no whole-call zero-effect claim is made. No explicit asset writer, compile, save, playback or fallback is requested. Custom subclasses and MetaSound authoring remain incomplete.
+        """The bounded inherited native profile follows the original MetaSoundSource class-chain, SoundCue IsA, then SoundWave IsA precedence. It retains at most 64 native runtime classes and actual source/owner roles; the original duration getter is called once and context/target/class state is checked immediately after it before further SDK observation. Nullable existing CDO and repeated payload snapshots are post-duration observations. Virtual getter side effects and global callback purity remain unknown; no whole-call zero-effect guarantee is added. New native-subclass usage validation is pending. Inspect one finite native SoundWave, SoundCue or conditional MetaSoundSource through the named EngineAPI helper. Original identity/kind/duration and applicable Wave/Cue fields are retained. Public resolution can load/PostLoad; SoundCue duration can refresh aggregate caches. Native repeated preservation observations start after initial resolution/duration, so no whole-call zero-effect claim is made. No explicit asset writer, compile, save, playback or fallback is requested. Generated sources, unadmitted native class/source profiles, arbitrary virtual getter effects and full MetaSound authoring remain incomplete.
 
         Args:
-            asset_path: Original required path; native normalizes and resolves its admitted exact /Game or /Engine native audio asset and reports actual load/getter scope.
+            asset_path: Original required path; native normalizes and resolves its admitted /Game or /Engine native audio asset and reports actual load/getter scope.
         """
         return reflected_result(audio.inspect_audio_asset(asset_path))
 
@@ -39,13 +39,7 @@ class CubelessAudioTools(unreal.ToolsetDefinition):
     @staticmethod
     def create_sound_cue_from_wave(name: str, sound_wave_path: str,
             package_path: str = "/Game/Audio/SoundCues") -> CubelessPythonOperationResult:
-        """Create the original exact SoundCue with one SoundNodeWavePlayer referencing a persisted native SoundWave. Public factory, graph linking and PostEditChange perform their original Editor lifecycle before one forced exact save. Existing targets are never overwritten: only an exact clean persisted matching graph is accepted as a no-op. Original legacy data.saved=True for that no-op is separate from actual top save flags/counters, which remain zero. Full returned allocation/save/readback prefixes survive errors; no automatic action retry, cleanup, rollback or Blueprint compilation occurs. One internal generated durable journal ID adds no public input. Playback, cold reload, cooked audio and basic MetaSound builder behavior are not proved.
-
-        Args:
-            name: Original required simple asset name; native trims/validates the target before allocation.
-            sound_wave_path: Original required persisted native SoundWave source; native resolution/load and dependency scope are explicit.
-            package_path: Original /Game/Audio/SoundCues default; native normalizes and admits a project target package root. There is no public save, timeout or operation_id input.
-        """
+        'Persisted admitted native SoundWave subclasses additionally reuse the existing source hierarchy/current-state observation around the original factory, WavePlayer assignment, linking, PostEditChange and single save. Source virtual SDK effects are not globally certified absent. Subclass creation usage is implemented / usage validation pending. Create the original exact SoundCue with one SoundNodeWavePlayer referencing a persisted native SoundWave. Public factory, graph linking and PostEditChange perform their original Editor lifecycle before one forced exact save. Existing targets are never overwritten: only an exact clean persisted matching graph is accepted as a no-op. Original legacy data.saved=True for that no-op is separate from actual top save flags/counters, which remain zero. Full returned allocation/save/readback prefixes survive errors; no automatic action retry, cleanup, rollback or Blueprint compilation occurs. One internal generated durable journal ID adds no public input. Playback, cold reload, cooked audio and basic MetaSound builder behavior are not proved.\n\n        Args:\n            name: Original required simple asset name; native trims/validates the target before allocation.\n            sound_wave_path: Original required persisted native SoundWave source; native resolution/load and dependency scope are explicit.\n            package_path: Original /Game/Audio/SoundCues default; native normalizes and admits a project target package root. There is no public save, timeout or operation_id input.\n        '
         return reflected_result(audio.create_sound_cue_from_wave(name, sound_wave_path, package_path))
 
     @toolset_registry.tool_call

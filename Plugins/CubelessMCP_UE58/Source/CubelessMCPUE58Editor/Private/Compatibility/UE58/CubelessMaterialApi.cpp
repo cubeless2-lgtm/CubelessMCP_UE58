@@ -22,6 +22,16 @@
 #include "Materials/MaterialExpressionExternalCodeBase.h"
 #include "Materials/MaterialExpressionFunctionInput.h"
 #include "Materials/MaterialExpressionFunctionOutput.h"
+#include "Materials/MaterialExpressionLandscapeGrassOutput.h"
+#include "Materials/MaterialExpressionLandscapePhysicalMaterialOutput.h"
+#include "LandscapeGrassType.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
+#include "Materials/MaterialExpressionLandscapeLayerBlend.h"
+#include "Materials/MaterialExpressionLandscapeLayerCoords.h"
+#include "Materials/MaterialExpressionLandscapeLayerSample.h"
+#include "Materials/MaterialExpressionLandscapeLayerSwitch.h"
+#include "Materials/MaterialExpressionLandscapeLayerWeight.h"
+#include "Materials/MaterialExpressionLandscapeVisibilityMask.h"
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
 #include "Materials/MaterialExpressionNamedReroute.h"
 #include "Materials/MaterialExpressionParameter.h"
@@ -412,7 +422,7 @@ bool ValidateMutationInputs(EOperation Operation, const TSharedPtr<FJsonObject>&
         UClass* Class = FindMaterialExpressionClass(Params->GetStringField(TEXT("expression_class")));
         if (!Class || !IsVerifiedRuntimeClass(Class) || Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
         {
-            OutError = TEXT("Expression class must be a concrete, native Engine material expression; unaudited plugin/generated classes are not admitted."); return false;
+            OutError = TEXT("Expression class must be a concrete native Engine expression, one of the eight audited native Landscape expressions, or the exact public runtime MaterialXTextureSampleParameterBlur leaf; other module/generated expression classes remain incomplete."); return false;
         }
         TSharedPtr<FJsonObject> Properties;
         if (!ReadMutationProperties(Params, Properties, OutError)) { return false; }
@@ -440,7 +450,7 @@ bool ValidateMutationInputs(EOperation Operation, const TSharedPtr<FJsonObject>&
     else if (Operation == EOperation::SetNodeProperty)
     {
         if (!State.SelectedExpression.Get()) { OutError = TEXT("Node selector did not resolve uniquely."); return false; }
-        if (!IsVerifiedRuntimeClass(State.SelectedExpression->GetClass())) { OutError = TEXT("Property editing requires an audited native Engine expression class."); return false; }
+        if (!IsVerifiedRuntimeClass(State.SelectedExpression->GetClass())) { OutError = TEXT("Property editing requires an audited native Engine expression, exact Landscape expression or exact public runtime MaterialXTextureSampleParameterBlur leaf; other module/generated expression classes remain incomplete."); return false; }
         TSharedPtr<FJsonValue> Value;
         FPreparedMaterialProperty Prepared;
         if (!ParseMutationJson(Params->GetStringField(TEXT("value_json")), Value, OutError) ||

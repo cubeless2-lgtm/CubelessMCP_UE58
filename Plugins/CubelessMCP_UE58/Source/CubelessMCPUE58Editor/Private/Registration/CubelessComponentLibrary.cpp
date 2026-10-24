@@ -40,3 +40,16 @@ FString UCubelessComponentLibrary::ConfigureBlueprintPCGTemplate(const FString& 
 {
     return Cubeless::Operations::ConfigureBlueprintPCGTemplate(ParamsJson);
 }
+
+FString UCubelessComponentLibrary::SetStaticMeshPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& AssetsJson)
+{
+    return Cubeless::Operations::SetBlueprintStaticMeshPropertiesRaw(BlueprintPath, ComponentName, AssetsJson);
+}
+
+FString UCubelessComponentLibrary::SetPhysicsPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertiesJson)
+{
+    return Cubeless::Operations::SetBlueprintComponentPhysicsRaw(BlueprintPath, ComponentName, PropertiesJson);
+}
+
+FString UCubelessComponentLibrary::AddComponentToBlueprintRaw(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName, const FString& TransformJson, const FString& ParentComponent)
+{ return Cubeless::Operations::AddBlueprintComponentRaw(BlueprintPath, ComponentType, ComponentName, TransformJson, ParentComponent); }

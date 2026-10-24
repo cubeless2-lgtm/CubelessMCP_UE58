@@ -91,14 +91,23 @@ def parent_reference_state(class_path):
 
 
 def generated_parent_observation(parent):
-    """Shared create/duplicate baseline for saved generated Actor parent chains."""
+    """Create/duplicate baseline; existing Actor/component or pure UObject-root profile."""
     requested = parent.get_path_name()
     if not requested.startswith("/Game/"):
         return None
-    helper = getattr(getattr(unreal, "CubelessEventLibrary", None), "inspect_saved_actor_parent", None)
+    # Installed KismetMathLibrary ClassIsChildOf is a public pure class-role
+    # query. Do not call the Actor inspector and reinterpret its failure.
+    actor_role = unreal.MathLibrary.class_is_child_of(parent, unreal.Actor.static_class())
+    component_role = unreal.MathLibrary.class_is_child_of(parent, unreal.ActorComponent.static_class())
+    method = "inspect_saved_actor_parent" if actor_role or component_role else "inspect_saved_object_parent"
+    helper = getattr(getattr(unreal, "CubelessEventLibrary", None), method, None)
     if not callable(helper):
-        raise OperationError("generated_parent_guard_unavailable", "Build/load the saved Actor parent inspector before authoring a child")
-    value = json.loads(helper(requested))
+        raise OperationError("generated_parent_guard_unavailable", "Build/load the selected saved parent inspector before authoring a child")
+    try:
+        raw = helper(requested)
+    finally:
+        helper = None
+    value = json.loads(raw)
     if not value.get("success"):
         raise OperationError(value.get("error_code") or "generated_parent_unsupported", value.get("error") or "Saved Actor parent validation failed")
     rows = value.get("generated_parents")

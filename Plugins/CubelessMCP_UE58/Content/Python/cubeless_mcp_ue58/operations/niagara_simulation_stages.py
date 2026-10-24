@@ -371,3 +371,130 @@ def _named_mcp(method,public):
         result["data"].update(operation=method,admission_rejected=True,native_start_dispatched=False,native_dispatched=False,native_mutation_attempted=False,change_state_known=True,mutation_state_unknown=False,mutation_performed=False)
         result["compile"].update(requested=False,attempted=False,compiled=None);result["save"].update(requested=False,attempted=False,saved=False)
         return shared.completed_result(result)
+
+
+# Raw UE56 Batch commands have a JSON-DOM contract, distinct from Named inputs.
+# Keep this bridge local to Stage argument preparation; actual work and the
+# compile/wait/save continuation remain in the existing concrete IB job.
+def _raw_batch_arguments(method, params, current_callback):
+    import re
+    from ..compatibility.ue58.json_value import number_to_legacy_string, try_get_legacy_bool
+    if method not in (IDENTITY, SETTINGS_IDENTITY) or type(params) is not dict:
+        raise OperationError('niagara_stage_raw_entry_invalid', 'An original Stage command object is required')
+    current_callback()
+    missing = object()
+
+    def string(value, default=missing):
+        if type(value) is str:
+            return value
+        if type(value) is bool:
+            return 'true' if value else 'false'
+        if type(value) in (int, float):
+            current_callback()
+            text = number_to_legacy_string(value)
+            current_callback()
+            return text
+        return default
+
+    def boolean(key, default=missing):
+        if key not in params:
+            return default
+        current_callback()
+        read, value = try_get_legacy_bool(params[key])
+        current_callback()
+        return value if read else default
+
+    def number(value):
+        if type(value) in (int, float, bool):
+            try:
+                value = float(value)
+            except (OverflowError, ValueError):
+                return missing
+            return value if math.isfinite(value) else missing
+        if type(value) is str and value and re.fullmatch(r'[+-]?[0-9]*[.]?[0-9]*', value):
+            # FString::IsNumeric permits sign/dot without digits; Atod yields0.
+            try:
+                value = float(value)
+            except ValueError:
+                value = 0.0
+            return value if math.isfinite(value) else missing
+        return missing
+
+    def integer(key, value, selector=False):
+        if selector and type(value) is str:
+            # FJsonValueString::TryGetNumber(int32) uses LexFromString/Atoi,
+            # unlike the double+nearly-integer count helper in the original.
+            match = re.match(r'[ \t\r\n\v\f]*([+-]?[0-9]+)', value)
+            converted = int(match.group(1)) if match else 0
+        else:
+            converted = number(value)
+            if converted is missing:
+                if selector:
+                    return None  # Original initialized INDEX_NONE is retained.
+                raise OperationError('niagara_stage_raw_number_invalid', "'" + key + "' must be a number")
+            if selector and not -2147483648 <= converted <= 2147483647:
+                return None  # TryConvertNumber returns false before assignment.
+            rounded = math.floor(converted + 0.5) if converted >= 0 else math.ceil(converted - 0.5)
+            if not selector and abs(converted - rounded) > 0.0001:
+                raise OperationError('niagara_stage_raw_integer_invalid', "'" + key + "' must be an integer")
+            converted = rounded
+        if not -2147483648 <= converted <= 2147483647:
+            raise OperationError('niagara_stage_raw_int32_range_pending', key + ' requires original platform-specific out-of-range conversion; no start dispatched')
+        return None if selector and converted == -1 else converted
+
+    system = string(params.get('system_path', missing))
+    if system is missing:
+        raise OperationError('niagara_stage_raw_system_required', "Missing 'system_path' parameter")
+    out = dict(system_path=system,
+        emitter_index_json=json.dumps(integer('emitter_index', params['emitter_index'], True) if 'emitter_index' in params else None),
+        emitter_name=string(params.get('emitter_name', missing), '').strip(),
+        allow_source_edit=boolean('allow_source_edit', False),
+        save=boolean('save', True), request_compile=boolean('request_compile', True))
+    options = {}
+    if method == IDENTITY:
+        out.update(stage_name=string(params.get('stage_name', missing), 'MCP_GridSimulationStage').strip(),
+            data_interface_name=string(params.get('data_interface_name', missing), 'Emitter.Grid2D Collection').strip(),
+            insert_index_json=json.dumps(integer('insert_index', params['insert_index']) if 'insert_index' in params else None),
+            skip_if_duplicate=boolean('skip_if_duplicate', True), enabled=boolean('enabled', True))
+        for key, default in (('iteration_source', 'DataInterface'), ('execute_behavior', 'Always')):
+            options[key] = string(params.get(key, missing), default)
+        options['wait_for_completion'] = boolean('wait_for_completion', False)
+        for key, default in (('timeout_seconds', 10.0), ('poll_interval_seconds', 0.1)):
+            value = number(params.get(key, missing))
+            out[key] = default if value is missing else value  # Existing Native clamps0..60/.02..1.
+    else:
+        out.update(stage_index_json=json.dumps(integer('stage_index', params['stage_index'], True) if 'stage_index' in params else None),
+            stage_name=string(params.get('stage_name', missing), '').strip())
+        for key in ('enabled', 'iteration_source', 'data_interface_name', 'execute_behavior', 'num_iterations_binding'):
+            value = boolean(key) if key == 'enabled' else string(params.get(key, missing))
+            if value is not missing:
+                options[key] = value  # Empty present strings are not silently omitted.
+    for key in ('direct_dispatch_type', 'direct_dispatch_element_type'):
+        value = string(params.get(key, missing))
+        if value is not missing:
+            options[key] = value
+    counts = {}
+    for key in ('element_count_x', 'element_count_y', 'element_count_z'):
+        if key in params:
+            counts[key] = integer(key, params[key])
+    array = params.get('element_count')
+    if type(array) is list:
+        if not 1 <= len(array) <= 3:
+            raise OperationError('niagara_stage_raw_count_invalid', "'element_count' must contain1 to3 integer values")
+        for key, value in zip(('element_count_x', 'element_count_y', 'element_count_z'), array):
+            counts[key] = integer('element_count', value)
+    # Original first validates numeric axes, then array overrides them, then
+    # tests nonnegative effective counts. Sending effective axes avoids the
+    # Native strict parser rejecting an overridden negative scalar too early.
+    options.update(counts)
+    if 'num_iterations' in params:
+        options['num_iterations'] = integer('num_iterations', params['num_iterations'])
+    elif method == IDENTITY:
+        options['num_iterations'] = 1
+    for key in ('gpu_dispatch_force_linear', 'override_gpu_dispatch_num_threads'):
+        value = boolean(key)
+        if value is not missing:
+            options[key] = value
+    out['options_json'] = json.dumps(options, allow_nan=False, sort_keys=True)
+    current_callback()
+    return out

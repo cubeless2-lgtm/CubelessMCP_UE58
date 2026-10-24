@@ -120,3 +120,32 @@ FString ConfigureBlueprintPCGTemplate(const FString& ParamsJson)
     return EncodeComponentMutation(UE58::Component::ConfigureBlueprintPCGTemplate(ParamsJson), TEXT("configure_blueprint_pcg_template"), Start);
 }
 }
+
+namespace Cubeless::Operations
+{
+FString SetBlueprintStaticMeshPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& AssetsJson)
+{
+    const double Start = FPlatformTime::Seconds();
+    return EncodeComponentMutation(UE58::Component::SetLocalStaticMeshPropertiesRaw(BlueprintPath, ComponentName, AssetsJson),
+        TEXT("set_static_mesh_properties"), Start);
+}
+}
+
+namespace Cubeless::Operations
+{
+FString SetBlueprintComponentPhysicsRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertiesJson)
+{
+    const double Start = FPlatformTime::Seconds();
+    return EncodeComponentMutation(UE58::Component::SetLocalPhysicsPropertiesRaw(BlueprintPath, ComponentName, PropertiesJson),
+        TEXT("set_physics_properties"), Start);
+}
+}
+
+namespace Cubeless::Operations
+{
+FString AddBlueprintComponentRaw(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName, const FString& TransformJson, const FString& ParentComponent)
+{
+    const double Start = FPlatformTime::Seconds();
+    return EncodeComponentMutation(UE58::Component::AddLocalComponentRaw(BlueprintPath, ComponentType, ComponentName, TransformJson, ParentComponent), TEXT("add_component_to_blueprint"), Start);
+}
+}

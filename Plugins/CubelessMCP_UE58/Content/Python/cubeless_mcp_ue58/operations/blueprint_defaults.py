@@ -118,7 +118,7 @@ def _apply_native(result, identity, arguments, native):
     result["stage"] = "returned_blueprint_defaults_operation"
 
 
-def _run_action(result, identity, arguments, checkpoint_callback=None):
+def _run_action(result, identity, arguments, checkpoint_callback=None, native_method=None):
     if identity not in (TICK, ANIM):
         raise OperationError("blueprint_defaults_operation_invalid", "Only the two agreed named defaults helpers are admitted")
     _context(result, identity, arguments)
@@ -132,7 +132,7 @@ def _run_action(result, identity, arguments, checkpoint_callback=None):
     result["changes"] = [{"kind": identity, "asset_path": arguments["blueprint_path"],
         "attempted": None, "change_state_known": False, "changed": None, "outcome": "unknown_until_native_response"}]
     try:
-        native = getattr(api, identity)(**arguments)
+        native = getattr(api, native_method or identity)(**arguments)
     except Exception as error:
         if getattr(error, "native_call_returned", False):
             result["data"].update(native_result_returned=True, native_raw_result=getattr(error, "native_raw_result", None))
@@ -205,3 +205,20 @@ def set_skeletal_mesh_component_anim_defaults_action(result, blueprint_name, com
     _run_action(result, ANIM, _anim_arguments(blueprint_name, component_name, skeletal_mesh, anim_class,
         physics_asset, simulate_physics, collision_enabled, collision_response,
         enable_gravity, visibility_based_anim_tick_option, compile, save), checkpoint_callback)
+
+
+def set_blueprint_actor_tick_settings_raw_action(result, blueprint_name, raw_settings, checkpoint_callback=None):
+    """Private original-command presence carrier; Named10 remains unchanged."""
+    fields = {"tick_hz", "tick_interval", "can_ever_tick", "start_with_tick_enabled",
+        "allow_tick_on_dedicated_server", "tick_even_when_paused", "dry_run", "compile", "save", "refresh_nodes"}
+    if type(raw_settings) is not dict or set(raw_settings) - fields:
+        raise OperationError("blueprint_defaults_raw_tick_invalid", "Only original Tick settings fields admitted")
+    try:
+        encoded = json.dumps(raw_settings, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        if len(encoded.encode("utf-8")) > 131072:
+            raise ValueError("private Tick carrier exceeds fixed 128KiB bound")
+    except (TypeError, ValueError, OverflowError, UnicodeError, RecursionError) as error:
+        raise OperationError("blueprint_defaults_raw_tick_invalid", "Finite bounded original Tick JSON required") from error
+    # CDO-dependent defaults and SDK bool/number coercions stay Native-owned.
+    arguments = {"blueprint_path": _path(blueprint_name), "settings_json": encoded}
+    _run_action(result, TICK, arguments, checkpoint_callback, native_method="set_blueprint_actor_tick_settings_raw")

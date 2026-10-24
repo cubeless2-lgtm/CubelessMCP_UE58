@@ -38,4 +38,8 @@ void Activate();   // Concrete registration owner only; no Python initialization
 void Deactivate(); // Stops new private/named calls; dispatched returns remain unknown.
 TSharedRef<FJsonObject> Unexecuted(const FString& Code, const FString& Error);
 TSharedRef<FJsonObject> Execute(const FRequest& Request, const FDispatch& Dispatch);
+// Internal synchronous Batch scope. Never held across a frame/ticker continuation.
+// Observe actions are check/end/abandon; a lost scope is quarantined, never closed speculatively.
+TSharedRef<FJsonObject> BeginBatchTransaction(const FString& OperationId);
+TSharedRef<FJsonObject> ObserveBatchTransaction(const FString& ScopeId, const FString& Action);
 }

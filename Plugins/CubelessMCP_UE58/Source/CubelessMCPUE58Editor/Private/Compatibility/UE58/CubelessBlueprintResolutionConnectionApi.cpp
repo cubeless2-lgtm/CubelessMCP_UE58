@@ -134,22 +134,110 @@ struct FGraphPinsLease
     {TArray<FGuid> R;for(auto* C:P.Children)R.Add(PinId(C,Set));return R;}
     static TArray<FGuid> LinkIds(const FPin& P,const TArray<FGraph>& Set)
     {TArray<FGuid> R;for(auto* L:P.Links)for(const auto& G:Set)for(const auto& N:G.Nodes)for(const auto& V:N.Pins)if(V.Address==L)R.Add(V.Id);return R;}
+    // YP: reuse the original concrete writer for an explicit-permission Engine
+    // primitive autocast. This lease adds only its exact one-node/two-leg plan.
+    bool ConversionRoute=false,ConversionReady=false;int32 ConversionSearchCalls=0,ConversionTypeCalls=0;
+    TStrongObjectPtr<UClass> ConversionOwner;TStrongObjectPtr<UFunction> ConversionFunction;
+    FMemberReference ConversionRef;EFunctionFlags ConversionFunctionFlags=FUNC_None;FString ConversionOwnerPath,ConversionFunctionPath;
+    FEdGraphPinType ConversionSourceType,ConversionTargetType;FGuid ConversionNodeId,ConversionInputId,ConversionOutputId;
+    struct FConversionField{FProperty* Property=nullptr;const FFieldClass* Kind=nullptr;FName Name;uint64 Flags=0;int32 Size=0,Offset=0,Dim=0;};
+    TArray<FConversionField> ConversionFields;
+    static bool ConversionType(const FEdGraphPinType& A,const FEdGraphPinType& B)
+    {auto X=A,Y=B;X.bIsReference=Y.bIsReference=false;X.bIsConst=Y.bIsConst=false;return Type(X,Y);}
+    bool ConversionCurrent()
+    {
+        if(!ConversionReady)return true;
+        if(!Live(ConversionOwner.Get())||ConversionOwner->GetClass()!=UClass::StaticClass()||!ConversionOwner->HasAnyClassFlags(CLASS_Native)||ConversionOwner->HasAnyClassFlags(CLASS_NewerVersionExists|CLASS_Deprecated)
+            ||!ConversionOwner->ClassGeneratedBy.IsResolved()||ConversionOwner->ClassGeneratedBy!=nullptr||ConversionOwner->GetOutermost()->GetName()!=TEXT("/Script/Engine")||!ConversionOwner->GetPathName().Equals(ConversionOwnerPath,ESearchCase::CaseSensitive)
+            ||!Live(ConversionFunction.Get())||ConversionFunction->GetClass()!=UFunction::StaticClass()||ConversionFunction->GetOuter()!=ConversionOwner.Get()||ConversionFunction->FunctionFlags!=ConversionFunctionFlags||!ConversionFunction->GetPathName().Equals(ConversionFunctionPath,ESearchCase::CaseSensitive))
+            return Bad(TEXT("autocast_native_source"),ConversionFunctionPath,TEXT("changed source function/class role"));
+        TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(ConversionFunction.Get(),EFieldIterationFlags::None);It;++It){if(Now.Num()>=4)return Bad(TEXT("autocast_native_signature"),TEXT("two captured native parameters"),TEXT("over bound"));Now.Add(*It);}
+        if(Now.Num()!=ConversionFields.Num())return Bad(TEXT("autocast_native_signature"),LexToString(ConversionFields.Num()),LexToString(Now.Num()));
+        for(int32 I=0;I<Now.Num();++I){const auto& E=ConversionFields[I];if(Now[I]!=E.Property)return Bad(TEXT("autocast_native_field"),E.Name.ToString(),TEXT("different address"));auto* P=Now[I];if(P->GetOwnerStruct()!=ConversionFunction.Get()||P->GetClass()!=E.Kind||P->GetFName()!=E.Name||uint64(P->GetPropertyFlags())!=E.Flags||P->GetSize()!=E.Size||P->GetOffset_ForInternal()!=E.Offset||P->ArrayDim!=E.Dim)return Bad(TEXT("autocast_native_field"),E.Name.ToString(),TEXT("changed owner/flags/layout"));}
+        return true;
+    }
+    bool BindConversion(UEdGraphPin* A,UEdGraphPin* B,const UEdGraphSchema_K2* Schema)
+    {
+        if(!Current())return false;ConversionSourceType=A->PinType;ConversionTargetType=B->PinType;
+        ++ConversionSearchCalls;const auto Found=Schema->SearchForAutocastFunction(ConversionSourceType,ConversionTargetType);
+        TStrongObjectPtr<UClass> ImmediateOwner(Found.IsSet()?Found->FunctionOwner:nullptr);
+        if(!Current())return false;
+        if(!Found.IsSet()||!Live(ImmediateOwner.Get())||ImmediateOwner->GetClass()!=UClass::StaticClass()||!ImmediateOwner->HasAnyClassFlags(CLASS_Native)||ImmediateOwner->HasAnyClassFlags(CLASS_NewerVersionExists|CLASS_Deprecated)
+            ||ImmediateOwner->GetOutermost()->GetName()!=TEXT("/Script/Engine")||!ImmediateOwner->ClassGeneratedBy.IsResolved()||ImmediateOwner->ClassGeneratedBy!=nullptr)
+            return Bad(TEXT("autocast_lookup"),TEXT("existing native Engine primitive autocast"),TEXT("specialized/custom conversion remains pending"));
+        ConversionOwner=MoveTemp(ImmediateOwner);ConversionOwnerPath=ConversionOwner->GetPathName();
+        for(TFieldIterator<UFunction> It(ConversionOwner.Get(),EFieldIterationFlags::None);It;++It)if(It->GetFName()==Found->TargetFunction){ConversionFunction.Reset(*It);break;}
+        if(!Live(ConversionFunction.Get())||ConversionFunction->GetClass()!=UFunction::StaticClass()||ConversionFunction->GetOuter()!=ConversionOwner.Get()||!ConversionFunction->HasAllFunctionFlags(FUNC_Native|FUNC_Static|FUNC_BlueprintPure))return Bad(TEXT("autocast_function"),TEXT("direct native static pure function"),TEXT("unavailable"));
+        ConversionFunctionPath=ConversionFunction->GetPathName();ConversionFunctionFlags=ConversionFunction->FunctionFlags;
+        FProperty* Input=nullptr;FProperty* Output=nullptr;
+        for(TFieldIterator<FProperty> It(ConversionFunction.Get(),EFieldIterationFlags::None);It;++It)
+        {auto* P=*It;if(ConversionFields.Num()>=2||P->GetOwnerStruct()!=ConversionFunction.Get()||P->ArrayDim!=1||!P->HasAnyPropertyFlags(CPF_Parm)||P->HasSetterOrGetter())return Bad(TEXT("autocast_function_signature"),TEXT("one direct primitive input and return"),TEXT("pending"));
+         if(P->HasAnyPropertyFlags(CPF_ReturnParm)){if(Output)return Bad(TEXT("autocast_return"),TEXT("one return"),TEXT("duplicate"));Output=P;}
+         else{if(Input||(P->HasAnyPropertyFlags(CPF_OutParm)&&!P->HasAnyPropertyFlags(CPF_ConstParm)))return Bad(TEXT("autocast_input"),TEXT("one nonmutable input"),TEXT("pending"));Input=P;}
+         FConversionField E;E.Property=P;E.Kind=P->GetClass();E.Name=P->GetFName();E.Flags=uint64(P->GetPropertyFlags());E.Size=P->GetSize();E.Offset=P->GetOffset_ForInternal();E.Dim=P->ArrayDim;ConversionFields.Add(E);}
+        if(!Input||!Output||ConversionFields.Num()!=2)return Bad(TEXT("autocast_function_signature"),TEXT("input plus return"),TEXT("missing"));
+        ConversionReady=true;if(!Current())return false;
+        ConversionRef.SetExternalMember(Found->TargetFunction,ConversionOwner.Get());if(!Current())return false;
+        FEdGraphPinType InputType,OutputType;++ConversionTypeCalls;const bool InputOK=Schema->ConvertPropertyToPinType(Input,InputType);if(!Current())return false;
+        ++ConversionTypeCalls;const bool OutputOK=Schema->ConvertPropertyToPinType(Output,OutputType);if(!Current())return false;
+        if(!InputOK||!OutputOK||!ConversionType(ConversionSourceType,InputType)||!ConversionType(ConversionTargetType,OutputType))return Bad(TEXT("autocast_function_types"),TEXT("actual native input/return types match requested endpoints"),TEXT("different"));
+        return true;
+    }
+    bool ConversionCandidate()
+    {
+        if(!ConversionRoute||LinkDone||CompilerReturn)return true;
+        const FNode* NewNode=nullptr;const FPin* Source=nullptr;const FPin* Target=nullptr;
+        for(int32 I=0;I<Rows.Num();++I)
+        {
+            const auto& Old=Rows[I];const auto& Now=Candidate[I];const bool IsSelected=Old.Hold.Get()==Selected;
+            if(Now.Nodes.Num()!=Old.Nodes.Num()+(IsSelected?1:0))return Bad(TEXT("autocast_new_node_count"),TEXT("exactly one append in selected graph"),TEXT("different"));
+            if(IsSelected)NewNode=&Now.Nodes.Last();
+            for(const auto& Node:Now.Nodes)for(const auto& Pin:Node.Pins){if(Pin.Id==SourceId)Source=&Pin;if(Pin.Id==TargetId)Target=&Pin;}
+        }
+        if(!NewNode||!Source||!Target||NewNode->Class!=UK2Node_CallFunction::StaticClass()||!NewNode->Call||!NewNode->Ref.IsSameReference(ConversionRef)||!NewNode->Id.IsValid())return Bad(TEXT("autocast_new_node_role"),ConversionFunctionPath,TEXT("not the one exact predicted native CallFunction"));
+        const FPin* Input=nullptr;const FPin* Output=nullptr;
+        for(const auto& Pin:NewNode->Pins)
+        {
+            if(Pin.Name==UEdGraphSchema_K2::PN_Self&&Pin.Direction==EGPD_Input&&(Pin.Flags&1)&&Pin.Links.IsEmpty()&&Pin.Type.PinCategory==UEdGraphSchema_K2::PC_Object&&Pin.Type.PinSubCategoryObject.Get()==ConversionOwner.Get())continue;
+            if(Pin.Parent||!Pin.Children.IsEmpty()||Pin.Type.ContainerType!=EPinContainerType::None)return Bad(TEXT("autocast_new_pin"),TEXT("whole primitive ports"),TEXT("pending"));
+            if(Pin.Direction==EGPD_Input&&ConversionType(Pin.Type,ConversionSourceType)&&!Input)Input=&Pin;
+            else if(Pin.Direction==EGPD_Output&&ConversionType(Pin.Type,ConversionTargetType)&&!Output)Output=&Pin;
+            else return Bad(TEXT("autocast_new_pin"),TEXT("one input, one return, optional unlinked hidden self"),TEXT("unexpected port"));
+        }
+        if(!Input||!Output||Input->Links.Num()!=1||Input->Links[0]!=Source->Address||Output->Links.Num()!=1||Output->Links[0]!=Target->Address
+            ||!Source->Links.Contains(Input->Address)||Target->Links.Num()!=1||Target->Links[0]!=Output->Address)
+            return Bad(TEXT("autocast_two_legs"),TEXT("exact reciprocal source-input and return-target legs"),TEXT("different"));
+        auto* SourcePlan=PlannedLinks.Find(SourceId);auto* TargetPlan=PlannedLinks.Find(TargetId);if(!SourcePlan||!TargetPlan||!TargetPlan->IsEmpty())return Bad(TEXT("autocast_endpoint_plan"),TEXT("captured source links and initially empty target"),TEXT("different"));
+        SourcePlan->Add(Input->Id);TargetPlan->Add(Output->Id);
+        for(const auto& Pin:NewNode->Pins){PlannedLinks.Add(Pin.Id,LinkIds(Pin,Candidate));PinOwners.Add(Pin.Id,NewNode->Id);}
+        ConversionNodeId=NewNode->Id;ConversionInputId=Input->Id;ConversionOutputId=Output->Id;return true;
+    }
+    TSharedRef<FJsonObject> ConversionReceipt()const
+    {
+        auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("native_source_observed"),ConversionReady);J->SetNumberField(TEXT("public_autocast_search_calls"),ConversionSearchCalls);J->SetNumberField(TEXT("public_property_type_calls"),ConversionTypeCalls);
+        J->SetStringField(TEXT("native_function"),ConversionFunctionPath);J->SetStringField(TEXT("conversion_node_id"),ConversionNodeId.ToString());J->SetStringField(TEXT("conversion_input_pin_id"),ConversionInputId.ToString());J->SetStringField(TEXT("conversion_output_pin_id"),ConversionOutputId.ToString());
+        J->SetBoolField(TEXT("SDK_internal_callback_atomicity_proven"),false);J->SetBoolField(TEXT("legacy_direct_link_success_overridden"),false);return J;
+    }
     bool Advance()
     {
         // No old pin is accessed here; fresh physical inventory is fixed before any text observer.
         if(!Capture(Candidate))return false;CandidateReady=true;if(!Pure(Candidate)||!Texts(Candidate))return false;
         if(Candidate.Num()!=Rows.Num())return Bad(TEXT("graph_count"),LexToString(Rows.Num()),LexToString(Candidate.Num()));
-        for(int32 I=0;I<Rows.Num();++I){const auto& A=Rows[I];const auto& B=Candidate[I];if(A.Hold.Get()!=B.Hold.Get()||A.Id!=B.Id||A.Nodes.Num()!=B.Nodes.Num())return Bad(TEXT("graph_semantics"),TEXT("same graph/nodes"),TEXT("different"));for(int32 J=0;J<A.Nodes.Num();++J){const auto& N=A.Nodes[J];const auto& M=B.Nodes[J];if(N.Hold.Get()!=M.Hold.Get()||N.Id!=M.Id||N.Class!=M.Class||!N.Path.Equals(M.Path,ESearchCase::CaseSensitive)||N.X!=M.X||N.Y!=M.Y||!N.Comment.Equals(M.Comment,ESearchCase::CaseSensitive)||N.Call!=M.Call||(N.Call&&!N.Ref.IsSameReference(M.Ref))||N.Pins.Num()!=M.Pins.Num())return Bad(TEXT("node_semantics"),N.Id.ToString(),TEXT("different"));for(int32 K=0;K<N.Pins.Num();++K){const auto& P=N.Pins[K];const auto& Q=M.Pins[K];const auto Expected=(!CompilerReturn&&LinkPlanned)?PlannedLinks.FindRef(P.Id):LinkIds(P,Rows);const FSetCell* SetExpected=(!CompilerReturn&&!LinkDone&&LinkPlanned)?SetCells.Find(P.Id):nullptr;const bool ResetTarget=!CompilerReturn&&PlannedDefault&&P.Id==TargetId;const bool ResetOldExec=!CompilerReturn&&OldPlannedDefault&&P.Id==OldId;const FString& ExpectedRaw=SetExpected?SetExpected->Raw:ResetOldExec?OldPlannedRaw:ResetTarget?PlannedRaw:P.Raw;const FString& ExpectedText=SetExpected?SetExpected->Text:ResetOldExec?OldPlannedText:ResetTarget?PlannedText:P.Display;UObject* ExpectedObject=SetExpected?SetExpected->Object:ResetOldExec?OldPlannedObject:ResetTarget?PlannedObject:P.Object;const uint32 ExpectedTextFlags=SetExpected?SetExpected->TextFlags:ResetOldExec?OldPlannedTextFlags:ResetTarget?PlannedTextFlags:FTextInspector::GetFlags(P.Text);if(P.Id!=Q.Id||P.Persistent!=Q.Persistent||P.Name!=Q.Name||P.Direction!=Q.Direction||!Type(SetExpected?SetExpected->Type:P.Type,Q.Type)||ExpectedObject!=Q.Object||P.Flags!=Q.Flags||!ExpectedRaw.Equals(Q.Raw,ESearchCase::CaseSensitive)||!P.Auto.Equals(Q.Auto,ESearchCase::CaseSensitive)||!ExpectedText.Equals(Q.Display,ESearchCase::CaseSensitive)||!P.FriendlyDisplay.Equals(Q.FriendlyDisplay,ESearchCase::CaseSensitive)||ExpectedTextFlags!=FTextInspector::GetFlags(Q.Text)||FTextInspector::GetFlags(P.Friendly)!=FTextInspector::GetFlags(Q.Friendly)||PinId(P.Parent,Rows)!=PinId(Q.Parent,Candidate)||ChildIds(P,Rows)!=ChildIds(Q,Candidate)||LinkIds(Q,Candidate)!=Expected)return Bad(TEXT("pin_semantics"),P.Id.ToString(),TEXT("unexpected type/value/link transition"));}}}
+        if(!ConversionCandidate())return false;
+        for(int32 I=0;I<Rows.Num();++I){const auto& A=Rows[I];const auto& B=Candidate[I];if(A.Hold.Get()!=B.Hold.Get()||A.Id!=B.Id||A.Nodes.Num()+((ConversionRoute&&!LinkDone&&!CompilerReturn&&A.Hold.Get()==Selected)?1:0)!=B.Nodes.Num())return Bad(TEXT("graph_semantics"),TEXT("same graph/nodes"),TEXT("different"));for(int32 J=0;J<A.Nodes.Num();++J){const auto& N=A.Nodes[J];const auto& M=B.Nodes[J];if(N.Hold.Get()!=M.Hold.Get()||N.Id!=M.Id||N.Class!=M.Class||!N.Path.Equals(M.Path,ESearchCase::CaseSensitive)||N.X!=M.X||N.Y!=M.Y||!N.Comment.Equals(M.Comment,ESearchCase::CaseSensitive)||N.Call!=M.Call||(N.Call&&!N.Ref.IsSameReference(M.Ref))||N.Pins.Num()!=M.Pins.Num())return Bad(TEXT("node_semantics"),N.Id.ToString(),TEXT("different"));for(int32 K=0;K<N.Pins.Num();++K){const auto& P=N.Pins[K];const auto& Q=M.Pins[K];const auto Expected=(!CompilerReturn&&LinkPlanned)?PlannedLinks.FindRef(P.Id):LinkIds(P,Rows);const FSetCell* SetExpected=(!CompilerReturn&&!LinkDone&&LinkPlanned)?SetCells.Find(P.Id):nullptr;const bool ResetTarget=!CompilerReturn&&PlannedDefault&&P.Id==TargetId;const bool ResetOldExec=!CompilerReturn&&OldPlannedDefault&&P.Id==OldId;const FString& ExpectedRaw=SetExpected?SetExpected->Raw:ResetOldExec?OldPlannedRaw:ResetTarget?PlannedRaw:P.Raw;const FString& ExpectedText=SetExpected?SetExpected->Text:ResetOldExec?OldPlannedText:ResetTarget?PlannedText:P.Display;UObject* ExpectedObject=SetExpected?SetExpected->Object:ResetOldExec?OldPlannedObject:ResetTarget?PlannedObject:P.Object;const uint32 ExpectedTextFlags=SetExpected?SetExpected->TextFlags:ResetOldExec?OldPlannedTextFlags:ResetTarget?PlannedTextFlags:FTextInspector::GetFlags(P.Text);if(P.Id!=Q.Id||P.Persistent!=Q.Persistent||P.Name!=Q.Name||P.Direction!=Q.Direction||!Type(SetExpected?SetExpected->Type:P.Type,Q.Type)||ExpectedObject!=Q.Object||P.Flags!=Q.Flags||!ExpectedRaw.Equals(Q.Raw,ESearchCase::CaseSensitive)||!P.Auto.Equals(Q.Auto,ESearchCase::CaseSensitive)||!ExpectedText.Equals(Q.Display,ESearchCase::CaseSensitive)||!P.FriendlyDisplay.Equals(Q.FriendlyDisplay,ESearchCase::CaseSensitive)||ExpectedTextFlags!=FTextInspector::GetFlags(Q.Text)||FTextInspector::GetFlags(P.Friendly)!=FTextInspector::GetFlags(Q.Friendly)||PinId(P.Parent,Rows)!=PinId(Q.Parent,Candidate)||ChildIds(P,Rows)!=ChildIds(Q,Candidate)||LinkIds(Q,Candidate)!=Expected)return Bad(TEXT("pin_semantics"),P.Id.ToString(),TEXT("unexpected type/value/link transition"));}}}
         Rows=MoveTemp(Candidate);CandidateReady=false;Advancing=false;CompilerReturn=false;LinkDone|=LinkPlanned;return Current();
     }
     bool Current()
-    {if(!Context())return false;if(!BP->GetPathName().Equals(BPPath,ESearchCase::CaseSensitive)||BP->BlueprintType!=BPTYPE_Normal||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.Get()!=AActor::StaticClass()||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||!BP->NewVariables.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->Timelines.IsEmpty()||Categories()!=Roles)return Bad(TEXT("host_current"),TEXT("same idle direct Actor authored graph categories"),TEXT("changed"));if(!Classes(false)||!ArrayCurrent()||!SetCurrent())return false;if(CandidateReady)return Pure(Candidate);if(Advancing)return Advance();return !Initialized||Pure(Rows);}
-    // QI: concrete typed authored parameter -> native Array_Length source roles.
+    {if(!Context())return false;if(!BP->GetPathName().Equals(BPPath,ESearchCase::CaseSensitive)||BP->BlueprintType!=BPTYPE_Normal||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.Get()!=AActor::StaticClass()||BP->bBeingCompiled||BP->bQueuedForCompilation||BP->bIsRegeneratingOnLoad||!BP->NewVariables.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->Timelines.IsEmpty()||Categories()!=Roles)return Bad(TEXT("host_current"),TEXT("same idle direct Actor authored graph categories"),TEXT("changed"));if(!Classes(false)||!ArrayCurrent()||!SetCurrent()||!ConversionCurrent())return false;if(CandidateReady)return Pure(Candidate);if(Advancing)return Advance();return !Initialized||Pure(Rows);}
+    // QI/AAU: concrete authored primitive Array -> typed TargetArray of the
+    // original nine array operations. The schema writer and lease remain shared.
     struct FArrayField {FProperty* P=nullptr;const FFieldClass* Class=nullptr;FFieldVariant Owner;FName Name;uint64 Flags=0;int32 Size=0,Offset=0,Dim=0;FProperty* Inner=nullptr;const FFieldClass* InnerClass=nullptr;FFieldVariant InnerOwner;uint64 InnerFlags=0;int32 InnerSize=0,InnerOffset=0,InnerDim=0;};
     struct FArrayUser {FName Name;FEdGraphPinType Type;EEdGraphPinDirection Direction;FString Default;};
     bool ArrayRoute=false,ArrayReady=false;TStrongObjectPtr<UClass> ArrayLibrary;TStrongObjectPtr<UFunction> ArrayFunction;TStrongObjectPtr<UK2Node_FunctionEntry> ArrayEntry;TStrongObjectPtr<UK2Node_CallArrayFunction> ArrayCall;
     FEdGraphPinType ArrayOutputType,ArrayInputType,ArrayOldOutputType;FString ArraySourcePinName,ArrayInputPinName,ArrayOldPinName;bool ArraySchemaChecked=false,ArraySchemaCompatible=false;
-    TArray<FArrayField> ArrayFields;TArray<FArrayUser> ArrayUsers;FMemberReference ArrayEntryReference;EFunctionFlags ArrayFunctionFlags=FUNC_None;FString ArrayLibraryPath,ArrayFunctionPath;
+    TArray<FArrayField> ArrayFields;TArray<FArrayUser> ArrayUsers;FMemberReference ArrayEntryReference;EFunctionFlags ArrayFunctionFlags=FUNC_None;FString ArrayLibraryPath,ArrayFunctionPath,ArrayParmMetadata,ArrayDependentMetadata,ArrayRefMetadata,ArrayInternalMetadata;FName ArrayName;TStrongObjectPtr<UObject> ArrayCDO;
+    static bool ArrayFunctionName(FName N)
+    {return N==TEXT("Array_Length")||N==TEXT("Array_Get")||N==TEXT("Array_Set")||N==TEXT("Array_Add")||N==TEXT("Array_AddUnique")||N==TEXT("Array_Insert")||N==TEXT("Array_Contains")||N==TEXT("Array_RemoveItem")||N==TEXT("Array_Clear");}
     static bool PrimitiveArray(const FEdGraphPinType& T)
     {return T.ContainerType==EPinContainerType::Array&&!T.bIsUObjectWrapper&&(T.PinCategory==UEdGraphSchema_K2::PC_Int||T.PinCategory==UEdGraphSchema_K2::PC_Int64||T.PinCategory==UEdGraphSchema_K2::PC_Real||T.PinCategory==UEdGraphSchema_K2::PC_Boolean||T.PinCategory==UEdGraphSchema_K2::PC_Name||T.PinCategory==UEdGraphSchema_K2::PC_String);}
     static bool ArrayElement(const FEdGraphPinType& A,const FEdGraphPinType& B)
@@ -157,7 +245,11 @@ struct FGraphPinsLease
     bool ArrayCurrent()
     {
         if(!ArrayReady)return true;
-        if(!Live(ArrayLibrary.Get())||ArrayLibrary->GetClass()!=UClass::StaticClass()||!ArrayLibrary->HasAnyClassFlags(CLASS_Native)||!ArrayLibrary->ClassGeneratedBy.IsResolved()||ArrayLibrary->ClassGeneratedBy.Get()!=nullptr||!ArrayLibrary->GetPathName().Equals(ArrayLibraryPath,ESearchCase::CaseSensitive)||!Live(ArrayFunction.Get())||ArrayFunction->GetClass()!=UFunction::StaticClass()||ArrayFunction->GetOuter()!=ArrayLibrary.Get()||ArrayFunction->GetFName()!=TEXT("Array_Length")||ArrayFunction->FunctionFlags!=ArrayFunctionFlags||!ArrayFunction->GetPathName().Equals(ArrayFunctionPath,ESearchCase::CaseSensitive))return Bad(TEXT("array_native_function_role"),ArrayFunctionPath,TEXT("different source role"));
+        if(!Live(ArrayLibrary.Get())||ArrayLibrary->GetClass()!=UClass::StaticClass()||!ArrayLibrary->HasAnyClassFlags(CLASS_Native)||!ArrayLibrary->ClassGeneratedBy.IsResolved()||ArrayLibrary->ClassGeneratedBy.Get()!=nullptr||!ArrayLibrary->GetPathName().Equals(ArrayLibraryPath,ESearchCase::CaseSensitive)||!Live(ArrayFunction.Get())||ArrayFunction->GetClass()!=UFunction::StaticClass()||ArrayFunction->GetOuter()!=ArrayLibrary.Get()||ArrayFunction->GetFName()!=ArrayName||ArrayFunction->FunctionFlags!=ArrayFunctionFlags||!ArrayFunction->GetPathName().Equals(ArrayFunctionPath,ESearchCase::CaseSensitive))return Bad(TEXT("array_native_function_role"),ArrayFunctionPath,TEXT("different source role"));
+        if(!ArrayLibrary->ClassDefaultObject.IsResolved()||ArrayLibrary->ClassDefaultObject.Get()!=ArrayCDO.Get()
+            ||(ArrayCDO.IsValid()&&(!Live(ArrayCDO.Get())||ArrayCDO->GetClass()!=ArrayLibrary.Get()||!ArrayCDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)||ArrayCDO->GetPackage()!=ArrayLibrary->GetPackage())))return Bad(TEXT("array_native_CDO_role"),TEXT("captured nullable native library CDO identity"),TEXT("changed"));
+        if(ArrayFunction->GetMetaData(TEXT("ArrayParm"))!=ArrayParmMetadata||ArrayFunction->GetMetaData(TEXT("ArrayTypeDependentParams"))!=ArrayDependentMetadata
+            ||ArrayFunction->GetMetaData(TEXT("AutoCreateRefTerm"))!=ArrayRefMetadata||ArrayFunction->GetMetaData(TEXT("BlueprintInternalUseOnly"))!=ArrayInternalMetadata)return Bad(TEXT("array_native_metadata"),ArrayName.ToString(),TEXT("changed ArrayParm/dependent/ref/internal metadata"));
         TArray<FProperty*> Inventory;for(TFieldIterator<FProperty> It(ArrayFunction.Get(),EFieldIterationFlags::None);It;++It){if(Inventory.Num()>=16)return Bad(TEXT("array_native_fields"),LexToString(ArrayFields.Num()),TEXT("over budget"));Inventory.Add(*It);}
         if(Inventory.Num()!=ArrayFields.Num())return Bad(TEXT("array_native_field_count"),LexToString(ArrayFields.Num()),LexToString(Inventory.Num()));
         for(int32 I=0;I<ArrayFields.Num();++I)
@@ -172,7 +264,7 @@ struct FGraphPinsLease
         }
         if(!Live(Selected)||Selected->GetOuter()!=BP.Get())return Bad(TEXT("array_graph_role"),TEXT("own selected function graph"),TEXT("unavailable"));
         bool FoundEntry=false,FoundCall=false;for(const auto& Slot:Selected->Nodes){if(!Slot.IsResolved())return Bad(TEXT("array_node_slot"),TEXT("resolved"),TEXT("unresolved"));FoundEntry|=Slot.Get()==ArrayEntry.Get();FoundCall|=Slot.Get()==ArrayCall.Get();}
-        if(!FoundEntry||!FoundCall||!Live(ArrayEntry.Get())||ArrayEntry->GetClass()!=UK2Node_FunctionEntry::StaticClass()||ArrayEntry->GetOuter()!=Selected||!ArrayEntry->FunctionReference.IsSameReference(ArrayEntryReference)||!Live(ArrayCall.Get())||ArrayCall->GetClass()!=UK2Node_CallArrayFunction::StaticClass()||ArrayCall->GetOuter()!=Selected)return Bad(TEXT("array_node_roles"),TEXT("same own authored Entry and native Array call"),TEXT("different"));
+        if(!FoundEntry||!FoundCall||!Live(ArrayEntry.Get())||ArrayEntry->GetClass()!=UK2Node_FunctionEntry::StaticClass()||ArrayEntry->GetOuter()!=Selected||!ArrayEntry->FunctionReference.IsSameReference(ArrayEntryReference)||!Live(ArrayCall.Get())||ArrayCall->GetClass()!=UK2Node_CallArrayFunction::StaticClass()||ArrayCall->GetOuter()!=Selected||ArrayCall->FunctionReference.GetMemberName()!=ArrayName||ArrayCall->FunctionReference.IsSelfContext())return Bad(TEXT("array_node_roles"),TEXT("same own authored Entry and native Array call"),TEXT("different"));
         if(ArrayEntry->UserDefinedPins.Num()!=ArrayUsers.Num())return Bad(TEXT("array_authored_parameter_count"),LexToString(ArrayUsers.Num()),LexToString(ArrayEntry->UserDefinedPins.Num()));
         for(int32 I=0;I<ArrayUsers.Num();++I){const auto& E=ArrayUsers[I];const auto& A=ArrayEntry->UserDefinedPins[I];if(!A.IsValid()||A->PinName!=E.Name||!Type(A->PinType,E.Type)||A->DesiredPinDirection!=E.Direction||!A->PinDefaultValue.Equals(E.Default,ESearchCase::CaseSensitive))return Bad(TEXT("array_authored_parameter"),E.Name.ToString(),TEXT("different name/type/direction/default"));}return true;
     }
@@ -180,30 +272,63 @@ struct FGraphPinsLease
     {
         if(!Current())return false;
         auto* Entry=Cast<UK2Node_FunctionEntry>(A->GetOwningNodeUnchecked());auto* Call=Cast<UK2Node_CallArrayFunction>(B->GetOwningNodeUnchecked());
-        if(!Entry||Entry->GetClass()!=UK2Node_FunctionEntry::StaticClass()||!Call||Call->GetClass()!=UK2Node_CallArrayFunction::StaticClass()||Entry->GetOuter()!=Selected||Call->GetOuter()!=Selected||!BP->FunctionGraphs.Contains(Selected)||B->PinName!=TEXT("TargetArray")||Call->FunctionReference.GetMemberName()!=TEXT("Array_Length"))return Bad(TEXT("array_endpoint_profile"),TEXT("own function authored Entry output -> exact Array_Length.TargetArray"),TEXT("pending"));
+        if(!Entry||Entry->GetClass()!=UK2Node_FunctionEntry::StaticClass()||!Call||Call->GetClass()!=UK2Node_CallArrayFunction::StaticClass()||Entry->GetOuter()!=Selected||Call->GetOuter()!=Selected||!BP->FunctionGraphs.Contains(Selected)||B->PinName!=TEXT("TargetArray")||!ArrayFunctionName(Call->FunctionReference.GetMemberName())||Call->FunctionReference.IsSelfContext())return Bad(TEXT("array_endpoint_profile"),TEXT("own function authored Entry output -> typed original Array9.TargetArray"),TEXT("pending"));
         int32 Entries=0;for(const auto& G:Rows)if(G.Hold.Get()==Selected)for(const auto& N:G.Nodes)Entries+=N.Class==UK2Node_FunctionEntry::StaticClass();if(Entries!=1)return Bad(TEXT("array_entry_count"),TEXT("one own FunctionEntry"),LexToString(Entries));
-        ArrayEntry.Reset(Entry);ArrayCall.Reset(Call);ArrayEntryReference=Entry->FunctionReference;ArrayOutputType=A->PinType;ArrayInputType=B->PinType;ArraySourcePinName=A->PinName.ToString();ArrayInputPinName=B->PinName.ToString();
+        ArrayEntry.Reset(Entry);ArrayCall.Reset(Call);ArrayEntryReference=Entry->FunctionReference;ArrayName=Call->FunctionReference.GetMemberName();ArrayOutputType=A->PinType;ArrayInputType=B->PinType;ArraySourcePinName=A->PinName.ToString();ArrayInputPinName=B->PinName.ToString();
         for(const auto& User:Entry->UserDefinedPins){if(!User.IsValid()||ArrayUsers.Num()>=64||User->PinType.PinSubCategoryObject.IsStale()||User->PinType.PinValueType.TerminalSubCategoryObject.IsStale())return Bad(TEXT("array_authored_parameters"),TEXT("bounded current UserPinInfo roles"),TEXT("unavailable"));ArrayUsers.Add({User->PinName,User->PinType,User->DesiredPinDirection,User->PinDefaultValue});}
         const auto Authored=[&](const UEdGraphPin* P){for(const auto& U:ArrayUsers)if(U.Name==P->PinName&&U.Direction==EGPD_Output&&ArrayElement(U.Type,P->PinType))return true;return false;};
         if(!Authored(A))return Bad(TEXT("array_producer_parameter"),A->PinName.ToString(),TEXT("not an authored primitive Array input"));
         if(B->LinkedTo.Num()>1)return Bad(TEXT("array_old_source_count"),TEXT("zero or one current source"),LexToString(B->LinkedTo.Num()));
         if(B->LinkedTo.Num()==1){auto* Old=B->LinkedTo[0];if(Old->GetOwningNodeUnchecked()!=Entry||Old->Direction!=EGPD_Output||!Authored(Old)||!ArrayElement(Old->PinType,B->PinType))return Bad(TEXT("array_old_producer_parameter"),TEXT("same function authored same-element Array output"),TEXT("pending"));ArrayOldOutputType=Old->PinType;ArrayOldPinName=Old->PinName.ToString();}
-        ArrayLibrary.Reset(FindObject<UClass>(nullptr,TEXT("/Script/Engine.KismetArrayLibrary")));if(!Live(ArrayLibrary.Get())||ArrayLibrary->GetClass()!=UClass::StaticClass()||!ArrayLibrary->HasAnyClassFlags(CLASS_Native)||!ArrayLibrary->ClassGeneratedBy.IsResolved()||ArrayLibrary->ClassGeneratedBy.Get()!=nullptr)return Bad(TEXT("array_library_unavailable"),TEXT("already loaded exact native KismetArrayLibrary"),TEXT("unavailable"));ArrayLibraryPath=ArrayLibrary->GetPathName();
-        for(TFieldIterator<UFunction> It(ArrayLibrary.Get(),EFieldIterationFlags::None);It;++It)if(It->GetFName()==TEXT("Array_Length")){ArrayFunction.Reset(*It);break;}
-        if(!Live(ArrayFunction.Get())||ArrayFunction->GetClass()!=UFunction::StaticClass()||ArrayFunction->GetOuter()!=ArrayLibrary.Get())return Bad(TEXT("array_function_unavailable"),TEXT("direct loaded Array_Length UFunction"),TEXT("unavailable"));ArrayFunctionPath=ArrayFunction->GetPathName();ArrayFunctionFlags=ArrayFunction->FunctionFlags;
-        bool HasArray=false,HasReturn=false;
+        ArrayLibrary.Reset(FindObject<UClass>(nullptr,TEXT("/Script/Engine.KismetArrayLibrary")));if(!Live(ArrayLibrary.Get())||ArrayLibrary->GetClass()!=UClass::StaticClass()||!ArrayLibrary->HasAnyClassFlags(CLASS_Native)||!ArrayLibrary->ClassGeneratedBy.IsResolved()||ArrayLibrary->ClassGeneratedBy.Get()!=nullptr||!ArrayLibrary->ClassDefaultObject.IsResolved())return Bad(TEXT("array_library_unavailable"),TEXT("already loaded exact native KismetArrayLibrary"),TEXT("unavailable"));ArrayLibraryPath=ArrayLibrary->GetPathName();ArrayCDO.Reset(ArrayLibrary->ClassDefaultObject.Get());
+        for(TFieldIterator<UFunction> It(ArrayLibrary.Get(),EFieldIterationFlags::None);It;++It)if(It->GetFName()==ArrayName){ArrayFunction.Reset(*It);break;}
+        if(!Live(ArrayFunction.Get())||ArrayFunction->GetClass()!=UFunction::StaticClass()||ArrayFunction->GetOuter()!=ArrayLibrary.Get()||!ArrayFunction->HasAllFunctionFlags(FUNC_Native|FUNC_Static)||!ArrayFunction->HasAnyFunctionFlags(FUNC_BlueprintCallable|FUNC_BlueprintPure))return Bad(TEXT("array_function_unavailable"),TEXT("direct loaded original Array9 UFunction"),TEXT("unavailable"));ArrayFunctionPath=ArrayFunction->GetPathName();ArrayFunctionFlags=ArrayFunction->FunctionFlags;
+        const bool Length=ArrayName==TEXT("Array_Length"),Get=ArrayName==TEXT("Array_Get"),Set=ArrayName==TEXT("Array_Set"),
+            Add=ArrayName==TEXT("Array_Add")||ArrayName==TEXT("Array_AddUnique"),Insert=ArrayName==TEXT("Array_Insert"),
+            Contains=ArrayName==TEXT("Array_Contains"),Remove=ArrayName==TEXT("Array_RemoveItem");
+        const FName Item=Add||Insert?FName(TEXT("NewItem")):Contains?FName(TEXT("ItemToFind")):Get||Set||Remove?FName(TEXT("Item")):NAME_None;
+        const bool Return=Length||Add||Contains||Remove,Index=Get||Set||Insert;
+        ArrayParmMetadata=TEXT("TargetArray");ArrayDependentMetadata=Item.IsNone()?FString():Item.ToString();
+        ArrayRefMetadata=Get||Item.IsNone()?FString():Item.ToString();ArrayInternalMetadata=Get?TEXT("true"):TEXT("");
+        if(ArrayFunction->GetMetaData(TEXT("ArrayParm"))!=ArrayParmMetadata||ArrayFunction->GetMetaData(TEXT("ArrayTypeDependentParams"))!=ArrayDependentMetadata
+            ||ArrayFunction->GetMetaData(TEXT("AutoCreateRefTerm"))!=ArrayRefMetadata||ArrayFunction->GetMetaData(TEXT("BlueprintInternalUseOnly"))!=ArrayInternalMetadata)
+            return Bad(TEXT("array_native_metadata"),ArrayName.ToString(),TEXT("actual installed Array9 metadata differs"));
+        TSet<FName> Expected;Expected.Add(TEXT("TargetArray"));if(!Item.IsNone())Expected.Add(Item);if(Index)Expected.Add(TEXT("Index"));if(Set)Expected.Add(TEXT("bSizeToFit"));if(Return)Expected.Add(TEXT("ReturnValue"));
+        TSet<FName> Seen;
         for(TFieldIterator<FProperty> It(ArrayFunction.Get(),EFieldIterationFlags::None);It;++It)
         {
-            if(ArrayFields.Num()>=16)return Bad(TEXT("array_field_budget"),TEXT("bounded native function"),TEXT("too many"));FProperty* P=*It;if(P->GetOwnerStruct()!=ArrayFunction.Get()||P->ArrayDim!=1||!P->HasAnyPropertyFlags(CPF_Parm))return Bad(TEXT("array_field_owner"),TEXT("direct native parameter"),TEXT("different"));
-            FArrayField E;E.P=P;E.Class=P->GetClass();E.Owner=P->GetOwnerVariant();E.Name=P->GetFName();E.Flags=uint64(P->GetPropertyFlags());E.Size=P->GetSize();E.Offset=P->GetOffset_ForInternal();E.Dim=P->ArrayDim;
-            if(P->GetFName()==TEXT("TargetArray")&&P->GetClass()==FArrayProperty::StaticClass())
+            if(ArrayFields.Num()>=16)return Bad(TEXT("array_field_budget"),TEXT("bounded native function"),TEXT("too many"));FProperty* P=*It;const FName Name=P->GetFName();
+            if(P->GetOwnerStruct()!=ArrayFunction.Get()||P->ArrayDim!=1||!P->HasAnyPropertyFlags(CPF_Parm)||!Expected.Contains(Name)||Seen.Contains(Name))return Bad(TEXT("array_field_owner"),TEXT("unique direct original Array9 parameter"),P->GetName());
+            const bool IsReturn=Name==TEXT("ReturnValue"),IsGetOutput=Get&&Name==Item;
+            if(P->HasAnyPropertyFlags(CPF_ReturnParm)!=IsReturn||(!IsReturn&&!IsGetOutput&&P->HasAnyPropertyFlags(CPF_OutParm)&&!P->HasAnyPropertyFlags(CPF_ReferenceParm))
+                ||(IsGetOutput&&!P->HasAnyPropertyFlags(CPF_OutParm)))return Bad(TEXT("array_parameter_direction"),Name.ToString(),TEXT("different actual native input/output role"));
+            FArrayField E;E.P=P;E.Class=P->GetClass();E.Owner=P->GetOwnerVariant();E.Name=Name;E.Flags=uint64(P->GetPropertyFlags());E.Size=P->GetSize();E.Offset=P->GetOffset_ForInternal();E.Dim=P->ArrayDim;
+            if(Name==TEXT("TargetArray")&&P->GetClass()==FArrayProperty::StaticClass())
             {
-                auto* Array=static_cast<FArrayProperty*>(P);auto* Inner=Array->Inner;if(!Inner||Inner->GetOwnerProperty()!=Array||Inner->GetClass()!=FIntProperty::StaticClass()||Inner->ArrayDim!=1)return Bad(TEXT("array_inner_prototype"),TEXT("actual owned native Int Inner; custom thunk prototype is not selected element type"),TEXT("different"));
-                E.Inner=Inner;E.InnerClass=Inner->GetClass();E.InnerOwner=Inner->GetOwnerVariant();E.InnerFlags=uint64(Inner->GetPropertyFlags());E.InnerSize=Inner->GetSize();E.InnerOffset=Inner->GetOffset_ForInternal();E.InnerDim=Inner->ArrayDim;HasArray=true;
+                auto* Array=static_cast<FArrayProperty*>(P);auto* Inner=Array->Inner;
+                if(!Inner||Inner->GetOwnerProperty()!=Array||Inner->GetClass()!=FIntProperty::StaticClass()||Inner->ArrayDim!=1)return Bad(TEXT("array_inner_prototype"),TEXT("actual owned native Int Inner; wildcard prototype is not selected element constraint"),TEXT("different"));
+                E.Inner=Inner;E.InnerClass=Inner->GetClass();E.InnerOwner=Inner->GetOwnerVariant();E.InnerFlags=uint64(Inner->GetPropertyFlags());E.InnerSize=Inner->GetSize();E.InnerOffset=Inner->GetOffset_ForInternal();E.InnerDim=Inner->ArrayDim;
             }
-            else if(P->GetFName()==TEXT("ReturnValue")&&P->GetClass()==FIntProperty::StaticClass()&&P->HasAnyPropertyFlags(CPF_ReturnParm))HasReturn=true;else return Bad(TEXT("array_native_signature"),TEXT("TargetArray plus int ReturnValue only"),P->GetName());ArrayFields.Add(E);
+            else if((Name==Item||Name==TEXT("Index")||(IsReturn&&!Contains&&!Remove))&&P->GetClass()==FIntProperty::StaticClass()){}
+            else if((Name==TEXT("bSizeToFit")||(IsReturn&&(Contains||Remove)))&&P->GetClass()==FBoolProperty::StaticClass()){}
+            else return Bad(TEXT("array_native_signature"),TEXT("original Array9 array/int/bool native prototype"),P->GetName());
+            Seen.Add(Name);ArrayFields.Add(E);
         }
-        if(!HasArray||!HasReturn||ArrayFields.Num()!=2)return Bad(TEXT("array_native_signature"),TEXT("two actual native parameters"),LexToString(ArrayFields.Num()));
+        if(Seen.Num()!=Expected.Num())return Bad(TEXT("array_native_signature"),LexToString(Expected.Num()),LexToString(Seen.Num()));
+        // SDK CallArrayFunction84/306 propagates only category/subcategory/type
+        // object. Since this route accepts an already typed target, every peer
+        // must already carry the same element so the callback has no need to
+        // reset peer defaults, recombine subpins or infer a new element family.
+        if(!Item.IsNone())
+        {
+            const FPin* Dependent=nullptr;
+            for(const auto& G:Rows)for(const auto& N:G.Nodes)if(N.Hold.Get()==Call)for(const auto& P:N.Pins)if(P.Name==Item)
+            {if(Dependent)return Bad(TEXT("array_dependent_pin"),Item.ToString(),TEXT("ambiguous"));Dependent=&P;}
+            if(!Dependent||Dependent->Parent||!Dependent->Children.IsEmpty()||Dependent->Type.ContainerType!=EPinContainerType::None
+                ||Dependent->Type.PinCategory!=A->PinType.PinCategory||Dependent->Type.PinSubCategory!=A->PinType.PinSubCategory
+                ||Dependent->Type.PinSubCategoryObject!=A->PinType.PinSubCategoryObject||Dependent->Type.bIsUObjectWrapper
+                ||Dependent->Direction!=(Get?EGPD_Output:EGPD_Input))return Bad(TEXT("array_dependent_pin"),Item.ToString(),TEXT("current whole same-element typed item port required; wildcard inference/split or different-element peers remain incomplete"));
+        }
         ArrayReady=true;if(!Current())return false;UFunction* Returned=Call->GetTargetFunction();TStrongObjectPtr<UFunction> Immediate(Returned);if(!Current())return false;if(Returned!=ArrayFunction.Get())return Bad(TEXT("array_call_binding"),ArrayFunctionPath,TEXT("different current target UFunction"));ArraySchemaCompatible=Schema->ArePinsCompatible(A,B,Gen.Get());ArraySchemaChecked=true;if(!Current())return false;return true;
     }
     TSharedRef<FJsonObject> ArrayReceipt()const
@@ -211,9 +336,9 @@ struct FGraphPinsLease
         auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("snapshot_stage"),TEXT("pre_writer_captured_source; final proof uses actual known/postcondition outcome"));J->SetBoolField(TEXT("source_observed"),ArrayReady);J->SetBoolField(TEXT("schema_compatibility_observed"),ArraySchemaChecked);if(!ArrayReady)return J;
         const auto PinType=[](const FEdGraphPinType& T,const FString& Name){auto O=MakeShared<FJsonObject>();O->SetStringField(TEXT("name"),Name);O->SetStringField(TEXT("category"),T.PinCategory.ToString());O->SetStringField(TEXT("subcategory"),T.PinSubCategory.ToString());O->SetStringField(TEXT("container"),TEXT("array"));O->SetBoolField(TEXT("is_reference"),T.bIsReference);O->SetBoolField(TEXT("is_const"),T.bIsConst);O->SetBoolField(TEXT("is_uobject_wrapper"),T.bIsUObjectWrapper);return O;};
         J->SetObjectField(TEXT("new_source_output"),PinType(ArrayOutputType,ArraySourcePinName));J->SetObjectField(TEXT("target_input"),PinType(ArrayInputType,ArrayInputPinName));if(!ArrayOldPinName.IsEmpty())J->SetObjectField(TEXT("old_source_output"),PinType(ArrayOldOutputType,ArrayOldPinName));
-        J->SetStringField(TEXT("native_library"),ArrayLibraryPath);J->SetStringField(TEXT("native_function"),ArrayFunctionPath);J->SetStringField(TEXT("native_function_flags"),LexToString(uint32(ArrayFunctionFlags)));J->SetBoolField(TEXT("are_pins_compatible"),ArraySchemaCompatible);J->SetBoolField(TEXT("endpoint_qualifiers_captured_individually"),true);
+        J->SetStringField(TEXT("native_library"),ArrayLibraryPath);J->SetStringField(TEXT("native_function"),ArrayFunctionPath);J->SetStringField(TEXT("native_operation"),ArrayName.ToString());J->SetStringField(TEXT("native_array_parameter"),ArrayParmMetadata);J->SetStringField(TEXT("native_dependent_parameter"),ArrayDependentMetadata);J->SetStringField(TEXT("native_auto_ref_term"),ArrayRefMetadata);J->SetBoolField(TEXT("typed_peer_inference_required"),false);J->SetBoolField(TEXT("actual_Array9_usage_verified"),false);J->SetStringField(TEXT("native_function_flags"),LexToString(uint32(ArrayFunctionFlags)));J->SetBoolField(TEXT("are_pins_compatible"),ArraySchemaCompatible);J->SetBoolField(TEXT("endpoint_qualifiers_captured_individually"),true);
         for(const auto& E:ArrayFields)if(E.Inner){J->SetStringField(TEXT("native_array_property_flags"),LexToString(E.Flags));J->SetStringField(TEXT("native_inner_flags"),LexToString(E.InnerFlags));J->SetBoolField(TEXT("native_inner_owner_property_verified"),true);J->SetStringField(TEXT("native_inner_prototype"),TEXT("IntProperty; wildcard CustomThunk prototype, not selected element constraint"));}
-        J->SetBoolField(TEXT("runtime_array_value_or_length_evaluated"),false);return J;
+        J->SetBoolField(TEXT("runtime_array_value_or_length_evaluated"),false);J->SetBoolField(TEXT("runtime_array_operation_evaluated"),false);return J;
     }
 // QT concrete source and first SetParam typing. Native prototype descriptors are not graph endpoint qualifiers.
     bool SetRoute=false,SetReady=false;TStrongObjectPtr<UClass> SetLibrary;TStrongObjectPtr<UFunction> SetFunction;TStrongObjectPtr<UK2Node_FunctionEntry> SetEntry;TStrongObjectPtr<UK2Node_CallFunction> SetCall;
@@ -303,12 +428,14 @@ struct FGraphPinsLease
         if(!Current())return false;
         const auto Scalar=[](const FEdGraphPinType& T){return T.ContainerType==EPinContainerType::None&&!T.bIsReference&&!T.bIsUObjectWrapper&&(T.PinCategory==UEdGraphSchema_K2::PC_Int||T.PinCategory==UEdGraphSchema_K2::PC_Int64||T.PinCategory==UEdGraphSchema_K2::PC_Real||T.PinCategory==UEdGraphSchema_K2::PC_Boolean||T.PinCategory==UEdGraphSchema_K2::PC_Name||T.PinCategory==UEdGraphSchema_K2::PC_String);};
         const auto Exec=[](const FEdGraphPinType& T){return T.PinCategory==UEdGraphSchema_K2::PC_Exec&&T.ContainerType==EPinContainerType::None&&!T.bIsReference&&!T.bIsUObjectWrapper;};
-        if(!A||!B||A->Direction!=EGPD_Output||B->Direction!=EGPD_Input||(!SetRoute&&!Scalar(A->PinType)&&!(ExecRoute&&Exec(A->PinType)&&Exec(B->PinType))&&!(ArrayRoute&&ArrayElement(A->PinType,B->PinType)))||(!ArrayRoute&&!SetRoute&&!Type(A->PinType,B->PinType))||!A->SubPins.IsEmpty()||!B->SubPins.IsEmpty()||A->ParentPin||B->ParentPin)return Bad(TEXT("whole_connection_profile"),TEXT("same whole admitted scalar, canonical exec or same-element primitive Array output/input"),TEXT("pending"));
+        ConversionRoute=A&&B&&Allow&&Decision.Response==CONNECT_RESPONSE_MAKE_WITH_CONVERSION_NODE&&Scalar(A->PinType)&&Scalar(B->PinType)&&B->LinkedTo.IsEmpty();
+        if(!A||!B||A->Direction!=EGPD_Output||B->Direction!=EGPD_Input||(!SetRoute&&!Scalar(A->PinType)&&!(ExecRoute&&Exec(A->PinType)&&Exec(B->PinType))&&!(ArrayRoute&&ArrayElement(A->PinType,B->PinType)))||(!ArrayRoute&&!SetRoute&&!ConversionRoute&&!Type(A->PinType,B->PinType))||!A->SubPins.IsEmpty()||!B->SubPins.IsEmpty()||A->ParentPin||B->ParentPin)return Bad(TEXT("whole_connection_profile"),TEXT("same whole admitted scalar, canonical exec or same-element primitive Array output/input"),TEXT("pending"));
+        if(ConversionRoute&&!BindConversion(A,B,Schema))return false;
         if(ArrayRoute&&!BindArray(A,B,Schema))return false;
         if(SetRoute){if(!Allow||Decision.Response!=CONNECT_RESPONSE_MAKE||!B->LinkedTo.IsEmpty())return Bad(TEXT("set_first_make_only"),TEXT("original11 allow replacement True; first MAKE into unlinked wildcard SetParam"),TEXT("pending"));if(!BindSet(A,B,Schema))return false;}
         UEdGraphPin* OldReset=nullptr;const bool Already=A->LinkedTo.Contains(B)&&B->LinkedTo.Contains(A);Response=Decision.Response;
         const bool Replacement=Allow&&(ExecRoute?(Response==CONNECT_RESPONSE_BREAK_OTHERS_A&&A->LinkedTo.Num()==1):(Response==CONNECT_RESPONSE_BREAK_OTHERS_B&&B->LinkedTo.Num()==1));
-        if(!Already&&Response!=CONNECT_RESPONSE_MAKE&&!Replacement)return Bad(TEXT("schema_profile"),ExecRoute?TEXT("MAKE or permitted BREAK_OTHERS_A output old1"):TEXT("MAKE or permitted BREAK_OTHERS_B input old1"),Connection::SchemaResponseName(Response));
+        if(!Already&&Response!=CONNECT_RESPONSE_MAKE&&!Replacement&&!ConversionRoute)return Bad(TEXT("schema_profile"),ExecRoute?TEXT("MAKE or permitted BREAK_OTHERS_A output old1"):TEXT("MAKE or permitted BREAK_OTHERS_B input old1"),Connection::SchemaResponseName(Response));
         SourceNodeId=A->GetOwningNodeUnchecked()->NodeGuid;TargetNodeId=B->GetOwningNodeUnchecked()->NodeGuid;SourceId=A->PinId;TargetId=B->PinId;
         for(const auto& G:Rows)for(const auto& N:G.Nodes)for(const auto& P:N.Pins){PlannedLinks.Add(P.Id,LinkIds(P,Rows));PinOwners.Add(P.Id,N.Id);}
         if(!Already&&ExecRoute&&Replacement)
@@ -326,7 +453,7 @@ struct FGraphPinsLease
         }
         if(!Already)
         {
-            PlannedLinks.FindChecked(SourceId).Add(TargetId);PlannedLinks.FindChecked(TargetId).Add(SourceId);
+            if(!ConversionRoute){PlannedLinks.FindChecked(SourceId).Add(TargetId);PlannedLinks.FindChecked(TargetId).Add(SourceId);}
             // BreakAllPinLinks notifies the old input too. A remaining predecessor resets that input to Auto.
             // Plan both actual affected input cells before the writer; unrelated cells remain fixed.
             const auto PlanInput=[&](UEdGraphPin* Input,bool IsOld)
@@ -589,7 +716,7 @@ FString ConnectGraphPins(const FString& ParamsJson)
     if(!Lease.Bind(B,G))return Encode();if(Save&&!B->GetPackage()->IsFullyLoaded()){R.ErrorCode=TEXT("blueprint_graph_pins_save_package_pending");R.Error=TEXT("Requested save requires already fully loaded target package; no hidden save-time package loading.");return Encode();}
     // The original public request is never overwritten by the private effective arguments.
     auto Effective=MakeShared<FJsonObject>(*P);Effective->SetStringField(TEXT("graph_id"),G->GraphGuid.ToString());Effective->SetStringField(TEXT("graph_name"),G->GetName());Effective->SetBoolField(TEXT("create_graph_if_missing"),false);
-    FString CoreText=ConnectConcrete(Json(Effective),&Lease,&R);(void)CoreText;R.bCompileRequested=Compile;R.bSaveRequested=Save;R.Data->SetBoolField(TEXT("original_compile_requested"),Compile);R.Data->SetBoolField(TEXT("original_save_requested"),Save);R.Data->SetBoolField(TEXT("same_scalar_graph_pins_contract"),!Lease.ExecRoute&&!Lease.ArrayRoute&&!Lease.SetRoute);R.Data->SetBoolField(TEXT("array_graph_pins_contract"),Lease.ArrayRoute);R.Data->SetBoolField(TEXT("set_graph_pins_contract"),Lease.SetRoute);if(Lease.SetRoute)R.Data->SetObjectField(TEXT("set_connection_source"),Lease.SetReceipt());if(Lease.ArrayRoute)R.Data->SetObjectField(TEXT("array_connection_source"),Lease.ArrayReceipt());R.Data->SetBoolField(TEXT("exec_graph_pins_contract"),Lease.ExecRoute);R.Data->SetStringField(TEXT("graph_pins_route"),Lease.SetRoute?(Lease.SetBinary?TEXT("set_binary_int_A_then_B_make"):TEXT("set_param_int_first_make")):Lease.ArrayRoute?TEXT("same_element_array"):Lease.ExecRoute?TEXT("exec"):TEXT("same_scalar"));R.Data->SetBoolField(TEXT("input_auto_reset_planned"),Lease.PlannedDefault);R.Data->SetBoolField(TEXT("old_exec_input_auto_reset_planned"),Lease.OldPlannedDefault);
+    FString CoreText=ConnectConcrete(Json(Effective),&Lease,&R);(void)CoreText;R.bCompileRequested=Compile;R.bSaveRequested=Save;R.Data->SetBoolField(TEXT("original_compile_requested"),Compile);R.Data->SetBoolField(TEXT("original_save_requested"),Save);R.Data->SetBoolField(TEXT("same_scalar_graph_pins_contract"),!Lease.ExecRoute&&!Lease.ArrayRoute&&!Lease.SetRoute&&!Lease.ConversionRoute);R.Data->SetBoolField(TEXT("native_autocast_graph_pins_contract"),Lease.ConversionRoute);if(Lease.ConversionRoute)R.Data->SetObjectField(TEXT("native_autocast_source"),Lease.ConversionReceipt());R.Data->SetBoolField(TEXT("array_graph_pins_contract"),Lease.ArrayRoute);R.Data->SetBoolField(TEXT("set_graph_pins_contract"),Lease.SetRoute);if(Lease.SetRoute)R.Data->SetObjectField(TEXT("set_connection_source"),Lease.SetReceipt());if(Lease.ArrayRoute)R.Data->SetObjectField(TEXT("array_connection_source"),Lease.ArrayReceipt());R.Data->SetBoolField(TEXT("exec_graph_pins_contract"),Lease.ExecRoute);R.Data->SetStringField(TEXT("graph_pins_route"),Lease.SetRoute?(Lease.SetBinary?TEXT("set_binary_int_A_then_B_make"):TEXT("set_param_int_first_make")):Lease.ArrayRoute?TEXT("same_element_array"):Lease.ExecRoute?TEXT("exec"):Lease.ConversionRoute?TEXT("native_primitive_autocast"):TEXT("same_scalar"));R.Data->SetBoolField(TEXT("input_auto_reset_planned"),Lease.PlannedDefault);R.Data->SetBoolField(TEXT("old_exec_input_auto_reset_planned"),Lease.OldPlannedDefault);
     if(Lease.Stopped||!R.bSuccess||!R.bChangeStateKnown)return Encode();
     if(Lease.ExecRoute){R.Data->SetStringField(TEXT("old_target_node_id"),Lease.OldNodeId.ToString());R.Data->SetStringField(TEXT("old_target_pin_id"),Lease.OldId.ToString());R.Data->SetStringField(TEXT("source_pin_id"),Lease.SourceId.ToString());R.Data->SetStringField(TEXT("new_target_pin_id"),Lease.TargetId.ToString());}
     else{R.Data->SetStringField(TEXT("old_source_node_id"),Lease.OldNodeId.ToString());R.Data->SetStringField(TEXT("old_source_pin_id"),Lease.OldId.ToString());R.Data->SetStringField(TEXT("target_pin_id"),Lease.TargetId.ToString());R.Data->SetStringField(TEXT("new_source_pin_id"),Lease.SourceId.ToString());}
@@ -616,9 +743,33 @@ FString ConnectGraphPins(const FString& ParamsJson)
         if(!Lease.Current())return Encode();R.bChangeStateKnown=true;
     }
     if(!Lease.Current())return Encode();Legacy->SetBoolField(TEXT("save_requested"),Save);Legacy->SetBoolField(TEXT("saved"),R.bSaved);Legacy->SetBoolField(TEXT("dirty_after"),B->GetPackage()->IsDirty());
+    // Original public11 verifies a direct reciprocal endpoint link after its
+    // requested compile/save. A valid converter chain does not change that
+    // legacy failure contract or erase the actual retained mutation/save prefix.
+    if(Lease.ConversionRoute)
+    {
+        const FGraphPinsLease::FPin* Source=nullptr;const FGraphPinsLease::FPin* Target=nullptr;
+        for(const auto& Row:Lease.Rows)for(const auto& Node:Row.Nodes)for(const auto& Pin:Node.Pins){if(Pin.Id==Lease.SourceId)Source=&Pin;if(Pin.Id==Lease.TargetId)Target=&Pin;}
+        const bool Direct=Source&&Target&&Source->Links.Contains(Target->Address)&&Target->Links.Contains(Source->Address);
+        auto After=MakeShared<FJsonObject>();After->SetBoolField(TEXT("connected"),Direct);After->SetNumberField(TEXT("source_link_count"),Source?Source->Links.Num():0);After->SetNumberField(TEXT("target_link_count"),Target?Target->Links.Num():0);After->SetStringField(TEXT("graph_error"),TEXT(""));
+        const bool LegacyPost=Direct&&CompilePassed&&(!Save||R.bSaved);
+        Legacy->SetObjectField(TEXT("before"),R.Data->GetObjectField(TEXT("before")));Legacy->SetObjectField(TEXT("after"),After);Legacy->SetBoolField(TEXT("postcondition_verified"),LegacyPost);
+        Legacy->SetStringField(TEXT("contract_version"),TEXT("mutation_result_v1"));Legacy->SetStringField(TEXT("mode"),TEXT("apply"));Legacy->SetBoolField(TEXT("dry_run"),false);Legacy->SetBoolField(TEXT("DRY_RUN"),false);
+        Legacy->SetBoolField(TEXT("changed"),!Already);Legacy->SetBoolField(TEXT("mutation_performed"),!Already);
+        auto Mutation=MakeShared<FJsonObject>();Mutation->SetBoolField(TEXT("attempted"),true);Mutation->SetBoolField(TEXT("performed"),!Already);Mutation->SetStringField(TEXT("state"),Already?TEXT("not_performed"):TEXT("performed"));Legacy->SetObjectField(TEXT("mutation"),Mutation);
+        auto Delta=MakeShared<FJsonObject>();Delta->SetNumberField(TEXT("affected_count"),1);Delta->SetNumberField(TEXT("created_count"),0);Delta->SetNumberField(TEXT("updated_count"),Already?0:1);Delta->SetNumberField(TEXT("removed_count"),0);Delta->SetNumberField(TEXT("skipped_count"),Already?1:0);Delta->SetNumberField(TEXT("failed_count"),LegacyPost?0:1);Legacy->SetObjectField(TEXT("delta"),Delta);
+        auto Verification=MakeShared<FJsonObject>();Verification->SetStringField(TEXT("status"),LegacyPost?TEXT("passed"):TEXT("failed"));Verification->SetStringField(TEXT("method"),TEXT("blueprint_graph_pin_guid_relookup"));Verification->SetBoolField(TEXT("before_observed"),true);Verification->SetBoolField(TEXT("after_observed"),true);Verification->SetBoolField(TEXT("strict"),true);
+        Verification->SetArrayField(TEXT("checks"),{MakeShared<FJsonValueString>(TEXT("source_pin_resolved")),MakeShared<FJsonValueString>(TEXT("target_pin_resolved")),MakeShared<FJsonValueString>(TEXT("reciprocal_link_observed"))});Legacy->SetObjectField(TEXT("verification"),Verification);Legacy->SetBoolField(TEXT("verified_success"),LegacyPost);Legacy->SetStringField(TEXT("success_semantics"),LegacyPost?TEXT("verified_postcondition"):TEXT("postcondition_failed"));
+        R.Data->SetObjectField(TEXT("after"),After);R.Data->SetObjectField(TEXT("legacy_mutation_contract"),Legacy);R.Data->SetBoolField(TEXT("legacy_direct_reciprocal_link_observed"),Direct);R.Data->SetBoolField(TEXT("legacy_created_count_is_actual_conversion_allocation_count"),false);
+        if(!Direct)
+        {
+            R.ErrorCode=TEXT("mutation_postcondition_failed");R.Error=TEXT("Original GraphPins requires a direct reciprocal endpoint link; the separately observed native converter has two legs. Actual modification, requested compile/save and typed chain remain retained; no rollback/retry.");
+            R.Stage=TEXT("legacy_direct_link_postcondition_after_requested_save");Legacy->SetBoolField(TEXT("legacy_success"),true);Legacy->SetBoolField(TEXT("success"),false);Legacy->SetStringField(TEXT("error_code"),R.ErrorCode);Legacy->SetStringField(TEXT("error"),R.Error);R.bSuccess=R.bPostconditionPassed=false;R.bChangeStateKnown=true;return Encode();
+        }
+    }
     R.Data->SetBoolField(TEXT("requested_compile_failed_but_save_attempted"),Compile&&!CompilePassed&&Save&&R.bSaveAttempted);R.Data->SetBoolField(TEXT("original_graph_semantics_preserved"),true);R.Data->SetBoolField(TEXT("explicit_compile_save_calls"),Compile||Save);R.Data->SetBoolField(TEXT("automatic_retry_permitted"),false);R.Data->SetBoolField(TEXT("runtime_evaluated"),false);
     if(!CompilePassed){R.ErrorCode=TEXT("blueprint_graph_pins_compile_failed");R.Error=CompileError;R.Stage=TEXT("compile_failed_after_requested_save");Legacy->SetBoolField(TEXT("success"),false);Legacy->SetStringField(TEXT("error"),CompileError);return Encode();}
-    R.bSuccess=R.bPostconditionPassed=true;R.bChangeStateKnown=true;R.Stage=TEXT("complete");R.Data->SetStringField(TEXT("scope"),TEXT("Original GraphPins public11 via existing Connect schema writer: own direct Actor/flatK2 same-scalar MAKE, already-linked or permitted input oldSource1 replacement; canonical exec MAKE/already or permitted output oldTarget1 to newTarget1 replacement, retaining other input predecessors; same-element primitive authored function Array output -> typed native Array_Length input MAKE/already or input oldSource1 replacement, with endpoint qualifiers and native prototype Inner roles preserved separately; exact graph/pin semantic preservation and selected compile/save receipts. Callback internals, arbitrary CDO/SCS reflected values, converters/promotions/new graph creation, runtime execution and full original parity are not certified by this new bounded route. Existing separate routes are unchanged."));return Encode();
+    R.bSuccess=R.bPostconditionPassed=true;R.bChangeStateKnown=true;R.Stage=TEXT("complete");R.Data->SetStringField(TEXT("scope"),TEXT("Original GraphPins public11 via existing Connect schema writer: own direct Actor/flatK2 same-scalar MAKE, already-linked or permitted input oldSource1 replacement; canonical exec MAKE/already or permitted output oldTarget1 to newTarget1 replacement, retaining other input predecessors; same-element primitive authored function Array output -> already typed native Array9 TargetArray input (Length/Get/Set/Add/AddUnique/Insert/Contains/RemoveItem/Clear) MAKE/already or input oldSource1 replacement, with endpoint qualifiers and native prototype Inner roles preserved separately; exact graph/pin semantic preservation and selected compile/save receipts. Explicitly permitted native Engine primitive autocasts into an unlinked whole scalar input reuse the same writer and preserve the original final direct-link failure contract after actual requested compile/save. Array item peers must already carry the same primitive element; no wildcard inference, object/struct arrays, mixed/split peers or alternate producer expansion. Native prototype/metadata/nullable library CDO identities remain protected; peer defaults/types and every original input qualifier are preserved. New operation/element/replacement/compile/save behavior is usage validation pending. Callback internals, arbitrary CDO/SCS reflected values, other converters/promotions/new graph creation, runtime execution and full original parity remain incomplete. Existing separate routes are unchanged."));return Encode();
 }
 
 }

@@ -3,6 +3,7 @@
 #include "Compatibility/UE58/CubelessVariableApi.h"
 #include "Compatibility/UE58/CubelessGraphApi.h"
 #include "Compatibility/UE58/CubelessFunctionPinApi.h"
+#include "Compatibility/UE58/CubelessFunctionApi.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Compatibility/UE58/CubelessRuntimeObjectApi.h"
 #include "EdGraphSchema_K2.h"
@@ -2089,9 +2090,9 @@ bool LifecycleFields(UObject* O, const TSharedRef<FJsonObject>& Out, FDeclaratio
     }
     return true;
 }
-bool LifecycleGraphs(UBlueprint* BP, const TSharedRef<FJsonObject>& Out)
+bool LifecycleGraphs(UBlueprint* BP, const TSharedRef<FJsonObject>& Out, TFunction<bool()> Fence = {})
 {
-    TArray<UEdGraph*> Graphs; BP->GetAllGraphs(Graphs); if (Graphs.Num() > 128) { return false; } int32 Nodes = 0, Pins = 0, Links = 0;
+    TArray<UEdGraph*> Graphs; BP->GetAllGraphs(Graphs); if (Fence && !Fence()) { return false; } if (Graphs.Num() > 128) { return false; } int32 Nodes = 0, Pins = 0, Links = 0;
     for (UEdGraph* G : Graphs)
     {
         if (!IsValid(G) || G->GetOutermost() != BP->GetOutermost()) { return false; } auto J = MakeShared<FJsonObject>(); Out->SetObjectField(G->GetPathName(), J); J->SetObjectField(TEXT("identity"), LifecycleIdentity(G)); J->SetStringField(TEXT("guid"), G->GraphGuid.ToString(EGuidFormats::Digits));
@@ -2111,15 +2112,16 @@ bool LifecycleGraphs(UBlueprint* BP, const TSharedRef<FJsonObject>& Out)
     }
     return true;
 }
-bool LifecycleReferences(UBlueprint* BP, const TSharedRef<FJsonObject>& Out, FDeclarationEnumScope* EnumScope = nullptr)
+bool LifecycleReferences(UBlueprint* BP, const TSharedRef<FJsonObject>& Out, FDeclarationEnumScope* EnumScope = nullptr, TFunction<bool()> Fence = {})
 {
-    if(EnumScope&&!EnumScope->Admit()) { return false; }
+    if((Fence&&!Fence())||(EnumScope&&!EnumScope->Admit())) { return false; }
     TArray<UObject*> Objects; GetObjectsWithOuter(BP->GetOutermost(), Objects, EGetObjectsFlags::IncludeNestedObjects); if (Objects.Num() > 4096) { return false; } int32 Total = 0;
     for (UObject* Object : Objects)
     {
         if (!IsValid(Object) || Object->HasAnyFlags(RF_Transient) || Object->GetOutermost() != BP->GetOutermost()) { continue; }
-        TStrongObjectPtr<UObject> EnumHold(EnumScope ? Object : nullptr);const FString EnumPath=EnumScope ? Object->GetPathName() : FString();UClass* EnumClass=EnumScope ? Object->GetClass() : nullptr;UObject* EnumOuter=EnumScope ? Object->GetOuter() : nullptr;
+        TStrongObjectPtr<UObject> EnumHold(EnumScope || Fence ? Object : nullptr);const FString EnumPath=EnumScope || Fence ? Object->GetPathName() : FString();UClass* EnumClass=EnumScope || Fence ? Object->GetClass() : nullptr;UObject* EnumOuter=EnumScope || Fence ? Object->GetOuter() : nullptr;
         TArray<UObject*> Refs; FReferenceFinder Finder(Refs, nullptr, false, true, false, true); Finder.FindReferences(Object);
+        if(Fence&&(!Fence()||!DeclarationEnumLoaded(Object)||Object->GetClass()!=EnumClass||Object->GetOuter()!=EnumOuter||Object->GetPathName()!=EnumPath))return false;
         if(EnumScope&&(!EnumScope->Admit()||!DeclarationEnumLoaded(Object)||Object->GetClass()!=EnumClass||Object->GetOuter()!=EnumOuter||Object->GetPathName()!=EnumPath)) { return false; }
         TArray<FString> Paths; Out->SetArrayField(Object->GetPathName(), {});
         for (UObject* Ref : Refs)
@@ -2132,7 +2134,7 @@ bool LifecycleReferences(UBlueprint* BP, const TSharedRef<FJsonObject>& Out, FDe
     return true;
 }
 bool LifecycleCapture(UBlueprint* BP, FLifecycleObservation& O, FResult& R, const TCHAR* Phase, FDeclarationEnumScope* EnumScope = nullptr,
-    TFunction<bool()> Fence = {}, TFunction<bool(const TSharedRef<FJsonObject>&)> GraphCapture = {}, TFunction<bool(const TSharedRef<FJsonObject>&)> ReferenceCapture = {})
+    TFunction<bool()> Fence = {}, TFunction<bool(const TSharedRef<FJsonObject>&)> GraphCapture = {}, TFunction<bool(const TSharedRef<FJsonObject>&)> ReferenceCapture = {}, UClass* NativeSourceParent = nullptr)
 {
     if(EnumScope&&!EnumScope->Admit()) { return false; }
     O = FLifecycleObservation{}; LifecycleCount(R, TEXT("lifecycle_observation_capture_calls")); auto J = MakeShared<FJsonObject>(); R.Data->SetObjectField(Phase, J); J->SetBoolField(TEXT("complete"), false); J->SetStringField(TEXT("failed_stage"), TEXT("current_class")); J->SetObjectField(TEXT("state"), O.State); J->SetObjectField(TEXT("source"), O.Source); J->SetObjectField(TEXT("other_package_dirty"), O.Other); J->SetObjectField(TEXT("disk"), O.Disk); J->SetObjectField(TEXT("references"), O.References);
@@ -2142,7 +2144,7 @@ bool LifecycleCapture(UBlueprint* BP, FLifecycleObservation& O, FResult& R, cons
     O.State->SetObjectField(TEXT("variables"), PresetCapture?Capture(BP,EnumScope->Default.Get(),true):Fence?Capture(BP,BP->GeneratedClass->ClassDefaultObject.Get(),true,Fence):Capture(BP)); if(Fence&&!Fence())return false; O.State->SetObjectField(TEXT("blueprint_identity"), LifecycleIdentity(BP)); UObject* CDO = PresetCapture?EnumScope->Default.Get():BP->GeneratedClass->GetDefaultObject(false); O.State->SetObjectField(TEXT("cdo_identity"), LifecycleIdentity(CDO)); auto Fields = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("cdo_fields"), Fields); auto Graphs = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("graphs"), Graphs);
     J->SetStringField(TEXT("failed_stage"), TEXT("local_current_values")); for (const auto& V : O.State->GetObjectField(TEXT("variables"))->GetArrayField(TEXT("new_variables"))) { if (!V->AsObject()->GetBoolField(TEXT("default_value_available")) || !V->AsObject()->GetBoolField(TEXT("generated_property_available"))) { return false; } }
     J->SetStringField(TEXT("failed_stage"), TEXT("cdo_fields")); if (CDO->GetOutermost() != BP->GetOutermost() || !LifecycleFields(CDO, Fields, EnumScope, Fence)) { return false; } J->SetStringField(TEXT("failed_stage"), TEXT("graphs")); if (!(GraphCapture?GraphCapture(Graphs):LifecycleGraphs(BP, Graphs))) { return false; } J->SetStringField(TEXT("failed_stage"), TEXT("selected_serialized_references")); if (!(ReferenceCapture?ReferenceCapture(O.References):LifecycleReferences(BP, O.References, EnumScope))) { return false; }
-    J->SetStringField(TEXT("failed_stage"), TEXT("native_source")); UClass* Parent = EnumScope&&EnumScope->LocalMapMode&&EnumScope->PresetMapLibrary?UBlueprintFunctionLibrary::StaticClass():AActor::StaticClass(); UObject* ParentCDO = Parent->GetDefaultObject(false);TStrongObjectPtr<UObject> PresetParentCDOHold;if(PresetCapture){if(!EnumScope->Check()||!DeclarationEnumLoaded(ParentCDO)||!Parent->ClassDefaultObject.IsResolved()||Parent->ClassDefaultObject!=ParentCDO||ParentCDO->GetClass()!=Parent)return false;PresetParentCDOHold.Reset(ParentCDO);} O.Source->SetObjectField(TEXT("class"), LifecycleIdentity(Parent)); O.Source->SetStringField(TEXT("class_flags"), LexToString(static_cast<uint32>(Parent->GetClassFlags()))); O.Source->SetBoolField(TEXT("package_dirty"), Parent->GetOutermost()->IsDirty()); O.Source->SetObjectField(TEXT("cdo"), LifecycleIdentity(ParentCDO)); auto SourceFields = MakeShared<FJsonObject>(); O.Source->SetObjectField(TEXT("cdo_fields"), SourceFields); if (!LifecycleFields(ParentCDO, SourceFields, EnumScope, Fence)) { return false; }
+    J->SetStringField(TEXT("failed_stage"), TEXT("native_source")); UClass* Parent = NativeSourceParent?NativeSourceParent:EnumScope&&EnumScope->LocalMapMode&&EnumScope->PresetMapLibrary?UBlueprintFunctionLibrary::StaticClass():AActor::StaticClass(); UObject* ParentCDO = Parent->GetDefaultObject(false);TStrongObjectPtr<UObject> PresetParentCDOHold;if(PresetCapture){if(!EnumScope->Check()||!DeclarationEnumLoaded(ParentCDO)||!Parent->ClassDefaultObject.IsResolved()||Parent->ClassDefaultObject!=ParentCDO||ParentCDO->GetClass()!=Parent)return false;PresetParentCDOHold.Reset(ParentCDO);} O.Source->SetObjectField(TEXT("class"), LifecycleIdentity(Parent)); O.Source->SetStringField(TEXT("class_flags"), LexToString(static_cast<uint32>(Parent->GetClassFlags()))); O.Source->SetBoolField(TEXT("package_dirty"), Parent->GetOutermost()->IsDirty()); O.Source->SetObjectField(TEXT("cdo"), LifecycleIdentity(ParentCDO)); auto SourceFields = MakeShared<FJsonObject>(); O.Source->SetObjectField(TEXT("cdo_fields"), SourceFields); if (!LifecycleFields(ParentCDO, SourceFields, EnumScope, Fence)) { return false; }
     J->SetStringField(TEXT("failed_stage"), TEXT("other_package_dirty")); const FString Package = BP->GetOutermost()->GetName(); int32 Count = 0;
     for (TObjectIterator<UPackage> It; It; ++It) { if (!IsValid(*It) || It->GetName() == Package) { continue; } if (++Count > 8192) { return false; } O.Other->SetBoolField(It->GetName(), It->IsDirty()); }
     J->SetStringField(TEXT("failed_stage"), TEXT("disk")); FString Filename; if (!FPackageName::TryConvertLongPackageNameToFilename(Package, Filename, FPackageName::GetAssetPackageExtension())) { return false; } Filename = FPaths::ConvertRelativePathToFull(Filename); O.Disk->SetStringField(TEXT("path"), Filename); const int64 Size = IFileManager::Get().FileSize(*Filename); O.Disk->SetBoolField(TEXT("exists"), Size >= 0); O.Disk->SetNumberField(TEXT("bytes"), Size < 0 ? 0 : Size);
@@ -2247,6 +2249,162 @@ bool LifecycleObserved(UBlueprint* BP, FLifecycleObservation& O, const FLifecycl
     if (!LifecycleCapture(BP, O, R, Phase)) { R.bChangeStateKnown = false; return Fail(R, TEXT("variable_lifecycle_observation_incomplete"), TEXT("Bounded actual phase prefix is incomplete; inspect it without replaying the writer.")); }
     R.bChangeStateKnown = true; R.bChanged = !LifecycleEqual(Before.State, O.State) || !LifecycleEqual(Before.Source, O.Source) || !LifecycleEqual(Before.References, O.References) || !LifecycleEqual(Before.Other, O.Other) || !LifecycleEqual(Before.Disk, O.Disk); return true;
 }
+// ABD: API-owned metadata operations on direct native Actor/UObject owners.
+// ABK reuses this API-local typed lease for original order/category writers.
+// Metadata keeps its original mode; only SetOrder may adopt the exact planned
+// declaration permutation. Names/GUIDs/types/values and source roles stay fixed;
+// returned structural/full-compile boundaries may regenerate current field roles.
+struct FMetadataTypedScope
+{
+    enum class EUse { Metadata, VariableOrder, CategoryOrder };
+    EUse Use=EUse::Metadata;TArray<FName> AuthoredOrder;
+    struct FField
+    {
+        FProperty* P=nullptr;FFieldClass* Kind=nullptr;FName Name;uint64 Flags=0;int32 Dim=0,Size=0,Offset=0;
+        UScriptStruct* Struct=nullptr;FProperty* Inner=nullptr;FFieldClass* InnerKind=nullptr;FName InnerName;
+        uint64 InnerFlags=0;int32 InnerSize=0,InnerOffset=0;bool Authored=false;
+    };
+    FResult& R;bool Stopped=false;TStrongObjectPtr<UBlueprint> BP;TStrongObjectPtr<UPackage> Package;
+    TStrongObjectPtr<UClass> Parent,Generated,Skeleton;TStrongObjectPtr<UObject> CDO,ParentCDO;
+    TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;
+    TArray<TStrongObjectPtr<UObject>> Holds;TArray<FBPVariableDescription> Variables;
+    TArray<FField> Fields,SkeletonFields;TMap<UScriptStruct*,TSharedPtr<FJsonObject>> StructSources;
+    TArray<TUniquePtr<FDeclarationEnumScope>> NativeSources;
+    TSharedPtr<FJsonObject> ValuesBefore;FString Path;EObjectFlags BPFlags=RF_NoFlags;bool NativeObject=false;
+    explicit FMetadataTypedScope(FResult& In,EUse InUse=EUse::Metadata):Use(InUse),R(In),Editor(GEditor),World(GWorld){}
+    bool Bad(const TCHAR* Why)
+    {
+        if(!Stopped){R.Data->SetStringField(TEXT("metadata_typed_first_failure"),Why);R.Data->SetStringField(TEXT("metadata_typed_failure_stage"),R.Stage);}
+        Stopped=true;if(R.bMutationAttempted)R.bChangeStateKnown=false;return Fail(R,Use==EUse::VariableOrder?TEXT("variable_order_typed_scope_changed"):Use==EUse::CategoryOrder?TEXT("category_sorting_typed_scope_changed"):TEXT("variable_metadata_typed_scope_changed"),Why);
+    }
+    static bool Same(const FEdGraphPinType& A,const FEdGraphPinType& B)
+    {return A==B&&A.bIsUObjectWrapper==B.bIsUObjectWrapper&&A.bSerializeAsSinglePrecisionFloat==B.bSerializeAsSinglePrecisionFloat&&A.PinValueType.bTerminalIsUObjectWrapper==B.PinValueType.bTerminalIsUObjectWrapper;}
+    static bool PrimitiveInner(FProperty* P)
+    {return P&&(P->GetClass()==FBoolProperty::StaticClass()||P->GetClass()==FIntProperty::StaticClass()||P->GetClass()==FInt64Property::StaticClass()||P->GetClass()==FFloatProperty::StaticClass()||P->GetClass()==FDoubleProperty::StaticClass()||P->GetClass()==FStrProperty::StaticClass()||P->GetClass()==FNameProperty::StaticClass()||P->GetClass()==FTextProperty::StaticClass());}
+    static bool AdmittedType(const FEdGraphPinType& In)
+    {auto T=In;if(T.bIsConst||T.bIsReference||T.bIsWeakPointer||T.bIsUObjectWrapper)return false;if(T.IsArray()){T.ContainerType=EPinContainerType::None;return Function::Pin::IsPrimitive(T);}return Function::Pin::IsPrimitive(T)||Function::Pin::IsScalarValueStruct(T);}
+    bool Base()
+    {
+        if(Stopped)return false;
+        if(!IsEditorGameThread()||IsPlaySessionActive()||IsGarbageCollecting()||GExitPurge||IsEngineExitRequested()||UE::IsSavingPackage()||GEditor!=Editor.Get()||GWorld!=World.Get()||!DeclarationEnumLoaded(Editor.Get()))return Bad(TEXT("Idle metadata Editor context changed."));
+        auto* B=BP.Get();auto* P=Parent.Get();
+        if(!DeclarationEnumLoaded(B)||!DeclarationEnumLoaded(Package.Get())||!DeclarationEnumLoaded(P)||B->GetClass()!=UBlueprint::StaticClass()||B->GetPathName()!=Path||B->GetOuter()!=Package.Get()||B->GetPackage()!=Package.Get()||B->GetFlags()!=BPFlags
+            ||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=P||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified
+            ||!B->GeneratedVariables.IsEmpty()||B->CachedUDSDependencies.Num()>0||B->NewVariables.Num()!=Variables.Num())return Bad(TEXT("Selected Blueprint/parent/current descriptor scope changed."));
+        if(P!=(NativeObject?UObject::StaticClass():AActor::StaticClass())||!P->ClassDefaultObject.IsResolved()||P->ClassDefaultObject.Get()!=ParentCDO.Get()||!DeclarationEnumLoaded(ParentCDO.Get())||ParentCDO->GetClass()!=P)return Bad(TEXT("Existing native parent CDO role changed; no default-object creation."));
+        if(Use==EUse::VariableOrder)
+        {
+            if(AuthoredOrder.Num()!=Variables.Num())return Bad(TEXT("Planned authored order inventory changed."));
+            for(int32 I=0;I<AuthoredOrder.Num();++I){const auto* V=Variables.FindByPredicate([&](const FBPVariableDescription& X){return X.VarName==AuthoredOrder[I];});if(!V||B->NewVariables[I].VarName!=V->VarName||B->NewVariables[I].VarGuid!=V->VarGuid||!Same(B->NewVariables[I].VarType,V->VarType))return Bad(TEXT("Actual authored order/name/GUID/type differs from the admitted permutation."));}
+        }
+        else for(int32 I=0;I<Variables.Num();++I)if(B->NewVariables[I].VarName!=Variables[I].VarName||B->NewVariables[I].VarGuid!=Variables[I].VarGuid||!Same(B->NewVariables[I].VarType,Variables[I].VarType))return Bad(TEXT("Authored variable order/name/GUID/type changed outside metadata/category contract."));
+        for(const auto& S:NativeSources)if(!S->Check())return Bad(TEXT("Existing native value source lease failed; no next SDK."));
+        for(const auto& E:StructSources){FEdGraphPinType T;T.PinCategory=UEdGraphSchema_K2::PC_Struct;T.PinSubCategoryObject=E.Key;if(!DeclarationEnumLoaded(E.Key)||!Function::Pin::IsScalarValueStruct(T)||!LifecycleEqual(E.Value.ToSharedRef(),Function::Pin::ScalarValueStructSource(T)))return Bad(TEXT("Native Vector/Rotator/Transform source identity changed."));}
+        return true;
+    }
+    // Called immediately after the local descriptor-array assignment, before the
+    // structural SDK. It does not adopt fields/CDO/source values or callback edits.
+    bool AdoptOrder(const TArray<FName>& Desired)
+    {
+        if(Use!=EUse::VariableOrder||Desired.Num()!=Variables.Num())return Bad(TEXT("Only the order writer can adopt its complete planned permutation."));
+        TSet<FName> Seen;for(int32 I=0;I<Desired.Num();++I){const auto* V=Variables.FindByPredicate([&](const FBPVariableDescription& X){return X.VarName==Desired[I];});if(!V||Seen.Contains(Desired[I])||BP->NewVariables[I].VarName!=V->VarName||BP->NewVariables[I].VarGuid!=V->VarGuid||!Same(BP->NewVariables[I].VarType,V->VarType))return Bad(TEXT("Assigned descriptor order is not the original member permutation."));Seen.Add(Desired[I]);}
+        AuthoredOrder=Desired;return Current();
+    }
+    bool FieldCurrent(UClass* C,const TArray<FField>& Expected)
+    {
+        TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(C,EFieldIterationFlags::None);It;++It){if(Now.Num()>256)return Bad(TEXT("Own reflected field budget changed."));Now.Add(*It);}
+        if(Now.Num()!=Expected.Num())return Bad(TEXT("Own reflected root inventory count changed."));
+        for(int32 I=0;I<Now.Num();++I)
+        {
+            const auto& E=Expected[I];if(Now[I]!=E.P)return Bad(TEXT("Own reflected root inventory address changed before next borrow."));auto* P=Now[I];
+            if(P->GetOwnerStruct()!=C||P->GetOwnerProperty()!=P||P->GetClass()!=E.Kind||P->GetFName()!=E.Name||uint64(P->GetPropertyFlags())!=E.Flags||P->ArrayDim!=E.Dim||P->GetSize()!=E.Size||P->GetOffset_ForInternal()!=E.Offset||P->HasSetterOrGetter())return Bad(TEXT("Current reflected root role/layout changed."));
+            if(E.Struct){auto* S=CastField<FStructProperty>(P);if(!S||!S->Struct.IsResolved()||S->Struct.Get()!=E.Struct)return Bad(TEXT("Current native struct binding changed."));}
+            if(E.Inner){auto* A=CastField<FArrayProperty>(P);if(!A||A->Inner!=E.Inner)return Bad(TEXT("Current Array.Inner slot changed before next borrow."));auto* V=A->Inner;if(V->GetClass()!=E.InnerKind||V->GetOwner<FProperty>()!=P||V->GetOwnerProperty()!=P||V->GetOwnerStruct()!=C||V->GetFName()!=E.InnerName||uint64(V->GetPropertyFlags())!=E.InnerFlags||V->ArrayDim!=1||V->GetSize()!=E.InnerSize||V->GetOffset_ForInternal()!=E.InnerOffset||V->HasSetterOrGetter())return Bad(TEXT("Current primitive Array.Inner owner/layout changed."));}
+        }return true;
+    }
+    bool Current()
+    {
+        if(!Base())return false;auto* B=BP.Get();
+        if(!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Generated.Get()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get())return Bad(TEXT("Generated/skeleton role changed outside returned metadata SDK boundary."));
+        for(auto* C:{Generated.Get(),Skeleton.Get()})if(!DeclarationEnumLoaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=B||C->GetOuter()!=Package.Get()||C->GetSuperClass()!=Parent.Get())return Bad(TEXT("Current owned class role changed."));
+        if(!Generated->ClassDefaultObject.IsResolved()||Generated->ClassDefaultObject.Get()!=CDO.Get()||!DeclarationEnumLoaded(CDO.Get())||CDO->GetClass()!=Generated.Get()||CDO->GetOuter()!=Package.Get()||!CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return Bad(TEXT("Existing generated CDO role changed."));
+        if(!FieldCurrent(Generated.Get(),Fields)||!FieldCurrent(Skeleton.Get(),SkeletonFields))return false;
+        for(const auto& E:Fields)if(E.Inner){FScriptArrayHelper A(static_cast<FArrayProperty*>(E.P),E.P->ContainerPtrToValuePtr<void>(CDO.Get()));if(A.Num()<0||A.Num()>256)return Bad(TEXT("Current primitive array value exceeds256 elements."));}
+        return true;
+    }
+    bool BindFields(UClass* C,TArray<FField>& Out)
+    {
+        Out.Empty();TArray<FProperty*> List;for(TFieldIterator<FProperty> It(C,EFieldIterationFlags::None);It;++It){if(List.Num()>256)return Bad(TEXT("At most256 authored roots and one SDK compiler frame admitted."));List.Add(*It);}
+        int32 Authored=0;for(auto* P:List)
+        {
+            FField E;E.P=P;E.Kind=P->GetClass();E.Name=P->GetFName();E.Flags=uint64(P->GetPropertyFlags());E.Dim=P->ArrayDim;E.Size=P->GetSize();E.Offset=P->GetOffset_ForInternal();
+            if(P->GetOwnerStruct()!=C||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->HasSetterOrGetter())return Bad(TEXT("Direct own reflected scalar storage required."));
+            const auto* V=Variables.FindByPredicate([&](const FBPVariableDescription& X){return X.VarName==E.Name;});E.Authored=V!=nullptr;
+            if(auto* S=CastField<FStructProperty>(P)){if(!S->Struct.IsResolved()||!DeclarationEnumLoaded(S->Struct.Get()))return Bad(TEXT("Resolved native struct role required."));E.Struct=S->Struct.Get();Holds.Emplace(E.Struct);}
+            if(!V)
+            {
+                auto* BGC=static_cast<UBlueprintGeneratedClass*>(C);if(E.Name!=UBlueprintGeneratedClass::GetUberGraphFrameName()||!E.Struct||E.Struct->GetPathName()!=TEXT("/Script/Engine.PointerToUberGraphFrame")||(E.Struct->StructFlags&STRUCT_Native)==0||(E.Flags&uint64(CPF_Transient|CPF_DuplicateTransient))!=uint64(CPF_Transient|CPF_DuplicateTransient)||!BGC->UberGraphFunction.IsResolved()||!(P==BGC->UberGraphFramePointerProperty||(!BGC->UberGraphFunction.Get()&&!BGC->UberGraphFramePointerProperty)))return Bad(TEXT("Only own authored fields plus exact public SDK compiler-frame role admitted."));
+                Out.Add(E);continue;
+            }
+            ++Authored;if(auto* A=CastField<FArrayProperty>(P)){auto* I=A->Inner;if(!PrimitiveInner(I)||I->GetOwner<FProperty>()!=P||I->GetOwnerProperty()!=P||I->GetOwnerStruct()!=C||I->ArrayDim!=1||I->HasSetterOrGetter())return Bad(TEXT("One-level directly owned primitive Array.Inner required."));E.Inner=I;E.InnerKind=I->GetClass();E.InnerName=I->GetFName();E.InnerFlags=uint64(I->GetPropertyFlags());E.InnerSize=I->GetSize();E.InnerOffset=I->GetOffset_ForInternal();}
+            FEdGraphPinType T;const bool Converted=GetDefault<UEdGraphSchema_K2>()->ConvertPropertyToPinType(P,T);if(!Base())return false;
+            if(!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||BP->GeneratedClass.GetGCPtr().Get()!=Generated.Get()||BP->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()
+                ||!Generated->ClassDefaultObject.IsResolved()||Generated->ClassDefaultObject.Get()!=CDO.Get())return Bad(TEXT("Current class/CDO slots changed during schema type observation; no following SDK."));
+            TArray<FProperty*> Check;for(TFieldIterator<FProperty> It(C,EFieldIterationFlags::None);It;++It)Check.Add(*It);if(Check!=List)return Bad(TEXT("Reflected inventory changed during schema type observation."));
+            if(!Converted||!AdmittedType(T)||!Same(T,V->VarType)){R.Data->SetStringField(TEXT("metadata_typed_mismatch_member"),E.Name.ToString());R.Data->SetObjectField(TEXT("metadata_typed_expected_type"),PinJson(V->VarType));R.Data->SetObjectField(TEXT("metadata_typed_actual_type"),PinJson(T));return Bad(TEXT("Generated field type does not match admitted authored type."));}
+            if(Function::Pin::IsScalarValueStruct(T)){
+                if(!StructSources.Contains(E.Struct)){auto Guard=MakeUnique<FDeclarationEnumScope>();const FString Kind=E.Struct==TBaseStructure<FVector>::Get()?TEXT("vector"):E.Struct==TBaseStructure<FRotator>::Get()?TEXT("rotator"):TEXT("transform");if(!Guard->LoadNativeStruct(Kind,R,true))return Bad(TEXT("Existing native value descriptor lease could not bind."));NativeSources.Add(MoveTemp(Guard));}
+                auto J=Function::Pin::ScalarValueStructSource(T);if(!J->GetBoolField(TEXT("observations_complete"))||!J->GetBoolField(TEXT("native_identity_verified")))return Bad(TEXT("Complete native value source required."));const auto* Old=StructSources.Find(E.Struct);if(Old&&!LifecycleEqual(Old->ToSharedRef(),J))return Bad(TEXT("Native value source changed at rebind."));StructSources.Add(E.Struct,J);}
+            Out.Add(E);
+        }return Authored==Variables.Num()||Bad(TEXT("Every authored member needs an exact current generated field."));
+    }
+    bool Values(TSharedRef<FJsonObject>& Out)
+    {
+        Out=MakeShared<FJsonObject>();if(!Current())return false;int32 Chars=0;
+        for(const auto& E:Fields)if(E.Authored)
+        {FString V;const void* At=E.P->ContainerPtrToValuePtr<void>(CDO.Get());const bool OK=E.P->ExportText_Direct(V,At,At,CDO.Get(),PPF_None);if(!Current())return false;if(!OK||!SafeText(V,65536)||(Chars+=V.Len())>1048576)return Bad(TEXT("Bounded authored CDO values could not be exported."));Out->SetStringField(E.Name.ToString(),V);}return true;
+    }
+    bool Rebind()
+    {
+        if(!Base())return false;auto* B=BP.Get();if(!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Bad(TEXT("Returned metadata SDK leaves unresolved current class roles."));
+        auto* G=B->GeneratedClass.GetGCPtr().Get();auto* S=B->SkeletonGeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HG(G),HS(S);
+        for(auto* C:{G,S})if(!DeclarationEnumLoaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=B||C->GetOuter()!=Package.Get()||C->GetSuperClass()!=Parent.Get())return Bad(TEXT("Returned current classes have no admitted owned native-parent role."));
+        if(!G->ClassDefaultObject.IsResolved())return Bad(TEXT("Returned existing generated CDO slot unresolved."));auto* D=G->ClassDefaultObject.Get();TStrongObjectPtr<UObject> HD(D);if(!DeclarationEnumLoaded(D)||D->GetClass()!=G||D->GetOuter()!=Package.Get()||!D->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return Bad(TEXT("Returned generated CDO ownership unavailable."));
+        Generated.Reset(G);Skeleton.Reset(S);CDO.Reset(D);Holds.Emplace(G);Holds.Emplace(S);Holds.Emplace(D);
+        if(!BindFields(G,Fields)||!BindFields(S,SkeletonFields)||!Current()||!MutationScope(B,R))return false;
+        TSharedRef<FJsonObject> Now=MakeShared<FJsonObject>();if(!Values(Now))return false;if(ValuesBefore.IsValid()&&!LifecycleEqual(ValuesBefore.ToSharedRef(),Now)){R.Data->SetObjectField(TEXT("metadata_typed_values_actual"),Now);return Bad(TEXT("Metadata SDK changed authored CDO values; no following SDK or retry."));}if(!ValuesBefore.IsValid()){ValuesBefore=Now;R.Data->SetObjectField(TEXT("metadata_typed_values_before"),Now);}return Current();
+    }
+    bool SavedReturned(bool Saved)
+    {
+        // SavePackage2 marks serialized exports as loaded. Allow only that
+        // source-confirmed transition after this writer's successful save.
+        if(Use==EUse::Metadata)return Bad(TEXT("Metadata does not own an explicit save boundary."));
+        if(!DeclarationEnumLoaded(BP.Get()))return Bad(TEXT("Saved target Blueprint is no longer loaded."));
+        const auto Expected=EObjectFlags(BPFlags|RF_WasLoaded|RF_LoadCompleted);
+        if(Saved){if(BP->GetFlags()!=Expected)return Bad(TEXT("Save returned an unexpected Blueprint object-flag transition."));BPFlags=Expected;}
+        return Rebind();
+    }
+    bool Bind(UBlueprint* B)
+    {
+        if(!MutationScope(B,R))return false;auto Slot=B->ParentClass;auto* P=Slot.GetGCPtr().IsResolved()?Slot.GetGCPtr().Get():nullptr;
+        if(B->GetClass()!=UBlueprint::StaticClass()||B->GetOuter()!=B->GetPackage()||(P!=AActor::StaticClass()&&P!=UObject::StaticClass())||!B->GeneratedVariables.IsEmpty()||B->CachedUDSDependencies.Num()>0||B->NewVariables.Num()>256)return Bad(TEXT("Typed metadata admits direct native Actor/UObject and own fields without UDS/generated members."));
+        if(!P->ClassDefaultObject.IsResolved()||!DeclarationEnumLoaded(P->ClassDefaultObject.Get()))return Bad(TEXT("Existing resolved native parent CDO required."));
+        BP.Reset(B);Package.Reset(B->GetPackage());Parent.Reset(P);ParentCDO.Reset(P->ClassDefaultObject.Get());NativeObject=P==UObject::StaticClass();Path=B->GetPathName();BPFlags=B->GetFlags();Variables=B->NewVariables;for(const auto& V:Variables)AuthoredOrder.Add(V.VarName);
+        for(const auto& V:Variables)if(!V.VarGuid.IsValid()||!AdmittedType(V.VarType))return Bad(TEXT("Own primitive scalar/primitive Array/native Vector-Rotator-Transform scalar members only; wider types remain incomplete."));
+        R.Data->SetStringField(TEXT("admission_scope"),TEXT("SetMetadata only: direct native Actor/UObject; current own primitive scalar/primitive Array<=256/native Vector-Rotator-Transform scalar fields; no external instances/derived Blueprints, UDS or generated variables. Original metadata/flag applications and no explicit compile/save retained; wider inherited/object-reference/enum/container variants remain incomplete; arrays over256 remain unobservable through the shared ReadTyped contract and incomplete; usage validation pending."));
+        if(Use!=EUse::Metadata){R.Data->SetStringField(TEXT("typed_lifecycle_operation"),Use==EUse::VariableOrder?TEXT("set_blueprint_variable_order"):TEXT("set_blueprint_category_sorting"));R.Data->SetStringField(TEXT("admission_scope"),TEXT("Original declaration/category ordering on direct native Actor/UObject with current own primitive scalar/primitive Array<=256/native Vector-Rotator-Transform scalar fields. Existing strict/permutation or category-root/append semantics and actual optional compile/save prefixes are retained. Only exact planned variable-order permutation may change authored order; values/types/GUIDs/native sources stay protected. Wider inheritance/reference/enum/UDS/container/large-array support and runtime/cold behavior remain incomplete; usage validation pending."));}
+        R.Data->SetStringField(TEXT("observation_scope"),TEXT("Existing lifecycle descriptor/CDO-value/graph/reference/native-parent/disk/other-package observations plus typed own field/Inner/native3 source leases. SDK-return class roles may be reacquired; compiler frame is not treated as authored data. Initial load effects, arbitrary native source internals and global delegates are not fully measured."));if(!Rebind())return false;TArray<TSharedPtr<FJsonValue>> Sources;for(const auto& S:NativeSources)Sources.Add(MakeShared<FJsonValueObject>(S->Before));R.Data->SetArrayField(TEXT("metadata_native_value_sources"),Sources);return true;
+    }
+    bool CapturePhase(FLifecycleObservation& O,const TCHAR* Phase)
+    {auto Fence=[this](){return Current();};return Current()&&LifecycleCapture(BP.Get(),O,R,Phase,nullptr,Fence,[&](const TSharedRef<FJsonObject>& G){return LifecycleGraphs(BP.Get(),G,Fence)&&Current();},[&](const TSharedRef<FJsonObject>& Q){return LifecycleReferences(BP.Get(),Q,nullptr,Fence)&&Current();},Parent.Get())&&Current();}
+};
+bool UsesTypedOrdering(UBlueprint* BP)
+{bool Typed=BP->ParentClass!=AActor::StaticClass();for(const auto& V:BP->NewVariables)Typed|=!Function::Pin::IsPrimitive(V.VarType);return Typed;}
+bool TypedOrderingObserved(FMetadataTypedScope& Typed,FLifecycleObservation& O,const FLifecycleObservation& Before,FResult& R,const TCHAR* Phase)
+{
+    if(!Typed.CapturePhase(O,Phase)){R.bChangeStateKnown=false;if(!Typed.Stopped)Fail(R,TEXT("variable_order_observation_incomplete"),TEXT("Current typed ordering prefix could not be observed; no automatic replay."));return false;}
+    R.bChangeStateKnown=true;R.bChanged=!LifecycleEqual(Before.State,O.State)||!LifecycleEqual(Before.Source,O.Source)||!LifecycleEqual(Before.References,O.References)||!LifecycleEqual(Before.Other,O.Other)||!LifecycleEqual(Before.Disk,O.Disk);return true;
+}
 }
 FResult SetMetadata(const FString& Path, const FString& Name, const FString& MetadataJson, const FString& EditableJson, const FString& InstanceJson, const FString& SpawnJson)
 {
@@ -2263,26 +2421,30 @@ FResult SetMetadata(const FString& Path, const FString& Name, const FString& Met
         }
     }
     R.Data->SetArrayField(TEXT("skipped_metadata"), Skipped); if (Entries.IsEmpty() && !Editable.IsSet() && !Instance.IsSet() && !Spawn.IsSet()) { Fail(R, TEXT("variable_metadata_inputs_missing"), TEXT("Original named metadata/flag request contains no supported edit.")); return R; }
-    TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path, R)); UBlueprint* BP = Blueprint.Get(); if (!BP || !LifecycleSimple(BP, R)) { return R; } int32 Index = INDEX_NONE; FBPVariableDescription* V = FindLocal(BP, Name, Index, R); if (!V) { return R; }
+    TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path, R)); UBlueprint* BP = Blueprint.Get();if(!BP)return R;
+    bool TypedProfile=BP->ParentClass!=AActor::StaticClass();for(const auto& V:BP->NewVariables)TypedProfile|=!Function::Pin::IsPrimitive(V.VarType);
+    TUniquePtr<FMetadataTypedScope> Typed;if(TypedProfile){Typed=MakeUnique<FMetadataTypedScope>(R);if(!Typed->Bind(BP))return R;}else if(!LifecycleSimple(BP,R))return R;
+    auto Current=[&](){return !Typed||Typed->Current();};auto SDKReturned=[&](){return !Typed||Typed->Rebind();};
+    int32 Index = INDEX_NONE; FBPVariableDescription* V = FindLocal(BP, Name, Index, R); if (!V) { return R; }
     const FName Target = V->VarName; FBPVariableDescription Desired = *V; for (const auto& E : Entries) { Desired.SetMetaData(FName(*E.Key), E.Value); }
     auto DesiredEditable = [&](bool X) { if (X) { Desired.PropertyFlags |= static_cast<uint64>(CPF_Edit | CPF_BlueprintVisible); Desired.PropertyFlags &= ~static_cast<uint64>(CPF_DisableEditOnInstance); } else { Desired.PropertyFlags |= static_cast<uint64>(CPF_DisableEditOnInstance); } };
     if (Editable.IsSet()) { DesiredEditable(*Editable); } if (Instance.IsSet()) { DesiredEditable(*Instance); } if (Spawn.IsSet()) { if (*Spawn) { Desired.PropertyFlags |= CPF_ExposeOnSpawn; Desired.SetMetaData(TEXT("ExposeOnSpawn"), TEXT("true")); } else { Desired.PropertyFlags &= ~static_cast<uint64>(CPF_ExposeOnSpawn); Desired.RemoveMetaData(TEXT("ExposeOnSpawn")); } }
-    FLifecycleObservation Before, After; if (!LifecycleCapture(BP, Before, R, TEXT("before_observation"))) { R.bChangeStateKnown = false; Fail(R, TEXT("variable_lifecycle_before_unobservable"), TEXT("Before actual prefix is incomplete; no edit.")); return R; }
+    FLifecycleObservation Before, After; if (!(Typed?Typed->CapturePhase(Before,TEXT("before_observation")):LifecycleCapture(BP, Before, R, TEXT("before_observation")))) { R.bChangeStateKnown = false; Fail(R, TEXT("variable_lifecycle_before_unobservable"), TEXT("Before actual prefix is incomplete; no edit.")); return R; }
     R.Data->SetObjectField(TEXT("desired_variable"), Row(BP, Desired, TEXT("new"), Index)); R.Data->SetStringField(TEXT("blueprint_name"), Path); R.Data->SetStringField(TEXT("asset_path"), BP->GetPathName()); R.Data->SetStringField(TEXT("variable_name"), Name);
     auto Applied = MakeShared<FJsonObject>(), Flags = MakeShared<FJsonObject>(), Verified = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("metadata"), Applied); R.Data->SetObjectField(TEXT("display"), MakeShared<FJsonObject>()); R.Data->SetObjectField(TEXT("flags"), Flags); R.Data->SetObjectField(TEXT("verified_metadata"), Verified);
-    LifecycleCount(R, TEXT("outer_transaction_calls")); const FScopedTransaction Transaction(NSLOCTEXT("CubelessVariable", "Metadata", "Set Blueprint variable metadata")); R.Stage = TEXT("set_metadata"); R.bMutationAttempted = true; R.bChangeStateKnown = false; TArray<TSharedPtr<FJsonValue>> Calls;
+    if(!Current())return R;LifecycleCount(R, TEXT("outer_transaction_calls")); const FScopedTransaction Transaction(NSLOCTEXT("CubelessVariable", "Metadata", "Set Blueprint variable metadata")); R.Stage = TEXT("set_metadata"); R.bMutationAttempted = true; R.bChangeStateKnown = false; TArray<TSharedPtr<FJsonValue>> Calls;if(!Current())return R;
     for (const auto& E : Entries)
     {
-        V = FindLocal(BP, Name, Index, R); if (!V || V->VarGuid != Desired.VarGuid || V->VarType != Desired.VarType) { Fail(R, TEXT("variable_metadata_member_changed"), TEXT("Actual callback moved the selected member; prefix retained.")); return R; }
+        if(!Current())return R;V = FindLocal(BP, Name, Index, R); if (!V || V->VarGuid != Desired.VarGuid || V->VarType != Desired.VarType) { Fail(R, TEXT("variable_metadata_member_changed"), TEXT("Actual callback moved the selected member; prefix retained.")); return R; }
         auto J = MakeShared<FJsonObject>(); Calls.Add(MakeShared<FJsonValueObject>(J)); R.Data->SetArrayField(TEXT("metadata_calls"), Calls); J->SetStringField(TEXT("key"), E.Key); J->SetStringField(TEXT("value"), E.Value); J->SetBoolField(TEXT("returned"), false);
-        LifecycleCount(R, TEXT("metadata_descriptor_set_calls")); V->SetMetaData(FName(*E.Key), E.Value); LifecycleCount(R, TEXT("metadata_editor_set_calls")); FBlueprintEditorUtils::SetBlueprintVariableMetaData(BP, Target, nullptr, FName(*E.Key), E.Value); J->SetBoolField(TEXT("returned"), true); Applied->SetStringField(E.Key, E.Value);
+        LifecycleCount(R, TEXT("metadata_descriptor_set_calls")); V->SetMetaData(FName(*E.Key), E.Value); LifecycleCount(R, TEXT("metadata_editor_set_calls")); FBlueprintEditorUtils::SetBlueprintVariableMetaData(BP, Target, nullptr, FName(*E.Key), E.Value); J->SetBoolField(TEXT("returned"), true); Applied->SetStringField(E.Key, E.Value);if(!SDKReturned())return R;
     }
-    auto ApplyEditable = [&](bool X, const TCHAR* Alias) { V = FindLocal(BP, Name, Index, R); if (!V || V->VarGuid != Desired.VarGuid || V->VarType != Desired.VarType) { return false; } uint64* F = FBlueprintEditorUtils::GetBlueprintVariablePropertyFlags(BP, Target); if (!F) { return false; } LifecycleCount(R, TEXT("descriptor_flag_edit_calls")); if (X) { *F |= static_cast<uint64>(CPF_Edit | CPF_BlueprintVisible); *F &= ~static_cast<uint64>(CPF_DisableEditOnInstance); } else { *F |= static_cast<uint64>(CPF_DisableEditOnInstance); } V->PropertyFlags = *F; Flags->SetBoolField(TEXT("instance_editable"), X); if (Alias) { Flags->SetBoolField(Alias, X); } return true; };
+    auto ApplyEditable = [&](bool X, const TCHAR* Alias) { if(!Current())return false;V = FindLocal(BP, Name, Index, R); if (!V || V->VarGuid != Desired.VarGuid || V->VarType != Desired.VarType) { return false; } uint64* F = FBlueprintEditorUtils::GetBlueprintVariablePropertyFlags(BP, Target); if (!F) { return false; } LifecycleCount(R, TEXT("descriptor_flag_edit_calls")); if (X) { *F |= static_cast<uint64>(CPF_Edit | CPF_BlueprintVisible); *F &= ~static_cast<uint64>(CPF_DisableEditOnInstance); } else { *F |= static_cast<uint64>(CPF_DisableEditOnInstance); } V->PropertyFlags = *F; Flags->SetBoolField(TEXT("instance_editable"), X); if (Alias) { Flags->SetBoolField(Alias, X); } return true; };
     if (Editable.IsSet() && !ApplyEditable(*Editable, TEXT("is_editable")) || Instance.IsSet() && !ApplyEditable(*Instance, nullptr)) { Fail(R, TEXT("variable_metadata_flags_unobservable"), TEXT("Editable callback prefix retained; selected storage unavailable.")); return R; }
-    if (Spawn.IsSet()) { V = FindLocal(BP, Name, Index, R); if (!V || V->VarGuid != Desired.VarGuid || V->VarType != Desired.VarType) { Fail(R, TEXT("variable_metadata_member_changed"), TEXT("Selected spawn-flag member identity changed; prefix retained.")); return R; } LifecycleCount(R, TEXT("descriptor_flag_edit_calls")); if (*Spawn) { V->PropertyFlags |= CPF_ExposeOnSpawn; LifecycleCount(R, TEXT("metadata_editor_set_calls")); FBlueprintEditorUtils::SetBlueprintVariableMetaData(BP, Target, nullptr, TEXT("ExposeOnSpawn"), TEXT("true")); } else { V->PropertyFlags &= ~static_cast<uint64>(CPF_ExposeOnSpawn); LifecycleCount(R, TEXT("metadata_editor_remove_calls")); FBlueprintEditorUtils::RemoveBlueprintVariableMetaData(BP, Target, nullptr, TEXT("ExposeOnSpawn")); } Flags->SetBoolField(TEXT("expose_on_spawn"), *Spawn); }
-    LifecycleCount(R, TEXT("explicit_mark_modified_calls")); FBlueprintEditorUtils::MarkBlueprintAsModified(BP); R.Data->SetNumberField(TEXT("source_expected_implicit_structural_requests"), R.Data->GetNumberField(TEXT("metadata_editor_set_calls")) + R.Data->GetNumberField(TEXT("metadata_editor_remove_calls")));
-    if (!LifecycleObserved(BP, After, Before, R, TEXT("after_observation"))) { return R; } V = FindLocal(BP, Name, Index, R); if (!V) { return R; }
-    for (const auto& E : Entries) { FString Value; LifecycleCount(R, TEXT("metadata_readback_get_calls")); if (FBlueprintEditorUtils::GetBlueprintVariableMetaData(BP, Target, nullptr, FName(*E.Key), Value)) { Verified->SetStringField(E.Key, Value); } }
+    if (Spawn.IsSet()) { if(!Current())return R;V = FindLocal(BP, Name, Index, R); if (!V || V->VarGuid != Desired.VarGuid || V->VarType != Desired.VarType) { Fail(R, TEXT("variable_metadata_member_changed"), TEXT("Selected spawn-flag member identity changed; prefix retained.")); return R; } LifecycleCount(R, TEXT("descriptor_flag_edit_calls")); if (*Spawn) { V->PropertyFlags |= CPF_ExposeOnSpawn; LifecycleCount(R, TEXT("metadata_editor_set_calls")); FBlueprintEditorUtils::SetBlueprintVariableMetaData(BP, Target, nullptr, TEXT("ExposeOnSpawn"), TEXT("true")); } else { V->PropertyFlags &= ~static_cast<uint64>(CPF_ExposeOnSpawn); LifecycleCount(R, TEXT("metadata_editor_remove_calls")); FBlueprintEditorUtils::RemoveBlueprintVariableMetaData(BP, Target, nullptr, TEXT("ExposeOnSpawn")); } Flags->SetBoolField(TEXT("expose_on_spawn"), *Spawn);if(!SDKReturned())return R; }
+    if(!Current())return R;LifecycleCount(R, TEXT("explicit_mark_modified_calls")); FBlueprintEditorUtils::MarkBlueprintAsModified(BP);if(!Current())return R; R.Data->SetNumberField(TEXT("source_expected_implicit_structural_requests"), R.Data->GetNumberField(TEXT("metadata_editor_set_calls")) + R.Data->GetNumberField(TEXT("metadata_editor_remove_calls")));
+    if(Typed){if(!Typed->CapturePhase(After,TEXT("after_observation"))){R.bChangeStateKnown=false;return R;}R.bChangeStateKnown=true;R.bChanged=!LifecycleEqual(Before.State,After.State)||!LifecycleEqual(Before.Source,After.Source)||!LifecycleEqual(Before.References,After.References)||!LifecycleEqual(Before.Other,After.Other)||!LifecycleEqual(Before.Disk,After.Disk);}else if(!LifecycleObserved(BP,After,Before,R,TEXT("after_observation")))return R; V = FindLocal(BP, Name, Index, R); if (!V) { return R; }
+    for (const auto& E : Entries) { FString Value; LifecycleCount(R, TEXT("metadata_readback_get_calls")); const bool Got=FBlueprintEditorUtils::GetBlueprintVariableMetaData(BP, Target, nullptr, FName(*E.Key), Value);if(!Current())return R;if(Got) { Verified->SetStringField(E.Key, Value); } }
     R.Data->SetNumberField(TEXT("property_flags"), static_cast<double>(V->PropertyFlags)); R.Data->SetStringField(TEXT("property_flags_string"), LexToString(V->PropertyFlags)); R.Data->SetBoolField(TEXT("compiled"), false); R.Data->SetBoolField(TEXT("saved"), false);
     TArray<FName> Order; for (const auto& Old : Before.State->GetObjectField(TEXT("variables"))->GetArrayField(TEXT("new_variables"))) { Order.Add(FName(*Old->AsObject()->GetStringField(TEXT("name")))); }
     if (!LifecyclePreserved(Before, After, Order, &Desired, false, false, true, R)) { Fail(R, TEXT("variable_metadata_preservation_failed"), TEXT("Actual metadata/flags or other declared scope differs; no compile/save/retry.")); return R; }
@@ -2294,7 +2456,10 @@ FResult SetOrder(const FString& Path, const FString& OrderJson, bool Strict, boo
     if (!Parse(OrderJson, Json, R) || Json->Type != EJson::Array) { if (R.ErrorCode.IsEmpty()) { Fail(R, TEXT("variable_order_invalid"), TEXT("Original order array required.")); } return R; }
     TArray<FString> Requested; TArray<FName> Names; for (const auto& V : Json->AsArray()) { if (V->Type != EJson::String) { continue; } const FString N = V->AsString().TrimStartAndEnd(); if (!N.IsEmpty()) { if (!SafeName(N)) { Fail(R, TEXT("variable_order_name_invalid"), TEXT("Bounded order names required.")); return R; } Requested.Add(N); Names.Add(FName(*N)); } }
     if (Names.IsEmpty()) { Fail(R, TEXT("variable_order_empty"), TEXT("Original order contains no nonempty variable names.")); return R; }
-    TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path, R)); UBlueprint* BP = Blueprint.Get(); if (!BP || !LifecycleSimple(BP, R)) { return R; }
+    TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path,R));UBlueprint* BP=Blueprint.Get();if(!BP)return R;
+    TUniquePtr<FMetadataTypedScope> Typed;if(UsesTypedOrdering(BP)){Typed=MakeUnique<FMetadataTypedScope>(R,FMetadataTypedScope::EUse::VariableOrder);if(!Typed->Bind(BP))return R;}else if(!LifecycleSimple(BP,R))return R;
+    auto Current=[&](){return !Typed||Typed->Current();};auto SDKReturned=[&](){return !Typed||Typed->Rebind();};
+    auto Observed=[&](FLifecycleObservation& O,const FLifecycleObservation& Before,const TCHAR* Phase){return Typed?TypedOrderingObserved(*Typed,O,Before,R,Phase):LifecycleObserved(BP,O,Before,R,Phase);};
     TArray<FBPVariableDescription> Reordered; TArray<FName> TargetOrder; TArray<FString> Previous, Missing; TSet<FName> Added;
     for (const auto& V : BP->NewVariables) { Previous.Add(V.VarName.ToString()); }
     for (FName N : Names) { const FBPVariableDescription* Found = nullptr; for (const auto& V : BP->NewVariables) { if (V.VarName == N) { if (Found) { Fail(R, TEXT("variable_order_ambiguous"), TEXT("Ambiguous local order descriptor.")); return R; } Found = &V; } } if (!Found) { Missing.Add(N.ToString()); } else if (!Added.Contains(N)) { Added.Add(N); Reordered.Add(*Found); } }
@@ -2303,23 +2468,23 @@ FResult SetOrder(const FString& Path, const FString& OrderJson, bool Strict, boo
     for (const auto& V : BP->NewVariables) { if (!Added.Contains(V.VarName)) { Reordered.Add(V); } }
     bool Changed = Reordered.Num() != BP->NewVariables.Num(); for (int32 I = 0; I < Reordered.Num(); ++I) { TargetOrder.Add(Reordered[I].VarName); if (!Changed && Reordered[I].VarName != BP->NewVariables[I].VarName) { Changed = true; } }
     R.Data->SetBoolField(TEXT("changed"), Changed); R.Data->SetBoolField(TEXT("effective_compile_requested"), Compile && Changed); R.Data->SetBoolField(TEXT("effective_save_requested"), Save && Changed);
-    FLifecycleObservation Before, Configured, Compiled, Saved; if (!LifecycleCapture(BP, Before, R, TEXT("before_observation"))) { R.bChangeStateKnown = false; Fail(R, TEXT("variable_lifecycle_before_unobservable"), TEXT("Before actual prefix incomplete; no order write.")); return R; }
+    FLifecycleObservation Before, Configured, Compiled, Saved; if (!(Typed?Typed->CapturePhase(Before,TEXT("before_observation")):LifecycleCapture(BP,Before,R,TEXT("before_observation")))) { R.bChangeStateKnown = false; Fail(R, TEXT("variable_lifecycle_before_unobservable"), TEXT("Before actual prefix incomplete; no order write.")); return R; }
     R.Data->SetBoolField(TEXT("compiled"), false); R.Data->SetBoolField(TEXT("saved"), false); R.Data->SetStringField(TEXT("compile_status"), TEXT("not_requested")); R.Data->SetBoolField(TEXT("legacy_compiled_means_dispatch_only"), true);
-    LifecycleCount(R, TEXT("outer_transaction_calls")); const FScopedTransaction Transaction(NSLOCTEXT("CubelessVariable", "Order", "Set Blueprint variable order"));
-    if (Changed) { R.Stage = TEXT("set_order"); R.bMutationAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("explicit_modify_calls")); BP->Modify(); BP->NewVariables = Reordered; LifecycleCount(R, TEXT("explicit_mark_structural_calls")); FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP); LifecycleCount(R, TEXT("explicit_mark_package_dirty_calls")); BP->MarkPackageDirty(); }
-    TArray<FString> ConfiguredOrder; for (const auto& V : BP->NewVariables) { ConfiguredOrder.Add(V.VarName.ToString()); } R.Data->SetArrayField(TEXT("new_order"), StringValues(ConfiguredOrder)); if (!LifecycleObserved(BP, Configured, Before, R, TEXT("after_configuration"))) { return R; }
+    if(!Current())return R;LifecycleCount(R,TEXT("outer_transaction_calls"));const FScopedTransaction Transaction(NSLOCTEXT("CubelessVariable","Order","Set Blueprint variable order"));if(!Current())return R;
+    if(Changed){R.Stage=TEXT("set_order");R.bMutationAttempted=true;R.bChangeStateKnown=false;LifecycleCount(R,TEXT("explicit_modify_calls"));BP->Modify();if(!Current())return R;BP->NewVariables=Reordered;if(Typed&&!Typed->AdoptOrder(TargetOrder))return R;if(!Current())return R;LifecycleCount(R,TEXT("explicit_mark_structural_calls"));FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BP);if(!SDKReturned())return R;LifecycleCount(R,TEXT("explicit_mark_package_dirty_calls"));BP->MarkPackageDirty();if(!Current())return R;}
+    TArray<FString> ConfiguredOrder; for (const auto& V : BP->NewVariables) { ConfiguredOrder.Add(V.VarName.ToString()); } R.Data->SetArrayField(TEXT("new_order"), StringValues(ConfiguredOrder)); if (!Observed(Configured,Before,TEXT("after_configuration"))) { return R; }
     const bool ConfigOK = LifecyclePreserved(Before, Configured, TargetOrder, nullptr, false, false, true, R); R.Data->SetBoolField(TEXT("after_configuration_preservation_passed"), ConfigOK); if (!ConfigOK) { Fail(R, TEXT("variable_order_preservation_failed"), TEXT("Actual configured order or other observed scope differs; compile/save suppressed.")); return R; }
     FLifecycleObservation* Final = &Configured;
     if (Changed && Compile)
     {
-        LifecycleAggregateClear(R); R.Stage = TEXT("compile"); R.bCompileAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("full_compile_attempts")); const auto C = Cubeless::UE58::CompileBlueprint(BP->GetPathName(), false, false); R.Data->SetObjectField(TEXT("compile_result"), C); R.Data->SetBoolField(TEXT("compiled"), true); R.Data->SetStringField(TEXT("compile_status"), LifecycleStatus(BP->Status)); bool OK = false; C->TryGetBoolField(TEXT("compiled"), OK); R.Compiled = OK;
-        if (!LifecycleObserved(BP, Compiled, Before, R, TEXT("after_compile"))) { return R; } Final = &Compiled; R.Data->SetStringField(TEXT("compile_status"), LifecycleStatus(BP->Status)); const bool Preserved = LifecyclePreserved(Before, Compiled, TargetOrder, nullptr, OK, false, true, R); R.Data->SetBoolField(TEXT("after_compile_preservation_passed"), Preserved);
+        LifecycleAggregateClear(R);R.Stage=TEXT("compile");if(!Current())return R;R.bCompileAttempted=true; R.bChangeStateKnown = false; LifecycleCount(R,TEXT("full_compile_attempts"));const auto C=Cubeless::UE58::CompileBlueprint(BP->GetPathName(),false,false);R.Data->SetObjectField(TEXT("compile_result"),C);R.Data->SetBoolField(TEXT("compiled"),true);bool OK=false;C->TryGetBoolField(TEXT("compiled"),OK);R.Compiled=OK;if(!SDKReturned())return R;R.Data->SetStringField(TEXT("compile_status"),LifecycleStatus(BP->Status));
+        if (!Observed(Compiled,Before,TEXT("after_compile"))) { return R; } Final = &Compiled; R.Data->SetStringField(TEXT("compile_status"), LifecycleStatus(BP->Status)); const bool Preserved = LifecyclePreserved(Before, Compiled, TargetOrder, nullptr, OK, false, true, R); R.Data->SetBoolField(TEXT("after_compile_preservation_passed"), Preserved);
         if (!OK || !Preserved) { Fail(R, OK ? TEXT("variable_order_compile_preservation_failed") : TEXT("variable_order_compile_failed"), TEXT("Actual compiler/order prefix retained; target save suppressed.")); return R; }
     }
     if (Changed && Save)
     {
-        const auto& SaveBefore = *Final; R.Data->SetObjectField(TEXT("before_save_observation"), R.Data->GetObjectField(Compile ? TEXT("after_compile") : TEXT("after_configuration"))); R.Data->SetBoolField(TEXT("before_save_preservation_passed"), true); LifecycleAggregateClear(R); R.Stage = TEXT("save"); R.bSaveAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("save_attempt_count")); auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("asset_path"), BP->GetPathName()); Receipt->SetStringField(TEXT("route"), TEXT("UEditorAssetLibrary::SaveLoadedAsset")); Receipt->SetBoolField(TEXT("only_if_dirty"), false); Receipt->SetBoolField(TEXT("attempted"), true); R.Data->SetArrayField(TEXT("save_calls"), { MakeShared<FJsonValueObject>(Receipt) }); R.bSaved = UEditorAssetLibrary::SaveLoadedAsset(BP, false); Receipt->SetBoolField(TEXT("returned"), true); Receipt->SetBoolField(TEXT("saved"), R.bSaved);
-        R.Data->SetBoolField(TEXT("saved"), R.bSaved); if (!LifecycleObserved(BP, Saved, Before, R, TEXT("after_save"))) { return R; } Final = &Saved; const bool Preserved = LifecyclePreserved(SaveBefore, Saved, TargetOrder, nullptr, false, R.bSaved, !R.bSaved, R);
+        const auto& SaveBefore = *Final; R.Data->SetObjectField(TEXT("before_save_observation"), R.Data->GetObjectField(Compile ? TEXT("after_compile") : TEXT("after_configuration"))); R.Data->SetBoolField(TEXT("before_save_preservation_passed"), true); LifecycleAggregateClear(R);R.Stage=TEXT("save");if(!Current())return R;R.bSaveAttempted=true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("save_attempt_count")); auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("asset_path"), BP->GetPathName()); Receipt->SetStringField(TEXT("route"), TEXT("UEditorAssetLibrary::SaveLoadedAsset")); Receipt->SetBoolField(TEXT("only_if_dirty"), false); Receipt->SetBoolField(TEXT("attempted"), true); R.Data->SetArrayField(TEXT("save_calls"), { MakeShared<FJsonValueObject>(Receipt) }); R.bSaved = UEditorAssetLibrary::SaveLoadedAsset(BP, false); Receipt->SetBoolField(TEXT("returned"), true); Receipt->SetBoolField(TEXT("saved"), R.bSaved);if(Typed&&!Typed->SavedReturned(R.bSaved))return R;
+        R.Data->SetBoolField(TEXT("saved"), R.bSaved); if (!Observed(Saved,Before,TEXT("after_save"))) { return R; } Final = &Saved; const bool Preserved = LifecyclePreserved(SaveBefore, Saved, TargetOrder, nullptr, false, R.bSaved, !R.bSaved, R);
         if (!R.bSaved || !Preserved) { Fail(R, R.bSaved ? TEXT("variable_order_save_preservation_failed") : TEXT("variable_order_save_failed"), TEXT("Actual target save prefix retained; no retry or rollback.")); return R; }
     }
     TArray<FString> NewOrder; for (const auto& V : BP->NewVariables) { NewOrder.Add(V.VarName.ToString()); } R.Data->SetArrayField(TEXT("new_order"), StringValues(NewOrder)); R.Data->SetBoolField(TEXT("compiled"), R.bCompileAttempted); R.Data->SetBoolField(TEXT("saved"), R.bSaved); if (!R.bCompileAttempted) { R.Data->SetStringField(TEXT("compile_status"), TEXT("not_requested")); } R.Data->SetBoolField(TEXT("no_op"), !Changed); R.Data->SetBoolField(TEXT("final_observation_complete"), Final->Complete);
@@ -2379,6 +2544,18 @@ struct FRemovalLinkedPlan
     TSet<UObject*> Removed; TSet<UEdGraphPin*> RemovedPins; TSet<FString> RemovedPaths;
     bool Active=false,After=false,Stopped=false,ReacquiringText=false; int32 IncidentDirected=0;
     TSharedPtr<FJsonObject> GraphBaseline;
+    // ADA: descriptor storage may reallocate at removal; retain value copies only.
+    // Every callback fence compares the complete authored inventory before another
+    // SDK writer. Only the selected row may disappear at StructuralReturn.
+    TArray<FBPVariableDescription> OriginalDeclarations;
+    struct FInterfaceRole
+    {
+        TStrongObjectPtr<UClass> Class; FString Path; UObject* Outer=nullptr;
+        EObjectFlags Flags=RF_NoFlags; uint32 ClassFlags=0; TArray<UEdGraph*> Graphs;
+    };
+    TArray<FInterfaceRole> OwnInterfaces;
+    TArray<FImplementedInterface> NativeActorInterfaces;
+    bool AuthoredReady=false;
     explicit FRemovalLinkedPlan(FResult& Result):R(Result){}
     bool Bad(const TCHAR* Why)
     {
@@ -2402,6 +2579,77 @@ struct FRemovalLinkedPlan
         }
         return Bad(Why);
     }
+    bool DescriptorCurrent(const FBPVariableDescription& Expected,const FBPVariableDescription& Actual)
+    {
+        // UE FString equality is IgnoreCase. Authored strings require explicit
+        // case-sensitive checks here; changing the shared helper would widen this fix.
+        const FString RowPath=BlueprintPath+TEXT(".NewVariables[")+Expected.VarName.ToString()+TEXT("]");
+        auto Changed=[&](const TCHAR* Property,const FString& E,const FString& A){return Difference(RowPath,Property,E,A,TEXT("An authored descriptor changed at a callback fence; no next SDK writer."));};
+        if(Expected.VarName!=Actual.VarName)return Changed(TEXT("VarName"),Expected.VarName.ToString(),Actual.VarName.ToString());
+        if(Expected.VarGuid!=Actual.VarGuid)return Changed(TEXT("VarGuid"),Expected.VarGuid.ToString(EGuidFormats::Digits),Actual.VarGuid.ToString(EGuidFormats::Digits));
+        if(!MaterialPinSame(Expected.VarType,Actual.VarType))
+        {
+            auto TypeOperand=[](const FEdGraphPinType& P)
+            {
+                return FString::Printf(TEXT("category=%s;subcategory=%s;object=%llu;container=%d;ref=%d;const=%d;weak=%d;wrapper=%d;single=%d;terminal_category=%s;terminal_subcategory=%s;terminal_object=%llu;terminal_const=%d;terminal_weak=%d;terminal_wrapper=%d"),
+                    *P.PinCategory.ToString(),*P.PinSubCategory.ToString(),uint64(reinterpret_cast<UPTRINT>(P.PinSubCategoryObject.Get())),int32(P.ContainerType),int32(P.bIsReference),int32(P.bIsConst),int32(P.bIsWeakPointer),int32(P.bIsUObjectWrapper),int32(P.bSerializeAsSinglePrecisionFloat),
+                    *P.PinValueType.TerminalCategory.ToString(),*P.PinValueType.TerminalSubCategory.ToString(),uint64(reinterpret_cast<UPTRINT>(P.PinValueType.TerminalSubCategoryObject.Get())),int32(P.PinValueType.bTerminalIsConst),int32(P.PinValueType.bTerminalIsWeakPointer),int32(P.PinValueType.bTerminalIsUObjectWrapper));
+            };
+            return Changed(TEXT("VarType"),TypeOperand(Expected.VarType),TypeOperand(Actual.VarType));
+        }
+        if(!Expected.FriendlyName.Equals(Actual.FriendlyName,ESearchCase::CaseSensitive))return Changed(TEXT("FriendlyName"),Expected.FriendlyName,Actual.FriendlyName);
+        if(FTextInspector::GetSharedDataId(Expected.Category)!=FTextInspector::GetSharedDataId(Actual.Category)||FTextInspector::GetFlags(Expected.Category)!=FTextInspector::GetFlags(Actual.Category))
+        {
+            // This authored descriptor is not rewritten by the structural-only SDK.
+            // Do not call IdenticalTo/ToString: either can rebuild localized text
+            // and invalidate the current borrowed NewVariables storage.
+            auto TextOperand=[](const FText& Text){return FString::Printf(TEXT("shared_data_id=%llu;flags=%u"),uint64(reinterpret_cast<UPTRINT>(FTextInspector::GetSharedDataId(Text))),uint32(FTextInspector::GetFlags(Text)));};
+            return Changed(TEXT("Category.identity"),TextOperand(Expected.Category),TextOperand(Actual.Category));
+        }
+        if(Expected.PropertyFlags!=Actual.PropertyFlags)return Changed(TEXT("PropertyFlags"),LexToString(Expected.PropertyFlags),LexToString(Actual.PropertyFlags));
+        if(Expected.RepNotifyFunc!=Actual.RepNotifyFunc)return Changed(TEXT("RepNotifyFunc"),Expected.RepNotifyFunc.ToString(),Actual.RepNotifyFunc.ToString());
+        if(Expected.ReplicationCondition!=Actual.ReplicationCondition)return Changed(TEXT("ReplicationCondition"),LexToString(int32(Expected.ReplicationCondition.GetValue())),LexToString(int32(Actual.ReplicationCondition.GetValue())));
+        if(!Expected.DefaultValue.Equals(Actual.DefaultValue,ESearchCase::CaseSensitive))return Changed(TEXT("DefaultValue"),Expected.DefaultValue,Actual.DefaultValue);
+        if(Expected.MetaDataArray.Num()!=Actual.MetaDataArray.Num())return Changed(TEXT("MetaDataArray.Num"),LexToString(Expected.MetaDataArray.Num()),LexToString(Actual.MetaDataArray.Num()));
+        for(int32 I=0;I<Expected.MetaDataArray.Num();++I)
+        {
+            const FBPVariableMetaDataEntry& E=Expected.MetaDataArray[I];const FBPVariableMetaDataEntry& A=Actual.MetaDataArray[I];
+            const FString Prefix=TEXT("MetaDataArray[")+LexToString(I)+TEXT("]");
+            if(E.DataKey!=A.DataKey)return Changed(*(Prefix+TEXT(".DataKey")),E.DataKey.ToString(),A.DataKey.ToString());
+            if(!E.DataValue.Equals(A.DataValue,ESearchCase::CaseSensitive))return Changed(*(Prefix+TEXT(".DataValue")),E.DataValue,A.DataValue);
+        }
+        return true;
+    }
+    bool AuthoredCurrent()
+    {
+        UBlueprint* B=Blueprint.Get();if(!AuthoredReady)return Bad(TEXT("Authored declaration/interface plan was not captured."));
+        const int32 ExpectedCount=OriginalDeclarations.Num()-(After?1:0);
+        if(B->NewVariables.Num()!=ExpectedCount)return Difference(BlueprintPath,TEXT("NewVariables.Num"),LexToString(ExpectedCount),LexToString(B->NewVariables.Num()),TEXT("Current descriptor inventory differs from the exact selected-row subtraction."));
+        int32 ActualIndex=0;
+        for(const FBPVariableDescription& Expected:OriginalDeclarations)
+        {
+            if(After&&Expected.VarName==Variable)continue;
+            const FBPVariableDescription& Actual=B->NewVariables[ActualIndex++];
+            if(!DescriptorCurrent(Expected,Actual))return false;
+        }
+        if(B->ImplementedInterfaces.Num()!=OwnInterfaces.Num())return Difference(BlueprintPath,TEXT("ImplementedInterfaces.Num"),LexToString(OwnInterfaces.Num()),LexToString(B->ImplementedInterfaces.Num()),TEXT("Own interface membership changed before the next writer."));
+        for(int32 I=0;I<OwnInterfaces.Num();++I)
+        {
+            const FInterfaceRole& Expected=OwnInterfaces[I];FBPInterfaceDescription& Actual=B->ImplementedInterfaces[I];
+            if(!Actual.Interface.GetGCPtr().IsResolved()||Actual.Interface.Get()!=Expected.Class.Get()||!DeclarationEnumLoaded(Expected.Class.Get())
+                ||Expected.Class->GetOuter()!=Expected.Outer||Expected.Class->GetFlags()!=Expected.Flags||uint32(Expected.Class->GetClassFlags())!=Expected.ClassFlags
+                ||!Expected.Class->GetPathName().Equals(Expected.Path,ESearchCase::CaseSensitive)||Actual.Graphs.Num()!=Expected.Graphs.Num())return Bad(TEXT("Current own interface class role changed before the next writer."));
+            for(int32 K=0;K<Expected.Graphs.Num();++K)if(!Actual.Graphs[K].IsResolved()||Actual.Graphs[K].Get()!=Expected.Graphs[K])return Bad(TEXT("Current interface graph membership/order changed before the next writer."));
+        }
+        const TArray<FImplementedInterface>& ActualNative=AActor::StaticClass()->Interfaces;
+        if(ActualNative.Num()!=NativeActorInterfaces.Num())return Bad(TEXT("Native Actor interface membership changed."));
+        for(int32 I=0;I<ActualNative.Num();++I)
+        {
+            const FImplementedInterface& A=ActualNative[I];const FImplementedInterface& E=NativeActorInterfaces[I];
+            if(!A.Class.IsResolved()||A.Class.Get()!=E.Class.Get()||A.PointerOffset!=E.PointerOffset||A.bImplementedByK2!=E.bImplementedByK2)return Bad(TEXT("Native Actor interface descriptor changed."));
+        }
+        return true;
+    }
     bool Plain(bool ReacquirePins=false)
     {
         if(Stopped)return false;
@@ -2411,6 +2659,7 @@ struct FRemovalLinkedPlan
             ||!B->GetPathName().Equals(BlueprintPath,ESearchCase::CaseSensitive)||B->ParentClass.Get()!=AActor::StaticClass()
             ||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified)
             return Bad(TEXT("Captured linked-removal target/context changed; no next SDK."));
+        if(!AuthoredCurrent())return false;
         if(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass!=Generated.Get()||!DeclarationEnumLoaded(Generated.Get())
             ||!Generated->ClassDefaultObject.IsResolved()||Generated->ClassDefaultObject!=Default.Get()
             ||!DeclarationEnumLoaded(Default.Get())||Default->GetClass()!=Generated.Get()
@@ -2516,9 +2765,20 @@ struct FRemovalLinkedPlan
         }
         return true;
     }
-    bool Build(UBlueprint* B,FName Name)
+    bool Build(UBlueprint* B,FName Name,bool DeclarationOnly=false)
     {
         Blueprint.Reset(B);Package.Reset(B->GetPackage());BlueprintPath=B->GetPathName();Variable=Name;
+        OriginalDeclarations=B->NewVariables;int32 SelectedRows=0;for(const auto& D:OriginalDeclarations)if(D.VarName==Name)++SelectedRows;
+        if(SelectedRows!=1)return Bad(TEXT("Selected authored descriptor must occur exactly once."));
+        for(FBPInterfaceDescription& Description:B->ImplementedInterfaces)
+        {
+            if(!Description.Interface.GetGCPtr().IsResolved()||!DeclarationEnumLoaded(Description.Interface.Get()))return Bad(TEXT("Own interface must already be resolved/live before capture."));
+            FInterfaceRole Role;Role.Class.Reset(Description.Interface.Get());Role.Path=Role.Class->GetPathName();Role.Outer=Role.Class->GetOuter();Role.Flags=Role.Class->GetFlags();Role.ClassFlags=uint32(Role.Class->GetClassFlags());
+            for(const auto& G:Description.Graphs){if(!G.IsResolved()||!DeclarationEnumLoaded(G.Get()))return Bad(TEXT("Own interface graph must already be resolved/live before capture."));Role.Graphs.Add(G.Get());}
+            OwnInterfaces.Add(MoveTemp(Role));
+        }
+        NativeActorInterfaces=AActor::StaticClass()->Interfaces;for(const auto& I:NativeActorInterfaces)if(!I.Class.IsResolved())return Bad(TEXT("Native Actor interface class must already be resolved before capture."));
+        AuthoredReady=true;
         if(!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Bad(TEXT("Current class handles must already be resolved."));
         Generated.Reset(B->GeneratedClass.Get());Skeleton.Reset(B->SkeletonGeneratedClass.Get());
         if(!DeclarationEnumLoaded(Skeleton.Get())||Skeleton->ClassGeneratedBy!=B||Skeleton->GetPackage()!=Package.Get())return Bad(TEXT("Initial owned skeleton role unavailable."));
@@ -2585,7 +2845,7 @@ struct FRemovalLinkedPlan
             }
             Graphs.Add(MoveTemp(GR));
         }
-        Active=!Removed.IsEmpty();if(!Active)return true;
+        Active=!Removed.IsEmpty()||DeclarationOnly;if(!Active)return true;
         TSet<UEdGraphPin*> Owned;for(const FNode& N:Nodes)for(const FPin& P:N.Pins)Owned.Add(P.Address);
         for(const FNode& N:Nodes)for(const FPin& P:N.Pins)
         {
@@ -2602,11 +2862,11 @@ struct FRemovalLinkedPlan
                     return Fail(R,TEXT("variable_remove_linked_snapping_unsupported"),TEXT("Snapped pin bookkeeping remains incomplete; no writer dispatched."));
             }
         }
-        R.Data->SetBoolField(TEXT("native_linked_variable_removal"),true);
+        R.Data->SetBoolField(TEXT("native_linked_variable_removal"),!Removed.IsEmpty());
         R.Data->SetArrayField(TEXT("selected_variable_node_paths"),StringValues(RemovedPaths.Array()));
         R.Data->SetNumberField(TEXT("planned_removed_node_count"),Removed.Num());R.Data->SetNumberField(TEXT("planned_incident_link_count"),IncidentDirected/2);
         R.Data->SetBoolField(TEXT("retired_node_pin_values_reread"),false);
-        R.Data->SetStringField(TEXT("linked_removal_scope"),TEXT("Exact own ordinary primitive member Get/Set nodes; selected membership and incident reciprocal links removed, captured surviving graph state/order and nonselected declarations/SCS/source preserved. Retained objects are not proof of physical GC destruction. No explicit full compile/save."));
+        R.Data->SetStringField(TEXT("linked_removal_scope"),TEXT("Exact own simple primitive member and optional Get/Set retirement; includes replication/RepNotify/condition associations and direct nativeActor FieldNotify metadata without an implementing interface. Selected membership and incident reciprocal links removed; full surviving authored descriptors, own/nativeActor interface membership, graph state/order and SCS/source remain guarded. Actual interface-owned FieldNotify cascade remains incomplete. Retained objects do not prove GC destruction. No explicit full compile/save."));
         return Plain();
     }
     bool StructuralReturn()
@@ -2722,15 +2982,72 @@ struct FRemovalLinkedPlan
     }
 };
 
+
+// ADA: original RemoveMemberVariable does not delete RepNotify functions. Capture
+// authored replication associations and generated executable history separately
+// from compiler-owned RepIndex/ClassReps caches. No runtime Net driver is called.
+bool RemovalReplicationState(UBlueprint* BP,const FBPVariableDescription& Selected,FRemovalLinkedPlan& Plan,const TSharedRef<FJsonObject>& Out)
+{
+ if(!Plan.Plain())return false;
+ Out->SetBoolField(TEXT("complete"),false);Out->SetStringField(TEXT("selected_notify"),Selected.RepNotifyFunc.ToString());
+ if(!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved())return Plan.Bad(TEXT("Replication observation requires current already-resolved generated/skeleton classes."));
+ TStrongObjectPtr<UClass> Classes[2]={TStrongObjectPtr<UClass>(BP->GeneratedClass.Get()),TStrongObjectPtr<UClass>(BP->SkeletonGeneratedClass.Get())};
+ for(int32 I=0;I<2;++I)
+ {
+  UClass* C=Classes[I].Get();if(!DeclarationEnumLoaded(C)||C->ClassGeneratedBy!=BP||C->GetPackage()!=BP->GetPackage())return Plan.Bad(TEXT("Replication class ownership changed before observation."));
+  auto Row=MakeShared<FJsonObject>();Out->SetObjectField(I?TEXT("skeleton"):TEXT("generated"),Row);auto Properties=MakeShared<FJsonObject>();Row->SetObjectField(TEXT("own_replication_properties"),Properties);int32 Count=0;
+  for(TFieldIterator<FProperty> It(C,EFieldIteratorFlags::ExcludeSuper);It;++It)
+  {
+   FProperty* P=*It;if(++Count>512||P->ArrayDim!=1)return Plan.Bad(TEXT("Replication field inventory exceeds the existing simple-member profile."));
+   if(!P->HasAnyPropertyFlags(CPF_Net|CPF_RepNotify)&&P->RepNotifyFunc.IsNone())continue;
+   auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("kind"),P->GetClass()->GetName());J->SetStringField(TEXT("owner"),P->GetOwnerStruct()->GetPathName());J->SetStringField(TEXT("flags"),LexToString(uint64(P->GetPropertyFlags())));J->SetStringField(TEXT("notify"),P->RepNotifyFunc.ToString());Properties->SetObjectField(P->GetName(),J);
+  }
+  // A structural-only request may retain the old generated property/executable.
+  // Cache counters are observations, not promises of a runtime net-layout rebuild.
+  Row->SetNumberField(TEXT("observed_ClassReps_count"),C->ClassReps.Num());Row->SetNumberField(TEXT("observed_NetFields_count"),C->NetFields.Num());
+  auto Notify=MakeShared<FJsonObject>();Row->SetObjectField(TEXT("selected_notify_function"),Notify);UFunction* Function=Selected.RepNotifyFunc.IsNone()?nullptr:C->FindFunctionByName(Selected.RepNotifyFunc);
+  TStrongObjectPtr<UFunction> Hold(Function);Notify->SetBoolField(TEXT("exists"),Function!=nullptr);
+  if(Function)
+  {
+   if(!DeclarationEnumLoaded(Function)||Function->GetOuter()!=C||Function->GetPackage()!=BP->GetPackage())return Plan.Bad(TEXT("Selected RepNotify function is not an exact current own class member."));
+   Notify->SetStringField(TEXT("path"),Function->GetPathName());Notify->SetStringField(TEXT("flags"),LexToString(uint32(Function->FunctionFlags)));Notify->SetNumberField(TEXT("num_parms"),Function->NumParms);Notify->SetNumberField(TEXT("parms_size"),Function->ParmsSize);
+   TArray<TSharedPtr<FJsonValue>> Params;int32 N=0;for(TFieldIterator<FProperty> It(Function,EFieldIteratorFlags::ExcludeSuper);It;++It){if(!It->HasAnyPropertyFlags(CPF_Parm))continue;if(++N>32)return Plan.Bad(TEXT("RepNotify signature exceeds finite observation scope."));auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),It->GetName());J->SetStringField(TEXT("kind"),It->GetClass()->GetName());J->SetStringField(TEXT("flags"),LexToString(uint64(It->GetPropertyFlags())));J->SetNumberField(TEXT("array_dim"),It->ArrayDim);J->SetNumberField(TEXT("size"),It->GetSize());Params.Add(MakeShared<FJsonValueObject>(J));}Notify->SetArrayField(TEXT("params"),Params);
+   if(!I){if(Function->Script.Num()>1048576)return Plan.Bad(TEXT("Retained generated RepNotify executable exceeds finite evidence budget."));FSHAHash Hash;FSHA1::HashBuffer(Function->Script.GetData(),Function->Script.Num(),Hash.Hash);Notify->SetStringField(TEXT("existing_generated_script_sha1"),Hash.ToString());}
+  }
+  if(!Plan.Plain())return false;
+ }
+ TArray<TSharedPtr<FJsonValue>> Interfaces;for(auto& Interface:BP->ImplementedInterfaces){if(!Interface.Interface.GetGCPtr().IsResolved()||!DeclarationEnumLoaded(Interface.Interface.Get()))return Plan.Bad(TEXT("Own interface reference is not currently resolved."));Interfaces.Add(MakeShared<FJsonValueString>(Interface.Interface->GetPathName()));}Out->SetArrayField(TEXT("own_interfaces"),Interfaces);
+ Out->SetBoolField(TEXT("runtime_replication_rebuild_proven"),false);Out->SetBoolField(TEXT("complete"),true);return Plan.Plain();
+}
+bool RemovalReplicationPreserved(const TSharedRef<FJsonObject>& Before,const TSharedRef<FJsonObject>& After,FName Name,FResult& R)
+{
+ bool Okay=Before->GetBoolField(TEXT("complete"))&&After->GetBoolField(TEXT("complete"))&&LifecycleEqual(Before->TryGetField(TEXT("own_interfaces")),After->TryGetField(TEXT("own_interfaces")));
+ for(const TCHAR* Key:{TEXT("generated"),TEXT("skeleton")})
+ {
+  const auto A=Before->GetObjectField(Key),B=After->GetObjectField(Key);auto X=MakeShared<FJsonObject>(),Y=MakeShared<FJsonObject>();
+  for(const auto& E:A->GetObjectField(TEXT("own_replication_properties"))->Values)if(FName(*FString(E.Key.ToView()))!=Name)X->SetField(E.Key,E.Value);
+  for(const auto& E:B->GetObjectField(TEXT("own_replication_properties"))->Values)if(FName(*FString(E.Key.ToView()))!=Name)Y->SetField(E.Key,E.Value);
+  Okay&=LifecycleEqual(X,Y)&&LifecycleEqual(A->TryGetField(TEXT("selected_notify_function")),B->TryGetField(TEXT("selected_notify_function")));
+  const auto Was=A->GetObjectField(TEXT("own_replication_properties"))->TryGetField(Name.ToString()),Now=B->GetObjectField(TEXT("own_replication_properties"))->TryGetField(Name.ToString());
+  Okay&=!Now||(Was&&LifecycleEqual(Was,Now));
+ }
+ R.Data->SetBoolField(TEXT("nonselected_replication_associations_preserved"),Okay);R.Data->SetBoolField(TEXT("RepNotify_functions_preserved"),Okay);return Okay;
+}
+
 bool RemovalAdmission(UBlueprint* BP, const FBPVariableDescription& Selected, FResult& R)
 {
     auto Proof = MakeShared<FJsonObject>(); R.Data->SetObjectField(TEXT("removal_admission"), Proof);
     Proof->SetBoolField(TEXT("complete"), false); Proof->SetBoolField(TEXT("unused_local_scalar"), false);
     Proof->SetBoolField(TEXT("selected_field_notify"), Selected.HasMetaData(TEXT("FieldNotify")));
     Proof->SetArrayField(TEXT("selected_variable_nodes"), {}); Proof->SetArrayField(TEXT("selected_scs_collisions"), {});
-    if (Selected.HasMetaData(TEXT("FieldNotify"))) { return Fail(R, TEXT("variable_remove_field_notify_unsupported"), TEXT("Selected FieldNotify metadata cascade is a valid remaining original variant; no removal dispatched.")); }
-    if (!Selected.RepNotifyFunc.IsNone() || (Selected.PropertyFlags & (CPF_Net | CPF_RepNotify)) || static_cast<int32>(Selected.ReplicationCondition) != 0)
-    { return Fail(R, TEXT("variable_remove_replication_unsupported"), TEXT("Selected replication/RepNotify lifecycle is a valid remaining original scalar variant; first slice removes ordinary unused members.")); }
+    // ADA: on the current exact native Actor parent, an empty own interface list
+    // cannot implement native NotBlueprintable NotifyFieldValueChanged. The SDK
+    // therefore does not run its FieldNotify cascade; arbitrary interface owners
+    // remain pending, rather than treating that cascade as ordinary deletion.
+    if (Selected.HasMetaData(TEXT("FieldNotify")) && !BP->ImplementedInterfaces.IsEmpty())
+    { return Fail(R, TEXT("variable_remove_field_notify_unsupported"), TEXT("Actual interface-owned FieldNotify metadata cascade remains incomplete; no removal dispatched.")); }
+    Proof->SetBoolField(TEXT("selected_replication"), !Selected.RepNotifyFunc.IsNone() || (Selected.PropertyFlags & (CPF_Net | CPF_RepNotify)) || static_cast<int32>(Selected.ReplicationCondition) != 0);
+    Proof->SetBoolField(TEXT("field_notify_cascade_expected"), false);
     FProperty* Property = BP->GeneratedClass ? FindFProperty<FProperty>(BP->GeneratedClass, Selected.VarName) : nullptr;
     if (!Property || Property->GetOwnerStruct() != BP->GeneratedClass)
     { return Fail(R, TEXT("variable_remove_current_local_field_required"), TEXT("Selected current generated field must belong to this exact local generated class.")); }
@@ -2894,17 +3211,20 @@ FResult Remove(const FString& Path, const FString& Name)
     FResult R; LifecycleInit(R); for (const TCHAR* K : { TEXT("remove_member_variable_calls"), TEXT("remove_member_variable_return_count"), TEXT("caller_mark_structural_return_count"), TEXT("removal_scs_observation_calls"), TEXT("selected_generated_observation_calls"), TEXT("source_expected_implicit_structural_requests") }) { R.Data->SetNumberField(K, 0); }
     R.Data->SetStringField(TEXT("blueprint_name"), Path); R.Data->SetStringField(TEXT("variable_name"), Name); R.Data->SetBoolField(TEXT("compiled"), false); R.Data->SetBoolField(TEXT("saved"), false);
     R.Data->SetBoolField(TEXT("declaration_removed"), false); R.Data->SetBoolField(TEXT("scs_preserved"), false); R.Data->SetBoolField(TEXT("selected_current_generated_property_preserved_or_absent"), false);
-    R.Data->SetStringField(TEXT("removal_scope"), TEXT("Single unused ordinary nonreplicated simple local nativeActor member. Graph-reference deletion, FieldNotify/replication cascade, inherited/generated/function-local/complex/delegate variants and external consumer behavior remain incomplete. No fullcompile/save or runtime/cold layout absence is inferred."));
+    R.Data->SetStringField(TEXT("removal_scope"), TEXT("Single simple local nativeActor member, including original descriptor/Get-Set retirement, replication/RepNotify/condition associations and FieldNotify metadata without an implementing interface. Actual interface-owned FieldNotify cascade, inherited/generated/function-local/complex/delegate variants and external consumers remain incomplete. No full compile/save or runtime/cold layout absence is inferred."));
     if (!SafeName(Name)) { Fail(R, TEXT("variable_name_invalid"), TEXT("Exact bounded safe variable name required.")); return R; }
     if (RemovalDependencyReference(Name)) { Fail(R, TEXT("variable_reference_unsupported"), TEXT("Original variable_name dependency-reference guard rejected this selector; no Blueprint load or removal.")); return R; }
     TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path, R)); UBlueprint* BP = Blueprint.Get(); if (!BP || !LifecycleSimple(BP, R)) { return R; }
     int32 Index = INDEX_NONE; FBPVariableDescription* Variable = FindLocal(BP, Name, Index, R); if (!Variable) { if (R.ErrorCode == TEXT("variable_not_found")) { R.Error = TEXT("Blueprint variable not found: ") + Name; } return R; }
     const FBPVariableDescription Selected = *Variable; R.Data->SetStringField(TEXT("asset_path"), BP->GetPathName()); R.Data->SetStringField(TEXT("stored_variable_name"), Selected.VarName.ToString()); R.Data->SetStringField(TEXT("selected_variable_guid"), Selected.VarGuid.ToString(EGuidFormats::Digits));
     if (!RemovalAdmission(BP, Selected, R)) { return R; }
-    FRemovalLinkedPlan LinkPlan(R);if(!R.Data->GetObjectField(TEXT("removal_admission"))->GetArrayField(TEXT("selected_variable_nodes")).IsEmpty()&&!LinkPlan.Build(BP,Selected.VarName))return R;
+    const bool ReplicationRemoval=R.Data->GetObjectField(TEXT("removal_admission"))->GetBoolField(TEXT("selected_replication"));
+    FRemovalLinkedPlan LinkPlan(R);if((ReplicationRemoval||Selected.HasMetaData(TEXT("FieldNotify"))||!R.Data->GetObjectField(TEXT("removal_admission"))->GetArrayField(TEXT("selected_variable_nodes")).IsEmpty())&&!LinkPlan.Build(BP,Selected.VarName,ReplicationRemoval||Selected.HasMetaData(TEXT("FieldNotify"))))return R;
     FRemovalLinkedPlan* Linked=LinkPlan.Active?&LinkPlan:nullptr;
     if(Linked){R.Data->SetStringField(TEXT("removal_scope"),R.Data->GetStringField(TEXT("linked_removal_scope")));R.Data->GetObjectField(TEXT("removal_admission"))->SetBoolField(TEXT("unused_local_scalar"),false);}
     FLifecycleObservation Before, After; R.Stage = TEXT("before_observation"); if (!RemovalCapture(BP, Selected.VarName, Before, R, TEXT("before_observation"), Linked)) { R.bChangeStateKnown = false; if(R.ErrorCode.IsEmpty())Fail(R, TEXT("variable_remove_before_unobservable"), TEXT("Before actual prefix is incomplete; no removal.")); return R; }
+    auto ReplicationBefore=MakeShared<FJsonObject>(),ReplicationAfter=MakeShared<FJsonObject>();
+    if(ReplicationRemoval){R.Data->SetObjectField(TEXT("replication_before"),ReplicationBefore);R.Data->SetStringField(TEXT("replication_removal_scope"),TEXT("Original descriptor/Get-Set retirement plus preservation of surviving replication associations and existing RepNotify functions; structural-only generated/skeleton observations. ClassReps/RepIndex cache regeneration, full compile/runtime/cold net layout absence are not inferred. Interface-owned FieldNotify cascade remains incomplete."));if(!RemovalReplicationState(BP,Selected,LinkPlan,ReplicationBefore))return R;}
     Variable = FindLocal(BP, Name, Index, R);
     if(Linked)
     {
@@ -2935,6 +3255,7 @@ FResult Remove(const FString& Path, const FString& Name)
     R.bChangeStateKnown = true; R.bChanged = !LifecycleEqual(Before.State, After.State) || !LifecycleEqual(Before.Source, After.Source) || !LifecycleEqual(Before.References, After.References) || !LifecycleEqual(Before.Other, After.Other) || !LifecycleEqual(Before.Disk, After.Disk);
     const auto Generated = After.State->GetObjectField(TEXT("selected_generated_property")); R.Data->SetBoolField(TEXT("selected_generated_property_retained"), Generated->GetBoolField(TEXT("property_exists")));
     R.Data->SetBoolField(TEXT("current_compiled_layout_absence_observed"), !Generated->GetBoolField(TEXT("property_exists"))); R.Data->SetBoolField(TEXT("runtime_or_cold_layout_verified"), false);
+    if(ReplicationRemoval){R.Data->SetObjectField(TEXT("replication_after"),ReplicationAfter);if(!RemovalReplicationState(BP,Selected,LinkPlan,ReplicationAfter))return R;if(!RemovalReplicationPreserved(ReplicationBefore,ReplicationAfter,Selected.VarName,R)){Fail(R,TEXT("variable_remove_replication_preservation_failed"),TEXT("Actual surviving replication associations or existing RepNotify function changed; removal prefix retained, no compile/save/retry."));return R;}}
     if (!RemovalPreserved(Before, After, Selected.VarName, R, Linked)) { Fail(R, TEXT("variable_remove_preservation_failed"), TEXT("Actual declaration/remaining current fields or declared source/graph/SCS/disk/other-dirty scope differs; writer prefix retained, no compile/save/rollback.")); return R; }
     if(Linked){if(!Linked->Plain())return R;R.Data->SetBoolField(TEXT("selected_get_set_membership_removed"),true);R.Data->SetBoolField(TEXT("incident_links_removed"),true);R.Data->SetBoolField(TEXT("nonselected_graph_state_preserved"),true);R.Data->SetBoolField(TEXT("planned_serialized_references_preserved"),true);}
     R.Data->SetStringField(TEXT("message"), TEXT("Removed Blueprint variable: ") + Name); R.bSuccess = true; R.bPostconditionPassed = true; R.Stage = TEXT("complete"); return R;
@@ -2954,9 +3275,11 @@ bool CategoryMatches(const TArray<TSharedPtr<FJsonValue>>& Actual, const TArray<
     for (int32 I = 0; I < Actual.Num(); ++I) { if (!Actual[I].IsValid() || Actual[I]->Type != EJson::String || FName(*Actual[I]->AsString()) != Desired[I]) { return false; } }
     return true;
 }
-bool CategoryCapture(UBlueprint* BP, FLifecycleObservation& O, FResult& R, const TCHAR* Phase)
+bool CategoryCapture(UBlueprint* BP, FLifecycleObservation& O, FResult& R, const TCHAR* Phase,FMetadataTypedScope* Typed=nullptr)
 {
-    const bool Base = LifecycleCapture(BP, O, R, Phase); const auto J = R.Data->GetObjectField(Phase); J->SetBoolField(TEXT("complete"), false); O.Complete = false;
+    const bool Base=Typed?Typed->CapturePhase(O,Phase):LifecycleCapture(BP,O,R,Phase);const TSharedPtr<FJsonObject>* PhaseObject=nullptr;
+    if(!R.Data->TryGetObjectField(Phase,PhaseObject)||!PhaseObject||!PhaseObject->IsValid()){O.Complete=false;return false;}
+    const auto J=*PhaseObject;J->SetBoolField(TEXT("complete"),false);O.Complete=false;
     auto SCS = MakeShared<FJsonObject>(), Replication = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("scs"), SCS); O.State->SetObjectField(TEXT("descriptor_replication"), Replication);
     if (!Base) { return false; }
     J->SetStringField(TEXT("failed_stage"), TEXT("descriptor_replication"));
@@ -2965,11 +3288,32 @@ bool CategoryCapture(UBlueprint* BP, FLifecycleObservation& O, FResult& R, const
         auto Row = MakeShared<FJsonObject>(); Replication->SetObjectField(Variable.VarName.ToString(), Row); Row->SetStringField(TEXT("guid"), Variable.VarGuid.ToString(EGuidFormats::Digits));
         Row->SetStringField(TEXT("rep_notify"), Variable.RepNotifyFunc.ToString()); Row->SetNumberField(TEXT("replication_condition"), static_cast<int32>(Variable.ReplicationCondition));
     }
-    J->SetStringField(TEXT("failed_stage"), TEXT("scs")); LifecycleCount(R, TEXT("category_scs_observation_calls")); if (!RemovalSCS(BP, SCS)) { return false; }
+    J->SetStringField(TEXT("failed_stage"),TEXT("scs"));LifecycleCount(R,TEXT("category_scs_observation_calls"));
+    if(Typed&&Typed->NativeObject)
+    {
+        if(!Typed->Current()||!BP->SimpleConstructionScript.IsResolved()||BP->SimpleConstructionScript.Get()!=nullptr)return false;
+        SCS->SetObjectField(TEXT("identity"),LifecycleIdentity(nullptr));SCS->SetArrayField(TEXT("roots"),{});SCS->SetArrayField(TEXT("all_nodes"),{});SCS->SetObjectField(TEXT("nodes"),MakeShared<FJsonObject>());SCS->SetStringField(TEXT("default_scene_root"),TEXT(""));SCS->SetBoolField(TEXT("complete"),true);SCS->SetStringField(TEXT("presence"),TEXT("exact_direct_UObject_absent"));
+        if(!Typed->Current()||!BP->SimpleConstructionScript.IsResolved()||BP->SimpleConstructionScript.Get()!=nullptr)return false;
+    }
+    else if(!RemovalSCS(BP,SCS,nullptr,Typed?TFunction<bool()>([&](){return Typed->Current();}):TFunction<bool()>{}))return false;
+    if(Typed&&!Typed->Current())return false;
     O.Complete = true; J->SetBoolField(TEXT("complete"), true); J->SetStringField(TEXT("failed_stage"), TEXT("")); return true;
 }
 bool CategorySCSSame(const TSharedRef<FJsonObject>& A, const TSharedRef<FJsonObject>& B, bool Saved)
 {
+    // ABO: CategoryCapture proved resolved-null SCS for an exact direct UObject.
+    // Its null identity has empty flags, not a decimal uint64 or saved export.
+    // Require the complete canonical absence DTO on both sides; valid Actor SCS
+    // identities still use the existing object-flag/save transition verifier.
+    FString BeforePresence, AfterPresence;
+    if (A->TryGetStringField(TEXT("presence"), BeforePresence) && BeforePresence == TEXT("exact_direct_UObject_absent")
+        && B->TryGetStringField(TEXT("presence"), AfterPresence) && AfterPresence == BeforePresence)
+    {
+        auto Absent = MakeShared<FJsonObject>(); Absent->SetObjectField(TEXT("identity"), LifecycleIdentity(nullptr));
+        Absent->SetArrayField(TEXT("roots"), {}); Absent->SetArrayField(TEXT("all_nodes"), {}); Absent->SetObjectField(TEXT("nodes"), MakeShared<FJsonObject>());
+        Absent->SetStringField(TEXT("default_scene_root"), TEXT("")); Absent->SetBoolField(TEXT("complete"), true); Absent->SetStringField(TEXT("presence"), BeforePresence);
+        return LifecycleEqual(A, Absent) && LifecycleEqual(B, Absent);
+    }
     if (A->Values.Num() != B->Values.Num() || !LifecycleIdentitySame(A->GetObjectField(TEXT("identity")).ToSharedRef(), B->GetObjectField(TEXT("identity")).ToSharedRef(), Saved, false)) { return false; }
     for (const auto& P : A->Values) { if (P.Key.ToView() != TEXT("identity") && P.Key.ToView() != TEXT("nodes") && !LifecycleEqual(P.Value, B->TryGetField(P.Key.ToView()))) { return false; } }
     const auto X = A->GetObjectField(TEXT("nodes")), Y = B->GetObjectField(TEXT("nodes")); if (X->Values.Num() != Y->Values.Num()) { return false; }
@@ -3015,9 +3359,9 @@ void CategoryAggregateClear(FResult& R)
 {
     LifecycleAggregateClear(R); R.Data->SetBoolField(TEXT("category_order_matches_current_by_fname"), false); R.Data->SetBoolField(TEXT("scs_preserved"), false);
 }
-bool CategoryObserved(UBlueprint* BP, FLifecycleObservation& O, const FLifecycleObservation& Before, FResult& R, const TCHAR* Phase)
+bool CategoryObserved(UBlueprint* BP, FLifecycleObservation& O, const FLifecycleObservation& Before, FResult& R, const TCHAR* Phase,FMetadataTypedScope* Typed=nullptr)
 {
-    if (!CategoryCapture(BP, O, R, Phase)) { R.bChangeStateKnown = false; return Fail(R, TEXT("category_sorting_observation_incomplete"), TEXT("Bounded current phase prefix retained; no replay or rollback after an unreadable observation.")); }
+    if (!CategoryCapture(BP,O,R,Phase,Typed)) { R.bChangeStateKnown = false; return Fail(R, TEXT("category_sorting_observation_incomplete"), TEXT("Bounded current phase prefix retained; no replay or rollback after an unreadable observation.")); }
     R.bChangeStateKnown = true; R.bChanged = !LifecycleEqual(Before.State, O.State) || !LifecycleEqual(Before.Source, O.Source) || !LifecycleEqual(Before.References, O.References) || !LifecycleEqual(Before.Other, O.Other) || !LifecycleEqual(Before.Disk, O.Disk);
     R.Data->SetArrayField(TEXT("actual_category_order"), O.State->GetObjectField(TEXT("variables"))->GetArrayField(TEXT("category_sorting"))); R.Data->SetStringField(TEXT("actual_category_order_scope"), Phase);
     R.Data->SetNumberField(TEXT("current_blueprint_status"), O.State->GetObjectField(TEXT("variables"))->GetNumberField(TEXT("blueprint_status"))); R.Data->SetStringField(TEXT("current_blueprint_status_scope"), Phase); return true;
@@ -3034,7 +3378,9 @@ FResult SetCategorySorting(const FString& Path, const FString& OrderJson, const 
     R.Data->SetStringField(TEXT("typed_compile_scope"), TEXT("Actual returned explicit synchronous full-compile receipt, distinct from legacy dispatch bool; current final Blueprint status is separately retained. No exhaustive implicit PreSave/helper compile accounting or cold persistence proof."));
     TSharedPtr<FJsonValue> Requested; if (!Parse(OrderJson, Requested, R) || !(Requested->Type == EJson::Null || Requested->Type == EJson::Array) || !SafeName(Front, true))
     { if (R.ErrorCode.IsEmpty()) { Fail(R, TEXT("category_sorting_input_invalid"), TEXT("Bounded JSON null/string-array and optional bounded category_to_front string required.")); } return R; }
-    TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path, R)); UBlueprint* BP = Blueprint.Get(); if (!BP || !LifecycleSimple(BP, R)) { return R; }
+    TStrongObjectPtr<UBlueprint> Blueprint(LoadBlueprint(Path,R));UBlueprint* BP=Blueprint.Get();if(!BP)return R;
+    TUniquePtr<FMetadataTypedScope> Typed;if(UsesTypedOrdering(BP)){Typed=MakeUnique<FMetadataTypedScope>(R,FMetadataTypedScope::EUse::CategoryOrder);if(!Typed->Bind(BP))return R;R.Data->SetStringField(TEXT("category_sorting_scope"),TEXT("Direct native Actor/UObject and current own primitive scalar/primitive Array<=256/native3 scalar values; same original category normalization/append/no-op dirty-save behavior. Actual optional compile/save uses guarded returned class roles; no declaration order/value/type change or broad source/runtime claim; usage validation pending."));}else if(!LifecycleSimple(BP,R))return R;
+    auto Current=[&](){return !Typed||Typed->Current();};auto SDKReturned=[&](){return !Typed||Typed->Rebind();};
     R.Data->SetStringField(TEXT("asset_path"), BP->GetPathName()); const TArray<FName> Previous = BP->CategorySorting; TArray<FName> Desired;
     auto AddCategory = [&](const FString& Input)
     {
@@ -3053,24 +3399,23 @@ FResult SetCategorySorting(const FString& Path, const FString& OrderJson, const 
     if (Previous.Num() > 256 || Desired.Num() > 256) { Fail(R, TEXT("category_sorting_budget_exceeded"), TEXT("First category scope retains at most256 prior/final category names.")); return R; }
     const bool Changed = Desired != Previous; R.Data->SetBoolField(TEXT("changed"), Changed); R.Data->SetBoolField(TEXT("category_order_no_op"), !Changed);
     R.Data->SetArrayField(TEXT("previous_category_order"), CategoryNames(Previous)); R.Data->SetArrayField(TEXT("category_order"), CategoryNames(Desired)); R.Data->SetBoolField(TEXT("effective_compile_requested"), Changed && Compile);
-    FLifecycleObservation Before, Configured, Compiled, Saved; R.Stage = TEXT("before_observation"); if (!CategoryCapture(BP, Before, R, TEXT("before_observation"))) { R.bChangeStateKnown = false; Fail(R, TEXT("category_sorting_before_unobservable"), TEXT("Bounded before prefix incomplete; no category edit/compile/save.")); return R; }
+    FLifecycleObservation Before, Configured, Compiled, Saved; R.Stage = TEXT("before_observation"); if (!CategoryCapture(BP,Before,R,TEXT("before_observation"),Typed.Get())) { R.bChangeStateKnown = false; Fail(R, TEXT("category_sorting_before_unobservable"), TEXT("Bounded before prefix incomplete; no category edit/compile/save.")); return R; }
     if (BP->CategorySorting != Previous) { Fail(R, TEXT("category_sorting_state_changed"), TEXT("Category storage changed during admission; no editor writer dispatched.")); return R; }
-    LifecycleCount(R, TEXT("outer_transaction_calls")); const FScopedTransaction Transaction(FText::FromString(TEXT("Set Blueprint category sorting")));
+    if(!Current())return R;LifecycleCount(R,TEXT("outer_transaction_calls"));const FScopedTransaction Transaction(FText::FromString(TEXT("Set Blueprint category sorting")));if(!Current())return R;
     if (Changed)
     {
-        R.Stage = TEXT("set_category_sorting"); R.bMutationAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("explicit_modify_calls")); BP->Modify(); BP->CategorySorting = Desired;
-        LifecycleCount(R, TEXT("explicit_mark_modified_calls")); FBlueprintEditorUtils::MarkBlueprintAsModified(BP); LifecycleCount(R, TEXT("explicit_mark_package_dirty_calls")); BP->MarkPackageDirty();
+        R.Stage = TEXT("set_category_sorting"); R.bMutationAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("explicit_modify_calls")); BP->Modify();if(!Current())return R;BP->CategorySorting=Desired;if(!Current())return R;
+        LifecycleCount(R, TEXT("explicit_mark_modified_calls")); FBlueprintEditorUtils::MarkBlueprintAsModified(BP);if(!SDKReturned())return R;LifecycleCount(R, TEXT("explicit_mark_package_dirty_calls")); BP->MarkPackageDirty();if(!Current())return R;
     }
-    R.Stage = TEXT("after_configuration"); if (!CategoryObserved(BP, Configured, Before, R, TEXT("after_configuration"))) { return R; }
+    R.Stage = TEXT("after_configuration"); if (!CategoryObserved(BP,Configured,Before,R,TEXT("after_configuration"),Typed.Get())) { return R; }
     const bool ConfigurationOK = CategoryPreserved(Before, Configured, Desired, false, false, true, R); R.Data->SetBoolField(TEXT("after_configuration_preservation_passed"), ConfigurationOK);
     if (!ConfigurationOK) { Fail(R, TEXT("category_sorting_preservation_failed"), TEXT("Current categories or other declared scope differs; compile/save suppressed, actual prefix retained.")); return R; }
     const FLifecycleObservation* Final = &Configured; bool FullCompiled = false;
     if (Changed && Compile)
     {
-        CategoryAggregateClear(R); R.Stage = TEXT("compile"); R.bCompileAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("full_compile_attempts"));
-        const auto Result = Cubeless::UE58::CompileBlueprint(BP->GetPathName(), false, false); R.Data->SetObjectField(TEXT("compile_result"), Result); R.Data->SetBoolField(TEXT("compiled"), true); R.Data->SetStringField(TEXT("compile_status"), LifecycleStatus(BP->Status)); R.Data->SetStringField(TEXT("compile_status_scope"), TEXT("returned_explicit_compile"));
-        bool OK = false; Result->TryGetBoolField(TEXT("compiled"), OK); R.Compiled = OK;
-        if (!CategoryObserved(BP, Compiled, Before, R, TEXT("after_compile"))) { return R; } Final = &Compiled; FullCompiled = OK;
+        CategoryAggregateClear(R);R.Stage=TEXT("compile");if(!Current())return R;R.bCompileAttempted=true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("full_compile_attempts"));
+        const auto Result=Cubeless::UE58::CompileBlueprint(BP->GetPathName(),false,false);R.Data->SetObjectField(TEXT("compile_result"),Result);R.Data->SetBoolField(TEXT("compiled"),true);R.Data->SetStringField(TEXT("compile_status_scope"),TEXT("returned_explicit_compile"));bool OK=false;Result->TryGetBoolField(TEXT("compiled"),OK);R.Compiled=OK;if(!SDKReturned())return R;R.Data->SetStringField(TEXT("compile_status"),LifecycleStatus(BP->Status));
+        if (!CategoryObserved(BP,Compiled,Before,R,TEXT("after_compile"),Typed.Get())) { return R; } Final = &Compiled; FullCompiled = OK;
         const bool CompileOK = CategoryPreserved(Before, Compiled, Desired, OK, false, true, R); R.Data->SetBoolField(TEXT("after_compile_preservation_passed"), CompileOK);
         if (!OK || !CompileOK) { Fail(R, OK ? TEXT("category_sorting_compile_preservation_failed") : TEXT("category_sorting_compile_failed"), TEXT("Returned compiler/category prefix retained; first finite slice suppresses save after compiler/preservation failure, unlike old fallback.")); return R; }
     }
@@ -3079,10 +3424,10 @@ FResult SetCategorySorting(const FString& Path, const FString& OrderJson, const 
     if (SaveEffective)
     {
         R.Data->SetObjectField(TEXT("before_save_observation"), R.Data->GetObjectField(Final == &Compiled ? TEXT("after_compile") : TEXT("after_configuration"))); R.Data->SetBoolField(TEXT("before_save_preservation_passed"), true);
-        CategoryAggregateClear(R); R.Stage = TEXT("save"); R.bMutationAttempted = true; R.bSaveAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("save_attempt_count"));
+        CategoryAggregateClear(R);R.Stage=TEXT("save");if(!Current())return R;R.bMutationAttempted=true; R.bSaveAttempted = true; R.bChangeStateKnown = false; LifecycleCount(R, TEXT("save_attempt_count"));
         auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("asset_path"), BP->GetPathName()); Receipt->SetStringField(TEXT("route"), TEXT("UEditorAssetLibrary::SaveLoadedAsset")); Receipt->SetBoolField(TEXT("only_if_dirty"), false); Receipt->SetBoolField(TEXT("attempted"), true); R.Data->SetArrayField(TEXT("save_calls"), { MakeShared<FJsonValueObject>(Receipt) });
-        R.bSaved = UEditorAssetLibrary::SaveLoadedAsset(BP, false); Receipt->SetBoolField(TEXT("returned"), true); Receipt->SetBoolField(TEXT("saved"), R.bSaved); R.Data->SetBoolField(TEXT("saved"), R.bSaved);
-        if (!CategoryObserved(BP, Saved, Before, R, TEXT("after_save"))) { return R; } Final = &Saved; R.Data->SetStringField(TEXT("compile_status"), R.bCompileAttempted ? LifecycleStatus(BP->Status) : TEXT("not_requested")); R.Data->SetStringField(TEXT("compile_status_scope"), TEXT("after_save"));
+        R.bSaved = UEditorAssetLibrary::SaveLoadedAsset(BP, false); Receipt->SetBoolField(TEXT("returned"), true); Receipt->SetBoolField(TEXT("saved"), R.bSaved); R.Data->SetBoolField(TEXT("saved"), R.bSaved);if(Typed&&!Typed->SavedReturned(R.bSaved))return R;
+        if (!CategoryObserved(BP,Saved,Before,R,TEXT("after_save"),Typed.Get())) { return R; } Final = &Saved; R.Data->SetStringField(TEXT("compile_status"), R.bCompileAttempted ? LifecycleStatus(BP->Status) : TEXT("not_requested")); R.Data->SetStringField(TEXT("compile_status_scope"), TEXT("after_save"));
         const bool SaveOK = CategoryPreserved(Before, Saved, Desired, FullCompiled, R.bSaved, !R.bSaved, R);
         if (!R.bSaved || !SaveOK) { Fail(R, R.bSaved ? TEXT("category_sorting_save_preservation_failed") : TEXT("category_sorting_save_failed"), TEXT("Actual save receipt and phase retained; no retry/rollback.")); return R; }
     }
@@ -3250,16 +3595,63 @@ bool CustomMetadataSetExpectedMetadataField(UK2Node_CustomEvent* N, const FKisme
     FString Text; if (!P->ExportText_Direct(Text, &Meta, &Meta, N, PPF_None) || !SafeText(Text, 65536)) { return false; }
     auto Row = CustomMetadataCopy(Old->AsObject().ToSharedRef()); Row->SetStringField(TEXT("export_text"), Text); Fields->SetObjectField(TEXT("MetaData"), Row); return true;
 }
+void CustomMetadataFirstFieldMismatch(FResult& R, const FString& Object, const TCHAR* Property, const TCHAR* Phase,
+    const TCHAR* Reason, const TSharedPtr<FJsonValue>& Expected, const TSharedPtr<FJsonValue>& Actual)
+{
+    if (R.Data->HasField(TEXT("first_metadata_field_mismatch"))) { return; }
+    auto J = MakeShared<FJsonObject>(); J->SetStringField(TEXT("object"), Object); J->SetStringField(TEXT("property"), Property);
+    J->SetStringField(TEXT("phase"), Phase); J->SetStringField(TEXT("reason"), Reason);
+    J->SetField(TEXT("expected"), Expected.IsValid() ? Expected : MakeShared<FJsonValueNull>());
+    J->SetField(TEXT("actual"), Actual.IsValid() ? Actual : MakeShared<FJsonValueNull>());
+    J->SetBoolField(TEXT("actual_missing"), !Actual.IsValid()); R.Data->SetObjectField(TEXT("first_metadata_field_mismatch"), J);
+}
 bool CustomMetadataExpectedNodeFields(const FLifecycleObservation& Before, UK2Node_CustomEvent* N, bool Description, const FString& Text,
     const TOptional<bool>& Flag, bool Comment, const FKismetUserDeclaredFunctionMetadata& Metadata, TSharedRef<FJsonObject>& Desired, FResult& R)
 {
     Desired = CustomMetadataCopy(Before.State->GetObjectField(TEXT("graph_node_fields"))->GetObjectField(N->GetPathName()).ToSharedRef()); const bool False = false;
-    if (Description && Comment && (!CustomMetadataSetExpectedField(N->GetClass(), Desired, TEXT("NodeComment"), &Text, nullptr)
-        || !CustomMetadataSetExpectedField(N->GetClass(), Desired, TEXT("bCommentBubbleVisible"), nullptr, &False)
-        || !CustomMetadataSetExpectedField(N->GetClass(), Desired, TEXT("bCommentBubbleMakeVisible"), nullptr, &False)
-        || !CustomMetadataSetExpectedField(N->GetClass(), Desired, TEXT("bCommentBubblePinned"), nullptr, &False))) { return false; }
-    if (Flag.IsSet()) { const bool Value = Flag.GetValue(); if (!CustomMetadataSetExpectedField(N->GetClass(), Desired, TEXT("bCallInEditor"), nullptr, &Value)) { return false; } }
-    if (!CustomMetadataSetExpectedMetadataField(N, Metadata, Desired)) { return false; } LifecycleCount(R, TEXT("metadata_expected_export_calls")); return true;
+    auto Serialized = [&](const TCHAR* Name, const FString* String, const bool* Bool)
+    {
+        if (CustomMetadataSetExpectedField(N->GetClass(), Desired, Name, String, Bool)) { return true; }
+        TSharedPtr<FJsonValue> Expected;
+        if (String) { Expected = MakeShared<FJsonValueString>(*String); }
+        else { Expected = MakeShared<FJsonValueBoolean>(*Bool); }
+        CustomMetadataFirstFieldMismatch(R, N->GetPathName(), Name, TEXT("prepare_expected_node_fields"),
+            TEXT("Required authored serialized field/type/export is missing or invalid"), Expected, Desired->TryGetField(Name)); return false;
+    };
+    if (Description && Comment)
+    {
+        if (!Serialized(TEXT("NodeComment"), &Text, nullptr)
+            || !Serialized(TEXT("bCommentBubbleVisible"), nullptr, &False)
+            || !Serialized(TEXT("bCommentBubblePinned"), nullptr, &False)) { return false; }
+        // EdGraphNode.h: only MakeVisible is Transient. LifecycleFields excludes
+        // that UI bit; its existing direct snapshot, not a fabricated serialized
+        // row, proves the requested false value after the real writer/callbacks.
+        const auto* UI = FindFProperty<FBoolProperty>(N->GetClass(), TEXT("bCommentBubbleMakeVisible"));
+        const auto Snapshot = Before.State->GetObjectField(TEXT("custom_event_metadata"))->TryGetField(N->GetPathName());
+        const auto Observed = Snapshot.IsValid() && Snapshot->Type == EJson::Object
+            ? Snapshot->AsObject()->TryGetField(TEXT("bubble_make_visible")) : TSharedPtr<FJsonValue>();
+        if (!UI || UI->ArrayDim != 1 || UI->GetOwnerStruct() != UEdGraphNode::StaticClass() || !UI->HasAnyPropertyFlags(CPF_Transient)
+            || Desired->HasField(TEXT("bCommentBubbleMakeVisible")) || !Observed.IsValid() || Observed->Type != EJson::Boolean
+            || Observed->AsBool() != N->bCommentBubbleMakeVisible)
+        {
+            CustomMetadataFirstFieldMismatch(R, N->GetPathName(), TEXT("bCommentBubbleMakeVisible"), TEXT("prepare_expected_node_fields"),
+                TEXT("Expected exact transient UI bool omitted from serialized capture with a matching direct before observation"),
+                MakeShared<FJsonValueBoolean>(False), Observed); return false;
+        }
+        auto UIExpected = MakeShared<FJsonObject>(); UIExpected->SetStringField(TEXT("object"), N->GetPathName());
+        UIExpected->SetStringField(TEXT("property"), TEXT("bCommentBubbleMakeVisible")); UIExpected->SetBoolField(TEXT("before"), Observed->AsBool());
+        UIExpected->SetBoolField(TEXT("expected"), False); UIExpected->SetBoolField(TEXT("serialized_capture_excludes_transient"), true);
+        UIExpected->SetStringField(TEXT("property_flags"), LexToString(static_cast<uint64>(UI->GetPropertyFlags())));
+        R.Data->SetObjectField(TEXT("expected_transient_comment_bubble"), UIExpected);
+    }
+    if (Flag.IsSet()) { const bool Value = Flag.GetValue(); if (!Serialized(TEXT("bCallInEditor"), nullptr, &Value)) { return false; } }
+    if (!CustomMetadataSetExpectedMetadataField(N, Metadata, Desired))
+    {
+        CustomMetadataFirstFieldMismatch(R, N->GetPathName(), TEXT("MetaData"), TEXT("prepare_expected_node_fields"),
+            TEXT("Required authored metadata struct/type/export is missing or invalid"), MakeShared<FJsonValueString>(TEXT("complete FKismetUserDeclaredFunctionMetadata scratch export")),
+            Desired->TryGetField(TEXT("MetaData"))); return false;
+    }
+    LifecycleCount(R, TEXT("metadata_expected_export_calls")); return true;
 }
 bool CustomMetadataNodesSame(const TSharedRef<FJsonObject>& Before, const TSharedRef<FJsonObject>& After, const FString& Path, const TSharedRef<FJsonObject>& Desired)
 {
@@ -3380,8 +3772,26 @@ bool CustomMetadataPreserved(const FLifecycleObservation& Before, const FLifecyc
         const auto Old = P.Value->AsObject(), Now = Q->AsObject();
         if (!LifecycleEqual(FString(P.Key.ToView()) == Path ? ExpectedMetadataFields : Old->GetObjectField(TEXT("serialized_metadata_fields")).ToSharedRef(), Now->GetObjectField(TEXT("serialized_metadata_fields")).ToSharedRef())) { Meta = false; }
     }
+    bool TransientComment = true;
+    if (R.Data->HasField(TEXT("expected_transient_comment_bubble")))
+    {
+        const auto ExpectedUI = R.Data->GetObjectField(TEXT("expected_transient_comment_bubble"));
+        const auto Row = Y->TryGetField(Path);
+        const auto ActualUI = Row.IsValid() && Row->Type == EJson::Object
+            ? Row->AsObject()->TryGetField(TEXT("bubble_make_visible")) : TSharedPtr<FJsonValue>();
+        TransientComment = ExpectedUI->GetStringField(TEXT("object")) == Path && ActualUI.IsValid() && ActualUI->Type == EJson::Boolean
+            && ActualUI->AsBool() == ExpectedUI->GetBoolField(TEXT("expected")) && IsValid(SelectedNode)
+            && SelectedNode->GetPathName() == Path && SelectedNode->bCommentBubbleMakeVisible == ActualUI->AsBool();
+        R.Data->SetBoolField(TEXT("requested_transient_comment_bubble_verified"), TransientComment);
+        if (!TransientComment)
+        {
+            CustomMetadataFirstFieldMismatch(R, Path, TEXT("bCommentBubbleMakeVisible"), *R.Stage,
+                TEXT("Requested transient UI state differs from current direct snapshot or live node"),
+                MakeShared<FJsonValueBoolean>(ExpectedUI->GetBoolField(TEXT("expected"))), ActualUI);
+        }
+    }
     const bool Functions = CustomMetadataFunctionsSame(Before.State->GetObjectField(TEXT("generated_function_metadata")).ToSharedRef(), After.State->GetObjectField(TEXT("generated_function_metadata")).ToSharedRef(), FunctionName, FunctionMetadata, Compiled, Saved);
-    const bool State = Before.Complete && After.Complete && TooltipQualified && Meta && Functions
+    const bool State = Before.Complete && After.Complete && TooltipQualified && Meta && Functions && TransientComment
         && LifecycleRowsSame(A->GetArrayField(TEXT("new_variables")), B->GetArrayField(TEXT("new_variables")), Order, nullptr, Compiled)
         && LifecycleEqual(A->TryGetField(TEXT("generated_variables")), B->TryGetField(TEXT("generated_variables"))) && LifecycleEqual(A->TryGetField(TEXT("category_sorting")), B->TryGetField(TEXT("category_sorting")))
         && A->GetStringField(TEXT("generated_cdo_path")) == B->GetStringField(TEXT("generated_cdo_path"))
@@ -3415,12 +3825,36 @@ FResult SetCustomEventMetadata(const FString& Path, const FString& PrimaryName, 
     R.Data->SetStringField(TEXT("requested_node_id"), NodeId); R.Data->SetStringField(TEXT("event_name_alias"), AliasName);
     R.Data->SetStringField(TEXT("description_primary"), Description); R.Data->SetStringField(TEXT("tooltip_alias"), Tooltip);
     FString Name = PrimaryName.IsEmpty() ? AliasName : PrimaryName; Name.TrimStartAndEndInline(); FString Id = NodeId; Id.TrimStartAndEndInline();
-    const FString Text = Description.IsEmpty() ? Tooltip : Description; const bool HasDescription = !Text.IsEmpty(); TOptional<bool> Flag;
+    const FString Text = Description.IsEmpty() ? Tooltip : Description; bool HasDescription = !Text.IsEmpty(); TOptional<bool> Flag;
     if (!SafeName(Path) || !Path.StartsWith(TEXT("/Game/")) || !SafeName(PrimaryName, true) || !SafeName(AliasName, true) || !SafeName(NodeId, true)
         || !SafeText(Description, 65536) || !SafeText(Tooltip, 65536))
     { Fail(R, TEXT("custom_event_metadata_input_invalid"), TEXT("Exact bounded safe Blueprint/event/GUID and description strings required.")); return R; }
     if (Name.IsEmpty() && Id.IsEmpty()) { Fail(R, TEXT("custom_event_metadata_missing_identifier"), TEXT("custom_event_name or node_id is required.")); return R; }
-    if (!LifecycleFlag(FlagJson, Flag, R)) { return R; }
+    // AAW: original Batch presence uses this existing private JSON argument.
+    // Public Named bool/null semantics and every downstream writer/proof stay unchanged.
+    if (FlagJson.TrimStartAndEnd().StartsWith(TEXT("{")))
+    {
+        TSharedPtr<FJsonValue> Carrier;
+        if (!Parse(FlagJson, Carrier, R)) { return R; }
+        if (!Carrier.IsValid() || Carrier->Type != EJson::Object)
+        { Fail(R, TEXT("custom_event_metadata_carrier_invalid"), TEXT("Exact private metadata presence object required; no asset load or edit.")); return R; }
+        const auto Object = Carrier->AsObject();
+        if (!Object.IsValid()) { Fail(R, TEXT("custom_event_metadata_carrier_invalid"), TEXT("Private metadata presence object is invalid.")); return R; }
+        const auto Tag = Object->TryGetField(TEXT("cubeless_raw_metadata_presence_v1"));
+        const auto Present = Object->TryGetField(TEXT("description_present"));
+        const auto Call = Object->TryGetField(TEXT("call_in_editor"));
+        if (Object->Values.Num() != 3 || !Tag.IsValid() || Tag->Type != EJson::Boolean || !Tag->AsBool()
+            || !Present.IsValid() || Present->Type != EJson::Boolean || !Call.IsValid()
+            || (Call->Type != EJson::Null && Call->Type != EJson::Boolean)
+            || !Tooltip.IsEmpty() || (!Present->AsBool() && !Description.IsEmpty()))
+        { Fail(R, TEXT("custom_event_metadata_carrier_invalid"), TEXT("Exact tag/keys/typed description presence and nullable Boolean flag must match the selected description; no asset load or edit.")); return R; }
+        HasDescription = Present->AsBool();
+        if (Call->Type == EJson::Boolean) { Flag = Call->AsBool(); }
+        R.Data->SetBoolField(TEXT("raw_metadata_presence_carrier"), true);
+        R.Data->SetBoolField(TEXT("raw_description_present"), HasDescription);
+        R.Data->SetBoolField(TEXT("raw_call_in_editor_present"), Flag.IsSet());
+    }
+    else if (!LifecycleFlag(FlagJson, Flag, R)) { return R; }
     if (!HasDescription && !Flag.IsSet()) { Fail(R, TEXT("custom_event_metadata_missing_value"), TEXT("Missing description/tooltip or call_in_editor value; default None is omission.")); return R; }
     FString Ref = Text.ToLower().Replace(TEXT("\\"), TEXT("/"));
     for (const TCHAR* Token : {TEXT("unrealmcp"),TEXT("mcpunreal"),TEXT("mcp_unreal"),TEXT("cubelesscontrolrigtools"),TEXT("/script/cubelessmcp"),TEXT("/cubelessmcp_ue58/"),TEXT("/script/modelcontextprotocol"),TEXT("/script/toolsetregistry")})
@@ -3710,7 +4144,7 @@ UBlueprint* LocalLoad(const FString& Path, FResult& R, FDeclarationEnumScope* En
     if (BP->NewVariables.Num() + BP->GeneratedVariables.Num() > MaxVariables) { Fail(R, TEXT("local_variable_member_budget"), TEXT("Existing member descriptor budget exceeded.")); return nullptr; }
     return BP;
 }
-UEdGraph* LocalSelect(UBlueprint* BP, const FString& Name, const FString& Id, const FString& Type, bool Create, FResult& R)
+UEdGraph* LocalSelect(UBlueprint* BP, const FString& Name, const FString& Id, const FString& Type, bool Create, FResult& R, bool AllowMissingFunction=false)
 {
     const FString Kind = LocalGraphType(Type); FGuid Guid;
     if (!Id.IsEmpty() && (!FGuid::Parse(Id, Guid) || !Guid.IsValid())) { Fail(R, TEXT("local_variable_graph_id_invalid"), TEXT("graph_id must select one existing nonzero GUID.")); return nullptr; }
@@ -3725,6 +4159,7 @@ UEdGraph* LocalSelect(UBlueprint* BP, const FString& Name, const FString& Id, co
     }
     if (!Found)
     {
+        if(Create&&AllowMissingFunction)return nullptr; // Expected selection result, not an engine failure/retry.
         Fail(R, Create ? TEXT("local_variable_graph_creation_unsupported") : TEXT("local_variable_graph_not_found"),
             Create ? TEXT("Missing-function graph creation is an original valid feature outside the first finite slice; no graph writer dispatched.")
                 : FString::Printf(TEXT("Blueprint graph not found. graph_name='%s', graph_id='%s', graph_type='%s'"), *Name, *Id, *Type));
@@ -4097,8 +4532,66 @@ FResult AddLocal(const FString& Path, const FString& Name, const FString& Type, 
     else if (!PinType(Type, TEXT(""), false, Pin, R) || !LocalDefault(DefaultJson, Pin, Stored, R)) { return R; }
     TStrongObjectPtr<UBlueprint> Hold(LocalLoad(Path, R, EnumScope.Get())); UBlueprint* BP = Hold.Get();
     if (!BP || (!(IsLocalMap&&EnumScope->PresetMapLibrary)&&!LifecycleSimple(BP, R))) { return R; } if(EnumScope&&!EnumScope->Check()) { return R; } R.Data->SetStringField(TEXT("asset_path"), BP->GetPathName());
-    UEdGraph* G = LocalSelect(BP, GraphName, GraphId, GraphType, CreateGraph, R); if (!G) { return R; } if(EnumScope&&!EnumScope->BindGraph(G)) { return R; }
+    // AAK creates the missing function once, before the existing local writer.
+    // All already-supported local descriptors may join an own Actor function.
+    // Source-backed scopes retain their original source snapshot. Only after a
+    // successful verified structural helper may their existing RefreshClasses
+    // adopt the target's current class/CDO roles; failed creation never rebases.
+    const bool MayCreate=CreateGraph&&BP->BlueprintType==BPTYPE_Normal&&GraphId.IsEmpty()
+        &&LocalGraphType(GraphType)==TEXT("function")&&!GraphName.IsEmpty();
+    Function::FResult CreatedFunction;TFunction<bool(UEdGraphNode*)> CreatedFunctionCurrent;
+    TUniquePtr<FScopedTransaction> CreationTransaction;bool FunctionCreated=false,CreationChanged=false;
+    UEdGraph* G = LocalSelect(BP, GraphName, GraphId, GraphType, CreateGraph, R,MayCreate);
+    if(!G)
+    {
+        if(!MayCreate||!R.ErrorCode.IsEmpty())return R;
+        // Keep one outer transaction for the composite API. The original local
+        // transaction is opened below only when this earlier scope is absent.
+        if(EnumScope&&!EnumScope->Check())return R;
+        CreationTransaction=MakeUnique<FScopedTransaction>(NSLOCTEXT("CubelessMCP","AddLocalVariable","MCP add_blueprint_local_variable"));
+        LifecycleCount(R,TEXT("outer_transaction_calls"));
+        if(EnumScope&&!EnumScope->Check())return R;
+        const bool Created=Function::CreateFunctionGraphForNode(BP,GraphName,CreatedFunction,G,CreatedFunctionCurrent);
+        auto Prefix=MakeShared<FJsonObject>();Prefix->SetBoolField(TEXT("helper_returned"),Created);
+        Prefix->SetBoolField(TEXT("mutation_attempted"),CreatedFunction.bMutationAttempted);Prefix->SetBoolField(TEXT("change_state_known"),CreatedFunction.bChangeStateKnown);
+        Prefix->SetField(TEXT("changed"),CreatedFunction.bChangeStateKnown?TSharedPtr<FJsonValue>(MakeShared<FJsonValueBoolean>(CreatedFunction.bChanged)):TSharedPtr<FJsonValue>(MakeShared<FJsonValueNull>()));
+        Prefix->SetStringField(TEXT("stage"),CreatedFunction.Stage);Prefix->SetStringField(TEXT("error_code"),CreatedFunction.ErrorCode);Prefix->SetStringField(TEXT("error"),CreatedFunction.Error);Prefix->SetObjectField(TEXT("data"),CreatedFunction.Data);
+        R.Data->SetObjectField(TEXT("local_function_creation_prefix"),Prefix);
+        R.bMutationAttempted|=CreatedFunction.bMutationAttempted;R.bChanged|=CreatedFunction.bChanged;
+        R.bChangeStateKnown=CreatedFunction.bChangeStateKnown;R.Stage=CreatedFunction.Stage;CreationChanged=CreatedFunction.bChanged;
+        R.Data->SetBoolField(TEXT("local_function_creation_attempted"),true);R.Data->SetBoolField(TEXT("local_function_created"),Created);
+        R.Data->SetBoolField(TEXT("target_blueprint_load_repeated_for_local_creation"),false);
+        R.Data->SetStringField(TEXT("local_function_creation_scope"),TEXT("One missing explicitly named own Actor function followed by one already-supported local declaration, with one outer transaction and no target reload or public operation replay. Existing function-creation and local lifecycle writers own their separate verified stages; failures retain the created function and actual declaration prefix without rollback. Existing enum/native class/native value-struct/UDS source guards, primitive/referenced/value-struct array declarations and String-double Map are reused at the normal target structural boundary. New descriptor types, BFL/new-owner/selector creation variants and actual runtime initialization remain incomplete; usage validation pending."));
+        if(!Created||!CreatedFunction.bChangeStateKnown||!CreatedFunction.ErrorCode.IsEmpty())
+        {R.ErrorCode=CreatedFunction.ErrorCode;R.Error=CreatedFunction.Error;if(R.ErrorCode.IsEmpty())Fail(R,TEXT("local_function_creation_failed"),TEXT("Function helper did not establish a known created endpoint; complete actual prefix retained without local write or retry."));return R;}
+        if(EnumScope)
+        {
+            // The helper has completed its AddFunctionGraph structural return
+            // and verified old graph preservation. Source identity is checked
+            // before existing RefreshClasses adopts only current target roles;
+            // its final Check still compares the original complete source.
+            const bool Refreshed=EnumScope->RefreshClasses();
+            Prefix->SetBoolField(TEXT("source_scope_target_refreshed_after_creation"),Refreshed);
+            R.Data->SetBoolField(TEXT("local_creation_source_snapshot_replaced"),false);
+            if(!Refreshed)return R;
+        }
+        FunctionCreated=true;
+        R.Data->SetStringField(TEXT("admission_scope_before_function_creation"),R.Data->GetStringField(TEXT("admission_scope")));
+        R.Data->SetStringField(TEXT("admission_scope"),TEXT("Already-supported local descriptor in a newly created explicitly named own native Actor function; complete original type/source/default/partial-declaration checks remain in force. The existing function helper owns graph creation and its structural prefix; explicit_graph_create_calls belongs only to the following local writer and is not a whole-operation zero count. Wider descriptors/owners/selectors and runtime evaluation remain incomplete; usage validation pending."));
+        R.Data->SetStringField(TEXT("graph_creation_count_authority"),TEXT("local_function_creation_prefix.data.graph_resolution for helper graph creation and actual returned structural prefix; explicit_graph_create_calls counts direct local-writer calls only."));
+    }
+    if(!G)return R;
+    auto CreationCurrent=[&]() -> bool
+    {
+        if(!FunctionCreated)return true;
+        if(CreatedFunctionCurrent&&CreatedFunctionCurrent(nullptr))return true;
+        R.bChangeStateKnown=false;R.Data->SetObjectField(TEXT("local_function_creation_latest_data"),CreatedFunction.Data);
+        return Fail(R,TEXT("local_function_creation_endpoint_changed"),TEXT("Created function/current target changed before the local writer; original creation prefix retained, no declaration or automatic replay."));
+    };
+    if(!CreationCurrent())return R;
+    if(EnumScope&&!EnumScope->BindGraph(G)) { return R; }
     UK2Node_FunctionEntry* Entry = nullptr; if (IsLocalMap) { const auto Inventory=G->Nodes; for(const auto& H:Inventory){if(!H.IsResolved()){EnumScope->Bad(TEXT("local_map_entry_unavailable"),TEXT("Resolved entry inventory required."));return R;}UEdGraphNode* N=H.Get();if(!EnumScope->Check()||G->Nodes!=Inventory)return R;if(N&&N->GetClass()==UK2Node_FunctionEntry::StaticClass()){if(Entry){EnumScope->Bad(TEXT("local_map_entry_unavailable"),TEXT("One exact Entry required."));return R;}Entry=static_cast<UK2Node_FunctionEntry*>(N);}}FMemberReference OwnLocalReference;if(Entry)OwnLocalReference.SetExternalMember(G->GetFName(),nullptr,Entry->FunctionReference.GetMemberGuid());if(!Entry||!Entry->FunctionReference.IsSameReference(OwnLocalReference)||Entry->FunctionReference.IsSelfContext()||Entry->GetOuter()!=G||!Entry->IsEditable()||!Entry->CustomGeneratedFunctionName.IsNone()||Entry->FunctionReference.GetMemberName()!=G->GetFName()||Entry->FunctionReference.IsLocalScope()||Entry->FunctionReference.IsDeprecated()||Entry->LocalVariables.Num()>255||((Entry->GetExtraFlags()&FUNC_Static)!=0)!=EnumScope->PresetMapLibrary){EnumScope->Bad(TEXT("local_variable_function_scope_unsupported"),TEXT("One editable own nonstatic Actor function Entry required."));return R;}}else if (!LocalAdmission(BP, G, Entry, R)) { return R; } if(EnumScope&&!EnumScope->BindEditable(Entry)) { return R; }if(IsLocalMap&&!EnumScope->PresetEntry(Entry))return R;const FGuid EntryGuid=Entry->NodeGuid;
+    if(!CreationCurrent())return R;
     TStrongObjectPtr<UEdGraph> GraphHold(G); TStrongObjectPtr<UK2Node_FunctionEntry> EntryHold(Entry);
     const FName Requested(*Name);
     const auto FindSelectedLocal=[&](UK2Node_FunctionEntry** Out=nullptr)->FBPVariableDescription*{if(!IsLocalMap)return FBlueprintEditorUtils::FindLocalVariable(BP,G,Requested,Out);if(!EnumScope->Check())return nullptr;auto* D=Entry->LocalVariables.FindByPredicate([&](const auto& X){return X.VarName==Requested;});if(D&&Out)*Out=Entry;return D;};
@@ -4112,8 +4605,14 @@ FResult AddLocal(const FString& Path, const FString& Name, const FString& Type, 
     if (!LocalCapture(BP, Before, R, TEXT("before_observation"), EnumScope.Get())) { if(EnumScope&&EnumScope->Stopped) { return R; } R.bChangeStateKnown = false; Fail(R, TEXT("local_variable_before_unobservable"), TEXT("Bounded initial local/member/graph/source prefix incomplete; no declaration dispatched.")); return R; }
     if(EnumScope&&!EnumScope->Check()) { return R; }
     const TArray<FBPVariableDescription> Old = Entry->LocalVariables; const FString EntryPath = Entry->GetPathName();
-    TArray<TSharedPtr<FJsonValue>> Calls, DescriptorCalls; const FScopedTransaction Outer(NSLOCTEXT("CubelessMCP", "AddLocalVariable", "MCP add_blueprint_local_variable"));
-    LifecycleCount(R, TEXT("outer_transaction_calls")); if(EnumScope&&!EnumScope->Check()) { return R; } R.Stage = TEXT("add_local_variable"); R.bMutationAttempted = true; R.bChangeStateKnown = false;
+    if(!CreationCurrent())return R;
+    // The function-creation lease freezes its new Entry. Retire that completed
+    // stage only after the existing complete local baseline has been captured;
+    // AddLocalVariable/MarkStructural legitimately rebuilds the target classes.
+    if(FunctionCreated){CreatedFunctionCurrent=nullptr;R.Data->SetBoolField(TEXT("function_creation_scope_retired_before_local_declaration"),true);}
+    TArray<TSharedPtr<FJsonValue>> Calls, DescriptorCalls; TUniquePtr<FScopedTransaction> LocalTransaction;
+    if(!CreationTransaction){LocalTransaction=MakeUnique<FScopedTransaction>(NSLOCTEXT("CubelessMCP","AddLocalVariable","MCP add_blueprint_local_variable"));LifecycleCount(R,TEXT("outer_transaction_calls"));}
+    if(EnumScope&&!EnumScope->Check()) { return R; } R.Stage = TEXT("add_local_variable"); R.bMutationAttempted = true; R.bChangeStateKnown = false;
     auto Call = MakeShared<FJsonObject>(); Call->SetStringField(TEXT("route"), TEXT("FBlueprintEditorUtils::AddLocalVariable")); Call->SetStringField(TEXT("graph_path"), G->GetPathName());
     Call->SetStringField(TEXT("variable_name"), Name); Call->SetBoolField(TEXT("attempted"), true); Call->SetBoolField(TEXT("returned"), false); Call->SetField(TEXT("result"), MakeShared<FJsonValueNull>());
     Calls.Add(MakeShared<FJsonValueObject>(Call)); R.Data->SetArrayField(TEXT("local_variable_calls"), Calls); LifecycleCount(R, TEXT("local_variable_add_attempts"));
@@ -4151,7 +4650,7 @@ FResult AddLocal(const FString& Path, const FString& Name, const FString& Type, 
     R.Stage = TEXT("after_observation"); LifecycleAggregateClear(R);
     if (!LocalCapture(BP, After, R, TEXT("after_observation"), EnumScope.Get())) { if(EnumScope&&EnumScope->Stopped) { return R; } R.bChangeStateKnown = false; Fail(R, TEXT("local_variable_after_unobservable"), TEXT("Returned add/descriptor/structural prefix retained; final actual observation incomplete. No compile/save/retry.")); return R; }
     if(EnumScope&&!EnumScope->Check()) { return R; }
-    R.bChangeStateKnown = true; R.bChanged = !LifecycleEqual(Before.State, After.State) || !LifecycleEqual(Before.Source, After.Source)
+    R.bChangeStateKnown = true; R.bChanged = CreationChanged || !LifecycleEqual(Before.State, After.State) || !LifecycleEqual(Before.Source, After.Source)
         || !LifecycleEqual(Before.References, After.References) || !LifecycleEqual(Before.Other, After.Other) || !LifecycleEqual(Before.Disk, After.Disk);
     R.Data->SetBoolField(TEXT("observations_complete"), true); New = FindSelectedLocal(&CurrentEntry);
     if (!Ready || !New || CurrentEntry != Entry || Entry->LocalVariables.Num() != Old.Num() + 1 || New != &Entry->LocalVariables.Last() || New->VarGuid != AddedGuid)

@@ -74,12 +74,14 @@ def _native(method, *arguments):
     return value
 
 
-def create_finite_native_graph(values, operation_id):
+def create_finite_native_graph(values, operation_id, request_owned_general=False):
     """One finite constructor JSON leaf; no Python PCG UObject/value wrappers or retry."""
     document = {"graph_spec": {key: values[key] for key in
         ("asset_path", "nodes", "edges", "forbidden_dependency_prefixes")},
         **{key: values[key] for key in ("overwrite_existing", "allow_overwrite_non_temp", "save", "dry_run")},
         "operation_id": operation_id}
+    if request_owned_general:
+        document["request_owned_general"] = True  # Native validates source/ownership; not a health override.
     try:
         text = json.dumps(document, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
         if len(text.encode("utf-8")) > 2 * 1048576 or len(text.encode("utf-16-le")) // 2 > 2 * 1048576 or "\x00" in text:
@@ -423,20 +425,21 @@ def _selector_semantic(value):
 
 
 def finite_native_selector_assignment(preview):
-    """Scalar lifetime routing only; the native leaf revalidates every identity.
+    """Route reflected native scalar selector roles to the guarded C++ leaf.
 
-    This does not open the general Python construction/GC gate or admit another
-    settings class. The preview is untrusted JSON, never a replacement for native
-    reflection, source preservation or current-boundary checks.
+    This untrusted preview selects transport only. Native independently proves
+    the exact runtime settings class, property declaration/owner and concrete
+    input/output struct before any scratch construction or target assignment.
+    Generated/custom classes, custom structs and container selectors stay out.
     """
-    roles = {
-        ("/Script/PCG.PCGAttributeNoiseSettings", "InputSource"): "/Script/PCG.PCGAttributePropertyInputSelector",
-        ("/Script/PCG.PCGAttributeNoiseSettings", "OutputTarget"): "/Script/PCG.PCGAttributePropertyOutputSelector",
-        ("/Script/PCG.PCGAttributeFilteringSettings", "TargetAttribute"): "/Script/PCG.PCGAttributePropertyInputSelector",
-        ("/Script/PCG.PCGAttributeFilteringSettings", "ThresholdAttribute"): "/Script/PCG.PCGAttributePropertyInputSelector",
-    }
-    expected = roles.get((preview.get("settings_class"), preview.get("selector_property_name")))
-    return expected is not None and preview.get("selector_struct_path") == expected
+    settings_class = preview.get("settings_class")
+    name = preview.get("selector_property_name")
+    return (type(settings_class) is str
+        and settings_class.startswith("/Script/PCG.")
+        and type(name) is str and bool(name)
+        and preview.get("selector_struct_path") in (
+            "/Script/PCG.PCGAttributePropertyInputSelector",
+            "/Script/PCG.PCGAttributePropertyOutputSelector"))
 
 
 def _native_selector_assignment(method, preview, request):

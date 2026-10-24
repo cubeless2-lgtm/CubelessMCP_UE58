@@ -667,6 +667,14 @@ bool PrepareMesh(FResult& R, const FNiagaraTypeDefinition& T, const TSharedPtr<F
 bool Prepare(FResult& R, const FNiagaraTypeDefinition& T, const TSharedPtr<FJsonValue>& V, FPrepared& P)
 {
     P.K = Kind(T);
+    // YM: original user store setters consume the SDK JSON conversion contract,
+    // not exact JSON types. Keep finite/storage bounds before native narrowing.
+    const auto UserNumber=[](const TSharedPtr<FJsonValue>& Value,double& Out,bool Position=false)
+    {
+        if(!Value.IsValid()||!Value->TryGetNumber(Out)||!FMath::IsFinite(Out)
+            ||FMath::Abs(Out)>static_cast<double>(TNumericLimits<float>::Max()))return false;
+        if(!Position)Out=static_cast<float>(Out);return true;
+    };
     if (!V.IsValid() || P.K == EKind::Unsupported) { return Fail(R, TEXT("niagara_type_unsupported"), TEXT("Literal values support finite primitives, Position, UObject and MaterialInterface; arbitrary types remain incomplete.")); }
     if (P.K == EKind::ArrayDI)
     {
@@ -689,29 +697,40 @@ bool Prepare(FResult& R, const FNiagaraTypeDefinition& T, const TSharedPtr<FJson
     }
     if (P.K == EKind::Bool)
     {
-        if (V->Type != EJson::Boolean || !V->TryGetBool(P.B)) { return Fail(R, TEXT("niagara_bool_value_invalid"), TEXT("Bool requires a JSON boolean.")); }
+        if (!V->TryGetBool(P.B)) { return Fail(R, TEXT("niagara_bool_value_invalid"), TEXT("Bool requires an SDK TryGetBool-convertible JSON value.")); }
         P.Expected = MakeShared<FJsonValueBoolean>(P.B); return true;
     }
     if (P.K == EKind::Int)
     {
         double X = 0;
-        if (V->Type != EJson::Number || !V->TryGetNumber(X) || !FMath::IsFinite(X) || X < MIN_int32 || X > MAX_int32 || X != FMath::TruncToDouble(X))
-        { return Fail(R, TEXT("niagara_int_value_invalid"), TEXT("Int requires an exact int32 JSON number; unsafe fractional/out-of-range casts are rejected.")); }
+        if (!V->TryGetNumber(X) || !FMath::IsFinite(X))
+        { return Fail(R, TEXT("niagara_int_value_invalid"), TEXT("Int requires a finite SDK TryGetNumber-convertible value.")); }
+        const double Truncated=FMath::TruncToDouble(X);
+        if(Truncated<MIN_int32||Truncated>MAX_int32)
+        { return Fail(R, TEXT("niagara_int_value_invalid"), TEXT("Original truncation must fit int32 storage; unsafe narrowing is rejected before mutation.")); }
         P.I = static_cast<int32>(X); P.Expected = Number(P.I); return true;
     }
     if (P.K == EKind::Float)
     {
-        if (!FloatNumber(V, P.N[0])) { return Fail(R, TEXT("niagara_float_value_invalid"), TEXT("Float requires a finite float32-representable JSON number.")); }
+        if (!UserNumber(V, P.N[0])) { return Fail(R, TEXT("niagara_float_value_invalid"), TEXT("Float requires a finite float32-representable SDK TryGetNumber value.")); }
         P.Expected = Number(P.N[0]); return true;
     }
     const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
     const int32 Count = P.K == EKind::Vec2 ? 2 : P.K == EKind::Vec4 || P.K == EKind::Color ? 4 : 3;
-    if (V->Type != EJson::Array || !V->TryGetArray(Items) || !Items || (Items->Num() != Count && !(P.K == EKind::Color && Items->Num() == 3)))
-    { return Fail(R, TEXT("niagara_vector_value_invalid"), TEXT("Numeric arrays require exact type arity (Color accepts RGB with alpha 1 or RGBA); object-form/extra elements are unsupported.")); }
+    const int32 Minimum=P.K==EKind::Color?3:Count;
+    if (V->Type != EJson::Array || !V->TryGetArray(Items) || !Items || Items->Num()<Minimum)
+    { return Fail(R, TEXT("niagara_vector_value_invalid"), TEXT("Numeric arrays require at least the type arity (Color accepts RGB with alpha 1); object-form is not an original implemented native contract.")); }
+    // JsonArrayToDoubles validates every item, including unused trailing values.
+    // Do not silently ignore an invalid extra item or narrow unused numbers.
+    for(const auto& Item:*Items)
+    {
+        double Ignored=0.;if(!Item.IsValid()||!Item->TryGetNumber(Ignored)||!FMath::IsFinite(Ignored))
+            return Fail(R,TEXT("niagara_vector_value_invalid"),TEXT("Every array item, including unused trailing values, requires a finite SDK numeric conversion."));
+    }
     TArray<TSharedPtr<FJsonValue>> Expected;
     for (int32 Index = 0; Index < Count; ++Index)
     {
-        if (Index < Items->Num() && !FloatNumber((*Items)[Index], P.N[Index], P.K == EKind::Position))
+        if (Index < Items->Num() && !UserNumber((*Items)[Index], P.N[Index], P.K == EKind::Position))
         { return Fail(R, TEXT("niagara_vector_value_invalid"), TEXT("Components must be finite and float32-representable; Position retains original world double precision within representable raw range.")); }
         Expected.Add(Number(P.N[Index]));
     }

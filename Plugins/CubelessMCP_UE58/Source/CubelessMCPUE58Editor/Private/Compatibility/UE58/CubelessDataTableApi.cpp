@@ -10,6 +10,8 @@
 #include "Animation/Skeleton.h"
 #include "ReferenceSkeleton.h"
 #include "Engine/DataTable.h"
+#include "Engine/UserDefinedEnum.h"
+#include "Engine/CompositeDataTable.h"
 #include "Animation/MirrorDataTable.h"
 #include "GameplayTagsManager.h"
 #include "StructUtils/UserDefinedStruct.h"
@@ -88,7 +90,7 @@ void Init(FResult& R, const TCHAR* Operation, bool Save = false)
     for (const TCHAR* Field : { TEXT("observations_complete"), TEXT("source_preserved"), TEXT("unselected_state_preserved"), TEXT("independent_readback_passed"), TEXT("persistence_verified"), TEXT("runtime_verified"), TEXT("implicit_engine_work_measured") }) { R.Data->SetBoolField(Field, false); }
     R.Data->SetArrayField(TEXT("asset_load_calls"), {}); R.Data->SetArrayField(TEXT("save_calls"), {}); R.Data->SetBoolField(TEXT("save_requested"), Save); R.Data->SetBoolField(TEXT("saved"), false);
     R.Data->SetStringField(TEXT("dependency_tier"), TEXT("public EngineAPI/Editor DataTable helpers and direct SavePackage; original ServerRPC is provenance only; no gameplay Cubeless class"));
-    R.Data->SetStringField(TEXT("admission_scope"), TEXT("Exact native ordinary UDataTable and MirrorDataTable profiles; bounded saved-clean compiled UDS scalar/native Vector/Rotator/Transform row profiles. Existing-table UDS schema/list/get/add-update/remove additionally admit finite acyclic compiled UDS/scalar7 arrays/Sets and scalar-key Maps to scalar/primitive-array/UDS values. Current owned root/Inner/Element/Key/Value descriptors precede fresh copied ordered values or unordered typed slot bags retaining multiplicity. Bounds are4096 slots/container,16384 copied cells,depth8,16 nested sources/64 fields each; original JSON coercion, converter partial/no-notify/no-save and save-before-subset failure remain. UDS composite-table Create, enum/object/custom operators/struct arrays/nested container elements, source authoring, K2 widening, specialized factory/autofill/protected refresh and runtime mirroring remain incomplete."));
+    R.Data->SetStringField(TEXT("admission_scope"), TEXT("Exact native ordinary UDataTable and MirrorDataTable profiles; readonly CompositeDataTable DAG with native or admitted compiled UDS rows; bounded saved-clean compiled UDS scalar/native Vector/Rotator/Transform row profiles. Existing-table UDS schema/list/get/add-update/remove additionally admit finite acyclic compiled UDS, scalar7-or-UDS arrays, scalar7 Sets and scalar-key Maps to scalar/admitted-array/UDS values. Current owned root/Inner/Element/Key/Value descriptors precede fresh copied ordered values or unordered typed slot bags retaining multiplicity. Bounds are4096 slots/container,16384 copied cells,depth8,16 nested sources/64 fields each; original JSON coercion, converter partial/no-notify/no-save and save-before-subset failure remain. UDS composite-table Create, enum/object/custom operators/native-struct arrays/direct nested container elements, source authoring, K2 widening, specialized factory/autofill/protected refresh and runtime mirroring remain incomplete. Existing UDS CRUD additionally admits resolved exact FByteProperty enums in direct/nested/Array/Set/Map positions, backed by saved-clean Game UserDefinedEnum or native Engine/CoreUObject UEnum; FEnumProperty/custom/generated/dirty sources remain incomplete."));
     R.Data->SetStringField(TEXT("change_accounting_scope"), TEXT("legacy selected row/value delta or fresh asset creation; actual Modify/dirty/callback/load/save receipts and raw whole-target states are separate, including matching Add work"));
     R.Data->SetStringField(TEXT("effect_scope"), TEXT("explicit loads/PostLoad, transactions, DataTable row delegates, loaded Blueprint row-list consumers and save callbacks can perform implicit work; source identity/schema, target state/references/disk and other package dirty flags are observed, not every singleton/CDO/consumer cache"));
     R.Data->SetBoolField(TEXT("native_cdo_state_observed"), false); R.Data->SetBoolField(TEXT("atomic_rollback_available"), false); R.Data->SetBoolField(TEXT("auto_retry_safe"), false);
@@ -268,7 +270,10 @@ bool Properties(const UObject* O, TSharedRef<FJsonObject>& J, FMirrorReadScope* 
     int32 Fields = 0, Chars = 0; if (!StringUdsAdmit(Uds) || !NativeRowAdmit(Native) || !MirrorReadAdmit(Scope) || !Loaded(O)) { return false; }
     for (TFieldIterator<FProperty> It(O->GetClass(), EFieldIteratorFlags::IncludeSuper); It; ++It)
     {
-        FProperty* P = *It; if (++Fields > MaxFields || P->ArrayDim < 1 || P->ArrayDim > 64 || !P->GetOwnerStruct()) { return false; }
+        FProperty* P = *It;
+        // Composite OldParentTables is delegate-maintenance cache, not authored parent order.
+        if(O->GetClass()==UCompositeDataTable::StaticClass()&&P->GetOwnerStruct()==UCompositeDataTable::StaticClass()&&P->HasAnyPropertyFlags(CPF_Transient))continue;
+        if (++Fields > MaxFields || P->ArrayDim < 1 || P->ArrayDim > 64 || !P->GetOwnerStruct()) { return false; }
         auto Row = MakeShared<FJsonObject>(); J->SetObjectField(P->GetName(), Row); Row->SetStringField(TEXT("owner"), P->GetOwnerStruct()->GetPathName()); Row->SetStringField(TEXT("class"), P->GetClass()->GetName()); Row->SetStringField(TEXT("flags"), LexToString(static_cast<uint64>(P->GetPropertyFlags()))); TArray<TSharedPtr<FJsonValue>> Values;
         for (int32 I = 0; I < P->ArrayDim; ++I) { FString S; const void* V = P->ContainerPtrToValuePtr<void>(O, I); const bool Exported=P->ExportText_Direct(S, V, V, const_cast<UObject*>(O), PPF_None); if (!StringUdsAdmit(Uds) || !NativeRowAdmit(Native) || !MirrorReadAdmit(Scope) || !Exported || (Chars += S.Len()) > MaxText) { return false; } Values.Add(MakeShared<FJsonValueString>(S)); } Row->SetArrayField(TEXT("values"), Values);
     } return true;
@@ -595,6 +600,9 @@ TSharedRef<FJsonObject> Observation(const FObservation& O)
 // KP: one authored FString only. These guards belong to DataTable operations;
 // they do not create/recompile/source-save a UDS or normalize JSON field names.
 bool StringUdsWriterRunning=false;
+// Reuse the established exact ModifyFlags comparison for non-source references.
+template<typename TScope>
+bool StringUdsEqual(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B,const TScope& S,bool Saved=false,const FString& At=FString(),bool ModifyProperties=false);
 struct FStringUdsScope
 {
     FResult& R; bool Active=false,Stopped=false,Bound=false,TrackUndo=false;
@@ -791,8 +799,10 @@ struct FStringUdsScope
     }
     static bool HasHashValue(const FValue& V)
     {if(V.Shape==3||V.Shape==4)return true;for(const auto& C:V.Children)if(HasHashValue(C))return true;return false;}
+    static bool ByteEnumPayloadKind(const FProperty* P)
+    {return P&&P->GetClass()==FByteProperty::StaticClass();}
     static bool HashScalarKind(FProperty* P)
-    {return ScalarKind(P)&&P->HasAllPropertyFlags(CPF_HasGetValueTypeHash);}
+    {return (ScalarKind(P)||ByteEnumPayloadKind(P))&&P->HasAllPropertyFlags(CPF_HasGetValueTypeHash);}
     static bool SetLayoutSame(const FScriptSetLayout& A,const FScriptSetLayout& B)
     {
 #if UE_USE_COMPACT_SET_AS_DEFAULT
@@ -806,8 +816,10 @@ struct FStringUdsScope
     bool PayloadReject(const TCHAR* Code,const FString& Why){return Stop(Code,*Why);}
     bool PayloadFailure(const TCHAR* Field,const FString& Expected,const FString& Actual,bool Unknown=true,const FString& Object=FString())
     {return ScalarMismatch(Object.IsEmpty()?TypePath:Object,Field,Expected,Actual);}
+    static bool ReferencePayloadKind(const FProperty* P)
+    {return P&&(P->GetClass()==FObjectProperty::StaticClass()||P->GetClass()==FSoftObjectProperty::StaticClass());}
     static bool PayloadKind(FProperty* P)
-    {return P&&(P->GetClass()==FArrayProperty::StaticClass()||P->GetClass()==FSetProperty::StaticClass()||P->GetClass()==FMapProperty::StaticClass()||P->GetClass()==FStructProperty::StaticClass());}
+    {return P&&(P->GetClass()==FArrayProperty::StaticClass()||P->GetClass()==FSetProperty::StaticClass()||P->GetClass()==FMapProperty::StaticClass()||P->GetClass()==FStructProperty::StaticClass()||ByteEnumPayloadKind(P)||ReferencePayloadKind(P));}
     static TSharedRef<FJsonValue> PayloadJson(const FValue& V)
     {
         TArray<TSharedPtr<FJsonValue>> Children;for(const auto& C:V.Children)Children.Add(PayloadJson(C));
@@ -818,7 +830,7 @@ struct FStringUdsScope
     {
         FProperty* P=nullptr;FProperty* Parent=nullptr;UStruct* Owner=nullptr;FFieldClass* Kind=nullptr;
         FName Name;FGuid Guid;FString Authored;uint64 Flags=0;int32 Size=0,Offset=0,Dim=0,Align=0;uint8 BoolSize=0,BoolOffset=0,BoolMask=0,BoolFieldMask=0;
-        FProperty* Inner=nullptr;FProperty* Key=nullptr;FProperty* Value=nullptr;FScriptSetLayout SetLayout{};FScriptMapLayout MapLayout{};EMapPropertyFlags MapFlags=EMapPropertyFlags::None;EArrayPropertyFlags ArrayFlags=EArrayPropertyFlags::None;UUserDefinedStruct* Struct=nullptr;
+        FProperty* Inner=nullptr;FProperty* Key=nullptr;FProperty* Value=nullptr;FScriptSetLayout SetLayout{};FScriptMapLayout MapLayout{};EMapPropertyFlags MapFlags=EMapPropertyFlags::None;EArrayPropertyFlags ArrayFlags=EArrayPropertyFlags::None;UUserDefinedStruct* Struct=nullptr;UEnum* ByteEnum=nullptr;UClass* ReferenceClass=nullptr;
     };
     struct FPayloadStruct
     {
@@ -827,7 +839,156 @@ struct FStringUdsScope
         FGuid Guid;FString Path,DataPath;int32 Size=0,Align=0;uint32 PackageFlags=0;const uint8* Memory=nullptr;
         TArray<FProperty*> Members;FValue Defaults;TSharedRef<FJsonObject> FileBefore=MakeShared<FJsonObject>();bool Ready=false;
     };
-    TArray<FPayloadField> PayloadFields;TArray<TUniquePtr<FPayloadStruct>> PayloadStructs;bool PayloadDefaultsReady=false,CompositePayload=false,HashedPayload=false,PayloadReady=false;
+    struct FPayloadEnum
+    {
+        TStrongObjectPtr<UEnum> Type;TStrongObjectPtr<UPackage> Package;UClass* Class=nullptr;
+        FString Path,CppType;EObjectFlags Flags=RF_NoFlags;uint32 PackageFlags=0;bool Dirty=false,UserDefined=false,FlagsEnum=false;
+        UEnum::ECppForm Form=UEnum::ECppForm::Regular;UEnum::EUnderlyingType Underlying=UEnum::EUnderlyingType::uint8;
+        TArray<FName> Names;TArray<int64> Values;TArray<FString> AuthoredNames;TMap<FName,TOptional<FString>> DisplayNames;
+        TOptional<FString> Description;uint32 UniqueNameIndex=0;TSharedRef<FJsonObject> FileBefore=MakeShared<FJsonObject>();
+    };
+    TArray<FPayloadField> PayloadFields;TArray<TUniquePtr<FPayloadStruct>> PayloadStructs;TArray<TUniquePtr<FPayloadEnum>> PayloadEnums;
+    bool PayloadDefaultsReady=false,CompositePayload=false,HashedPayload=false,StructArrayPayload=false,PayloadReady=false,ByteEnumPayload=false;
+    // ACS: original converter/row writer remains unchanged. Resident references
+    // are admitted before writes; soft handles are copied without Get/Load.
+    struct FPayloadReferenceRole
+    {
+        TStrongObjectPtr<UObject> Object;UClass* Class=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;
+        FString Path;EObjectFlags Flags=RF_NoFlags;uint32 PackageFlags=0;bool Dirty=false;
+    };
+    TArray<FPayloadReferenceRole> ReferenceRoles;TMap<FString,TSharedRef<FJsonObject>> ReferenceIdentities,ReferenceFiles;
+    TSet<UObject*> ReferenceRoots;bool ReferencePayload=false,ReferenceAdmissionClosed=false;
+    bool ReferenceCurrent(bool ReadDisk=false)
+    {
+        if(!Context())return false;
+        for(const auto& E:ReferenceRoles)
+        {
+            auto* O=E.Object.Get();if(!Loaded(O)||!Loaded(E.Class)||!Loaded(E.Package)||O->GetClass()!=E.Class||O->GetOuter()!=E.Outer||O->GetPackage()!=E.Package||O->GetFlags()!=E.Flags||O->GetPathName()!=E.Path||uint32(E.Package->GetPackageFlags())!=E.PackageFlags||E.Package->IsDirty()!=E.Dirty)
+                return PayloadFailure(TEXT("reference_source_role"),E.Path,TEXT("held source/class/outer/package/path/flags/dirty changed"));
+        }
+        if(ReadDisk)for(const auto& Pair:ReferenceFiles){auto Now=MakeShared<FJsonObject>();if(!Disk(Pair.Key,Now)||!Context()||!MirrorReadLiteralEqual(Pair.Value,Now))return PayloadFailure(TEXT("reference_source_disk"),Pair.Key,TEXT("resident source package file changed"));}
+        return true;
+    }
+    bool EnrollReference(UObject* O)
+    {
+        if(!O)return true;if(!Context()||!Loaded(O))return PayloadReject(TEXT("datatable_payload_reference_source_pending"),TEXT("Current resident reference required; no resolver fallback."));
+        if(ReferenceRoots.Contains(O))return ReferenceCurrent();
+        if(ReferenceAdmissionClosed)return PayloadFailure(TEXT("reference_unplanned_after_writer"),TEXT("reference admitted before selected-row writer"),O->GetPathName());
+        if(!O->IsAsset()||O->GetOuter()!=O->GetPackage()||!AssetPath(O->GetPathName(),false)||O->GetPackage()->IsDirty()||O->GetPackage()->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_PlayInEditor|PKG_CompiledIn)||O->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||!Loaded(O->GetClass())||!O->GetClass()->HasAnyClassFlags(CLASS_Native)||!O->GetClass()->ClassGeneratedBy.IsResolved()||O->GetClass()->ClassGeneratedBy.Get()||O->GetClass()->IsEditorOnly()||O->GetClass()->HasAnyClassFlags(CLASS_DefaultToInstanced|CLASS_NewerVersionExists)||O->GetPackage()->GetName()==SourcePackage||(!SelectedPackage.IsEmpty()&&O->GetPackage()->GetName()==SelectedPackage))
+            return PayloadReject(TEXT("datatable_payload_reference_source_pending"),TEXT("Loaded saved-clean top-level runtime Game/Engine native asset in a distinct package required; cold/generated/instanced/self references remain incomplete."));
+        // FindReferences invokes AddReferencedObjects. Capture the admitted root
+        // before that callback; never adopt its returned state as a new baseline.
+        if(!Pin(O)||!Pin(O->GetClass())||!Pin(O->GetOuter())||!Pin(O->GetPackage()))return false;
+        if(!ReferenceIdentities.Contains(O->GetPathName()))
+        {
+            FPayloadReferenceRole E;E.Object.Reset(O);E.Class=O->GetClass();E.Outer=O->GetOuter();E.Package=O->GetPackage();E.Path=O->GetPathName();E.Flags=O->GetFlags();E.PackageFlags=uint32(E.Package->GetPackageFlags());E.Dirty=E.Package->IsDirty();ReferenceIdentities.Add(E.Path,Identity(O));ReferenceRoles.Add(MoveTemp(E));
+        }
+        const FString RootPackageName=O->GetPackage()->GetName();if(!ReferenceFiles.Contains(RootPackageName)){if(ReferenceFiles.Num()>=32)return PayloadReject(TEXT("datatable_payload_reference_file_bound"),TEXT("At most32 distinct resident source package files per UDS request; wider direct reference sets remain incomplete."));auto File=MakeShared<FJsonObject>();if(!Disk(RootPackageName,File)||!Context()||!File->GetBoolField(TEXT("exists")))return PayloadReject(TEXT("datatable_payload_reference_file_pending"),TEXT("Saved source package file required; no source loader/save."));ReferenceFiles.Add(RootPackageName,File);}
+        if(!Raw(false)||!ReferenceCurrent(true))return false;
+        TStrongObjectPtr<UObject> ReturnedHold(O);TArray<UObject*> Closure;FReferenceFinder Finder(Closure,nullptr,false,true,false,true);Finder.FindReferences(O);
+        if(!Raw(false)||!ReferenceCurrent(true))return false;
+        if(Closure.Num()>512)return PayloadReject(TEXT("datatable_payload_reference_closure_pending"),TEXT("Finite resident root and direct reference set required before row conversion."));Closure.AddUnique(O);
+        for(auto* Ref:Closure)
+        {
+            if(!Loaded(Ref)||!Loaded(Ref->GetClass())||!Loaded(Ref->GetPackage())||!CleanPath(Ref->GetPathName())||!CleanPath(Ref->GetClass()->GetPathName())||Ref==Type.Get()||Ref->IsIn(Type.Get())||Ref->GetPackage()->GetName()==SelectedPackage||ReferenceRoles.Num()>=2048)
+                return PayloadReject(TEXT("datatable_payload_reference_closure_pending"),TEXT("Source direct reference set must be resident, tooling-free and separate from selected table/UDS; wider aliases remain incomplete."));
+            const FString PackageName=Ref->GetPackage()->GetName();if((PackageName.StartsWith(TEXT("/Game/"))||PackageName.StartsWith(TEXT("/Engine/")))&&!ReferenceFiles.Contains(PackageName)){if(ReferenceFiles.Num()>=32)return PayloadReject(TEXT("datatable_payload_reference_file_bound"),TEXT("At most32 distinct resident source package files per UDS request; wider direct reference sets remain incomplete."));auto File=MakeShared<FJsonObject>();if(!Disk(PackageName,File)||!Context()||!File->GetBoolField(TEXT("exists")))return PayloadReject(TEXT("datatable_payload_reference_file_pending"),TEXT("Saved resident source direct-reference file required; no source loader/save."));ReferenceFiles.Add(PackageName,File);}
+            if(ReferenceIdentities.Contains(Ref->GetPathName()))continue;if(!Pin(Ref)||!Pin(Ref->GetClass())||!Pin(Ref->GetPackage()))return false;
+            FPayloadReferenceRole E;E.Object.Reset(Ref);E.Class=Ref->GetClass();E.Outer=Ref->GetOuter();E.Package=Ref->GetPackage();E.Path=Ref->GetPathName();E.Flags=Ref->GetFlags();E.PackageFlags=uint32(E.Package->GetPackageFlags());E.Dirty=E.Package->IsDirty();ReferenceIdentities.Add(E.Path,Identity(Ref));ReferenceRoles.Add(MoveTemp(E));
+        }
+        ReferenceRoots.Add(O);R.Data->SetNumberField(TEXT("uds_reference_source_identities"),ReferenceRoles.Num());R.Data->SetNumberField(TEXT("uds_reference_source_files"),ReferenceFiles.Num());R.Data->SetBoolField(TEXT("referenced_asset_full_RAM_payload_purity_proven"),false);return ReferenceCurrent();
+    }
+    bool ReferenceLiteral(FProperty* P,const TSharedPtr<FJsonValue>& Value)
+    {
+        if(!Value||Value->Type==EJson::Null)return true;auto V=Value;
+        // SDK scalar ArrayDim=1 reads only the first JSON array item. Other
+        // nonstring types retain stock noninstanced failure/no-op semantics.
+        if(V->Type==EJson::Array){if(V->AsArray().IsEmpty())return true;V=V->AsArray()[0];}
+        if(!V||V->Type!=EJson::String)return true;const FString Requested=V->AsString();if(Requested.IsEmpty()||Requested==TEXT("None"))return true;
+        if(Requested.Len()>2048||!CleanPath(Requested))return PayloadReject(TEXT("datatable_payload_reference_literal_pending"),TEXT("Bounded runtime reference literal required; broader original aliases remain incomplete."));
+        FString Path=FPackageName::ExportTextPathToObjectPath(Requested);Path.TrimQuotesInline();if(!AssetPath(Path,false))return PayloadReject(TEXT("datatable_payload_reference_literal_pending"),TEXT("Exact Game/Engine asset path required; short/class/subobject/cold variants remain incomplete."));
+        auto* Ref=StaticFindObject(nullptr,nullptr,*Path);TStrongObjectPtr<UObject> Hold(Ref);if(!Raw(false)||!Loaded(Ref))return PayloadReject(TEXT("datatable_payload_reference_load_pending"),TEXT("Original ImportText may load assets; this profile requires explicit prior load, no preloader or value substitution."));
+        const auto* Role=PayloadFields.FindByPredicate([&](const FPayloadField& E){return E.P==P;});if(!Role||!Role->ReferenceClass||!Ref->IsA(Role->ReferenceClass))return PayloadReject(TEXT("datatable_payload_reference_class_pending"),TEXT("Resident value must satisfy actual held property class; wider original source parsing remains incomplete."));
+        const int32 Quote=Requested.Find(TEXT("'"));if(Quote!=INDEX_NONE){const FString Prefix=Requested.Left(Quote);if(!Requested.EndsWith(TEXT("'"))||(Prefix!=Ref->GetClass()->GetName()&&Prefix!=Ref->GetClass()->GetPathName()))return PayloadReject(TEXT("datatable_payload_reference_literal_pending"),TEXT("Export prefix must match the actual loaded native asset class; no class resolver fallback."));}
+        return EnrollReference(Ref);
+    }
+    bool ReferenceProjectionEqual(const TSharedRef<FJsonObject>& A,const TSharedRef<FJsonObject>& B)
+    {
+        if(!ReferenceCurrent())return false;
+        for(const auto& Pair:A->Values)
+        {
+            const FString Path(Pair.Key.ToView());const auto* Known=ReferenceIdentities.Find(Path);const auto Actual=B->TryGetField(Pair.Key.ToView());
+            if(Known){if(!MirrorReadLiteralEqual(Pair.Value,MakeShared<FJsonValueObject>(*Known))||(Actual&&!MirrorReadLiteralEqual(Actual,MakeShared<FJsonValueObject>(*Known))))return PayloadFailure(TEXT("reference_source_projection"),Path,TEXT("planned readonly identity differs"));}
+            else if(!Actual||!StringUdsEqual(Pair.Value,Actual,*this,false,FString(),false))return false;
+        }
+        for(const auto& Pair:B->Values)if(!A->HasField(Pair.Key.ToView())){const auto* Known=ReferenceIdentities.Find(FString(Pair.Key.ToView()));if(!Known||!MirrorReadLiteralEqual(Pair.Value,MakeShared<FJsonValueObject>(*Known)))return false;}
+        return true;
+    }
+    static TOptional<FString> PayloadEnumTextSource(const FText& Text)
+    {const FString* Source=FTextInspector::GetSourceString(Text);return Source?TOptional<FString>(*Source):TOptional<FString>();}
+    bool PayloadEnumsCurrent()
+    {
+        // One source pass per actual current/SDK boundary, never per copied array/set/map slot.
+        // No disk, display-name generation/repair, metadata caches or converter runs here.
+        for(const auto& Entry:PayloadEnums)
+        {
+            const auto& E=*Entry;auto* U=E.Type.Get();auto* K=E.Package.Get();
+            if(!Context()||!Loaded(U)||!Loaded(K)||U->GetClass()!=E.Class||U->GetOuter()!=K||U->GetPackage()!=K
+                ||U->GetFlags()!=E.Flags||!U->GetPathName().Equals(E.Path,ESearchCase::CaseSensitive)
+                ||uint32(K->GetPackageFlags())!=E.PackageFlags||K->IsDirty()!=E.Dirty)
+                return PayloadFailure(TEXT("payload_enum_identity"),E.Path,TEXT("captured enum class/owner/identity/package changed"),true,E.Path);
+            if(U->GetCppForm()!=E.Form||U->GetUnderlyingType()!=E.Underlying||!U->CppType.Equals(E.CppType,ESearchCase::CaseSensitive)
+                ||U->HasAnyEnumFlags(EEnumFlags::Flags)!=E.FlagsEnum||U->HasAnyEnumFlags(EEnumFlags::NewerVersionExists)||U->NumEnums()!=E.Names.Num())
+                return PayloadFailure(TEXT("payload_enum_form"),TEXT("captured native enumeration form/name inventory"),TEXT("changed"),true,E.Path);
+            for(int32 I=0;I<E.Names.Num();++I)
+                if(U->GetNameByIndex(I)!=E.Names[I]||U->GetValueByIndex(I)!=E.Values[I])
+                    return PayloadFailure(TEXT("payload_enum_entry"),E.Names[I].ToString()+TEXT("=")+LexToString(E.Values[I]),LexToString(I)+TEXT(" changed"),true,E.Path);
+            if(E.UserDefined)
+            {
+                const auto* User=static_cast<UUserDefinedEnum*>(U);
+                if(User->DisplayNameMap.Num()!=E.DisplayNames.Num()||User->UniqueNameIndex!=E.UniqueNameIndex||PayloadEnumTextSource(User->EnumDescription)!=E.Description)
+                    return PayloadFailure(TEXT("payload_enum_authored_map"),TEXT("captured authored names/description"),TEXT("changed"),true,E.Path);
+                for(const auto& Pair:E.DisplayNames)
+                {
+                    const auto* Now=User->DisplayNameMap.Find(Pair.Key);
+                    if(!Now||PayloadEnumTextSource(*Now)!=Pair.Value)return PayloadFailure(TEXT("payload_enum_authored_name"),Pair.Key.ToString(),TEXT("authored FText source changed"),true,E.Path);
+                }
+            }
+        }
+        return true;
+    }
+    bool BindPayloadEnum(UEnum* U)
+    {
+        if(!Context()||!Loaded(U))return PayloadReject(TEXT("datatable_payload_enum_unavailable"),TEXT("Byte enum descriptor requires an already resolved loaded enum; no extra loader."));
+        for(const auto& Existing:PayloadEnums)if(Existing->Type.Get()==U)return PayloadEnumsCurrent();
+        if(PayloadEnums.Num()>=16)return PayloadReject(TEXT("datatable_payload_enum_bound"),TEXT("At most16 distinct byte enum sources per existing UDS DataTable scope."));
+        const bool User=U->GetClass()==UUserDefinedEnum::StaticClass();auto* K=U->GetPackage();
+        const bool Native=U->GetClass()==UEnum::StaticClass()&&Loaded(K)&&K->HasAnyPackageFlags(PKG_CompiledIn)
+            &&(K->GetName()==TEXT("/Script/Engine")||K->GetName()==TEXT("/Script/CoreUObject"));
+        if((!User&&!Native)||!Loaded(K)||U->GetOuter()!=K||U->NumEnums()<1||U->NumEnums()>1024
+            ||U->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||U->HasAnyEnumFlags(EEnumFlags::NewerVersionExists)
+            ||K->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_PlayInEditor)
+            ||(User&&(!AssetPath(U->GetPathName(),true)||K->IsDirty()||K->HasAnyPackageFlags(PKG_CompiledIn))))
+            return PayloadReject(TEXT("datatable_payload_enum_source_pending"),TEXT("Exact loaded native Engine/Core enum or saved-clean top-level Game UserDefinedEnum required; wider/custom/dirty sources remain incomplete."));
+        if(!Pin(U)||!Pin(U->GetClass())||!Pin(K))return false;
+        auto Role=MakeUnique<FPayloadEnum>();auto& E=*Role;E.Type.Reset(U);E.Package.Reset(K);E.Class=U->GetClass();E.Path=U->GetPathName();E.Flags=U->GetFlags();
+        E.PackageFlags=uint32(K->GetPackageFlags());E.Dirty=K->IsDirty();E.UserDefined=User;E.Form=U->GetCppForm();E.Underlying=U->GetUnderlyingType();E.CppType=U->CppType;E.FlagsEnum=U->HasAnyEnumFlags(EEnumFlags::Flags);
+        int32 Chars=E.CppType.Len();
+        for(int32 I=0;I<U->NumEnums();++I)
+        {
+            E.Names.Add(U->GetNameByIndex(I));E.Values.Add(U->GetValueByIndex(I));E.AuthoredNames.Add(U->GetAuthoredNameStringByIndex(I));
+            Chars+=E.Names.Last().GetStringLength()+E.AuthoredNames.Last().Len();
+            if(Chars>65536)return PayloadReject(TEXT("datatable_payload_enum_name_bound"),TEXT("Copied raw/authored enum names exceed65536 characters; source is left untouched."));
+        }
+        if(User)
+        {
+            auto* Data=static_cast<UUserDefinedEnum*>(U);if(Data->DisplayNameMap.Num()>1024)return PayloadReject(TEXT("datatable_payload_enum_display_bound"),TEXT("At most1024 authored enum display entries are admitted."));
+            for(const auto& Pair:Data->DisplayNameMap)E.DisplayNames.Add(Pair.Key,PayloadEnumTextSource(Pair.Value));E.Description=PayloadEnumTextSource(Data->EnumDescription);E.UniqueNameIndex=Data->UniqueNameIndex;
+            if(!Disk(K->GetName(),E.FileBefore)||!Context()||!E.FileBefore->GetBoolField(TEXT("exists"))||E.FileBefore->GetNumberField(TEXT("bytes"))<=0)
+                return PayloadReject(TEXT("datatable_payload_enum_file_pending"),TEXT("Existing saved UserDefinedEnum source file required; no compile/repair/save."));
+        }
+        PayloadEnums.Add(MoveTemp(Role));ByteEnumPayload=CompositePayload=true;return PayloadEnumsCurrent();
+    }
     FPayloadStruct* PayloadType(UUserDefinedStruct* S)
     {for(const auto& E:PayloadStructs)if(E->Type.Get()==S)return E.Get();return nullptr;}
     bool BindPayload(FProperty* P,FProperty* Parent=nullptr,int32 Depth=0)
@@ -838,7 +999,7 @@ struct FStringUdsScope
         {if(Old->Struct){const auto* Role=PayloadType(Old->Struct);if(!Role||!Role->Ready)return PayloadReject(TEXT("datatable_payload_struct_cycle"),TEXT("Acyclic finite compiled UDS tree required."));}return true;}
         if(!P||Depth>8||PayloadFields.Num()>=256||P->ArrayDim!=1||P->HasSetterOrGetter()||P->GetSize()<=0||P->GetMinAlignment()<=0
             ||P->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_EditorOnly|CPF_InstancedReference|CPF_ContainsInstancedReference|CPF_Config|CPF_GlobalConfig))
-            return PayloadReject(TEXT("datatable_payload_layout_pending"),TEXT("Bounded scalar/primitive-array/user-struct fields without accessors, instanced or transient/config roles required; wider original fields remain incomplete."));
+            return PayloadReject(TEXT("datatable_payload_layout_pending"),TEXT("Bounded scalar/scalar-or-UDS-array/user-struct fields without accessors, instanced or transient/config roles required; wider original fields remain incomplete."));
         UStruct* Owner=P->GetOwnerStruct();if(!Loaded(Owner)||P->GetOwner<FProperty>()!=Parent||P->GetOwnerProperty()!=(Parent?Parent->GetOwnerProperty():P))
             return PayloadReject(TEXT("datatable_payload_owner_pending"),TEXT("Actual direct reflected member or Array.Inner owner required."));
         FPayloadField E;E.P=P;E.Parent=Parent;E.Owner=Owner;E.Kind=P->GetClass();E.Name=P->GetFName();E.Flags=uint64(P->GetPropertyFlags());E.Size=P->GetSize();E.Offset=P->GetOffset_ForInternal();E.Dim=P->ArrayDim;E.Align=P->GetMinAlignment();
@@ -855,25 +1016,49 @@ struct FStringUdsScope
             if(E.Kind==FBoolProperty::StaticClass()){auto* B=static_cast<FBoolProperty*>(P);E.BoolSize=B->GetBoolFieldSize();E.BoolOffset=B->GetByteOffset();E.BoolMask=B->GetByteMask();E.BoolFieldMask=B->GetFieldMask();if(!B->IsNativeBool()||E.BoolSize!=sizeof(bool)||E.BoolOffset>=E.Size||!E.BoolMask)return PayloadReject(TEXT("datatable_payload_bool_storage_pending"),TEXT("Actual compiled native bool storage required; custom packed storage remains incomplete."));}
             PayloadFields.Add(E);return true;
         }
+        if(ReferencePayloadKind(P))
+        {
+            if(P->HasAnyPropertyFlags(CPF_PersistentInstance))return PayloadReject(TEXT("datatable_payload_reference_instanced_pending"),TEXT("Nonpersistent noninstanced reference property required; inline object construction remains incomplete."));
+            auto* Ref=static_cast<FObjectPropertyBase*>(P);if(!Ref->PropertyClass.IsResolved()||!Loaded(Ref->PropertyClass.Get()))return PayloadReject(TEXT("datatable_payload_reference_class_pending"),TEXT("Resolved loaded native runtime property class required; no class lookup/loader."));
+            UClass* C=Ref->PropertyClass.Get();if(!C->HasAnyClassFlags(CLASS_Native)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()||C->IsEditorOnly()||C->HasAnyClassFlags(CLASS_DefaultToInstanced|CLASS_NewerVersionExists)||!CleanPath(C->GetPathName())||!Pin(C)||!Pin(C->GetPackage()))return PayloadReject(TEXT("datatable_payload_reference_class_pending"),TEXT("Noninstanced native runtime declared class required; generated/class/instanced variants remain incomplete."));
+            const bool Soft=E.Kind==FSoftObjectProperty::StaticClass();if(E.Size!=(Soft?sizeof(FSoftObjectPtr):sizeof(TObjectPtr<UObject>))||E.Align!=(Soft?alignof(FSoftObjectPtr):alignof(TObjectPtr<UObject>)))return PayloadReject(TEXT("datatable_payload_reference_storage_pending"),TEXT("Exact current native hard/soft object storage/layout required."));
+            E.ReferenceClass=C;PayloadFields.Add(E);ReferencePayload=CompositePayload=true;return true;
+        }
+        if(ByteEnumPayloadKind(P))
+        {
+            auto* Byte=static_cast<FByteProperty*>(P);
+            if(E.Size!=sizeof(uint8)||!Byte->Enum.IsResolved()||Byte->Enum==nullptr)
+                return PayloadReject(TEXT("datatable_payload_byte_enum_pending"),TEXT("Exact native byte storage with an already resolved nonnull Enum slot required; plain bytes/FEnumProperty remain incomplete."));
+            // The public resolved slot can be copied without a tracked read. Bind
+            // the object found by its existing path before invoking source methods.
+            const FString EnumPath=Byte->Enum.GetPathName();
+            auto* Returned=EnumPath.IsEmpty()?nullptr:StaticFindObject(UEnum::StaticClass(),nullptr,*EnumPath);
+            if(!Context()||!Loaded(Returned)||Byte->Enum!=static_cast<UEnum*>(Returned))
+                return PayloadReject(TEXT("datatable_payload_byte_enum_binding"),TEXT("Current resolved byte enum path/object binding required; no resolver fallback."));
+            E.ByteEnum=static_cast<UEnum*>(Returned);PayloadFields.Add(E);
+            return BindPayloadEnum(E.ByteEnum);
+        }
         if(P->GetClass()==FArrayProperty::StaticClass())
         {
             auto* A=static_cast<FArrayProperty*>(P);E.Inner=A->Inner;E.ArrayFlags=A->ArrayFlags;
-            if(!E.Inner||!ScalarKind(E.Inner)||E.ArrayFlags!=EArrayPropertyFlags::None||P->GetSize()!=sizeof(FScriptArray)||P->GetMinAlignment()!=alignof(FScriptArray))return PayloadReject(TEXT("datatable_payload_array_pending"),TEXT("Actual default-allocator array with scalar7 primitive Inner required; struct/nested-container/object/enum array elements remain incomplete."));
-            PayloadFields.Add(E);CompositePayload=true;return BindPayload(E.Inner,P,Depth+1);
+            if(!E.Inner||!(ScalarKind(E.Inner)||ByteEnumPayloadKind(E.Inner)||ReferencePayloadKind(E.Inner)||E.Inner->GetClass()==FStructProperty::StaticClass())||E.ArrayFlags!=EArrayPropertyFlags::None||P->GetSize()!=sizeof(FScriptArray)||P->GetMinAlignment()!=alignof(FScriptArray))return PayloadReject(TEXT("datatable_payload_array_pending"),TEXT("Actual default-allocator array with scalar7, admitted byte enum or compiled UDS Inner required; native/custom-struct, direct nested-container, object and FEnumProperty elements remain incomplete."));
+            // Struct Inner is owned by the array descriptor, not an authored UDS member.
+            // Reuse the existing compiled-source/default/current lease and fresh recursive value copies.
+            PayloadFields.Add(E);CompositePayload=true;if(E.Inner->GetClass()==FStructProperty::StaticClass())StructArrayPayload=true;return BindPayload(E.Inner,P,Depth+1);
         }
         if(P->GetClass()==FSetProperty::StaticClass())
         {
             auto* S=static_cast<FSetProperty*>(P);E.Inner=S->ElementProp;E.SetLayout=S->SetLayout;
-            if(!E.Inner||!HashScalarKind(E.Inner)||P->GetSize()!=sizeof(FScriptSet)||P->GetMinAlignment()!=alignof(FScriptSet)||!SetLayoutSame(E.SetLayout,FScriptSet::GetScriptLayout(E.Inner->GetSize(),E.Inner->GetMinAlignment())))return PayloadReject(TEXT("datatable_payload_set_pending"),TEXT("Actual default-allocator Set with hashable native scalar7 ElementProp and SDK-linked layout required; struct/object/enum elements remain incomplete."));
+            if(!E.Inner||!HashScalarKind(E.Inner)||P->GetSize()!=sizeof(FScriptSet)||P->GetMinAlignment()!=alignof(FScriptSet)||!SetLayoutSame(E.SetLayout,FScriptSet::GetScriptLayout(E.Inner->GetSize(),E.Inner->GetMinAlignment())))return PayloadReject(TEXT("datatable_payload_set_pending"),TEXT("Actual default-allocator Set with hashable native scalar7/admitted byte enum ElementProp and SDK-linked layout required; struct/object/FEnumProperty elements remain incomplete."));
             PayloadFields.Add(E);CompositePayload=HashedPayload=true;return BindPayload(E.Inner,P,Depth+1);
         }
         if(P->GetClass()==FMapProperty::StaticClass())
         {
             auto* M=static_cast<FMapProperty*>(P);E.Key=M->KeyProp;E.Value=M->ValueProp;E.MapLayout=M->MapLayout;E.MapFlags=M->MapFlags;
-            if(!E.Key||!E.Value||!HashScalarKind(E.Key)||E.MapFlags!=EMapPropertyFlags::None||P->GetSize()!=sizeof(FScriptMap)||P->GetMinAlignment()!=alignof(FScriptMap)||!(ScalarKind(E.Value)||E.Value->GetClass()==FArrayProperty::StaticClass()||E.Value->GetClass()==FStructProperty::StaticClass())||!MapLayoutSame(E.MapLayout,FScriptMap::GetScriptLayout(E.Key->GetSize(),E.Key->GetMinAlignment(),E.Value->GetSize(),E.Value->GetMinAlignment())))return PayloadReject(TEXT("datatable_payload_map_pending"),TEXT("Actual default-allocator Map with hashable scalar7 key and existing finite scalar/array/UDS value payload required; other key/value operators and allocators remain incomplete."));
+            if(!E.Key||!E.Value||!HashScalarKind(E.Key)||E.MapFlags!=EMapPropertyFlags::None||P->GetSize()!=sizeof(FScriptMap)||P->GetMinAlignment()!=alignof(FScriptMap)||!(ScalarKind(E.Value)||ByteEnumPayloadKind(E.Value)||ReferencePayloadKind(E.Value)||E.Value->GetClass()==FArrayProperty::StaticClass()||E.Value->GetClass()==FStructProperty::StaticClass())||!MapLayoutSame(E.MapLayout,FScriptMap::GetScriptLayout(E.Key->GetSize(),E.Key->GetMinAlignment(),E.Value->GetSize(),E.Value->GetMinAlignment())))return PayloadReject(TEXT("datatable_payload_map_pending"),TEXT("Actual default-allocator Map with hashable scalar7/admitted byte enum key and existing finite scalar/byte-enum/array/UDS value payload required; other key/value operators and allocators remain incomplete."));
             PayloadFields.Add(E);CompositePayload=HashedPayload=true;return BindPayload(E.Key,P,Depth+1)&&BindPayload(E.Value,P,Depth+1);
         }
-        if(P->GetClass()!=FStructProperty::StaticClass())return PayloadReject(TEXT("datatable_payload_kind_pending"),TEXT("Reflected payload admits scalar7, their arrays/Sets, scalar-key Maps and compiled user-defined structs; other original types remain incomplete."));
+        if(P->GetClass()!=FStructProperty::StaticClass())return PayloadReject(TEXT("datatable_payload_kind_pending"),TEXT("Reflected payload admits scalar7, scalar-or-UDS arrays, scalar Sets, scalar-key Maps and compiled user-defined structs; other original types remain incomplete."));
         auto* F=static_cast<FStructProperty*>(P);if(!F->Struct.IsResolved())return PayloadReject(TEXT("datatable_payload_struct_unresolved"),TEXT("Existing resolved UDS source required; no source loader or compiler."));
         UScriptStruct* S=F->Struct.Get();TStrongObjectPtr<UScriptStruct> Immediate(S);
         if(!Context()||!Loaded(S)||S->GetClass()!=UUserDefinedStruct::StaticClass()||P->ElementSize!=S->GetStructureSize())return PayloadReject(TEXT("datatable_payload_struct_pending"),TEXT("Exact loaded compiled user-defined struct with matching storage required; custom/native struct operators remain incomplete."));
@@ -926,9 +1111,12 @@ struct FStringUdsScope
             if(E.Kind==FSetProperty::StaticClass()){auto* S=static_cast<FSetProperty*>(P);if(S->ElementProp!=E.Inner||!SetLayoutSame(S->SetLayout,E.SetLayout))return PayloadFailure(TEXT("payload_set_binding"),E.Name.ToString(),TEXT("ElementProp or SDK-linked layout changed"));}
             if(E.Kind==FMapProperty::StaticClass()){auto* M=static_cast<FMapProperty*>(P);if(M->KeyProp!=E.Key||M->ValueProp!=E.Value||M->MapFlags!=E.MapFlags||!MapLayoutSame(M->MapLayout,E.MapLayout))return PayloadFailure(TEXT("payload_map_binding"),E.Name.ToString(),TEXT("Key/Value/allocator/layout changed"));}
             if(E.Struct){auto* S=static_cast<FStructProperty*>(P);if(!S->Struct.IsResolved()||S->Struct.Get()!=E.Struct)return PayloadFailure(TEXT("payload_struct_binding"),E.Name.ToString(),TEXT("resolved held struct slot changed"));}
+            if(E.ByteEnum){auto* B=static_cast<FByteProperty*>(P);if(!B->Enum.IsResolved()||B->Enum!=E.ByteEnum)return PayloadFailure(TEXT("payload_byte_enum_binding"),E.Name.ToString(),TEXT("resolved held enum slot changed"));}
+            if(E.ReferenceClass){auto* O=static_cast<FObjectPropertyBase*>(P);if(!O->PropertyClass.IsResolved()||O->PropertyClass.Get()!=E.ReferenceClass)return PayloadFailure(TEXT("payload_reference_class_binding"),E.Name.ToString(),TEXT("resolved held reference class changed"));}
             if(!E.Parent&&E.Owner->GetClass()==UUserDefinedStruct::StaticClass())
             {auto* U=static_cast<UUserDefinedStruct*>(E.Owner);const FGuid Guid=U->FindPropertyGuidFromName(E.Name);const FString Authored=U->GetAuthoredNameForField(P);if(!Context()||Guid!=E.Guid||!Authored.Equals(E.Authored,ESearchCase::CaseSensitive))return PayloadFailure(TEXT("payload_authored_mapping"),E.Authored+TEXT(":")+E.Guid.ToString(),Authored+TEXT(":")+Guid.ToString());}
         }
+        if(!PayloadEnumsCurrent()||!ReferenceCurrent())return false;
         for(const auto& Entry:PayloadStructs)
         {
             const auto& E=*Entry;const uint8* Memory=E.Type->GetDefaultInstance();if(!Context()||Memory!=E.Memory)return PayloadFailure(TEXT("payload_default_instance"),E.Path,TEXT("compiled default storage changed"));
@@ -945,6 +1133,18 @@ struct FStringUdsScope
     {
         if(!Address||Depth>8||++Cells>16384)return PayloadFailure(TEXT("payload_value_bound"),TEXT("depth<=8 and <=16384 cells"),TEXT("exceeded"));
         if(ScalarKind(P)){if((P->GetClass()==FFloatProperty::StaticClass()||P->GetClass()==FDoubleProperty::StaticClass())&&!FMath::IsFinite(static_cast<FNumericProperty*>(P)->GetFloatingPointPropertyValue(Address)))return PayloadFailure(TEXT("payload_real_value"),TEXT("finite native real"),TEXT("nonfinite"));Out=Read(P,Address);if((P->GetClass()==FStrProperty::StaticClass()||P->GetClass()==FNameProperty::StaticClass())&&(Chars+=Out.String.Len())>65536)return PayloadFailure(TEXT("payload_text_bound"),TEXT("<=65536 copied characters"),LexToString(Chars));return true;}
+        if(ByteEnumPayloadKind(P)){Out.Shape=6;Out.Integer=static_cast<FByteProperty*>(P)->GetPropertyValue(Address);return true;}
+        if(ReferencePayloadKind(P))
+        {
+            const auto* Role=PayloadFields.FindByPredicate([&](const FPayloadField& E){return E.P==P;});if(!Role||!Role->ReferenceClass)return PayloadFailure(TEXT("reference_field_role"),TEXT("current held descriptor"),TEXT("missing"));
+            if(P->GetClass()==FSoftObjectProperty::StaticClass())
+            {
+                const FSoftObjectPtr Value=*static_cast<const FSoftObjectPtr*>(Address);const FSoftObjectPath Path=Value.ToSoftObjectPath();Out.Shape=8;Out.String=Path.ToString();
+                if(!Path.IsNull()){if(!AssetPath(Out.String,false))return PayloadFailure(TEXT("payload_soft_reference_path"),TEXT("exact runtime Game/Engine path"),Out.String);auto* Ref=StaticFindObject(nullptr,nullptr,*Out.String);if(!Loaded(Ref)||!Ref->IsA(Role->ReferenceClass))return PayloadReject(TEXT("datatable_payload_reference_load_pending"),TEXT("Resident compatible soft source required; no soft Get/Load."));if(!EnrollReference(Ref))return false;}return true;
+            }
+            const TObjectPtr<UObject> Slot=static_cast<FObjectProperty*>(P)->GetObjectPtrPropertyValue(Address);if(!Slot.IsResolved())return PayloadFailure(TEXT("payload_hard_reference_handle"),TEXT("resident or explicit null"),TEXT("unresolved"));
+            auto* Ref=Slot.Get();Out.Shape=7;if(Ref){if(!Loaded(Ref))return PayloadFailure(TEXT("payload_hard_reference_current"),TEXT("loaded resident native asset"),TEXT("unavailable"));if(!Ref->IsA(Role->ReferenceClass))return PayloadFailure(TEXT("payload_hard_reference_class"),Role->ReferenceClass->GetPathName(),Ref->GetClass()->GetPathName());if(!EnrollReference(Ref))return false;Out.String=Ref->GetPathName();Out.Bits=UPTRINT(Ref);}return true;
+        }
         if(P->GetClass()==FArrayProperty::StaticClass())
         {
             auto* A=static_cast<FArrayProperty*>(P);const auto* Storage=static_cast<const FScriptArray*>(Address);const int32 Num=Storage->Num(),Max=Storage->Max();const void* Data=Storage->GetData();
@@ -972,10 +1172,19 @@ struct FStringUdsScope
     bool PayloadInputSafe(FProperty* P,const TSharedPtr<FJsonValue>& Value,int32 Depth=0)
     {
         if(!Value.IsValid()||Depth>8)return false;if(Value->Type==EJson::Null)return true;
+        if(ReferencePayloadKind(P))return ReferenceLiteral(P,Value);
         if(ScalarKind(P))
         {
             if(P->GetClass()==FNameProperty::StaticClass()&&Value->Type==EJson::String){const FString Name=Value->AsString();for(TCHAR C:Name)if(C==0)return false;if(Name.Len()>=NAME_SIZE)return false;}
             return !((P->GetClass()==FIntProperty::StaticClass()||P->GetClass()==FInt64Property::StaticClass())&&Value->Type==EJson::Number&&(!FMath::IsFinite(Value->AsNumber())||Value->AsNumber()>=9223372036854775808.0||Value->AsNumber()< -9223372036854775808.0));
+        }
+        if(ByteEnumPayloadKind(P))
+        {
+            // Stock converter retains named/authored-name lookup, numeric cast,
+            // null/type errors and partial-prefix behavior. Only pre-crash bounds
+            // are checked here; enum membership and conversion are not rewritten.
+            if(Value->Type==EJson::String){const FString Name=Value->AsString();if(Name.Len()>=NAME_SIZE)return false;for(TCHAR C:Name)if(C==0)return false;}
+            return Value->Type!=EJson::Number||(FMath::IsFinite(Value->AsNumber())&&Value->AsNumber()<9223372036854775808.0&&Value->AsNumber()>=-9223372036854775808.0);
         }
         if(P->GetClass()==FArrayProperty::StaticClass())
         {if(Value->Type!=EJson::Array)return true;const auto& PayloadValues=Value->AsArray();if(PayloadValues.Num()>4096)return false;for(const auto& V:PayloadValues)if(!PayloadInputSafe(static_cast<FArrayProperty*>(P)->Inner,V,Depth+1))return false;return true;}
@@ -998,7 +1207,16 @@ struct FStringUdsScope
         {
             if(!Raw(false))return false;const auto& E=*Entry;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("path"),E.Path);J->SetStringField(TEXT("guid"),E.Guid.ToString());J->SetNumberField(TEXT("size"),E.Size);J->SetNumberField(TEXT("alignment"),E.Align);J->SetField(TEXT("default_values"),PayloadJson(E.Defaults));J->SetStringField(TEXT("editor_data"),E.DataPath);
             auto File=E.FileBefore;if(ReadDisk){File=MakeShared<FJsonObject>();if(!Disk(E.Package->GetName(),File)||!Raw(false)||!MirrorReadLiteralEqual(E.FileBefore,File))return PayloadFailure(TEXT("payload_source_file"),TEXT("captured saved nested UDS file"),TEXT("current file differs"),true,E.Path);}J->SetObjectField(TEXT("file"),File);Sources.Add(MakeShared<FJsonValueObject>(J));
-        }Out->SetArrayField(TEXT("payload_struct_sources"),Sources);return Raw(false);
+        }Out->SetArrayField(TEXT("payload_struct_sources"),Sources);
+        TArray<TSharedPtr<FJsonValue>> Enums;
+        for(const auto& Entry:PayloadEnums)
+        {
+            const auto& E=*Entry;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("path"),E.Path);J->SetStringField(TEXT("cpp_type"),E.CppType);J->SetBoolField(TEXT("user_defined"),E.UserDefined);J->SetBoolField(TEXT("flags_enum"),E.FlagsEnum);
+            TArray<TSharedPtr<FJsonValue>> Entries;for(int32 I=0;I<E.Names.Num();++I){auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("raw_name"),E.Names[I].ToString());V->SetStringField(TEXT("value"),LexToString(E.Values[I]));V->SetStringField(TEXT("authored_name"),E.AuthoredNames[I]);Entries.Add(MakeShared<FJsonValueObject>(V));}J->SetArrayField(TEXT("entries"),Entries);
+            if(E.UserDefined){auto File=E.FileBefore;if(ReadDisk){File=MakeShared<FJsonObject>();if(!Disk(E.Package->GetName(),File)||!Raw(false)||!MirrorReadLiteralEqual(E.FileBefore,File))return PayloadFailure(TEXT("payload_enum_source_file"),TEXT("captured saved enum file"),TEXT("current file differs"),true,E.Path);}J->SetObjectField(TEXT("file"),File);}
+            Enums.Add(MakeShared<FJsonValueObject>(J));
+        }
+        if(!Enums.IsEmpty())Out->SetArrayField(TEXT("payload_byte_enum_sources"),Enums);return ReferenceCurrent(ReadDisk)&&Raw(false);
     }
 
     // RE: collection storage is observed by copied values, never retained element/buffer addresses.
@@ -1093,11 +1311,13 @@ struct FStringUdsScope
         }
         return true;
     }
-    bool RowValue(const uint8* Memory,FString& Out)
+    bool RowValue(const uint8* Memory,FString& Out,bool SourceAlreadyObserved=false)
     {
         if(!Memory)return Stop(TEXT("datatable_scalar_uds_row_memory_null"),TEXT("Current row/default memory is unavailable."));
         if(!ScalarProfile){Out=Property->GetPropertyValue_InContainer(Memory);return true;}
-        if((ArrayProfile||CompositePayload)&&!Raw(false))return false;
+        // YA's Composite caller completes observation and reacquires the selected
+        // row route before entry. The remaining copy path has no SDK callbacks.
+        if(!SourceAlreadyObserved&&(ArrayProfile||CompositePayload)&&!Raw(false))return false;
         int32 ArrayElements=0,PayloadCells=0,PayloadChars=0;int64 ArrayCharacters=0;TArray<TSharedPtr<FJsonValue>> ValuesJson;
         for(const auto& F:ScalarFields)
         {
@@ -1196,7 +1416,7 @@ struct FStringUdsScope
         for(TFieldIterator<FProperty> It(U,EFieldIteratorFlags::ExcludeSuper);It;++It)
         {
             FProperty* P=*It;if(ScalarFields.Num()>=32||(!ScalarKind(P)&&!(AllowScalarCRUD&&MathKind(P))&&!(AllowScalarCRUD&&AllowPrimitiveArrays&&!AllowScalarGraph&&(PrimitiveArrayKind(P)||PayloadKind(P))))||P->GetOwnerStruct()!=U||P->ArrayDim!=1||P->HasSetterOrGetter()||!P->HasAnyPropertyFlags(CPF_Edit)||P->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_EditorOnly|CPF_InstancedReference|CPF_ContainsInstancedReference)||P->GetOffset_ForInternal()<0||static_cast<int64>(P->GetOffset_ForInternal())+P->GetSize()>StructBytes)
-                return Stop(TEXT("datatable_scalar_uds_field_unsupported"),TEXT("One to32 own editable scalar7/native math fields; existing-table CRUD also admits finite recursive UDS/scalar arrays/Sets/scalar-key Maps through actual reflected ownership/layout. Wider enum/object/custom operator fields remain incomplete."));
+                return Stop(TEXT("datatable_scalar_uds_field_unsupported"),TEXT("One to32 own editable scalar7/native math fields; existing-table CRUD also admits finite recursive UDS/scalar arrays/Sets/scalar-key Maps through actual reflected ownership/layout. Admitted resolved byte enum fields reuse the composite payload observer; wider FEnumProperty/object/custom operator fields remain incomplete."));
             FScalarField F;F.Property=P;F.Kind=P->GetClass();F.FieldName=P->GetFName();F.Name=P->GetName();F.Offset=P->GetOffset_ForInternal();F.Size=P->GetSize();F.Flags=P->GetPropertyFlags();if(MathKind(P)){auto* Struct=CastField<FStructProperty>(P);F.NativeStruct=Struct->Struct.Get();NativeFieldHolds.Emplace(F.NativeStruct);F.NativeStructPath=F.NativeStruct->GetPathName();NativeMathProfile=true;}if(P->GetClass()==FArrayProperty::StaticClass()&&PrimitiveArrayKind(P)){if(!BindArrayField(F))return false;}else if(!ScalarKind(P)&&!F.NativeStruct)F.Payload=true;F.Layout=F.Name+TEXT(" offset=")+LexToString(F.Offset)+TEXT(" size=")+LexToString(F.Size)+TEXT(" flags=")+LexToString(static_cast<uint64>(F.Flags));ScalarFields.Add(MoveTemp(F));
         }
         if(!BindNativeMath())return false;
@@ -1219,7 +1439,9 @@ struct FStringUdsScope
         {R.Data->SetBoolField(TEXT("scalar_uds_graph_admitted"),true);R.Data->SetStringField(TEXT("scalar_uds_graph_path"),TypePath);R.Data->SetNumberField(TEXT("scalar_uds_field_count"),ScalarFields.Num());R.Data->SetStringField(TEXT("scalar_uds_scope"),TEXT("Graph-only bounded compiled scalar UDS source observation; all authored fields/default/layout retained. No source writes/compile/save, CRUD dispatch, enum/nested/object/container admission or runtime proof."));return true;}
         if(NativeMathProfile){R.Data->SetBoolField(TEXT("native_math_uds_datatable_crud"),true);R.Data->SetStringField(TEXT("math_uds_scope_path"),TypePath);int32 MathCount=0;for(const auto& Field:ScalarFields)MathCount+=Field.NativeStruct!=nullptr;R.Data->SetNumberField(TEXT("math_uds_field_count"),MathCount);R.Data->SetBoolField(TEXT("math_uds_k2_graph_expanded"),false);R.Data->SetBoolField(TEXT("math_uds_runtime_verified"),false);R.Data->SetStringField(TEXT("math_uds_conversion_scope"),TEXT("Original authored-name Any JSON->stock JsonObjectConverter; native math may export as text. No request rewriting or field-specific import. Original save-before-requested-subset failure retained; converter success is not requested-subset or runtime success."));}
         if(ArrayProfile){R.Data->SetBoolField(TEXT("primitive_array_uds_datatable_crud"),true);R.Data->SetBoolField(TEXT("array_uds_k2_graph_expanded"),false);R.Data->SetBoolField(TEXT("array_uds_create_expanded"),false);R.Data->SetStringField(TEXT("array_uds_scope"),TEXT("Existing ordinary DataTable CRUD/read only; saved-clean compiled UDS with own int32[]/FString[] mixed with prior scalar/native math fields. Max4096 per array/16384 per row. Actual Array.Inner binding/layout and copied ordered values/current source defaults retained; array buffers/elements are reacquired, never retained across SDK callbacks. Original JSON conversion, nonarray/null/coercion and partial/save-before-subset outcomes remain authoritative. No Create/K2/other nested/container/runtime expansion."));}
-        if(CompositePayload){R.Data->SetBoolField(TEXT("composite_uds_datatable_crud"),true);R.Data->SetBoolField(TEXT("composite_uds_create_expanded"),false);R.Data->SetBoolField(TEXT("composite_uds_k2_graph_expanded"),false);R.Data->SetNumberField(TEXT("composite_uds_source_count"),PayloadStructs.Num());R.Data->SetBoolField(TEXT("unordered_typed_slot_bags"),HashedPayload);R.Data->SetStringField(TEXT("composite_uds_scope"),TEXT("Existing ordinary UDS DataTable schema/list/get/add-update/remove share the stock converter and writer. Finite acyclic saved-clean native-editor-data UDS, scalar7 primitive arrays/Sets and scalar-key Maps to scalar/primitive-array/UDS values use owned current descriptors and freshly copied typed slots. Unordered copied bags retain multiplicity; hash/allocator/index layout is not authored order or uniqueness. Converter false retains actual new/default/partial row then stops without notify/save; converter true keeps notify/requested save before original JSON-subset predicate. No Create/K2, object/enum/custom operator/struct-array/container-key/value expansion, normalization/deduplication, source writes or runtime proof."));if(ArrayProfile)R.Data->SetStringField(TEXT("array_uds_scope"),TEXT("Historical direct int32/FString arrays retain their existing Inner/ordered-value guards; additional mixed fields use the separate concrete composite_uds_scope. Create/K2 remain unexpanded."));}
+        if(CompositePayload){R.Data->SetBoolField(TEXT("composite_uds_datatable_crud"),true);R.Data->SetBoolField(TEXT("composite_uds_create_expanded"),false);R.Data->SetBoolField(TEXT("composite_uds_k2_graph_expanded"),false);R.Data->SetNumberField(TEXT("composite_uds_source_count"),PayloadStructs.Num());R.Data->SetBoolField(TEXT("unordered_typed_slot_bags"),HashedPayload);R.Data->SetBoolField(TEXT("compiled_uds_array_payload"),StructArrayPayload);R.Data->SetStringField(TEXT("composite_uds_scope"),TEXT("Existing ordinary UDS DataTable schema/list/get/add-update/remove share the stock converter and writer. Finite acyclic saved-clean native-editor-data UDS, scalar7-or-UDS arrays, scalar7 Sets and scalar-key Maps to scalar/admitted-array/UDS values use owned current descriptors and freshly copied typed slots. Unordered copied bags retain multiplicity; hash/allocator/index layout is not authored order or uniqueness. Converter false retains actual new/default/partial row then stops without notify/save; converter true keeps notify/requested save before original JSON-subset predicate. Byte enum direct/nested/Array/Set/Map key/value payloads additionally retain exact native byte descriptors, held raw/authored enum source names/values and stored authored UserDefinedEnum DisplayNameMap; stock JSON converter remains authoritative. No Create/K2, unrestricted object/FEnumProperty/custom operator/native-struct-array/direct nested-container expansion, normalization/deduplication, source writes or runtime proof."));if(ArrayProfile)R.Data->SetStringField(TEXT("array_uds_scope"),TEXT("Historical direct int32/FString arrays retain their existing Inner/ordered-value guards; additional mixed fields use the separate concrete composite_uds_scope. Create/K2 remain unexpanded."));}
+        if(ReferencePayload){R.Data->SetBoolField(TEXT("reference_uds_datatable_crud"),true);R.Data->SetStringField(TEXT("reference_uds_scope"),TEXT("Existing ordinary UDS DataTable schema/list/get/add-update/remove hard/soft object fields, Array/nested UDS and existing scalar-key Map values share the original converter/row writer. JSON null remains skip; None string clearing and row-local partial failures stay SDK-owned. Resident saved-clean distinct native Game/Engine assets and prewriter-enrolled readonly root/direct-reference identities/files are protected; copied pointers/soft paths are reacquired. Source loaders/soft Get/source writes/compile/save/runtime instances are not added. Cold/short aliases/generated/instanced/class/Set/reference keys/Create/K2/full authored asset RAM purity and full original/runtime scope remain incomplete or usage validation pending."));}
+        if(ByteEnumPayload){R.Data->SetBoolField(TEXT("byte_enum_uds_datatable_crud"),true);R.Data->SetNumberField(TEXT("byte_enum_source_count"),PayloadEnums.Num());R.Data->SetStringField(TEXT("byte_enum_scope"),TEXT("Existing UDS schema/list/get/add-update/remove, including nested/Array/Set/Map byte enums, reuse original authored-name converter/writer/partial/save order. Held exact FByteProperty.Enum sources preserve raw names/values/form/flags and stored authored UserDefinedEnum DisplayNameMap/description source strings. No enum compilation/repair or source writer, no per-slot disk scan, no bitflag-name normalization or enum-membership coercion. FEnumProperty, plain bytes, custom/native-other-module/generated/dirty sources and Create/K2 remain incomplete. Actual new usage remains validation pending."));}
         R.Data->SetBoolField(TEXT("scalar_uds_crud_admitted"),true);R.Data->SetStringField(TEXT("scalar_uds_path"),TypePath);R.Data->SetNumberField(TEXT("scalar_uds_field_count"),ScalarFields.Num());
         R.Data->SetStringField(TEXT("scalar_uds_scope"),TEXT("CRUD-only bounded compiled UDS scalar/native math and concrete recursive payload profiles; current source defaults/layout/authored GUIDs and ordered values or unordered typed slot bags retained. No source writes/compile/save, Create/K2 widening, unrestricted enum/object/container/custom admission or runtime proof."));return true;
     }
@@ -1238,7 +1460,7 @@ struct FStringUdsScope
         if(CompositePayload)for(const auto& F:ScalarFields)if(F.Payload)
         {
             const auto Value=Requested->TryGetField(F.Authored);
-            if(Value.IsValid()&&!PayloadInputSafe(F.Property,Value))return Fail(R,TEXT("datatable_payload_input_bound"),TEXT("Selected finite payload exceeds the defined name/numeric/container bound; no Modify/import/save. Null/type mismatches retain stock converter semantics."));
+            if(Value.IsValid()&&!PayloadInputSafe(F.Property,Value))return Stopped?false:Fail(R,TEXT("datatable_payload_input_bound"),TEXT("Selected finite payload exceeds the defined name/numeric/container bound; no Modify/import/save. Null/type mismatches retain stock converter semantics."));
         }
         return StableSource();
     }
@@ -1264,7 +1486,7 @@ struct FStringUdsScope
             const auto ActualClassFlags=I.Class->GetClassFlags();if(ActualClassFlags!=I.ClassFlags)return IdentityChanged(I,TEXT("class_flags"),LexToString(static_cast<uint32>(I.ClassFlags)),LexToString(static_cast<uint32>(ActualClassFlags)));
             const int32 ActualClassBytes=I.Class->GetPropertiesSize();if(ActualClassBytes!=I.ClassBytes)return IdentityChanged(I,TEXT("class_properties_size"),LexToString(I.ClassBytes),LexToString(ActualClassBytes));
         }
-        if(!NativeMathCurrent())return false;
+        if(!NativeMathCurrent()||!ReferenceCurrent())return false;
         if((NativeMathProfile||ArrayProfile)&&!Active&&!ScalarFieldsCurrent())return false;
         if(!Active)return true;auto* U=Type.Get();
         if(!Loaded(U)||U->GetClass()!=UUserDefinedStruct::StaticClass()||U->Status!=UDSS_UpToDate||U->Guid!=StructGuid||!U->PrimaryStruct.IsExplicitlyNull()||U->EditorData!=EditorData||U->StructFlags!=StructFlags||U->GetStructureSize()!=StructBytes||U->GetPackage()->IsDirty()||static_cast<uint32>(U->GetPackage()->GetPackageFlags())!=SourcePackageFlags)return Stop(TEXT("datatable_string_uds_source_changed"),TEXT("Exact compiled String1 UDS source role/layout changed."));
@@ -1461,11 +1683,22 @@ struct FNativeRowScope
     FResult& R;bool Stopped=false,Bound=false,RowsReady=false,SourceBindingsReady=false,SourceMetadataReady=false;TStrongObjectPtr<UEditorEngine> Editor;TStrongObjectPtr<UWorld> World;
     TStrongObjectPtr<UScriptStruct> Type;TStrongObjectPtr<UDataTable> Table;TStrongObjectPtr<UObject> ImportData;FString Path,PackagePath,ImportKey,ImportPath;uint8 TableOptions=0;
     struct FObjectRole{TStrongObjectPtr<UObject> Hold;UClass* Kind=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Path;EObjectFlags Flags=RF_NoFlags;uint32 PackageFlags=0;bool PackageDirty=false;};
-    struct FFieldRole{FProperty* P=nullptr;FFieldClass* Kind=nullptr;UStruct* Owner=nullptr;FProperty* Parent=nullptr;FName Name;int32 Offset=0,Size=0,Element=0,Dim=0,Align=0;uint64 Flags=0;TMap<FName,FString> Metadata;UScriptStruct* Struct=nullptr;UClass* ObjectClass=nullptr;UEnum* Enum=nullptr;FNumericProperty* Underlying=nullptr;FProperty* Inner=nullptr;FProperty* Key=nullptr;FProperty* Value=nullptr;uint8 BoolSize=0,BoolOffset=0,BoolMask=0,BoolFieldMask=0;FScriptSetLayout SetLayout;FScriptMapLayout MapLayout;};
+    struct FFieldRole{FProperty* P=nullptr;FFieldClass* Kind=nullptr;UStruct* Owner=nullptr;FProperty* Parent=nullptr;FName Name;int32 Offset=0,Size=0,Element=0,Dim=0,Align=0;uint64 Flags=0;TMap<FName,FString> Metadata;UScriptStruct* Struct=nullptr;UClass* ObjectClass=nullptr;UClass* SoftMetaClass=nullptr;TObjectPtr<UClass> ObjectClassSlot=nullptr,SoftMetaClassSlot=nullptr;UEnum* Enum=nullptr;FNumericProperty* Underlying=nullptr;FProperty* Inner=nullptr;FProperty* Key=nullptr;FProperty* Value=nullptr;uint8 BoolSize=0,BoolOffset=0,BoolMask=0,BoolFieldMask=0;FScriptSetLayout SetLayout;FScriptMapLayout MapLayout;};
     struct FStructRole{TStrongObjectPtr<UScriptStruct> Hold;UStruct* Super=nullptr;EStructFlags Flags=STRUCT_NoFlags;int32 Size=0,Align=0;TArray<FProperty*> Members;TMap<FName,FString> Metadata;bool Ready=false,CustomJsonConverter=false;};
     struct FEnumRole{TStrongObjectPtr<UEnum> Hold;UEnum::ECppForm Form=UEnum::ECppForm::Regular;TArray<FName> Names;TArray<int64> Values;};
     TArray<FObjectRole> Objects;TArray<TUniquePtr<FStructRole>> Structs;TArray<FFieldRole> Fields;TArray<FEnumRole> Enums;TArray<UScriptStruct*> Active;
     TArray<TPair<FName,const uint8*>> Rows;TMap<FName,TSharedRef<FJsonObject>> Values;TSharedRef<FJsonObject> SourceBaseline=MakeShared<FJsonObject>();
+    // WP: readonly parent DAG shares the existing native descriptor/export/value observer.
+    // A scope owns one distinct table; edges retain order, nulls and repeated/shared parents.
+    FNativeRowScope* CompositeRoot=nullptr;bool CompositeFence=false,ParentEdgesReady=false,CompositeMutable=false;
+    // YA: a read-only Composite node may reuse the existing compiled UDS source
+    // and copied typed payload observer without binding its ordinary-table writer.
+    TUniquePtr<FStringUdsScope> CompositeUdsSource;
+    TArray<TUniquePtr<FNativeRowScope>> CompositeOwned;TArray<FNativeRowScope*> CompositeScopes;
+    TMap<UDataTable*,FNativeRowScope*> CompositeIndex;TSet<UDataTable*> CompositeActive;
+    FArrayProperty* ParentDescriptor=nullptr;FObjectProperty* ParentInner=nullptr;
+    int32 ParentOffset=0,ParentSize=0;uint64 ParentFlags=0,ParentInnerFlags=0;
+    TArray<UDataTable*> ParentEdges;TMap<FString,TSharedRef<FJsonObject>> CompositeDiskBaseline;
     TMap<FString,TPair<uint32,uint32>> ModifyFlags,SaveFlags;TMap<FString,TPair<FString,FString>> ModifyDerivedMetadata;
     TStrongObjectPtr<UTransBuffer> Transactor;const FTransaction* OwnTransaction=nullptr;FGuid TransactionId,OperationId;FString TransactionContext;int32 TransactionIndex=INDEX_NONE,TransactionDepth=0;bool TransactionReady=false;
     explicit FNativeRowScope(FResult& In):R(In){if(IsInGameThread()&&!GExitPurge&&!IsEngineExitRequested()&&!IsGarbageCollecting()&&!UE::IsSavingPackage()){Editor.Reset(GEditor);World.Reset(GWorld);}}
@@ -1490,23 +1723,157 @@ struct FNativeRowScope
     }
     bool RootCurrent()
     {
+        if(CompositeRoot&&!CompositeRoot->CompositeFence)return CompositeRoot->CompositeCurrent(false,false);
         if(!Context()||(TransactionReady&&!TransactionCurrent()))return Bad(TEXT("editor_context"));
-        for(const auto& E:Objects){auto* O=E.Hold.Get();if(!Loaded(O)||!Loaded(E.Kind)||(E.Outer&&!Loaded(E.Outer))||!Loaded(E.Package)||O->GetClass()!=E.Kind||O->GetOuter()!=E.Outer||O->GetPackage()!=E.Package||O->GetFlags()!=E.Flags||!O->GetPathName().Equals(E.Path,ESearchCase::CaseSensitive))return Bad(TEXT("held_identity"),E.Path);if((!Bound||E.Package!=Table->GetPackage())&&(uint32(E.Package->GetPackageFlags())!=E.PackageFlags||E.Package->IsDirty()!=E.PackageDirty))return Bad(TEXT("source_package_state"),E.Path);}
+        if(CompositeUdsSource&&!CompositeUdsSource->Raw(false)){Stopped=true;return false;}
+        for(const auto& E:Objects){auto* O=E.Hold.Get();if(!Loaded(O)||!Loaded(E.Kind)||(E.Outer&&!Loaded(E.Outer))||!Loaded(E.Package)||O->GetClass()!=E.Kind||O->GetOuter()!=E.Outer||O->GetPackage()!=E.Package||O->GetFlags()!=E.Flags||!O->GetPathName().Equals(E.Path,ESearchCase::CaseSensitive))return Bad(TEXT("held_identity"),E.Path);if((CompositeRoot||!Bound||E.Package!=Table->GetPackage())&&!(CompositeRoot&&CompositeRoot->CompositeMutable&&E.Package==CompositeRoot->Table->GetPackage())&&(uint32(E.Package->GetPackageFlags())!=E.PackageFlags||E.Package->IsDirty()!=E.PackageDirty))return Bad(TEXT("source_package_state"),E.Path);}
         for(const auto& Entry:Structs){const auto& E=*Entry;auto* S=E.Hold.Get();if(!Loaded(S)||S->GetClass()!=UScriptStruct::StaticClass()||S->StructFlags!=E.Flags||S->GetSuperStruct()!=E.Super||S->GetStructureSize()!=E.Size||S->GetMinAlignment()!=E.Align)return Bad(TEXT("native_struct_layout"));TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(S,EFieldIterationFlags::IncludeDeprecated);It;++It){if(Now.Num()>=MaxFields)return Bad(TEXT("native_field_bound"));Now.Add(*It);}if(Now!=E.Members)return Bad(TEXT("native_member_inventory"));}
         for(const auto& E:Fields){auto* P=E.P;if(E.Parent){const auto* Parent=Fields.FindByPredicate([&](const FFieldRole& X){return X.P==E.Parent;});if(!Parent)return Bad(TEXT("inner_parent"));bool Found=false;if(Parent->Kind==FArrayProperty::StaticClass())Found=static_cast<FArrayProperty*>(E.Parent)->Inner==P;else if(Parent->Kind==FSetProperty::StaticClass())Found=static_cast<FSetProperty*>(E.Parent)->ElementProp==P;else if(Parent->Kind==FMapProperty::StaticClass())Found=static_cast<FMapProperty*>(E.Parent)->KeyProp==P||static_cast<FMapProperty*>(E.Parent)->ValueProp==P;else if(Parent->Kind==FEnumProperty::StaticClass())Found=static_cast<FEnumProperty*>(E.Parent)->GetUnderlyingProperty()==P;if(!Found)return Bad(TEXT("inner_membership"));}if(P->GetClass()!=E.Kind||P->GetOwnerStruct()!=E.Owner||P->GetOwner<FProperty>()!=E.Parent||P->GetFName()!=E.Name||P->GetOffset_ForInternal()!=E.Offset||P->GetSize()!=E.Size||P->ElementSize!=E.Element||P->ArrayDim!=E.Dim||P->GetMinAlignment()!=E.Align||uint64(P->GetPropertyFlags())!=E.Flags||P->HasSetterOrGetter())return Bad(TEXT("native_field_layout"),E.Name.ToString());if(E.Kind==FBoolProperty::StaticClass()){auto* B=static_cast<FBoolProperty*>(P);if(B->GetBoolFieldSize()!=E.BoolSize||B->GetByteOffset()!=E.BoolOffset||B->GetByteMask()!=E.BoolMask||B->GetFieldMask()!=E.BoolFieldMask)return Bad(TEXT("native_bool_layout"));}const auto* M=P->GetMetaDataMap();if((M?M->Num():0)!=E.Metadata.Num())return Bad(TEXT("native_field_metadata"));for(const auto& Pair:E.Metadata){const auto* V=M?M->Find(Pair.Key):nullptr;if(!V||!V->Equals(Pair.Value,ESearchCase::CaseSensitive))return Bad(TEXT("native_field_metadata"));}}
         if(SourceMetadataReady)for(const auto& Entry:Structs){const auto& E=*Entry;const auto* M=FMetaData::GetMapForObject(E.Hold.Get());if((M?M->Num():0)!=E.Metadata.Num())return Bad(TEXT("native_struct_metadata"));for(const auto& Pair:E.Metadata){const auto* V=M?M->Find(Pair.Key):nullptr;if(!V||!V->Equals(Pair.Value,ESearchCase::CaseSensitive))return Bad(TEXT("native_struct_metadata"));}if(FJsonObjectStructInterfaceRegistry::HasStructConverterRegistered(E.Hold.Get())!=E.CustomJsonConverter)return Bad(TEXT("native_json_converter_role"));}
-        if(Bound&&(!Loaded(Table.Get())||Table->GetClass()!=UDataTable::StaticClass()||Table->GetOuter()!=Table->GetPackage()||!Table->RowStruct.IsResolved()||Table->RowStruct.Get()!=Type.Get()||!Table->GetPathName().Equals(Path,ESearchCase::CaseSensitive)||!Table->GetPackage()->GetName().Equals(PackagePath,ESearchCase::CaseSensitive)||FindObject<UDataTable>(nullptr,*Path)!=Table.Get()))return Bad(TEXT("table_role"));if(Bound){const uint8 Options=uint8(Table->bStripFromClientBuilds)|(uint8(Table->bIgnoreExtraFields)<<1)|(uint8(Table->bIgnoreMissingFields)<<2)|(uint8(Table->bPreserveExistingValues)<<3);if(Options!=TableOptions||!Table->ImportKeyField.Equals(ImportKey,ESearchCase::CaseSensitive)||!Table->ImportPath_DEPRECATED.Equals(ImportPath,ESearchCase::CaseSensitive)||!Table->AssetImportData.IsResolved()||static_cast<UObject*>(Table->AssetImportData.Get())!=ImportData.Get())return Bad(TEXT("table_import_settings"));}return true;
+        if(Bound&&(!Loaded(Table.Get())||(Table->GetClass()!=UDataTable::StaticClass()&&(!CompositeRoot||Table->GetClass()!=UCompositeDataTable::StaticClass()))||Table->GetOuter()!=Table->GetPackage()||!Table->RowStruct.IsResolved()||Table->RowStruct.Get()!=Type.Get()||!Table->GetPathName().Equals(Path,ESearchCase::CaseSensitive)||!Table->GetPackage()->GetName().Equals(PackagePath,ESearchCase::CaseSensitive)||FindObject<UDataTable>(nullptr,*Path)!=Table.Get()))return Bad(TEXT("table_role"));if(Bound){const uint8 Options=uint8(Table->bStripFromClientBuilds)|(uint8(Table->bIgnoreExtraFields)<<1)|(uint8(Table->bIgnoreMissingFields)<<2)|(uint8(Table->bPreserveExistingValues)<<3);if(Options!=TableOptions||!Table->ImportKeyField.Equals(ImportKey,ESearchCase::CaseSensitive)||!Table->ImportPath_DEPRECATED.Equals(ImportPath,ESearchCase::CaseSensitive)||!Table->AssetImportData.IsResolved()||static_cast<UObject*>(Table->AssetImportData.Get())!=ImportData.Get())return Bad(TEXT("table_import_settings"));}return true;
+    }
+    bool CompositeMismatch(const TCHAR* Property,const FString& Expected,const FString& Actual)
+    {
+        Bad(Property,Expected,Actual);
+        if(CompositeRoot&&CompositeRoot!=this)CompositeRoot->Stopped=true;
+        return false;
+    }
+    bool CompositeParents(bool Capture=false)
+    {
+        if(!Bound||Table->GetClass()!=UCompositeDataTable::StaticClass())return true;
+        auto* Descriptor=FindFProperty<FArrayProperty>(UCompositeDataTable::StaticClass(),TEXT("ParentTables"));
+        if(!Descriptor||Descriptor->GetOwnerStruct()!=UCompositeDataTable::StaticClass()||Descriptor->ArrayDim!=1||Descriptor->HasSetterOrGetter()
+            ||Descriptor->ElementSize!=sizeof(FScriptArray)||Descriptor->ArrayFlags!=EArrayPropertyFlags::None)
+            return CompositeMismatch(TEXT("composite.parent_descriptor"),TEXT("linked native ParentTables array"),TEXT("unavailable or changed"));
+        auto* Inner=CastField<FObjectProperty>(Descriptor->Inner);
+        if(!Inner||Inner->GetClass()!=FObjectProperty::StaticClass()||Inner->GetOwner<FProperty>()!=Descriptor
+            ||Inner->GetOwnerStruct()!=UCompositeDataTable::StaticClass()||Inner->ArrayDim!=1||Inner->ElementSize!=sizeof(TObjectPtr<UDataTable>)
+            ||!Inner->PropertyClass.IsResolved()||Inner->PropertyClass.Get()!=UDataTable::StaticClass()||Inner->HasSetterOrGetter())
+            return CompositeMismatch(TEXT("composite.parent_inner"),TEXT("native TObjectPtr<UDataTable> owned by ParentTables"),TEXT("unavailable or changed"));
+        if(!Capture&&(Descriptor!=ParentDescriptor||Inner!=ParentInner||Descriptor->GetOffset_ForInternal()!=ParentOffset
+            ||Descriptor->GetSize()!=ParentSize||uint64(Descriptor->GetPropertyFlags())!=ParentFlags||uint64(Inner->GetPropertyFlags())!=ParentInnerFlags))
+            return CompositeMismatch(TEXT("composite.parent_layout"),TEXT("captured declaring descriptor/layout"),TEXT("changed"));
+        FScriptArrayHelper A(Descriptor,Descriptor->ContainerPtrToValuePtr<void>(Table.Get()));
+        if(A.Num()>64||(!Capture&&A.Num()!=ParentEdges.Num()))
+            return CompositeMismatch(TEXT("composite.parent_count"),Capture?TEXT("<=64"):LexToString(ParentEdges.Num()),LexToString(A.Num()));
+        TArray<UDataTable*> Edges;
+        for(int32 I=0;I<A.Num();++I)
+        {
+            const auto* Slot=reinterpret_cast<const TObjectPtr<UDataTable>*>(A.GetRawPtr(I));
+            if(!Slot->IsResolved())return CompositeMismatch(TEXT("composite.parent_resolved"),TEXT("already resolved after original LoadAsset"),TEXT("unresolved; no additional loader"));
+            auto* Parent=Slot->Get();
+            if(Parent&&(!Loaded(Parent)||!Pin(Parent)||!Pin(Parent->GetPackage())))return CompositeMismatch(TEXT("composite.parent_loaded"),TEXT("loaded held nullable parent"),LexToString(I));
+            if(!Capture&&Parent!=ParentEdges[I])return CompositeMismatch(TEXT("composite.parent_order"),FString::Printf(TEXT("index %d pointer:%p"),I,static_cast<void*>(ParentEdges[I])),FString::Printf(TEXT("pointer:%p"),static_cast<void*>(Parent)));
+            Edges.Add(Parent);
+        }
+        if(Capture){ParentDescriptor=Descriptor;ParentInner=Inner;ParentOffset=Descriptor->GetOffset_ForInternal();ParentSize=Descriptor->GetSize();ParentFlags=uint64(Descriptor->GetPropertyFlags());ParentInnerFlags=uint64(Inner->GetPropertyFlags());ParentEdges=MoveTemp(Edges);ParentEdgesReady=true;}
+        return true;
+    }
+    bool CompositeCurrent(bool CheckValues=false,bool CheckRootRows=true)
+    {
+        if(Stopped)return false;TGuardValue<bool> Guard(CompositeFence,true);
+        // XS: only the selected root cache has a writer delta. Parents retain their full
+        // membership/value baseline. RootCurrent is a descriptor/context fence, not a
+        // stale row-buffer check during the existing helper/converter adoption boundary.
+        for(auto* Scope:CompositeScopes)
+        {
+            const bool RootRows=Scope!=this||!CompositeMutable||CheckRootRows;
+            if(!Scope->Current(RootRows,CheckValues&&RootRows)||(Scope->ParentEdgesReady&&!Scope->CompositeParents())){Stopped=true;return false;}
+        }
+        // Actual effective cache is authoritative, including manual edits; no fresh-merge invariant.
+        return true;
+    }
+    bool BindCompositeNode(UDataTable* T,int32 Depth=0)
+    {
+        auto& Root=*CompositeRoot;
+        if(Depth>16||Root.CompositeActive.Contains(T))return CompositeMismatch(TEXT("composite.parent_dag"),TEXT("acyclic parent DAG depth<=16"),TEXT("cycle or bound exceeded"));
+        if(Root.CompositeIndex.Contains(T))return true;
+        if(Root.CompositeScopes.Num()>=64||!Loaded(T)||(T->GetClass()!=UDataTable::StaticClass()&&T->GetClass()!=UCompositeDataTable::StaticClass())
+            ||!T->RowStruct.IsResolved()||!Loaded(T->RowStruct.Get())
+            ||(T->RowStruct.Get()->GetClass()!=UScriptStruct::StaticClass()
+                &&(Root.CompositeMutable||T->RowStruct.Get()->GetClass()!=UUserDefinedStruct::StaticClass())))
+            return CompositeMismatch(TEXT("composite.source_scope_pending"),TEXT("<=64 exact DataTable/CompositeDataTable with loaded native row struct or readonly admitted compiled UDS"),Loaded(T)?T->GetPathName():TEXT("unavailable"));
+        FNativeRowScope* Scope=this;
+        if(T!=Root.Table.Get()){auto Owned=MakeUnique<FNativeRowScope>(R);Scope=Owned.Get();Scope->CompositeRoot=&Root;Root.CompositeOwned.Add(MoveTemp(Owned));}
+        Root.CompositeIndex.Add(T,Scope);Root.CompositeScopes.Add(Scope);Root.CompositeActive.Add(T);
+        if(!Scope->BindType(T->RowStruct.Get(),T,T->GetPathName(),T->GetPackage()->GetName())||!Scope->CompositeParents(true)){Root.Stopped=true;return false;}
+        const auto Edges=Scope->ParentEdges;
+        for(auto* Parent:Edges)if(Parent)
+        {
+            if(Root.CompositeActive.Contains(Parent))return Scope->CompositeMismatch(TEXT("composite.parent_dag"),TEXT("acyclic parent DAG"),Parent->GetPathName());
+            if(!Root.CompositeIndex.Contains(Parent)&&!Root.BindCompositeNode(Parent,Depth+1))return false;
+        }
+        Root.CompositeActive.Remove(T);return true;
+    }
+    bool BindComposite(UDataTable* T,bool Mutable=false)
+    {
+        CompositeRoot=this;CompositeMutable=Mutable;Table.Reset(T);
+        if(!BindCompositeNode(T))return false;
+        // Binding completed without rebuilding the effective row cache.
+        R.Data->SetBoolField(TEXT("composite_native_read_profile"),true);
+        R.Data->SetNumberField(TEXT("composite_explicit_parent_load_calls"),0);
+        R.Data->SetStringField(TEXT("composite_read_scope"),TEXT("Original LoadAsset may load/rebuild dependencies. Already-resolved parent DAG/native rows preserve ordered edges and actual effective cached values; no extra load or merge. Readonly compiled UDS sources use the existing bounded source/payload observer; other custom sources and UDS Composite writers remain incomplete. Native row Add/Update/Remove may modify only the selected root cache when explicitly admitted by the original mutable API."));
+        if(Mutable)
+        {
+            R.Data->SetBoolField(TEXT("composite_native_cache_mutation"),true);
+            R.Data->SetBoolField(TEXT("composite_parent_writer_dispatched"),false);
+            R.Data->SetBoolField(TEXT("composite_cache_values_reload_persistent"),false);
+            R.Data->SetStringField(TEXT("composite_mutation_scope"),TEXT("Original public DataTableEditorUtils row helper/converter acts on the selected Composite effective cache, not its parent tables. Original Modify/notify/partial conversion/optional package save/readback remain authoritative. Composite Serialize-on-load and parent updates rebuild this cache from ordered parents; saved=true does not prove these manual cache edits survive reload. No merge, parent writer/save, new loader or authored parent-value replacement."));
+        }
+        return CompositeCurrent(true);
+    }
+    bool CompositeSnapshot(const TSharedRef<FJsonObject>& Out)
+    {
+        if(!CompositeRoot)return true;
+        if(!CompositeCurrent(true))return false;
+        TArray<TSharedPtr<FJsonValue>> Nodes;
+        for(auto* Scope:CompositeScopes)
+        {
+            auto J=MakeShared<FJsonObject>();
+            const bool MutableTarget=CompositeMutable&&Scope==this;
+            // The target's identity/properties/rows belong to the existing target state
+            // and selected-row delta. Keep only its immutable parent relation here.
+            if(MutableTarget)J->SetStringField(TEXT("target_path"),Scope->Table->GetPathName());
+            else { J->SetObjectField(TEXT("identity"),Identity(Scope->Table.Get()));J->SetNumberField(TEXT("row_count"),Scope->Rows.Num()); }
+            if(Scope!=this&&Scope->CompositeUdsSource)
+            {
+                auto SourceState=MakeShared<FJsonObject>();if(!Scope->Source(SourceState))return false;
+                J->SetObjectField(TEXT("compiled_uds_source"),SourceState);
+            }
+            J->SetStringField(TEXT("row_struct"),Scope->Type->GetPathName());TArray<TSharedPtr<FJsonValue>> Edges;
+            for(auto* Parent:Scope->ParentEdges){if(Parent)Edges.Add(MakeShared<FJsonValueString>(Parent->GetPathName()));else Edges.Add(MakeShared<FJsonValueNull>());}
+            J->SetArrayField(TEXT("ordered_parents"),Edges);
+            if(Scope!=this)
+            {
+                auto File=MakeShared<FJsonObject>();if(!Disk(Scope->PackagePath,File)||!CompositeCurrent())return false;
+                if(const auto* Before=CompositeDiskBaseline.Find(Scope->PackagePath)){if(!MirrorReadLiteralEqual(*Before,File)){FString X,Y;FJsonSerializer::Serialize(*Before,TJsonWriterFactory<>::Create(&X));FJsonSerializer::Serialize(File,TJsonWriterFactory<>::Create(&Y));return Scope->CompositeMismatch(TEXT("composite.parent_disk"),X,Y);}}
+                else CompositeDiskBaseline.Add(Scope->PackagePath,File);
+                J->SetObjectField(TEXT("disk"),File);
+            }
+            // Cache/OldParentTables are deliberately not authored equality conditions.
+            if(!MutableTarget){auto Props=MakeShared<FJsonObject>();if(!Properties(Scope->Table.Get(),Props,nullptr,nullptr,Scope))return false;J->SetObjectField(TEXT("properties"),Props);}
+            Nodes.Add(MakeShared<FJsonValueObject>(J));
+        }
+        Out->SetArrayField(TEXT("composite_parent_dag"),Nodes);return CompositeCurrent(true);
     }
     bool BindEnum(UEnum* E)
     {
         if(!Loaded(E)||!Pin(E)||!Pin(E->GetPackage())||!RootCurrent())return false;for(const auto& Old:Enums)if(Old.Hold.Get()==E)return true;
         if(E->GetClass()!=UEnum::StaticClass()||E->NumEnums()>1024)return Bad(TEXT("native_enum_role"));FEnumRole Role;Role.Hold.Reset(E);Role.Form=E->GetCppForm();for(int32 I=0;I<E->NumEnums();++I){Role.Names.Add(E->GetNameByIndex(I));Role.Values.Add(E->GetValueByIndex(I));}Enums.Add(MoveTemp(Role));return RootCurrent();
     }
+    static bool SoftReferencePath(const FString& Value)
+    {
+        if(!CleanPath(Value))return false;
+        // Keep the established hard-reference profile unchanged; the new soft
+        // family must not serialize either extension or official Editor tooling.
+        for(const TCHAR* Token:{TEXT("/Script/ModelContextProtocol"),TEXT("/Script/ToolsetRegistry"),TEXT("/ModelContextProtocol/"),TEXT("/ToolsetRegistry/")})if(Value.Contains(Token,ESearchCase::IgnoreCase))return false;
+        return true;
+    }
     static bool Kind(FFieldClass* K)
-    {return K==FBoolProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FInt64Property::StaticClass()||K==FByteProperty::StaticClass()||K==FUInt16Property::StaticClass()||K==FUInt32Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass()||K==FNameProperty::StaticClass()||K==FStrProperty::StaticClass()||K==FTextProperty::StaticClass()||K==FEnumProperty::StaticClass()||K==FStructProperty::StaticClass()||K==FObjectProperty::StaticClass()||K==FArrayProperty::StaticClass()||K==FSetProperty::StaticClass()||K==FMapProperty::StaticClass();}
+    {return K==FBoolProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FInt64Property::StaticClass()||K==FByteProperty::StaticClass()||K==FUInt16Property::StaticClass()||K==FUInt32Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass()||K==FNameProperty::StaticClass()||K==FStrProperty::StaticClass()||K==FTextProperty::StaticClass()||K==FEnumProperty::StaticClass()||K==FStructProperty::StaticClass()||K==FObjectProperty::StaticClass()||K==FSoftObjectProperty::StaticClass()||K==FSoftClassProperty::StaticClass()||K==FArrayProperty::StaticClass()||K==FSetProperty::StaticClass()||K==FMapProperty::StaticClass();}
     bool BindField(FProperty* P,FProperty* Parent=nullptr,int32 Depth=0)
     {
-        if(!RootCurrent())return false;if(!P||!Kind(P->GetClass()))return Bad(TEXT("native_field_class_pending"),TEXT("exact native scalar/enum/struct/object/array/set/map descriptor"),P?P->GetClass()->GetName():TEXT("null"),false);
+        if(!RootCurrent())return false;if(!P||!Kind(P->GetClass()))return Bad(TEXT("native_field_class_pending"),TEXT("exact native scalar/enum/struct/hard-or-soft object/soft class/array/set/map descriptor"),P?P->GetClass()->GetName():TEXT("null"),false);
         for(const auto& E:Fields)if(E.P==P)return true;
         if(Depth>16||Fields.Num()>=MaxFields||P->ArrayDim<1||P->ArrayDim>256||P->GetSize()<=0||P->GetMinAlignment()<=0||P->HasSetterOrGetter()||P->HasAnyPropertyFlags(CPF_InstancedReference|CPF_ContainsInstancedReference|CPF_PersistentInstance))return Bad(TEXT("native_field_scope_pending"),TEXT("bounded linked field without accessors or instanced object serialization"),P->GetName(),false);
         FFieldRole E;E.P=P;E.Kind=P->GetClass();E.Owner=P->GetOwnerStruct();E.Parent=P->GetOwner<FProperty>();E.Name=P->GetFName();E.Offset=P->GetOffset_ForInternal();E.Size=P->GetSize();E.Element=P->ElementSize;E.Dim=P->ArrayDim;E.Align=P->GetMinAlignment();E.Flags=uint64(P->GetPropertyFlags());if(const auto* M=P->GetMetaDataMap())E.Metadata=*M;
@@ -1514,7 +1881,30 @@ struct FNativeRowScope
         if(E.Kind==FBoolProperty::StaticClass()){auto* B=static_cast<FBoolProperty*>(P);E.BoolSize=B->GetBoolFieldSize();E.BoolOffset=B->GetByteOffset();E.BoolMask=B->GetByteMask();E.BoolFieldMask=B->GetFieldMask();}
         Fields.Add(E);const int32 Index=Fields.Num()-1;
         if(E.Kind==FStructProperty::StaticClass()){auto* S=static_cast<FStructProperty*>(P);if(!S->Struct.IsResolved())return Bad(TEXT("nested_struct_unresolved"));auto* Returned=S->Struct.Get();TStrongObjectPtr<UScriptStruct> Hold(Returned);if(!RootCurrent()||!Loaded(Returned))return Bad(TEXT("nested_struct_return"));Fields[Index].Struct=Returned;if(!BindStruct(Returned,Depth+1))return false;}
-        else if(E.Kind==FObjectProperty::StaticClass()){auto* O=static_cast<FObjectProperty*>(P);if(!O->PropertyClass.IsResolved())return Bad(TEXT("object_class_unresolved"));auto* Returned=O->PropertyClass.Get();TStrongObjectPtr<UClass> Hold(Returned);if(!RootCurrent()||!Loaded(Returned)||!Pin(Returned)||!Pin(Returned->GetPackage()))return false;if(!Returned->HasAnyClassFlags(CLASS_Native)||Returned->ClassGeneratedBy||Returned->HasAnyClassFlags(CLASS_DefaultToInstanced))return Bad(TEXT("object_class_pending"),TEXT("loaded native noninstanced reference class"),Returned->GetPathName(),false);Fields[Index].ObjectClass=Returned;}
+        else if(E.Kind==FObjectProperty::StaticClass()||E.Kind==FSoftObjectProperty::StaticClass()||E.Kind==FSoftClassProperty::StaticClass())
+        {
+            auto* O=static_cast<FObjectPropertyBase*>(P);const TObjectPtr<UClass> CopiedClass=O->PropertyClass;if(!CopiedClass.IsResolved())return Bad(TEXT("object_class_unresolved"));auto* Returned=CopiedClass.Get();TStrongObjectPtr<UClass> Hold(Returned);
+            if(!RootCurrent()||!Loaded(Returned)||!Pin(Returned)||!Pin(Returned->GetPackage())||!RootCurrent())return false;
+            if(!O->PropertyClass.IsResolved()||O->PropertyClass.GetHandle()!=CopiedClass.GetHandle())return Bad(TEXT("object_class_binding_after_read"));
+            if(!Returned->HasAnyClassFlags(CLASS_Native)||Returned->ClassGeneratedBy||Returned->HasAnyClassFlags(CLASS_DefaultToInstanced))return Bad(TEXT("object_class_pending"),TEXT("loaded native noninstanced reference class"),Returned->GetPathName(),false);Fields[Index].ObjectClass=Returned;Fields[Index].ObjectClassSlot=CopiedClass;
+            if(E.Kind!=FObjectProperty::StaticClass())
+            {
+                // ADC: FSoftObjectProperty and FSoftClassProperty own a persistent
+                // path, not a TObjectPtr. Its weak cache is not an authored value.
+                if(!RootCurrent())return false;
+                if(!SoftReferencePath(Returned->GetPathName()))return Bad(TEXT("soft_reference_class_forbidden"),TEXT("runtime-independent native property class"),Returned->GetPathName(),false);
+                if(P->ElementSize!=sizeof(FSoftObjectPtr)||P->GetMinAlignment()!=alignof(FSoftObjectPtr))return Bad(TEXT("soft_reference_storage"),TEXT("native FSoftObjectPtr element size/alignment"),P->GetName(),false);
+                if(E.Kind==FSoftClassProperty::StaticClass())
+                {
+                    auto* ClassProperty=static_cast<FSoftClassProperty*>(P);const TObjectPtr<UClass> CopiedMeta=ClassProperty->MetaClass;if(!CopiedMeta.IsResolved())return Bad(TEXT("soft_class_metaclass_unresolved"));UClass* Meta=CopiedMeta.Get();TStrongObjectPtr<UClass> MetaHold(Meta);
+                    if(!RootCurrent()||!Loaded(Meta)||!Pin(Meta)||!Pin(Meta->GetPackage())||!RootCurrent())return false;
+                    if(!ClassProperty->MetaClass.IsResolved()||ClassProperty->MetaClass.GetHandle()!=CopiedMeta.GetHandle())return Bad(TEXT("soft_class_metaclass_binding_after_read"));
+                    if(!SoftReferencePath(Meta->GetPathName()))return Bad(TEXT("soft_class_metaclass_forbidden"),TEXT("runtime-independent native class constraint"),Meta->GetPathName(),false);
+                    if(Returned!=UClass::StaticClass()||!Meta->HasAnyClassFlags(CLASS_Native)||!IsObjectHandleNull(Meta->ClassGeneratedBy.GetHandle()))return Bad(TEXT("soft_class_metaclass_pending"),TEXT("resolved native class constraint; no generated source loading"),Meta->GetPathName(),false);
+                    Fields[Index].SoftMetaClass=Meta;Fields[Index].SoftMetaClassSlot=CopiedMeta;
+                }
+            }
+        }
         else if(E.Kind==FEnumProperty::StaticClass()){auto* F=static_cast<FEnumProperty*>(P);auto* Inner=F->GetUnderlyingProperty();if(!Inner||!Kind(Inner->GetClass())||!CastField<FNumericProperty>(Inner))return Bad(TEXT("enum_underlying"));Fields[Index].Underlying=Inner;if(!BindField(Inner,P,Depth+1))return false;}
         else if(E.Kind==FByteProperty::StaticClass()){auto* B=static_cast<FByteProperty*>(P);if(!B->Enum.IsResolved())return Bad(TEXT("byte_enum_unresolved"));Fields[Index].Enum=B->Enum.Get();}
         else if(E.Kind==FArrayProperty::StaticClass()){auto* A=static_cast<FArrayProperty*>(P);if(A->ArrayFlags!=EArrayPropertyFlags::None||P->ElementSize!=sizeof(FScriptArray))return Bad(TEXT("array_allocator_pending"),TEXT("native default allocator"),P->GetName(),false);Fields[Index].Inner=A->Inner;if(!BindField(A->Inner,P,Depth+1))return false;}
@@ -1556,23 +1946,45 @@ struct FNativeRowScope
     }
     bool Current(bool CheckRows=true,bool CheckValues=false)
     {
+        if(CompositeRoot&&!CompositeRoot->CompositeFence)return CompositeRoot->CompositeCurrent(CheckValues,CheckRows);
         if(!RootCurrent())return false;
-        for(const auto& E:Fields){auto* P=E.P;if(E.Struct){auto* F=static_cast<FStructProperty*>(P);if(!F->Struct.IsResolved()||F->Struct.Get()!=E.Struct)return Bad(TEXT("struct_binding"));}if(E.ObjectClass){auto* F=static_cast<FObjectProperty*>(P);if(!F->PropertyClass.IsResolved()||F->PropertyClass.Get()!=E.ObjectClass)return Bad(TEXT("object_class_binding"));}if(SourceBindingsReady&&E.Kind==FEnumProperty::StaticClass()){auto* F=static_cast<FEnumProperty*>(P);auto* Returned=F->GetEnum();TStrongObjectPtr<UEnum> Hold(Returned);if(!RootCurrent())return false;if(Returned!=E.Enum||F->GetUnderlyingProperty()!=E.Underlying)return Bad(TEXT("enum_binding"));}if(E.Kind==FByteProperty::StaticClass()){auto* F=static_cast<FByteProperty*>(P);if(!F->Enum.IsResolved()||F->Enum.Get()!=E.Enum)return Bad(TEXT("byte_enum_binding"));}if(E.Kind==FArrayProperty::StaticClass()&&(static_cast<FArrayProperty*>(P)->Inner!=E.Inner||static_cast<FArrayProperty*>(P)->ArrayFlags!=EArrayPropertyFlags::None))return Bad(TEXT("array_inner"));if(E.Kind==FSetProperty::StaticClass()&&(static_cast<FSetProperty*>(P)->ElementProp!=E.Inner||!FStringUdsScope::SetLayoutSame(static_cast<FSetProperty*>(P)->SetLayout,E.SetLayout)))return Bad(TEXT("set_element"));if(E.Kind==FMapProperty::StaticClass()&&(static_cast<FMapProperty*>(P)->KeyProp!=E.Key||static_cast<FMapProperty*>(P)->ValueProp!=E.Value||static_cast<FMapProperty*>(P)->MapFlags!=EMapPropertyFlags::None||!FStringUdsScope::MapLayoutSame(static_cast<FMapProperty*>(P)->MapLayout,E.MapLayout)))return Bad(TEXT("map_key_value"));}
+        for(const auto& E:Fields){auto* P=E.P;if(E.Struct){auto* F=static_cast<FStructProperty*>(P);if(!F->Struct.IsResolved()||F->Struct.Get()!=E.Struct)return Bad(TEXT("struct_binding"));}if(E.ObjectClass){auto* F=static_cast<FObjectPropertyBase*>(P);if(!F->PropertyClass.IsResolved()||!E.ObjectClassSlot.IsResolved()||F->PropertyClass.GetHandle()!=E.ObjectClassSlot.GetHandle())return Bad(TEXT("object_class_binding"));}if(E.Kind==FSoftObjectProperty::StaticClass()||E.Kind==FSoftClassProperty::StaticClass()){if(P->ElementSize!=sizeof(FSoftObjectPtr)||P->GetMinAlignment()!=alignof(FSoftObjectPtr))return Bad(TEXT("soft_reference_storage"));if(E.Kind==FSoftClassProperty::StaticClass()){auto* F=static_cast<FSoftClassProperty*>(P);if(!F->MetaClass.IsResolved()||!E.SoftMetaClassSlot.IsResolved()||F->MetaClass.GetHandle()!=E.SoftMetaClassSlot.GetHandle())return Bad(TEXT("soft_class_metaclass_binding"));}}if(SourceBindingsReady&&E.Kind==FEnumProperty::StaticClass()){auto* F=static_cast<FEnumProperty*>(P);auto* Returned=F->GetEnum();TStrongObjectPtr<UEnum> Hold(Returned);if(!RootCurrent())return false;if(Returned!=E.Enum||F->GetUnderlyingProperty()!=E.Underlying)return Bad(TEXT("enum_binding"));}if(E.Kind==FByteProperty::StaticClass()){auto* F=static_cast<FByteProperty*>(P);if(!F->Enum.IsResolved()||F->Enum.Get()!=E.Enum)return Bad(TEXT("byte_enum_binding"));}if(E.Kind==FArrayProperty::StaticClass()&&(static_cast<FArrayProperty*>(P)->Inner!=E.Inner||static_cast<FArrayProperty*>(P)->ArrayFlags!=EArrayPropertyFlags::None))return Bad(TEXT("array_inner"));if(E.Kind==FSetProperty::StaticClass()&&(static_cast<FSetProperty*>(P)->ElementProp!=E.Inner||!FStringUdsScope::SetLayoutSame(static_cast<FSetProperty*>(P)->SetLayout,E.SetLayout)))return Bad(TEXT("set_element"));if(E.Kind==FMapProperty::StaticClass()&&(static_cast<FMapProperty*>(P)->KeyProp!=E.Key||static_cast<FMapProperty*>(P)->ValueProp!=E.Value||static_cast<FMapProperty*>(P)->MapFlags!=EMapPropertyFlags::None||!FStringUdsScope::MapLayoutSame(static_cast<FMapProperty*>(P)->MapLayout,E.MapLayout)))return Bad(TEXT("map_key_value"));}
         for(const auto& E:Enums){auto* U=E.Hold.Get();if(!Loaded(U)||U->GetCppForm()!=E.Form||U->NumEnums()!=E.Names.Num())return Bad(TEXT("enum_inventory"));for(int32 I=0;I<E.Names.Num();++I)if(U->GetNameByIndex(I)!=E.Names[I]||U->GetValueByIndex(I)!=E.Values[I])return Bad(TEXT("enum_value"));}
-        if(CheckRows&&RowsReady){const auto& Map=Table->GetRowMap();if(Map.Num()!=Rows.Num())return Bad(TEXT("row_count"));int32 I=0;for(const auto& P:Map){if(P.Key!=Rows[I].Key||P.Value!=Rows[I].Value)return Bad(TEXT("row_membership"));++I;}}if(CheckValues&&RowsReady){const auto Copy=Rows;for(const auto& Row:Copy){const auto* Expected=Values.Find(Row.Key);if(Expected){auto Actual=MakeShared<FJsonObject>();if(!TypedRow(Row.Value,Actual)||!MirrorReadLiteralEqual(*Expected,Actual))return Bad(TEXT("retained_typed_row_value"),Row.Key.ToString());}}}return true;
+        if(CheckRows&&RowsReady){const auto& Map=Table->GetRowMap();if(Map.Num()!=Rows.Num())return Bad(TEXT("row_count"));int32 I=0;for(const auto& P:Map){if(P.Key!=Rows[I].Key||P.Value!=Rows[I].Value)return Bad(TEXT("row_membership"));++I;}}if(CheckValues&&RowsReady){const auto Copy=Rows;for(const auto& Row:Copy){const auto* Expected=Values.Find(Row.Key);if(Expected){auto Actual=MakeShared<FJsonObject>();if(!TypedRow(Row.Value,Actual))return false;if(!MirrorReadLiteralEqual(*Expected,Actual)){if(CompositeRoot){FString X,Y;FJsonSerializer::Serialize(*Expected,TJsonWriterFactory<>::Create(&X));FJsonSerializer::Serialize(Actual,TJsonWriterFactory<>::Create(&Y));return CompositeMismatch(*(TEXT("retained_typed_row_value.")+Row.Key.ToString()),X,Y);}return Bad(TEXT("retained_typed_row_value"),Row.Key.ToString());}}}}return true;
     }
     bool BindType(UScriptStruct* S,UDataTable* Existing=nullptr,const FString& InPath=FString(),const FString& InPackage=FString())
     {
-        Type.Reset(S);if(!Context()||!Loaded(S))return Bad(TEXT("native_source_return"));auto* Base=FindObject<UScriptStruct>(nullptr,TEXT("/Script/Engine.TableRowBase"));TStrongObjectPtr<UScriptStruct> Hold(Base);if(!Loaded(Base)||!S->IsChildOf(Base))return Bad(TEXT("native_row_base_pending"),TEXT("native FTableRowBase-derived row struct"),S->GetPathName(),false);if(!BindStruct(S))return false;
+        Type.Reset(S);if(!Context()||!Loaded(S))return Bad(TEXT("native_source_return"));
+        if(CompositeRoot&&!CompositeRoot->CompositeMutable&&S->GetClass()==UUserDefinedStruct::StaticClass())
+        {
+            CompositeUdsSource=MakeUnique<FStringUdsScope>(R,true,false,true);
+            auto& SourceScope=*CompositeUdsSource;
+            if(!SourceScope.Start()||!SourceScope.BindType(static_cast<UUserDefinedStruct*>(S)))
+            {Stopped=true;return false;}
+            if(!RootCurrent()||!Existing||!BindTable(Existing,InPath,InPackage))return false;
+            R.Data->SetBoolField(TEXT("composite_compiled_uds_read_profile"),true);
+            R.Data->SetStringField(TEXT("composite_compiled_uds_scope"),TEXT("Schema/list/get reuse the existing saved-clean compiled UDS source/default/layout and copied typed scalar/math/recursive container payload guards for each resolved parent DAG node. Root actual cached values are authoritative; parent rows need not equal them. No UDS writer, parent reconstruction/load, compile/save or reload-persistence claim."));
+            return Source(SourceBaseline);
+        }
+        auto* Base=FindObject<UScriptStruct>(nullptr,TEXT("/Script/Engine.TableRowBase"));TStrongObjectPtr<UScriptStruct> Hold(Base);if(!Loaded(Base)||!S->IsChildOf(Base))return Bad(TEXT("native_row_base_pending"),TEXT("native FTableRowBase-derived row struct"),S->GetPathName(),false);if(!BindStruct(S))return false;
         // All declaring/nested layouts are fixed before observer enum resolution.
         if(Existing&&!BindTable(Existing,InPath,InPackage))return false;
         for(auto& Entry:Structs){if(const auto* M=FMetaData::GetMapForObject(Entry->Hold.Get()))Entry->Metadata=*M;if(!RootCurrent())return false;Entry->CustomJsonConverter=FJsonObjectStructInterfaceRegistry::HasStructConverterRegistered(Entry->Hold.Get());if(!RootCurrent())return false;}SourceMetadataReady=true;if(!Current(true,true))return false;
         for(int32 I=0;I<Fields.Num();++I){const auto FieldKind=Fields[I].Kind;UEnum* E=nullptr;if(FieldKind==FEnumProperty::StaticClass()){E=static_cast<FEnumProperty*>(Fields[I].P)->GetEnum();TStrongObjectPtr<UEnum> Returned(E);if(!RootCurrent())return false;Fields[I].Enum=E;if(!BindEnum(E))return false;}else if(FieldKind==FByteProperty::StaticClass()&&Fields[I].Enum){E=Fields[I].Enum;if(!BindEnum(E))return false;}if(!Current(true,true))return false;}SourceBindingsReady=true;if(!Current(true,true))return false;
-        R.Data->SetBoolField(TEXT("generic_native_row_profile"),true);R.Data->SetStringField(TEXT("native_row_scope"),TEXT("Bounded linked native FTableRowBase source with actual declaring descriptors/nested sources/enums and loaded nullable native object refs. Original SDK constructor/destructor/row virtual/import-export hooks are whole-call boundaries, not interleaved/global-purity proof; no observer default instance allocation. Cache/nonreflected native internals are not authored invariants."));return Source(SourceBaseline);
+        R.Data->SetBoolField(TEXT("generic_native_row_profile"),true);R.Data->SetStringField(TEXT("native_row_scope"),TEXT("Bounded linked native FTableRowBase source with actual declaring descriptors/nested sources/enums and loaded nullable native object refs. Native soft object/class descriptors retain resolved held PropertyClass and separate soft-class MetaClass; logical paths, including pending/null values, are freshly copied through existing nested Array/Set/Map observation. Observer soft resolve/load/Get/CDO creation are absent, and weak resolution caches are not authored invariants. Original stock converter, row helpers, late partial failure and optional save order remain unchanged. Original SDK constructor/destructor/row virtual/import-export hooks are whole-call boundaries, not interleaved/global-purity proof; no observer default instance allocation. Generated declaration classes, custom soft descriptors and full referenced-asset RAM/runtime equivalence remain incomplete."));
+        int32 SoftFields=0,SoftClassFields=0;for(const auto& Field:Fields){SoftFields+=Field.Kind==FSoftObjectProperty::StaticClass();SoftClassFields+=Field.Kind==FSoftClassProperty::StaticClass();}
+        R.Data->SetNumberField(TEXT("native_soft_object_descriptor_count"),SoftFields);R.Data->SetNumberField(TEXT("native_soft_class_descriptor_count"),SoftClassFields);R.Data->SetBoolField(TEXT("native_soft_referent_resolution_added"),false);return Source(SourceBaseline);
     }
     bool Source(const TSharedRef<FJsonObject>& Out)
     {
-        if(!Current())return false;Out->SetObjectField(TEXT("table_class"),Identity(UDataTable::StaticClass()));Out->SetObjectField(TEXT("row_struct"),Identity(Type.Get()));Out->SetStringField(TEXT("row_struct_flags"),LexToString(uint32(Type->StructFlags)));Out->SetNumberField(TEXT("row_struct_bytes"),Type->GetStructureSize());TArray<TSharedPtr<FJsonValue>> Items;
+        if(!Current())return false;
+        if(CompositeUdsSource)
+        {
+            if(!CompositeUdsSource->StableSource(false,false)){Stopped=true;return false;}
+            if(!Current())return false;
+            Out->SetObjectField(TEXT("compiled_uds_source"),CompositeUdsSource->SourceBaseline);
+        }
+        Out->SetObjectField(TEXT("table_class"),Identity(Bound?Table->GetClass():UDataTable::StaticClass()));Out->SetObjectField(TEXT("row_struct"),Identity(Type.Get()));Out->SetStringField(TEXT("row_struct_flags"),LexToString(uint32(Type->StructFlags)));Out->SetNumberField(TEXT("row_struct_bytes"),Type->GetStructureSize());TArray<TSharedPtr<FJsonValue>> Items;
         for(TFieldIterator<FProperty> It(Type.Get());It;++It){auto* P=*It;auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),P->GetName());const FString Authored=P->GetAuthoredName();if(!Current())return false;J->SetStringField(TEXT("authored_name"),Authored);const FString Cpp=P->GetCPPType(nullptr,0);if(!Current())return false;J->SetStringField(TEXT("cpp_type"),Cpp);J->SetStringField(TEXT("class"),P->GetClass()->GetName());J->SetStringField(TEXT("flags"),LexToString(uint64(P->GetPropertyFlags())));J->SetStringField(TEXT("declaring_owner"),P->GetOwnerStruct()->GetPathName());Items.Add(MakeShared<FJsonValueObject>(J));}Out->SetArrayField(TEXT("fields"),Items);auto Packages=MakeShared<FJsonObject>();for(const auto& E:Objects)if(E.Hold.Get()==E.Package&&E.Path.StartsWith(TEXT("/Script/"))){auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("initial_dirty"),E.PackageDirty);J->SetStringField(TEXT("initial_package_flags"),LexToString(E.PackageFlags));Packages->SetObjectField(E.Path,J);}Out->SetObjectField(TEXT("source_package_initial_states"),Packages);return Current();
     }
     bool TypedValue(FProperty* P,const void* At,TSharedPtr<FJsonValue>& Out,int32& Cells,int32 Depth=0)
@@ -1590,13 +2002,37 @@ struct FNativeRowScope
         else if(E.Kind==FEnumProperty::StaticClass())Out=MakeShared<FJsonValueString>(LexToString(E.Underlying->GetSignedIntPropertyValue(At)));
         else if(auto* N=CastField<FNumericProperty>(P)){if(N->IsFloatingPoint()){const double V=N->GetFloatingPointPropertyValue(At);if(!FMath::IsFinite(V))return Bad(TEXT("native_nonfinite_value"));Out=MakeShared<FJsonValueNumber>(V);}else{const bool Unsigned=E.Kind==FByteProperty::StaticClass()||E.Kind==FUInt16Property::StaticClass()||E.Kind==FUInt32Property::StaticClass()||E.Kind==FUInt64Property::StaticClass();Out=MakeShared<FJsonValueString>(Unsigned?LexToString(N->GetUnsignedIntPropertyValue(At)):LexToString(N->GetSignedIntPropertyValue(At)));}}
         else if(E.Kind==FObjectProperty::StaticClass()){const TObjectPtr<UObject> Slot=static_cast<FObjectProperty*>(P)->GetObjectPtrPropertyValue(At);if(!Slot.IsResolved())return Bad(TEXT("typed_object_unresolved"));auto* Ref=Slot.Get();TStrongObjectPtr<UObject> Hold(Ref);if(Ref&&(!Pin(Ref)||!Pin(Ref->GetPackage())))return false;Out=Ref?TSharedPtr<FJsonValue>(MakeShared<FJsonValueString>(Ref->GetPathName()+TEXT("|")+LexToString(UPTRINT(Ref)))):TSharedPtr<FJsonValue>(MakeShared<FJsonValueNull>());}
+        else if(E.Kind==FSoftObjectProperty::StaticClass()||E.Kind==FSoftClassProperty::StaticClass())
+        {
+            // Copy only logical path storage. Never Get/IsValid/Resolve/Load the
+            // soft referent: pending and resident paths have the same value here.
+            const FSoftObjectPtr Copied=*static_cast<const FSoftObjectPtr*>(At);const FSoftObjectPath SoftPath=Copied.ToSoftObjectPath();const FString Literal=SoftPath.ToString();
+            if(Literal.Len()>MaxText||!SoftReferencePath(Literal)||(!SoftPath.IsNull()&&!SoftPath.IsValid()))return Bad(TEXT("typed_soft_reference_path"),TEXT("bounded tooling-free logical soft object/class path or null"),Literal.Left(4096));
+            Out=MakeShared<FJsonValueString>(Literal);
+        }
         else if(E.Struct){auto J=MakeShared<FJsonObject>();for(TFieldIterator<FProperty> It(E.Struct);It;++It){if(It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated))continue;TSharedPtr<FJsonValue> V;if(!TypedValue(*It,It->ContainerPtrToValuePtr<void>(At),V,Cells,Depth+1))return false;J->SetField(It->GetName(),V);}Out=MakeShared<FJsonValueObject>(J);}
         else if(E.Kind==FArrayProperty::StaticClass()){FScriptArrayHelper H(static_cast<FArrayProperty*>(P),At);if(H.Num()<0||H.Num()>4096)return Bad(TEXT("typed_array_bound"));TArray<TSharedPtr<FJsonValue>> A;for(int32 I=0;I<H.Num();++I){TSharedPtr<FJsonValue> V;if(!TypedValue(E.Inner,H.GetRawPtr(I),V,Cells,Depth+1))return false;A.Add(V);}Out=MakeShared<FJsonValueArray>(A);}
         else if(E.Kind==FSetProperty::StaticClass()||E.Kind==FMapProperty::StaticClass()){TArray<FString> Bag;if(E.Kind==FSetProperty::StaticClass()){FScriptSetHelper H(static_cast<FSetProperty*>(P),At);if(H.Num()<0||H.Num()>4096||H.GetMaxIndex()>65536)return Bad(TEXT("typed_set_bound"));for(int32 I=0;I<H.GetMaxIndex();++I)if(H.IsValidIndex(I)){TSharedPtr<FJsonValue> V;if(!TypedValue(E.Inner,H.GetElementPtr(I),V,Cells,Depth+1))return false;FString Text;FJsonSerializer::Serialize(V,TEXT(""),TJsonWriterFactory<>::Create(&Text));Bag.Add(Text);}}else{FScriptMapHelper H(static_cast<FMapProperty*>(P),At);if(H.Num()<0||H.Num()>4096||H.GetMaxIndex()>65536)return Bad(TEXT("typed_map_bound"));for(int32 I=0;I<H.GetMaxIndex();++I)if(H.IsValidIndex(I)){TSharedPtr<FJsonValue> K,V;if(!TypedValue(E.Key,H.GetKeyPtr(I),K,Cells,Depth+1)||!TypedValue(E.Value,H.GetValuePtr(I),V,Cells,Depth+1))return false;FString Text;FJsonSerializer::Serialize(MakeShared<FJsonValueArray>(TArray<TSharedPtr<FJsonValue>>{K,V}),TEXT(""),TJsonWriterFactory<>::Create(&Text));Bag.Add(Text);}}Bag.Sort();TArray<TSharedPtr<FJsonValue>> A;for(const auto& Text:Bag)A.Add(MakeShared<FJsonValueString>(Text));Out=MakeShared<FJsonValueArray>(A);}
         else return Bad(TEXT("typed_value_kind"));return true;
     }
     bool TypedRow(const uint8* At,const TSharedRef<FJsonObject>& Out)
-    {if(!RootCurrent()||!At)return false;int32 Cells=0;for(TFieldIterator<FProperty> It(Type.Get());It;++It){if(It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated))continue;TSharedPtr<FJsonValue> V;if(!TypedValue(*It,It->ContainerPtrToValuePtr<void>(At),V,Cells))return false;Out->SetField(It->GetName(),V);}return RootCurrent();}
+    {
+        if(CompositeUdsSource)
+        {
+            // Current() finishes all observer-bearing source/descriptor checks.
+            // Such callbacks may replace row storage even when the UDS scope
+            // itself is source-only (Bound=false). Reacquire the selected route
+            // after that boundary, then use only the callback-free value copy.
+            if(!Current(true,false))return false;
+            const auto* Captured=Rows.FindByPredicate([&](const TPair<FName,const uint8*>& E){return E.Value==At;});
+            if(!Captured||!Loaded(Table.Get()))return Bad(TEXT("composite_uds_row_borrow"),TEXT("held selected row and loaded table"),TEXT("unavailable"));
+            const auto* Actual=Table->GetRowMap().Find(Captured->Key);
+            if(!Actual||*Actual!=At||!At)return Bad(TEXT("composite_uds_row_borrow"),TEXT("captured key and current identical storage"),TEXT("row removed or replaced"));
+            FString Value;if(!CompositeUdsSource->RowValue(At,Value,true)){Stopped=true;return false;}
+            // The existing UDS observer owns the lossless fingerprint; public row
+            // JSON still comes from the original stock converter in Export().
+            Out->SetStringField(TEXT("compiled_uds_copied_value"),Value);return RootCurrent();
+        }if(!RootCurrent()||!At)return false;int32 Cells=0;for(TFieldIterator<FProperty> It(Type.Get());It;++It){if(It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated))continue;TSharedPtr<FJsonValue> V;if(!TypedValue(*It,It->ContainerPtrToValuePtr<void>(At),V,Cells))return false;Out->SetField(It->GetName(),V);}return RootCurrent();}
     bool Export(FName Key,const uint8* Expected,const TSharedRef<FJsonObject>& Out,bool CheckAllRows=true)
     {
         if(!Current(CheckAllRows))return false;const auto* Actual=Table->GetRowMap().Find(Key);const uint8* MemoryValue=Actual?*Actual:nullptr;if(!MemoryValue||MemoryValue!=Expected)return Bad(TEXT("fresh_row_memory"));auto Typed=MakeShared<FJsonObject>();if(!TypedRow(MemoryValue,Typed)||!Current(CheckAllRows))return false;const auto* BeforeExport=Table->GetRowMap().Find(Key);if(!BeforeExport||*BeforeExport!=MemoryValue)return Bad(TEXT("fresh_row_before_export"));
@@ -1604,7 +2040,7 @@ struct FNativeRowScope
     }
     bool BindTable(UDataTable* T,const FString& InPath,const FString& InPackage)
     {
-        if(!Current(false)||!Loaded(T)||T->GetClass()!=UDataTable::StaticClass()||T->GetOuter()!=T->GetPackage()||!T->RowStruct.IsResolved()||T->RowStruct.Get()!=Type.Get()||!T->GetPathName().Equals(InPath,ESearchCase::CaseSensitive)||!T->AssetImportData.IsResolved()||T->GetRowMap().Num()>MaxRowsObserved)return Bad(TEXT("native_table_scope"));Table.Reset(T);Path=InPath;PackagePath=InPackage;TableOptions=uint8(T->bStripFromClientBuilds)|(uint8(T->bIgnoreExtraFields)<<1)|(uint8(T->bIgnoreMissingFields)<<2)|(uint8(T->bPreserveExistingValues)<<3);ImportKey=T->ImportKeyField;ImportPath=T->ImportPath_DEPRECATED;ImportData.Reset(T->AssetImportData.Get());Bound=true;if(!Pin(T)||!Pin(T->GetPackage())||!Pin(T->GetClass())||(ImportData.IsValid()&&!Pin(ImportData.Get())))return false;
+        if(!Current(false)||!Loaded(T)||(T->GetClass()!=UDataTable::StaticClass()&&(!CompositeRoot||T->GetClass()!=UCompositeDataTable::StaticClass()))||T->GetOuter()!=T->GetPackage()||!T->RowStruct.IsResolved()||T->RowStruct.Get()!=Type.Get()||!T->GetPathName().Equals(InPath,ESearchCase::CaseSensitive)||!T->AssetImportData.IsResolved()||T->GetRowMap().Num()>MaxRowsObserved)return Bad(TEXT("native_table_scope"));Table.Reset(T);Path=InPath;PackagePath=InPackage;TableOptions=uint8(T->bStripFromClientBuilds)|(uint8(T->bIgnoreExtraFields)<<1)|(uint8(T->bIgnoreMissingFields)<<2)|(uint8(T->bPreserveExistingValues)<<3);ImportKey=T->ImportKeyField;ImportPath=T->ImportPath_DEPRECATED;ImportData.Reset(T->AssetImportData.Get());Bound=true;if(!Pin(T)||!Pin(T->GetPackage())||!Pin(T->GetClass())||(ImportData.IsValid()&&!Pin(ImportData.Get())))return false;
         for(const auto& P:T->GetRowMap()){if(P.Key.IsNone()||!P.Value)return Bad(TEXT("native_row_memory"));Rows.Emplace(P.Key,P.Value);}RowsReady=true;const auto Copy=Rows;for(const auto& P:Copy){auto V=MakeShared<FJsonObject>();if(!TypedRow(P.Value,V))return false;Values.Add(P.Key,V);}return Current();
     }
     bool Accept(FName Key,bool Remove,const uint8* Returned,bool Import=false)
@@ -1659,6 +2095,7 @@ struct FNativeRowScope
     bool ImportScalar(const FFieldRole& E,const TSharedPtr<FJsonValue>& V,int32& Cells,int32 Depth)
     {
         if(!V||Depth>16||++Cells>16384)return Bad(TEXT("native_input_bound"));if((E.Kind==FNameProperty::StaticClass()||E.Enum)&&V->Type==EJson::String){const FString Text=V->AsString();bool Nul=false;for(TCHAR C:Text)Nul|=C==TCHAR('\0');if(Text.Len()>=NAME_SIZE||Nul)return Bad(TEXT("native_name_input_bound"),TEXT("safe FName/enum text"),TEXT("too long or nul"),false);}if(E.Kind==FObjectProperty::StaticClass()&&V->Type==EJson::String&&!CleanPath(V->AsString()))return Bad(TEXT("native_reference_forbidden"),TEXT("runtime-independent native asset reference"),V->AsString(),false);
+        if((E.Kind==FSoftObjectProperty::StaticClass()||E.Kind==FSoftClassProperty::StaticClass())&&V->Type==EJson::String&&!SoftReferencePath(V->AsString()))return Bad(TEXT("native_soft_reference_forbidden"),TEXT("runtime-independent soft asset/class reference before row writer"),V->AsString(),false);
         if(E.Struct&&V->Type==EJson::Object)return ImportFields(E.Struct,V->AsObject(),Cells,Depth+1);if((E.Kind==FArrayProperty::StaticClass()||E.Kind==FSetProperty::StaticClass())&&V->Type==EJson::Array){const auto* Inner=Fields.FindByPredicate([&](const FFieldRole& F){return F.P==E.Inner;});if(!Inner||V->AsArray().Num()>4096)return Bad(TEXT("native_input_array_bound"));for(const auto& Child:V->AsArray())if(!ImportValue(*Inner,Child,Cells,Depth+1))return false;}if(E.Kind==FMapProperty::StaticClass()&&V->Type==EJson::Object){const auto* Key=Fields.FindByPredicate([&](const FFieldRole& F){return F.P==E.Key;});const auto* Value=Fields.FindByPredicate([&](const FFieldRole& F){return F.P==E.Value;});if(!Key||!Value||V->AsObject()->Values.Num()>4096)return Bad(TEXT("native_input_map_bound"));for(const auto& Child:V->AsObject()->Values){if(!ImportValue(*Key,MakeShared<FJsonValueString>(FString(Child.Key.ToView())),Cells,Depth+1)||!ImportValue(*Value,Child.Value,Cells,Depth+1))return false;}}return true;
     }
 };
@@ -1666,7 +2103,7 @@ bool NativeRowAdmit(FNativeRowScope* S){return !S||S->Current();}
 
 bool NativeRowCapture(FContext& C,FObservation& O,FResult& R,const TCHAR* Field)
 {
-    auto& S=*C.Native;O=FObservation{};R.Data->SetObjectField(Field,Observation(O));if(!S.Current(true,true)||!S.Source(O.Source))return false;auto* T=C.Table.Get();O.State->SetObjectField(TEXT("identity"),Identity(T));O.State->SetStringField(TEXT("row_struct"),C.Type->GetPathName());O.State->SetNumberField(TEXT("row_count"),T->GetRowMap().Num());O.State->SetBoolField(TEXT("package_dirty"),T->GetPackage()->IsDirty());auto Props=MakeShared<FJsonObject>();O.State->SetObjectField(TEXT("properties"),Props);if(!Properties(T,Props,nullptr,nullptr,&S))return false;
+    auto& S=*C.Native;O=FObservation{};R.Data->SetObjectField(Field,Observation(O));if(!S.Current(true,true)||!S.Source(O.Source)||!S.CompositeSnapshot(O.Source))return false;auto* T=C.Table.Get();O.State->SetObjectField(TEXT("identity"),Identity(T));O.State->SetStringField(TEXT("row_struct"),C.Type->GetPathName());O.State->SetNumberField(TEXT("row_count"),T->GetRowMap().Num());O.State->SetBoolField(TEXT("package_dirty"),T->GetPackage()->IsDirty());auto Props=MakeShared<FJsonObject>();O.State->SetObjectField(TEXT("properties"),Props);if(!Properties(T,Props,nullptr,nullptr,&S))return false;
     auto RowJson=MakeShared<FJsonObject>();O.State->SetObjectField(TEXT("rows"),RowJson);TArray<TSharedPtr<FJsonValue>> Order;int32 Chars=0;const auto Rows=S.Rows;for(const auto& P:Rows){auto V=MakeShared<FJsonObject>();if(!S.Export(P.Key,P.Value,V,false))return false;FString Text;if(!FJsonSerializer::Serialize(V,TJsonWriterFactory<>::Create(&Text))||(Chars+=Text.Len())>MaxText)return S.Bad(TEXT("row_text_bound"));RowJson->SetObjectField(P.Key.ToString(),V);Order.Add(MakeShared<FJsonValueString>(P.Key.ToString()));}O.State->SetArrayField(TEXT("row_iteration_order"),Order);
     TArray<UObject*> Exports;GetObjectsWithOuter(T,Exports,EGetObjectsFlags::IncludeNestedObjects);if(!S.Current()||Exports.Num()>MaxObjects)return false;Exports.Insert(T,0);auto Owned=MakeShared<FJsonObject>();O.State->SetObjectField(TEXT("owned_exports"),Owned);
     for(auto* E:Exports){if(!S.Pin(E)||!S.Current())return false;if(E!=T){auto J=MakeShared<FJsonObject>();Owned->SetObjectField(E->GetPathName(),J);J->SetObjectField(TEXT("identity"),Identity(E));auto P=MakeShared<FJsonObject>();J->SetObjectField(TEXT("properties"),P);if(!Properties(E,P,nullptr,nullptr,&S))return false;}TArray<UObject*> Refs;FReferenceFinder Finder(Refs,nullptr,false,true,false,true);Finder.FindReferences(E);if(!S.Current())return false;for(auto* Ref:Refs){TStrongObjectPtr<UObject> Hold(Ref);if(!S.Pin(Ref)||!S.Current())return false;O.References->SetObjectField(Ref->GetPathName(),Identity(Ref));}}
@@ -1720,6 +2157,12 @@ bool Resolve(const FString& RequestedPath, bool Mutable, FContext& C, FResult& R
     C.MirrorRead=MakeUnique<FMirrorReadScope>(R,Mutable);if(!C.MirrorRead->Start()){return false;}
     R.Stage = TEXT("load_datatable"); auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("requested_path"), C.Path); Receipt->SetBoolField(TEXT("attempted"), true); R.Data->SetArrayField(TEXT("asset_load_calls"), { MakeShared<FJsonValueObject>(Receipt) }); Count(R, TEXT("asset_load_count")); UObject* Object = UEditorAssetLibrary::LoadAsset(C.Path); if(!MirrorReadAdmit(C.MirrorRead.Get())){Receipt->SetBoolField(TEXT("returned"),true);return false;} Receipt->SetObjectField(TEXT("returned_object"), Identity(Object)); C.Table.Reset(Cast<UDataTable>(Object));
     UDataTable* T = C.Table.Get(); C.Type = T ? const_cast<UScriptStruct*>(T->GetRowStruct()) : nullptr;
+    if(Loaded(T)&&T->GetClass()==UCompositeDataTable::StaticClass())
+    {
+        C.MirrorRead.Reset();C.Native=MakeUnique<FNativeRowScope>(R);
+        if(!C.Native->BindComposite(T,Mutable))return false;
+        R.Stage=TEXT("preflight");return true;
+    }
     if(Loaded(C.Type)&&C.Type->GetClass()==UUserDefinedStruct::StaticClass())
     {
         if(!MirrorReadAdmit(C.MirrorRead.Get()))return false;
@@ -1736,7 +2179,7 @@ bool Resolve(const FString& RequestedPath, bool Mutable, FContext& C, FResult& R
         if(!C.Native->BindType(C.Type,T,C.Path,C.Package)||!C.Native->StableSource())return false;
         R.Stage=TEXT("preflight");return true;
     }
-    if (!Loaded(T) || (T->GetClass()!=UDataTable::StaticClass()&&T->GetClass()!=UMirrorDataTable::StaticClass()) || T->GetPathName() != C.Path || T->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn | PKG_PlayInEditor | PKG_EditorOnly) || !Loaded(C.Type) || (C.Type->GetPathName() != TagRowPath && C.Type->GetPathName() != MirrorRowPath)) { return Fail(R, TEXT("datatable_type_unsupported"), TEXT("Exact native UDataTable with native GameplayTagTableRow/MirrorTableRow, or exact native MirrorDataTable with MirrorTableRow required; custom classes/user-defined structs remain incomplete.")); }
+    if (!Loaded(T) || (T->GetClass()!=UDataTable::StaticClass()&&T->GetClass()!=UMirrorDataTable::StaticClass()) || T->GetPathName() != C.Path || T->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn | PKG_PlayInEditor | PKG_EditorOnly) || !Loaded(C.Type) || (C.Type->GetPathName() != TagRowPath && C.Type->GetPathName() != MirrorRowPath)) { return Fail(R, TEXT("datatable_type_unsupported"), TEXT("An admitted native-row UDataTable, readonly UCompositeDataTable, or exact MirrorDataTable profile is required on this branch; custom classes and other row/parent profiles remain incomplete.")); }
     if(T->GetClass()==UMirrorDataTable::StaticClass()){if(!C.MirrorRead||!C.MirrorRead->Bind(static_cast<UMirrorDataTable*>(T),C.Type)){return false;}}else{C.MirrorRead.Reset();}
     R.Stage = TEXT("preflight"); return true;
 }
@@ -1927,7 +2370,7 @@ FString MirrorRowMutation(FContext& C,const FObservation& Before,FResult& R,cons
 }
 bool EndRead(FContext& C,const FObservation& Before,FResult& R);
 template<typename TScope>
-bool StringUdsEqual(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B,const TScope& S,bool Saved=false,const FString& At=FString(),bool ModifyProperties=false)
+bool StringUdsEqual(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B,const TScope& S,bool Saved,const FString& At,bool ModifyProperties)
 {
     if(!A||!B||A->Type!=B->Type)return false;
     if(ModifyProperties&&A->Type==EJson::String){const auto* Delta=S.ModifyDerivedMetadata.Find(At);if(Delta&&A->AsString().Equals(Delta->Key,ESearchCase::CaseSensitive)&&B->AsString().Equals(Delta->Value,ESearchCase::CaseSensitive))return true;}
@@ -1943,7 +2386,7 @@ bool StringUdsFences(FContext& C,const FObservation& Before,const FObservation& 
     State&=Y->Values.Num()==X->Values.Num()+(Key.IsNone()?0:Remove?-1:Existed?0:1);
     const auto& Old=Before.State->GetArrayField(TEXT("row_iteration_order"));const auto& Now=After.State->GetArrayField(TEXT("row_iteration_order"));int32 I=0;for(const auto& N:Old){if(Remove&&FName(*N->AsString())==Key)continue;if(I>=Now.Num()||!MirrorReadLiteralEqual(N,Now[I++]))State=false;}
     if(!Key.IsNone()&&!Remove&&!Existed)State&=Now.Num()==I+1&&FName(*Now.Last()->AsString())==Key;else State&=Now.Num()==I;
-    const bool Source=MirrorReadLiteralEqual(Before.Source,After.Source)&&StringUdsEqual(MakeShared<FJsonValueObject>(Before.References),MakeShared<FJsonValueObject>(After.References),S),Other=MirrorReadLiteralEqual(Before.OtherDirty,After.OtherDirty),File=MirrorReadLiteralEqual(Before.DiskState,After.DiskState);
+    const bool Source=MirrorReadLiteralEqual(Before.Source,After.Source)&&(S.ReferencePayload?S.ReferenceProjectionEqual(Before.References,After.References):StringUdsEqual(MakeShared<FJsonValueObject>(Before.References),MakeShared<FJsonValueObject>(After.References),S)),Other=MirrorReadLiteralEqual(Before.OtherDirty,After.OtherDirty),File=MirrorReadLiteralEqual(Before.DiskState,After.DiskState);
     R.Data->SetBoolField(TEXT("observations_complete"),true);R.Data->SetBoolField(TEXT("source_preserved"),Source);R.Data->SetBoolField(TEXT("unselected_state_preserved"),State&&Other);R.Data->SetBoolField(TEXT("disk_preserved_before_save"),File);
     return (State&&Source&&Other&&File)||S.Stop(TEXT("datatable_string_uds_preservation_failed"),TEXT("Unselected rows/order/source/metadata/disk/dirty state changed; actual selected prefix retained, no next save."));
 }
@@ -1974,7 +2417,7 @@ void StringUdsClose(FContext& C,const FObservation& Final,bool HasFinal,ITransac
 }
 FString StringUdsRowMutation(FContext& C,const FObservation& Before,FResult& R,const FString& Name,const TSharedPtr<FJsonObject>& Requested,bool Remove)
 {
-    auto& S=*C.Uds;TGuardValue<bool> Busy(StringUdsWriterRunning,true);if(!S.StableSource()||(!Remove&&!S.ImportNamesBounded(Requested)))return Encode(R);const FName Key(*Name);const bool Existed=C.Table->GetRowMap().Contains(Key);R.Data->SetStringField(TEXT("row_name"),Name);R.Data->SetObjectField(TEXT("before"),RowSnapshot(C,Key));if(!S.StableSource())return Encode(R);
+    auto& S=*C.Uds;TGuardValue<bool> Busy(StringUdsWriterRunning,true);if(!S.StableSource()||(!Remove&&!S.ImportNamesBounded(Requested)))return Encode(R);S.ReferenceAdmissionClosed=true;const FName Key(*Name);const bool Existed=C.Table->GetRowMap().Contains(Key);R.Data->SetStringField(TEXT("row_name"),Name);R.Data->SetObjectField(TEXT("before"),RowSnapshot(C,Key));if(!S.StableSource())return Encode(R);
     if(Remove&&!Existed){if(!EndRead(C,Before,R))return Encode(R);Fail(R,TEXT("datatable_row_not_found"),TEXT("Row not found; no Modify/remove/save."));return Encode(R);}
     auto Old=MakeShared<FJsonObject>();const bool Matched=!Remove&&Existed&&RowValues(C,Key,Old)&&ContainsExpected(MakeShared<FJsonValueObject>(Requested.ToSharedRef()),MakeShared<FJsonValueObject>(Old));if(!S.StableSource())return Encode(R);if(!Remove)R.Data->SetBoolField(TEXT("already_matched"),Matched);
     FObservation Final;bool HasFinal=false;ITransaction* const UndoBefore=GUndo;

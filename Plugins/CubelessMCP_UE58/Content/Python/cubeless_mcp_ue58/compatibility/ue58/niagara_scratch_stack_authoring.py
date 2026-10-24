@@ -83,24 +83,35 @@ def async_binding_status():
         status[method+'_cancel_callable']=callable(getattr(job,'cancel_job',None))
     return status
 
-def start_job(method,params):
+def start_job(method,params,current_callback=None):
     try:
+        if current_callback:current_callback()
         library,start,job_class=_job_binding(method);text=_carrier(params)
         function=getattr(getattr(unreal,library,None),start,None)
         if not callable(function):raise OperationError('niagara_scratch_stack_authoring_job_native_unavailable','Exact Native start is unavailable; no fallback or dispatch')
+        if current_callback:current_callback()
     except Exception as error:error.native_start_dispatched=False;raise
     job=function(text)
     try:
+        if current_callback:current_callback()
         cls=getattr(unreal,job_class,None)
-        if cls is None or not isinstance(job,cls) or job.get_class().get_path_name()!='/Script/CubelessMCPUE58Editor.'+job_class or not callable(getattr(job,'get_snapshot_json',None)) or not callable(getattr(job,'cancel_job',None)):
+        if cls is None or not isinstance(job,cls):raise OperationError('niagara_scratch_stack_authoring_job_identity_invalid','Returned exact Job differs; dispatched start must not be repeated')
+        if current_callback:current_callback()
+        actual_class=job.get_class()
+        if current_callback:current_callback()
+        actual_path=actual_class.get_path_name()
+        if current_callback:current_callback()
+        if actual_path!='/Script/CubelessMCPUE58Editor.'+job_class or not callable(getattr(job,'get_snapshot_json',None)) or not callable(getattr(job,'cancel_job',None)):
             raise OperationError('niagara_scratch_stack_authoring_job_identity_invalid','Returned exact Job differs; dispatched start must not be repeated')
     except Exception as error:error.native_start_returned=True;error.native_returned_job=job;raise
     return job
 
-def snapshot(job,method):
+def snapshot(job,method,current_callback=None):
+    if current_callback:current_callback()
     raw=job.get_snapshot_json();value=None
     try:
         value=_decode_result(raw);data=value['data'];revision=data.get('native_checkpoint_revision')
+        if current_callback:current_callback()
         if (value.get('operation')!=native_job_operation(method) or type(data.get('native_job_id')) is not str or not data['native_job_id'] or type(data.get('native_job_terminal')) is not bool or type(data.get('operation_complete')) is not bool or data['operation_complete']!=data['native_job_terminal'] or type(revision) not in (int,float) or not math.isfinite(revision) or revision<0 or revision!=int(revision) or revision>9007199254740991):
             raise OperationError('niagara_scratch_stack_authoring_job_snapshot_invalid','Exact operation/job/revision/terminal Native receipt required')
         if not data['native_job_terminal'] and (value['success'] or value['postcondition_passed']):raise OperationError('niagara_scratch_stack_authoring_job_pending_health_invalid','Pending is not completed success or passed final postcondition')
@@ -108,6 +119,7 @@ def snapshot(job,method):
             error=OperationError('niagara_scratch_stack_authoring_job_publication_quarantined','Native stopped or quarantined before safe terminal publication; no further Job work')
             error.native_unsafe_publication_quarantined=True;raise error
         public_terminal=job.get_editor_property('is_terminal')
+        if current_callback:current_callback()
         if type(public_terminal) is not bool or public_terminal is not data['native_job_terminal']:raise OperationError('niagara_scratch_stack_authoring_job_publication_mismatch','Job terminal publication differs from returned snapshot; no replay')
     except Exception as error:
         error.native_snapshot_returned=True;error.native_raw_result=raw

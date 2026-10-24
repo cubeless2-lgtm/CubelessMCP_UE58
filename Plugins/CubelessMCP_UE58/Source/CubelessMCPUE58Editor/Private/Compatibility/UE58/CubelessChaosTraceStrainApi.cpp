@@ -565,6 +565,16 @@ void CleanupCinematicTraceObservation(const TCHAR* Reason=TEXT("explicit_cleanup
 }
 bool TickCinematicTraceObservation(float Delta);
 
+struct FSameIdEvidence
+{
+    bool Complete=true;int32 ReleasedDynamic=0;double MaximumDisplacement=0;
+};
+FSameIdEvidence SameIdEvidence(const FCinematicTraceObservationSession& S)
+{
+    FSameIdEvidence E;TMap<int32,int32> Final;for(int32 I=0;I<S.FinalPhysicsObjectIds.Num();++I) { const int32 Id=S.FinalPhysicsObjectIds[I];if(Final.Contains(Id)) { E.Complete=false; }Final.Add(Id,I); }
+    TSet<int32> Initial;for(int32 I=0;I<S.InitialPhysicsObjectIds.Num();++I) { const int32 Id=S.InitialPhysicsObjectIds[I];if(Initial.Contains(Id)) { E.Complete=false; }Initial.Add(Id);const int32* J=Final.Find(Id);if(!J||!S.InitialPhysicsObjectDisabled.IsValidIndex(I)||!S.InitialPhysicsObjectPositions.IsValidIndex(I)||!S.FinalPhysicsObjectDisabled.IsValidIndex(*J)||!S.FinalPhysicsObjectPositions.IsValidIndex(*J)||!S.FinalPhysicsObjectStates.IsValidIndex(*J)) { E.Complete=false;continue; }if(S.InitialPhysicsObjectDisabled[I]&&!S.FinalPhysicsObjectDisabled[*J]&&S.FinalPhysicsObjectStates[*J]==static_cast<int32>(Chaos::EObjectStateType::Dynamic)) { ++E.ReleasedDynamic;E.MaximumDisplacement=FMath::Max(E.MaximumDisplacement,FVector::Distance(S.InitialPhysicsObjectPositions[I],S.FinalPhysicsObjectPositions[*J])); } }E.Complete&=Initial.Num()>0&&Initial.Num()==Final.Num()&&S.PhysicsIdsComplete;return E;
+}
+
 bool TickCinematicTraceObservationBody(float)
 {
     if (!ActiveCinematicTraceObservation) return false;
@@ -578,8 +588,12 @@ bool TickCinematicTraceObservationBody(float)
     if (GFrameCounter <= Session.DispatchFrame) return true;
     CaptureTracePhysicsObservation(Session);if(!Guard()||!Work->R.Error.IsEmpty()) { return false; }if(!Session.PhysicsIdsComplete) { return Work->Fail(TEXT("physics_id_set_changed"),TEXT("Physics object identity set changed; further impulses were not sent")); }
     ++Session.ObservedTickCount;
+    // A cluster parent may disable while one child cluster enables, leaving the
+    // total disabled count unchanged. Reuse the same identity-based release
+    // proof as the final result; motion of an already active root is not release.
+    const FSameIdEvidence ReleaseEvidence = SameIdEvidence(Session);
     if (!Session.bReleaseObservedBeforeMotion &&
-        Session.FinalDisabledCount < Session.InitialDisabledCount)
+        ReleaseEvidence.Complete && ReleaseEvidence.ReleasedDynamic > 0)
     {
         Session.bReleaseObservedBeforeMotion = true;
         Session.ReleaseObservedFrame = GFrameCounter;
@@ -615,16 +629,6 @@ bool TickCinematicTraceObservationBody(float)
         return false;
     }
     return true;
-}
-
-struct FSameIdEvidence
-{
-    bool Complete=true;int32 ReleasedDynamic=0;double MaximumDisplacement=0;
-};
-FSameIdEvidence SameIdEvidence(const FCinematicTraceObservationSession& S)
-{
-    FSameIdEvidence E;TMap<int32,int32> Final;for(int32 I=0;I<S.FinalPhysicsObjectIds.Num();++I) { const int32 Id=S.FinalPhysicsObjectIds[I];if(Final.Contains(Id)) { E.Complete=false; }Final.Add(Id,I); }
-    TSet<int32> Initial;for(int32 I=0;I<S.InitialPhysicsObjectIds.Num();++I) { const int32 Id=S.InitialPhysicsObjectIds[I];if(Initial.Contains(Id)) { E.Complete=false; }Initial.Add(Id);const int32* J=Final.Find(Id);if(!J||!S.InitialPhysicsObjectDisabled.IsValidIndex(I)||!S.InitialPhysicsObjectPositions.IsValidIndex(I)||!S.FinalPhysicsObjectDisabled.IsValidIndex(*J)||!S.FinalPhysicsObjectPositions.IsValidIndex(*J)||!S.FinalPhysicsObjectStates.IsValidIndex(*J)) { E.Complete=false;continue; }if(S.InitialPhysicsObjectDisabled[I]&&!S.FinalPhysicsObjectDisabled[*J]&&S.FinalPhysicsObjectStates[*J]==static_cast<int32>(Chaos::EObjectStateType::Dynamic)) { ++E.ReleasedDynamic;E.MaximumDisplacement=FMath::Max(E.MaximumDisplacement,FVector::Distance(S.InitialPhysicsObjectPositions[I],S.FinalPhysicsObjectPositions[*J])); } }E.Complete&=Initial.Num()>0&&Initial.Num()==Final.Num()&&S.PhysicsIdsComplete;return E;
 }
 
 TSharedPtr<FJsonObject> TraceObservationResponse(const FString& Operation)

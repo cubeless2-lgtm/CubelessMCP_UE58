@@ -22,6 +22,12 @@
 #include "Materials/MaterialFunction.h"
 #include "Materials/MaterialFunctionInterface.h"
 #include "Materials/MaterialFunctionInstance.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Engine/Texture.h"
+#include "Engine/TextureCollection.h"
+#include "Engine/Font.h"
+#include "VT/RuntimeVirtualTexture.h"
+#include "SparseVolumeTexture/SparseVolumeTexture.h"
 #include "EditorFramework/ThumbnailInfo.h"
 #include "ThumbnailRendering/SceneThumbnailInfo.h"
 #include "ThumbnailRendering/SceneThumbnailInfoWithPrimitive.h"
@@ -57,10 +63,11 @@ struct FUDObject
 struct FUDParent
 {
     UMaterialFunctionInterface* Object=nullptr;UMaterialFunctionInterface* Parent=nullptr;UMaterialFunctionInterface* CachedBase=nullptr;UObject* EditorData=nullptr;UObject* Thumbnail=nullptr;
+    TSharedPtr<FJsonObject> OverrideReferences;
 };
 struct FUDSource
 {
-    UMaterialFunctionInterface* Logical=nullptr;UMaterialFunction* Base=nullptr;TArray<FUDParent> Chain;TArray<FUDObject> Objects;
+    UMaterialFunctionInterface* Logical=nullptr;UMaterialFunction* Base=nullptr;TArray<FUDParent> Chain;TArray<FUDObject> Objects,OverrideObjects;
     TArray<TObjectPtr<UMaterialExpression>> Expressions;TSharedPtr<FJsonObject> Before;bool Ready=false;
     TMap<FString,FString> FileHashes;
 };
@@ -191,11 +198,41 @@ bool UDPlainThumbnailsCurrent()
 }
 bool UDValueOverrides(UMaterialFunctionInstance* I)
 {
-    // Object-bearing/Atlas overrides are valid wider original inputs, not yet admitted here.
-    if(I->ScalarParameterValues.Num()>256||I->VectorParameterValues.Num()>256||I->DoubleVectorParameterValues.Num()>256||I->StaticSwitchParameterValues.Num()>256||I->StaticComponentMaskParameterValues.Num()>256||
-       I->TextureParameterValues.Num()||I->TextureCollectionParameterValues.Num()||I->ParameterCollectionParameterValues.Num()||I->FontParameterValues.Num()||I->RuntimeVirtualTextureParameterValues.Num()||I->SparseVolumeTextureParameterValues.Num()) { return false; }
-    for(const auto& S:I->ScalarParameterValues) { if(!S.AtlasData.Curve.IsNull()||!S.AtlasData.Atlas.IsNull()) { return false; } }return true;
+    // WG: preserve bounded original instance overrides, including object and
+    // Atlas references. They are readonly source roles, never baked into copies.
+    return I->ScalarParameterValues.Num()<=256&&I->VectorParameterValues.Num()<=256&&I->DoubleVectorParameterValues.Num()<=256&&I->StaticSwitchParameterValues.Num()<=256&&I->StaticComponentMaskParameterValues.Num()<=256&&
+        I->TextureParameterValues.Num()<=256&&I->TextureCollectionParameterValues.Num()<=256&&I->ParameterCollectionParameterValues.Num()<=256&&I->FontParameterValues.Num()<=256&&I->RuntimeVirtualTextureParameterValues.Num()<=256&&I->SparseVolumeTextureParameterValues.Num()<=256;
 }
+bool UDOverrideReferences(UMaterialFunctionInstance* I,TSharedRef<FJsonObject> Out,TArray<FUDObject>* Capture=nullptr)
+{
+    if(!Loaded(I)||!UDValueOverrides(I))return false;
+    // Inspect only already-resolved hard slots. No path loader, soft Get(),
+    // ResolveObject(), compiler, resource update or parameter-set repair here.
+    auto Hard=[&](const auto& Slot,TSharedRef<FJsonObject> Row)->bool
+    {
+        if(!Slot.IsResolved())return false;UObject* O=Slot.Get();
+        Row->SetBoolField(TEXT("is_null"),O==nullptr);if(!O)return true;
+        if(!Loaded(O)||!Safe(O->GetPathName())||!Loaded(O->GetClass())||!Loaded(O->GetOuter())||!Loaded(O->GetOutermost())||O->GetOutermost()==Active->Material->GetOutermost())return false;
+        Row->SetStringField(TEXT("object_identity"),LexToString(UPTRINT(O)));Row->SetStringField(TEXT("path"),O->GetPathName());Row->SetStringField(TEXT("class"),O->GetClass()->GetPathName());Row->SetStringField(TEXT("outer"),O->GetOuter()->GetPathName());Row->SetStringField(TEXT("package"),O->GetOutermost()->GetName());
+        if(Capture){FUDObject Role;if(!UDObject(O,Role))return false;if(!Capture->ContainsByPredicate([&](const FUDObject& Existing){return Existing.Object==O;}))Capture->Add(Role);}
+        return true;
+    };
+    auto Array=[&](const auto& Values,const TCHAR* Name)->bool
+    {
+        TArray<TSharedPtr<FJsonValue>> Rows;for(const auto& Value:Values){auto Row=MakeShared<FJsonObject>();if(!Hard(Value.ParameterValue,Row))return false;Rows.Add(MakeShared<FJsonValueObject>(Row));}Out->SetArrayField(Name,Rows);return true;
+    };
+    if(!Array(I->TextureParameterValues,TEXT("TextureParameterValues"))||!Array(I->TextureCollectionParameterValues,TEXT("TextureCollectionParameterValues"))||!Array(I->ParameterCollectionParameterValues,TEXT("ParameterCollectionParameterValues"))||!Array(I->RuntimeVirtualTextureParameterValues,TEXT("RuntimeVirtualTextureParameterValues"))||!Array(I->SparseVolumeTextureParameterValues,TEXT("SparseVolumeTextureParameterValues")))return false;
+    TArray<TSharedPtr<FJsonValue>> Fonts;for(const auto& Value:I->FontParameterValues){auto Row=MakeShared<FJsonObject>();if(!Hard(Value.FontValue,Row))return false;Row->SetNumberField(TEXT("font_page"),Value.FontPage);Fonts.Add(MakeShared<FJsonValueObject>(Row));}Out->SetArrayField(TEXT("FontParameterValues"),Fonts);
+    TArray<TSharedPtr<FJsonValue>> Atlas;for(const auto& Value:I->ScalarParameterValues)
+    {
+        // MaterialInstance.h defines these as soft pointers. Their authored path
+        // and usage flag are preserved even when the referenced assets are not
+        // loaded or do not exist yet; the SDK may resolve them in other flows.
+        const FString Curve=Value.AtlasData.Curve.ToSoftObjectPath().ToString(),Texture=Value.AtlasData.Atlas.ToSoftObjectPath().ToString();if(!Safe(Curve)||!Safe(Texture))return false;
+        auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("curve_path"),Curve);Row->SetStringField(TEXT("atlas_path"),Texture);Row->SetBoolField(TEXT("used_as_atlas_position"),Value.AtlasData.bIsUsedAsAtlasPosition);Atlas.Add(MakeShared<FJsonValueObject>(Row));
+    }Out->SetArrayField(TEXT("ScalarAtlasReferences"),Atlas);return true;
+}
+
 bool UDInputSame(const FExpressionInput& A,const FExpressionInput& B,bool IgnoreIndex=false)
 { return A.Expression==B.Expression&&(IgnoreIndex||A.OutputIndex==B.OutputIndex)&&A.InputName==B.InputName&&A.Mask==B.Mask&&A.MaskR==B.MaskR&&A.MaskG==B.MaskG&&A.MaskB==B.MaskB&&A.MaskA==B.MaskA; }
 bool UDOutputSame(const FExpressionOutput& A,const FExpressionOutput& B)
@@ -259,6 +296,7 @@ bool UDPure()
         const FUDSource& S=*Pair.Value;
         // All held identities are closed before any typed chain/collection read.
         for(const auto& V:S.Objects) { if(!UDObjectCurrent(V,true)) { return UDStop(TEXT("readonly source role: ")+V.Path); } }
+        for(const auto& V:S.OverrideObjects) { if(!UDObjectCurrent(V,true))return UDStop(TEXT("readonly override reference role: ")+V.Path); }
         for(const auto& C:S.Chain)
         {
             UObject* Data=nullptr;if(!UDEditorData(C.Object,Data)||Data!=C.EditorData) { return UDStop(TEXT("source EditorOnlyData slot")); }
@@ -267,6 +305,8 @@ bool UDPure()
             {
                 auto* I=static_cast<UMaterialFunctionInstance*>(C.Object);
                 if(!I->Parent.IsResolved()||!I->Base.IsResolved()||I->Parent.Get()!=C.Parent||I->Base.Get()!=C.CachedBase||!UDValueOverrides(I)) { return UDStop(TEXT("instance Parent/Base/override admission")); }
+                auto References=MakeShared<FJsonObject>();if(!C.OverrideReferences.IsValid()||!UDOverrideReferences(I,References)||!Equal(MakeShared<FJsonValueObject>(C.OverrideReferences),MakeShared<FJsonValueObject>(References)))
+                {auto Failure=MakeShared<FJsonObject>();Failure->SetStringField(TEXT("object"),I->GetPathName());Failure->SetStringField(TEXT("property"),TEXT("override_reference_slots"));if(C.OverrideReferences.IsValid())Failure->SetObjectField(TEXT("expected"),C.OverrideReferences);Failure->SetObjectField(TEXT("actual_observed_prefix"),References);Active->R.Data->SetObjectField(TEXT("override_reference_first_mismatch"),Failure);return UDStop(TEXT("instance override reference slots/Atlas paths changed"));}
             }
         }
         const auto Now=S.Base->GetExpressions();if(Now.Num()!=S.Expressions.Num()) { return UDStop(TEXT("base expression inventory count")); }
@@ -283,7 +323,7 @@ bool UDSnapshot(const FUDSource& S,const TSharedRef<FJsonObject>& J)
     {
         if(!UDPure()) { return false; }auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("path"),C.Object->GetPathName());Row->SetStringField(TEXT("parent"),C.Parent?C.Parent->GetPathName():TEXT(""));Row->SetStringField(TEXT("cached_base"),C.CachedBase?C.CachedBase->GetPathName():TEXT(""));Row->SetBoolField(TEXT("dirty"),C.Object->GetOutermost()->IsDirty());
         auto Data=MakeShared<FJsonObject>();if(!Fields(C.Object,Data)) { return false; }Row->SetObjectField(TEXT("fields"),Data);
-        auto EditorData=MakeShared<FJsonObject>();if(!Fields(C.EditorData,EditorData)) { return false; }Row->SetObjectField(TEXT("editor_fields"),EditorData);Rows.Add(MakeShared<FJsonValueObject>(Row));
+        auto EditorData=MakeShared<FJsonObject>();if(!Fields(C.EditorData,EditorData)) { return false; }Row->SetObjectField(TEXT("editor_fields"),EditorData);if(C.OverrideReferences.IsValid()){auto References=MakeShared<FJsonObject>();if(!UDOverrideReferences(static_cast<UMaterialFunctionInstance*>(C.Object),References))return false;Row->SetObjectField(TEXT("override_reference_slots"),References);}Rows.Add(MakeShared<FJsonValueObject>(Row));
     }
     J->SetArrayField(TEXT("resolved_parent_chain"),Rows);return UDPure();
 }
@@ -324,7 +364,9 @@ bool UDEnroll(UMaterialFunctionInterface* Source,TArray<FString>& Errors)
         FUDParent C;C.Object=At;if(!UDEditorData(At,C.EditorData)||!UDObject(C.EditorData,Role)) { Errors.Add(TEXT("Loaded resolved native source editor-data role required."));return false; }S->Objects.Add(Role);
         if(!UDThumbnail(At,C.Thumbnail)) { Errors.Add(TEXT("Resolved nullable native source ThumbnailInfo required; custom/unloaded thumbnail references remain valid incomplete scope."));return false; }if(C.Thumbnail) { if(!UDObject(C.Thumbnail,Role)) { return false; }S->Objects.Add(Role); }
         if(At->GetClass()==UMaterialFunction::StaticClass()) { S->Base=static_cast<UMaterialFunction*>(At);S->Chain.Add(C);break; }
-        auto* I=static_cast<UMaterialFunctionInstance*>(At);if(!I->Parent.IsResolved()||!I->Base.IsResolved()||!UDValueOverrides(I)) { Errors.Add(TEXT("Resolved Parent/Base and bounded value-only overrides required; object/Atlas override references remain valid incomplete scope."));return false; }
+        auto* I=static_cast<UMaterialFunctionInstance*>(At);if(!I->Parent.IsResolved()||!I->Base.IsResolved()||!UDValueOverrides(I)) { Errors.Add(TEXT("Resolved Parent/Base and bounded original override arrays required."));return false; }
+        C.OverrideReferences=MakeShared<FJsonObject>();if(!UDOverrideReferences(I,C.OverrideReferences.ToSharedRef(),&S->OverrideObjects)){Errors.Add(TEXT("Bounded already-resolved nullable override hard slots in readonly packages distinct from the target and authored Atlas soft paths required. No reference loader or repair is performed; wider unresolved/shared-target scopes remain incomplete."));return false;}
+        Active->R.Data->SetBoolField(TEXT("object_bearing_instance_overrides_supported"),true);Active->R.Data->SetStringField(TEXT("override_reference_preservation_scope"),TEXT("Original six override arrays and Scalar Atlas usage/soft paths remain unchanged. Loaded hard referents are held with identity/class/outer/package/dirty roles; existing instance/base source file hashes and authored instance fields are separately preserved. Referent disk/pixel/bulk/resource/cache content is not deeply compared, soft targets are not resolved, and overrides are not baked into expanded base expressions."));
         C.Parent=I->Parent.Get();C.CachedBase=I->Base.Get();if(C.CachedBase) { if(!UDObject(C.CachedBase,Role)) { Errors.Add(TEXT("Loaded cached Base reference required."));return false; }S->Objects.Add(Role); }
         S->Chain.Add(C);At=C.Parent;
     }

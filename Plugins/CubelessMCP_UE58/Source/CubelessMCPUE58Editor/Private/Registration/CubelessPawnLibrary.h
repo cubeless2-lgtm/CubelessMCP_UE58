@@ -15,4 +15,6 @@ public:
     UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore, ScriptName="set_pawn_properties"))
     static FString SetPawnProperties(const FString& BlueprintPath, const FString& AutoPossessPlayer,
         const FString& YawJson, const FString& PitchJson, const FString& RollJson, const FString& CanBeDamagedJson);
+    UFUNCTION(BlueprintCallable, Category="Cubeless|Blueprint", meta=(AIIgnore, ScriptName="set_pawn_properties_raw"))
+    static FString SetPawnPropertiesRaw(const FString& BlueprintPath, const FString& ParamsJson);
 };

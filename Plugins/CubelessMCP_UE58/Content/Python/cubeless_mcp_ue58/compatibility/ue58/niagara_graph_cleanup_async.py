@@ -24,25 +24,42 @@ def _carrier(params):
     if units>MAX_CARRIER_UTF16_UNITS or '\x00' in text:raise OperationError('niagara_graph_cleanup_job_input_bound','Native carrier exceeds 1Mi UTF16 or contains embedded NUL')
     return text
 
-def start_job(method,params):
+def start_job(method,params,current_callback=None):
     try:
         if method not in METHODS:raise OperationError('niagara_graph_cleanup_job_method_invalid','Only the original cleanup5 Native starts are admitted')
         text=_carrier(params);function=getattr(getattr(unreal,LIBRARY,None),START_METHODS[method],None)
         if not callable(function):raise OperationError('niagara_graph_cleanup_job_native_unavailable','Dedicated Native start is unavailable; no fallback or start dispatched')
     except Exception as error:
         error.native_start_dispatched=False;raise
+    if current_callback is not None:
+        try:current_callback()
+        except Exception as error:error.native_start_dispatched=False;raise
     job=function(text)
     try:
+        if current_callback is not None:current_callback()
         cls=getattr(unreal,'CubelessNiagaraGraphCleanupJob',None)
-        if cls is None or not isinstance(job,cls) or job.get_class().get_path_name()!=JOB_CLASS_PATH or not callable(getattr(job,'get_snapshot_json',None)) or not callable(getattr(job,'cancel_job',None)):
-            raise OperationError('niagara_graph_cleanup_job_identity_invalid','Returned job differs; dispatched start must not be repeated')
+        if current_callback is None:
+            # Preserve the existing Named validation order and error unchanged.
+            if cls is None or not isinstance(job,cls) or job.get_class().get_path_name()!=JOB_CLASS_PATH or not callable(getattr(job,'get_snapshot_json',None)) or not callable(getattr(job,'cancel_job',None)):
+                raise OperationError('niagara_graph_cleanup_job_identity_invalid','Returned job differs; dispatched start must not be repeated')
+        else:
+            if cls is None or not isinstance(job,cls) or not callable(getattr(job,'get_snapshot_json',None)) or not callable(getattr(job,'cancel_job',None)):
+                raise OperationError('niagara_graph_cleanup_job_identity_invalid','Returned job differs; dispatched start must not be repeated')
+            actual_class=job.get_class()
+            current_callback()
+            actual_path=actual_class.get_path_name()
+            current_callback()
+            if actual_path!=JOB_CLASS_PATH:
+                raise OperationError('niagara_graph_cleanup_job_identity_invalid','Returned job differs; dispatched start must not be repeated')
     except Exception as error:error.native_start_returned=True;error.native_returned_job=job;raise
     return job
 
 
-def snapshot(job,method):
+def snapshot(job,method,current_callback=None):
+    if current_callback is not None:current_callback()
     raw=job.get_snapshot_json();value=None
     try:
+        if current_callback is not None:current_callback()
         value=_decode_result(raw);data=value['data'];revision=data.get('native_checkpoint_revision')
         if (method not in METHODS or value.get('operation')!=method or type(data.get('native_job_id')) is not str or not data['native_job_id'] or type(data.get('native_job_terminal')) is not bool or type(data.get('operation_complete')) is not bool or data['operation_complete']!=data['native_job_terminal'] or type(revision) not in (int,float) or not math.isfinite(revision) or revision<0 or revision!=int(revision) or revision>9007199254740991):
             raise OperationError('niagara_graph_cleanup_job_snapshot_invalid','Exact operation/job/revision/terminal Native receipt required')
@@ -51,7 +68,9 @@ def snapshot(job,method):
         if data.get('unsafe_job_publication_quarantined') is True:
             error=OperationError('niagara_graph_cleanup_job_publication_quarantined','Native stopped or quarantined before safe public terminal publication; no further Job work')
             error.native_unsafe_publication_quarantined=True;raise error
+        if current_callback is not None:current_callback()
         public_terminal=job.get_editor_property('is_terminal')
+        if current_callback is not None:current_callback()
         if type(public_terminal) is not bool or public_terminal is not data['native_job_terminal']:
             raise OperationError('niagara_graph_cleanup_job_publication_mismatch','Job terminal publication differs from returned snapshot; no replay')
     except Exception as error:

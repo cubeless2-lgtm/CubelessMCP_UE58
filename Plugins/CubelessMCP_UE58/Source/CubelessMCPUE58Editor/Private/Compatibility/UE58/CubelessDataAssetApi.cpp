@@ -17,6 +17,7 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
 #include "EdGraphSchema_K2.h"
 #include "Factories/DataAssetFactory.h"
 #include "HAL/FileManager.h"
@@ -26,8 +27,11 @@
 #include "JsonObjectStructInterface.h"
 #include "UObject/MetaData.h"
 #include "Internationalization/Text.h"
+#include "Internationalization/TextNamespaceUtil.h"
+#include "Internationalization/TextPackageNamespaceUtil.h"
 #include "Editor/TransBuffer.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Misc/SecureHash.h"
@@ -396,6 +400,14 @@ struct FInputOwnedReadScope
     struct FCurve{UObject* Object=nullptr;UPackage* Package=nullptr;uint32 Flags=0;FObjectPropertyBase* ImportProperty=nullptr;UObject* ImportData=nullptr;TArray<UObject*> Exports;};TArray<FCurve> Curves;
     struct FCurveSlot{UObject* Owner=nullptr;FObjectPropertyBase* Property=nullptr;UObject* Curve=nullptr;};TArray<FCurveSlot> CurveSlots;
     TArray<UObject*> PlayerSettingsObjects;TMap<UObject*,FObjectProperty*> PlayerSettingsMetadata;FObjectProperty* ActionSettings=nullptr;FObjectProperty* RowSettings=nullptr;
+    // ZA authority is only for this call's new exact Action settings, never array-family admission.
+    bool PlayerSettingsWrite=false,PlayerSettingsAllocating=false;TArray<UObject*> NewPlayerSettings;
+    struct FPlayerSettingsText
+    {
+        UObject* Object=nullptr;FTextProperty* Property=nullptr;FString Path,Field,Source,Namespace,Key,Canonical,SavedKey;
+        uint32 Flags=0;bool NamespaceSet=false,KeySet=false,AllowSavedKey=false,SavedKeyObserved=false;
+    };
+    TArray<FPlayerSettingsText> PlayerSettingsTexts;
     TArray<UObject*> NewResponseObjects;UObject* PendingCurveOwner=nullptr;FObjectPropertyBase* PendingCurveProperty=nullptr;UObject* PendingCurveValue=nullptr;
     FArrayProperty* ActionTriggers=nullptr;FArrayProperty* ActionModifiers=nullptr;FStructProperty* Defaults=nullptr;FArrayProperty* Rows=nullptr;FArrayProperty* RowTriggers=nullptr;FArrayProperty* RowModifiers=nullptr;TArray<FString> Links,ClearedOwnedPaths,ClearedActionPaths;TMap<FString,const void*> ArrayAddresses;bool LinksFrozen=false;
     explicit FInputOwnedReadScope(FResult& In,bool MappingWriter=false,bool ActionWriter=false,bool ClearWriter=false):R(In),MappingSet(MappingWriter),ActionSet(ActionWriter),ReferenceClear(ClearWriter){Editor=GEditor;if(Loaded(GEditor)){World=GEditor->GetEditorWorldContext().World();}}
@@ -543,7 +555,7 @@ struct FInputOwnedReadScope
             else if(P->GetFName()==TEXT("SupportedKeyProfiles")){auto* F=CastField<FStructProperty>(P);if(!F||!F->Struct.IsResolved()||!Loaded(F->Struct.Get())||F->Struct->GetPathName()!=TEXT("/Script/GameplayTags.GameplayTagContainer"))return false;}
             else{auto* A=CastField<FArrayProperty>(P);if(!A||!A->Inner||A->Inner->GetOwnerVariant().ToField()!=A||A->Inner->GetClass()!=FStrProperty::StaticClass()||A->Inner->ArrayDim!=1||A->Inner->GetSize()!=sizeof(FString))return false;FScriptArrayHelper Values(A,A->ContainerPtrToValuePtr<void>(Object));if(Values.Num()>64)return false;for(int32 I=0;I<Values.Num();++I){const FString Value=static_cast<FStrProperty*>(A->Inner)->GetPropertyValue(Values.GetRawPtr(I));if(Value.Len()>1024||HasNul(Value)||!Clean(Value))return false;}}
         }
-        PlayerSettingsObjects.AddUnique(Object);PlayerSettingsHost=true;R.Data->SetBoolField(TEXT("native_player_mappable_settings"),true);R.Data->SetBoolField(TEXT("player_settings_inline_allocation_supported"),false);R.Data->SetStringField(TEXT("player_settings_scope"),TEXT("Exact preexisting same-owner native PlayerMappableKeySettings with null Metadata; Name/FText/profile payloads and linked/unlinked object identities remain immutable. Populated Get, existing Action scalars, and Context OverrideSettings class-export references only; no input evaluation/rebinding or inline settings construction."));return true;
+        PlayerSettingsObjects.AddUnique(Object);PlayerSettingsHost=true;R.Data->SetBoolField(TEXT("native_player_mappable_settings"),true);R.Data->SetBoolField(TEXT("player_settings_inline_allocation_supported"),PlayerSettingsWrite);R.Data->SetStringField(TEXT("player_settings_scope"),PlayerSettingsWrite?TEXT("Exact native Action or Context OverrideSettings inline allocation with selected asset Outer; Name, FText and bounded profile payloads share typed planning and the public nested converter. Old settings/owned objects remain immutable. Context imports new settings before its complete scratch-row copy; a false converter keeps the actual unlinked object/field prefix. Nonnull Metadata, subclasses, direct-converter array-prefix parity, cold/runtime and arbitrary original classes remain incomplete."):TEXT("Exact preexisting same-owner native PlayerMappableKeySettings with null Metadata; Name/FText/profile payloads and linked/unlinked object identities remain immutable. Populated Get, existing Action scalars, and Context OverrideSettings class-export references only; no input evaluation/rebinding or inline settings construction."));return true;
     }
     bool IsPlayerSettingsObject(UObject* Object)const
     {return !Object||(Loaded(Object)&&Object->GetOuter()==Target.Get()&&Object->GetPackage()==Target->GetPackage()&&Owned.Contains(Object)&&PlayerSettingsObjects.Contains(Object)&&Kind(Object->GetClass())==11);}
@@ -640,7 +652,7 @@ struct FInputOwnedReadScope
         if(!Bound){return true;}TArray<UObject*> Exports;GetObjectsWithOuter(Target->GetPackage(),Exports,EGetObjectsFlags::IncludeNestedObjects);if(Exports.Num()!=PackageExports.Num()+(Allocating?1:0)){return Stop(TEXT("data_asset_owned_read_package_changed"),TEXT("Selected asset package export set changed."));}for(UObject* O:Exports){if(!PackageExports.Contains(O)&&O!=Allocating){return Stop(TEXT("data_asset_owned_read_package_changed"),TEXT("Selected package export identity changed."));}}TArray<UObject*> Now;GetObjectsWithOuter(Target.Get(),Now,EGetObjectsFlags::IncludeNestedObjects);if(Now.Num()!=Owned.Num()+(Allocating?1:0)){return Stop(TEXT("data_asset_owned_read_set_changed"),TEXT("Owned object set changed across read."));}for(UObject* O:Now){if((!Owned.Contains(O)&&O!=Allocating)||!Loaded(O)||O->GetOuter()!=Target.Get()||Kind(O->GetClass())==INDEX_NONE||(O==Allocating&&(!AllocatingClass||O->GetClass()!=AllocatingClass||O->GetPackage()!=Target->GetPackage()||O->HasAnyFlags(RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient)))){return Stop(TEXT("data_asset_owned_read_set_changed"),TEXT("Owned set/direct outer/native class changed."));}}
         TArray<FString> NowLinks;if(!MappingCopyInFlight&&(!ReadLinks(NowLinks)||NowLinks!=Links)){return Stop(TEXT("data_asset_owned_read_order_changed"),TEXT("Stored array order/duplicates/membership changed."));}
         for(const auto& S:CurveSlots){UObject* ActualCurve=nullptr;if(MappingSet||ActionSet){const auto CurveHandle=S.Property->GetObjectPtrPropertyValue_InContainer(S.Owner);if(!CurveHandle.IsResolved()){return Stop(TEXT("data_asset_response_curve_handle_unresolved"),TEXT("Captured response handle became unresolved; no resolution or next writer."));}ActualCurve=CurveHandle.Get();}else{ActualCurve=S.Property->GetObjectPropertyValue_InContainer(S.Owner);}if(ActualCurve!=S.Curve&&!(S.Owner==PendingCurveOwner&&S.Property==PendingCurveProperty&&ActualCurve==PendingCurveValue)){return Stop(TEXT("data_asset_owned_read_curve_changed"),TEXT("Stored response reference differs from old or the one exact planned new-object field."));}}
-        for(const auto& C:Curves){if(C.ImportProperty->GetObjectPropertyValue_InContainer(C.Object)!=C.ImportData||C.Object->GetPackage()!=C.Package||C.Package->IsDirty()||!C.Package->IsFullyLoaded()||uint32(C.Package->GetPackageFlags())!=C.Flags){return Stop(TEXT("data_asset_owned_read_curve_source_changed"),TEXT("Saved-clean curve source changed."));}TArray<UObject*> X;GetObjectsWithOuter(C.Package,X,EGetObjectsFlags::IncludeNestedObjects);if(X.Num()!=C.Exports.Num()){return Stop(TEXT("data_asset_owned_read_curve_export_changed"),TEXT("Curve source export set changed."));}for(UObject* O:X){if(!C.Exports.Contains(O)){return Stop(TEXT("data_asset_owned_read_curve_export_changed"),TEXT("Curve source export identity changed."));}}}return true;
+        for(const auto& C:Curves){if(C.ImportProperty->GetObjectPropertyValue_InContainer(C.Object)!=C.ImportData||C.Object->GetPackage()!=C.Package||C.Package->IsDirty()||!C.Package->IsFullyLoaded()||uint32(C.Package->GetPackageFlags())!=C.Flags){return Stop(TEXT("data_asset_owned_read_curve_source_changed"),TEXT("Saved-clean curve source changed."));}TArray<UObject*> X;GetObjectsWithOuter(C.Package,X,EGetObjectsFlags::IncludeNestedObjects);if(X.Num()!=C.Exports.Num()){return Stop(TEXT("data_asset_owned_read_curve_export_changed"),TEXT("Curve source export set changed."));}for(UObject* O:X){if(!C.Exports.Contains(O)){return Stop(TEXT("data_asset_owned_read_curve_export_changed"),TEXT("Curve source export identity changed."));}}}return PlayerSettingsTextCurrent();
     }
     bool Snapshot(TSharedRef<FJsonObject>& J)
     {
@@ -751,11 +763,183 @@ struct FInputOwnedReadScope
     }
     bool AcceptAllocation(UObject* O,UClass* C)
     {
-        Allocating=O;AllocatingClass=C;if((!MappingSet&&!ActionSet)||!O||!(ActionSet?ActionWriterKind(Kind(C)):WriterKind(Kind(C)))||!Pin(O)||!Check()){return Stop(TEXT("data_asset_mapping_owned_allocation_unknown"),TEXT("Allocation return or preserved preexisting state unavailable; prefix retained, no cleanup/retry."));}
+        Allocating=O;AllocatingClass=C;if((!MappingSet&&!ActionSet)||!O||!((ActionSet?ActionWriterKind(Kind(C)):WriterKind(Kind(C)))||(PlayerSettingsWrite&&PlayerSettingsAllocating&&(ActionSet!=MappingSet)&&Kind(C)==11))||!Pin(O)||!Check()){return Stop(TEXT("data_asset_mapping_owned_allocation_unknown"),TEXT("Allocation return or preserved preexisting state unavailable; prefix retained, no cleanup/retry."));}
         Owned.Add(O);PackageExports.Add(O);Allocating=nullptr;AllocatingClass=nullptr;
         if(!Pin(O)||!OwnedSchema(O)){return Stop(TEXT("data_asset_mapping_owned_allocation_schema"),TEXT("Allocation is not the exact direct context-owned native instance."));}
         if(Kind(C)==2&&!ResponseDefaults(O,C)){return false;}auto Now=MakeShared<FJsonObject>();if(!Snapshot(Now)){return Stop(TEXT("data_asset_mapping_owned_allocation_unobservable"),TEXT("Allocated prefix is held but endpoint unavailable."));}
         auto Expected=CopySnapshot(Before);Expected->GetObjectField(TEXT("owned_exports"))->SetObjectField(O->GetPathName(),Now->GetObjectField(TEXT("owned_exports"))->GetObjectField(O->GetPathName()));if(!Equal(Expected,Now)){return Stop(Kind(C)==2?TEXT("data_asset_response_curve_allocation_preservation_failed"):TEXT("data_asset_owned_allocation_preservation_failed"),TEXT("Only the new owned row may be added; existing owned/native/curve baseline was not readopted."));}Before=Expected;if(Kind(C)==2){NewResponseObjects.Add(O);}return Current();
+    }
+    // ZK: one typed nested-converter plan shared by Action and Context settings.
+    struct FPlayerSettingsLiteralPlan
+    {
+        TSharedPtr<FJsonObject> Literal;UClass* Class=nullptr;TMap<FString,FString> ExpectedFields;
+        TArray<FPlayerSettingsText> Texts;bool Converted=true;FString Failure;
+    };
+    bool PlayerSettingsPayloadBound(const TSharedPtr<FJsonValue>& Value,int32 Depth=0)const
+    {
+        if(!Value||Depth>8)return false;
+        if(Value->Type==EJson::String){const FString S=Value->AsString();return S.Len()<NAME_SIZE&&!HasNul(S)&&Clean(S);}
+        if(Value->Type==EJson::Array){if(Value->AsArray().Num()>64)return false;for(const auto& V:Value->AsArray()){if(!PlayerSettingsPayloadBound(V,Depth+1))return false;}}
+        if(Value->Type==EJson::Object){if(!Value->AsObject().IsValid()||Value->AsObject()->Values.Num()>16)return false;for(const auto& P:Value->AsObject()->Values){if(!PlayerSettingsPayloadBound(P.Value,Depth+1))return false;}}
+        return Value->Type!=EJson::None&&(Value->Type!=EJson::Number||FMath::IsFinite(Value->AsNumber()));
+    }
+    bool PlanPlayerSettingsLiteral(const TSharedPtr<FJsonValue>& Value,FPlayerSettingsLiteralPlan& Plan,FString& Error,const TFunction<bool()>& Guard)
+    {
+        if(!Value||Value->Type!=EJson::Object||!PlayerSettingsWrite){Error=TEXT("Exact native settings object literal required");return false;}
+        if(!Guard())return false;auto Literal=CopySnapshot(Value->AsObject().ToSharedRef());FString RequestedClass;
+        if(Literal->TryGetStringField(TEXT("_ClassName"),RequestedClass))
+        {if(!RequestedClass.IsEmpty()&&RequestedClass!=PlayerSettingsClassPath){Error=TEXT("Exact native PlayerMappableKeySettings class or omitted _ClassName required; no class load/fallback/subclass authority");return false;}Literal->RemoveField(TEXT("_ClassName"));}
+        const auto Metadata=Literal->TryGetField(TEXT("Metadata"));
+        if(Metadata&&Metadata->Type!=EJson::Null&&(Metadata->Type!=EJson::String||Metadata->AsString()!=TEXT("None"))){Error=TEXT("Null or None Metadata required; arbitrary asset/inline Metadata remains incomplete");return false;}
+        const auto Name=Literal->TryGetField(TEXT("Name"));if(Name&&Name->Type==EJson::String&&(Name->AsString().Len()>=NAME_SIZE||HasNul(Name->AsString())||!Clean(Name->AsString()))){Error=TEXT("Finite clean Name below NAME_SIZE required");return false;}
+        // Profile conversion may construct FNames recursively. Bound those before the provider.
+        for(const TCHAR* Field:{TEXT("SupportedKeyProfiles"),TEXT("SupportedKeyProfileIds")}){const auto V=Literal->TryGetField(Field);if(V&&!PlayerSettingsPayloadBound(V)){Error=TEXT("Finite profile payload with <=64 elements and bounded clean tag/profile text required");return false;}}
+        UClass* C=FindObject<UClass>(nullptr,PlayerSettingsClassPath);if(!Guard()||Kind(C)!=11)return false;UObject* D=C->GetDefaultObject(false);TStrongObjectPtr<UObject> DefaultHold(D);if(!Guard()||!Loaded(D))return false;
+        TMap<FString,FString> ExpectedFields;TArray<FPlayerSettingsText> PlannedTexts;bool PlannedConverted=true;FString PlannedFailure;
+        // Match JsonAttributesToUStructWithContainer: authored exact keys, null skips,
+        // unknown keys ignored, IncludeDeprecated iterator, stop at the first false.
+        for(TFieldIterator<FProperty> It(C);It;++It)
+        {
+            if(!Guard())return false;FProperty* P=*It;FDefaultConstructedPropertyElement Scratch(P);P->CopyCompleteValue(Scratch.GetObjAddress(),P->ContainerPtrToValuePtr<void>(D));if(!Guard())return false;
+            const auto Supplied=Literal->TryGetField(C->GetAuthoredNameForField(P));
+            if(PlannedConverted&&Supplied&&Supplied->Type!=EJson::Null)
+            {
+                Count(R,TEXT("owned_field_plan_conversion_calls"));FText Why;PlannedConverted=FJsonObjectConverter::JsonValueToUProperty(Supplied,P,Scratch.GetObjAddress(),0,0,false,&Why);if(!Guard())return false;
+                if(!PlannedConverted)PlannedFailure=P->GetName()+TEXT(": ")+Why.ToString();
+            }
+            FString Canonical;const bool Exported=P->ExportText_Direct(Canonical,Scratch.GetObjAddress(),Scratch.GetObjAddress(),D,PPF_None);if(!Guard())return false;
+            if(!Exported||Canonical.Len()>65536||!Clean(Canonical)){Error=TEXT("Bounded typed settings prefix export required before allocation");return false;}
+            if(auto* Profiles=CastField<FArrayProperty>(P))
+            {FScriptArrayHelper Values(Profiles,Scratch.GetObjAddress());if(Values.Num()>64){Error=TEXT("Converted profile array exceeds finite owned schema");return false;}if(auto* Strings=CastField<FStrProperty>(Profiles->Inner)){for(int32 I=0;I<Values.Num();++I){const FString S=Strings->GetPropertyValue(Values.GetRawPtr(I));if(S.Len()>1024||HasNul(S)||!Clean(S)){Error=TEXT("Converted profile identifier is not safe");return false;}}}}
+            ExpectedFields.Add(P->GetName(),Canonical);
+            if(auto* TextProperty=CastField<FTextProperty>(P))
+            {
+                const FText Value=TextProperty->GetPropertyValue(Scratch.GetObjAddress());const FString* Source=FTextInspector::GetSourceString(Value);if(!Source)return false;
+                FPlayerSettingsText Text;Text.Property=TextProperty;Text.Field=P->GetName();Text.Source=*Source;Text.Flags=FTextInspector::GetFlags(Value);Text.Canonical=Canonical;const auto Namespace=FTextInspector::GetNamespace(Value),Key=FTextInspector::GetKey(Value);Text.NamespaceSet=Namespace.IsSet();Text.KeySet=Key.IsSet();Text.Namespace=Namespace.Get(FString());Text.Key=Key.Get(FString());Text.AllowSavedKey=!Text.NamespaceSet&&!Text.KeySet&&Text.Namespace.IsEmpty()&&Text.Key.IsEmpty()&&Value.IsInitializedFromString()&&!Value.IsEmpty()&&!Value.IsCultureInvariant()&&!Value.IsFromStringTable();PlannedTexts.Add(MoveTemp(Text));
+            }
+        }
+        Plan.Literal=Literal;Plan.Class=C;Plan.ExpectedFields=MoveTemp(ExpectedFields);Plan.Texts=MoveTemp(PlannedTexts);Plan.Converted=PlannedConverted;Plan.Failure=PlannedFailure;return Guard();
+    }
+    bool PreparePlayerSettingsWrite()
+    {
+        if(!PlayerSettingsWrite||ActionSet==MappingSet||Bound||!Current())return false;
+        UClass* C=FindObject<UClass>(nullptr,PlayerSettingsClassPath);TStrongObjectPtr<UClass> Hold(C);
+        if(!Current()||Kind(C)!=11)return Stop(TEXT("data_asset_player_settings_class_pending"),TEXT("Already loaded exact native settings class required; no class loader or warming."));
+        UObject* D=C->GetDefaultObject(false);TStrongObjectPtr<UObject> DefaultHold(D);
+        if(!Current()||!Loaded(D)||!OwnedSchema(D,false))return Stop(TEXT("data_asset_player_settings_default_pending"),TEXT("Existing exact native settings CDO/schema required before inline planning."));
+        // Capture the actual public native nested profile layout; do not assume an array Inner owns itself.
+        FStructProperty* Profiles=FindFProperty<FStructProperty>(C,TEXT("SupportedKeyProfiles"));
+        if(!Profiles||!Profiles->Struct.IsResolved())return false;
+        UScriptStruct* ProfileStruct=Profiles->Struct.Get();TStrongObjectPtr<UScriptStruct> ProfileHold(ProfileStruct);if(!Current()||!Loaded(ProfileStruct))return false;
+        for(TFieldIterator<FProperty> It(ProfileStruct);It;++It)
+        {
+            if(!Current())return false;FArrayProperty* Array=CastField<FArrayProperty>(*It);FStructProperty* Inner=Array?CastField<FStructProperty>(Array->Inner):nullptr;
+            if(!Array||!Inner||!Inner->Struct.IsResolved())return Stop(TEXT("data_asset_player_settings_profiles_schema"),TEXT("Exact native GameplayTagContainer arrays and tag struct layout required."));
+            UScriptStruct* TagStruct=Inner->Struct.Get();TStrongObjectPtr<UScriptStruct> TagHold(TagStruct);
+            if(!Current()||!Loaded(TagStruct)||TagStruct->GetPathName()!=TEXT("/Script/GameplayTags.GameplayTag")||!Layout(Array))return false;
+            for(TFieldIterator<FProperty> Tag(TagStruct);Tag;++Tag){if(!Current()||Tag->GetClass()!=FNameProperty::StaticClass()||!Layout(*Tag))return false;}
+        }
+        R.Data->SetStringField(TEXT("player_settings_outer_compatibility"),TEXT("Legacy JsonValueToUProperty passes no container and creates inline objects in TransientPackage. This writer intentionally creates exact native settings directly under the selected InputAction or InputMappingContext for package ownership, saving and runtime-independent references; it does not claim identical allocation/Outer semantics."));
+        R.Data->SetStringField(TEXT("player_settings_remaining"),TEXT("Nonnull Metadata, derived settings classes, deprecated profiles PostLoad migration/cold reload, wider Context converter/row-prefix behavior, external input consumers, runtime rebinding and unlinked-object cold persistence remain unverified or incomplete."));return Current();
+    }
+    bool AcceptPlayerSettingsCopy(UObject* Object)
+    {
+        if(!PlayerSettingsWrite||!ActionSet||MappingSet||!MappingCopyInFlight||!NewPlayerSettings.Contains(Object)||!Current())return false;
+        TArray<FString> ExpectedLinks=Links;const FString Expected=TEXT("PlayerSettings=")+Object->GetPathName();int32 Counted=0;
+        for(FString& Link:ExpectedLinks){if(Link.StartsWith(TEXT("PlayerSettings="))){Link=Expected;++Counted;}}
+        TArray<FString> NowLinks;if(Counted!=1||!ReadLinks(NowLinks)||NowLinks!=ExpectedLinks)return Stop(TEXT("data_asset_player_settings_link_changed"),TEXT("Only the selected settings slot may acquire the exact new owned pointer; both array backings/order and other slots remain preserved."));
+        Links=NowLinks;MappingCopyInFlight=false;auto ExpectedState=CopySnapshot(Before),Now=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Slots;for(const FString& Link:Links)Slots.Add(MakeShared<FJsonValueString>(Link));ExpectedState->SetArrayField(TEXT("ordered_slots"),Slots);
+        if(!Snapshot(Now)||!Equal(ExpectedState,Now))return Stop(TEXT("data_asset_player_settings_link_preservation_failed"),TEXT("Settings link copy changed another held field/source; actual prefix retained, no next writer/save."));Before=ExpectedState;return Current();
+    }
+    bool AcceptPlayerSettingsImport(UObject* Object,const TMap<FString,FString>& ExpectedFields)
+    {
+        if(!PlayerSettingsWrite||!NewPlayerSettings.Contains(Object)||!Current())return false;auto Expected=CopySnapshot(Before),Now=MakeShared<FJsonObject>();
+        auto Fields=Expected->GetObjectField(TEXT("owned_exports"))->GetObjectField(Object->GetPathName())->GetObjectField(TEXT("fields"));
+        for(const auto& Field:ExpectedFields){if(!Fields->HasTypedField<EJson::Object>(Field.Key))return false;Fields->GetObjectField(Field.Key)->SetStringField(TEXT("export_text"),Field.Value);}
+        if(!Snapshot(Now))return false;
+        if(!Equal(Expected,Now))
+        {
+            const auto ActualFields=Now->GetObjectField(TEXT("owned_exports"))->GetObjectField(Object->GetPathName())->GetObjectField(TEXT("fields"));
+            for(const auto& Field:ExpectedFields){const auto Actual=ActualFields->TryGetField(Field.Key);FString ActualText;if(Actual&&Actual->Type==EJson::Object)Actual->AsObject()->TryGetStringField(TEXT("export_text"),ActualText);if(!Actual||ActualText!=Field.Value){auto First=MakeShared<FJsonObject>();First->SetStringField(TEXT("object"),Object->GetPathName());First->SetStringField(TEXT("property"),Field.Key);First->SetStringField(TEXT("expected"),Field.Value);First->SetStringField(TEXT("actual"),Actual?ActualText:TEXT("missing"));R.Data->SetObjectField(TEXT("player_settings_first_import_mismatch"),First);break;}}
+            return Stop(TEXT("data_asset_player_settings_import_mismatch"),TEXT("Actual nested import differs from the typed planned complete/partial prefix, or preserved old/source state changed. No baseline adoption, retry or save."));
+        }
+        Before=Expected;return Current();
+    }
+    bool PlayerSettingsTextFailure(const FPlayerSettingsText& Text,const TCHAR* Property,const FString& Expected,const FString& Actual)
+    {
+        if(!R.Data->HasField(TEXT("player_settings_first_text_mismatch")))
+        {auto First=MakeShared<FJsonObject>();First->SetStringField(TEXT("object"),Text.Path);First->SetStringField(TEXT("field"),Text.Field);First->SetStringField(TEXT("property"),Property);First->SetStringField(TEXT("expected"),Expected);First->SetStringField(TEXT("actual"),Actual);First->SetBoolField(TEXT("actual_save_returned_true"),R.Saved);R.Data->SetObjectField(TEXT("player_settings_first_text_mismatch"),First);}
+        return Stop(TEXT("data_asset_player_settings_text_changed"),TEXT("New settings text differs from its pre-save typed authored source/flags/identity or the narrowly allowed SDK key initialization; actual prefix/save receipt retained, no retry."));
+    }
+    bool CapturePlayerSettingsTexts(UObject* Object,const TArray<FPlayerSettingsText>& Planned)
+    {
+        if(!PlayerSettingsWrite||!NewPlayerSettings.Contains(Object)||!Current())return false;
+        const auto Fields=Before->GetObjectField(TEXT("owned_exports"))->GetObjectField(Object->GetPathName())->GetObjectField(TEXT("fields"));
+        for(const TCHAR* Name:{TEXT("DisplayName"),TEXT("DisplayCategory")})
+        {
+            if(!Current())return false;auto* P=FindFProperty<FTextProperty>(Object->GetClass(),Name);
+            if(!P||P->GetOwnerStruct()!=Object->GetClass()||!Layout(P))return false;
+            const FText Value=P->GetPropertyValue_InContainer(Object);const FString* Source=FTextInspector::GetSourceString(Value);if(!Source)return false;
+            FPlayerSettingsText Text;Text.Object=Object;Text.Property=P;Text.Path=Object->GetPathName();Text.Field=P->GetName();Text.Source=*Source;Text.Flags=FTextInspector::GetFlags(Value);
+            const auto Namespace=FTextInspector::GetNamespace(Value),Key=FTextInspector::GetKey(Value);Text.NamespaceSet=Namespace.IsSet();Text.KeySet=Key.IsSet();Text.Namespace=Namespace.Get(FString());Text.Key=Key.Get(FString());
+            Text.Canonical=Fields->GetObjectField(Text.Field)->GetStringField(TEXT("export_text"));
+            // JsonObjectConverter plain/culture strings call FText::FromString. Its editor
+            // base history initially has no TextId. Keyed, invariant, empty, table/other
+            // histories never receive this allowance, even on this call's new object.
+            Text.AllowSavedKey=!Text.NamespaceSet&&!Text.KeySet&&Text.Namespace.IsEmpty()&&Text.Key.IsEmpty()&&Value.IsInitializedFromString()&&!Value.IsEmpty()&&!Value.IsCultureInvariant()&&!Value.IsFromStringTable();
+            const auto* Expected=Planned.FindByPredicate([P](const FPlayerSettingsText& Before){return Before.Property==P;});
+            if(!Expected||Expected->Source!=Text.Source||Expected->Flags!=Text.Flags||Expected->NamespaceSet!=Text.NamespaceSet||Expected->KeySet!=Text.KeySet||Expected->Namespace!=Text.Namespace||Expected->Key!=Text.Key||Expected->Canonical!=Text.Canonical||Expected->AllowSavedKey!=Text.AllowSavedKey)return PlayerSettingsTextFailure(Text,TEXT("typed_import_plan"),Expected?Expected->Source+TEXT("|flags=")+LexToString(Expected->Flags):TEXT("expected native typed text plan"),Text.Source+TEXT("|flags=")+LexToString(Text.Flags));
+            PlayerSettingsTexts.Add(MoveTemp(Text));
+        }
+        TArray<TSharedPtr<FJsonValue>> TextRows;for(const auto& Text:PlayerSettingsTexts){auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("object"),Text.Path);Row->SetStringField(TEXT("property"),Text.Field);Row->SetStringField(TEXT("authored_source"),Text.Source);Row->SetNumberField(TEXT("flags"),Text.Flags);Row->SetBoolField(TEXT("namespace_set"),Text.NamespaceSet);Row->SetBoolField(TEXT("key_set"),Text.KeySet);Row->SetStringField(TEXT("namespace"),Text.Namespace);Row->SetStringField(TEXT("key"),Text.Key);Row->SetStringField(TEXT("canonical"),Text.Canonical);Row->SetBoolField(TEXT("eligible_sdk_empty_key_initialization"),Text.AllowSavedKey);TextRows.Add(MakeShared<FJsonValueObject>(Row));}R.Data->SetArrayField(TEXT("player_settings_text_before_save"),TextRows);
+        return Current();
+    }
+    bool PlayerSettingsTextCurrent()
+    {
+        if(PlayerSettingsTexts.IsEmpty())return true;FString PackageNamespace;
+        if(R.Saved&&R.SaveRequested&&R.SaveAttempted)
+        {
+            // Read-only public getter (bCanAdd=false); never Ensure/Force package metadata.
+            PackageNamespace=TextNamespaceUtil::GetPackageNamespace(Target.Get()->GetPackage());if(!Context())return false;
+        }
+        for(auto& Text:PlayerSettingsTexts)
+        {
+            if(!NewPlayerSettings.Contains(Text.Object)||!Loaded(Text.Object)||Text.Object->GetOuter()!=Target.Get()||Text.Object->GetPackage()!=Target->GetPackage()||Text.Object->GetClass()->FindPropertyByName(*Text.Field)!=Text.Property||Text.Property->GetOwnerStruct()!=Text.Object->GetClass())return PlayerSettingsTextFailure(Text,TEXT("owner_or_property"),TEXT("exact new held native settings and captured text descriptor"),TEXT("changed"));
+            const FText Value=Text.Property->GetPropertyValue_InContainer(Text.Object);const FString* Source=FTextInspector::GetSourceString(Value);const uint32 Flags=FTextInspector::GetFlags(Value);
+            if(!Source||*Source!=Text.Source)return PlayerSettingsTextFailure(Text,TEXT("authored_source"),Text.Source,Source?*Source:TEXT("missing"));
+            if(Flags!=Text.Flags)return PlayerSettingsTextFailure(Text,TEXT("flags"),LexToString(Text.Flags),LexToString(Flags));
+            const auto Namespace=FTextInspector::GetNamespace(Value),Key=FTextInspector::GetKey(Value);const FString ActualNamespace=Namespace.Get(FString()),ActualKey=Key.Get(FString());
+            const bool Original=Namespace.IsSet()==Text.NamespaceSet&&Key.IsSet()==Text.KeySet&&ActualNamespace==Text.Namespace&&ActualKey==Text.Key;
+            if(Original&&!Text.SavedKeyObserved)continue;
+            if(!Text.AllowSavedKey||!R.SaveRequested||!R.SaveAttempted||!R.Saved||!Namespace.IsSet()||!Key.IsSet()||Value.IsEmpty()||Value.IsCultureInvariant()||Value.IsFromStringTable())return PlayerSettingsTextFailure(Text,TEXT("namespace_key"),Text.NamespaceSet?Text.Namespace+TEXT("|")+Text.Key:TEXT("unset namespace/key before save"),Namespace.IsSet()?ActualNamespace+TEXT("|")+ActualKey:TEXT("unset"));
+            // TextHistory_Base::Serialize calls BuildFullNamespace with the default false.
+            // A marker-free empty namespace remains empty even with a package namespace.
+            const FString ExpectedNamespace=TextNamespaceUtil::BuildFullNamespace(Text.Namespace,PackageNamespace);FGuid Guid;
+            if(ActualNamespace!=ExpectedNamespace||!FGuid::ParseExact(ActualKey,EGuidFormats::Digits,Guid)||!Guid.IsValid()||Guid.ToString()!=ActualKey)return PlayerSettingsTextFailure(Text,TEXT("sdk_saved_namespace_key"),ExpectedNamespace+TEXT("|new uppercase Digits GUID"),ActualNamespace+TEXT("|")+ActualKey);
+            if(Text.SavedKeyObserved&&Text.SavedKey!=ActualKey)return PlayerSettingsTextFailure(Text,TEXT("saved_key_identity"),Text.SavedKey,ActualKey);
+            if(!Text.SavedKeyObserved)
+            {
+                Text.SavedKey=ActualKey;Text.SavedKeyObserved=true;TArray<TSharedPtr<FJsonValue>> Transitions;if(R.Data->HasTypedField<EJson::Array>(TEXT("player_settings_saved_text_transitions")))Transitions=R.Data->GetArrayField(TEXT("player_settings_saved_text_transitions"));auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("object"),Text.Path);Row->SetStringField(TEXT("property"),Text.Field);Row->SetStringField(TEXT("authored_source"),Text.Source);Row->SetNumberField(TEXT("flags_before_and_after"),Text.Flags);Row->SetStringField(TEXT("namespace_before_state"),TEXT("unset"));Row->SetStringField(TEXT("package_namespace_observed"),PackageNamespace);Row->SetStringField(TEXT("namespace_after"),ActualNamespace);Row->SetStringField(TEXT("key_after"),ActualKey);Row->SetStringField(TEXT("source"),TEXT("TextHistory.cpp persistent-linker editor save initializes empty Base-history key; Text.cpp restores OriginalFlags"));Transitions.Add(MakeShared<FJsonValueObject>(Row));R.Data->SetArrayField(TEXT("player_settings_saved_text_transitions"),Transitions);
+            }
+        }
+        return true;
+    }
+    bool NormalizeSavedPlayerSettingsTexts(TSharedRef<FJsonObject>& State,const TCHAR* FieldsKey)
+    {
+        if(!R.Saved||PlayerSettingsTexts.IsEmpty())return true;if(!Current())return false;
+        const auto Exports=State->GetObjectField(TEXT("owned_exports"));
+        for(const auto& Text:PlayerSettingsTexts)
+        {
+            if(!Text.SavedKeyObserved)continue;
+            if(!Exports->HasTypedField<EJson::Object>(Text.Path))return PlayerSettingsTextFailure(Text,TEXT("comparison_export"),Text.Path,TEXT("missing"));
+            const auto Object=Exports->GetObjectField(Text.Path);if(!Object->HasTypedField<EJson::Object>(FieldsKey))return false;const auto Fields=Object->GetObjectField(FieldsKey);if(!Fields->HasTypedField<EJson::Object>(Text.Field))return false;
+            const auto Field=Fields->GetObjectField(Text.Field);FString Canonical;const void* Address=Text.Property->ContainerPtrToValuePtr<void>(Text.Object);const bool Exported=Text.Property->ExportText_Direct(Canonical,Address,Address,Text.Object,PPF_None);if(!Current())return false;
+            FString ObservedCanonical;if(!Exported||!Field->TryGetStringField(TEXT("export_text"),ObservedCanonical)||ObservedCanonical!=Canonical)return PlayerSettingsTextFailure(Text,TEXT("comparison_canonical"),Canonical,ObservedCanonical);
+            // Only a comparison copy is changed. The raw after state and typed authored
+            // baseline remain intact; neither observed source nor flags are readopted.
+            Field->SetStringField(TEXT("export_text"),Text.Canonical);
+        }
+        return true;
     }
     bool AcceptField(UObject* O,FProperty* P,const FString& Canonical)
     {
@@ -817,7 +1001,7 @@ struct FInputOwnedReadScope
         if(!Accepted||!Check()){return false;}for(const auto& OldPath:RemovedPaths){if(!ClearedOwnedPaths.ContainsByPredicate([&](const FString& ExistingPath){return ExistingPath.Equals(OldPath,ESearchCase::CaseSensitive);})){ClearedOwnedPaths.Add(OldPath);}}Receipt->SetBoolField(TEXT("old_owned_inventory_current_verified"),true);Receipt->SetNumberField(TEXT("removed_array_elements"),BeforeCount);Receipt->SetNumberField(TEXT("removed_owned_reference_slots"),RemovedOwnedSlots);return true;
     }
     bool Check()
-    {if(!Bound){return Current();}auto Now=MakeShared<FJsonObject>();R.Data->SetObjectField(TEXT("owned_input_read_after"),Now);if(!Snapshot(Now)||!Equal(ComparisonBaseline(),Now)){return Stop(TEXT("data_asset_owned_read_preservation_failed"),TEXT("Owned instance/native/curve source state changed or became incomplete during read; no replay or implicit recovery."));}R.Data->SetBoolField(TEXT("owned_input_read_preserved"),true);return true;}
+    {if(!Bound){return Current();}auto Now=MakeShared<FJsonObject>();R.Data->SetObjectField(TEXT("owned_input_read_after"),Now);if(!Snapshot(Now))return false;auto Comparison=CopySnapshot(Now);if(!NormalizeSavedPlayerSettingsTexts(Comparison,TEXT("fields"))||!Equal(ComparisonBaseline(),Comparison)){return Stop(TEXT("data_asset_owned_read_preservation_failed"),TEXT("Owned instance/native/curve source state changed or became incomplete during read; no replay or implicit recovery."));}R.Data->SetBoolField(TEXT("owned_input_read_preserved"),true);return true;}
 };
 bool OwnedReadAdmit(FInputOwnedReadScope* Scope){return !Scope||Scope->Current();}
 // JX: exact loaded InputAction only. Public reflection avoids an EnhancedInput
@@ -829,12 +1013,47 @@ struct FInputActionScope
     TArray<FIdentity> Held; TStrongObjectPtr<UClass> Class; TStrongObjectPtr<UDataAsset> Target; TStrongObjectPtr<UObject> Default;
     FArrayProperty* Triggers=nullptr; FArrayProperty* Modifiers=nullptr; FObjectPropertyBase* Settings=nullptr;
     TMap<FName,FProperty*> Scalars; TMap<FName,TArray<FString>> EnumTokens;
+    TMap<FName,TArray<int64>> EnumScalarValues;TMap<FName,FByteProperty*> EnumScalarStorage;
     TSharedRef<FJsonObject> SourceBefore=MakeShared<FJsonObject>(), FieldsBefore=MakeShared<FJsonObject>();
-    FString TargetPath; bool CheckConsumers=false;
+    FString TargetPath; bool CheckConsumers=false,PlayerSettingsWritten=false;
     struct FActionFieldPlan{FProperty* Property=nullptr;TUniquePtr<FDefaultConstructedPropertyElement> Value;FString Canonical;};
     struct FActionSlotPlan{UClass* Class=nullptr;UObject* Object=nullptr;TArray<FActionFieldPlan> Fields;};
     TArray<FActionSlotPlan> ActionPlan;TArray<UObject*> CreatedOwned;TArray<TSharedPtr<FJsonValue>> CreationPrefix;TSet<FArrayProperty*> WrittenArrays;TMap<FName,TArray<FString>> VerifiedArrayLinks;UDataAsset* FreshAction=nullptr;
     bool OwnedWriter()const{return OwnedRead&&OwnedRead->ActionSet;}
+    // ZA: precompute the converter's exact reflected-field order and false-prefix on isolated
+    // typed storage. The actual nested SDK converter still writes the newly attached object.
+    bool WritePlayerSettings(const TSharedPtr<FJsonValue>& Value,FJsonObject& Attempt,bool& Converted,bool& Linked,FString& Error)
+    {
+        Converted=false;Linked=false;
+        if(!OwnedWriter()||!OwnedRead->PlayerSettingsWrite||PlayerSettingsWritten||!Value||Value->Type!=EJson::Object){Error=TEXT("One exact native inline PlayerMappableKeySettings object per Action call required; aliases, subclass and Context allocation remain incomplete");return true;}
+        FInputOwnedReadScope::FPlayerSettingsLiteralPlan Plan;
+        if(!OwnedRead->PlanPlayerSettingsLiteral(Value,Plan,Error,[this](){return Check();}))return !Error.IsEmpty()&&!Stopped&&!OwnedRead->Stopped;
+        auto Literal=Plan.Literal;UClass* C=Plan.Class;const auto& ExpectedFields=Plan.ExpectedFields;const auto& PlannedTexts=Plan.Texts;const bool PlannedConverted=Plan.Converted;const FString& PlannedFailure=Plan.Failure;
+        if(!Check())return false;auto Receipt=MakeShared<FJsonObject>();CreationPrefix.Add(MakeShared<FJsonValueObject>(Receipt));R.Data->SetArrayField(TEXT("input_action_owned_creation_prefix"),CreationPrefix);
+        Receipt->SetStringField(TEXT("property"),TEXT("PlayerMappableKeySettings"));Receipt->SetStringField(TEXT("class"),PlayerSettingsClassPath);Receipt->SetStringField(TEXT("outer_policy"),TEXT("InputAction owner; intentional legacy transient-Outer correction"));Receipt->SetBoolField(TEXT("allocation_entered"),true);Receipt->SetBoolField(TEXT("linked_to_action_verified"),false);Receipt->SetBoolField(TEXT("nested_import_entered"),false);Receipt->SetBoolField(TEXT("new_object_defaults_observed"),false);Receipt->SetStringField(TEXT("repeat_policy"),TEXT("A repeated inline request allocates a new replacement again. Old objects are held without destruction or rollback; never automatically retry an uncertain result."));
+        PlayerSettingsWritten=true;R.Known=false;Count(R,TEXT("owned_object_allocation_calls"));UObject* Object=NewObject<UObject>(Target.Get(),C,NAME_None,RF_Transactional);TStrongObjectPtr<UObject> ObjectHold(Object);Receipt->SetBoolField(TEXT("allocation_returned"),true);Receipt->SetBoolField(TEXT("returned_object_is_null"),Object==nullptr);
+        OwnedRead->Allocating=Object;OwnedRead->AllocatingClass=C;OwnedRead->PlayerSettingsAllocating=true;
+        if(!Object||!OwnedRead->Pin(Object))return Stop(TEXT("data_asset_player_settings_allocation_unknown"),TEXT("Actual allocation prefix is retained; no cleanup/retry or next explicit writer/save."));
+        CreatedOwned.Add(Object);Receipt->SetObjectField(TEXT("identity"),Identity(Object));R.Data->SetNumberField(TEXT("owned_objects_created_count"),CreatedOwned.Num());
+        if(!Current()||!Check()||!OwnedRead->AcceptAllocation(Object,C))return Stop(TEXT("data_asset_player_settings_allocation_unobservable"),TEXT("Allocated-but-unlinked settings identity/prefix retained; old state cannot be safely observed."));
+        OwnedRead->PlayerSettingsAllocating=false;OwnedRead->NewPlayerSettings.Add(Object);
+        const auto NewFields=OwnedRead->Before->GetObjectField(TEXT("owned_exports"))->GetObjectField(Object->GetPathName())->GetObjectField(TEXT("fields"));
+        const auto DefaultFields=OwnedRead->Before->GetObjectField(TEXT("native_sources"))->GetObjectField(C->GetPathName())->GetObjectField(TEXT("CDO_fields"));
+        if(!NewFields.IsValid()||!DefaultFields.IsValid()||!Equal(NewFields.ToSharedRef(),DefaultFields.ToSharedRef()))return Stop(TEXT("data_asset_player_settings_constructor_defaults_changed"),TEXT("New native settings differs from the held native CDO defaults; allocated-but-unlinked prefix retained."));Receipt->SetBoolField(TEXT("new_object_defaults_observed"),true);
+        if(!Check())return false;OwnedRead->MappingCopyInFlight=true;Attempt.SetBoolField(TEXT("storage_copy_entered"),true);Receipt->SetBoolField(TEXT("link_copy_entered"),true);Count(R,TEXT("property_storage_copy_calls"));Settings->SetObjectPropertyValue_InContainer(Target.Get(),Object);Attempt.SetBoolField(TEXT("storage_copy_returned"),true);Receipt->SetBoolField(TEXT("link_copy_returned"),true);
+        if(!OwnedRead->AcceptPlayerSettingsCopy(Object)||!Check(Settings))return Stop(TEXT("data_asset_player_settings_link_unobservable"),TEXT("Actual link-copy prefix is retained without retry; no nested import/save follows an incomplete endpoint."));
+        Linked=true;Receipt->SetBoolField(TEXT("linked_to_action_verified"),true);Attempt.SetBoolField(TEXT("settings_linked_before_nested_import"),true);
+        if(!Check())return false;Attempt.SetBoolField(TEXT("conversion_attempted"),true);Receipt->SetBoolField(TEXT("nested_import_entered"),true);Count(R,TEXT("json_conversion_calls"));FText Why;
+        const bool ActualConverted=FJsonObjectConverter::JsonAttributesToUStruct(Literal->Values,C,Object,0,0,false,&Why);
+        Attempt.SetBoolField(TEXT("conversion_returned"),true);Attempt.SetBoolField(TEXT("converted"),ActualConverted);Receipt->SetBoolField(TEXT("nested_import_returned"),true);Receipt->SetBoolField(TEXT("nested_import_converted"),ActualConverted);Receipt->SetStringField(TEXT("converter_failure"),Why.ToString());Receipt->SetBoolField(TEXT("typed_partial_prefix_verified"),false);
+        // Current checks identities/layouts/slots first; the exact new-object fields are then
+        // checked against the pre-call typed prediction, never copied from the observed endpoint.
+        if(!Current()||ActualConverted!=PlannedConverted||!OwnedRead->AcceptPlayerSettingsImport(Object,ExpectedFields)||!Check())return Stop(TEXT("data_asset_player_settings_import_unknown"),TEXT("Actual converter return/prefix differs from precomputed public conversion; old state retained, no next writer/save/retry."));
+        if(!OwnedRead->CapturePlayerSettingsTexts(Object,PlannedTexts)||!Check())return Stop(TEXT("data_asset_player_settings_text_baseline_unknown"),TEXT("Confirmed import prefix has no complete typed text baseline; no next writer/save/retry."));
+        Receipt->SetBoolField(TEXT("typed_partial_prefix_verified"),true);Receipt->SetBoolField(TEXT("partial_false_retained"),!ActualConverted);Attempt.SetStringField(TEXT("storage_write_route"),TEXT("NewObject(asset Outer), exact root link copy, public JsonAttributesToUStruct on new object"));Converted=ActualConverted;
+        if(!Converted)Error=TEXT("Nested settings conversion failed after allocation/link; actual typed field prefix retained: ")+PlannedFailure;
+        return true;
+    }
     explicit FInputActionScope(FResult& In,bool Factory=false,FInputOwnedReadScope* Read=nullptr):R(In),OwnedRead(Read),RequireFactory(Factory){}
     ~FInputActionScope(){if(Started){InputActionActive=false;}}
     bool Stop(const TCHAR* Code,const TCHAR* Message)
@@ -904,7 +1123,9 @@ struct FInputActionScope
                 if(!Loaded(Enum)||Enum->GetPathName()!=Path||Enum->GetPackage()!=C->GetPackage()||!E->GetUnderlyingProperty()||!E->GetUnderlyingProperty()->IsA<FByteProperty>()||!Pin(Enum))
                 {return Stop(TEXT("data_asset_input_action_enum_mismatch"),TEXT("Exact public uint8 native value/accumulation enum required."));}
                 TArray<FString> Tokens=Value?TArray<FString>{TEXT("Boolean"),TEXT("Axis1D"),TEXT("Axis2D"),TEXT("Axis3D")}:TArray<FString>{TEXT("TakeHighestAbsoluteValue"),TEXT("Cumulative")};
-                for(const auto& Token:Tokens){const int64 V=Enum->GetValueByNameString(Token);if(V==INDEX_NONE||!Enum->GetAuthoredNameStringByValue(V).Equals(Token,ESearchCase::CaseSensitive)){return Stop(TEXT("data_asset_input_action_enum_token_mismatch"),TEXT("Current authored enum tokens differ from installed SDK declarations."));}}EnumTokens.Add(P->GetFName(),MoveTemp(Tokens));
+                TArray<int64> ScalarValues;
+                for(const auto& Token:Tokens){const int64 V=Enum->GetValueByNameString(Token);if(V==INDEX_NONE||!Enum->GetAuthoredNameStringByValue(V).Equals(Token,ESearchCase::CaseSensitive)){return Stop(TEXT("data_asset_input_action_enum_token_mismatch"),TEXT("Current authored enum tokens differ from installed SDK declarations."));}ScalarValues.Add(V);}EnumTokens.Add(P->GetFName(),MoveTemp(Tokens));
+                EnumScalarValues.Add(P->GetFName(),MoveTemp(ScalarValues));EnumScalarStorage.Add(P->GetFName(),CastField<FByteProperty>(E->GetUnderlyingProperty()));
             }
             else if(!CastField<FBoolProperty>(P)||P->GetCPPType()!=TEXT("bool")){return Stop(TEXT("data_asset_input_action_schema_mismatch"),TEXT("Exact native bool field required."));}
             Scalars.Add(P->GetFName(),P);
@@ -957,11 +1178,49 @@ struct FInputActionScope
         {
             if(!Loaded(O)){return Stop(TEXT("data_asset_input_action_foreign_package_export"),TEXT("A foreign package export appeared; no package save."));}
             const bool PendingActionOwned=OwnedWriter()&&OwnedRead->Bound&&OwnedRead->Target.Get()==A&&O==OwnedRead->Allocating&&CreatedOwned.Contains(O)
-                &&OwnedRead->ActionWriterKind(OwnedRead->Kind(OwnedRead->AllocatingClass))&&O->GetClass()==OwnedRead->AllocatingClass&&O->GetOuter()==A&&O->GetPackage()==A->GetPackage()
+                &&(OwnedRead->ActionWriterKind(OwnedRead->Kind(OwnedRead->AllocatingClass))
+                    ||(OwnedRead->ActionSet&&!OwnedRead->MappingSet&&OwnedRead->PlayerSettingsWrite&&OwnedRead->PlayerSettingsAllocating&&PlayerSettingsWritten&&OwnedRead->Kind(OwnedRead->AllocatingClass)==11))
+                &&O->GetClass()==OwnedRead->AllocatingClass&&O->GetOuter()==A&&O->GetPackage()==A->GetPackage()
                 &&!O->HasAnyFlags(RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient)&&OwnedRead->Held.ContainsByPredicate([O,A](const FInputOwnedReadScope::FIdentity& I)
                 {return I.Hold.Get()==O&&I.Class==O->GetClass()&&I.Outer==A&&I.Package==A->GetPackage()&&I.Path==O->GetPathName()&&I.Flags==O->GetFlags();});
             if(O!=A&&!(OwnedRead&&OwnedRead->Owned.Contains(O))&&!PendingActionOwned&&O->GetClass()->GetPathName()!=TEXT("/Script/CoreUObject.MetaData")){return Stop(TEXT("data_asset_input_action_foreign_package_export"),TEXT("A foreign package export appeared; no package save."));}
         }
+        return true;
+    }
+    bool ScalarInputBound(FProperty* P,const TSharedPtr<FJsonValue>& Value,FString& Error)
+    {
+        if(!CastField<FEnumProperty>(P))return true;
+        // This API calls JsonValueToUProperty directly. Its FEnumProperty branch
+        // uses FName only for JSON String; every other kind keeps SDK AsNumber
+        // and int64-to-underlying-byte semantics. UDS JSON-object null skipping
+        // belongs to another provider and is deliberately not copied here.
+        if(Value->Type==EJson::String)
+        {
+            const FString Token=Value->AsString();
+            if(Token.Len()>=NAME_SIZE||HasNul(Token)){Error=TEXT("Enum string exceeds the Engine FName bound");return false;}
+        }
+        else if(Value->Type==EJson::Number)
+        {
+            const double Number=Value->AsNumber();
+            if(!FMath::IsFinite(Number)||Number< -9223372036854775808.0||Number>=9223372036854775808.0)
+            {Error=TEXT("Enum numeric conversion exceeds the defined finite int64 cast range; wider original coercions remain incomplete");return false;}
+        }
+        return true;
+    }
+    bool ScalarConvertedBound(FProperty* P,const void* Address,FString& Error)
+    {
+        auto* Enum=CastField<FEnumProperty>(P);if(!Enum)return true;
+        auto* Storage=EnumScalarStorage.FindRef(P->GetFName());
+        if(!Storage||Enum->GetUnderlyingProperty()!=Storage||Storage->GetClass()!=FByteProperty::StaticClass()
+            ||Storage->GetSize()!=sizeof(uint8)||Storage->ArrayDim!=1||Storage->HasSetterOrGetter())
+        {Error=TEXT("Actual exact native uint8 enum storage changed; converted scratch is not copied");return false;}
+        // The converter's actual byte result is authoritative, including truncation
+        // and wrapping. Invalid/MAX native ValueType/AccumulationBehavior values
+        // remain outside the verified consumer/notification scope, before copying.
+        const int64 Converted=Storage->GetPropertyValue(Address);
+        const auto* Supported=EnumScalarValues.Find(P->GetFName());
+        if(!Supported||!Supported->Contains(Converted))
+        {Error=TEXT("Converted enum value is outside the verified native consumer/notification scope; MAX/unknown values remain incomplete");return false;}
         return true;
     }
     bool Consumers()
@@ -1089,8 +1348,8 @@ struct FMappingContextScope
     FObjectPropertyBase* Action=nullptr;FStructProperty* Key=nullptr;FArrayProperty* Triggers=nullptr;FArrayProperty* Modifiers=nullptr;FEnumProperty* Behavior=nullptr;FObjectPropertyBase* Settings=nullptr;FBoolProperty* Ignored=nullptr;FBoolProperty* Ticking=nullptr;
     TSharedRef<FJsonObject> SourceBefore=MakeShared<FJsonObject>(),FieldsBefore=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> RowsBefore;
     struct FOwnedFieldPlan{FProperty* Property=nullptr;TUniquePtr<FDefaultConstructedPropertyElement> Value;FString Canonical;};
-    struct FOwnedSlotPlan{UClass* Class=nullptr;UObject* Object=nullptr;int32 Row=0,Slot=0;bool Trigger=false;TArray<FOwnedFieldPlan> Fields;};
-    TArray<FOwnedSlotPlan> OwnedPlan;TArray<UObject*> CreatedOwned;TSharedPtr<FJsonValue> PlainMapping;TArray<FString> VerifiedMappingLinks;bool MatchingOwned=false,MappingRequestVerified=false;
+    struct FOwnedSlotPlan{UClass* Class=nullptr;UObject* Object=nullptr;int32 Row=0,Slot=0;bool Trigger=false,PlayerSettings=false;TArray<FOwnedFieldPlan> Fields;FInputOwnedReadScope::FPlayerSettingsLiteralPlan SettingsPlan;};
+    TArray<FOwnedSlotPlan> OwnedPlan;TArray<UObject*> CreatedOwned;TSharedPtr<FJsonValue> PlainMapping;TArray<FString> VerifiedMappingLinks;bool MatchingOwned=false,MappingRequestVerified=false;FString OwnedSettingsFailure;
     bool OwnedWriter()const{return OwnedRead&&OwnedRead->MappingSet;}
     FString ObservationPhase;TSharedPtr<FJsonObject> ExportTrace;TSharedRef<FJsonObject> SourceDiagnostic=MakeShared<FJsonObject>();
     void BeginPhase(const TCHAR* Phase)
@@ -1164,7 +1423,7 @@ struct FMappingContextScope
             if(!Loaded(O)){return Stop(TEXT("data_asset_mapping_foreign_export"),TEXT("Only selected Context and native package metadata may share the save package."));}
             // KH: bridge only this call's held return until AcceptAllocation commits it to Owned.
             const bool PendingOwned=OwnedWriter()&&OwnedRead->Bound&&OwnedRead->Target.Get()==A&&O==OwnedRead->Allocating
-                &&OwnedRead->WriterKind(OwnedRead->Kind(OwnedRead->AllocatingClass))&&O->GetClass()==OwnedRead->AllocatingClass
+                &&(OwnedRead->WriterKind(OwnedRead->Kind(OwnedRead->AllocatingClass))||(OwnedRead->PlayerSettingsWrite&&OwnedRead->PlayerSettingsAllocating&&OwnedRead->Kind(OwnedRead->AllocatingClass)==11))&&O->GetClass()==OwnedRead->AllocatingClass
                 &&O->GetOuter()==A&&O->GetPackage()==A->GetPackage()&&!O->HasAnyFlags(RF_ClassDefaultObject|RF_ArchetypeObject|RF_Transient)&&CreatedOwned.Contains(O)
                 &&OwnedRead->Held.ContainsByPredicate([O,A](const FInputOwnedReadScope::FIdentity& I)
                 {return I.Hold.Get()==O&&I.Class==O->GetClass()&&I.Outer==A&&I.Package==A->GetPackage()&&I.Path==O->GetPathName()&&I.Flags==O->GetFlags();});
@@ -1282,7 +1541,7 @@ struct FMappingContextScope
     }
     bool PlanOwned(const TSharedPtr<FJsonValue>& Value,FString& Error)
     {
-        OwnedPlan.Reset();PlainMapping.Reset();MatchingOwned=false;if(!OwnedWriter()||!Check()){return false;}
+        OwnedPlan.Reset();PlainMapping.Reset();MatchingOwned=false;OwnedSettingsFailure.Reset();if(!OwnedWriter()||!Check()){return false;}
         const TArray<TSharedPtr<FJsonValue>>* Entries=nullptr;for(const auto& P:Value->AsObject()->Values){Entries=&P.Value->AsArray();}if(!Entries){return false;}
         FScriptArrayHelper Stored(Rows,Rows->ContainerPtrToValuePtr<void>(Defaults->ContainerPtrToValuePtr<void>(Target.Get())));
         const bool Fresh=Stored.Num()==0&&OwnedRead->Owned.IsEmpty();MatchingOwned=!Fresh;
@@ -1295,7 +1554,7 @@ struct FMappingContextScope
         for(int32 RowIndex=0;RowIndex<Entries->Num();++RowIndex)
         {
             const auto Input=(*Entries)[RowIndex]->AsObject();auto PlainRow=MakeShared<FJsonObject>();
-            for(const auto& P:Input->Values){const FName N(*FString(P.Key.ToView()));if(N==TEXT("Triggers")||N==TEXT("Modifiers")){PlainRow->SetArrayField(FString(P.Key.ToView()),{});}else{PlainRow->SetField(FString(P.Key.ToView()),P.Value);}}
+            for(const auto& P:Input->Values){const FName N(*FString(P.Key.ToView()));if(N==TEXT("Triggers")||N==TEXT("Modifiers")){PlainRow->SetArrayField(FString(P.Key.ToView()),{});}else if(N==TEXT("PlayerMappableKeySettings")&&P.Value->Type==EJson::Object){PlainRow->SetField(FString(P.Key.ToView()),MakeShared<FJsonValueNull>());}else{PlainRow->SetField(FString(P.Key.ToView()),P.Value);}}
             PlainRows.Add(MakeShared<FJsonValueObject>(PlainRow));
             for(const auto& Family:TArray<TPair<FArrayProperty*,bool>>{{Triggers,true},{Modifiers,false}})
             {
@@ -1342,6 +1601,25 @@ struct FMappingContextScope
                     OwnedPlan.Add(MoveTemp(Plan));
                 }
             }
+            for(const auto& Field:Input->Values)
+            {
+                if(FName(*FString(Field.Key.ToView()))!=TEXT("PlayerMappableKeySettings")||Field.Value->Type!=EJson::Object)continue;
+                if(++Total>64||!Check()){Error=TEXT("At most64 total owned slots/settings in this finite mapping property");return false;}
+                FOwnedSlotPlan Plan;Plan.Row=RowIndex;Plan.PlayerSettings=true;
+                if(MatchingOwned)
+                {
+                    const auto Handle=Settings->GetObjectPtrPropertyValue_InContainer(Stored.GetRawPtr(RowIndex));
+                    if(!Handle.IsResolved()||!Handle.Get()||!OwnedRead->IsPlayerSettingsObject(Handle.Get())){Error=TEXT("Matching settings literal requires the exact already held same-row instance");return false;}
+                    Plan.Object=Handle.Get();Plan.Class=Plan.Object->GetClass();
+                }
+                else
+                {
+                    if(OwnedRead->Owned.Num()+(++NewCount)>64){Error=TEXT("Old held objects plus planned new settings exceed64");return false;}
+                    if(!OwnedRead->PlanPlayerSettingsLiteral(Field.Value,Plan.SettingsPlan,Error,[this](){return Check();}))return false;
+                    Plan.Class=Plan.SettingsPlan.Class;
+                }
+                OwnedPlan.Add(MoveTemp(Plan));
+            }
         }
         Plain->SetArrayField(TEXT("mappings"),PlainRows);PlainMapping=MakeShared<FJsonValueObject>(Plain);R.Data->SetBoolField(TEXT("input_mapping_owned_matching_only"),MatchingOwned);R.Data->SetNumberField(TEXT("input_mapping_owned_planned_slots"),Total);return Check();
     }
@@ -1350,13 +1628,28 @@ struct FMappingContextScope
         if(!OwnedWriter()||MatchingOwned){return true;}TArray<TSharedPtr<FJsonValue>> Prefix;
         for(auto& Plan:OwnedPlan)
         {
-            if(!Check()){return false;}if(Plan.Object){continue;}auto Receipt=MakeShared<FJsonObject>();Prefix.Add(MakeShared<FJsonValueObject>(Receipt));R.Data->SetArrayField(TEXT("input_mapping_owned_creation_prefix"),Prefix);Receipt->SetStringField(TEXT("class"),Plan.Class->GetPathName());Receipt->SetNumberField(TEXT("row"),Plan.Row);Receipt->SetNumberField(TEXT("slot"),Plan.Slot);Receipt->SetBoolField(TEXT("trigger"),Plan.Trigger);Receipt->SetBoolField(TEXT("allocation_entered"),true);
-            R.Known=false;Count(R,TEXT("owned_object_allocation_calls"));UObject* O=NewObject<UObject>(Target.Get(),Plan.Class,NAME_None,RF_Transactional);Receipt->SetBoolField(TEXT("allocation_returned"),true);
+            if(!Check()){return false;}if(Plan.Object){continue;}auto Receipt=MakeShared<FJsonObject>();Prefix.Add(MakeShared<FJsonValueObject>(Receipt));R.Data->SetArrayField(TEXT("input_mapping_owned_creation_prefix"),Prefix);Receipt->SetStringField(TEXT("class"),Plan.Class->GetPathName());Receipt->SetNumberField(TEXT("row"),Plan.Row);Receipt->SetNumberField(TEXT("slot"),Plan.Slot);Receipt->SetBoolField(TEXT("trigger"),Plan.Trigger);Receipt->SetBoolField(TEXT("player_settings"),Plan.PlayerSettings);Receipt->SetStringField(TEXT("outer_policy"),TEXT("selected Context asset; intentional legacy transient-Outer correction"));Receipt->SetBoolField(TEXT("allocation_entered"),true);
+            R.Known=false;Count(R,TEXT("owned_object_allocation_calls"));UObject* O=NewObject<UObject>(Target.Get(),Plan.Class,NAME_None,RF_Transactional);const TStrongObjectPtr<UObject> ReturnedHold(O);Receipt->SetBoolField(TEXT("allocation_returned"),true);
             Receipt->SetBoolField(TEXT("returned_object_is_null"),O==nullptr);Receipt->SetBoolField(TEXT("returned_identity_observed"),false);
-            OwnedRead->Allocating=O;OwnedRead->AllocatingClass=Plan.Class;
+            OwnedRead->Allocating=O;OwnedRead->AllocatingClass=Plan.Class;OwnedRead->PlayerSettingsAllocating=Plan.PlayerSettings;
             if(!O||!OwnedRead->Pin(O)){R.Data->SetBoolField(TEXT("owned_allocation_endpoint_complete"),false);return Stop(TEXT("data_asset_mapping_owned_allocation_unknown"),TEXT("Allocation identity unavailable; null/non-null return receipt and prior observed identities retained, no next explicit writer/save."));}
             Plan.Object=O;CreatedOwned.Add(O);Receipt->SetObjectField(TEXT("identity"),Identity(O));Receipt->SetBoolField(TEXT("returned_identity_observed"),true);R.Data->SetNumberField(TEXT("owned_objects_created_count"),CreatedOwned.Num());
             if(!Current()||!Check()||!OwnedRead->AcceptAllocation(O,Plan.Class)){return Stop(TEXT("data_asset_mapping_owned_allocation_unknown"),TEXT("Complete source/target allocation endpoint unavailable; actual returned identity/prefix retained, no next explicit writer/save."));}
+            if(Plan.PlayerSettings)
+            {
+                OwnedRead->PlayerSettingsAllocating=false;OwnedRead->NewPlayerSettings.Add(O);
+                const auto NewFields=OwnedRead->Before->GetObjectField(TEXT("owned_exports"))->GetObjectField(O->GetPathName())->GetObjectField(TEXT("fields"));
+                const auto NativeSettingsDefaultFields=OwnedRead->Before->GetObjectField(TEXT("native_sources"))->GetObjectField(Plan.Class->GetPathName())->GetObjectField(TEXT("CDO_fields"));
+                if(!Equal(NewFields.ToSharedRef(),NativeSettingsDefaultFields.ToSharedRef()))return Stop(TEXT("data_asset_mapping_settings_constructor_changed"),TEXT("New exact settings differs from held native defaults; actual allocated unlinked prefix retained."));
+                Receipt->SetBoolField(TEXT("nested_import_entered"),true);Receipt->SetBoolField(TEXT("linked_to_mapping"),false);Count(R,TEXT("json_conversion_calls"));FText Why;
+                const bool Converted=FJsonObjectConverter::JsonAttributesToUStruct(Plan.SettingsPlan.Literal->Values,Plan.Class,O,0,0,false,&Why);
+                Receipt->SetBoolField(TEXT("nested_import_returned"),true);Receipt->SetBoolField(TEXT("nested_import_converted"),Converted);Receipt->SetStringField(TEXT("converter_failure"),Why.ToString());
+                if(!Current()||Converted!=Plan.SettingsPlan.Converted||!OwnedRead->AcceptPlayerSettingsImport(O,Plan.SettingsPlan.ExpectedFields)||!Check())return Stop(TEXT("data_asset_mapping_settings_import_unknown"),TEXT("Returned settings conversion/prefix differs from typed planning; no copy, save or replay."));
+                if(!OwnedRead->CapturePlayerSettingsTexts(O,Plan.SettingsPlan.Texts)||!Check())return Stop(TEXT("data_asset_mapping_settings_text_unknown"),TEXT("Confirmed settings import has no complete typed text baseline; no next writer/save/retry."));
+                Receipt->SetBoolField(TEXT("typed_partial_prefix_verified"),true);Receipt->SetBoolField(TEXT("configured"),Converted);
+                if(!Converted){OwnedSettingsFailure=TEXT("Nested settings conversion failed before complete Context mapping copy; new unlinked object/typed field prefix retained: ")+Plan.SettingsPlan.Failure;Receipt->SetBoolField(TEXT("partial_false_retained"),true);break;}
+                continue;
+            }
             if(!Check()){return false;}
             if(OwnedRead->TriggerKind(OwnedRead->Kind(Plan.Class)))
             {FBoolProperty* Tick=FindFProperty<FBoolProperty>(Plan.Class,TEXT("bShouldAlwaysTick"));if(!Tick||Tick->GetPropertyValue_InContainer(O)){return Stop(TEXT("data_asset_mapping_owned_trigger_default_changed"),TEXT("Returned trigger bookkeeping differs from planned false native default; allocation prefix retained."));}}
@@ -1376,6 +1669,11 @@ struct FMappingContextScope
         if(!Check()){return false;}FScriptArrayHelper Array(Rows,Rows->ContainerPtrToValuePtr<void>(Data));
         for(const auto& Plan:OwnedPlan)
         {
+            if(Plan.PlayerSettings)
+            {
+                if(Plan.Row>=Array.Num()||!Loaded(Plan.Object)||!OwnedRead->IsPlayerSettingsObject(Plan.Object)){Error=TEXT("Held Context settings scratch row/pointer unavailable");return false;}
+                Settings->SetObjectPropertyValue_InContainer(Array.GetRawPtr(Plan.Row),Plan.Object);if(!Check())return false;continue;
+            }
             FArrayProperty* P=Plan.Trigger?Triggers:Modifiers;FObjectPropertyBase* Inner=CastField<FObjectPropertyBase>(P->Inner);if(Plan.Row>=Array.Num()||!Inner||!Loaded(Plan.Object)){Error=TEXT("Owned scratch row/pointer unavailable");return false;}
             FScriptArrayHelper Slots(P,P->ContainerPtrToValuePtr<void>(Array.GetRawPtr(Plan.Row)));if(Plan.Slot!=Slots.Num()){Error=TEXT("Owned scratch slot order mismatch");return false;}Slots.AddValue();Inner->SetObjectPropertyValue(Slots.GetRawPtr(Plan.Slot),Plan.Object);if(!Check()){return false;}
         }
@@ -1400,14 +1698,14 @@ struct FMappingContextScope
                 else if(N==TEXT("Key")){HasKey=true;if(Pair.Value->Type!=EJson::String||!KeyAllowed(FKey(*Pair.Value->AsString()))||!Pair.Value->AsString().Equals(FKey(*Pair.Value->AsString()).ToString(),ESearchCase::CaseSensitive)){Error=TEXT("Use one of the nine source-backed registered digital/axis key names");return false;}}
                 else if(N==TEXT("Triggers")||N==TEXT("Modifiers")){if(Pair.Value->Type!=EJson::Array||Pair.Value->AsArray().Num()>64||(!OwnedWriter()&&!Pair.Value->AsArray().IsEmpty())){Error=TEXT("Empty arrays or the finite Context-owned writer slot contract required");return false;}}
                 else if(N==TEXT("SettingBehavior")){if(Pair.Value->Type!=EJson::String||!(Pair.Value->AsString()==TEXT("InheritSettingsFromAction")||(OwnedRead&&OwnedRead->PlayerSettingsHost&&Pair.Value->AsString()==TEXT("OverrideSettings")))){Error=TEXT("Inherited settings, or OverrideSettings with an exact held same-owner reference, required");return false;}}
-                else if(N==TEXT("PlayerMappableKeySettings")){if(Pair.Value->Type!=EJson::Null&&(Pair.Value->Type!=EJson::String||(Pair.Value->AsString()!=TEXT("None")&&(!OwnedRead||!OwnedRead->PlayerSettingsHost||!OwnedRead->ReusePlayerSettings(Pair.Value->AsString()))))){Error=TEXT("Null or exact held same-owner native settings class-export required; inline/foreign references remain incomplete");return false;}}
+                else if(N==TEXT("PlayerMappableKeySettings")){if(!(OwnedWriter()&&OwnedRead->PlayerSettingsWrite&&Pair.Value->Type==EJson::Object)&&Pair.Value->Type!=EJson::Null&&(Pair.Value->Type!=EJson::String||(Pair.Value->AsString()!=TEXT("None")&&(!OwnedRead||!OwnedRead->PlayerSettingsHost||!OwnedRead->ReusePlayerSettings(Pair.Value->AsString()))))){Error=TEXT("Null or exact held same-owner native settings class-export required; inline/foreign references remain incomplete");return false;}}
                 else{Error=TEXT("Unknown/transient/custom mapping row field unsupported");return false;}
             }if(!HasAction||!HasKey){Error=TEXT("Each mapping row requires Action and Key");return false;}
             if(OwnedRead&&OwnedRead->PlayerSettingsHost)
             {
                 FString RequestedBehavior=TEXT("InheritSettingsFromAction");TSharedPtr<FJsonValue> RequestedSettings;
                 for(const auto& Pair:Entry->AsObject()->Values){const FName Name(*FString(Pair.Key.ToView()));if(Name==TEXT("SettingBehavior"))RequestedBehavior=Pair.Value->AsString();else if(Name==TEXT("PlayerMappableKeySettings"))RequestedSettings=Pair.Value;}
-                const bool NonNull=RequestedSettings&&RequestedSettings->Type==EJson::String&&RequestedSettings->AsString()!=TEXT("None");
+                const bool NonNull=RequestedSettings&&((RequestedSettings->Type==EJson::String&&RequestedSettings->AsString()!=TEXT("None"))||(OwnedWriter()&&OwnedRead->PlayerSettingsWrite&&RequestedSettings->Type==EJson::Object));
                 if((RequestedBehavior==TEXT("OverrideSettings"))!=NonNull){Error=TEXT("First explicit settings writer requires OverrideSettings with one nonnull same-owner settings reference, or inherited/null settings");return false;}
             }
         }return (!OwnedWriter()||PlanOwned(Value,Error))&&Check();
@@ -1417,7 +1715,7 @@ bool MappingAdmit(FMappingContextScope* Scope){return !Scope||Scope->Current();}
 void MappingExportDiagnostic(FMappingContextScope* Scope,UObject* Object,FProperty* Property,bool Before,bool Performed,int32 Length,bool CurrentOK,bool LimitOK)
 {if(!Scope){return;}if(Before){Scope->BeginExport(Object,Property,TEXT("native_source_field"));}else{Scope->EndExport(Performed,Length,CurrentOK,LimitOK);}}
 
-struct FContext { TStrongObjectPtr<UDataAsset> Asset; UClass* Class = nullptr; UClass* Factory = nullptr; FString Path, Package;bool PermitPreview=false,ActionReferenceClear=false,MappingReferenceClear=false,SingleActionArrayNull=false,GeneratedLoaded=false,NativeLoaded=false;TStrongObjectPtr<UEditorEngine> LoadEditor;TStrongObjectPtr<UWorld> LoadWorld;TStrongObjectPtr<UClass> LoadClass;TStrongObjectPtr<UPackage> LoadPackage;TSharedPtr<FJsonObject> MappingOwnedRequest,ActionOwnedRequest;TUniquePtr<FInputOwnedReadScope> OwnedRead;TUniquePtr<FPreviewCollectionScope> Preview;TUniquePtr<FDeformerCollectionScope> Deformer;TUniquePtr<FInputActionScope> Input;TUniquePtr<FMappingContextScope> Mapping; };
+struct FContext { TStrongObjectPtr<UDataAsset> Asset; UClass* Class = nullptr; UClass* Factory = nullptr; FString Path, Package;bool PermitPreview=false,ActionReferenceClear=false,MappingReferenceClear=false,SingleActionArrayNull=false,GeneratedLoaded=false,NativeLoaded=false,PlayerSettingsInlineRequest=false;TStrongObjectPtr<UEditorEngine> LoadEditor;TStrongObjectPtr<UWorld> LoadWorld;TStrongObjectPtr<UClass> LoadClass;TStrongObjectPtr<UPackage> LoadPackage;TSharedPtr<FJsonObject> MappingOwnedRequest,ActionOwnedRequest;TUniquePtr<FInputOwnedReadScope> OwnedRead;TUniquePtr<FPreviewCollectionScope> Preview;TUniquePtr<FDeformerCollectionScope> Deformer;TUniquePtr<FInputActionScope> Input;TUniquePtr<FMappingContextScope> Mapping; };
 struct FObservation
 {
     bool Complete = false;
@@ -1503,15 +1801,20 @@ bool Load(FContext& C, FResult& R, const TCHAR* Stage,bool PermitGenerated=false
     if(Loaded(A)&&A->GetClass()->GetPathName()==InputActionClassPath)
     {
         if(C.SingleActionArrayNull){J->SetBoolField(TEXT("returned"),true);R.Stage=TEXT("preflight");R.Data->SetBoolField(TEXT("native_input_owned_reference_clear_rejected_null"),true);return Fail(R,TEXT("data_asset_owned_clear_array_invalid"),TEXT("A sole exact Action Modifiers/Triggers null request is not an explicit empty array; no Modify/transaction/save or normalization."));}
-        C.Preview.Reset();C.Deformer.Reset();if(!C.Input){bool PlayerHost=false;if(R.Op==TEXT("set_data_asset_properties")){auto* P=FindFProperty<FObjectProperty>(A->GetClass(),TEXT("PlayerMappableKeySettings"));if(P&&P->GetOwnerStruct()==A->GetClass()&&P->ArrayDim==1&&P->PropertyClass.IsResolved()&&Loaded(P->PropertyClass.Get())&&P->PropertyClass->GetPathName()==PlayerSettingsClassPath){const auto V=P->GetObjectPtrPropertyValue_InContainer(A);if(!V.IsResolved()){J->SetBoolField(TEXT("returned"),true);return Fail(R,TEXT("data_asset_player_settings_unresolved"),TEXT("Populated settings handle must already be resolved; no lazy load."));}PlayerHost=V.Get()!=nullptr;}}if(R.Op==TEXT("get_data_asset")||C.ActionOwnedRequest.IsValid()||PlayerHost){C.OwnedRead=MakeUnique<FInputOwnedReadScope>(R,false,C.ActionOwnedRequest.IsValid()||PlayerHost,C.ActionReferenceClear);C.OwnedRead->PlayerSettingsHost=PlayerHost;if(C.ActionReferenceClear){C.OwnedRead->DescribeReferenceClear();}if(C.ActionOwnedRequest.IsValid()&&!C.OwnedRead->PrepareActionWriteClasses(C.ActionOwnedRequest.ToSharedRef(),A)){J->SetBoolField(TEXT("returned"),true);return false;}}C.Input=MakeUnique<FInputActionScope>(R,false,C.OwnedRead.Get());if(!C.Input->Start()){J->SetBoolField(TEXT("returned"),true);return false;}}
+        C.Preview.Reset();C.Deformer.Reset();if(!C.Input){bool PlayerHost=false;if(R.Op==TEXT("set_data_asset_properties")){auto* P=FindFProperty<FObjectProperty>(A->GetClass(),TEXT("PlayerMappableKeySettings"));if(P&&P->GetOwnerStruct()==A->GetClass()&&P->ArrayDim==1&&P->PropertyClass.IsResolved()&&Loaded(P->PropertyClass.Get())&&P->PropertyClass->GetPathName()==PlayerSettingsClassPath){const auto V=P->GetObjectPtrPropertyValue_InContainer(A);if(!V.IsResolved()){J->SetBoolField(TEXT("returned"),true);return Fail(R,TEXT("data_asset_player_settings_unresolved"),TEXT("Populated settings handle must already be resolved; no lazy load."));}PlayerHost=V.Get()!=nullptr;}}PlayerHost|=C.PlayerSettingsInlineRequest;if(R.Op==TEXT("get_data_asset")||C.ActionOwnedRequest.IsValid()||PlayerHost){C.OwnedRead=MakeUnique<FInputOwnedReadScope>(R,false,C.ActionOwnedRequest.IsValid()||PlayerHost,C.ActionReferenceClear);C.OwnedRead->PlayerSettingsHost=PlayerHost;C.OwnedRead->PlayerSettingsWrite=C.PlayerSettingsInlineRequest;if(C.PlayerSettingsInlineRequest&&!C.OwnedRead->PreparePlayerSettingsWrite()){J->SetBoolField(TEXT("returned"),true);return false;}if(C.ActionReferenceClear){C.OwnedRead->DescribeReferenceClear();}if(C.ActionOwnedRequest.IsValid()&&!C.OwnedRead->PrepareActionWriteClasses(C.ActionOwnedRequest.ToSharedRef(),A)){J->SetBoolField(TEXT("returned"),true);return false;}}C.Input=MakeUnique<FInputActionScope>(R,false,C.OwnedRead.Get());if(!C.Input->Start()){J->SetBoolField(TEXT("returned"),true);return false;}}
         if(!C.Input->FreshTarget(A)||(C.OwnedRead&&!C.OwnedRead->Bind(A))||!C.Input->Bind(A,C.Path)){J->SetBoolField(TEXT("returned"),true);return false;}
     }
     if(Loaded(A)&&A->GetClass()->GetPathName()==MappingContextClassPath)
     {
-        C.Preview.Reset();C.Deformer.Reset();if(!C.Mapping){if(R.Op==TEXT("get_data_asset")||C.MappingOwnedRequest.IsValid()){C.OwnedRead=MakeUnique<FInputOwnedReadScope>(R,C.MappingOwnedRequest.IsValid(),false,C.MappingReferenceClear);if(C.MappingReferenceClear){C.OwnedRead->DescribeReferenceClear();}if(C.MappingOwnedRequest.IsValid()&&!C.OwnedRead->PrepareWriteClasses(C.MappingOwnedRequest.ToSharedRef(),A)){J->SetBoolField(TEXT("returned"),true);return false;}}C.Mapping=MakeUnique<FMappingContextScope>(R,false,C.OwnedRead.Get());if(!C.Mapping->Start()){J->SetBoolField(TEXT("returned"),true);return false;}}
+        C.Preview.Reset();C.Deformer.Reset();if(!C.Mapping){if(R.Op==TEXT("get_data_asset")||C.MappingOwnedRequest.IsValid()){C.OwnedRead=MakeUnique<FInputOwnedReadScope>(R,C.MappingOwnedRequest.IsValid(),false,C.MappingReferenceClear);
+            if(C.MappingOwnedRequest.IsValid())for(const auto& Top:C.MappingOwnedRequest->Values)
+            {if(FName(*FString(Top.Key.ToView()))==TEXT("DefaultKeyMappings")&&Top.Value->Type==EJson::Object)for(const auto& Wrap:Top.Value->AsObject()->Values)
+             {if(FName(*FString(Wrap.Key.ToView()))==TEXT("Mappings")&&Wrap.Value->Type==EJson::Array&&Wrap.Value->AsArray().Num()<=64)for(const auto& Row:Wrap.Value->AsArray())
+              {if(Row->Type==EJson::Object)for(const auto& Field:Row->AsObject()->Values)if(FName(*FString(Field.Key.ToView()))==TEXT("PlayerMappableKeySettings")&&Field.Value->Type==EJson::Object)C.OwnedRead->PlayerSettingsWrite=true;}}}
+            if(C.OwnedRead->PlayerSettingsWrite&&!C.OwnedRead->PreparePlayerSettingsWrite()){J->SetBoolField(TEXT("returned"),true);return false;}if(C.MappingReferenceClear){C.OwnedRead->DescribeReferenceClear();}if(C.MappingOwnedRequest.IsValid()&&!C.OwnedRead->PrepareWriteClasses(C.MappingOwnedRequest.ToSharedRef(),A)){J->SetBoolField(TEXT("returned"),true);return false;}}C.Mapping=MakeUnique<FMappingContextScope>(R,false,C.OwnedRead.Get());if(!C.Mapping->Start()){J->SetBoolField(TEXT("returned"),true);return false;}}
         if((C.OwnedRead&&!C.OwnedRead->Bind(A))||!C.Mapping->Bind(A,C.Path)){J->SetBoolField(TEXT("returned"),true);return false;}
     }
-    if(C.OwnedRead&&C.OwnedRead->PlayerSettingsHost){R.Data->SetStringField(TEXT("admission_scope"),TEXT("Exact native Action/Context with immutable preexisting direct-owned native PlayerMappableKeySettings and null Metadata: populated Get, existing Action scalar writes with unchanged arrays, and Context inherited/null or OverrideSettings/exact same-owner class-export reference. Existing finite modifier/trigger paths remain separate."));R.Data->SetStringField(TEXT("player_settings_limits"),TEXT("No inline settings allocation, foreign/forward references, settings-field writes, IgnoreSettings writer, arbitrary Metadata, runtime evaluation or full legacy parity. PostLoad completes before the first baseline; deprecated tag migration and cold persistence of unlinked objects are not proven."));}
+    if(C.OwnedRead&&C.OwnedRead->PlayerSettingsHost&&!C.OwnedRead->PlayerSettingsWrite){R.Data->SetStringField(TEXT("admission_scope"),TEXT("Exact native Action/Context with immutable preexisting direct-owned native PlayerMappableKeySettings and null Metadata: populated Get, existing Action scalar writes with unchanged arrays, and Context inherited/null or OverrideSettings/exact same-owner class-export reference. Existing finite modifier/trigger paths remain separate."));R.Data->SetStringField(TEXT("player_settings_limits"),TEXT("No inline settings allocation, foreign/forward references, settings-field writes, IgnoreSettings writer, arbitrary Metadata, runtime evaluation or full legacy parity. PostLoad completes before the first baseline; deprecated tag migration and cold persistence of unlinked objects are not proven."));}
     J->SetBoolField(TEXT("returned"), true); J->SetObjectField(TEXT("returned_object"), Identity(Object));
     if (!Loaded(A) || A->GetPathName() != C.Path || (A->GetClass()->GetPathName()!=ClassPath&&!(C.PermitPreview&&A->GetClass()==UPreviewMeshCollection::StaticClass())&&!(C.Input&&A->GetClass()==C.Input->Class.Get())&&!(C.Mapping&&A->GetClass()==C.Mapping->Class.Get())) || A->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn | PKG_PlayInEditor | PKG_EditorOnly))
     { return Fail(R, TEXT("data_asset_type_unsupported"), TEXT("Exact supported Deformer/Preview/InputAction or finite native InputMappingContext required; arbitrary classes remain incomplete."), R.Attempted); }
@@ -1585,6 +1888,7 @@ bool Final(FContext& C, const FObservation& Prepared, FObservation& After, FResu
             Exports->GetObjectField(Path)->GetObjectField(TEXT("identity"))->SetStringField(TEXT("object_flags"),Flags);
             if(SavedRefsView->HasTypedField<EJson::Object>(Path)){SavedRefsView->GetObjectField(Path)->SetStringField(TEXT("object_flags"),Flags);}
         }
+        if(!C.OwnedRead->NormalizeSavedPlayerSettingsTexts(SavedStateView,TEXT("properties")))return false;
         R.Data->SetStringField(TEXT("input_mapping_saved_owned_flag_comparison"),TEXT("Comparison views normalize only this Context writer's held admitted-owned identities after SavedTrue; actual after/ref flags remain recorded, unchanged or exact WasLoaded|LoadCompleted transition only. No other flag/reference/state allowance."));
     }
     if(R.Saved&&C.Input&&C.Input->OwnedWriter()&&!C.OwnedRead->Owned.IsEmpty())
@@ -1595,6 +1899,7 @@ bool Final(FContext& C, const FObservation& Prepared, FObservation& After, FResu
             const FString Path=O->GetPathName();const auto Exports=SavedStateView->GetObjectField(TEXT("owned_exports"));if(!Exports->HasTypedField<EJson::Object>(Path)||!Exports->GetObjectField(Path)->HasTypedField<EJson::Object>(TEXT("identity"))){return C.Input->Stop(TEXT("data_asset_action_owned_saved_identity_missing"),TEXT("Saved admitted-owned identity absent; actual save prefix retained."));}
             const FString Flags=LexToString(uint64(O->GetFlags()|RF_WasLoaded|RF_LoadCompleted));Exports->GetObjectField(Path)->GetObjectField(TEXT("identity"))->SetStringField(TEXT("object_flags"),Flags);if(SavedRefsView->HasTypedField<EJson::Object>(Path)){SavedRefsView->GetObjectField(Path)->SetStringField(TEXT("object_flags"),Flags);}
         }R.Data->SetStringField(TEXT("input_action_saved_owned_flag_comparison"),TEXT("After SavedTrue only exact held Action-owned identity load bits use comparison views; actual after/ref evidence is unchanged. Current permits unchanged or exact WasLoaded|LoadCompleted transition only."));
+        if(!C.OwnedRead->NormalizeSavedPlayerSettingsTexts(SavedStateView,TEXT("properties")))return false;
     }
     const bool State = R.Saved ? SavedEqual(MakeShared<FJsonValueObject>(Prepared.State), MakeShared<FJsonValueObject>(SavedStateView), C.Path) : Equal(Prepared.State, After.State);
     const bool Source = Equal(Prepared.Source, After.Source), Refs = R.Saved ? SavedEqual(MakeShared<FJsonValueObject>(Prepared.Refs), MakeShared<FJsonValueObject>(SavedRefsView), C.Path) : Equal(Prepared.Refs, After.Refs), Other = Equal(Prepared.Other, After.Other);
@@ -1990,7 +2295,8 @@ FString SetInputAction(FContext& C,FResult& R,const TSharedRef<FJsonObject>& Req
         R.Data->SetStringField(TEXT("admission_scope"),TEXT("Exact native Action explicit empty Modifiers/Triggers reference clear and existing six scalars. Old owned inventory remains held/current, settings null, loaded stock ValueType/Triggers consumer guard preserved; no allocation/replacement/recovery."));
         R.Data->SetStringField(TEXT("input_action_owned_scope"),R.Data->GetStringField(TEXT("owned_reference_clear_scope")));
     }
-    if(Scope.OwnedRead&&Scope.OwnedRead->PlayerSettingsHost)R.Data->SetStringField(TEXT("admission_scope"),TEXT("Existing Action scalars with immutable preexisting same-owner native PlayerMappableKeySettings and unchanged arrays; no settings/inline object writer or runtime rebinding."));
+    if(Scope.OwnedRead&&Scope.OwnedRead->PlayerSettingsHost&&!Scope.OwnedRead->PlayerSettingsWrite)R.Data->SetStringField(TEXT("admission_scope"),TEXT("Existing Action scalars with immutable preexisting same-owner native PlayerMappableKeySettings and unchanged arrays; no settings/inline object writer or runtime rebinding."));
+    if(Scope.OwnedRead&&Scope.OwnedRead->PlayerSettingsWrite)R.Data->SetStringField(TEXT("admission_scope"),TEXT("Exact native InputAction inline PlayerMappableKeySettings, existing six scalars and preserved modifier/trigger arrays. Name/FText and bounded deprecated/new profile payloads use the public converter; old settings remain immutable. New objects use asset Outer instead of the original direct wrapper's transient Outer. Partial false is retained and reported; Context inline, arbitrary Metadata, derived settings, cold reload/profile migration and runtime input are incomplete or unverified."));
     R.Data->SetStringField(TEXT("description_cook_scope"),TEXT("InputAction scalar fields are native runtime asset payload; actual input processing, Blueprint consumer updates and vehicle runtime are not executed or verified."));
     if (bSave && !A->GetOutermost()->IsFullyLoaded()) { Fail(R, TEXT("data_asset_save_not_ready"), TEXT("Already fully loaded package required before a requested-save setter.")); return Encode(R); }
     Count(R, TEXT("legacy_get_calls"));
@@ -2036,17 +2342,24 @@ FString SetInputAction(FContext& C,FResult& R,const TSharedRef<FJsonObject>& Req
                 TArray<FString> SelectedLinks;const FString At=Array==Scope.Triggers?TEXT("Triggers"):TEXT("Modifiers");for(const auto& L:ExpectedLinks){if(L.StartsWith(At+TEXT("#"))||L.StartsWith(At+TEXT("/"))){SelectedLinks.Add(L);}}Scope.VerifiedArrayLinks.Add(P->GetFName(),MoveTemp(SelectedLinks));
             }
         }
+        else if(Scope.OwnedRead&&Scope.OwnedRead->PlayerSettingsWrite&&P==Scope.Settings)
+        {
+            bool Converted=false,Linked=false;if(!Scope.WritePlayerSettings(Pair.Value,*Row,Converted,Linked,Error))return;
+            // A nested false can still change the selected pointer/fields. Preserve it through
+            // the existing partial/save fences, but never call it applied or notify it as success.
+            if(Linked)Selected.Add(P->GetFName());
+            if(Converted){Applied.Add(MakeShared<FJsonValueString>(Name));Properties.Add(P);AppliedNames.Add(Name);R.Data->SetArrayField(TEXT("applied"),Applied);}
+        }
         else if(Scope.Scalars.FindRef(P->GetFName())!=P){Error=TEXT("Only exact InputAction ValueType/AccumulationBehavior and the four native bool fields are writable");}
         else if(!Pair.Value.IsValid()){Error=TEXT("Missing scalar value");}
-        else if(CastField<FBoolProperty>(P)&&Pair.Value->Type!=EJson::Boolean){Error=TEXT("InputAction bool requires JSON true or false; original coercion variants remain incomplete");}
-        else if(CastField<FEnumProperty>(P)&&(Pair.Value->Type!=EJson::String||!Scope.EnumTokens.FindChecked(P->GetFName()).ContainsByPredicate([&](const FString& Token){return Token.Equals(Pair.Value->AsString(),ESearchCase::CaseSensitive);})))
-        {Error=TEXT("Use an exact currently verified authored native enum token; numbers, MAX and unknown tokens are unsupported");}
+        else if(!Scope.ScalarInputBound(P,Pair.Value,Error)){}
         else
         {
             FDefaultConstructedPropertyElement Scratch(P); Row->SetBoolField(TEXT("conversion_attempted"), true); Count(R, TEXT("json_conversion_calls"));
             const bool Converted=FJsonObjectConverter::JsonValueToUProperty(Pair.Value,P,Scratch.GetObjAddress(),0,0);
             if(!Scope.Check()){return;}
             if (!Converted) { Error = TEXT("Value conversion failed (check type)"); }
+            else if(!Scope.ScalarConvertedBound(P,Scratch.GetObjAddress(),Error)){}
             else { Count(R, TEXT("property_storage_copy_calls")); P->CopyCompleteValue(P->ContainerPtrToValuePtr<void>(A), Scratch.GetObjAddress()); Row->SetBoolField(TEXT("storage_copy_returned"), true); Applied.Add(MakeShared<FJsonValueString>(Name)); Properties.Add(P); AppliedNames.Add(Name);Selected.Add(P->GetFName());R.Data->SetArrayField(TEXT("applied"),Applied);if(!Scope.Check(P)){return;} }
         }
         if (!Error.IsEmpty()) { auto F = MakeShared<FJsonObject>(); F->SetStringField(TEXT("property"), Name); F->SetStringField(TEXT("error"), Error); Failed.Add(MakeShared<FJsonValueObject>(F)); Row->SetStringField(TEXT("error"), Error); }
@@ -2139,6 +2452,11 @@ FString SetMappingContext(FContext& C,FResult& R,const TSharedRef<FJsonObject>& 
         R.Data->SetStringField(TEXT("admission_scope"),TEXT("Exact native Context explicit empty DefaultKeyMappings.Mappings reference clear only. All old linked/unlinked owned instances and Action/Curve sources remain held/current. No UnmapAll/rebuild, allocation/replacement/profile/deprecated write or recovery."));
         R.Data->SetStringField(TEXT("input_mapping_partial_contract"),R.Data->GetStringField(TEXT("owned_reference_clear_scope")));
     }
+    if(Scope.OwnedWriter()&&Scope.OwnedRead->PlayerSettingsWrite)
+    {
+        R.Data->SetStringField(TEXT("admission_scope"),TEXT("Exact native InputMappingContext OverrideSettings rows now accept native settings literals with null Metadata, Name/FText and bounded profile payloads, alongside existing finite owned modifiers/triggers. Source Action/old owned identities remain immutable; no runtime input/rebinding or general class load."));
+        R.Data->SetStringField(TEXT("input_mapping_settings_partial_contract"),TEXT("Each new direct-Context-owned settings allocation and nested converter result is retained before whole scratch mapping copy. A known nested false stops following allocations and reports the unlinked new-object/typed field prefix; existing mapping rows remain unchanged, later requested save follows the existing API. This preserves the current finite mapping writer, not the original direct converter's target resize/earlier-row prefix or transient Outer. No rollback, cleanup, automatic retry or cold persistence claim."));
+    }
     if(!Scope.Check()){return Encode(R);}
     if (bSave && !A->GetOutermost()->IsFullyLoaded()) { Fail(R, TEXT("data_asset_save_not_ready"), TEXT("Already fully loaded package required before a requested-save setter.")); return Encode(R); }
     Count(R, TEXT("legacy_get_calls"));
@@ -2182,11 +2500,12 @@ FString SetMappingContext(FContext& C,FResult& R,const TSharedRef<FJsonObject>& 
         else
         {
             if(Scope.OwnedWriter()&&!Scope.ConfigureOwned(*Row)){return;}
-            FDefaultConstructedPropertyElement Scratch(P); Row->SetBoolField(TEXT("conversion_attempted"), true); Count(R, TEXT("json_conversion_calls"));
-            const bool Converted=FJsonObjectConverter::JsonValueToUProperty(Scope.OwnedWriter()?Scope.PlainMapping:Pair.Value,P,Scratch.GetObjAddress(),0,0);
+            FDefaultConstructedPropertyElement Scratch(P);Row->SetBoolField(TEXT("conversion_attempted"),Scope.OwnedSettingsFailure.IsEmpty());
+            if(Scope.OwnedSettingsFailure.IsEmpty())Count(R,TEXT("json_conversion_calls"));
+            const bool Converted=Scope.OwnedSettingsFailure.IsEmpty()&&FJsonObjectConverter::JsonValueToUProperty(Scope.OwnedWriter()?Scope.PlainMapping:Pair.Value,P,Scratch.GetObjAddress(),0,0);
             if(!Scope.Check()){return;}
-            Row->SetBoolField(TEXT("conversion_returned"),true);Row->SetBoolField(TEXT("converted"),Converted);
-            if (!Converted) { Error = TEXT("Scratch row conversion failed; allocated direct-owned prefix retained, target resize/earlier-row partial import was not attempted"); }
+            Row->SetBoolField(TEXT("conversion_returned"),Scope.OwnedSettingsFailure.IsEmpty());Row->SetBoolField(TEXT("conversion_skipped_after_known_nested_false"),!Scope.OwnedSettingsFailure.IsEmpty());Row->SetBoolField(TEXT("converted"),Converted);
+            if (!Converted) { Error = Scope.OwnedSettingsFailure.IsEmpty()?TEXT("Scratch row conversion failed; allocated direct-owned prefix retained, target resize/earlier-row partial import was not attempted"):Scope.OwnedSettingsFailure; }
             else
             {
                 TArray<FString> PlannedLinks;if(Scope.OwnedWriter()&&!Scope.AttachOwned(Scratch.GetObjAddress(),PlannedLinks,Error)){if(Scope.Stopped||!Scope.Check()){return;}}
@@ -2276,11 +2595,66 @@ struct FGeneratedDataAssetWork
     EClassFlags ClassFlags=CLASS_None,SkeletonFlags=CLASS_None;EObjectFlags BlueprintFlags=RF_NoFlags,DefaultFlags=RF_NoFlags,SkeletonDefaultFlags=RF_NoFlags;int32 ClassSize=0,SkeletonSize=0,ClassAlign=0,SkeletonAlign=0;uint32 SourcePackageFlags=0;
     TSharedRef<FJsonObject> SourceBefore=MakeShared<FJsonObject>(),OtherBefore=MakeShared<FJsonObject>(),FileBefore=MakeShared<FJsonObject>();
     TArray<FBPVariableDescription> Declarations;
-    struct FGraphRole{TStrongObjectPtr<UEdGraph> G;FGuid Id;FString Path;};TArray<FGraphRole> Graphs;
-    TArray<TObjectPtr<UEdGraph>> Uber,EventStubs;
+    struct FGraphNodeRole{TStrongObjectPtr<UEdGraphNode> Node;UClass* Class=nullptr;FString Path;};
+    struct FGraphRole{TStrongObjectPtr<UEdGraph> G;UObject* Owner=nullptr;FGuid Id;FString Path;TArray<FGraphNodeRole> Nodes;TArray<TObjectPtr<UEdGraph>> Children;};TArray<FGraphRole> Graphs;
+    struct FInterfaceRole{TStrongObjectPtr<UClass> Class;UObject* Owner=nullptr;UPackage* Package=nullptr;UObject* Source=nullptr;FString Path;EClassFlags Flags=CLASS_None;bool Dirty=false;TArray<TObjectPtr<UEdGraph>> Graphs;};TArray<FInterfaceRole> Interfaces;
+    TArray<TObjectPtr<UEdGraph>> Uber,EventStubs,Functions,Macros,Delegates;
+    static bool Members(const TArray<TObjectPtr<UEdGraph>>& A,const TArray<TObjectPtr<UEdGraph>>& B)
+    {if(A.Num()!=B.Num())return false;for(const auto& V:A)if(!V.IsResolved())return false;for(const auto& V:B)if(!V.IsResolved())return false;TArray<bool> Used;Used.Init(false,B.Num());for(const auto& V:A){int32 Match=INDEX_NONE;for(int32 I=0;I<B.Num();++I)if(!Used[I]&&V==B[I]){Match=I;break;}if(Match==INDEX_NONE)return false;Used[Match]=true;}return true;}
+    bool BindGraph(UEdGraph* G,UObject* Owner,int32 Depth=0)
+    {
+        if(!Context()||!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||G->GetOuter()!=Owner||!G->Schema.GetGCPtr().IsResolved()||G->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||Depth>16||G->Nodes.Num()>1024||G->SubGraphs.Num()>64)return Reject(TEXT("data_asset_generated_source_graph_pending"),TEXT("Loaded ordinary K2 graph with actual Blueprint/graph/node owner and bounded inventory required; no graph execution or reconstruction."));
+        for(const auto& Old:Graphs)if(Old.G.Get()==G)return Old.Owner==Owner;
+        if(Graphs.Num()>=256)return Reject(TEXT("data_asset_generated_source_graph_budget"),TEXT("At most256 distinct source graphs are admitted."));
+        FGraphRole Role;Role.G.Reset(G);Role.Owner=Owner;Role.Id=G->GraphGuid;Role.Path=G->GetPathName();Role.Children=G->SubGraphs;
+        for(const auto& Slot:G->Nodes)
+        {
+            if(!Slot.IsResolved())return Reject(TEXT("data_asset_generated_source_node_unresolved"),TEXT("No loading or reconstruction of source nodes is performed."));auto* N=Slot.Get();
+            if(!Loaded(N)||N->GetOuter()!=G||!Loaded(N->GetClass())||!N->GetClass()->HasAnyClassFlags(CLASS_Native)||!Clean(N->GetClass()->GetPathName())||Role.Nodes.ContainsByPredicate([&](const FGraphNodeRole& O){return O.Node.Get()==N;}))return Reject(TEXT("data_asset_generated_source_node_pending"),TEXT("Distinct loaded native graph nodes with actual graph ownership and no tooling class reference required; custom generated node classes remain incomplete."));
+            FGraphNodeRole Node;Node.Node.Reset(N);Node.Class=N->GetClass();Node.Path=N->GetPathName();Holds.Emplace(Node.Class);Role.Nodes.Add(MoveTemp(Node));
+        }
+        Graphs.Add(MoveTemp(Role));
+        for(const auto& Slot:G->SubGraphs)
+        {
+            if(!Slot.IsResolved()||!Loaded(Slot.Get()))return Reject(TEXT("data_asset_generated_subgraph_unresolved"),TEXT("Already-loaded source subgraph required."));auto* Child=Slot.Get();UObject* ChildOwner=Child->GetOuter();
+            const bool NodeOwner=G->Nodes.Contains(Cast<UEdGraphNode>(ChildOwner));
+            if(Child==G||(ChildOwner!=G&&!NodeOwner))return Reject(TEXT("data_asset_generated_subgraph_owner_pending"),TEXT("Subgraph must retain its observed parent graph or a node in that graph."));
+            if(!BindGraph(Child,ChildOwner,Depth+1))return false;
+        }return true;
+    }
+    bool BindGraphs(const TArray<TObjectPtr<UEdGraph>>& Rows)
+    {if(Rows.Num()>64)return Reject(TEXT("data_asset_generated_graph_inventory_budget"),TEXT("At most64 graphs per source inventory required."));for(const auto& Slot:Rows){if(!Slot.IsResolved()||!BindGraph(Slot.Get(),Blueprint.Get()))return false;}return true;}
+    bool GraphInventoryCurrent()
+    {
+        auto* B=Blueprint.Get();
+        if(!Members(B->FunctionGraphs,Functions)||!Members(B->MacroGraphs,Macros)||!Members(B->DelegateSignatureGraphs,Delegates)||B->ImplementedInterfaces.Num()!=Interfaces.Num())return Failure(TEXT("source_graph_kind_membership"),TEXT("captured function/macro/delegate/interface inventories"),TEXT("changed"));
+        for(int32 I=0;I<Interfaces.Num();++I)
+        {
+            const auto& Old=Interfaces[I];auto& Now=B->ImplementedInterfaces[I];auto* C=Old.Class.Get();
+            if(!Now.Interface.GetGCPtr().IsResolved()||Now.Interface.GetGCPtr().Get()!=C||!Loaded(C)||C->GetOuter()!=Old.Owner||C->GetPackage()!=Old.Package||C->GetClassFlags()!=Old.Flags||!C->GetPathName().Equals(Old.Path,ESearchCase::CaseSensitive)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=Old.Source||!Loaded(Old.Package)||!Members(Now.Graphs,Old.Graphs))return Failure(TEXT("source_interface_role"),Old.Path,TEXT("changed"),true,Old.Path);
+        }
+        for(const auto& G:Graphs)
+        {
+            auto* Graph=G.G.Get();if(!Loaded(Graph)||Graph->GetClass()!=UEdGraph::StaticClass()||Graph->GetOuter()!=G.Owner||Graph->GraphGuid!=G.Id||!Graph->GetPathName().Equals(G.Path,ESearchCase::CaseSensitive)||!Graph->Schema.GetGCPtr().IsResolved()||Graph->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||!Members(Graph->SubGraphs,G.Children)||Graph->Nodes.Num()!=G.Nodes.Num())return Failure(TEXT("source_graph_role"),G.Path,TEXT("changed"),true,G.Path);
+            TSet<UEdGraphNode*> Seen;
+            for(const auto& Slot:Graph->Nodes)
+            {
+                if(!Slot.IsResolved())return Failure(TEXT("source_node_resolution"),TEXT("already loaded"),TEXT("unresolved"),true,G.Path);auto* Node=Slot.Get();const auto* Old=G.Nodes.FindByPredicate([&](const FGraphNodeRole& N){return N.Node.Get()==Node;});
+                if(!Old||Seen.Contains(Node)||!Loaded(Node)||Node->GetOuter()!=Graph||Node->GetClass()!=Old->Class||!Node->GetPathName().Equals(Old->Path,ESearchCase::CaseSensitive))return Failure(TEXT("source_node_identity_membership"),G.Path,TEXT("changed"),true,G.Path);Seen.Add(Node);
+            }
+        }return true;
+    }
     struct FValue{int64 Integer=0;uint64 Bits=0;bool Bit=false;FString String;FName Name;int32 Shape=0;TArray<FValue> Children;};
     struct FField{FProperty* P=nullptr;FFieldClass* Kind=nullptr;FName Name;UStruct* Owner=nullptr;uint64 Flags=0;int32 Size=0,Offset=0,Dim=0;bool Frame=false;UScriptStruct* Struct=nullptr;};
     TArray<FField> Fields,SkeletonFields,FactoryFields;TArray<FValue> DefaultValues,SkeletonDefaultValues,Expected;
+    // WO reuses this same source-only lease for each generated ancestor.
+    // Effective child CDO values stay independent from every parent's defaults.
+    TUniquePtr<FGeneratedDataAssetWork> ParentSource;
+    TStrongObjectPtr<UClass> DirectParent,SkeletonParent;
+    int32 SourceDepth=0;
+    const TArray<FField>* InheritedFields(UBlueprintGeneratedClass* C)const
+    {if(!ParentSource)return nullptr;return C->GetSuperClass()==ParentSource->Class.Get()?&ParentSource->Fields:C->GetSuperClass()==ParentSource->Skeleton.Get()?&ParentSource->SkeletonFields:nullptr;}
+
     FStructProperty* BundleProperty=nullptr;TStrongObjectPtr<UScriptStruct> BundleStruct,FrameStruct;
     FStructProperty* GenFrame=nullptr;FStructProperty* SkelFrame=nullptr;TStrongObjectPtr<UFunction> GenUber,SkelUber;
     UClass* FactoryDefaultClass=nullptr;TSharedRef<FJsonObject> FactoryBefore=MakeShared<FJsonObject>();
@@ -2341,7 +2715,14 @@ struct FGeneratedDataAssetWork
                 const FName Name(*FString(Pair.Key.ToView()));for(int32 I=0;I<FieldRoles.Num()&&I<Typed.Num();++I)if(!FieldRoles[I].Frame&&FieldRoles[I].Name==Name&&HasHashValue(Typed[I])){Pair.Value=MakeShared<FJsonValueString>(ValueText(Typed[I]));break;}
             }
             NewRow->SetObjectField(TEXT("values"),NewValues);Copy->SetObjectField(Which,NewRow);
-        }return Copy;
+        }
+        if(ParentSource)
+        {
+            const TSharedPtr<FJsonObject>* Parent=nullptr;
+            if(Snapshot->TryGetObjectField(TEXT("generated_parent_source"),Parent)&&Parent&&Parent->IsValid())
+                Copy->SetObjectField(TEXT("generated_parent_source"),ParentSource->SourceComparable(Parent->ToSharedRef()));
+        }
+        return Copy;
     }
 
     // RI extends this concrete generated asset lease; no second converter or writer is introduced.
@@ -2532,15 +2913,29 @@ struct FGeneratedDataAssetWork
                 if(!Loaded(Native)||Native!=S->Struct.Get()||Native->GetClass()!=UScriptStruct::StaticClass()||(Native->StructFlags&STRUCT_Native)==0||Native->GetOuter()!=Native->GetPackage()||!Native->GetPackage()->GetName().Equals(TEXT("/Script/Engine"),ESearchCase::CaseSensitive)||Native->GetStructureSize()!=sizeof(FPointerToUberGraphFrame)||Native->GetMinAlignment()!=alignof(FPointerToUberGraphFrame))return Reject(TEXT("data_asset_generated_frame_binding_pending"),TEXT("Exact loaded native compiler frame identity/size/alignment required; no frame default/runtime value read."));
                 E.Frame=true;E.Struct=S->Struct.Get();Holds.Emplace(E.Struct);if(FrameStruct.IsValid()&&FrameStruct.Get()!=E.Struct)return Reject(TEXT("data_asset_generated_frame_source_changed"),TEXT("Same exact native compiler frame struct required."));FrameStruct.Reset(E.Struct);
             }
-            else {if(!Declared||++Authored>32)return Reject(TEXT("data_asset_generated_declared_payload_scope_pending"),TEXT("At most32 directly declared own source fields required; inherited and wider generated hierarchies remain incomplete."));if(!BindPayload(P))return false;}
+            else {if(!Declared||++Authored>32)return Reject(TEXT("data_asset_generated_declared_payload_scope_pending"),TEXT("At most32 directly declared own source fields per class required; wider payloads remain incomplete."));if(!BindPayload(P))return false;}
             Out.Add(E);
         }
-        if(Authored!=Declarations.Num())return Reject(TEXT("data_asset_generated_declared_layout_mismatch"),TEXT("Every own variable must have one directly owned authored compiled field; physical compiler frame is counted separately."));return true;
+        if(Authored!=Declarations.Num())return Reject(TEXT("data_asset_generated_declared_layout_mismatch"),TEXT("Every own variable must have one directly owned authored compiled field; physical compiler frame is counted separately."));
+        if(ParentSource)
+        {
+            if(!ParentSource->Current())return false;const auto* Inherited=InheritedFields(C);
+            if(!Inherited)return Reject(TEXT("data_asset_generated_inherited_class_role_pending"),TEXT("Actual generated/skeleton superclass must be a held immediate parent's generated or skeleton role."));
+            for(const auto& E:*Inherited)
+            {
+                if(!E.Frame&&!Scalar(E.P)&&!ParentSource->Current())return false;
+                if(!E.Frame&&Out.ContainsByPredicate([&](const FField& O){return !O.Frame&&O.Name==E.Name;}))
+                    return Reject(TEXT("data_asset_generated_inherited_name_ambiguous"),TEXT("Distinct effective authored names required; shadowed generated declarations remain incomplete."));
+                if(!E.Frame&&!BindPayload(E.P))return false;
+                if(!E.Frame&&!Scalar(E.P)&&!ParentSource->Current())return false;Out.Add(E);
+            }
+        }
+        return true;
     }
     bool LayoutCurrent(UBlueprintGeneratedClass* C,const TArray<FField>& Rows)
     {
-        TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(C,EFieldIterationFlags::None);It;++It){if(Now.Num()>=33)return Failure(TEXT("field_count"),LexToString(Rows.Num()),TEXT(">33"));Now.Add(*It);}if(Now.Num()!=Rows.Num())return Failure(TEXT("field_count"),LexToString(Rows.Num()),LexToString(Now.Num()),true,C->GetPathName());
-        for(int32 I=0;I<Now.Num();++I){const auto& E=Rows[I];if(Now[I]!=E.P)return Failure(TEXT("field_membership"),LexToString(UPTRINT(E.P)),LexToString(UPTRINT(Now[I])));auto* P=E.P;if(P->GetClass()!=E.Kind||P->GetFName()!=E.Name||P->GetOwnerStruct()!=C||P->GetOwnerProperty()!=P||P->ArrayDim!=E.Dim||uint64(P->GetPropertyFlags())!=E.Flags||P->GetSize()!=E.Size||P->GetOffset_ForInternal()!=E.Offset||P->HasSetterOrGetter())return Failure(TEXT("field_layout"),E.Name.ToString(),TEXT("changed"),true,C->GetPathName());if(E.Frame){auto* S=CastField<FStructProperty>(P);if(!S||!S->Struct.IsResolved()||S->Struct.Get()!=E.Struct||!Loaded(E.Struct)||E.Struct!=FrameStruct.Get()||E.Struct->GetClass()!=UScriptStruct::StaticClass()||(E.Struct->StructFlags&STRUCT_Native)==0||!E.Struct->GetPathName().Equals(TEXT("/Script/Engine.PointerToUberGraphFrame"),ESearchCase::CaseSensitive)||E.Struct->GetStructureSize()!=sizeof(FPointerToUberGraphFrame)||E.Struct->GetMinAlignment()!=alignof(FPointerToUberGraphFrame))return Failure(TEXT("frame_binding"),TEXT("held native frame"),TEXT("changed"));}}return true;
+        TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(C,EFieldIterationFlags::IncludeSuper);It;++It){if(It->GetOwnerStruct()->GetClass()!=UBlueprintGeneratedClass::StaticClass())continue;if(Now.Num()>=528)return Failure(TEXT("field_count"),LexToString(Rows.Num()),TEXT(">528 across bounded generated chain"));Now.Add(*It);}if(Now.Num()!=Rows.Num())return Failure(TEXT("field_count"),LexToString(Rows.Num()),LexToString(Now.Num()),true,C->GetPathName());
+        for(int32 I=0;I<Now.Num();++I){const auto& E=Rows[I];if(Now[I]!=E.P)return Failure(TEXT("field_membership"),LexToString(UPTRINT(E.P)),LexToString(UPTRINT(Now[I])));auto* P=E.P;if(P->GetClass()!=E.Kind||P->GetFName()!=E.Name||P->GetOwnerStruct()!=E.Owner||!C->IsChildOf(Cast<UClass>(E.Owner))||P->GetOwnerProperty()!=P||P->ArrayDim!=E.Dim||uint64(P->GetPropertyFlags())!=E.Flags||P->GetSize()!=E.Size||P->GetOffset_ForInternal()!=E.Offset||P->HasSetterOrGetter())return Failure(TEXT("field_layout"),E.Name.ToString(),TEXT("changed"),true,C->GetPathName());if(E.Frame){auto* S=CastField<FStructProperty>(P);if(!S||!S->Struct.IsResolved()||S->Struct.Get()!=E.Struct||!Loaded(E.Struct)||E.Struct!=FrameStruct.Get()||E.Struct->GetClass()!=UScriptStruct::StaticClass()||(E.Struct->StructFlags&STRUCT_Native)==0||!E.Struct->GetPathName().Equals(TEXT("/Script/Engine.PointerToUberGraphFrame"),ESearchCase::CaseSensitive)||E.Struct->GetStructureSize()!=sizeof(FPointerToUberGraphFrame)||E.Struct->GetMinAlignment()!=alignof(FPointerToUberGraphFrame))return Failure(TEXT("frame_binding"),TEXT("held native frame"),TEXT("changed"));}}return true;
     }
     bool DefaultsCurrent(UObject* D,const TArray<FField>& Rows,const TArray<FValue>& Values)
     {
@@ -2557,20 +2952,20 @@ struct FGeneratedDataAssetWork
     bool ClassRole(UBlueprintGeneratedClass* C,UObject* D,EClassFlags Flags,const FString& Suffix)
     {
         if(!NativeBaseCurrent())return false;
-        if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=NativeBase.Get()||C->GetClassFlags()!=Flags||C->GetPropertiesSize()!=(C==Class.Get()?ClassSize:SkeletonSize)||C->GetMinAlignment()!=(C==Class.Get()?ClassAlign:SkeletonAlign)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=Blueprint.Get()||!C->GetName().Equals(Suffix,ESearchCase::CaseSensitive)||!C->ClassDefaultObject.IsResolved()||C->ClassDefaultObject.Get()!=D)return Failure(TEXT("compiled_class_role"),Suffix,TEXT("class/parent/source/flags/CDO slot changed"));
+        if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=(C==Class.Get()?DirectParent.Get():SkeletonParent.Get())||C->GetClassFlags()!=Flags||C->GetPropertiesSize()!=(C==Class.Get()?ClassSize:SkeletonSize)||C->GetMinAlignment()!=(C==Class.Get()?ClassAlign:SkeletonAlign)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=Blueprint.Get()||!C->GetName().Equals(Suffix,ESearchCase::CaseSensitive)||!C->ClassDefaultObject.IsResolved()||C->ClassDefaultObject.Get()!=D)return Failure(TEXT("compiled_class_role"),Suffix,TEXT("class/parent/source/flags/CDO slot changed"));
         if(D&&(!Loaded(D)||D->GetFlags()!=(C==Class.Get()?DefaultFlags:SkeletonDefaultFlags)||D->GetClass()!=C||D->GetOuter()!=SourcePackage.Get()||!D->HasAnyFlags(RF_ClassDefaultObject)||D->GetFName()!=FName(*(TEXT("Default__")+C->GetName()))))return Failure(TEXT("source_cdo_role"),TEXT("own existing exact default object"),TEXT("changed"));return true;
     }
     bool BundlesEmpty(UObject* O)
     {return !O||(!HasAssetBundles()&&!BundleProperty)||(HasAssetBundles()&&BundleProperty&&BundleProperty->ContainerPtrToValuePtr<FAssetBundleData>(O)->Bundles.IsEmpty());}
     bool Current()
     {
-        if(!Context())return Failure(TEXT("editor_context"),TEXT("same idle Editor/world"),TEXT("changed"));if(!Bound)return true;if(!NativeBaseCurrent())return false;
-        auto* B=Blueprint.Get();if(!Loaded(SourcePackage.Get())||!Loaded(B)||B->GetClass()!=UBlueprint::StaticClass()||B->GetOuter()!=SourcePackage.Get()||B->GetFlags()!=BlueprintFlags||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified||B->BlueprintType!=BPTYPE_Normal||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=NativeBase.Get()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()||SourcePackage->IsDirty()||SourcePackage->GetPackageFlags()!=SourcePackageFlags)return Failure(TEXT("source_blueprint_role"),TEXT("original saved-clean source binding/status/flags"),TEXT("changed"));
+        if(!Context())return Failure(TEXT("editor_context"),TEXT("same idle Editor/world"),TEXT("changed"));if(ParentSource&&!ParentSource->Current()){Stopped=true;return false;}if(!Bound)return true;if(!NativeBaseCurrent())return false;
+        auto* B=Blueprint.Get();if(!Loaded(SourcePackage.Get())||!Loaded(B)||B->GetClass()!=UBlueprint::StaticClass()||B->GetOuter()!=SourcePackage.Get()||B->GetFlags()!=BlueprintFlags||B->Status!=BS_UpToDate||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified||B->BlueprintType!=BPTYPE_Normal||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=DirectParent.Get()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get()||SourcePackage->IsDirty()||SourcePackage->GetPackageFlags()!=SourcePackageFlags)return Failure(TEXT("source_blueprint_role"),TEXT("original saved-clean source binding/status/flags"),TEXT("changed"));
         if(!ClassRole(Class.Get(),Default.Get(),ClassFlags,Blueprint->GetName()+TEXT("_C"))||!ClassRole(Skeleton.Get(),SkeletonDefault.Get(),SkeletonFlags,TEXT("SKEL_")+Blueprint->GetName()+TEXT("_C"))||!LayoutCurrent(Class.Get(),Fields)||!LayoutCurrent(Skeleton.Get(),SkeletonFields))return false;
         if(!Class->UberGraphFunction.IsResolved()||Class->UberGraphFunction.Get()!=GenUber.Get()||Class->UberGraphFramePointerProperty!=GenFrame||!Skeleton->UberGraphFunction.IsResolved()||Skeleton->UberGraphFunction.Get()!=SkelUber.Get()||Skeleton->UberGraphFramePointerProperty!=SkelFrame)return Failure(TEXT("compiler_roles"),TEXT("initial nullable UberGraphFunction/public frame slots"),TEXT("changed"));
-        if(!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()!=nullptr||!B->ImplementedInterfaces.IsEmpty()||!B->FunctionGraphs.IsEmpty()||!B->MacroGraphs.IsEmpty()||!B->DelegateSignatureGraphs.IsEmpty()||B->UbergraphPages!=Uber||B->EventGraphs!=EventStubs||!Class->DynamicBindingObjects.IsEmpty()||!Class->ComponentTemplates.IsEmpty()||!Class->Timelines.IsEmpty()||!Skeleton->DynamicBindingObjects.IsEmpty()||!Skeleton->ComponentTemplates.IsEmpty()||!Skeleton->Timelines.IsEmpty()||B->NewVariables.Num()!=Declarations.Num())return Failure(TEXT("source_authored_inventory"),TEXT("original data-only Blueprint"),TEXT("changed"));
+        if(!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()!=nullptr||B->UbergraphPages!=Uber||B->EventGraphs!=EventStubs||!Class->DynamicBindingObjects.IsEmpty()||!Class->ComponentTemplates.IsEmpty()||!Class->Timelines.IsEmpty()||!Skeleton->DynamicBindingObjects.IsEmpty()||!Skeleton->ComponentTemplates.IsEmpty()||!Skeleton->Timelines.IsEmpty()||B->NewVariables.Num()!=Declarations.Num())return Failure(TEXT("source_authored_inventory"),TEXT("captured Blueprint inventory"),TEXT("changed"));
         for(int32 I=0;I<Declarations.Num();++I){const auto& A=Declarations[I];const auto& Z=B->NewVariables[I];if(A.VarName!=Z.VarName||A.VarGuid!=Z.VarGuid||!SamePin(A.VarType,Z.VarType)||!A.DefaultValue.Equals(Z.DefaultValue,ESearchCase::CaseSensitive)||A.PropertyFlags!=Z.PropertyFlags||!A.FriendlyName.Equals(Z.FriendlyName,ESearchCase::CaseSensitive)||A.RepNotifyFunc!=Z.RepNotifyFunc||A.ReplicationCondition!=Z.ReplicationCondition||A.MetaDataArray.Num()!=Z.MetaDataArray.Num()||FTextInspector::GetSharedDataId(A.Category)!=FTextInspector::GetSharedDataId(Z.Category)||FTextInspector::GetFlags(A.Category)!=FTextInspector::GetFlags(Z.Category))return Failure(TEXT("source_declaration"),A.VarName.ToString(),TEXT("changed"));for(int32 K=0;K<A.MetaDataArray.Num();++K)if(A.MetaDataArray[K].DataKey!=Z.MetaDataArray[K].DataKey||!A.MetaDataArray[K].DataValue.Equals(Z.MetaDataArray[K].DataValue,ESearchCase::CaseSensitive))return Failure(TEXT("source_metadata"),A.VarName.ToString(),TEXT("changed"));}
-        for(const auto& G:Graphs){if(!Loaded(G.G.Get())||G.G->GetClass()!=UEdGraph::StaticClass()||G.G->GetOuter()!=B||G.G->GraphGuid!=G.Id||!G.G->GetPathName().Equals(G.Path,ESearchCase::CaseSensitive)||!G.G->Schema.GetGCPtr().IsResolved()||G.G->Schema.GetGCPtr().Get()!=UEdGraphSchema_K2::StaticClass()||!G.G->Nodes.IsEmpty()||!G.G->SubGraphs.IsEmpty())return Failure(TEXT("source_graph"),G.Path,TEXT("changed"));}
+        if(!GraphInventoryCurrent())return false;
         if(HasAssetBundles())
         {
             if(FindFProperty<FStructProperty>(UPrimaryDataAsset::StaticClass(),TEXT("AssetBundleData"))!=BundleProperty||!BundleProperty||BundleProperty->GetOwnerStruct()!=UPrimaryDataAsset::StaticClass()||!BundleProperty->Struct.IsResolved()||BundleProperty->Struct.Get()!=BundleStruct.Get()||!Loaded(BundleStruct.Get())||BundleStruct->GetClass()!=UScriptStruct::StaticClass()||(BundleStruct->StructFlags&STRUCT_Native)==0||BundleStruct->GetStructureSize()!=sizeof(FAssetBundleData)||BundleStruct->GetMinAlignment()!=alignof(FAssetBundleData)||BundleProperty->ArrayDim!=1||BundleProperty->GetSize()!=sizeof(FAssetBundleData)||!BundlesEmpty(Default.Get())||!BundlesEmpty(SkeletonDefault.Get()))return Failure(TEXT("source_asset_bundle"),TEXT("empty native source default bundle"),TEXT("changed"));
@@ -2600,18 +2995,47 @@ struct FGeneratedDataAssetWork
         TArray<TSharedPtr<FJsonValue>> FieldRows;for(const auto& E:Fields){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("name"),E.Name.ToString());J->SetStringField(TEXT("property_class"),E.Kind->GetName());J->SetStringField(TEXT("owner"),E.Owner->GetPathName());J->SetStringField(TEXT("flags"),LexToString(E.Flags));J->SetNumberField(TEXT("array_dim"),E.Dim);J->SetNumberField(TEXT("offset"),E.Offset);J->SetNumberField(TEXT("size"),E.Size);J->SetBoolField(TEXT("compiler_frame"),E.Frame);FieldRows.Add(MakeShared<FJsonValueObject>(J));}Out->SetArrayField(TEXT("generated_fields"),FieldRows);
         for(const auto& Pair:TArray<TPair<UObject*,const TCHAR*>>{{Default.Get(),TEXT("generated_default")},{SkeletonDefault.Get(),TEXT("skeleton_default")}})
         {auto J=MakeShared<FJsonObject>();Out->SetObjectField(Pair.Value,J);J->SetBoolField(TEXT("exists"),Pair.Key!=nullptr);if(!Pair.Key)continue;J->SetStringField(TEXT("path"),Pair.Key->GetPathName());TSharedRef<FJsonObject> Values=MakeShared<FJsonObject>();const bool OK=FJsonObjectConverter::UStructToJsonObject(Pair.Key->GetClass(),Pair.Key,Values,0,0);Count(R,TEXT("json_export_calls"));if(!Current())return false;if(!OK)return Failure(TEXT("source_default_export"),TEXT("complete native JSON export"),TEXT("failed"));int32 Slots=0,Chars=0;if(!Bounded(MakeShared<FJsonValueObject>(Values),Slots,Chars))return Failure(TEXT("source_default_json_bounds"),TEXT("finite bounded JSON values"),TEXT("not observed"));J->SetObjectField(TEXT("values"),Values);}
+        if(ParentSource)
+        {
+            auto Parent=MakeShared<FJsonObject>();if(!ParentSource->SourceSnapshot(Parent)||!Current())return false;
+            Out->SetObjectField(TEXT("generated_parent_source"),Parent);
+        }
+        Out->SetNumberField(TEXT("source_function_graphs"),Functions.Num());Out->SetNumberField(TEXT("source_macro_graphs"),Macros.Num());Out->SetNumberField(TEXT("source_delegate_graphs"),Delegates.Num());Out->SetNumberField(TEXT("source_interfaces"),Interfaces.Num());Out->SetNumberField(TEXT("source_graph_identity_count"),Graphs.Num());Out->SetBoolField(TEXT("authored_node_semantics_independently_verified"),false);
+        Out->SetNumberField(TEXT("generated_source_depth"),SourceDepth);
+        Out->SetStringField(TEXT("actual_direct_parent"),DirectParent->GetPathName());
+        Out->SetStringField(TEXT("actual_skeleton_parent"),SkeletonParent->GetPathName());
+        Out->SetStringField(TEXT("default_value_scope"),TEXT("Each class's actual effective CDO is observed independently; parent defaults are never substituted for child overrides."));
         auto F=MakeShared<FJsonObject>();if(!File(SourcePackage->GetName(),F))return false;Out->SetObjectField(TEXT("file"),F);return PayloadSourceSnapshot(Out);
     }
-    bool BindSource(UClass* Requested)
+    bool BindSource(UClass* Requested,int32 Depth=0)
     {
-        R.Data->SetBoolField(TEXT("native_generated_data_asset"),true);R.Data->SetStringField(TEXT("admission_scope"),TEXT("Loaded saved-clean direct DataAsset or PrimaryDataAsset Blueprint class with own fields0..32: scalar7, primitive arrays/Sets, scalar-key Maps with the existing finite payload values, and compiled user-defined structs containing those fields. Fresh or already-loaded existing targets share one converter/current path. Native class branches remain unchanged."));R.Data->SetStringField(TEXT("description_cook_scope"),TEXT("This generated branch does not special-case native Deformer Description; own property flags are observed independently from editor variable descriptors."));R.Data->SetStringField(TEXT("effect_scope"),TEXT("Loaded-only source/target; public native factory, transaction/Modify, original per-property conversion, notifications and optional force-save. Composite conversion directly preserves actual known partial values on false; opaque callbacks/AssetManager derived cache/runtime are not measured zero."));R.Data->SetStringField(TEXT("generated_source_scope"),TEXT("Loaded saved-clean direct DataAsset or PrimaryDataAsset Blueprint and saved-clean compiled UDS sources. Own fields0..32; nested UDS/member GUID/default/file, array Inner, Set Element and Map Key/Value/current allocation roles are captured. Copied slot bags preserve duplicate/default entries without fixing physical/hash order. Only PrimaryDataAsset has inherited SDK-derived AssetBundleData; plain DataAsset has no inherited bundle slot."));
+        R.Data->SetBoolField(TEXT("native_generated_data_asset"),true);R.Data->SetStringField(TEXT("admission_scope"),TEXT("Loaded saved-clean DataAsset or PrimaryDataAsset Blueprint chain with bounded existing graph/interface inventory with own fields0..32 per class: scalar7, primitive arrays/Sets, scalar-key Maps with the existing finite payload values, and compiled user-defined structs containing those fields. Fresh or already-loaded existing targets share one converter/current path. Native class branches remain unchanged."));R.Data->SetStringField(TEXT("description_cook_scope"),TEXT("This generated branch does not special-case native Deformer Description; own property flags are observed independently from editor variable descriptors."));R.Data->SetStringField(TEXT("effect_scope"),TEXT("Loaded-only source/target; public native factory, transaction/Modify, original per-property conversion, notifications and optional force-save. Composite conversion directly preserves actual known partial values on false; opaque callbacks/AssetManager derived cache/runtime are not measured zero."));R.Data->SetStringField(TEXT("generated_source_scope"),TEXT("Loaded saved-clean generated DataAsset or PrimaryDataAsset chain with bounded existing graph/interface inventory and saved-clean compiled UDS sources. Own fields0..32; nested UDS/member GUID/default/file, array Inner, Set Element and Map Key/Value/current allocation roles are captured. Copied slot bags preserve duplicate/default entries without fixing physical/hash order. Only PrimaryDataAsset has inherited SDK-derived AssetBundleData; plain DataAsset has no inherited bundle slot."));
         Editor.Reset(GEditor);if(!Loaded(Editor.Get())||!IsEditorGameThread()||IsPlaySessionActive()||IsGarbageCollecting()||UE::IsSavingPackage())return Reject(TEXT("data_asset_generated_editor_required"),TEXT("Idle Editor required before source lookup."));World.Reset(GEditor->GetEditorWorldContext().World());if(!Current())return false;
-        if(!Loaded(Requested)||Requested->GetClass()!=UBlueprintGeneratedClass::StaticClass()||Requested->HasAnyClassFlags(CLASS_Native|CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||(Requested->GetSuperClass()!=UPrimaryDataAsset::StaticClass()&&Requested->GetSuperClass()!=UDataAsset::StaticClass())||!Requested->ClassGeneratedBy.IsResolved())return Reject(TEXT("data_asset_generated_source_pending"),TEXT("Already-loaded concrete direct UDataAsset or UPrimaryDataAsset Blueprint class required; inherited generated hierarchies remain incomplete."));
-        NativeBase.Reset(Requested->GetSuperClass());NativeBaseFlags=NativeBase->GetClassFlags();NativeBaseSize=NativeBase->GetPropertiesSize();NativeBaseAlign=NativeBase->GetMinAlignment();if(!NativeBaseCurrent())return false;
+        SourceDepth=Depth;
+        if(Depth>=16||!Loaded(Requested)||Requested->GetClass()!=UBlueprintGeneratedClass::StaticClass()
+            ||Requested->HasAnyClassFlags(CLASS_Native|CLASS_Deprecated|CLASS_NewerVersionExists)
+            ||(!Depth&&Requested->HasAnyClassFlags(CLASS_Abstract))||!Requested->IsChildOf(UDataAsset::StaticClass())
+            ||!Requested->ClassGeneratedBy.IsResolved())
+            return Reject(TEXT("data_asset_generated_source_pending"),TEXT("Already-loaded ordinary generated DataAsset chain of at most16 classes with a concrete requested leaf required; custom native roots remain incomplete."));
+        Holds.Emplace(Requested);DirectParent.Reset(Requested->GetSuperClass());
+        if(DirectParent.Get()!=UPrimaryDataAsset::StaticClass()&&DirectParent.Get()!=UDataAsset::StaticClass())
+        {
+            if(!Loaded(DirectParent.Get())||DirectParent->GetClass()!=UBlueprintGeneratedClass::StaticClass())
+                return Reject(TEXT("data_asset_generated_native_parent_pending"),TEXT("Each intermediate source must be an already-loaded ordinary generated class; terminal native root must be DataAsset or PrimaryDataAsset."));
+            ParentSource=MakeUnique<FGeneratedDataAssetWork>(R);
+            if(!ParentSource->BindSource(DirectParent.Get(),Depth+1))return false;
+            NativeBase.Reset(ParentSource->NativeBase.Get());
+        }
+        else NativeBase.Reset(DirectParent.Get());
+        NativeBaseFlags=NativeBase->GetClassFlags();NativeBaseSize=NativeBase->GetPropertiesSize();NativeBaseAlign=NativeBase->GetMinAlignment();if(!NativeBaseCurrent())return false;
         Class.Reset(static_cast<UBlueprintGeneratedClass*>(Requested));UObject* Source=Requested->ClassGeneratedBy.Get();Holds.Emplace(Source);Blueprint.Reset(Cast<UBlueprint>(Source));if(!Loaded(Blueprint.Get())||Blueprint->GetClass()!=UBlueprint::StaticClass())return Reject(TEXT("data_asset_generated_blueprint_pending"),TEXT("Exact ordinary source Blueprint required."));auto* B=Blueprint.Get();SourcePackage.Reset(B->GetPackage());
-        if(!B->GetPathName().StartsWith(TEXT("/Game/"))||!Clean(B->GetPathName())||B->GetOuter()!=SourcePackage.Get()||SourcePackage->IsDirty()||B->Status!=BS_UpToDate||B->BlueprintType!=BPTYPE_Normal||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=NativeBase.Get()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()||!B->ImplementedInterfaces.IsEmpty()||!B->FunctionGraphs.IsEmpty()||!B->MacroGraphs.IsEmpty()||!B->DelegateSignatureGraphs.IsEmpty()||B->NewVariables.Num()>32||B->UbergraphPages.Num()>1)return Reject(TEXT("data_asset_generated_source_blueprint_pending"),TEXT("Saved-clean direct data-only source with own payload variables0..32 and at most one empty EventGraph required."));
+        if(!B->GetPathName().StartsWith(TEXT("/Game/"))||!Clean(B->GetPathName())||B->GetOuter()!=SourcePackage.Get()||SourcePackage->IsDirty()||B->Status!=BS_UpToDate||B->BlueprintType!=BPTYPE_Normal||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=DirectParent.Get()||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Class.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->SimpleConstructionScript.IsResolved()||B->SimpleConstructionScript.Get()||B->NewVariables.Num()>32||B->UbergraphPages.Num()>64)return Reject(TEXT("data_asset_generated_source_blueprint_pending"),TEXT("Saved-clean ordinary source with own payload variables0..32 and bounded loaded K2 graph inventories required; graph execution/compile remain unrequested."));
         Skeleton.Reset(Cast<UBlueprintGeneratedClass>(B->SkeletonGeneratedClass.GetGCPtr().Get()));if(!Loaded(Skeleton.Get())||Skeleton->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!Class->ClassDefaultObject.IsResolved()||!Skeleton->ClassDefaultObject.IsResolved())return Reject(TEXT("data_asset_generated_classes_unavailable"),TEXT("Existing resolved generated/skeleton/default roles required; no CDO creation or compile."));Default.Reset(Class->ClassDefaultObject.Get());SkeletonDefault.Reset(Skeleton->ClassDefaultObject.Get());if(!Loaded(Default.Get()))return Reject(TEXT("data_asset_generated_default_unavailable"),TEXT("Existing generated CDO required for actual factory defaults; skeleton CDO may be null."));
-        Declarations=B->NewVariables;Uber=B->UbergraphPages;EventStubs=B->EventGraphs;BlueprintFlags=B->GetFlags();ClassFlags=Class->GetClassFlags();SkeletonFlags=Skeleton->GetClassFlags();SourcePackageFlags=SourcePackage->GetPackageFlags();DefaultFlags=Default->GetFlags();SkeletonDefaultFlags=SkeletonDefault.IsValid()?SkeletonDefault->GetFlags():RF_NoFlags;ClassSize=Class->GetPropertiesSize();SkeletonSize=Skeleton->GetPropertiesSize();ClassAlign=Class->GetMinAlignment();SkeletonAlign=Skeleton->GetMinAlignment();
+        SkeletonParent.Reset(Skeleton->GetSuperClass());
+        if((!ParentSource&&SkeletonParent.Get()!=NativeBase.Get())
+            ||(ParentSource&&SkeletonParent.Get()!=ParentSource->Class.Get()&&SkeletonParent.Get()!=ParentSource->Skeleton.Get()))
+            return Reject(TEXT("data_asset_generated_skeleton_parent_pending"),TEXT("Skeleton superclass must be the actual held immediate parent generated/skeleton role; no authoritative-class normalization or reparenting."));
+        Declarations=B->NewVariables;Uber=B->UbergraphPages;EventStubs=B->EventGraphs;Functions=B->FunctionGraphs;Macros=B->MacroGraphs;Delegates=B->DelegateSignatureGraphs;BlueprintFlags=B->GetFlags();ClassFlags=Class->GetClassFlags();SkeletonFlags=Skeleton->GetClassFlags();SourcePackageFlags=SourcePackage->GetPackageFlags();DefaultFlags=Default->GetFlags();SkeletonDefaultFlags=SkeletonDefault.IsValid()?SkeletonDefault->GetFlags():RF_NoFlags;ClassSize=Class->GetPropertiesSize();SkeletonSize=Skeleton->GetPropertiesSize();ClassAlign=Class->GetMinAlignment();SkeletonAlign=Skeleton->GetMinAlignment();
         for(const auto& V:Declarations)
         {
             const auto Container=V.VarType.ContainerType;const bool Map=Container==EPinContainerType::Map;
@@ -2629,9 +3053,26 @@ struct FGeneratedDataAssetWork
             BundleProperty=FindFProperty<FStructProperty>(UPrimaryDataAsset::StaticClass(),TEXT("AssetBundleData"));if(!BundleProperty||!BundleProperty->Struct.IsResolved())return Reject(TEXT("data_asset_generated_bundle_layout_pending"),TEXT("Public reflected native AssetBundleData binding required."));BundleStruct.Reset(BundleProperty->Struct.Get());if(!Loaded(BundleStruct.Get())||BundleStruct.Get()!=FAssetBundleData::StaticStruct()||!BundlesEmpty(Default.Get())||!BundlesEmpty(SkeletonDefault.Get()))return Reject(TEXT("data_asset_generated_bundle_source_pending"),TEXT("First source native default bundle must be empty; no bundle import/runtime asset manager proof."));
         }
         else if(FindFProperty<FStructProperty>(UDataAsset::StaticClass(),TEXT("AssetBundleData")))return Reject(TEXT("data_asset_generated_plain_base_layout_pending"),TEXT("Plain native UDataAsset must not expose an inherited AssetBundleData field."));
-        R.Data->SetStringField(TEXT("generated_direct_native_base"),NativeBase->GetPathName());R.Data->SetBoolField(TEXT("inherited_asset_bundle_data_present"),HasAssetBundles());R.Data->SetNumberField(TEXT("generated_own_variable_count"),Declarations.Num());
-        for(const auto& H:Uber){if(!H.IsResolved()||!Loaded(H.Get())||H->GetClass()!=UEdGraph::StaticClass()||H->GetOuter()!=B||!H->Nodes.IsEmpty()||!H->SubGraphs.IsEmpty())return Reject(TEXT("data_asset_generated_source_graph_pending"),TEXT("First source EventGraph must be empty; no user graph execution is assumed."));FGraphRole G;G.G.Reset(H.Get());G.Id=H->GraphGuid;G.Path=H->GetPathName();Graphs.Add(MoveTemp(G));}
-        Bound=true;if(!Current())return false;R.Stage=TEXT("generated_source_snapshot");if(!SourceSnapshot(SourceBefore))return false;R.Data->SetObjectField(TEXT("class_source_before"),SourceBefore);R.Data->SetStringField(TEXT("supported_class"),Class->GetPathName());if(!Clean(Text(SourceBefore)))return Reject(TEXT("data_asset_generated_source_dependency_rejected"),TEXT("Captured source defaults/metadata must not reference tooling runtime dependencies."));return true;
+        R.Data->SetStringField(TEXT("generated_direct_native_base"),NativeBase->GetPathName());R.Data->SetBoolField(TEXT("inherited_asset_bundle_data_present"),HasAssetBundles());R.Data->SetNumberField(TEXT("generated_own_variable_count"),Declarations.Num());R.Data->SetBoolField(TEXT("generated_inherited_data_only_chain"),ParentSource.IsValid());R.Data->SetStringField(TEXT("generated_actual_direct_parent"),DirectParent->GetPathName());R.Data->SetStringField(TEXT("generated_default_basis"),TEXT("leaf effective generated CDO, including its actual inherited overrides; each parent CDO independently readonly"));
+        if(!BindGraphs(Uber)||!BindGraphs(Functions)||!BindGraphs(Macros)||!BindGraphs(Delegates))return false;
+        if(B->ImplementedInterfaces.Num()>64)return Reject(TEXT("data_asset_generated_interface_budget"),TEXT("At most64 existing interface declarations per class required."));
+        for(auto& I:B->ImplementedInterfaces)
+        {
+            if(!I.Interface.GetGCPtr().IsResolved())return Reject(TEXT("data_asset_generated_interface_unresolved"),TEXT("Existing resolved interface class required; no loader/CDO or interface execution."));auto* C=I.Interface.GetGCPtr().Get();
+            if(!Loaded(C)||!C->HasAnyClassFlags(CLASS_Interface)||!C->ClassGeneratedBy.IsResolved()||!Loaded(C->GetPackage())||!Clean(C->GetPathName())||!BindGraphs(I.Graphs))return Reject(TEXT("data_asset_generated_interface_pending"),TEXT("Loaded interface identity and Blueprint-owned K2 implementation graphs required; tooling interfaces remain forbidden."));
+            FInterfaceRole Role;Role.Class.Reset(C);Role.Owner=C->GetOuter();Role.Package=C->GetPackage();Role.Source=C->ClassGeneratedBy.Get();Role.Path=C->GetPathName();Role.Flags=C->GetClassFlags();Role.Dirty=Role.Package->IsDirty();Role.Graphs=I.Graphs;Holds.Emplace(Role.Owner);Holds.Emplace(Role.Package);if(Role.Source)Holds.Emplace(Role.Source);Interfaces.Add(MoveTemp(Role));
+        }
+        R.Data->SetBoolField(TEXT("source_graph_execution_requested"),false);R.Data->SetBoolField(TEXT("source_graph_compile_requested"),false);R.Data->SetBoolField(TEXT("source_authored_graph_semantics_independently_verified"),false);R.Data->SetStringField(TEXT("source_graph_observation_scope"),TEXT("Read-only graph kind/identity/ownership and membership with held native nodes; source clean/file/class/CDO/payload layout remains protected. No per-node authored semantic, compiler cache, physical pin-order or runtime execution proof is claimed."));R.Data->SetNumberField(TEXT("source_graph_inventory_count"),Graphs.Num());R.Data->SetNumberField(TEXT("source_implemented_interface_count"),Interfaces.Num());
+        Bound=true;if(!Current())return false;
+        const bool HasBehavior=!Functions.IsEmpty()||!Macros.IsEmpty()||!Delegates.IsEmpty()||!Interfaces.IsEmpty()||Graphs.ContainsByPredicate([](const FGraphRole& G){return !G.Nodes.IsEmpty();});
+        if(HasBehavior)
+        {
+            R.Stage=TEXT("generated_behavior_source_dependency_admission");
+            const auto Dependencies=ReadPackageDependencies({SourcePackage->GetName()},true,256);
+            if(!Current())return false;R.Data->SetObjectField(TEXT("generated_behavior_source_dependencies"),Dependencies);
+            if(!Dependencies->GetBoolField(TEXT("success"))||!Dependencies->GetBoolField(TEXT("passed")))return Reject(TEXT("data_asset_generated_behavior_dependencies_unverified"),TEXT("Saved source graph/function/interface package dependency closure must be complete and free of authoring-tool references; no load, compile, repair or retry is performed."));
+        }
+        R.Stage=TEXT("generated_source_snapshot");if(!SourceSnapshot(SourceBefore))return false;R.Data->SetObjectField(TEXT("class_source_before"),SourceBefore);R.Data->SetStringField(TEXT("supported_class"),Class->GetPathName());if(!Clean(Text(SourceBefore)))return Reject(TEXT("data_asset_generated_source_dependency_rejected"),TEXT("Captured source defaults/metadata must not reference tooling runtime dependencies."));return true;
     }
     bool BindTarget(UDataAsset* A,bool Fresh)
     {
@@ -3104,6 +3545,8 @@ FString Set(const FString& AssetPath, const FString& PropertiesJson, bool bSave)
         for(const auto& Wrap:Top.Value->AsObject()->Values){if(FName(*FString(Wrap.Key.ToView()))!=TEXT("Mappings")||Wrap.Value->Type!=EJson::Array){continue;}for(const auto& Row:Wrap.Value->AsArray()){if(Row->Type!=EJson::Object){continue;}for(const auto& Field:Row->AsObject()->Values){const FName MappingFieldName(*FString(Field.Key.ToView()));if((MappingFieldName==TEXT("Triggers")||MappingFieldName==TEXT("Modifiers"))&&Field.Value->Type==EJson::Array&&!Field.Value->AsArray().IsEmpty()){C.MappingOwnedRequest=Requested;}}}}
     }
     for(const auto& Top:Requested->Values){const FName ActionArrayName(*FString(Top.Key.ToView()));if((ActionArrayName==TEXT("Triggers")||ActionArrayName==TEXT("Modifiers"))&&Top.Value->Type==EJson::Array&&!Top.Value->AsArray().IsEmpty()){C.ActionOwnedRequest=Requested;}}
+    // ZA: inline settings is an Action-owned write request even with empty arrays/null old slot.
+    for(const auto& Top:Requested->Values){const FString K(Top.Key.ToView());if(K.Len()<NAME_SIZE&&!HasNul(K)&&FName(*K)==TEXT("PlayerMappableKeySettings")&&Top.Value->Type==EJson::Object){C.PlayerSettingsInlineRequest=true;C.ActionOwnedRequest=Requested;}}
     // LW sole-null refusal is intentionally not applied to mixed scalar/unknown siblings.
     if(Requested->Values.Num()==1){for(const auto& Top:Requested->Values){const FString K(Top.Key.ToView());C.SingleActionArrayNull=(K.Equals(TEXT("Modifiers"),ESearchCase::IgnoreCase)||K.Equals(TEXT("Triggers"),ESearchCase::IgnoreCase))&&Top.Value->Type==EJson::Null;}}
     // MS: every actual nonempty Mappings request uses the finite owned lifecycle, even when all row arrays are empty.

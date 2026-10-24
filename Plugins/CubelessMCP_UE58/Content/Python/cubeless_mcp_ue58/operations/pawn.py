@@ -72,8 +72,8 @@ def _apply_native(result,arguments,native):
     result["stage"]="returned_pawn_properties_operation"
 
 
-def _action(result,arguments,checkpoint_callback=None):
-    if arguments["empty_request"]:
+def _action(result,arguments,checkpoint_callback=None,*,_raw_params_json=None):
+    if arguments["empty_request"] and _raw_params_json is None:
         _empty(result,arguments)
         return
     _context(result,arguments)
@@ -86,7 +86,9 @@ def _action(result,arguments,checkpoint_callback=None):
     result["changes"]=[{"kind":IDENTITY,"asset_path":arguments["blueprint_path"],"attempted":None,"changed":None,"change_state_known":False,"outcome":"unknown_until_native_response"}]
     result["stage"]="native_pawn_properties_operation"
     try:
-        native=api.set_pawn_properties(**{k:v for k,v in arguments.items() if k!="empty_request"})
+        if _raw_params_json is None:
+            native=api.set_pawn_properties(**{k:v for k,v in arguments.items() if k!="empty_request"})
+        else:native=api.set_pawn_properties_raw(arguments['blueprint_path'],_raw_params_json)
     except Exception as error:
         if getattr(error,"native_call_returned",False):
             result["data"].update(native_result_returned=True,native_raw_result=getattr(error,"native_raw_result",None))
@@ -121,3 +123,38 @@ def set_pawn_properties(blueprint_name,auto_possess_player="",use_controller_rot
 
 def set_pawn_properties_action(result,blueprint_name,auto_possess_player="",use_controller_rotation_yaw=None,use_controller_rotation_pitch=None,use_controller_rotation_roll=None,can_be_damaged=None,checkpoint_callback=None):
     _action(result,_arguments(blueprint_name,auto_possess_player,use_controller_rotation_yaw,use_controller_rotation_pitch,use_controller_rotation_roll,can_be_damaged),checkpoint_callback)
+
+
+
+def _raw_batch_params(params):
+    if type(params) is not dict:raise OperationError('pawn_raw_params_invalid','Original raw Pawn params object required')
+    def references(value):
+        if type(value) is str:
+            lower=value.replace('\\','/').lower()
+            if any(token in lower for token in ('/script/cubeless','/script/unrealmcp','/script/modelcontextprotocol','/script/toolsetregistry','/engine/pythontypes','/cubelessmcp_ue58/','/unrealmcp/')):
+                raise OperationError('pawn_raw_dependency_reference','MCP-only reference in original raw Pawn input')
+        elif type(value) is dict:
+            for key,item in value.items():references(key);references(item)
+        elif type(value) is list:
+            for item in value:references(item)
+    references(params)
+    from ..compatibility.ue58.json_value import number_to_legacy_string
+    name=params.get('blueprint_name')
+    if type(name) is bool:name='true' if name else 'false'
+    elif type(name) in (int,float):name=number_to_legacy_string(name)
+    if type(name) is not str:raise OperationError('pawn_raw_blueprint_required',"Missing 'blueprint_name' parameter")
+    path=variables._path(name,write=True)
+    try:text=json.dumps(params,ensure_ascii=False,allow_nan=False,separators=(',',':'))
+    except (TypeError,ValueError,OverflowError,UnicodeError,RecursionError) as error:
+        raise OperationError('pawn_raw_params_invalid','Original Pawn params require finite valid JSON') from error
+    if len(text.encode('utf-16-le'))//2>1048576:raise OperationError('pawn_raw_params_bound','Original Pawn params exceed Native carrier bound')
+    arguments=dict(blueprint_path=path,auto_possess_player='',empty_request=False,
+        **{key+'_json':'null' for key in FLAGS})
+    return arguments,text
+
+
+def _raw_batch_action(result,params,checkpoint_callback=None):
+    arguments,text=_raw_batch_params(params)
+    result['data'].update(legacy_original_command=IDENTITY,legacy_original_params=copy.deepcopy(params),
+        raw_native_entry=True,raw_requested_values_and_presence_Native_owned=True,full_original_raw_contract_complete=False)
+    return _action(result,arguments,checkpoint_callback,_raw_params_json=text)

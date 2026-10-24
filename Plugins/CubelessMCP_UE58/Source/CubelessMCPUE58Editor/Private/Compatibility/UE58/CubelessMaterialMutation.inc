@@ -15,16 +15,80 @@ bool IsForbiddenReferencePath(const FString& Path)
     return false;
 }
 
+// Exact installed Runtime/Landscape expression leaves only. The two CustomOutput
+// leaves have an Engine UMaterialExpressionCustomOutput parent; the previous six
+// retain their direct UMaterialExpression parent check. No module-wide admission.
+bool IsVerifiedLandscapeExpressionClass(const UClass* Class)
+{
+    if(!Class||Class->GetOutermost()->GetName()!=TEXT("/Script/Landscape"))return false;
+    if(Class==UMaterialExpressionLandscapeGrassOutput::StaticClass()
+        ||Class==UMaterialExpressionLandscapePhysicalMaterialOutput::StaticClass())
+        return Class->GetSuperClass()==UMaterialExpressionCustomOutput::StaticClass();
+    return Class->GetSuperClass()==UMaterialExpression::StaticClass()
+        &&(Class==UMaterialExpressionLandscapeLayerBlend::StaticClass()
+            ||Class==UMaterialExpressionLandscapeLayerCoords::StaticClass()
+            ||Class==UMaterialExpressionLandscapeLayerSample::StaticClass()
+            ||Class==UMaterialExpressionLandscapeLayerSwitch::StaticClass()
+            ||Class==UMaterialExpressionLandscapeLayerWeight::StaticClass()
+            ||Class==UMaterialExpressionLandscapeVisibilityMask::StaticClass());
+}
+
+// GrassTypes/Inputs contain these exact native runtime asset references. Their
+// assets still undergo the existing loaded-property and saved dependency audit;
+// this does not admit generated subclasses, custom objects or any tool module.
+bool IsVerifiedLandscapeOutputAssetClass(const UClass* Class)
+{
+    return Class&&Class->GetSuperClass()==UObject::StaticClass()
+        &&((Class==ULandscapeGrassType::StaticClass()&&Class->GetOutermost()->GetName()==TEXT("/Script/Landscape"))
+            ||(Class==UPhysicalMaterial::StaticClass()&&Class->GetOutermost()->GetName()==TEXT("/Script/PhysicsCore")));
+}
+
+// ADI: the installed public MaterialX blur leaf is declared by the runtime
+// InterchangeImport module, not Engine. Admit only its exact resident native
+// class and public TextureSampleParameter2D superclass. No module load, new CDO,
+// generated subclass, deprecated MaterialX replacement or module-wide allowlist.
+// The shared mutation snapshots/property/reference checks remain authoritative.
+bool IsVerifiedMaterialXBlurExpressionClass(const UClass* Class)
+{
+    static const TCHAR* LeafPath=TEXT("/Script/InterchangeImport.MaterialExpressionMaterialXTextureSampleParameterBlur");
+    static const TCHAR* ParentPath=TEXT("/Script/Engine.MaterialExpressionTextureSampleParameter2D");
+    if(!IsValid(Class)||Class->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed)
+        ||!Class->GetPathName().Equals(LeafPath,ESearchCase::CaseSensitive)
+        ||!Class->GetOutermost()->GetName().Equals(TEXT("/Script/InterchangeImport"),ESearchCase::CaseSensitive)
+        ||!Class->HasAnyClassFlags(CLASS_Native)||Class->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)
+        ||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy.GetHandle()!=TObjectPtr<UObject>(nullptr).GetHandle()
+        ||Class->IsEditorOnly())return false;
+    const TStrongObjectPtr<UClass> LeafHold(const_cast<UClass*>(Class));
+    auto* Parent=FindObject<UClass>(nullptr,ParentPath);
+    if(!IsValid(Parent)||Parent->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed)
+        ||!Parent->HasAnyClassFlags(CLASS_Native)||Parent->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists))return false;
+    const TStrongObjectPtr<UClass> ParentHold(Parent);
+    // Read the existing reflected superclass slot without tracked GetSuperClass
+    // or class-default construction. These public descriptor/layout checks are
+    // scoped to the installed UE5.8 UStruct declaration, not arbitrary classes.
+    const FObjectProperty* P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
+    if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()||P->GetOwnerProperty()!=P
+        ||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)
+        ||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)||P->GetOffset_ForInternal()<0
+        ||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()||P->HasSetterOrGetter()
+        ||!P->PropertyClass.IsResolved()||P->PropertyClass.GetHandle()!=TObjectPtr<UClass>(UStruct::StaticClass()).GetHandle())return false;
+    const TObjectPtr<UObject> SuperSlot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(Class));
+    return SuperSlot.IsResolved()&&SuperSlot.GetHandle()==TObjectPtr<UObject>(Parent).GetHandle();
+}
+
 bool IsVerifiedRuntimeClass(const UClass* Class)
 {
     if (!Class || !IsSupportedExistingClass(Class)) { return false; }
+    const bool LandscapeLeaf=IsVerifiedLandscapeExpressionClass(Class)||IsVerifiedLandscapeOutputAssetClass(Class);
+    const bool MaterialXBlurLeaf=IsVerifiedMaterialXBlurExpressionClass(Class);
     for (const UClass* Current = Class; Current; Current = Current->GetSuperClass())
     {
-        // Initial mutation slice admits native Engine/CoreUObject types only.
-        // Unknown plugin/generated types require an explicit module audit.
         const FString Package = Current->GetOutermost()->GetName();
+        const bool AuditedLeaf=Current==Class
+            &&((LandscapeLeaf&&(Package==TEXT("/Script/Landscape")||Package==TEXT("/Script/PhysicsCore")))
+                ||(MaterialXBlurLeaf&&Package.Equals(TEXT("/Script/InterchangeImport"),ESearchCase::CaseSensitive)));
         if (!Current->HasAnyClassFlags(CLASS_Native) ||
-            (Package != TEXT("/Script/Engine") && Package != TEXT("/Script/CoreUObject"))) { return false; }
+            (Package != TEXT("/Script/Engine") && Package != TEXT("/Script/CoreUObject")&&!AuditedLeaf)) { return false; }
     }
     return true;
 }
@@ -43,7 +107,7 @@ bool ValidateReference(UObject* Object, UObject* Target, FString& Error)
     if (ReferencedClass)
     {
         if (IsVerifiedRuntimeClass(ReferencedClass)) { return true; }
-        Error = TEXT("Referenced class is not an audited runtime Engine/CoreUObject class."); return false;
+        Error = TEXT("Referenced class is not an audited runtime Engine/CoreUObject, exact Landscape expression/GrassType/PhysicalMaterial asset or exact public MaterialXTextureSampleParameterBlur leaf."); return false;
     }
     UPackage* Package = Object->GetOutermost();
     if (!Package || IsForbiddenReferencePath(Object->GetPathName()) ||
@@ -78,7 +142,9 @@ bool ValidateReference(UObject* Object, UObject* Target, FString& Error)
         if (Visited.Num() > 4096) { Error = TEXT("Reference dependency audit exceeded 4096 packages."); return false; }
         const FString Path = Name.ToString();
         if (IsForbiddenReferencePath(Path) ||
-            (Path.StartsWith(TEXT("/Script/")) && Path != TEXT("/Script/Engine") && Path != TEXT("/Script/CoreUObject")))
+            (Path.StartsWith(TEXT("/Script/")) && Path != TEXT("/Script/Engine") && Path != TEXT("/Script/CoreUObject")
+                && Path != TEXT("/Script/Landscape") && Path != TEXT("/Script/PhysicsCore")
+                && Path != TEXT("/Script/InterchangeImport")))
         {
             Error = TEXT("Reference dependency is editor/tool or an unaudited script module: ") + Path; return false;
         }
@@ -258,6 +324,112 @@ bool RequiresBoundedMaterialImport(const FProperty* Property, int32 Depth = 0)
         return Numeric->GetIntPropertyEnum() != nullptr;
     }
     return !(CastField<FStrProperty>(Property) || CastField<FBoolProperty>(Property));
+}
+
+// Long aggregate imports use the same public token reader as the delimited FName
+// importer. This is an admission check, not a replacement ImportText grammar.
+bool MaterialAggregateDescriptor(const FProperty* Property,FString& Error,int32& Budget,int32 Depth=0)
+{
+    if(!Property||--Budget<0||Depth>16){Error=TEXT("Aggregate descriptor exceeds depth16/8192 fields; long raw import remains unsupported.");return false;}
+    if(const FArrayProperty* Array=CastField<FArrayProperty>(Property))return MaterialAggregateDescriptor(Array->Inner,Error,Budget,Depth+1);
+    if(const FSetProperty* Set=CastField<FSetProperty>(Property))return MaterialAggregateDescriptor(Set->ElementProp,Error,Budget,Depth+1);
+    if(const FMapProperty* Map=CastField<FMapProperty>(Property))return MaterialAggregateDescriptor(Map->KeyProp,Error,Budget,Depth+1)&&MaterialAggregateDescriptor(Map->ValueProp,Error,Budget,Depth+1);
+    if(const FStructProperty* Struct=CastField<FStructProperty>(Property))
+    {
+        if(!Struct->Struct||!Struct->Struct->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))
+            ||(Struct->Struct->StructFlags&STRUCT_ImportTextItemNative))
+        {Error=TEXT("Long raw aggregate imports require native reflected structs without custom ImportTextItem overrides.");return false;}
+        for(TFieldIterator<FProperty> It(Struct->Struct);It;++It)
+        {
+            if(!MaterialAggregateDescriptor(*It,Error,Budget,Depth+1))return false;
+        }
+        return true;
+    }
+    if(CastField<FNumericProperty>(Property)||CastField<FEnumProperty>(Property)||CastField<FBoolProperty>(Property)
+        ||CastField<FNameProperty>(Property)||CastField<FStrProperty>(Property)||CastField<FObjectPropertyBase>(Property))return true;
+    Error=TEXT("Long raw aggregate contains an unaudited leaf importer (including text, delegates or interfaces); existing short imports are unchanged.");return false;
+}
+
+// ImportSingleProperty scans an unquoted field through punctuation/whitespace
+// until =([.<, not through ReadToken. Bound every possible struct-field start
+// after an initializer/separator conservatively before invoking that importer.
+bool BoundedMaterialAggregateFieldSpan(const TCHAR* Start,FString& Error)
+{
+    while(*Start==TEXT(' ')||*Start==TEXT('\t'))++Start;
+    if(*Start==TEXT('"'))
+    {
+        FString Token;const TCHAR* End=FPropertyHelpers::ReadToken(Start,Token,true);
+        if(!End||Token.Len()>=NAME_SIZE){Error=TEXT("Aggregate quoted field name is invalid or exceeds NAME_SIZE.");return false;}
+        return true;
+    }
+    const TCHAR* End=Start;
+    while(*End&&*End!=TEXT('=')&&*End!=TEXT('(')&&*End!=TEXT('[')&&*End!=TEXT('.')&&*End!=TEXT('<'))
+    {
+        if(End-Start>=NAME_SIZE)
+        {Error=TEXT("Potential aggregate field-name span is unresolved beyond NAME_SIZE; long scalar-array/whitespace variants remain unsupported.");return false;}
+        ++End;
+    }
+    if(*End)
+    {
+        const TCHAR* Trimmed=End;
+        while(Trimmed>Start&&(Trimmed[-1]==TEXT(' ')||Trimmed[-1]==TEXT('\t')))--Trimmed;
+        if(Trimmed-Start>=NAME_SIZE)
+        {Error=TEXT("Potential aggregate field-name span exceeds NAME_SIZE before ImportSingleProperty; some nested initializer variants remain unsupported.");return false;}
+    }
+    return true;
+}
+
+bool BoundedMaterialAggregateImport(const FProperty* Property,const FString& Import,FString& Error)
+{
+    if(!(CastField<FArrayProperty>(Property)||CastField<FSetProperty>(Property)||CastField<FMapProperty>(Property)||CastField<FStructProperty>(Property)))
+    {Error=TEXT("Long raw import is supported only for reflected aggregate properties.");return false;}
+    if(Import.Len()>65536){Error=TEXT("Aggregate raw import exceeds65536 UTF-16 code units.");return false;}
+    for(int32 I=0;I<Import.Len();++I)if(Import[I]==0){Error=TEXT("Aggregate raw import contains embedded NUL.");return false;}
+    int32 DescriptorBudget=8192;
+    if(!MaterialAggregateDescriptor(Property,Error,DescriptorBudget))return false;
+    const TCHAR* Begin=*Import;const TCHAR* Cursor=Begin;int32 Depth=0,Tokens=0,Entries=0;
+    while(*Cursor)
+    {
+        if(FChar::IsWhitespace(*Cursor)){++Cursor;continue;}
+        if(++Tokens>8192){Error=TEXT("Aggregate raw import exceeds8192 tokens.");return false;}
+        // DottedNames=true is also used by FNameProperty::ImportText_Internal.
+        // A quoted token is unescaped before its actual FName length is checked.
+        FString Token;const TCHAR* Next=FPropertyHelpers::ReadToken(Cursor,Token,true);
+        if(!Next){Error=TEXT("Aggregate raw import has an unterminated quoted token.");return false;}
+        if(Token.Len()>=NAME_SIZE){Error=TEXT("Aggregate raw import token must be shorter than NAME_SIZE before ImportText/FName construction.");return false;}
+        if(Next==Cursor)
+        {
+            if(*Cursor==TEXT('('))
+            {
+                // ImportSingleProperty also accepts indexed assignment/Add/Remove
+                // syntax and may ExpandForIndex. The long-input profile admits
+                // aggregate initializers only, never those imperative forms.
+                const TCHAR* Prior=Cursor;
+                while(Prior>Begin&&FChar::IsWhitespace(Prior[-1]))--Prior;
+                if(Prior>Begin&&Prior[-1]!=TEXT('=')&&Prior[-1]!=TEXT(',')&&Prior[-1]!=TEXT('('))
+                {Error=TEXT("Long aggregate raw import does not support indexed assignment or property operations; use an aggregate initializer.");return false;}
+                if(++Depth>16){Error=TEXT("Aggregate raw import exceeds16 nested containers.");return false;}
+                if(!BoundedMaterialAggregateFieldSpan(Cursor+1,Error))return false;
+            }
+            else if(*Cursor==TEXT(')'))
+            {
+                if(--Depth<0){Error=TEXT("Aggregate raw import has an unmatched closing delimiter.");return false;}
+            }
+            else if(*Cursor==TEXT('[')||*Cursor==TEXT(']'))
+            {Error=TEXT("Long aggregate raw import does not support bracket/index syntax.");return false;}
+            else if(*Cursor==TEXT(','))
+            {
+                if(++Entries>8192){Error=TEXT("Aggregate raw import exceeds8192 separators.");return false;}
+                if(!BoundedMaterialAggregateFieldSpan(Cursor+1,Error))return false;
+            }
+            // The public reader returns the same address for a single punctuation
+            // token. Advance once; only Unreal's importer decides its grammar.
+            ++Cursor;
+        }
+        else Cursor=Next;
+    }
+    if(Depth!=0){Error=TEXT("Aggregate raw import has an unmatched opening delimiter.");return false;}
+    return true;
 }
 
 bool ParseMutationJson(const FString& Json, TSharedPtr<FJsonValue>& Value, FString& Error)
@@ -473,8 +645,7 @@ bool PrepareMaterialProperty(UObject* Object, UObject* Target, const FString& Na
         {
             if (RequiresBoundedMaterialImport(Property) && Import.Len() >= NAME_SIZE)
             {
-                Error = TEXT("Name-bearing, struct or unaudited raw property import must be shorter than NAME_SIZE (1024 UTF-16 code units). Long aggregate imports are currently unsupported; rejected before ImportText.");
-                return false;
+                if(!BoundedMaterialAggregateImport(Property,Import,Error))return false;
             }
             const TCHAR* End = Property->ImportText_Direct(*Import, Address, Object, PPF_None);
             if (!End || !FString(End).TrimStartAndEnd().IsEmpty()) { Error = TEXT("Property import failed or left trailing input: ") + Name; return false; }

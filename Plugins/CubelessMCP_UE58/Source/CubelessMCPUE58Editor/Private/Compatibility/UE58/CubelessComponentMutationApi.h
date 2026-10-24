@@ -27,3 +27,16 @@ namespace Cubeless::UE58::Component
 {
 FMutationResult ConfigureBlueprintPCGTemplate(const FString& ParamsJson);
 }
+
+namespace Cubeless::UE58::Component
+{
+// Exact original command only. Named full-path prevalidation remains separate.
+FMutationResult SetLocalStaticMeshPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& AssetsJson);
+}
+
+namespace Cubeless::UE58::Component
+{
+FMutationResult SetLocalPhysicsPropertiesRaw(const FString& BlueprintPath, const FString& ComponentName, const FString& PropertiesJson);
+
+FMutationResult AddLocalComponentRaw(const FString& BlueprintPath, const FString& ComponentType, const FString& ComponentName, const FString& TransformJson, const FString& ParentComponent);
+}

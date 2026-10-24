@@ -17,6 +17,11 @@
 #include "Engine/World.h"
 #include "UObject/UObjectGlobals.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetMathLibrary.h"
+#include "Kismet/KismetStringLibrary.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Kismet/KismetTextLibrary.h"
+#include "UObject/NoExportTypes.h"
 #include "ScopedTransaction.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
@@ -694,7 +699,7 @@ struct FOwnEndpoint
 TSharedRef<FJsonObject> OwnSource(const TSharedRef<FJsonObject>& Data)
 {
     auto J=MakeShared<FJsonObject>();
-    for (const TCHAR* Key:{TEXT("requested_function_class"),TEXT("compiled_function_path"),TEXT("skeleton_function_path"),TEXT("compiled_function_flags_string"),TEXT("skeleton_function_flags_string"),TEXT("function_member_guid"),TEXT("function_graph_guid"),TEXT("callable_kind"),TEXT("compiled_signature_parameters"),TEXT("compiled_signature_parameter_count"),TEXT("compiled_signature_matches_skeleton"),TEXT("custom_event_node_path"),TEXT("custom_event_node_flags_string"),TEXT("own_custom_event_source")})
+    for (const TCHAR* Key:{TEXT("requested_function_class"),TEXT("compiled_function_path"),TEXT("skeleton_function_path"),TEXT("compiled_function_flags_string"),TEXT("skeleton_function_flags_string"),TEXT("function_member_guid"),TEXT("function_graph_guid"),TEXT("callable_kind"),TEXT("compiled_signature_parameters"),TEXT("compiled_signature_parameter_count"),TEXT("compiled_signature_matches_skeleton"),TEXT("custom_event_node_path"),TEXT("custom_event_node_flags_string"),TEXT("own_custom_event_source"),TEXT("own_custom_event_rpc_authoring"),TEXT("own_custom_event_rpc_flags_match"),TEXT("authored_rpc_flags_string"),TEXT("rpc_execution_verified")})
     { const auto V=Data->TryGetField(Key); if (V.IsValid()) J->SetField(Key,V); }
     return J;
 }
@@ -708,17 +713,17 @@ TSharedRef<FJsonObject> OwnReceipt(const FResult& Value)
 // AddCall independently resolves and validates the current function and defaults.
 // Original FindPin searched inputs exact/case-insensitively; non-input/unknown keys ignore.
 bool OwnDefaults(const TSharedPtr<FJsonValue>& Value,const TSharedRef<FJsonObject>& Source,
-    const TSharedRef<FJsonObject>& Out,const TSharedRef<FJsonObject>& Adapter,FResult& R)
+    const TSharedRef<FJsonObject>& Out,const TSharedRef<FJsonObject>& Adapter,FResult& R,bool Native=false)
 {
     Adapter->SetBoolField(TEXT("nonobject_params_ignored"),Value->Type!=EJson::Object&&Value->Type!=EJson::Null);
     TArray<TSharedPtr<FJsonValue>> Rows;Adapter->SetArrayField(TEXT("parameter_adaptation"),Rows);
     if(Value->Type!=EJson::Object)return true;
     if(Value->AsObject()->Values.Num()>64)return Fail(R,TEXT("function_node_parameter_budget"),TEXT("At most 64 own parameter keys are admitted before the core writer."));
     const TArray<TSharedPtr<FJsonValue>>* Parameters=nullptr;bool Matches=false;FString FlagText,FunctionPath;uint64 Flags=0;
-    if(!Source->TryGetArrayField(TEXT("compiled_signature_parameters"),Parameters)||!Parameters||Parameters->Num()>128
-        ||!Source->TryGetBoolField(TEXT("compiled_signature_matches_skeleton"),Matches)||!Matches
-        ||!Source->TryGetStringField(TEXT("compiled_function_flags_string"),FlagText)||!LexTryParseString(Flags,*FlagText)
-        ||!Source->TryGetStringField(TEXT("compiled_function_path"),FunctionPath))
+    if(!Source->TryGetArrayField(Native?TEXT("native_signature_parameters"):TEXT("compiled_signature_parameters"),Parameters)||!Parameters||Parameters->Num()>128
+        ||!Source->TryGetBoolField(Native?TEXT("native_signature_captured"):TEXT("compiled_signature_matches_skeleton"),Matches)||!Matches
+        ||!Source->TryGetStringField(Native?TEXT("native_function_flags_string"):TEXT("compiled_function_flags_string"),FlagText)||!LexTryParseString(Flags,*FlagText)
+        ||!Source->TryGetStringField(Native?TEXT("native_function_path"):TEXT("compiled_function_path"),FunctionPath))
         return Fail(R,TEXT("function_node_own_defaults_source_unavailable"),TEXT("The existing copied compiled/current own signature is unavailable; no writer dispatched."));
     TMap<FName,TSharedPtr<FJsonObject>> Inputs;
     for(const auto& Item:*Parameters)
@@ -765,8 +770,8 @@ bool OwnDefaults(const TSharedPtr<FJsonValue>& Value,const TSharedRef<FJsonObjec
         const auto Parameter=*Found;const TSharedPtr<FJsonObject>* Type=nullptr;const TSharedPtr<FJsonObject>* CurrentType=nullptr;
         FString Name,Category,Subcategory,ObjectPath,Container;bool Ref=false,Const=false,Array=false,PinRef=false;
         if(!Parameter->TryGetStringField(TEXT("name"),Name)||!Parameter->TryGetBoolField(TEXT("is_reference"),Ref)
-            ||!Parameter->TryGetBoolField(TEXT("is_const"),Const)||!Parameter->TryGetObjectField(TEXT("compiled_pin_type"),Type)||!Type||!Type->IsValid()
-            ||!Parameter->TryGetObjectField(TEXT("current_pin_type"),CurrentType)||!CurrentType||!CurrentType->IsValid()
+            ||!Parameter->TryGetBoolField(TEXT("is_const"),Const)||!Parameter->TryGetObjectField(Native?TEXT("native_pin_type"):TEXT("compiled_pin_type"),Type)||!Type||!Type->IsValid()
+            ||!Parameter->TryGetObjectField(Native?TEXT("native_pin_type"):TEXT("current_pin_type"),CurrentType)||!CurrentType||!CurrentType->IsValid()
             ||!Text(Type->ToSharedRef()).Equals(Text(CurrentType->ToSharedRef()),ESearchCase::CaseSensitive)
             ||!(*Type)->TryGetStringField(TEXT("category"),Category)||!(*Type)->TryGetStringField(TEXT("subcategory"),Subcategory)
             ||!(*Type)->TryGetStringField(TEXT("subcategory_object"),ObjectPath)||!(*Type)->TryGetStringField(TEXT("container_type"),Container)
@@ -777,6 +782,10 @@ bool OwnDefaults(const TSharedPtr<FJsonValue>& Value,const TSharedRef<FJsonObjec
         // Original arrays assign only exact Vector triples. Other arrays and lengths ignore, even for unsupported input types.
         if(V->Type==EJson::Array&&(!Vector||V->AsArray().Num()!=3))
         {Row->SetStringField(TEXT("disposition"),TEXT("ignored_original_array_shape_or_category"));continue;}
+        // Native non-scalar/container descriptors are intentionally not recursively
+        // decoded here; refuse string writes instead of misclassifying an Inner pin.
+        if(Native&&Category==TEXT("unsupported_native")&&V->Type==EJson::String)
+            return Reject(TEXT("native_descriptor_default_pending"),TEXT("supported by-value scalar or exact Vector"),TEXT("native non-scalar/class/container input string"));
         // Original string dispatch has no Name/String/PC_Real assignment branch. Do not broaden it.
         if(V->Type==EJson::String&&Category!=TEXT("int")&&Category!=TEXT("bool")&&Category!=TEXT("float")&&Category!=TEXT("class"))
         {Row->SetStringField(TEXT("disposition"),TEXT("ignored_original_string_pin_category"));continue;}
@@ -829,13 +838,13 @@ bool OwnDefaults(const TSharedPtr<FJsonValue>& Value,const TSharedRef<FJsonObjec
     }
     return true;
 }
-bool OwnDefaultsApplied(FResult& R,const TSharedRef<FJsonObject>& Adapter)
+bool OwnDefaultsApplied(FResult& R,const TSharedRef<FJsonObject>& Adapter,bool Native=false)
 {
     const TSharedPtr<FJsonObject>* Applied=nullptr;bool Verified=R.Data->TryGetObjectField(TEXT("param_defaults_applied"),Applied)&&Applied&&Applied->IsValid();int32 Count=0;
     const auto RecordFailure=[&](const FString& Pin,const TCHAR* Condition,const FString& Expected,const FString& Actual)
     {
         if(Adapter->HasField(TEXT("own_default_first_failure")))return;
-        FString FunctionPath;Adapter->GetObjectField(TEXT("own_source_before"))->TryGetStringField(TEXT("compiled_function_path"),FunctionPath);
+        FString FunctionPath;Adapter->GetObjectField(Native?TEXT("native_library_source_before"):TEXT("own_source_before"))->TryGetStringField(Native?TEXT("native_function_path"):TEXT("compiled_function_path"),FunctionPath);
         auto D=MakeShared<FJsonObject>();D->SetStringField(TEXT("condition"),Condition);D->SetStringField(TEXT("object"),FunctionPath+(Pin.IsEmpty()?FString():TEXT(":")+Pin));
         D->SetStringField(TEXT("expected"),Expected);D->SetStringField(TEXT("actual"),Actual);D->SetStringField(TEXT("scope"),TEXT("Copied actual core return and prepared defaults only; no failed-object lookup."));Adapter->SetObjectField(TEXT("own_default_first_failure"),D);
     };
@@ -862,10 +871,196 @@ bool OwnDefaultsApplied(FResult& R,const TSharedRef<FJsonObject>& Adapter)
     return true;
 }
 
+
+// Original short-name native-library selection was independent of the checked
+// add-call tool. Reuse its existing writer, but adapt the original JSON value
+// kinds before dispatch. No function is executed, no CDO is requested and no
+// source class/asset is loaded by this adapter.
+UClass* NativeLibrary(const FString& Target)
+{
+    if(Target==TEXT("KismetMathLibrary"))return UKismetMathLibrary::StaticClass();
+    if(Target==TEXT("KismetStringLibrary"))return UKismetStringLibrary::StaticClass();
+    if(Target==TEXT("KismetSystemLibrary"))return UKismetSystemLibrary::StaticClass();
+    if(Target==TEXT("KismetTextLibrary"))return UKismetTextLibrary::StaticClass();
+    return nullptr;
+}
+struct FOriginalNativeLibrarySource
+{
+    struct FField
+    {
+        FProperty* Pointer=nullptr;FFieldClass* Class=nullptr;FName Name;EPropertyFlags Flags=CPF_None;int32 ArrayDim=0;
+        UScriptStruct* Struct=nullptr;UClass* ObjectClass=nullptr;UClass* MetaClass=nullptr;
+        FProperty* ChildA=nullptr;FProperty* ChildB=nullptr;bool Resolved=true;
+    };
+    TStrongObjectPtr<UClass> Owner;TStrongObjectPtr<UFunction> Function;TStrongObjectPtr<UPackage> Package;
+    TStrongObjectPtr<UScriptStruct> Vector;
+    TArray<FField> Fields;FString ClassPath,FunctionPath,CanonicalName;EClassFlags ClassFlags=CLASS_None;
+    EFunctionFlags FunctionFlags=FUNC_None;EObjectFlags OwnerFlags=RF_NoFlags,FunctionObjectFlags=RF_NoFlags,PackageObjectFlags=RF_NoFlags;
+    uint32 PackageFlags=0;bool Captured=false;
+    bool Roots() const
+    {
+        return IsValid(Owner.Get())&&IsValid(Function.Get())&&IsValid(Package.Get())&&IsValid(Vector.Get())
+            &&Owner->GetPathName()==ClassPath&&Owner->GetPackage()==Package.Get()&&Owner->GetOuter()==Package.Get()
+            &&Owner->GetClass()==UClass::StaticClass()&&Owner->ClassFlags==ClassFlags&&Owner->GetFlags()==OwnerFlags
+            &&Owner->HasAllClassFlags(CLASS_Native)&&Package->GetName()==TEXT("/Script/Engine")
+            &&Package->GetFlags()==PackageObjectFlags&&uint32(Package->GetPackageFlags())==PackageFlags
+            &&Function->GetOuter()==Owner.Get()&&Function->GetClass()==UFunction::StaticClass()
+            &&Function->GetFlags()==FunctionObjectFlags&&Function->GetPathName()==FunctionPath
+            &&Function->FunctionFlags==FunctionFlags&&Owner->FindFunctionByName(FName(*CanonicalName))==Function.Get();
+    }
+    static FField Read(FProperty* P)
+    {
+        FField V;V.Pointer=P;V.Class=P->GetClass();V.Name=P->GetFName();V.Flags=P->GetPropertyFlags();V.ArrayDim=P->ArrayDim;
+        if(const auto* S=CastField<FStructProperty>(P)){V.Resolved&=S->Struct.IsResolved();if(V.Resolved)V.Struct=S->Struct.Get();}
+        if(const auto* O=CastField<FObjectPropertyBase>(P)){V.Resolved&=O->PropertyClass.IsResolved();if(V.Resolved)V.ObjectClass=O->PropertyClass.Get();}
+        if(const auto* C=CastField<FClassProperty>(P)){V.Resolved&=C->MetaClass.IsResolved();if(V.Resolved)V.MetaClass=C->MetaClass.Get();}
+        if(const auto* A=CastField<FArrayProperty>(P))V.ChildA=A->Inner;
+        if(const auto* S=CastField<FSetProperty>(P))V.ChildA=S->ElementProp;
+        if(const auto* M=CastField<FMapProperty>(P)){V.ChildA=M->KeyProp;V.ChildB=M->ValueProp;}
+        // No enum/UClass/UStruct resolution or recursive Inner traversal is
+        // performed for unsupported parameter categories. AddCall owns its
+        // independently selected full native signature validation.
+        return V;
+    }
+    bool Current() const
+    {
+        if(!Captured||!Roots())return false;
+        // Compare the complete current root inventory before dereferencing any
+        // captured FProperty. Holding a UFunction alone does not hold its fields.
+        TArray<FProperty*> CurrentFields;
+        for(TFieldIterator<FProperty> It(Function.Get());It;++It){if(CurrentFields.Num()>=128)return false;CurrentFields.Add(*It);}
+        if(CurrentFields.Num()!=Fields.Num())return false;
+        for(int32 I=0;I<Fields.Num();++I)if(CurrentFields[I]!=Fields[I].Pointer)return false;
+        for(const auto& Before:Fields)
+        {
+            const auto* P=Before.Pointer;
+            if(P->GetOwnerStruct()!=Function.Get())return false;
+            const auto Now=Read(Before.Pointer);
+            if(!Now.Resolved||Now.Class!=Before.Class||Now.Name!=Before.Name||Now.Flags!=Before.Flags||Now.ArrayDim!=Before.ArrayDim
+                ||Now.Struct!=Before.Struct||Now.ObjectClass!=Before.ObjectClass||Now.MetaClass!=Before.MetaClass
+                ||Now.ChildA!=Before.ChildA||Now.ChildB!=Before.ChildB)return false;
+        }
+        return Roots();
+    }
+    bool Capture(UClass* C,const FString& RequestedName,const TSharedRef<FJsonObject>& Json)
+    {
+        if(!IsValid(C)||RequestedName.IsEmpty()||!Bounded(RequestedName,128))return false;
+        Owner.Reset(C);Package.Reset(C->GetPackage());Vector.Reset(TBaseStructure<FVector>::Get());
+        Function.Reset(C->FindFunctionByName(FName(*RequestedName)));
+        if(!IsValid(Function.Get())||!IsValid(Package.Get())||!IsValid(Vector.Get())||Function->GetOuter()!=C
+            ||!Function->HasAllFunctionFlags(FUNC_Native|FUNC_Public|FUNC_Static|FUNC_BlueprintCallable)
+            ||Function->HasAnyFunctionFlags(FUNC_EditorOnly|FUNC_Private|FUNC_Protected|FUNC_Delegate)
+            ||Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly))return false;
+        ClassPath=C->GetPathName();FunctionPath=Function->GetPathName();CanonicalName=Function->GetName();
+        ClassFlags=C->ClassFlags;FunctionFlags=Function->FunctionFlags;OwnerFlags=C->GetFlags();FunctionObjectFlags=Function->GetFlags();
+        PackageObjectFlags=Package->GetFlags();PackageFlags=uint32(Package->GetPackageFlags());
+        TArray<TSharedPtr<FJsonValue>> Rows;
+        for(TFieldIterator<FProperty> It(Function.Get());It;++It)
+        {
+            FProperty* P=*It;if(Fields.Num()>=128||P->GetOwnerStruct()!=Function.Get())return false;
+            const auto V=Read(P);if(!V.Resolved)return false;Fields.Add(V);
+            if(!P->HasAnyPropertyFlags(CPF_Parm))continue;
+            auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("name"),V.Name.ToString());
+            Row->SetBoolField(TEXT("is_return"),P->HasAnyPropertyFlags(CPF_ReturnParm));Row->SetBoolField(TEXT("is_out"),P->HasAnyPropertyFlags(CPF_OutParm));
+            Row->SetBoolField(TEXT("is_reference"),P->HasAnyPropertyFlags(CPF_ReferenceParm));Row->SetBoolField(TEXT("is_const"),P->HasAnyPropertyFlags(CPF_ConstParm));
+            auto Type=MakeShared<FJsonObject>();FString Category=TEXT("unsupported_native"),Subcategory,ObjectPath;
+            const bool Container=CastField<FArrayProperty>(P)||CastField<FSetProperty>(P)||CastField<FMapProperty>(P);
+            // These exact public descriptors map directly to installed K2
+            // GetPropertyCategoryInfo; all compound/enum/class defaults remain
+            // pending instead of running an unbounded recursive schema query.
+            if(!Container&&V.ArrayDim==1)
+            {
+                if(CastField<FIntProperty>(P))Category=TEXT("int");
+                else if(CastField<FBoolProperty>(P))Category=TEXT("bool");
+                else if(CastField<FFloatProperty>(P)){Category=TEXT("real");Subcategory=TEXT("float");}
+                else if(CastField<FDoubleProperty>(P)){Category=TEXT("real");Subcategory=TEXT("double");}
+                else if(CastField<FNameProperty>(P))Category=TEXT("name");
+                else if(CastField<FStrProperty>(P))Category=TEXT("string");
+                else if(V.Struct==Vector.Get()){Category=TEXT("struct");ObjectPath=TEXT("/Script/CoreUObject.Vector");}
+            }
+            Type->SetStringField(TEXT("category"),Category);Type->SetStringField(TEXT("subcategory"),Subcategory);
+            Type->SetStringField(TEXT("subcategory_object"),ObjectPath);Type->SetStringField(TEXT("container_type"),Container||V.ArrayDim!=1?TEXT("unsupported"):TEXT("none"));
+            Type->SetBoolField(TEXT("is_array"),CastField<FArrayProperty>(P)!=nullptr||V.ArrayDim!=1);
+            Type->SetBoolField(TEXT("is_reference"),P->HasAnyPropertyFlags(CPF_ReferenceParm));Row->SetObjectField(TEXT("native_pin_type"),Type);
+            Row->SetStringField(TEXT("property_flags"),LexToString(uint64(V.Flags)));Row->SetStringField(TEXT("field_class"),V.Class->GetName());Rows.Add(MakeShared<FJsonValueObject>(Row));
+        }
+        Captured=true;if(!Current())return false;
+        Json->SetBoolField(TEXT("native_signature_captured"),true);Json->SetArrayField(TEXT("native_signature_parameters"),Rows);
+        Json->SetStringField(TEXT("native_function_flags_string"),LexToString(uint32(FunctionFlags)));Json->SetStringField(TEXT("native_function_path"),FunctionPath);
+        Json->SetStringField(TEXT("native_function_name"),CanonicalName);Json->SetStringField(TEXT("native_class_path"),ClassPath);
+        return true;
+    }
+};
+FResult NativeLibraryAdd(const FString& BlueprintPath,const FString& Target,const FString& Name,const FString& ParamsJson,const FString& PositionJson,
+    const FString& GraphName,const FString& GraphId,const FString& GraphType,bool CreateGraph,FResult R,const TSharedRef<FJsonObject>& Adapter)
+{
+    Adapter->SetStringField(TEXT("scope"),TEXT("Original KismetMathLibrary/KismetStringLibrary/KismetSystemLibrary/KismetTextLibrary short-name static native selection and original case-insensitive function name; finite original scalar/Vector defaults/ignores, independently validated existing AddCall catalogue, including its bounded missing-function creation or existing-graph True reuse when requested. No broad class inference/fallback, raw invalid-default bypass, recursive/enum/class/ref/container default expansion or runtime invocation."));
+    Adapter->SetStringField(TEXT("target_resolution"),TEXT("original_known_native_library_short_name"));
+    Adapter->SetBoolField(TEXT("shared_original_signature_default_adapter"),true);
+    Adapter->SetBoolField(TEXT("create_graph_if_missing_forwarded_to_shared_call"),CreateGraph);
+    if(CreateGraph)Adapter->SetStringField(TEXT("graph_creation_scope"),TEXT("Existing shared AddCall resolves and reuses an existing selected graph or creates one missing explicitly named own direct native Actor/ActorComponent/SceneComponent function for its already-supported runtime static primitive signature/native Make-Break profile. The shared writer retains graph/default cleanup/partial and structural receipts without explicit compile/save. Source/default preflight remains before creation; original invalid-source create-before-error effects, broader owners/world-context/generated/ref/container signatures and runtime use remain incomplete; usage validation pending."));
+    if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||GIsRequestingExit||UE::IsSavingPackage()||!IsValid(GEditor))
+    {Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Safe current Editor game thread outside saving/GC required."));return R;}
+    TWeakObjectPtr<UEditorEngine> Editor=GEditor;TWeakObjectPtr<UWorld> World=GEditor->GetEditorWorldContext().World();
+    auto Context=[&](){return IsInGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!GIsRequestingExit&&!UE::IsSavingPackage()
+        &&IsValid(GEditor)&&Editor.Get()==GEditor&&!GEditor->GetPIEWorldContext()&&!GEditor->PlayWorld
+        &&World.IsValid()&&IsValid(World.Get())&&!World->bIsTearingDown&&GEditor->GetEditorWorldContext().World()==World.Get();};
+    if(!Context()){Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Current Editor world outside PIE required."));return R;}
+    TSharedPtr<FJsonValue> Params,Coordinates;auto Defaults=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> PositionValues;
+    if(!Parse(ParamsJson,Params,R)||!Parse(PositionJson,Coordinates,R)||!Position(Coordinates,PositionValues,Adapter,R))return R;
+    Adapter->SetField(TEXT("requested_params"),Params);
+    FOriginalNativeLibrarySource Source;auto SourceJson=MakeShared<FJsonObject>();Adapter->SetObjectField(TEXT("native_library_source_before"),SourceJson);
+    Adapter->SetNumberField(TEXT("function_source_observation_calls"),1);
+    if(!Source.Capture(NativeLibrary(Target),Name,SourceJson)||!Context())
+    {Fail(R,TEXT("function_node_source_unsupported"),TEXT("Exact native static library declaration is unavailable; no transaction or core writer dispatched."));return R;}
+    if(!OwnDefaults(Params,SourceJson,Defaults,Adapter,R,true))return R;
+    Adapter->SetObjectField(TEXT("prepared_defaults"),Defaults);
+    const auto* PriorUndo=GUndo;bool Returned=false,EndpointCaptured=false;FOwnEndpoint Endpoint;
+    {
+        Adapter->SetNumberField(TEXT("outer_transaction_calls"),1);
+        FScopedTransaction Transaction(NSLOCTEXT("Cubeless","OriginalFunctionNode","Add Blueprint Function Node"));
+        if(!Context()||!Source.Current())
+        {R.bChangeStateKnown=false;Fail(R,TEXT("function_node_context_changed"),TEXT("Outer transaction changed native source/context; actual prefix retained, no core writer."));return R;}
+        Adapter->SetNumberField(TEXT("core_delegate_calls"),1);
+        R=Function::AddCall(BlueprintPath,Source.ClassPath,Source.CanonicalName,Text(Defaults),Text(PositionValues),GraphName,GraphId,GraphType,CreateGraph,false,false,false,false,false);
+        Returned=true;Adapter->SetNumberField(TEXT("core_delegate_returns"),1);Adapter->SetObjectField(TEXT("core_receipt_at_return"),OwnReceipt(R));
+        auto Data=MakeShared<FJsonObject>();for(const auto& P:R.Data->Values)Data->SetField(FString(P.Key.ToView()),P.Value);R.Data=Data;
+        R.Data->SetObjectField(TEXT("original_function_node_adapter"),Adapter);
+        if(R.bSuccess&&R.bChangeStateKnown&&R.bPostconditionPassed&&Context()&&Source.Current())
+        {
+            const FString ObjectPath=BlueprintPath.Contains(TEXT("."))?BlueprintPath:BlueprintPath+TEXT(".")+FPackageName::GetShortName(BlueprintPath);
+            UBlueprint* LoadedTarget=FindObject<UBlueprint>(nullptr,*ObjectPath);
+            if(Context()&&Source.Current())EndpointCaptured=Endpoint.Capture(LoadedTarget,Context)&&Context()&&Source.Current();
+        }
+    }
+    Adapter->SetBoolField(TEXT("outer_transaction_scope_exited"),true);
+    if(!Returned||!R.bSuccess||!R.bChangeStateKnown||!R.bPostconditionPassed)
+    {R.bChangeStateKnown=false;Adapter->SetBoolField(TEXT("failed_core_engine_followup_skipped"),true);return R;}
+    // Source inventory is checked only at real transaction/core SDK boundaries,
+    // not repeatedly inside pure JSON conversion. Never follow a failed core
+    // with another source/target engine lookup or replay.
+    const bool Current=EndpointCaptured&&Context()&&GUndo==PriorUndo&&Source.Current()&&Endpoint.Current()&&Context()&&Source.Current();
+    Adapter->SetBoolField(TEXT("native_library_source_current_after_transaction"),Current);
+    FString ActualClass,ActualName,ActualPath;double X=0,Y=0;bool Static=false;
+    const bool Identity=R.Data->TryGetStringField(TEXT("function_class"),ActualClass)&&ActualClass==Source.ClassPath
+        &&R.Data->TryGetStringField(TEXT("function_name"),ActualName)&&ActualName==Source.CanonicalName
+        &&R.Data->TryGetStringField(TEXT("function_path"),ActualPath)&&ActualPath==Source.FunctionPath
+        &&R.Data->TryGetBoolField(TEXT("is_static"),Static)&&Static
+        &&R.Data->TryGetNumberField(TEXT("x"),X)&&X==PositionValues[0]->AsNumber()
+        &&R.Data->TryGetNumberField(TEXT("y"),Y)&&Y==PositionValues[1]->AsNumber();
+    Adapter->SetBoolField(TEXT("native_library_core_identity_verified"),Identity);
+    const bool Values=OwnDefaultsApplied(R,Adapter,true);
+    Adapter->SetBoolField(TEXT("native_library_original_defaults_verified"),Values);
+    Adapter->SetStringField(TEXT("endpoint_observation_scope"),TEXT("Existing AddCall owns complete source/target/node/default lifecycle proof. Adapter checks held native declaration/root-descriptor identity across transaction/core boundaries and copied actual returned function/position/defaults. Physical target endpoint across EndTransaction reuses the existing own endpoint snapshot; whole CDO/global callback effects, runtime invocation and full original fallback are not verified."));
+    if(!Current||!Identity||!Values)
+    {if(!Current)R.bChangeStateKnown=false;Fail(R,TEXT("function_node_adapter_postcondition_failed"),TEXT("Actual native library core/transaction/default endpoint differs; complete actual prefix retained without retry or rollback."));}
+    return R;
+}
+
 FResult OwnAdd(const FString& BlueprintPath,const FString& Target,const FString& Name,const FString& ParamsJson,const FString& PositionJson,
     const FString& GraphName,const FString& GraphId,const FString& GraphType,bool CreateGraph,FResult R,const TSharedRef<FJsonObject>& Adapter)
 {
-    Adapter->SetStringField(TEXT("scope"),TEXT("Original self/empty target, already-loaded normal Blueprint and existing compiled own nonoverride function or exact own non-RPC primitive custom event; finite original value-kind defaults and original ignores. Shared AddCall independently owns current function/GUID/signature/physical node checks. No arbitrary failed-target fallback, inherited/override/RPC/event-struct/ref/container/graph creation, invalid raw default bypass, reference/container/other struct default expansion or runtime invocation."));
+    Adapter->SetStringField(TEXT("scope"),TEXT("Original self/empty target, already-loaded normal Blueprint and existing compiled own nonoverride function or exact own primitive custom event including the admitted RPC profile; finite original value-kind defaults and original ignores. Shared AddCall independently owns current function/GUID/signature/physical node checks. No arbitrary failed-target fallback, inherited/override/wider-RPC/event-struct/ref/container/graph creation, invalid raw default bypass, reference/container/other struct default expansion or runtime invocation."));
     Adapter->SetStringField(TEXT("target_resolution"),Target.IsEmpty()?TEXT("original_empty_target_own_class"):TEXT("original_self_target_own_class_fallback"));
     if (!Bounded(BlueprintPath,1024) || !BlueprintPath.StartsWith(TEXT("/Game/")) || !Bounded(Name,128) || Name.IsEmpty())
     { Fail(R,TEXT("function_node_own_selector_invalid"),TEXT("An exact /Game Blueprint object path and bounded own function name are required.")); return R; }
@@ -898,7 +1093,7 @@ FResult OwnAdd(const FString& BlueprintPath,const FString& Target,const FString&
     if (!Source.bSuccess||!Source.bChangeStateKnown||Source.bChanged||!Source.bPostconditionPassed)
     { R=Source; auto Data=MakeShared<FJsonObject>(); for(const auto& P:R.Data->Values)Data->SetField(FString(P.Key.ToView()),P.Value);R.Data=Data;R.Data->SetObjectField(TEXT("original_function_node_adapter"),Adapter);return R; }
     FString Kind,Guid; if (!Source.Data->TryGetStringField(TEXT("callable_kind"),Kind)||(Kind!=TEXT("function")&&Kind!=TEXT("custom_event"))||!Source.Data->TryGetStringField(TEXT("function_member_guid"),Guid)||Guid.IsEmpty())
-    { Fail(R,TEXT("function_node_own_function_required"),TEXT("An existing compiled own function or exact own non-RPC primitive custom event is required; override/inherited fallback remains pending.")); return R; }
+    { Fail(R,TEXT("function_node_own_function_required"),TEXT("An existing compiled own function or exact own primitive custom event including the admitted RPC profile is required; override/inherited fallback remains pending.")); return R; }
     if(Kind==TEXT("custom_event"))
     {
         const TArray<TSharedPtr<FJsonValue>>* Parameters=nullptr;
@@ -970,6 +1165,8 @@ Function::FResult Add(const FString& BlueprintPath, const FString& Target, const
     { return OwnAdd(BlueprintPath, Target, FunctionName, ParamsJson, PositionJson, GraphName, GraphId, GraphType, bCreateGraphIfMissing, R, Adapter); }
     if (Target == TEXT("PrimitiveComponent") || Target == TEXT("UPrimitiveComponent"))
     { return PhysicsAdd(BlueprintPath, Target, FunctionName, ParamsJson, PositionJson, GraphName, GraphId, GraphType, bCreateGraphIfMissing, R, Adapter); }
+    if(Target==TEXT("KismetMathLibrary")||Target==TEXT("KismetStringLibrary")||Target==TEXT("KismetSystemLibrary")||Target==TEXT("KismetTextLibrary"))
+    { return NativeLibraryAdd(BlueprintPath,Target,FunctionName,ParamsJson,PositionJson,GraphName,GraphId,GraphType,bCreateGraphIfMissing,R,Adapter); }
     const bool PlayerObject=FunctionName.Equals(TEXT("GetPlayerPawn"),ESearchCase::IgnoreCase)||FunctionName.Equals(TEXT("GetPlayerCharacter"),ESearchCase::IgnoreCase);
     const TCHAR* ActorFunction=Target!=TEXT("Actor")?nullptr:FunctionName.Equals(TEXT("K2_GetActorLocation"),ESearchCase::IgnoreCase)?TEXT("K2_GetActorLocation"):FunctionName.Equals(TEXT("K2_GetActorRotation"),ESearchCase::IgnoreCase)?TEXT("K2_GetActorRotation"):FunctionName.Equals(TEXT("GetActorScale3D"),ESearchCase::IgnoreCase)?TEXT("GetActorScale3D"):nullptr;
     const bool ActorGetter=ActorFunction!=nullptr;

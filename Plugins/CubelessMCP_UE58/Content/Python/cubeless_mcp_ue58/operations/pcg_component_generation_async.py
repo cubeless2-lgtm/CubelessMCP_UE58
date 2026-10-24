@@ -106,7 +106,7 @@ def _stop(entry,error,metadata_only=False):
     if entry.get('descriptor') is not None:domain._wait_failure(result,entry['descriptor'],error)
     metadata_only=metadata_only or context is not None and context.lost or result['data'].get('projection_skipped_unsafe') is True
     result['data'].update(initial_request_replayed=False,shared_PCG_task_cancelled=False,
-        PCG_generation_may_still_be_in_flight=True,do_not_retry=True)
+        PCG_generation_may_still_be_in_flight=getattr(error,'pcg_refresh_terminal_failure',False) is not True,do_not_retry=True)
     result['retry'].update(automatic_retry=False,duplicate_risk='PCG_initial_request_must_not_be_replayed')
     if metadata_only:
         result['data'].update(change_state_known=False,mutation_state_unknown=True,mutation_performed=None,

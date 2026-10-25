@@ -19,6 +19,8 @@ UE 5.8.3 공식 ModelContextProtocol 서버와 Toolset Registry를 확장하는 
 
 Blueprint·Niagara·PCG의 선택형 외부 실행기는 [실행기 안내](cubeless/tools/pipelines/README.md)를 참조하십시오. 플러그인 로딩에 필요한 구성은 아니며, 공식 MCP 연결을 사용합니다. Niagara edit 모드의 `save` 기본값은 `false`이고 Blueprint 바인딩과 manifest에도 같은 저장 정책을 적용합니다.
 
+프로젝트에 설치할 때는 `Plugins/CubelessMCP_UE58`와 필요한 `cubeless` 파일을 함께 배치합니다. [도구 묶음 안내](cubeless/README.md)의 소스 배포·설치·업데이트 절차를 따르십시오. 새 `cubeless/tools/run_pipeline.py`는 실행 위치와 관계없이 자신의 배포 식별자와 바로 위 `.uproject`를 확인합니다. Git 저장소의 개발 자료 전체를 프로젝트에 복사할 필요는 없습니다.
+
 로드된 LevelInstance 패킹:
 
 - 공식 MCP의 `describe_toolset`으로 `cubeless_mcp_ue58.registration.loaded_level_instance_packing_toolset.CubelessLoadedLevelInstancePackingTools`를 조회합니다.

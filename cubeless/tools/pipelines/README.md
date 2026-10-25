@@ -1,5 +1,7 @@
 # 선택형 UE 5.8.3 실무 실행기
 
+전체 설치·운영은 [도구 묶음 안내](../../README.md)를 참조하십시오. `python <프로젝트>/cubeless/tools/run_pipeline.py blueprint|niagara|pcg --endpoint URL --input cubeless/...json`은 어디서 실행해도 실행기 파일 위치의 배포본을 식별합니다. `.uproject`가 하나면 `--project`를 생략할 수 있고, 결과 경로 생략 시 `cubeless/records/operations`에 새 고유 결과를 만듭니다. 사용자 입력·출력 및 설정 파일 내부의 명시된 파일 상대 경로는 프로젝트 루트 기준이며 기존 cwd 상대 호출과 다릅니다. `--verification`은 결과를 해당 `cubeless/records/verification` 아래로 제한합니다. 기존 `-m pipelines.production_*` 호출은 PYTHONPATH를 이 묶음의 tools로 지정하면 계속 사용할 수 있습니다.
+
 프로젝트의 공식 ModelContextProtocol 서버와 등록된 Cubeless 도구를 호출합니다. 별도 MCP 서버나 TCP 브릿지가 아니며, 플러그인 로딩에 필요하지 않습니다. 외부 Python에서는 `unreal`을 import하지 않습니다.
 
 현재 기본 진입점은 `production_blueprint`, `production_niagara`, `production_pcg`입니다. 과거 canary·continue·검증 스크립트를 제품 진입점으로 실행하지 않습니다. 기존 5.6 전체 manifest·고급 타입·모든 고유 흐름의 이식 완료를 뜻하지 않습니다.

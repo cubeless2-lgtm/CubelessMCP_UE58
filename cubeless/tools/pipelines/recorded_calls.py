@@ -20,7 +20,7 @@ class RecordedCalls:
             return self.storage.checkpoint(self.report)
         self.output.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.output.with_suffix(self.output.suffix + ".partial")
-        with temporary.open("w", encoding="utf-8") as stream:
+        with temporary.open("x", encoding="utf-8") as stream:
             stream.write(json.dumps(self.report, ensure_ascii=False, indent=2))
             stream.flush()
             os.fsync(stream.fileno())

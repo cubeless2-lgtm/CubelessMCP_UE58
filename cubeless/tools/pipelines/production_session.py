@@ -6,7 +6,9 @@ import re
 import time
 import uuid
 from .recorded_calls import RecordedCalls
+from .recorded_call_storage import require_fresh_receipt_paths
 from .result_contracts import require
+from .layout import bundle_root, project_file, project_path, editor_project_matches, verification_output
 
 NATIVE = 'CubelessMCPUE58Editor.CubelessNativeToolset'
 
@@ -14,11 +16,21 @@ NATIVE = 'CubelessMCPUE58Editor.CubelessNativeToolset'
 def arguments(description, argv=None):
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument('--endpoint', required=True)
-    parser.add_argument('--project', required=True, type=Path)
+    parser.add_argument('--project', type=Path, help='Host .uproject; relative to the bundle parent project')
     parser.add_argument('--input', required=True, type=Path)
-    parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--output', type=Path, help='Fresh result path, relative to project root by default')
     parser.add_argument('--apply', action='store_true', help='Dispatch writes; otherwise validate/preview only')
-    return parser.parse_args(argv)
+    parser.add_argument('--verification', action='store_true', help='Restrict result output to this bundle records/verification')
+    args = parser.parse_args(argv)
+    try:
+        args.project = project_file(args.project)
+        args.input = project_path(args.input, args.project)
+        category = 'verification' if args.verification else 'operations'
+        output = args.output if args.output else bundle_root() / 'records' / category / ('pipeline-' + uuid.uuid4().hex + '.json')
+        args.output = verification_output(output, args.project) if args.verification else project_path(output, args.project)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    return args
 
 
 def load(path):
@@ -40,15 +52,29 @@ def package(value):
 
 class Session:
     def __init__(self, args, domain, toolsets):
+        args.project = project_file(args.project)
+        args.input = project_path(args.input, args.project)
+        args.output = (verification_output(args.output, args.project) if getattr(args, 'verification', False)
+                       else project_path(args.output, args.project))
         self.args, self.config = args, load(args.input)
         require(type(self.config) is dict, 'Input must be an object')
+        # Only named filesystem fields are resolved. /Game asset paths are not files.
+        bindings = [self.config]
+        if isinstance(self.config.get('blueprint'), dict) and isinstance(self.config['blueprint'].get('manifest'), dict):
+            bindings.append(self.config['blueprint']['manifest'])
+        for config in bindings:
+            playback = config.get('playback')
+            if isinstance(playback, dict) and 'engine_log_path' in playback:
+                playback['engine_log_path'] = str(project_path(playback['engine_log_path'], args.project))
+        visual = self.config.get('visual')
+        if isinstance(visual, dict) and 'output_dir' in visual:
+            visual['output_dir'] = str(project_path(visual['output_dir'], args.project))
         self.output = args.output.resolve()
-        require(not self.output.exists() and not self.output.with_suffix(self.output.suffix + '.partial').exists()
-                and not self.output.with_name(self.output.name + '.evidence').exists(),
-                'Fresh output required. Inspect old receipts; never blindly resume/replay')
+        require_fresh_receipt_paths(self.output)
         self.report = dict(schema='cubeless_production_pipeline_v1', domain=domain, status='running',
             operation_id=uuid.uuid4().hex,
             stage='initialize', started_ns=time.time_ns(), input=self.config, project=str(args.project.resolve()),
+            client_source=str(Path(__file__).resolve()), cubeless=str(bundle_root()),
             apply=args.apply, stages=[], changes=[], outcome_unknown=False, automatic_retries=0,
             actual_change_scope='See per-stage native receipts; no atomic rollback',
             next_action='Inspect actual assets and operation IDs before any new mutation')
@@ -58,7 +84,7 @@ class Session:
         try:
             self.calls.discover()
             diag = self.calls.call('target_project', 'native', 'GetEditorDiagnostics')
-            require(Path(diag['project_file']).resolve() == self.args.project.resolve(), 'Wrong editor project; no writes dispatched')
+            require(editor_project_matches(diag['project_file'], self.args.project), 'Wrong editor project; no writes dispatched')
             require(diag['game_thread'] and not diag['pie_or_sie_active'] and diag['engine_version'].startswith('5.8.3-'),
                     'Idle UE5.8.3 Editor game thread required')
             self.report['diagnostics_before'] = diag

@@ -1,0 +1,35 @@
+{
+  "format": "cubeless_source_bundle_v1",
+  "engine": "5.8.3",
+  "plugin": "CubelessMCP_UE58",
+  "pipeline_files": [
+    "__init__.py",
+    "layout.py",
+    "production_session.py",
+    "production_blueprint.py",
+    "production_niagara.py",
+    "production_pcg.py",
+    "recorded_calls.py",
+    "recorded_call_storage.py",
+    "result_contracts.py"
+  ],
+  "excluded_parts": [
+    "Binaries",
+    "Intermediate",
+    "Saved",
+    "DerivedDataCache",
+    "__pycache__",
+    "tests",
+    "Tests",
+    ".venv",
+    ".vs",
+    "records",
+    "workspaces",
+    "archive",
+    "build"
+  ],
+  "excluded_files": [
+    "Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/DomainExpansion/CubelessDomainTests.cpp"
+  ],
+  "file_list": "cubeless/distribution-files.txt"
+}

@@ -31,9 +31,23 @@ def _encode(value):
     return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
+def require_fresh_receipt_paths(output):
+    """lstat sees occupied names even when a link's target does not exist."""
+    output = Path(output)
+    for path in (output, output.with_suffix(output.suffix + ".partial"),
+                 output.with_name(output.name + ".evidence")):
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        raise StorageError("Fresh receipt path required; existing entry refused: " + str(path))
+
+
 def _atomic_head(path, value):
     temporary = path.with_suffix(path.suffix + ".partial")
-    with temporary.open("wb") as stream:
+    # Exclusive creation also rejects a dangling link inserted after admission.
+    # Never truncate/follow an existing temporary entry or remove it on failure.
+    with temporary.open("xb") as stream:
         stream.write(_encode(value))
         stream.flush()
         os.fsync(stream.fileno())
@@ -59,9 +73,7 @@ class ReceiptStorage:
     def __init__(self, output, report):
         self.output = Path(output)
         self.root = self.output.with_name(self.output.name + ".evidence")
-        if (self.output.exists() or self.root.exists()
-                or self.output.with_suffix(self.output.suffix + ".partial").exists()):
-            raise StorageError("Storage v2 requires a fresh report and evidence directory")
+        require_fresh_receipt_paths(self.output)
         if report.get("stages", []):
             raise StorageError("Storage v2 requires an initially empty stages list")
         self.output.parent.mkdir(parents=True, exist_ok=True)

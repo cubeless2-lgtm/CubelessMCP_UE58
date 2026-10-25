@@ -1,0 +1,145 @@
+{
+  "graph": "/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_Empty/PCG_Scatter",
+  "world": "/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_001/Map_Work",
+  "actor_label": "Example_EmptyLifecycle",
+  "transform": {
+    "location": {
+      "x": 2000,
+      "y": 0,
+      "z": 200
+    },
+    "rotation": {
+      "pitch": 0,
+      "yaw": 0,
+      "roll": 0
+    },
+    "scale": {
+      "x": 2,
+      "y": 2,
+      "z": 1
+    }
+  },
+  "nodes": [
+    {
+      "id": "Sampler",
+      "type": "Volume Sampler",
+      "parameters": {
+        "VoxelSize": {
+          "x": 100,
+          "y": 100,
+          "z": 100
+        }
+      }
+    },
+    {
+      "id": "Gate",
+      "type": "Density Filter",
+      "parameters": {
+        "LowerBound": 0,
+        "UpperBound": 1,
+        "bInvertFilter": false
+      }
+    },
+    {
+      "id": "Transform",
+      "type": "Transform Points",
+      "parameters": {
+        "ScaleMin": {
+          "x": 0.2,
+          "y": 0.2,
+          "z": 0.2
+        },
+        "ScaleMax": {
+          "x": 0.2,
+          "y": 0.2,
+          "z": 0.2
+        },
+        "Seed": 42
+      }
+    },
+    {
+      "id": "Meshes",
+      "type": "Static Mesh Spawner",
+      "mesh_entries": [
+        {
+          "mesh": "/Engine/BasicShapes/Cube.Cube",
+          "weight": 1,
+          "cast_shadow": false
+        }
+      ]
+    }
+  ],
+  "links": [
+    [
+      "Sampler",
+      "Out",
+      "Gate",
+      "In"
+    ],
+    [
+      "Gate",
+      "Out",
+      "Transform",
+      "In"
+    ],
+    [
+      "input",
+      "In",
+      "Sampler",
+      "Volume"
+    ],
+    [
+      "Transform",
+      "Out",
+      "Meshes",
+      "In"
+    ],
+    [
+      "Meshes",
+      "Out",
+      "output",
+      "Out"
+    ]
+  ],
+  "expect": {
+    "instances": 32,
+    "unique_positions": true
+  },
+  "cycles": [
+    {
+      "updates": [
+        {
+          "node": "Gate",
+          "parameters": {
+            "bInvertFilter": true
+          }
+        }
+      ],
+      "expect": {
+        "instances": 0,
+        "unique_positions": true
+      }
+    },
+    {
+      "same_as_previous": true,
+      "expect": {
+        "instances": 0
+      }
+    },
+    {
+      "updates": [
+        {
+          "node": "Gate",
+          "parameters": {
+            "bInvertFilter": false
+          }
+        }
+      ],
+      "expect": {
+        "instances": 32,
+        "unique_positions": true
+      }
+    }
+  ],
+  "save_graph": true
+}

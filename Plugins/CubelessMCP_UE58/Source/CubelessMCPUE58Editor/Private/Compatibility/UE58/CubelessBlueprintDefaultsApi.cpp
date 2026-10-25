@@ -24,6 +24,9 @@
 #include "K2Node_Event.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_CallFunction.h"
+#include "Kismet/BlueprintFunctionLibrary.h"
+#include "UObject/MetaData.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
@@ -659,8 +662,8 @@ bool PostcompileCdoEqual(const TSharedPtr<FJsonValue>& A, const TSharedPtr<FJson
     if (LexToString(Flags) != Old || (Flags & CdoFlags) != CdoFlags || (Now != Old && Now != LexToString(Flags & ~LoadFlags))) { return false; }
     for (const auto& Field : X->Values) { if (Field.Key.ToView() != TEXT("object_flags") && !Equal(Field.Value, Y->TryGetField(Field.Key.ToView()))) { return false; } } return true;
 }
-// RefreshAllNodes reconstructs pins. For this exact unlinked stock Event scope,
-// compare authored/logical pin roles, never cache PinId or physical pin order.
+// RefreshAllNodes reconstructs pins. Compare authored logical endpoints and
+// defaults across the old/current pin inventories, never physical PinId/order.
 bool RefreshedGraphsEqual(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B)
 {
     if(!A||!B||A->Type!=EJson::Object||B->Type!=EJson::Object)return false;
@@ -668,24 +671,45 @@ bool RefreshedGraphsEqual(const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJson
     auto Normalize=[](const TSharedPtr<FJsonObject>& Graphs)->bool
     {
         if(!Graphs)return false;const TArray<TSharedPtr<FJsonValue>>* Rows=nullptr;if(!Graphs->TryGetArrayField(TEXT("graphs"),Rows))return false;
+        struct FPinRole{FString Key,Graph;TSharedPtr<FJsonObject> Pin;};TMap<FString,FPinRole> Inventory;
         for(const auto& GraphValue:*Rows)
         {
-            auto Graph=GraphValue->AsObject();const TArray<TSharedPtr<FJsonValue>>* Nodes=nullptr;
-            if(!Graph->TryGetArrayField(TEXT("nodes"),Nodes))continue; // original empty graph DTO has no nodes field
+            auto G=GraphValue->AsObject();const FString GraphGuid=G->GetStringField(TEXT("guid"));const TArray<TSharedPtr<FJsonValue>>* Nodes=nullptr;if(!G->TryGetArrayField(TEXT("nodes"),Nodes))continue;
             for(const auto& NodeValue:*Nodes)
             {
-                auto Node=NodeValue->AsObject();const TArray<TSharedPtr<FJsonValue>>* Pins=nullptr;if(!Node->TryGetArrayField(TEXT("pins"),Pins))return false;
-                auto Logical=MakeShared<FJsonObject>();
+                auto N=NodeValue->AsObject();const FString NodeGuid=N->GetStringField(TEXT("guid"));const TArray<TSharedPtr<FJsonValue>>* Pins=nullptr;if(!N->TryGetArrayField(TEXT("pins"),Pins))return false;TSet<FString> Names;
                 for(const auto& PinValue:*Pins)
                 {
-                    auto Pin=PinValue->AsObject();const FString Name=Pin->GetStringField(TEXT("name")).ToLower();const FString Key=LexToString(static_cast<int32>(Pin->GetNumberField(TEXT("direction"))))+TEXT(":")+Name;
-                    if(Name.IsEmpty()||Logical->HasField(Key)||!Pin->GetArrayField(TEXT("links")).IsEmpty())return false;
-                    Pin->RemoveField(TEXT("id"));Pin->SetStringField(TEXT("name"),Name);Logical->SetObjectField(Key,Pin.ToSharedRef());
+                    auto P=PinValue->AsObject();const FString Name=P->GetStringField(TEXT("name")).ToLower();const FString Local=LexToString(static_cast<int32>(P->GetNumberField(TEXT("direction"))))+TEXT(":")+Name;const FString Id=P->GetStringField(TEXT("id"));
+                    if(Name.IsEmpty()||Id.IsEmpty()||Names.Contains(Local)||Inventory.Contains(Id)||Inventory.Num()>=MaxPins)return false;Names.Add(Local);
+                    FPinRole Role;Role.Key=GraphGuid+TEXT("/")+NodeGuid+TEXT("/")+Local;Role.Graph=GraphGuid;Role.Pin=P;Inventory.Add(Id,MoveTemp(Role));
                 }
-                Node->RemoveField(TEXT("pins"));Node->SetObjectField(TEXT("logical_pins"),Logical);
             }
         }
-        return true;
+        // Resolve and check all reciprocal links before mutating this DTO copy.
+        TMap<FString,TArray<FString>> Edges;
+        for(const auto& Item:Inventory)
+        {
+            TArray<FString> Links;for(const auto& Link:Item.Value.Pin->GetArrayField(TEXT("links")))
+            {
+                if(Link->Type!=EJson::String)return false;const FString Id=Link->AsString();const auto* Other=Inventory.Find(Id);
+                if(!Other||Other->Graph!=Item.Value.Graph||Other->Pin->GetNumberField(TEXT("direction"))==Item.Value.Pin->GetNumberField(TEXT("direction"))||Links.Contains(Other->Key))return false;
+                bool Reciprocal=false;for(const auto& Back:Other->Pin->GetArrayField(TEXT("links")))if(Back->Type==EJson::String&&Back->AsString()==Item.Key)Reciprocal=true;
+                if(!Reciprocal)return false;Links.Add(Other->Key);
+            }Links.Sort();Edges.Add(Item.Key,MoveTemp(Links));
+        }
+        for(const auto& GraphValue:*Rows)
+        {
+            auto G=GraphValue->AsObject();const TArray<TSharedPtr<FJsonValue>>* Nodes=nullptr;if(!G->TryGetArrayField(TEXT("nodes"),Nodes))continue;
+            for(const auto& NodeValue:*Nodes)
+            {
+                auto N=NodeValue->AsObject();auto Logical=MakeShared<FJsonObject>();for(const auto& PinValue:N->GetArrayField(TEXT("pins")))
+                {
+                    auto P=PinValue->AsObject();const FString Name=P->GetStringField(TEXT("name")).ToLower();const FString Local=LexToString(static_cast<int32>(P->GetNumberField(TEXT("direction"))))+TEXT(":")+Name;const FString Id=P->GetStringField(TEXT("id"));TArray<TSharedPtr<FJsonValue>> Links;
+                    for(const auto& Peer:Edges.FindChecked(Id))Links.Add(MakeShared<FJsonValueString>(Peer));P->SetArrayField(TEXT("links"),Links);P->RemoveField(TEXT("id"));P->SetStringField(TEXT("name"),Name);Logical->SetObjectField(Local,P.ToSharedRef());
+                }N->RemoveField(TEXT("pins"));N->SetObjectField(TEXT("logical_pins"),Logical);
+            }
+        }return true;
     };
     auto X=Copy(A),Y=Copy(B);return Normalize(X)&&Normalize(Y)&&Equal(X.ToSharedRef(),Y.ToSharedRef());
 }
@@ -755,6 +779,7 @@ bool Save(FContext& C, const FObservation& BeforeSave, FResult& R)
     R.Stage = TEXT("save_asset"); R.Data->SetBoolField(TEXT("before_save_observations_complete"), BeforeSave.bComplete); R.Data->SetBoolField(TEXT("before_save_source_preserved"), R.Data->GetBoolField(TEXT("source_preserved"))); R.Data->SetBoolField(TEXT("before_save_unselected_state_preserved"), R.Data->GetBoolField(TEXT("unselected_state_preserved"))); ClearFinal(R);
     R.bAttempted = true; R.bSaveAttempted = true; Count(R, TEXT("save_attempt_count")); auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("asset_path"), C.Blueprint->GetPathName()); Receipt->SetBoolField(TEXT("attempted"), true); R.Data->SetArrayField(TEXT("save_calls"), { MakeShared<FJsonValueObject>(Receipt) });
     R.bSaved = UEditorAssetLibrary::SaveLoadedAsset(C.Blueprint.Get(), false); Receipt->SetBoolField(TEXT("success"), R.bSaved);
+    bool LinkedCall=false;R.Data->TryGetBoolField(TEXT("raw_tick_linked_call_profile"),LinkedCall);if(LinkedCall&&!R.bSaved)return Fail(R,TEXT("blueprint_tick_refresh_save_failed"),TEXT("Exact saveFalse receipt retained; no follow-up source/target capture, rollback or retry."),true);
     if (!CurrentDerivedTarget(C, R)) { return false; }
     FObservation After; const bool Complete = Capture(C, After, R, TEXT("after_save")); R.Data->SetBoolField(TEXT("observations_complete"), Complete);
     if (!R.bSaved || !Complete) { return Fail(R, TEXT("blueprint_defaults_save_unobservable_or_failed"), TEXT("One exact save receipt and retained current prefix preserved; no retry or rollback."), true); }
@@ -763,8 +788,24 @@ bool Save(FContext& C, const FObservation& BeforeSave, FResult& R)
     if (!State || !Source || !Other || !After.DiskState->GetBoolField(TEXT("exists")) || After.DiskState->GetNumberField(TEXT("bytes")) <= 0 || C.Blueprint->GetOutermost()->IsDirty()) { return Fail(R, TEXT("blueprint_defaults_saved_readback_failed"), TEXT("Successful save receipt remains authoritative, but exact finite saved-state/source/file fence failed; do not replay.")); }
     return true;
 }
-// Local source lease for the four resident AActor stock signatures used by
-// this narrow refresh scope. No ResolveMember/Fixup/CDO creation in admission.
+// Fixed-signature stock native BlueprintFunctionLibrary calls only. The Engine
+// refresh reconstructs their K2 representation; it never executes the function.
+UFunction* TickNativeCallSource(const UK2Node_CallFunction* Call)
+{
+    if(!Loaded(Call)||Call->GetClass()!=UK2Node_CallFunction::StaticClass()||Call->bWantsEnumToExecExpansion)return nullptr;
+    const FMemberReference& Ref=Call->FunctionReference;auto* P=FindFProperty<FObjectProperty>(FMemberReference::StaticStruct(),TEXT("MemberParent"));
+    if(!P||P->GetOwnerStruct()!=FMemberReference::StaticStruct()||P->ArrayDim!=1||P->HasSetterOrGetter()||P->GetSize()!=sizeof(TObjectPtr<UObject>)||Ref.IsSelfContext()||Ref.IsLocalScope()||Ref.GetMemberGuid().IsValid())return nullptr;
+    const auto* Slot=P->ContainerPtrToValuePtr<TObjectPtr<UObject>>(&Ref);if(!Slot->IsResolved()||!Loaded(Slot->Get()))return nullptr;
+    UClass* Owner=Cast<UClass>(Slot->Get());if(!Native(Owner)||!Owner->IsChildOf(UBlueprintFunctionLibrary::StaticClass())||Owner->HasAnyClassFlags(CLASS_Interface))return nullptr;
+    UFunction* F=Owner->FindFunctionByName(Ref.GetMemberName(),EIncludeSuperFlag::ExcludeSuper);
+    if(!Loaded(F)||F->GetOuter()!=Owner||!F->HasAllFunctionFlags(FUNC_Native|FUNC_Public|FUNC_Static|FUNC_BlueprintCallable)||F->HasAnyFunctionFlags(FUNC_Delegate|FUNC_MulticastDelegate|FUNC_Net|FUNC_Event)||Call->bDefaultsToPureFunc!=F->HasAnyFunctionFlags(FUNC_BlueprintPure))return nullptr;
+    // These metadata profiles can synthesize/wildcard-expand a signature rather
+    // than reconstruct the same declared native parameter schema.
+    for(const TCHAR* Key:{TEXT("Latent"),TEXT("CustomThunk"),TEXT("ArrayParm"),TEXT("ArrayTypeDependentParams"),TEXT("CustomStructureParam"),TEXT("DeterminesOutputType"),TEXT("DynamicOutputParam"),TEXT("ExpandEnumAsExecs"),TEXT("ExpandBoolAsExecs"),TEXT("BlueprintInternalUseOnly")})if(F->HasMetaData(Key))return nullptr;
+    return F;
+}
+// The existing schema/Event lease also holds each distinct admitted native call,
+// its owner/CDO and complete bounded reflected signature/metadata. No name list.
 struct FTickRefreshSources
 {
     TStrongObjectPtr<UClass> SchemaClass{UEdGraphSchema_K2::StaticClass()};
@@ -773,6 +814,55 @@ struct FTickRefreshSources
     TArray<TStrongObjectPtr<UFunction>> Functions;
     TArray<TArray<FProperty*>> Fields;
     TArray<TStrongObjectPtr<UObject>> Holds;
+    struct FCallSource
+    {
+        TStrongObjectPtr<UClass> Owner;
+        TStrongObjectPtr<UObject> CDO;
+        TStrongObjectPtr<UFunction> Function;
+        TArray<FProperty*> Fields;
+        TArray<TStrongObjectPtr<UObject>> Types;
+    };
+    TArray<TUniquePtr<FCallSource>> Calls;
+    TStrongObjectPtr<UObject> CallNodeDefault;
+    static bool RuntimeType(UObject* O)
+    {
+        return Loaded(O)&&Loaded(O->GetOutermost())&&(O->GetOutermost()->GetName()==TEXT("/Script/CoreUObject")||O->GetOutermost()->GetName()==TEXT("/Script/Engine"))&&O->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn)&&!O->GetOutermost()->IsDirty();
+    }
+    bool CallSnapshot(TSharedRef<FJsonObject>& Out,bool Initial)
+    {
+        if(Calls.IsEmpty())return true;UClass* NodeClass=UK2Node_CallFunction::StaticClass();
+        if(!Loaded(NodeClass)||!NodeClass->ClassDefaultObject.IsResolved()||!Loaded(CallNodeDefault.Get())||NodeClass->ClassDefaultObject.Get()!=CallNodeDefault.Get()||CallNodeDefault->GetClass()!=NodeClass||CallNodeDefault->GetOuter()!=NodeClass->GetOuter()||!CallNodeDefault->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
+        auto All=MakeShared<FJsonObject>();Out->SetObjectField(TEXT("native_call_sources"),All);All->SetObjectField(TEXT("node_class"),Identity(NodeClass));All->SetObjectField(TEXT("node_cdo"),Identity(CallNodeDefault.Get()));auto NodeFields=MakeShared<FJsonObject>();if(!Properties(CallNodeDefault.Get(),{},NodeFields))return false;All->SetObjectField(TEXT("node_cdo_fields"),NodeFields);
+        for(auto& Source:Calls)
+        {
+            auto& S=*Source;UClass* K=S.Owner.Get();UFunction* F=S.Function.Get();
+            if(!Native(K)||!K->IsChildOf(UBlueprintFunctionLibrary::StaticClass())||!Loaded(S.CDO.Get())||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=S.CDO.Get()||S.CDO->GetClass()!=K||S.CDO->GetOuter()!=K->GetOuter()||!S.CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)||!Loaded(F)||F->GetOuter()!=K||K->FindFunctionByName(F->GetFName(),EIncludeSuperFlag::ExcludeSuper)!=F)return false;
+            auto Row=MakeShared<FJsonObject>();All->SetObjectField(F->GetPathName(),Row);Row->SetObjectField(TEXT("owner"),Identity(K));Row->SetObjectField(TEXT("owner_cdo"),Identity(S.CDO.Get()));Row->SetObjectField(TEXT("function"),Identity(F));Row->SetStringField(TEXT("owner_flags"),LexToString(static_cast<uint32>(K->GetClassFlags())));Row->SetStringField(TEXT("function_flags"),LexToString(static_cast<uint32>(F->FunctionFlags)));Row->SetNumberField(TEXT("parms_size"),F->ParmsSize);Row->SetNumberField(TEXT("num_parms"),F->NumParms);
+            auto OwnerFields=MakeShared<FJsonObject>(),FunctionFields=MakeShared<FJsonObject>();if(!Properties(S.CDO.Get(),{},OwnerFields)||!Properties(F,{},FunctionFields))return false;Row->SetObjectField(TEXT("owner_cdo_fields"),OwnerFields);Row->SetObjectField(TEXT("function_fields"),FunctionFields);
+            auto Metadata=MakeShared<FJsonObject>();const auto* Meta=FMetaData::GetMapForObject(F);if(Meta){if(Meta->Num()>MaxProperties)return false;int32 Chars=0;for(const auto& M:*Meta){if((Chars+=M.Key.ToString().Len()+M.Value.Len())>MaxText)return false;Metadata->SetStringField(M.Key.ToString(),M.Value);}}Row->SetObjectField(TEXT("metadata"),Metadata);
+            TArray<FProperty*> Current;int32 SignatureFieldCount=0;
+            TFunction<bool(FProperty*,const TSharedRef<FJsonObject>&,int32)> Describe;
+            Describe=[&](FProperty* P,const TSharedRef<FJsonObject>& V,int32 Depth)->bool
+            {
+                if(!P||Depth>8||++SignatureFieldCount>MaxProperties||P->ArrayDim!=1||P->HasSetterOrGetter()||P->HasAnyPropertyFlags(CPF_InstancedReference|CPF_ContainsInstancedReference|CPF_Deprecated))return false;
+                Current.Add(P);V->SetStringField(TEXT("name"),P->GetName());V->SetStringField(TEXT("kind"),P->GetClass()->GetName());V->SetStringField(TEXT("owner"),P->GetOwnerStruct()?P->GetOwnerStruct()->GetPathName():FString());V->SetStringField(TEXT("owner_field"),P->GetOwner<FProperty>()?P->GetOwner<FProperty>()->GetPathName():FString());V->SetStringField(TEXT("flags"),LexToString(static_cast<uint64>(P->GetPropertyFlags())));V->SetNumberField(TEXT("offset"),P->GetOffset_ForInternal());V->SetNumberField(TEXT("size"),P->GetSize());V->SetNumberField(TEXT("element_size"),P->ElementSize);
+                auto FieldMeta=MakeShared<FJsonObject>();const auto* PMap=P->GetMetaDataMap();if(PMap){if(PMap->Num()>MaxProperties)return false;int32 Chars=0;for(const auto& M:*PMap){if((Chars+=M.Key.ToString().Len()+M.Value.Len())>MaxText)return false;FieldMeta->SetStringField(M.Key.ToString(),M.Value);}}V->SetObjectField(TEXT("metadata"),FieldMeta);
+                if(auto* Bool=CastField<FBoolProperty>(P)){V->SetNumberField(TEXT("bool_byte_mask"),Bool->GetByteMask());V->SetNumberField(TEXT("bool_field_mask"),Bool->GetFieldMask());}
+                auto Type=[&](UObject* O,const TCHAR* Key)->bool{if(!RuntimeType(O))return false;if(Initial)S.Types.Emplace(O);V->SetObjectField(Key,Identity(O));return true;};
+                if(auto* C=CastField<FClassProperty>(P)){return C->PropertyClass.IsResolved()&&C->MetaClass.IsResolved()&&Type(C->PropertyClass.Get(),TEXT("property_class"))&&Type(C->MetaClass.Get(),TEXT("meta_class"));}
+                if(auto* O=CastField<FObjectProperty>(P))return O->PropertyClass.IsResolved()&&Type(O->PropertyClass.Get(),TEXT("object_class"));
+                if(auto* Struct=CastField<FStructProperty>(P))return Struct->Struct.IsResolved()&&Type(Struct->Struct.Get(),TEXT("struct"));
+                UEnum* Enum=nullptr;if(auto* E=CastField<FEnumProperty>(P)){Enum=E->GetEnum();auto Under=MakeShared<FJsonObject>();if(!Describe(E->GetUnderlyingProperty(),Under,Depth+1))return false;V->SetObjectField(TEXT("underlying"),Under);}else if(auto* Byte=CastField<FByteProperty>(P))Enum=Byte->Enum;
+                if(Enum){if(!Type(Enum,TEXT("enum"))||Enum->NumEnums()>256)return false;auto Values=MakeShared<FJsonObject>();for(int32 I=0;I<Enum->NumEnums();++I)Values->SetStringField(Enum->GetNameByIndex(I).ToString(),LexToString(Enum->GetValueByIndex(I)));V->SetObjectField(TEXT("enum_values"),Values);return true;}
+                if(auto* A=CastField<FArrayProperty>(P)){auto Inner=MakeShared<FJsonObject>();if(!Describe(A->Inner,Inner,Depth+1))return false;V->SetObjectField(TEXT("inner"),Inner);return true;}
+                if(auto* A=CastField<FSetProperty>(P)){auto Inner=MakeShared<FJsonObject>();if(!Describe(A->ElementProp,Inner,Depth+1))return false;V->SetObjectField(TEXT("element"),Inner);return true;}
+                if(auto* A=CastField<FMapProperty>(P)){auto Key=MakeShared<FJsonObject>(),Value=MakeShared<FJsonObject>();if(!Describe(A->KeyProp,Key,Depth+1)||!Describe(A->ValueProp,Value,Depth+1))return false;V->SetObjectField(TEXT("key"),Key);V->SetObjectField(TEXT("value"),Value);return true;}
+                return CastField<FNumericProperty>(P)||CastField<FBoolProperty>(P)||CastField<FStrProperty>(P)||CastField<FNameProperty>(P)||CastField<FTextProperty>(P);
+            };
+            TArray<TSharedPtr<FJsonValue>> Parameters;for(TFieldIterator<FProperty> It(F,EFieldIteratorFlags::ExcludeSuper);It;++It){FProperty* P=*It;if(P->GetOwnerStruct()!=F||!P->HasAllPropertyFlags(CPF_Parm))return false;auto V=MakeShared<FJsonObject>();if(!Describe(P,V,0))return false;Parameters.Add(MakeShared<FJsonValueObject>(V));}
+            if(Initial)S.Fields=Current;else if(S.Fields!=Current)return false;Row->SetArrayField(TEXT("parameters"),Parameters);
+        }return true;
+    }
     bool Snapshot(TSharedRef<FJsonObject>& Out,bool Initial)
     {
         UClass* Schema=SchemaClass.Get();UObject* Default=SchemaDefault.Get();
@@ -798,10 +888,17 @@ struct FTickRefreshSources
             }
             Out->SetObjectField(Names[I].ToString(),Row);
         }
-        return true;
+        return CallSnapshot(Out,Initial);
     }
-    bool Bind()
+    bool Bind(FContext& C)
     {
+        TArray<UEdGraph*> Graphs;C.Blueprint->GetAllGraphs(Graphs);
+        for(UEdGraph* G:Graphs)for(UEdGraphNode* N:G->Nodes)if(auto* Call=Cast<UK2Node_CallFunction>(N))
+        {
+            UFunction* F=TickNativeCallSource(Call);if(!F)return false;bool Seen=false;for(const auto& S:Calls)Seen|=S->Function.Get()==F;if(Seen)continue;
+            auto S=MakeUnique<FCallSource>();S->Function.Reset(F);S->Owner.Reset(Cast<UClass>(F->GetOuter()));S->CDO.Reset(S->Owner->GetDefaultObject(false));Calls.Add(MoveTemp(S));
+        }
+        if(!Calls.IsEmpty()){CallNodeDefault.Reset(UK2Node_CallFunction::StaticClass()->GetDefaultObject(false));Holds.Emplace(UK2Node_CallFunction::StaticClass());}
         SchemaDefault.Reset(SchemaClass->GetDefaultObject(false));
         for(UObject* O:{static_cast<UObject*>(AActor::StaticClass()),static_cast<UObject*>(UEdGraph::StaticClass()),static_cast<UObject*>(UK2Node_Event::StaticClass()),static_cast<UObject*>(UK2Node_FunctionEntry::StaticClass())})Holds.Emplace(O);
         return Snapshot(Before,true);
@@ -812,34 +909,41 @@ bool RefreshTickAdmission(FContext& C,FResult& R)
 {
     if(C.GeneratedParents||C.bSkeletal)return Fail(R,TEXT("blueprint_tick_refresh_owner_pending"),TEXT("Generated-parent or skeletal refresh remains incomplete; no writer"));
     TArray<UEdGraph*> GraphsNow;C.Blueprint->GetAllGraphs(GraphsNow);if(GraphsNow.Num()>MaxGraphs)return false;
+    int32 TotalPins=0;bool LinkedCall=false;TSet<FGuid> GraphGuids;
     for(UEdGraph* G:GraphsNow)
     {
-        if(!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||!G->Schema.GetGCPtr().IsResolved()||G->Schema.Get()!=UEdGraphSchema_K2::StaticClass()||G->GetOutermost()!=C.Blueprint->GetOutermost()||G->Nodes.Num()>MaxNodes)
+        if(!Loaded(G)||G->GetClass()!=UEdGraph::StaticClass()||!G->Schema.GetGCPtr().IsResolved()||G->Schema.Get()!=UEdGraphSchema_K2::StaticClass()||G->GetOutermost()!=C.Blueprint->GetOutermost()||G->Nodes.Num()>MaxNodes||!G->GraphGuid.IsValid()||GraphGuids.Contains(G->GraphGuid))
             return Fail(R,TEXT("blueprint_tick_refresh_graph_scope_pending"),TEXT("Exact resident K2-schema stock graph required; external/custom graph schema remains incomplete"));
+        GraphGuids.Add(G->GraphGuid);TSet<UEdGraphNode*> Nodes;TSet<UEdGraphPin*> Pins;TSet<FGuid> Guids;
+        for(UEdGraphNode* N:G->Nodes){if(!Loaded(N)||Nodes.Contains(N)||!N->NodeGuid.IsValid()||Guids.Contains(N->NodeGuid))return Fail(R,TEXT("blueprint_tick_refresh_node_inventory_pending"),TEXT("Unique held current graph nodes/GUIDs required"));Nodes.Add(N);Guids.Add(N->NodeGuid);for(UEdGraphPin* P:N->Pins){if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||Pins.Contains(P)||++TotalPins>MaxPins)return Fail(R,TEXT("blueprint_tick_refresh_pin_inventory_pending"),TEXT("Bounded unique current node pins required"));Pins.Add(P);}}
         for(UEdGraphNode* N:G->Nodes)
         {
-            if(!Loaded(N)||N->GetOuter()!=G||!N->NodeGuid.IsValid()||(N->GetClass()!=UK2Node_Event::StaticClass()&&N->GetClass()!=UK2Node_FunctionEntry::StaticClass()))
-                return Fail(R,TEXT("blueprint_tick_refresh_node_scope_pending"),TEXT("Exact stock unlinked AActor Event nodes or default UserConstructionScript FunctionEntry1 required; other valid original nodes remain incomplete"));
-            const auto* Event=Cast<UK2Node_Event>(N);const auto* Entry=Cast<UK2Node_FunctionEntry>(N);
-            const FMemberReference& Reference=Event?Event->EventReference:Entry->FunctionReference;
+            if(!Loaded(N)||N->GetOuter()!=G||!N->NodeGuid.IsValid()||(N->GetClass()!=UK2Node_Event::StaticClass()&&N->GetClass()!=UK2Node_FunctionEntry::StaticClass()&&N->GetClass()!=UK2Node_CallFunction::StaticClass()))
+                return Fail(R,TEXT("blueprint_tick_refresh_node_scope_pending"),TEXT("Exact stock AActor Event, default UserConstructionScript entry1 and fixed-signature stock native CallFunction nodes required; other valid original nodes remain incomplete"));
+            const auto* Event=Cast<UK2Node_Event>(N);const auto* Entry=Cast<UK2Node_FunctionEntry>(N);const auto* Call=Cast<UK2Node_CallFunction>(N);
+            const FMemberReference& Reference=Event?Event->EventReference:Entry?Entry->FunctionReference:Call->FunctionReference;
             // The public GetMemberParentClass and TSubclassOf getters resolve.
             // Reuse the existing EventApi direct reflected-cell admission first.
             auto* ReferenceStruct=FMemberReference::StaticStruct();auto* ParentProperty=FindFProperty<FObjectProperty>(ReferenceStruct,TEXT("MemberParent"));
             if(!ParentProperty||ParentProperty->GetClass()!=FObjectProperty::StaticClass()||ParentProperty->GetOwnerStruct()!=ReferenceStruct||ParentProperty->ArrayDim!=1||ParentProperty->HasSetterOrGetter()||ParentProperty->GetSize()!=sizeof(TObjectPtr<UObject>))return Fail(R,TEXT("blueprint_tick_refresh_reference_layout_pending"),TEXT("Exact native member-parent reflected slot required; no resolving getter dispatched"));
             const auto* ParentSlot=ParentProperty->ContainerPtrToValuePtr<TObjectPtr<UObject>>(&Reference);
-            if(!ParentSlot||!ParentSlot->IsResolved()||ParentSlot->Get()!=AActor::StaticClass()||Reference.IsSelfContext()||Reference.IsLocalScope()||Reference.GetMemberGuid().IsValid())return Fail(R,TEXT("blueprint_tick_refresh_signature_scope_pending"),TEXT("Already-resolved external AActor native reference required; self/custom/redirected/generated signatures remain incomplete"));
+            if(!ParentSlot||!ParentSlot->IsResolved()||(!Call&&ParentSlot->Get()!=AActor::StaticClass())||Reference.IsSelfContext()||Reference.IsLocalScope()||Reference.GetMemberGuid().IsValid())return Fail(R,TEXT("blueprint_tick_refresh_signature_scope_pending"),TEXT("Already-resolved external native Actor or function-library reference required; self/custom/redirected/generated signatures remain incomplete"));
             const FName Member=Reference.GetMemberName();
+            if(Call){if(!TickNativeCallSource(Call))return Fail(R,TEXT("blueprint_tick_refresh_call_scope_pending"),TEXT("Resident fixed-signature static native Engine BlueprintFunctionLibrary call required; latent/member/interface/custom-thunk-metadata/wildcard/dynamic-signature/generated profiles remain incomplete"));LinkedCall=true;}
+
             if(Event&&(!Event->bOverrideFunction||!Event->CustomFunctionName.IsNone()||(Member!=TEXT("ReceiveBeginPlay")&&Member!=TEXT("ReceiveActorBeginOverlap")&&Member!=TEXT("ReceiveTick"))))return Fail(R,TEXT("blueprint_tick_refresh_signature_scope_pending"),TEXT("Only the three resident native Actor default Event signatures are admitted"));
             if(Entry&&(Member!=TEXT("UserConstructionScript")||G->GetFName()!=TEXT("UserConstructionScript")||G->Nodes.Num()!=1||!Entry->CustomGeneratedFunctionName.IsNone()||!Entry->LocalVariables.IsEmpty()||!Entry->UserDefinedPins.IsEmpty()||Entry->GetExtraFlags()!=0||N->Pins.Num()!=1))return Fail(R,TEXT("blueprint_tick_refresh_construction_entry_pending"),TEXT("Exact default UCS entry1 with no local/user pins/custom flags required; other functions remain incomplete"));
             TSet<FString> Names;
             for(UEdGraphPin* P:N->Pins)
             {
-                if(!P||P->GetOwningNodeUnchecked()!=N||!P->LinkedTo.IsEmpty()||P->ParentPin||!P->SubPins.IsEmpty()||P->bOrphanedPin)return Fail(R,TEXT("blueprint_tick_refresh_pin_scope_pending"),TEXT("Unlinked unsplit current Event logical pins required before refresh; no writer"));
+                if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||(Entry&&!P->LinkedTo.IsEmpty())||P->ParentPin||!P->SubPins.IsEmpty()||P->bOrphanedPin||!P->PinId.IsValid()||(P->Direction!=EGPD_Input&&P->Direction!=EGPD_Output)||!P->DefaultObject.IsResolved())return Fail(R,TEXT("blueprint_tick_refresh_pin_scope_pending"),TEXT("Current unsplit Event/native-call logical pins or unlinked default UCS exec required; no writer"));
+                TSet<UEdGraphPin*> Linked;for(UEdGraphPin* Peer:P->LinkedTo){if(!Peer||!Pins.Contains(Peer)||Peer->WasTrashed()||Peer->GetOwningNodeUnchecked()->GetGraph()!=G||Peer->Direction==P->Direction||!Peer->LinkedTo.Contains(P)||Linked.Contains(Peer))return Fail(R,TEXT("blueprint_tick_refresh_edge_pending"),TEXT("Same-graph reciprocal unique opposite-direction logical links required before refresh"));Linked.Add(Peer);}
                 if(Entry&&(P->PinName!=UEdGraphSchema_K2::PN_Then||P->Direction!=EGPD_Output||P->PinType.PinCategory!=UEdGraphSchema_K2::PC_Exec))return Fail(R,TEXT("blueprint_tick_refresh_construction_pin_pending"),TEXT("Default UCS output exec then pin required; no full signature expansion"));
                 const FString Key=LexToString(static_cast<int32>(P->Direction))+TEXT(":")+P->PinName.ToString().ToLower();if(P->PinName.IsNone()||Names.Contains(Key))return false;Names.Add(Key);
             }
         }
     }
+    R.Data->SetBoolField(TEXT("raw_tick_linked_call_profile"),LinkedCall);
     return CurrentDerivedTarget(C,R);
 }
 bool RefreshTickNodes(FContext& C,const FObservation& Before,FObservation& After,FResult& R,FTickRefreshSources& Source)
@@ -847,7 +951,7 @@ bool RefreshTickNodes(FContext& C,const FObservation& Before,FObservation& After
     if(!RefreshTickAdmission(C,R))return false;
     TArray<TStrongObjectPtr<UObject>> Holds;TArray<UEdGraph*> GraphsNow;C.Blueprint->GetAllGraphs(GraphsNow);
     const auto BPIdentity=Identity(C.Blueprint.Get());TStrongObjectPtr<UClass> Parent(C.Blueprint->ParentClass.Get());
-    for(UEdGraph* G:GraphsNow){Holds.Emplace(G);for(UEdGraphNode* N:G->Nodes)Holds.Emplace(N);}
+    for(UEdGraph* G:GraphsNow){Holds.Emplace(G);for(UEdGraphNode* N:G->Nodes){Holds.Emplace(N);for(UEdGraphPin* P:N->Pins){Holds.Emplace(P->DefaultObject.Get());Holds.Emplace(P->PinType.PinSubCategoryObject.Get());if(!CurrentDerivedTarget(C,R))return false;}}}
     if(!CurrentDerivedTarget(C,R))return false;
     if(!Source.Current())return Fail(R,TEXT("blueprint_tick_refresh_source_changed_before_sdk"),TEXT("Retained schema/native signature changed after configured writes; no refresh/fullcompile/save"),true);
     R.Stage=TEXT("refresh_tick_nodes");R.bAttempted=true;R.Data->SetNumberField(TEXT("refresh_nodes_calls"),1);R.Data->SetBoolField(TEXT("raw_tick_refresh_returned"),false);
@@ -882,6 +986,8 @@ bool Compile(FContext& C, const FObservation& Before, FObservation& After, FResu
     if (!CurrentDerivedTarget(C, R)) { return false; }
     R.bCompileAttempted = true; Count(R, TEXT("full_compile_attempts")); auto Result = Cubeless::UE58::CompileBlueprint(C.Blueprint->GetPathName(), false, false); R.Data->SetObjectField(TEXT("compile_result"), Result);
     bool Passed = false; if (Result->TryGetBoolField(TEXT("compiled"), Passed)) { R.Compiled = Passed; }
+    bool LinkedCall=false;R.Data->TryGetBoolField(TEXT("raw_tick_linked_call_profile"),LinkedCall);
+    if(LinkedCall){bool Known=true,Unknown=false;Result->TryGetBoolField(TEXT("change_state_known"),Known);Result->TryGetBoolField(TEXT("outcome_unknown"),Unknown);if(!Known||Unknown||!R.Compiled.IsSet()||!Passed)return Fail(R,TEXT("blueprint_tick_refresh_compile_failed_or_unobservable"),TEXT("Returned compiler prefix retained; failure/missing/unknown status stops before target/source reacquisition or save, without retry."),true);}
     // Only the selected child may be reinstanced. Keep the original parent
     // roles alive and verify them before adopting current child pointers.
     if(C.NativeAnim){C.NativeAnim->Rebinding=true;}
@@ -1015,7 +1121,7 @@ static FString SetActorTickSettingsWork(const FString& BlueprintPath, double Tic
         bDryRun=RawBool(TEXT("dry_run"),true);bCompile=RawBool(TEXT("compile"),true);bSave=RawBool(TEXT("save"),true);Refresh=RawBool(TEXT("refresh_nodes"),false);
     }
     Init(R, TEXT("set_blueprint_actor_tick_settings"), !bDryRun && bCompile, !bDryRun && bCompile && bSave);
-    if(Raw){R.Data->SetObjectField(TEXT("raw_settings"),Raw);R.Data->SetBoolField(TEXT("raw_tick_presence_contract"),true);R.Data->SetStringField(TEXT("raw_tick_scope"),TEXT("Original JSON TryGetBool/TryGetNumber coercion with current CDO fallback for omitted/unreadable settings, frequency then explicit interval float32/clamp0. Existing parent compiler eligibility/lifetime/source/current protection and compile/save core are retained. Actual refresh admits empty graphs/exact unlinked native AActor default Event nodes and default UCS FunctionEntry1 and checks logical pin roles. Raw no-compile uses the requested CDO flag; full compile checks known parent-reset CanEverTick and reports requested versus actual separately. Parent-false active/ambiguous Tick and wider refresh remain incomplete; Named10 unchanged."));}
+    if(Raw){R.Data->SetObjectField(TEXT("raw_settings"),Raw);R.Data->SetBoolField(TEXT("raw_tick_presence_contract"),true);R.Data->SetStringField(TEXT("raw_tick_scope"),TEXT("Original JSON TryGetBool/TryGetNumber coercion with current CDO fallback for omitted/unreadable settings, frequency then explicit interval float32/clamp0. Existing parent compiler eligibility/lifetime/source/current protection and compile/save core are retained. Actual refresh admits empty graphs/exact native AActor default Events, default unlinked UCS FunctionEntry1 and fixed-signature static native Engine BlueprintFunctionLibrary CallFunction nodes; authored logical pins/defaults/reciprocal links and native signature/metadata sources are checked. Raw no-compile uses the requested CDO flag; full compile checks known parent-reset CanEverTick and reports requested versus actual separately. Parent-false active/ambiguous Tick, generated parents, latent/member/interface/dynamic-signature/custom-node refresh profiles remain incomplete; Named10 unchanged."));}
     R.Data->SetBoolField(TEXT("dry_run"), bDryRun); R.Data->SetBoolField(TEXT("caller_compile_requested"), bCompile); R.Data->SetBoolField(TEXT("caller_save_requested"), bSave); R.Data->SetBoolField(TEXT("refresh_nodes_requested"), Refresh);
     if (!Raw&&(!FMath::IsFinite(TickHz) || !FMath::IsFinite(TickInterval) || FMath::Abs(TickHz) > static_cast<double>(MAX_flt) || FMath::Abs(TickInterval) > static_cast<double>(MAX_flt))) { Fail(R, TEXT("blueprint_tick_numeric_inputs_invalid"), TEXT("Finite native-float-representable original tick values required before resolving or mutation.")); return Encode(R); }
     FContext C; if (!Prepare(BlueprintPath, FString(), false, C, R)) { return Encode(R); } FObservation Before;
@@ -1048,7 +1154,7 @@ static FString SetActorTickSettingsWork(const FString& BlueprintPath, double Tic
     if(Raw&&Refresh&&!bDryRun&&bCompile)
     {
         if(!RefreshTickAdmission(C,R))return Encode(R);
-        RefreshSource=MakeUnique<FTickRefreshSources>();if(!RefreshSource->Bind()){Fail(R,TEXT("blueprint_tick_refresh_source_unobservable"),TEXT("Resident exact K2 schema CDO/native AActor signatures required; no CDO creation or writer"));return Encode(R);}
+        RefreshSource=MakeUnique<FTickRefreshSources>();if(!RefreshSource->Bind(C)){Fail(R,TEXT("blueprint_tick_refresh_source_unobservable"),TEXT("Resident exact K2 schema/native Event and fixed native call signature/CDO sources required; no CDO creation or writer"));return Encode(R);}
     }
     if (!CompilerTickPolicy(C, bCanEverTick, R, Raw.IsValid(), !bDryRun&&bCompile)) { return Encode(R); }
     R.Data->SetBoolField(TEXT("can_apply"), true);

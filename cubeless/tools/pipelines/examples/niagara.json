@@ -1,0 +1,11 @@
+{
+  "system": "/Game/_MCP_Temp/NiagaraGenerated/Production/CubelessTests/ExampleRun_001/NS_Weather",
+  "preset": "rain",
+  "settings": {"spawn_rate":32,"spawn_box_size":[300,300,150]},
+  "user_parameters":[{"name":"Intensity","type":"float","value":1.5}],
+  "save": true,
+  "blueprint": {
+    "path":"/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_001/BP_WeatherControl",
+    "component":"WeatherFX","mode":"existing","allow_official_template_write":true
+  }
+}

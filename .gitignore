@@ -7,8 +7,27 @@
 /Plugins/*
 !/Plugins/CubelessMCP_UE58/
 
-# Local Unreal projects, migration records, pipelines and verification evidence.
-/cubeless/
+# Optional production runner sources only; local projects/results stay ignored.
+!/cubeless/
+/cubeless/*
+!/cubeless/tools/
+/cubeless/tools/*
+!/cubeless/tools/official_mcp_client.py
+!/cubeless/tools/pipeline-requirements.txt
+!/cubeless/tools/pipelines/
+/cubeless/tools/pipelines/*
+!/cubeless/tools/pipelines/__init__.py
+!/cubeless/tools/pipelines/recorded_calls.py
+!/cubeless/tools/pipelines/recorded_call_storage.py
+!/cubeless/tools/pipelines/result_contracts.py
+!/cubeless/tools/pipelines/production_session.py
+!/cubeless/tools/pipelines/production_blueprint.py
+!/cubeless/tools/pipelines/production_niagara.py
+!/cubeless/tools/pipelines/production_pcg.py
+!/cubeless/tools/pipelines/README.md
+!/cubeless/tools/pipelines/examples/
+/cubeless/tools/pipelines/examples/*
+!/cubeless/tools/pipelines/examples/*.json
 /AGENTS.md
 
 # Generated build/runtime state is never distribution source.
@@ -26,3 +45,4 @@
 # Development-only tests and owned verification fixture sources.
 /Plugins/CubelessMCP_UE58/Content/Python/tests/
 /Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Tests/
+/Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/DomainExpansion/CubelessDomainTests.cpp

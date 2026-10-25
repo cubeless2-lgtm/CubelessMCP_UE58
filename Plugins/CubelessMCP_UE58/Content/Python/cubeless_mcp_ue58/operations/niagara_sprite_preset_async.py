@@ -102,7 +102,10 @@ def _adopt(entry,native):
     result['stage']=native['stage']
     result['validation'].update(native_terminal_observed=native['data']['native_job_terminal'],compile_preset_save_proof_native_authoritative=True)
     result['retry'].update(automatic_retry=False,duplicate_risk='held_sprite_preset_job_and_journal_no_replay')
-    entry['last_native']=copy.deepcopy(native)
+    # Snapshot decoding returns a new plain JSON tree. _adopt copies values
+    # into the journal; neither path mutates this returned tree afterwards.
+    entry['last_native']=native
+    _canonical_stage_views(result['data'])
 
 def _checkpoint_native(entry, native, force=False):
     revision = native["data"].get("native_checkpoint_revision")
@@ -158,6 +161,16 @@ def _seal(entry, recovery):
     if entry.get("finalization_attempted"):
         raise state.OperationError("niagara_sprite_preset_async_finalize_already_attempted", "Finalization is not replayed")
     result = entry["journal"].result
+    # Preserve the actual returned Native text, not a reconstruction of the
+    # adopted/compacted public view. This is one terminal diagnostic write.
+    raw=entry.get('last_native',{}).get('_raw_native_json')
+    if type(raw) is str:
+        payload=raw.encode('utf-8')
+        path=entry['journal'].path.with_suffix('.native.json')
+        with path.open('xb') as stream:
+            stream.write(payload);stream.flush();os.fsync(stream.fileno())
+        result['data']['native_terminal_diagnostic']={'path':str(path),'bytes':len(payload),
+            'sha256':hashlib.sha256(payload).hexdigest(),'representation':'actual_returned_native_JSON_UTF8'}
     result["data"]["elapsed_seconds"] = round(time.perf_counter() - entry["journal"].started, 6)
     entry["sealed_result"] = copy.deepcopy(result)
     entry["finalization_attempted"] = True
@@ -181,13 +194,77 @@ def _delivery_failed(entry, error):
             entry["delivery_error"] = str(delivery_error)[:1024]
 
 
+def _canonical_stage_views(data):
+    """Deduplicate identical diagnostic mirrors without losing stage evidence."""
+    canonical=data.get('stage_results')
+    refs=dict(data.get('wire_diagnostic_references',{}))
+    if type(canonical) is list:
+        mirror=data.get('legacy_Named_result');legacy=data.get('legacy_result')
+        same_mirror=type(mirror) is dict and mirror==legacy
+        for key in ('session_execution','legacy_result'):
+            view=data.get(key)
+            if type(view) is dict and view.get('stage_results')==canonical:
+                view.pop('stage_results');view['stage_results_reference']='data.stage_results'
+                refs['data.'+key+'.stage_results']='data.stage_results'
+        # This adapter-generated mirror is the same public legacy projection.
+        if same_mirror:
+            data.pop('legacy_Named_result');data['legacy_Named_result_reference']='data.legacy_result'
+            refs['data.legacy_Named_result']='data.legacy_result'
+    data['wire_diagnostic_references']=refs
+    data['wire_diagnostic_reference_contract']='Canonical data.stage_results; diagnostic mirrors use explicit references. Actual original Native terminal text is preserved separately.'
+    return refs
+
+
+def _wire_projection(entry):
+    """Keep canonical observations once; full sealed journal stays unchanged."""
+    result=copy.deepcopy(entry['sealed_result']);data=result['data']
+    refs=_canonical_stage_views(data)
+    payload=entry['journal'].path.read_bytes()
+    data['full_result_journal']={'path':str(entry['journal'].path),'bytes':len(payload),'sha256':hashlib.sha256(payload).hexdigest()}
+    # Leave room for the reflected standard11 JSON escaping below the unchanged
+    # 16MiB boundary. Oversized diagnostic observations remain in that journal;
+    # original outcome, actual mutation/compile/save and retry fields stay live.
+    def wire_bytes():
+        fields={k+'_json':json.dumps(result[k],ensure_ascii=False,allow_nan=False) for k in ('changes','compile','save','validation','retry','data')}
+        return len(json.dumps(fields,ensure_ascii=False,allow_nan=False).encode('utf-8'))
+    if wire_bytes()>15*1024*1024:
+        for key in ('graph_observation_evidence','stage_results','legacy_result','last_child_result','session_execution'):
+            if key in data:
+                data.pop(key)
+                data.setdefault('externalized_diagnostic_fields',{})[key]='full_result_journal.result.data.'+key
+        # Every mirror resolves to its original field in the sealed journal,
+        # including the original legacy field (which still has stage_results).
+        data['wire_diagnostic_references']={source:'full_result_journal.result.'+target for source,target in refs.items()}
+        if 'legacy_Named_result_reference' in data:
+            data['legacy_Named_result_reference']='full_result_journal.result.data.legacy_result'
+        for key in ('session_execution','legacy_result'):
+            if type(data.get(key)) is dict and 'stage_results_reference' in data[key]:
+                data[key]['stage_results_reference']='full_result_journal.result.data.stage_results'
+        data['wire_diagnostic_reference_contract']='Large diagnostics are stored unchanged in full_result_journal; this is a terminal outcome projection, not a complete inline legacy result.'
+    if wire_bytes()>15*1024*1024:
+        # Exceptional undecoded/transport diagnostic blobs can occur outside the
+        # regular graph fields. Keep the original outcome, not a fabricated
+        # engine failure, and point all diagnostic detail to its durable copy.
+        result['data']={key:copy.deepcopy(data[key]) for key in (
+            'full_result_journal','native_terminal_diagnostic','native_outcome',
+            'operation_complete','native_job_terminal','native_job_id','native_terminal_observed',
+            'mutation_performed','mutation_state_unknown','change_state_known',
+            'native_mutation_attempted','execution_mutation_attempted','workflow_recovery_required') if key in data}
+        result['data']['wire_diagnostics_externalized']=True
+        result['data']['wire_diagnostic_reference_contract']='All diagnostic details are in full_result_journal.result.data. Original outcome/change/compile/save/retry fields are retained.'
+    if wire_bytes()>15*1024*1024:
+        raise state.OperationError('niagara_sprite_preset_delivery_oversized',
+            'Outcome is sealed in '+str(entry['journal'].path)+'; diagnostic projection still exceeds transport budget; engine request is not retried')
+    return result
+
+
 def _deliver(entry):
     if entry.get("cu_delivery_attempted"):
         raise state.OperationError("niagara_sprite_preset_async_delivery_already_attempted", "CU delivery already attempted; no second final")
     if not entry.get("journal_finalized") or type(entry.get("sealed_result")) is not dict:
         raise state.OperationError("niagara_sprite_preset_async_final_not_sealed", "Durable final result is required before typed final delivery")
     entry["cu_delivery_attempted"] = True
-    entry["result_object"].set_editor_property("value", reflected_result(copy.deepcopy(entry["sealed_result"])))
+    entry["result_object"].set_editor_property("value", reflected_result(_wire_projection(entry)))
     # CompleteValue may itself call SetError and return False. Once entered,
     # no fallback completion is safe, even when its return/publication is uncertain.
     entry["cu_completion_call_entered"] = True

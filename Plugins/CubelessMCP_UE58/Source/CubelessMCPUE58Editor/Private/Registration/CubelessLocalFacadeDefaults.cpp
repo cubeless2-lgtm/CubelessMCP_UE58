@@ -11,6 +11,9 @@
 #include "ToolsetRegistry/ToolsetRegistrySubsystem.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UObjectGlobals.h"
+#if WITH_DEV_AUTOMATION_TESTS
+#include "Misc/AutomationTest.h"
+#endif
 
 namespace Cubeless::Registration
 {
@@ -20,13 +23,22 @@ using FToolset=UE::ToolsetRegistry::FToolset;
 using FOutput=TValueOrError<FString,FString>;
 constexpr const TCHAR* Names[] = {
     TEXT("cubeless_mcp_ue58.registration.discovery_toolset.CubelessDiscoveryTools"),
-    TEXT("cubeless_mcp_ue58.registration.toolsets.CubelessPythonDiagnostics")};
+    TEXT("cubeless_mcp_ue58.registration.toolsets.CubelessPythonDiagnostics"),
+    TEXT("cubeless_mcp_ue58.registration.domain_expansion_toolset.CubelessDomainExpansionTools")};
 constexpr const TCHAR* Paths[] = {
     TEXT("/CubelessMCP_UE58/Python/cubeless_mcp_ue58/registration/discovery_toolset_PY.CubelessDiscoveryTools"),
-    TEXT("/CubelessMCP_UE58/Python/cubeless_mcp_ue58/registration/toolsets_PY.CubelessPythonDiagnostics")};
+    TEXT("/CubelessMCP_UE58/Python/cubeless_mcp_ue58/registration/toolsets_PY.CubelessPythonDiagnostics"),
+    TEXT("/CubelessMCP_UE58/Python/cubeless_mcp_ue58/registration/domain_expansion_toolset_PY.CubelessDomainExpansionTools")};
 const TArray<FString> Methods[] = {
     {TEXT("list_toolsets"),TEXT("describe_toolset"),TEXT("call_tool"),TEXT("manage_tools")},
-    {TEXT("health"),TEXT("get_operation"),TEXT("execute_command_json"),TEXT("get_python_api_info_json"),TEXT("get_mcp_capabilities")}};
+    {TEXT("health"),TEXT("get_operation"),TEXT("execute_command_json"),TEXT("get_python_api_info_json"),TEXT("get_mcp_capabilities")},
+    {TEXT("configure_pcg_custom_hlsl_elements"),TEXT("inspect_niagara_emitter_execution_modes"),TEXT("inspect_controlrig_physics_units"),TEXT("inspect_anim_blueprint_compiled_layout"),
+     TEXT("inspect_chaos_body_solver_overrides"),TEXT("configure_chaos_body_solver_overrides"),TEXT("inspect_chaos_cloth_solver_properties"),TEXT("inspect_chaos_cloth_snapshot_history"),
+     TEXT("inspect_controlrig_physics_unit_catalog"),TEXT("build_controlrig_physics_graph_variant"),TEXT("inspect_anim_blueprint_authoring_nodes"),TEXT("build_anim_blueprint_graph_variant"),
+     TEXT("inspect_niagara_stateless_authoring"),TEXT("create_niagara_stateless_system"),TEXT("build_niagara_stateless_variant"),TEXT("configure_pcg_manual_inspection"),
+     TEXT("inspect_pcg_manual_override_targets"),TEXT("edit_pcg_manual_point_override"),TEXT("inspect_chaos_cloth_dataflow_node_catalog"),TEXT("build_chaos_cloth_dataflow_graph"),
+     TEXT("create_chaos_cloth_asset_from_template"),TEXT("inspect_chaos_cloth_snapshot_state"),TEXT("edit_chaos_cloth_snapshot_history"),TEXT("inspect_chaos_body_collision"),
+     TEXT("configure_chaos_body_collision"),TEXT("inspect_chaos_constraint_profile"),TEXT("configure_chaos_constraint_profile"),TEXT("configure_physics_asset_constraint_profile")}};
 struct FState
 {
     FState(int32 InRole,UClass* InClass):Role(InRole),Class(InClass){}
@@ -40,7 +52,7 @@ struct FState
     TAtomic<int32> InFlight{0};
     bool Preparing=false;
 };
-TSharedPtr<FState> Owned[2];
+TSharedPtr<FState> Owned[UE_ARRAY_COUNT(Names)];
 bool Busy=false;
 struct FBusy {FBusy(){Busy=true;}~FBusy(){Busy=false;}};
 
@@ -51,7 +63,7 @@ bool Live(const UObject* Object)
 int32 RoleOf(UClass* Class)
 {
     if(!Live(Class)){return INDEX_NONE;}
-    for(int32 Role=0;Role<2;++Role){if(Class->GetPathName().Equals(Paths[Role],ESearchCase::CaseSensitive)){return Role;}}
+    for(int32 Role=0;Role<UE_ARRAY_COUNT(Names);++Role){if(Class->GetPathName().Equals(Paths[Role],ESearchCase::CaseSensitive)){return Role;}}
     return INDEX_NONE;
 }
 bool Current(const TSharedRef<FState>& S)
@@ -74,6 +86,24 @@ bool CapturedOwner(const TSharedRef<FState>& S,const TSharedPtr<FToolset>& Handl
         &&HasRetainedToolsetIdentity(Now.GetValue()->ToolsetRegistry,Handler)&&Current(S);
 }
 
+TArray<FString> EmptyDefaults(int32 Role,const FString& Method)
+{
+    TArray<FString> Empty;
+    if(Role==0&&(Method==TEXT("list_toolsets")||Method==TEXT("describe_toolset")))Empty.Add(TEXT("query"));
+    if(Role==0&&Method==TEXT("manage_tools"))Empty={TEXT("tool_name"),TEXT("category")};
+    if(Role==1&&Method==TEXT("execute_command_json"))Empty.Add(TEXT("params_json"));
+    if(Role!=2)return Empty;
+    // This fixed role admits only the 28 captured domain methods, not arbitrary classes/fields.
+    if(!Method.StartsWith(TEXT("inspect_")))Empty.Add(TEXT("operation_id"));
+    if(Method==TEXT("configure_chaos_body_solver_overrides")||Method==TEXT("configure_chaos_body_collision")||
+       Method==TEXT("configure_chaos_constraint_profile")||Method==TEXT("configure_physics_asset_constraint_profile"))Empty.Add(TEXT("expected_state_hash"));
+    if(Method==TEXT("edit_pcg_manual_point_override"))Empty.Append({TEXT("transform"),TEXT("delta_key"),TEXT("expected_state_hash")});
+    if(Method==TEXT("build_chaos_cloth_dataflow_graph"))Empty.Add(TEXT("source_dataflow_path"));
+    if(Method==TEXT("edit_chaos_cloth_snapshot_history"))Empty.Append({TEXT("name"),TEXT("expected_state_hash")});
+    if(Method==TEXT("inspect_chaos_constraint_profile"))Empty={TEXT("actor_path"),TEXT("component_name"),TEXT("physics_asset_path"),TEXT("joint_name")};
+    return Empty;
+}
+
 // JSON is parsed into a private copy. Only the explicitly named defaults/null branches change.
 bool PatchSchema(int32 Role,const FString& Physical,FString& Logical,FString& Error)
 {
@@ -91,10 +121,7 @@ bool PatchSchema(int32 Role,const FString& Physical,FString& Logical,FString& Er
         {Error=TEXT("Foreign facade method schema");return false;}
         const FString Method=Name.Mid(Prefix.Len());
         if(!Methods[Role].Contains(Method)||Seen.Contains(Method)){Error=TEXT("Unexpected/duplicate facade method");return false;}Seen.Add(Method);
-        TArray<FString> Empty;
-        if(Role==0&&(Method==TEXT("list_toolsets")||Method==TEXT("describe_toolset"))){Empty.Add(TEXT("query"));}
-        if(Role==0&&Method==TEXT("manage_tools")){Empty={TEXT("tool_name"),TEXT("category")};}
-        if(Role==1&&Method==TEXT("execute_command_json")){Empty.Add(TEXT("params_json"));}
+        const TArray<FString> Empty=EmptyDefaults(Role,Method);
         const FString Nullable=Role==0?(Method==TEXT("call_tool")?TEXT("arguments"):(Method==TEXT("manage_tools")?TEXT("enabled"):TEXT(""))):TEXT("");
         if(Empty.IsEmpty()&&Nullable.IsEmpty()){continue;}
         const TSharedPtr<FJsonObject>* Input=nullptr;const TSharedPtr<FJsonObject>* Props=nullptr;
@@ -140,10 +167,7 @@ bool Normalize(int32 Role,const FString& Method,const FString& Input,FString& Ou
     // Preserve logical objects/booleans/numeric lexemes; never quote FString public argument contents.
     if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Input),Args,FJsonSerializer::EFlags::StoreNumbersAsStrings)||!Args.IsValid())
     {Error=TEXT("Local facade arguments require a JSON object");return false;}
-    TArray<FString> Empty;
-    if(Role==0&&(Method==TEXT("list_toolsets")||Method==TEXT("describe_toolset"))){Empty.Add(TEXT("query"));}
-    if(Role==0&&Method==TEXT("manage_tools")){Empty={TEXT("tool_name"),TEXT("category")};}
-    if(Role==1&&Method==TEXT("execute_command_json")){Empty.Add(TEXT("params_json"));}
+    const TArray<FString> Empty=EmptyDefaults(Role,Method);
     for(const FString& Key:Empty)
     {
         const auto V=Args->TryGetField(Key);
@@ -208,7 +232,7 @@ FString Report(const TSharedPtr<FState>& S,bool Ok,const FString& Error,bool Res
     R->SetBoolField(TEXT("class_unregister_allowed"),false);
     R->SetBoolField(TEXT("owned_handler_removed"),Removed);
     R->SetNumberField(TEXT("delegated_calls_in_flight"),S.IsValid()?S->InFlight.Load():0);
-    R->SetStringField(TEXT("scope"),TEXT("Fixed Discovery/Diagnostics default/null logical admission only; same original method/future/output. Physical class schema remains physical."));
+    R->SetStringField(TEXT("scope"),TEXT("Fixed Discovery/Diagnostics defaults/null and Domain28 empty-string defaults only; same original method/future/output. Physical class schema remains physical."));
     if(S.IsValid()){R->SetStringField(TEXT("logical_schema_json"),S->Schema);R->SetBoolField(TEXT("active"),S->Active.Load());}
     return Json(R);
 }
@@ -321,6 +345,45 @@ void ShutdownLocalFacadeDefaults()
 {
     for(auto& S:Owned){if(S.IsValid()){S->Active.Store(false);}}
     if(!IsInGameThread()||Busy){return;}
-    FBusy Lock;for(int32 Role=0;Role<2;++Role){FString Error;bool Restored=false,Removed=false;Remove(Role,true,Error,Restored,Removed);}
+    FBusy Lock;for(int32 Role=0;Role<UE_ARRAY_COUNT(Names);++Role){FString Error;bool Restored=false,Removed=false;Remove(Role,true,Error,Restored,Removed);}
 }
+
+#if WITH_DEV_AUTOMATION_TESTS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCubelessDomainDefaultsTest,"CubelessMCP.Domain.Registration.DefaultAdmission",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FCubelessDomainDefaultsTest::RunTest(const FString&)
+{
+    auto Root=MakeShared<FJsonObject>();Root->SetStringField(TEXT("name"),Names[2]);
+    TArray<TSharedPtr<FJsonValue>> Tools;
+    for(const FString& Method:Methods[2])
+    {
+        auto Tool=MakeShared<FJsonObject>(),Input=MakeShared<FJsonObject>(),Props=MakeShared<FJsonObject>();
+        Tool->SetStringField(TEXT("name"),FString(Names[2])+TEXT(".")+Method);Input->SetStringField(TEXT("type"),TEXT("object"));
+        TArray<TSharedPtr<FJsonValue>> Required;
+        auto Fields=EmptyDefaults(2,Method);Fields.Add(TEXT("required_value"));
+        for(const FString& Field:Fields){auto Def=MakeShared<FJsonObject>();Def->SetStringField(TEXT("type"),TEXT("string"));Props->SetObjectField(Field,Def);Required.Add(MakeShared<FJsonValueString>(Field));}
+        Input->SetObjectField(TEXT("properties"),Props);Input->SetArrayField(TEXT("required"),Required);Tool->SetObjectField(TEXT("inputSchema"),Input);Tools.Add(MakeShared<FJsonValueObject>(Tool));
+    }
+    Root->SetArrayField(TEXT("tools"),Tools);const FString Physical=Json(Root);FString Logical,Error;
+    if(!TestTrue(TEXT("Fixed28 optional schema patched"),PatchSchema(2,Physical,Logical,Error)))return false;
+    TSharedPtr<FJsonObject> Parsed;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Logical),Parsed))return false;
+    for(const auto& Value:Parsed->GetArrayField(TEXT("tools")))
+    {
+        auto Tool=Value->AsObject(),Input=Tool->GetObjectField(TEXT("inputSchema"));
+        TestEqual(TEXT("Only actual required field remains"),Input->GetArrayField(TEXT("required")).Num(),1);
+        TestEqual(TEXT("Required field unchanged"),Input->GetArrayField(TEXT("required"))[0]->AsString(),FString(TEXT("required_value")));
+        FString Method=Tool->GetStringField(TEXT("name")).Mid(FCString::Strlen(Names[2])+1),Packed;
+        if(!TestTrue(TEXT("Omitted optional defaults admitted"),Normalize(2,Method,TEXT("{\"required_value\":\"keep\",\"dry_run\":false}"),Packed,Error)))return false;
+        TSharedPtr<FJsonObject> Args;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Packed),Args))return false;
+        TestFalse(TEXT("Explicit false preserved"),Args->GetBoolField(TEXT("dry_run")));
+        for(const FString& Field:EmptyDefaults(2,Method))TestEqual(TEXT("Empty default filled"),Args->GetStringField(Field),FString());
+    }
+    FString Packed;
+    TestFalse(TEXT("Explicit null is not an empty-string default"),Normalize(2,TEXT("create_niagara_stateless_system"),TEXT("{\"operation_id\":null}"),Packed,Error));
+    TestTrue(TEXT("Existing Discovery null route unchanged"),Normalize(0,TEXT("call_tool"),TEXT("{\"arguments\":null}"),Packed,Error));
+    TestTrue(TEXT("Existing Diagnostics empty route unchanged"),Normalize(1,TEXT("execute_command_json"),TEXT("{}"),Packed,Error));
+    TestTrue(TEXT("Existing Diagnostics default filled"),Packed.Contains(TEXT("params_json")));
+    TestEqual(TEXT("Physical schema copy unchanged"),Json(Root),Physical);
+    return true;
+}
+#endif
 }

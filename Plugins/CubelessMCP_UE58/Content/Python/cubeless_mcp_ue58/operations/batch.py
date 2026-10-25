@@ -8655,7 +8655,7 @@ def _normalize(commands_json, stop_on_error):
             if component_original_command == "add_component_to_blueprint":
                 entry["legacy_raw_add_presence"] = True
                 entry["legacy_component_contract"] = "Original ignored component_properties; CreateNode keeps constructor defaults, then only present location/rotation/scale setters in source order before explicit Parent.AddChildNode or SCS.AddNode, then full compile without save; fixed private route, unchanged Named defaults"
-                entry["legacy_component_remaining_scope"] = "Common inactive native Engine scene and movement profiles; specialized Niagara/PCG/CAC/HISM/Widget/light/generated source lifecycle variants, original arbitrary class discovery/name behavior, JSON/float bounds and full legacy/cold/runtime parity remain incomplete"
+                entry["legacy_component_remaining_scope"] = "Common native Engine scene/movement, finite native HISM and exact native unbound PCG own-SCS Raw Add profiles; PCG ignores original component_properties/transforms and requests one full compile. Other specialized/generated/inherited/live source lifecycles, arbitrary class discovery/name behavior, JSON/float bounds and full legacy/cold/runtime parity remain incomplete"
             if component_original_command == "set_static_mesh_properties":
                 entry["legacy_raw_static_mesh_presence"] = True
                 entry["legacy_component_contract"] = "Original HasField static_mesh/material omission and SDK scalar string conversion; mesh load/set then material load/set then MarkBlueprintAsModified, missing/wrong-type assets recorded and skipped, no compile/save; one private original-row journal"

@@ -42,6 +42,7 @@
 #include "NiagaraNodeOutput.h"
 #include "NiagaraScript.h"
 #include "NiagaraScriptSource.h"
+#include "NiagaraScratchPadContainer.h"
 #include "NiagaraSystem.h"
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 #include "Misc/EngineVersion.h"
@@ -815,7 +816,7 @@ struct FBatchScriptIdentity
 
 struct FBatchSourceIdentity { UNiagaraScriptSource* Source=nullptr; UNiagaraGraph* Graph=nullptr; };
 struct FBatchCallIdentity { UNiagaraNodeFunctionCall* Call=nullptr; UNiagaraScript* Script=nullptr; UNiagaraScriptSource* Source=nullptr; FGuid Version; };
-struct FBatchHandleIdentity { UNiagaraEmitter* Emitter=nullptr; FGuid Id,Version; FName Name; bool Enabled=false; const FVersionedNiagaraEmitterData* Data=nullptr; UNiagaraScriptSource* Source=nullptr; };
+struct FBatchHandleIdentity { UNiagaraEmitter* Emitter=nullptr; FGuid Id,Version; FName Name; bool Enabled=false; const FVersionedNiagaraEmitterData* Data=nullptr; UNiagaraScriptSource* Source=nullptr; ENiagaraSimTarget SimTarget=ENiagaraSimTarget::CPUSim; bool Interpolated=false; UNiagaraScript* Spawn=nullptr; };
 
 struct FBatchAssignmentIdentity
 {
@@ -833,10 +834,21 @@ struct FBatchGpuRole
  FObjectProperty* Field=nullptr;uint64 Flags=0;int32 Offset=0;
  TArray<TUniquePtr<FBatchIdentity>> Objects;
 };
+struct FBatchScratchCatalog
+{
+    UObject* Owner=nullptr;
+    int32 EmitterIndex=INDEX_NONE;
+    UNiagaraEmitter* Emitter=nullptr;
+    FGuid EmitterId,EmitterVersion;
+    const FVersionedNiagaraEmitterData* Data=nullptr;
+    bool Parent=false;
+    TArray<TObjectPtr<UNiagaraScript>> Members;
+    TArray<TUniquePtr<FBatchIdentity>> Objects;
+};
 struct FBatchContext
 {
 
-    bool Deferred=false, Captured=false, CancelRequested=false, GuardFailed=false;
+    bool Deferred=false, Captured=false, CancelRequested=false, GuardFailed=false, RIWriter=false;
     const TFunction<bool(UNiagaraSystem*,const TCHAR*)>* OwnedAuthoringGuard=nullptr; // borrowed only for one synchronous GU call
     FString CancelReason;
     TWeakObjectPtr<UEditorEngine> Editor;
@@ -850,6 +862,9 @@ struct FBatchContext
     TArray<FBatchAssignmentIdentity> AssignmentIdentities;
     TArray<FBatchHandleIdentity> HandleIdentities;
     TArray<FBatchGpuRole> GpuRoles;
+    TArray<FBatchScratchCatalog> ScratchCatalogs;
+    TMap<UNiagaraScript*,ENiagaraScriptUsage> ScratchUsages;
+    TSet<UNiagaraGraph*> ScratchSourceGraphs;
     UNiagaraScript* SystemSpawn=nullptr;UNiagaraScript* SystemUpdate=nullptr;
 
     UNiagaraSystem* System = nullptr;
@@ -863,6 +878,88 @@ bool BatchPublicationSafe(const FBatchContext& C)
     if(!BatchSafe()||C.Editor.Get()!=GEditor)return false;
     UWorld* W=GEditor->GetEditorWorldContext().World();
     return BatchLive(W)&&!W->bIsTearingDown&&C.World.Get()==W&&!GEditor->PlayWorld&&!GEditor->GetPIEWorldContext();
+}
+bool BatchScratchCatalogsCurrent(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
+{
+    if(C.ScratchCatalogs.IsEmpty())return true;
+    auto Stop=[&](const TCHAR* Field){C.GuardFailed=true;R.bChangeStateKnown=false;R.bSuccess=R.bPostconditionPassed=false;R.Stage=Stage;
+        if(!R.Data->HasField(TEXT("scratch_catalog_first_mismatch")))R.Data->SetStringField(TEXT("scratch_catalog_first_mismatch"),Field);
+        return BatchFail(R,TEXT("niagara_batch_scratch_catalog_changed"),TEXT("Captured local Scratch catalog/usage changed; actual prefix retained, no further SDK or replay."));};
+    if(!BatchPublicationSafe(C)||!BatchLive(C.System))return Stop(TEXT("Editor/world/system"));
+    for(const auto& E:C.ScratchCatalogs)
+    {
+        for(const auto& I:E.Objects)if(!I->Exact())return Stop(TEXT("catalog owner/member identity"));
+        const TArray<TObjectPtr<UNiagaraScript>>* Current=nullptr;
+        if(E.EmitterIndex==INDEX_NONE){if(E.Owner!=C.System)return Stop(TEXT("system catalog owner"));Current=&C.System->ScratchPadScripts;}
+        else
+        {
+            const auto& Handles=C.System->GetEmitterHandles();if(!Handles.IsValidIndex(E.EmitterIndex))return Stop(TEXT("emitter index"));
+            const auto& H=Handles[E.EmitterIndex];
+            if(H.GetId()!=E.EmitterId||H.GetInstance().Emitter!=E.Emitter||H.GetInstance().Version!=E.EmitterVersion)return Stop(TEXT("emitter handle/version/instance"));
+            const auto* D=H.GetEmitterData();if(!D||D!=E.Data)return Stop(TEXT("current emitter data"));
+            auto* Container=(E.Parent?D->ParentScratchPads:D->ScratchPads).Get();
+            if(Container!=E.Owner)return Stop(TEXT("current scratch container"));Current=&Container->Scripts;
+        }
+        if(*Current!=E.Members)return Stop(TEXT("ordered catalog members"));
+    }
+    for(const auto& E:C.ScratchUsages)if(!BatchLive(E.Key)||E.Key->GetUsage()!=E.Value)return Stop(TEXT("selected scratch script usage"));
+    return true;
+}
+
+bool BatchPrepareScratchSource(FBatchContext& C,FBatchResult& R,UNiagaraNodeFunctionCall* Call)
+{
+    bool SourceGetterEntered=false;
+    auto Bad=[&](const TCHAR* Field){R.Data->SetStringField(TEXT("scratch_source_admission_failure"),Field);
+        if(SourceGetterEntered){C.GuardFailed=true;R.bChangeStateKnown=false;R.bSuccess=R.bPostconditionPassed=false;R.Stage=TEXT("capture_local_scratch_source");}
+        return BatchFail(R,TEXT("niagara_batch_scratch_source_unobservable"),TEXT("Exact registered local Scratch catalog/Script/version/Source/Graph required; no source construction or replacement."));};
+    auto* Script=Call->FunctionScript.Get();if(!Loaded(Script)||Script->GetClass()!=UNiagaraScript::StaticClass()||!Script->IsIn(C.System))return Bad(TEXT("local script"));
+    FBatchScratchCatalog E;const TArray<TObjectPtr<UNiagaraScript>>* Members=nullptr;
+    if(Script->GetOuter()==C.System&&C.System->ScratchPadScripts.Contains(Script)){E.Owner=C.System;Members=&C.System->ScratchPadScripts;}
+    else
+    {
+        const auto& Handles=C.System->GetEmitterHandles();
+        for(int32 I=0;I<Handles.Num()&&!Members;++I)
+        {
+            const auto& H=Handles[I];const auto* D=H.GetEmitterData();if(!D)continue;
+            for(bool Parent:{false,true})
+            {
+                auto* Container=(Parent?D->ParentScratchPads:D->ScratchPads).Get();
+                if(!Container||Script->GetOuter()!=Container)continue;
+                if(!Loaded(Container)||!BatchReadableChain(Container)||Container->GetClass()!=UNiagaraScratchPadContainer::StaticClass()||!Container->IsIn(C.System))return Bad(TEXT("local container"));
+                if(!Container->Scripts.Contains(Script))continue;
+                E.Owner=Container;E.EmitterIndex=I;E.Emitter=H.GetInstance().Emitter;E.EmitterId=H.GetId();E.EmitterVersion=H.GetInstance().Version;E.Data=D;E.Parent=Parent;Members=&Container->Scripts;break;
+            }
+        }
+    }
+    if(!Members||Members->Num()>128)return Bad(TEXT("registered bounded catalog"));
+    if(!C.Editor.IsValid()){C.Editor=GEditor;C.World=GEditor->GetEditorWorldContext().World();C.Keep.Emplace(GEditor);if(C.World.IsValid())C.Keep.Emplace(C.World.Get());}
+    if(!BatchPublicationSafe(C))return Bad(TEXT("Editor/world"));
+    if(!C.ScratchCatalogs.ContainsByPredicate([&](const FBatchScratchCatalog& Existing){return Existing.Owner==E.Owner;}))
+    {
+        if(C.ScratchCatalogs.Num()>=33)return Bad(TEXT("catalog count bound"));
+        auto Hold=[&](UObject* O){if(!BatchLive(O)||!BatchReadableChain(O))return false;E.Objects.Add(MakeUnique<FBatchIdentity>(O));return true;};
+        if(!Hold(C.System)||!Hold(E.Owner)||(E.Emitter&&!Hold(E.Emitter)))return Bad(TEXT("catalog identity"));
+        E.Members=*Members;for(const auto& Member:E.Members)if(Member&&!Hold(Member.Get()))return Bad(TEXT("catalog member"));
+        C.ScratchCatalogs.Add(MoveTemp(E));
+    }
+    const auto Usage=Script->GetUsage();const FGuid Version=Call->SelectedScriptVersion;
+    auto* HostGraph=Call->GetNiagaraGraph();if(!Loaded(HostGraph)||!C.Graphs.Contains(HostGraph)||Call->GetOuter()!=HostGraph||!HostGraph->Nodes.Contains(Call))return Bad(TEXT("direct call host"));
+    C.Keep.Emplace(Call);C.Keep.Emplace(Script);C.Keep.Emplace(HostGraph);
+    FBatchIdentity CallIdentity(Call),HostIdentity(HostGraph);
+    if(const auto* ExpectedUsage=C.ScratchUsages.Find(Script);ExpectedUsage&&*ExpectedUsage!=Usage)return Bad(TEXT("changed scratch usage during preparation"));
+    C.ScratchUsages.FindOrAdd(Script)=Usage;
+    if(!BatchScratchCatalogsCurrent(C,R,TEXT("before_local_scratch_source")))return false;
+    auto* Data=Script->GetScriptData(Version);if(!Data)return Bad(TEXT("selected script version data"));
+    SourceGetterEntered=true;R.Data->SetBoolField(TEXT("local_scratch_source_getter_entered"),true);
+    auto* Source=Cast<UNiagaraScriptSource>(Script->GetSource(Version));C.Keep.Emplace(Source);
+    if(!BatchScratchCatalogsCurrent(C,R,TEXT("after_local_scratch_source")))return false;
+    if(!CallIdentity.Exact()||!HostIdentity.Exact()||!HostGraph->Nodes.Contains(Call)||!Call->FunctionScript.IsResolved()||Call->FunctionScript.Get()!=Script||Call->SelectedScriptVersion!=Version||Script->GetScriptData(Version)!=Data)return Bad(TEXT("current call/script version"));
+    if(!Loaded(Source)||Source->GetClass()!=UNiagaraScriptSource::StaticClass()||Source->GetOuter()!=Script||Source->bIsCompilationCopy||Source->bIsReleased||!Source->NodeGraph.IsResolved())return Bad(TEXT("local source"));
+    auto* Graph=Source->NodeGraph.Get();C.Keep.Emplace(Graph);
+    if(!Loaded(Graph)||Graph->GetClass()!=UNiagaraGraph::StaticClass()||Graph->GetOuter()!=Source||Graph->GetPackage()!=C.System->GetPackage()||Graph->GetOutermost()!=C.System->GetOutermost()||!Graph->Schema.GetGCPtr().IsResolved()||Graph->Schema.GetGCPtr().Get()!=UEdGraphSchema_Niagara::StaticClass()||C.SourceGraphs.Num()>=128)return Bad(TEXT("local authoring graph"));
+    C.SourceGraphs.AddUnique(Graph);C.ScratchSourceGraphs.Add(Graph);
+    R.Data->SetNumberField(TEXT("local_scratch_source_graph_count"),C.ScratchSourceGraphs.Num());
+    return true;
 }
 // SDK NiagaraEmitter.cpp1588-1623 includes GPUComputeScript in GetScripts(false,false).
 // The authored SimTarget and source/script routing remain current across the existing
@@ -944,7 +1041,7 @@ bool BatchAssignmentsCurrent(FBatchContext& C,FBatchResult& R,const TCHAR* Stage
 
 bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
 {
-    if(C.GuardFailed||!BatchGpuCurrent(C,R,Stage))return false;
+    if(C.GuardFailed||!BatchGpuCurrent(C,R,Stage)||!BatchScratchCatalogsCurrent(C,R,Stage))return false;
     if(C.OwnedAuthoringGuard&&C.System)
     {
         if(!(*C.OwnedAuthoringGuard)(C.System,Stage))
@@ -956,7 +1053,7 @@ bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
         BatchCount(R,TEXT("owned_authoring_guard_calls"));
     }
     if(!BatchAssignmentsCurrent(C,R,Stage))return false;
-    if(!C.Deferred&&!C.OwnedAuthoringGuard)return BatchGpuCurrent(C,R,Stage);
+    if(!C.Deferred&&!C.OwnedAuthoringGuard&&!C.RIWriter&&C.ScratchCatalogs.IsEmpty())return BatchGpuCurrent(C,R,Stage);
     if(!BatchPublicationSafe(C)||C.CancelRequested||BatchAsyncStopping.load())
     {
         C.GuardFailed=true;R.bChangeStateKnown=false;R.bSuccess=false;R.bPostconditionPassed=false;
@@ -992,6 +1089,8 @@ bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
         const FVersionedNiagaraEmitterData* D=H.GetEmitterData();
         if(!D||D!=E.Data)
             return C.GuardFailed=true,R.bChangeStateKnown=false,BatchFail(R,TEXT("niagara_batch_async_emitter_data_changed"),TEXT("Current Emitter version-data pointer changed; old data is not dereferenced."));
+        if(D->SimTarget!=E.SimTarget||D->UsesInterpolatedSpawning()!=E.Interpolated||D->SpawnScriptProps.Script!=E.Spawn)
+            return C.GuardFailed=true,R.bChangeStateKnown=false,BatchFail(R,TEXT("niagara_batch_emitter_routing_changed"),TEXT("Captured emitter SimTarget/interpolation/spawn dependency routing changed across an SDK boundary."));
         if(D->GraphSource.Get()!=E.Source)
             return C.GuardFailed=true,R.bChangeStateKnown=false,BatchFail(R,TEXT("niagara_batch_async_emitter_source_changed"),TEXT("Current Emitter GraphSource differs from its captured authoring source."));
     }
@@ -999,7 +1098,7 @@ bool BatchAdmit(FBatchContext& C,FBatchResult& R,const TCHAR* Stage)
 }
 bool BatchCaptureIdentities(FBatchContext& C,FBatchResult& R)
 {
-    if(!C.Deferred&&!C.OwnedAuthoringGuard)return true;
+    if(!C.Deferred&&!C.OwnedAuthoringGuard&&!C.RIWriter&&C.ScratchCatalogs.IsEmpty())return true;
     FString Role=TEXT("initial_admission");
     UNiagaraScript* CaptureScript=nullptr;UNiagaraScriptSource* CaptureSource=nullptr;
     UNiagaraGraph* HostGraph=nullptr;UEdGraphNode* CaptureNode=nullptr;
@@ -1067,7 +1166,7 @@ bool BatchCaptureIdentities(FBatchContext& C,FBatchResult& R)
         if(!D)return CaptureFail(TEXT("emitter_data_missing"),H.GetInstance().Emitter);
         auto* Source=Cast<UNiagaraScriptSource>(D->GraphSource);
         if(!SourceRole(Source,true))return false;
-        C.HandleIdentities.Add({H.GetInstance().Emitter,H.GetId(),H.GetInstance().Version,H.GetName(),H.GetIsEnabled(),D,Source});
+        C.HandleIdentities.Add({H.GetInstance().Emitter,H.GetId(),H.GetInstance().Version,H.GetName(),H.GetIsEnabled(),D,Source,D->SimTarget,D->UsesInterpolatedSpawning(),D->SpawnScriptProps.Script});
     }
     for(UNiagaraScript* S:C.Scripts)
     {
@@ -1250,7 +1349,7 @@ bool BatchCapture(FBatchContext& C, FBatchObservation& O, FBatchResult& R, const
     for (auto* S : C.Scripts) { bool OK; auto Row = BatchStore(S->RapidIterationParameters, OK); O.Stores->SetObjectField(Path(S), Row); if (!OK) { return false; } }
     auto GraphPrefix = [](const FSnapshot& S) { auto Nodes = MakeShared<FJsonObject>(), Pins = MakeShared<FJsonObject>(); for (const auto& P : S.Nodes) { Nodes->SetStringField(P.Key,P.Value); } for (const auto& P : S.Pins) { Pins->SetStringField(P.Key,P.Value); } S.Json->SetObjectField(TEXT("captured_node_prefix"),Nodes); S.Json->SetObjectField(TEXT("captured_pin_prefix"),Pins); return S.Json; };
     for (auto* G : C.Graphs) { const auto S = Capture(G); O.Graphs->SetObjectField(Path(G), GraphPrefix(S)); if (!S.bComplete) { return false; } }
-    for (auto* G : C.SourceGraphs) { const auto S = Capture(G); auto Row = MakeShared<FJsonObject>(); O.Sources->SetObjectField(Path(G), Row); Row->SetObjectField(TEXT("graph"), GraphPrefix(S)); bool AssignmentCache=false;for(const auto& A:C.AssignmentIdentities)AssignmentCache|=A.Graph==G; if(AssignmentCache){Row->SetBoolField(TEXT("assignment_generated_cache"),true);Row->SetStringField(TEXT("package_dirty_role"),TEXT("shared target package; actual dirty value is the root observation"));}else Row->SetBoolField(TEXT("package_dirty"), G->GetOutermost()->IsDirty()); if (!S.bComplete) { return false; } }
+    for (auto* G : C.SourceGraphs) { const auto S = Capture(G); auto Row = MakeShared<FJsonObject>(); O.Sources->SetObjectField(Path(G), Row); Row->SetObjectField(TEXT("graph"), GraphPrefix(S)); bool AssignmentCache=false;for(const auto& A:C.AssignmentIdentities)AssignmentCache|=A.Graph==G; const bool LocalScratch=C.ScratchSourceGraphs.Contains(G); if(AssignmentCache||LocalScratch){if(AssignmentCache)Row->SetBoolField(TEXT("assignment_generated_cache"),true);if(LocalScratch)Row->SetBoolField(TEXT("registered_local_scratch_source"),true);Row->SetStringField(TEXT("package_dirty_role"),TEXT("shared target package; actual dirty value is the root observation"));}else Row->SetBoolField(TEXT("package_dirty"), G->GetOutermost()->IsDirty()); if (!S.bComplete) { return false; } }
     bool ExposedOK; const auto Exposed = BatchStore(C.System->GetExposedParameters(), ExposedOK); O.Exposed->Values = Exposed->Values; if (!ExposedOK) { return false; }
     int32 N = 0; for (const auto& H : C.System->GetEmitterHandles())
     { auto Row = MakeShared<FJsonObject>(); O.Handles->SetObjectField(LexToString(N++), Row); Row->SetStringField(TEXT("name"), H.GetName().ToString()); Row->SetStringField(TEXT("id"), Guid(H.GetId())); Row->SetStringField(TEXT("emitter"), Path(H.GetInstance().Emitter)); Row->SetStringField(TEXT("version"), Guid(H.GetInstance().Version)); Row->SetBoolField(TEXT("enabled"), H.GetIsEnabled());if(!C.GpuRoles.IsEmpty()){const auto* Data=H.GetEmitterData();if(!Data)return false;Row->SetNumberField(TEXT("SimTarget"),static_cast<int32>(Data->SimTarget));} }
@@ -1329,7 +1428,8 @@ bool BatchPrepare(FBatchContext& C, FBatchResult& R, const FString& SystemPath, 
             R.Data->SetBoolField(TEXT("assignment_cache_regeneration_invoked"),false);
             continue;
         }
-        if (!Call || !Call->FunctionScript || Call->FunctionScript->IsIn(C.System)) { continue; }
+        if (!Call || !Call->FunctionScript) { continue; }
+        if(Call->FunctionScript->IsIn(C.System)){if(!BatchPrepareScratchSource(C,R,Call))return false;continue;}
         auto* Script = Call->FunctionScript.Get(); auto* Source = Cast<UNiagaraScriptSource>(Script->GetSource(Call->SelectedScriptVersion));
         if (!Loaded(Script) || BatchForbidden(Path(Script)) || !Loaded(Source) || !Loaded(Source->NodeGraph) || Source->bIsCompilationCopy || Source->bIsReleased || C.SourceGraphs.Num() >= 128)
         { return BatchFail(R, TEXT("niagara_batch_module_source_unobservable"), TEXT("Bounded already-loaded external native module graph is required.")); }
@@ -1370,10 +1470,57 @@ TSharedRef<FJsonObject> BatchCompileState(FBatchContext& C, TOptional<bool>& Com
     J->SetBoolField(TEXT("ready_to_save"), !Outstanding && !Active && !Needs); J->SetBoolField(TEXT("explicit_poll_or_wait_invoked"), false);
     J->SetField(TEXT("compiled"), Compiled.IsSet() ? TSharedPtr<FJsonValue>(MakeShared<FJsonValueBoolean>(Compiled.GetValue())) : TSharedPtr<FJsonValue>(MakeShared<FJsonValueNull>())); return J;
 }
+// Installed NiagaraCompilationTasks.cpp:115-159 FindDependentScripts and
+// NiagaraStackFunctionInputBinder.cpp:258-275 SetData: editor RI writes include
+// the exact dependent script; RequestCompile(false) alone need not synchronize it.
+bool BatchRIDependentScript(FBatchContext& C,UNiagaraScript* Source,int32 EmitterIndex,UNiagaraScript*& Target)
+{
+    Target=nullptr;const auto& Handles=C.System->GetEmitterHandles();
+    if(!Handles.IsValidIndex(EmitterIndex)||!Handles[EmitterIndex].GetIsEnabled())return true;
+    const auto& H=Handles[EmitterIndex];auto* D=H.GetEmitterData();
+    if(!D||!Source->IsIn(H.GetInstance().Emitter))return false;
+    const auto Usage=Source->GetUsage();
+    if(UNiagaraScript::IsEquivalentUsage(Usage,ENiagaraScriptUsage::EmitterSpawnScript))Target=C.SystemSpawn;
+    else if(UNiagaraScript::IsEquivalentUsage(Usage,ENiagaraScriptUsage::EmitterUpdateScript))Target=C.SystemUpdate;
+    else if(D->SimTarget==ENiagaraSimTarget::GPUComputeSim&&
+        (UNiagaraScript::IsEquivalentUsage(Usage,ENiagaraScriptUsage::ParticleSpawnScript)||UNiagaraScript::IsEquivalentUsage(Usage,ENiagaraScriptUsage::ParticleUpdateScript)))
+    {
+        // Public GetScripts result already admitted with exact GPU slot protection.
+        for(auto* S:C.Scripts)if(S->IsIn(H.GetInstance().Emitter)&&S->GetUsage()==ENiagaraScriptUsage::ParticleGPUComputeScript)
+        {if(Target)return false;Target=S;}
+        if(!Target)return false;
+    }
+    else if(D->SimTarget==ENiagaraSimTarget::CPUSim&&D->UsesInterpolatedSpawning()&&UNiagaraScript::IsEquivalentUsage(Usage,ENiagaraScriptUsage::ParticleUpdateScript))Target=D->SpawnScriptProps.Script;
+    return !Target||(Target!=Source&&C.Scripts.Contains(Target));
+}
 bool BatchPreserved(const FBatchObservation& Before, const FBatchObservation& After, const TSharedRef<FJsonObject>& ExpectedStores, FBatchResult& R, bool Saved)
 {
-    const bool Stores = BatchEqual(ExpectedStores, After.Stores), Graphs = BatchEqual(Before.Graphs, After.Graphs), Sources = BatchEqual(Before.Sources, After.Sources),
-        Handles = BatchEqual(Before.Handles, After.Handles), Exposed = BatchEqual(Before.Exposed, After.Exposed), Other = BatchEqual(Before.Other, After.Other);
+    const auto& Expected=ExpectedStores;
+    auto EqualValue=[](const TSharedPtr<FJsonValue>& A,const TSharedPtr<FJsonValue>& B){return (!A&&!B)||(A&&B&&BatchEqual(A,B));};
+    const bool Stores=BatchEqual(Expected,After.Stores), Graphs=BatchEqual(Before.Graphs,After.Graphs), Sources=BatchEqual(Before.Sources,After.Sources),
+        Handles=BatchEqual(Before.Handles,After.Handles), Exposed=BatchEqual(Before.Exposed,After.Exposed), Other=BatchEqual(Before.Other,After.Other);
+    if(!Stores&&!R.Data->HasField(TEXT("first_rapid_iteration_mismatch")))
+    {
+        TArray<FString> Names;for(const auto& P:Expected->Values)Names.Add(FString(P.Key.ToView()));for(const auto& P:After.Stores->Values)Names.AddUnique(FString(P.Key.ToView()));Names.Sort();
+        for(const auto& Name:Names)
+        {
+            auto E=Expected->TryGetField(Name),A=After.Stores->TryGetField(Name);if(EqualValue(E,A))continue;
+            auto M=MakeShared<FJsonObject>();M->SetStringField(TEXT("stage"),R.Stage);M->SetStringField(TEXT("script"),Name);
+            M->SetBoolField(TEXT("expected_store_present"),E.IsValid());M->SetBoolField(TEXT("actual_store_present"),A.IsValid());
+            if(E&&A&&E->Type==EJson::Object&&A->Type==EJson::Object)
+            {
+                auto EP=E->AsObject()->GetObjectField(TEXT("parameters")),AP=A->AsObject()->GetObjectField(TEXT("parameters"));
+                TArray<FString> Keys;for(const auto& P:EP->Values)Keys.Add(FString(P.Key.ToView()));for(const auto& P:AP->Values)Keys.AddUnique(FString(P.Key.ToView()));Keys.Sort();
+                for(const auto& Key:Keys)if(!EqualValue(EP->TryGetField(Key),AP->TryGetField(Key)))
+                {
+                    M->SetStringField(TEXT("parameter"),Key);
+                    auto Describe=[](const TSharedPtr<FJsonValue>& V){return !V?FString(TEXT("<absent>")):V->Type==EJson::Object?Text(V->AsObject().ToSharedRef()).Left(2048):FString(TEXT("<not_object>"));};
+                    M->SetStringField(TEXT("expected_json_prefix"),Describe(EP->TryGetField(Key)));M->SetStringField(TEXT("actual_json_prefix"),Describe(AP->TryGetField(Key)));break;
+                }
+            }
+            R.Data->SetObjectField(TEXT("first_rapid_iteration_mismatch"),M);break;
+        }
+    }
     const bool Disk = Saved ? After.Disk->GetBoolField(TEXT("exists")) && After.Disk->GetNumberField(TEXT("bytes")) > 0 && Before.Disk->GetStringField(TEXT("path")) == After.Disk->GetStringField(TEXT("path")) : BatchEqual(Before.Disk, After.Disk);
     R.Data->SetBoolField(TEXT("observations_complete"), Before.Complete && After.Complete); R.Data->SetBoolField(TEXT("rapid_iteration_values_verified"), Stores);
     R.Data->SetBoolField(TEXT("owned_graphs_preserved"), Graphs); R.Data->SetBoolField(TEXT("module_sources_preserved"), Sources); R.Data->SetBoolField(TEXT("emitter_handles_preserved"), Handles);
@@ -1487,6 +1634,12 @@ static Variable::FResult RunSetInputsBatch(const FString& SystemPath, const FStr
         R.Data->SetBoolField(TEXT("GU_owned_authoring_child"),true);
     }
     if(!BatchAdmit(C,R,TEXT("before_batch_prepare"))||!BatchPrepare(C,R,SystemPath,Allow,Deferred&&Wait))return R;
+    C.RIWriter=true;
+    if(!C.Editor.IsValid())
+    {
+        if(!BatchSafe()||!BatchLive(GEditor)){BatchFail(R,TEXT("niagara_batch_writer_context_unavailable"),TEXT("Safe Editor context required before capturing synchronous RI writer identities."));return R;}
+        C.Editor=GEditor;C.World=GEditor->GetEditorWorldContext().World();C.Keep.Emplace(GEditor);if(C.World.IsValid())C.Keep.Emplace(C.World.Get());
+    }
     if(!BatchCaptureIdentities(C,R)){R.bChangeStateKnown=false;BatchFail(R,TEXT("niagara_batch_identity_capture_failed"),TEXT("Exact authoring identity/physical pin capture failed before row writers."));return R;}
     FBatchObservation LocalBefore,LocalAfter; FBatchObservation& Before=Deferred?Deferred->Before:LocalBefore; FBatchObservation& After=Deferred?Deferred->After:LocalAfter;
     if (!BatchCapture(C,Before,R,TEXT("before_observation"))) { R.bChangeStateKnown = false; BatchFail(R,TEXT("niagara_batch_observation_incomplete"),TEXT("Complete bounded baseline required before writers.")); return R; }
@@ -1513,7 +1666,7 @@ static Variable::FResult RunSetInputsBatch(const FString& SystemPath, const FStr
             else if (!Load(TEXT("child"))) { Error = TEXT("Child system load returned a different current object"); GuardFailed = true; R.bChangeStateKnown = false; }
             else
             {
-                UNiagaraNodeFunctionCall* Module = nullptr; UNiagaraScript* Script = nullptr; FNiagaraVariable Input; FString EmitterName; int32 EI = INDEX_NONE,MI = INDEX_NONE;
+                UNiagaraNodeFunctionCall* Module = nullptr; UNiagaraScript* Script = nullptr; UNiagaraScript* Dependent=nullptr; FNiagaraVariable Input; FString EmitterName; int32 EI = INDEX_NONE,MI = INDEX_NONE;
                 if (BatchSelect(C,Edit.ToSharedRef(),Module,Script,Input,EmitterName,EI,MI,Error,R))
                 {
                     const FNiagaraParameterHandle Handle(Input.GetName()); const auto ModuleHandle = Handle.IsModuleHandle() ? Handle : FNiagaraParameterHandle::CreateModuleParameterHandle(Input.GetName());
@@ -1527,6 +1680,7 @@ static Variable::FResult RunSetInputsBatch(const FString& SystemPath, const FStr
                     else if (Set && !Previous) { Error = TEXT("Existing RapidIteration value not found; set_existing cannot create"); }
                     else if (Create && Previous && !Replace) { Error = TEXT("RapidIteration override already exists; overwrite_existing is required"); }
                     else if (Previous && !PreviousJson) { Error = TEXT("Existing value is outside finite scalar/enum/vector/color observation; raw bytes retained without writer"); }
+                    else if (!BatchRIDependentScript(C,Script,EI,Dependent)) { Error=TEXT("Exact current RI dependency routing unavailable; no row writer"); }
                     else if (auto Actual = BatchValue(Value,Edit->TryGetField(TEXT("value")),Error))
                     {
                         Row->SetField(TEXT("new_value"),BatchReadValue(Value)); Row->SetStringField(TEXT("new_bytes_hex"),BatchBytes(Value.GetData(),Value.GetSizeInBytes())); Row->SetBoolField(TEXT("setter_attempted"),true);
@@ -1541,18 +1695,43 @@ static Variable::FResult RunSetInputsBatch(const FString& SystemPath, const FStr
                         BatchCount(R,TEXT("parameter_set_attempt_count")); const bool SetReturned = Script->RapidIterationParameters.SetParameterData(Value.GetData(),Value,Create);
                         BatchCount(R,TEXT("parameter_set_return_count")); Row->SetBoolField(TEXT("setter_returned"),true); Row->SetBoolField(TEXT("set_parameter_returned"),SetReturned); if (SetReturned) { BatchCount(R,TEXT("parameter_set_returned_true_count")); }
                         if(!BatchAdmit(C,R,TEXT("after_parameter_set"))){GuardFailed=true;break;}
+                        bool DependentOK=true;
+                        if(SetReturned&&Dependent)
+                        {
+                            auto Call=MakeShared<FJsonObject>();Row->SetObjectField(TEXT("dependent_parameter_write"),Call);
+                            Call->SetStringField(TEXT("script_path"),Path(Dependent));Call->SetStringField(TEXT("source_script_path"),Path(Script));
+                            Call->SetStringField(TEXT("parameter"),Value.GetName().ToString());Call->SetStringField(TEXT("bytes_hex"),BatchBytes(Value.GetData(),Value.GetSizeInBytes()));
+                            const uint8* Old=Dependent->RapidIterationParameters.GetParameterData(Value);Call->SetBoolField(TEXT("existed_before"),Old!=nullptr);
+                            Call->SetField(TEXT("previous_bytes_hex"),Old?TSharedPtr<FJsonValue>(MakeShared<FJsonValueString>(BatchBytes(Old,Value.GetSizeInBytes()))):TSharedPtr<FJsonValue>(MakeShared<FJsonValueNull>()));
+                            Call->SetBoolField(TEXT("modify_attempted"),true);Call->SetBoolField(TEXT("setter_attempted"),false);Call->SetBoolField(TEXT("setter_returned"),false);
+                            BatchCount(R,TEXT("explicit_modify_calls"));BatchCount(R,TEXT("script_modify_calls"));Dependent->Modify();
+                            if(!BatchAdmit(C,R,TEXT("after_dependent_script_modify"))){GuardFailed=true;break;}
+                            Call->SetBoolField(TEXT("setter_attempted"),true);BatchCount(R,TEXT("parameter_set_attempt_count"));BatchCount(R,TEXT("dependent_parameter_set_attempt_count"));
+                            DependentOK=Dependent->RapidIterationParameters.SetParameterData(Value.GetData(),Value,true);
+                            BatchCount(R,TEXT("parameter_set_return_count"));if(DependentOK)BatchCount(R,TEXT("parameter_set_returned_true_count"));
+                            Call->SetBoolField(TEXT("setter_returned"),true);Call->SetBoolField(TEXT("set_parameter_returned"),DependentOK);
+                            if(!BatchAdmit(C,R,TEXT("after_dependent_parameter_set"))){GuardFailed=true;break;}
+                        }
                         BatchCount(R,TEXT("mark_package_dirty_calls")); C.System->MarkPackageDirty(); Row->SetBoolField(TEXT("mark_package_dirty_returned"),true);
                         if(!BatchAdmit(C,R,TEXT("after_mark_package_dirty"))){GuardFailed=true;break;}
                         bool StoreOK; const auto ObservedStore = BatchStore(Script->RapidIterationParameters,StoreOK); Row->SetObjectField(TEXT("returned_store"),ObservedStore);
                         auto DesiredStore = BatchCopy(Expected->GetObjectField(Path(Script)).ToSharedRef()); auto Parameters = BatchCopy(DesiredStore->GetObjectField(TEXT("parameters")).ToSharedRef()); auto DesiredValue = MakeShared<FJsonObject>();
                         const FString StoredKey = BatchParameterKey(Parameters,Value.GetName()); DesiredValue->SetStringField(TEXT("name"),StoredKey); DesiredValue->SetStringField(TEXT("type"),Value.GetType().GetNameText().ToString()); DesiredValue->SetStringField(TEXT("struct"),Path(Value.GetType().GetScriptStruct())); DesiredValue->SetStringField(TEXT("enum"),Path(Value.GetType().GetEnum())); DesiredValue->SetNumberField(TEXT("size"),Value.GetSizeInBytes()); DesiredValue->SetStringField(TEXT("bytes_hex"),BatchBytes(Value.GetData(),Value.GetSizeInBytes()));
                         Parameters->SetObjectField(StoredKey,DesiredValue); DesiredStore->SetObjectField(TEXT("parameters"),Parameters); Expected->SetObjectField(Path(Script),DesiredStore);
+
+                        if(SetReturned&&Dependent)
+                        {
+                            auto Store=BatchCopy(Expected->GetObjectField(Path(Dependent)).ToSharedRef());auto Params=BatchCopy(Store->GetObjectField(TEXT("parameters")).ToSharedRef());
+                            const FString Key=BatchParameterKey(Params,Value.GetName());auto V=BatchCopy(DesiredValue);V->SetStringField(TEXT("name"),Key);
+                            Params->SetObjectField(Key,V);Store->SetObjectField(TEXT("parameters"),Params);Expected->SetObjectField(Path(Dependent),Store);
+                            Row->SetObjectField(TEXT("expected_dependent_store"),Store);
+                        }
                         Row->SetObjectField(TEXT("expected_store"),DesiredStore); R.Stage = TEXT("after_edit");
                         const FString Phase = FString::Printf(TEXT("after_edit_%d"),I); const bool Complete = BatchCapture(C,After,R,*Phase);
                         R.bChangeStateKnown = Complete; R.bChanged = Complete && BatchChanged(Before,After);
                         if (!Complete || !StoreOK) { Error = TEXT("Writer returned; bounded current observation incomplete"); GuardFailed = true; R.bChangeStateKnown = false; }
-                        else if (!SetReturned || !BatchPreserved(Before,After,Expected,R,false)) { Error = TEXT("Known returned writer did not preserve exact scoped parameter/graph/source/disk state"); GuardFailed = true; }
-                        else { Row->SetBoolField(TEXT("success"),true); if(Create) { Row->SetBoolField(TEXT("created"),Previous == nullptr); Row->SetBoolField(TEXT("overwrote_existing"),Previous != nullptr); } Row->SetBoolField(TEXT("compile_requested"),false); Row->SetBoolField(TEXT("saved"),false); Row->SetObjectField(TEXT("compile_wait"),BatchWaitPoint(C.System,10.0,0.1,R)); Row->SetStringField(TEXT("write_scope"),Create ? TEXT("new_or_explicitly_overwritten_rapid_iteration_parameter") : TEXT("existing_rapid_iteration_parameter_only")); ++Applied; }
+                        else if (!SetReturned || !DependentOK || GuardFailed || !BatchPreserved(Before,After,Expected,R,false)) { Error = TEXT("Known returned writer did not preserve exact scoped parameter/graph/source/disk state"); GuardFailed = true; }
+                        else { Row->SetBoolField(TEXT("success"),true); if(Create) { Row->SetBoolField(TEXT("created"),Previous == nullptr); Row->SetBoolField(TEXT("overwrote_existing"),Previous != nullptr); } Row->SetBoolField(TEXT("compile_requested"),false); Row->SetBoolField(TEXT("saved"),false); Row->SetObjectField(TEXT("compile_wait"),BatchWaitPoint(C.System,10.0,0.1,R)); Row->SetStringField(TEXT("write_scope"),Create ? TEXT("new_or_explicitly_overwritten_rapid_iteration_parameter") : TEXT("selected_rapid_iteration_and_exact_engine_dependency_parameters")); ++Applied; }
                     }
                 }
             }
@@ -1562,7 +1741,16 @@ static Variable::FResult RunSetInputsBatch(const FString& SystemPath, const FStr
     }
     if(Deferred){Transaction.Reset();R.Data->SetBoolField(TEXT("row_transaction_closed_before_yield"),true);if(!BatchAdmit(C,R,TEXT("after_row_transaction"))){GuardFailed=true;}}
     GuardFailed|=C.GuardFailed;
-    R.Data->SetBoolField(TEXT("partial_success"),Applied > 0 && Failed > 0); R.Data->SetBoolField(TEXT("all_processed_edits_succeeded"),Failed == 0); R.Data->SetObjectField(TEXT("expected_final_rapid_iteration_stores"),Expected);
+    // Callback guard exits can break before the ordinary row footer. Count the
+    // actual completed rows, while retaining every source/dependent writer prefix.
+    Applied=Failed=0;
+    for(const auto& V:Results)
+    {
+        auto Row=V->AsObject();if(Row->GetBoolField(TEXT("success")))++Applied;
+        else {++Failed;if(GuardFailed&&!Row->HasField(TEXT("error")))Row->SetStringField(TEXT("error"),TEXT("Row interrupted at protected SDK boundary: ")+R.Stage);}
+    }
+    R.Data->SetNumberField(TEXT("applied_count"),Applied);R.Data->SetNumberField(TEXT("failed_count"),Failed);
+    R.Data->SetBoolField(TEXT("partial_success"),Applied > 0 && Failed > 0); R.Data->SetBoolField(TEXT("all_processed_edits_succeeded"),Failed == 0&&!GuardFailed); R.Data->SetObjectField(TEXT("expected_final_rapid_iteration_stores"),Expected);
     if (GuardFailed) { BatchFail(R,TEXT("niagara_batch_preservation_failed"),TEXT("Actual ordered prefix retained; later compile/save suppressed by finite preservation failure. No retry/rollback.")); return R; }
     R.Stage = TEXT("after_edits"); if (!BatchCapture(C,After,R,TEXT("after_edits"))) { R.bChangeStateKnown = false; BatchFail(R,TEXT("niagara_batch_observation_incomplete"),TEXT("Current final edit prefix incomplete; no compile/save.")); return R; }
     R.bChangeStateKnown = true; R.bChanged = BatchChanged(Before,After);
@@ -1581,7 +1769,7 @@ static Variable::FResult RunSetInputsBatch(const FString& SystemPath, const FStr
         TOptional<bool> Status; const auto State = BatchCompileState(C,Status,R); State->SetStringField(TEXT("phase"),TEXT("after_compile_request")); R.Data->SetObjectField(TEXT("compile_state"),State); if (Compile) { R.Compiled = Status; }
         WaitReceipt->SetBoolField(TEXT("outstanding_compilation_requests_after"),State->GetBoolField(TEXT("outstanding_compilation_requests_after"))); WaitReceipt->SetBoolField(TEXT("active_compilations_after"),State->GetBoolField(TEXT("active_compilations_after")));
         R.Stage = TEXT("after_compile_request"); if (!BatchCapture(C,After,R,TEXT("after_compile_request"))) { R.bChangeStateKnown = false; BatchFail(R,TEXT("niagara_batch_observation_incomplete"),TEXT("Compile/load returned; current prefix incomplete.")); return R; }
-        R.bChangeStateKnown = true; R.bChanged = BatchChanged(Before,After); if (!BatchPreserved(Before,After,Expected,R,false)) { BatchFail(R,TEXT("niagara_batch_compile_preservation_failed"),TEXT("Compile-request changed a scoped nonselected state; original unguarded compile propagation remains residual. Save suppressed.")); return R; }
+        R.bChangeStateKnown = true; R.bChanged = BatchChanged(Before,After); if (!BatchPreserved(Before,After,Expected,R,false)) { BatchFail(R,TEXT("niagara_batch_compile_preservation_failed"),TEXT("Compile-request changed a scoped state outside exact requested typed RI dependency propagation. Save suppressed.")); return R; }
         if ((Compile || Save) && !State->GetBoolField(TEXT("ready_to_save"))) { R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("save_deferred"),Save); BatchFail(R,TEXT("niagara_batch_compile_pending"),TEXT("Actual asynchronous request remains pending; no poll/pump/save/retry. Original blocking wait and save-while-pending are incomplete.")); return R; }
         if (Compile && !Status.IsSet()) { R.bChangeStateKnown = false; R.Data->SetBoolField(TEXT("save_deferred"),Save); BatchFail(R,TEXT("niagara_batch_compile_status_unobservable"),TEXT("Returned request has no actual terminal script status; nullable compiled is not healthy and save is suppressed.")); return R; }
         if (Save)

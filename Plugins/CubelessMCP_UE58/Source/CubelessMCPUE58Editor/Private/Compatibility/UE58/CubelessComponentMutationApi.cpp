@@ -863,7 +863,13 @@ bool PrepareProperty(UActorComponent* Template, const FString& Name, const TShar
     else if (FStructProperty* Struct = CastField<FStructProperty>(Property))
     {
         double V[4];
-        if (Struct->Struct == TBaseStructure<FVector>::Get() && VectorValues(Json, 3, V, true)) { *static_cast<FVector*>(Value) = FVector(V[0], V[1], V[2]); bConverted = true; }
+        if (Struct->Struct == TBaseStructure<FVector>::Get() && VectorValues(Json, 3, V, true))
+        {
+            // UE56 HandleSetComponentProperty stores a scalar in float before
+            // broadcasting it into FVector; array coordinates remain doubles.
+            if (Json->Type == EJson::Number) { const float LegacyScalar = static_cast<float>(Json->AsNumber()); V[0] = V[1] = V[2] = LegacyScalar; }
+            *static_cast<FVector*>(Value) = FVector(V[0], V[1], V[2]); bConverted = true;
+        }
         else if (Struct->Struct == TBaseStructure<FRotator>::Get() && VectorValues(Json, 3, V)) { *static_cast<FRotator*>(Value) = FRotator(V[0], V[1], V[2]); bConverted = true; }
         else if (Struct->Struct == TBaseStructure<FLinearColor>::Get() && VectorValues(Json, 4, V)) { *static_cast<FLinearColor*>(Value) = FLinearColor(V[0], V[1], V[2], V[3]); bConverted = true; }
     }
@@ -2855,7 +2861,7 @@ struct FPCGTemplateAddScope
     }
 };
 
-bool AddNativePCG(UBlueprint* B, UClass* K, const FString& Name, const FString& TransformJson, const FReadResult& Before, FMutationResult& R)
+bool AddNativePCG(UBlueprint* B, UClass* K, const FString& Name, const FString& TransformJson, const FReadResult& Before, FMutationResult& R, bool bOriginalAdd)
 {
     if (Before.bLoadedDuringRead) { R.bChangeStateKnown = false; return Fail(R, TEXT("component_pcg_target_preload_required"), TEXT("Preload the own target explicitly; no component writer dispatched after implicit target load")); }
     FPCGTemplateAddScope S(R); if (!S.Bind(B, K, Name)) return false;
@@ -2874,9 +2880,22 @@ bool AddNativePCG(UBlueprint* B, UClass* K, const FString& Name, const FString& 
         if (!S.Adopt(N)) return false; R.Data->SetStringField(TEXT("created_node_path"), N->GetPathName()); R.Data->SetStringField(TEXT("created_node_guid"), N->VariableGuid.ToString(EGuidFormats::Digits)); R.Data->SetStringField(TEXT("created_template_path"), S.Component->GetPathName());
         R.Stage = TEXT("SCS_AddNode"); R.Data->SetBoolField(TEXT("pcg_add_node_attempted"), true); S.SCS->AddNode(N); R.Data->SetBoolField(TEXT("pcg_add_node_returned"), true); S.Attached = true; if (!S.Check()) return false;
         if (!Step(TEXT("Node_Modify"), [&] { N->Modify(); }) || !Step(TEXT("Template_Modify"), [&] { S.Component->Modify(); })) return false;
+        // Original Raw Add performs one requested full compile directly after
+        // SCS.AddNode. Named Add retains its prior skeleton-only authoring step.
+        if (!bOriginalAdd)
+        {
         R.Stage = TEXT("structural_skeleton_refresh"); R.Data->SetBoolField(TEXT("explicit_skeleton_compile_attempted"), true); FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(B); R.Data->SetBoolField(TEXT("pcg_structural_refresh_returned"), true); if (!S.Reacquire()) return false;
         const FObjectPropertyBase* Member = FindFProperty<FObjectPropertyBase>(S.Skeleton.Get(), FName(*Name)); const bool Matches = Member && Member->GetOwnerClass() == S.Skeleton.Get() && Member->PropertyClass == K && Member->HasAnyPropertyFlags(CPF_BlueprintVisible); R.Data->SetBoolField(TEXT("skeleton_component_property_verified"), Matches); if (!Matches) return Fail(R, TEXT("component_pcg_skeleton_mismatch"), TEXT("Added component remains but current own skeleton property was not verified"));
+        }
         if (R.bCompileRequested) { if (!S.Check()) return false; R.Stage = TEXT("compile"); R.bCompileAttempted = true; auto C = Cubeless::UE58::CompileBlueprint(Before.BlueprintPath, false, false); bool Compiled = false; C->TryGetBoolField(TEXT("compiled"), Compiled); R.Compiled = Compiled; R.Data->SetObjectField(TEXT("compile"), C); if (!S.Reacquire()) return false; if (!Compiled) return Fail(R, TEXT("component_compile_failed"), TEXT("PCG SCS Add prefix retained; full compile failed, no save/rollback/retry")); }
+        if (bOriginalAdd)
+        {
+            const FObjectPropertyBase* Member = FindFProperty<FObjectPropertyBase>(S.Skeleton.Get(), FName(*Name));
+            const bool Matches = R.bCompileAttempted && R.Compiled && Member && Member->GetOwnerClass() == S.Skeleton.Get() && Member->PropertyClass == K && Member->HasAnyPropertyFlags(CPF_BlueprintVisible);
+            R.Data->SetBoolField(TEXT("skeleton_component_property_verified"), Matches);
+            R.Data->SetBoolField(TEXT("raw_pcg_single_full_compile"), R.bCompileAttempted && R.Compiled);
+            if (!Matches) return Fail(R, TEXT("component_pcg_skeleton_mismatch"), TEXT("Original PCG Add prefix retained but post-compile own skeleton property was not verified; no retry."));
+        }
         return true;
     }();
     if (S.Stopped || !S.Check()) return false;
@@ -2887,6 +2906,12 @@ bool AddNativePCG(UBlueprint* B, UClass* K, const FString& Name, const FString& 
     const auto DirtyAfter = DirtyPackages(); bool OnlyTargetDirty = true; for (const auto& P : DirtyAfter) if (!S.DirtyBefore.Contains(P) && P != B->GetPackage()->GetName()) OnlyTargetDirty = false;
     R.Data->SetArrayField(TEXT("dirty_packages_after"), Strings(DirtyAfter)); R.Data->SetBoolField(TEXT("existing_scs_observations_preserved"), true); R.Data->SetBoolField(TEXT("pcg_source_default_subobjects_preserved"), true); R.Data->SetBoolField(TEXT("automatic_cleanup_attempted"), false); R.Data->SetStringField(TEXT("cleanup_policy"), TEXT("No automatic rollback/removal or retry; actual newly created node/template and compiler prefix remain observable"));
     R.bChanged = Created || Dirty != B->GetPackage()->IsDirty(); R.bChangeStateKnown = true; R.bSuccess = R.bPostconditionPassed = Run && Created && After.NodeVisits == Before.NodeVisits + 1 && OnlyTargetDirty;
+    R.Data->SetBoolField(TEXT("raw_pcg_transform_ignored_as_original"), bOriginalAdd);
+    if (bOriginalAdd)
+    {
+        R.Data->SetBoolField(TEXT("original_transform_setters_before_attachment"), false);
+        R.Data->SetBoolField(TEXT("raw_add_non_scene_transform_ignored"), true);
+    }
     R.Data->SetStringField(TEXT("pcg_scope"), TEXT("Add-only exact native PCGComponent, own non-scene SCS root, empty initial properties, ignored transform triples, exact self-owned unbound native GraphInstance default subobject, current own skeleton property and optional full compile. Graph assignment/SetGraphLocal, refresh/cleanup/generation, live/component instances, arbitrary initial properties and original full PCG pipeline remain incomplete; no global cache/purity/runtime proof."));
     if (R.bSuccess) R.Stage = TEXT("complete"); else if (R.ErrorCode.IsEmpty()) Fail(R, TEXT("component_postcondition_failed"), TEXT("PCG Add final SCS/preservation condition failed; actual partial state retained"));
     return R.bSuccess;
@@ -3603,9 +3628,9 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                 const bool CommonNative = Class == USceneComponent::StaticClass() || Class == UStaticMeshComponent::StaticClass()
                     || Class == UCameraComponent::StaticClass() || Class == USpringArmComponent::StaticClass()
                     || Class == USphereComponent::StaticClass() || Class == UBoxComponent::StaticClass() || Class == UCapsuleComponent::StaticClass()
-                    || Class == USkeletalMeshComponent::StaticClass() || NativeMovementClass(Class)
+                    || Class == USkeletalMeshComponent::StaticClass() || NativeMovementClass(Class) || bPCGRequested
                     || Class == USplineComponent::StaticClass() || Class == UInstancedStaticMeshComponent::StaticClass() || Class == UHierarchicalInstancedStaticMeshComponent::StaticClass();
-                if (!CommonNative) return Fail(R, TEXT("component_raw_add_source_lifecycle_pending"), TEXT("Original presence path admits implemented common Engine scene/shape/mesh/camera/spring-arm/movement and bounded existing native Spline/ISM/empty-HISM source profiles. Specialized/generated source lifetimes and arbitrary class discovery remain implementation targets; Named profiles are unchanged."));
+                if (!CommonNative) return Fail(R, TEXT("component_raw_add_source_lifecycle_pending"), TEXT("Original presence path admits implemented common Engine scene/shape/mesh/camera/spring-arm/movement and bounded existing native Spline/ISM/empty-HISM source profiles. Exact native PCGComponent reuses its bounded own GraphInstance lifecycle and original single full compile; other specialized/generated source lifetimes and arbitrary class discovery remain implementation targets. Named profiles are unchanged."));
                 // ACZ proves the original default-root retirement in FHismScope
                 // before CreateNode and adopts it only after SCS.AddNode returns.
                 if(Class==USplineComponent::StaticClass()||Class==UInstancedStaticMeshComponent::StaticClass()||Class==UHierarchicalInstancedStaticMeshComponent::StaticClass())
@@ -3674,7 +3699,7 @@ FMutationResult Mutate(const FString& BlueprintPath, const FString& ComponentTyp
                 ActualParent = SCS->GetRootNodes()[0]->GetVariableName().ToString();
             }
             if (!ActualParent.IsEmpty()) { Parent = Before.LocalNodes.FindRef(ActualParent).Get(); if (!Parent || !Cast<USceneComponent>(Parent->ComponentTemplate)) { return Fail(R, TEXT("component_parent_invalid"), TEXT("Parent must be an existing exact local scene component.")); } }
-            if (bPCGRequested) { PCGHandled=true; return AddNativePCG(Blueprint.Get(),Class,ComponentName,TransformJson,Before,R); }
+            if (bPCGRequested) { PCGHandled=true; return AddNativePCG(Blueprint.Get(),Class,ComponentName,TransformJson,Before,R,bOriginalAdd); }
             if (NiagaraComponentName(ComponentType)) { NiagaraHandled=true; if(InitialPropertyCount!=0)return Fail(R,TEXT("component_niagara_initial_properties_pending"),TEXT("Fresh Niagara Add accepts only empty initial properties; use the separate exact raw Set calls.")); return MutateNativeNiagara(Blueprint.Get(),nullptr,Parent,ComponentName,PropertyObject.ToSharedRef(),Before,true,R); }
             bNativeSplineRequested = Class == USplineComponent::StaticClass();
             bNativeIsmRequested = Class == UInstancedStaticMeshComponent::StaticClass()||Class==UHierarchicalInstancedStaticMeshComponent::StaticClass();

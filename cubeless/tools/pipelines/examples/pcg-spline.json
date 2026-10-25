@@ -1,0 +1,181 @@
+{
+  "graph": "/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_Spline/PCG_SplinePractical",
+  "world": "/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_Spline/Map_Practical",
+  "actor_label": "Example_Spline",
+  "transform": {
+    "location": {
+      "x": 0,
+      "y": 1000,
+      "z": 100
+    },
+    "rotation": {
+      "pitch": 0,
+      "yaw": 0,
+      "roll": 0
+    },
+    "scale": {
+      "x": 1,
+      "y": 1,
+      "z": 1
+    }
+  },
+  "save_graph": true,
+  "spline": {
+    "component_name": "SourceSpline",
+    "points": [
+      [
+        -300,
+        1000,
+        100
+      ],
+      [
+        300,
+        1000,
+        100
+      ]
+    ],
+    "closed_loop": false,
+    "allow_official_component_write": true
+  },
+  "nodes": [
+    {
+      "id": "Source",
+      "type": "Get Spline Data",
+      "parameters": {
+        "ActorSelector": {
+          "ActorFilter": "Self"
+        },
+        "bAlwaysRequeryActors": true
+      }
+    },
+    {
+      "id": "Sampler",
+      "type": "Spline Sampler",
+      "parameters": {
+        "SamplerParams": {
+          "Dimension": "OnSpline",
+          "Mode": "Distance",
+          "DistanceIncrement": 100,
+          "bFitToCurve": false,
+          "MaxRandomOffsetNormalized": 0,
+          "bUnbounded": true
+        }
+      }
+    },
+    {
+      "id": "Transform",
+      "type": "Transform Points",
+      "parameters": {
+        "ScaleMin": {
+          "x": 0.2,
+          "y": 0.2,
+          "z": 0.2
+        },
+        "ScaleMax": {
+          "x": 0.2,
+          "y": 0.2,
+          "z": 0.2
+        },
+        "Seed": 42
+      }
+    },
+    {
+      "id": "Meshes",
+      "type": "Static Mesh Spawner",
+      "mesh_entries": [
+        {
+          "mesh": "/Engine/BasicShapes/Cube.Cube",
+          "weight": 1,
+          "cast_shadow": false
+        }
+      ]
+    }
+  ],
+  "links": [
+    [
+      "Source",
+      "Out",
+      "Sampler",
+      "Spline"
+    ],
+    [
+      "Sampler",
+      "Out",
+      "Transform",
+      "In"
+    ],
+    [
+      "Transform",
+      "Out",
+      "Meshes",
+      "In"
+    ],
+    [
+      "Meshes",
+      "Out",
+      "output",
+      "Out"
+    ]
+  ],
+  "expect": {
+    "instances": 7,
+    "bounds_min": [
+      -300,
+      1000,
+      100
+    ],
+    "bounds_max": [
+      300,
+      1000,
+      100
+    ],
+    "unique_positions": true
+  },
+  "cycles": [
+    {
+      "spline_points": [
+        [
+          -300,
+          1000,
+          100
+        ],
+        [
+          0,
+          1000,
+          100
+        ]
+      ],
+      "expect": {
+        "instances": 4,
+        "bounds_min": [
+          -300,
+          1000,
+          100
+        ],
+        "bounds_max": [
+          0,
+          1000,
+          100
+        ],
+        "unique_positions": true
+      }
+    },
+    {
+      "expect": {
+        "instances": 4,
+        "bounds_min": [
+          -300,
+          1000,
+          100
+        ],
+        "bounds_max": [
+          0,
+          1000,
+          100
+        ],
+        "unique_positions": true
+      },
+      "same_as_previous": true
+    }
+  ]
+}

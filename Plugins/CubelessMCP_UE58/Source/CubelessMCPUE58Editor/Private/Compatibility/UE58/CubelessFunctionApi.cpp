@@ -5985,9 +5985,55 @@ struct FFunctionLibraryCallSource
     }
 };
 // LY LibraryCallSource_End
+// AJ: the existing concrete call writer gains a common fixed native static
+// source lease. No function-name whitelist, runtime invocation or source load.
+bool FixedStaticPin(FEdGraphPinType T)
+{
+    if(T.IsContainer()||T.bIsWeakPointer)return false;T.bIsReference=false;T.bIsConst=false;
+    if(Pin::IsPrimitive(T)||RuntimeObject::IsSupportedPin(T)||Pin::IsScalarValueStruct(T))return true;
+    if(T.PinCategory==UEdGraphSchema_K2::PC_Class&&T.PinSubCategory.IsNone()&&RuntimeObject::IsSupportedClass(Cast<UClass>(T.PinSubCategoryObject.Get())))return true;
+    return T.PinCategory==UEdGraphSchema_K2::PC_Struct&&T.PinSubCategory.IsNone()&&T.PinSubCategoryObject.Get()==TBaseStructure<FLinearColor>::Get()&&MaterialLinearColorObservation(T)->GetBoolField(TEXT("native_identity_verified"));
+}
+struct FFixedStaticCallSource
+{
+    TStrongObjectPtr<UClass> Owner;TStrongObjectPtr<UFunction> Function;TStrongObjectPtr<UObject> CDO;
+    TStrongObjectPtr<UEdGraphSchema_K2> Schema;TArray<FProperty*> Inventory;TArray<TStrongObjectPtr<UObject>> Types;TSharedPtr<FJsonObject> Before;
+    FORCENOINLINE bool Eligible()const
+    {
+        if(!MaterialGraphLookupReady()||!DeclarationEnumLoaded(Owner.Get())||!DeclarationEnumLoaded(Function.Get())||Owner->GetClass()!=UClass::StaticClass()||!Owner->HasAnyClassFlags(CLASS_Native)||Owner->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface)||!Owner->ClassGeneratedBy.IsResolved()||Owner->ClassGeneratedBy!=nullptr||Owner->GetPackage()->GetName()!=TEXT("/Script/Engine")||Owner->GetPackage()->IsDirty()||!Owner->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||!Owner->IsChildOf(UBlueprintFunctionLibrary::StaticClass())||Function->GetOuter()!=Owner.Get()||Owner->FindFunctionByName(Function->GetFName(),EIncludeSuperFlag::ExcludeSuper)!=Function.Get()||!Function->HasAllFunctionFlags(FUNC_Native|FUNC_Public|FUNC_Static|FUNC_BlueprintCallable)||Function->HasAnyFunctionFlags(FUNC_EditorOnly|FUNC_Private|FUNC_Protected|FUNC_Delegate|FUNC_Net|FUNC_Event))return false;
+        for(const TCHAR* Key:{TEXT("Latent"),TEXT("CustomThunk"),TEXT("DeprecatedFunction"),TEXT("ArrayParm"),TEXT("ArrayTypeDependentParams"),TEXT("CustomStructureParam"),TEXT("DeterminesOutputType"),TEXT("DynamicOutputParam"),TEXT("ExpandEnumAsExecs"),TEXT("ExpandBoolAsExecs"),TEXT("BlueprintInternalUseOnly")})if(Function->HasMetaData(Key))return false;
+        return !Owner->GetBoolMetaDataHierarchical(TEXT("BlueprintInternalUseOnlyHierarchical"));
+    }
+    FORCENOINLINE TSharedRef<FJsonObject> Snapshot(bool Initial=false)
+    {
+        auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("source_signature_match"),false);
+        if(!Eligible()||!DeclarationEnumLoaded(Schema.Get())||!MaterialGraphCDOMatches(UEdGraphSchema_K2::StaticClass(),Schema.Get())||!DeclarationEnumLoaded(CDO.Get())||!MaterialGraphCDOMatches(Owner.Get(),CDO.Get())||CDO->GetClass()!=Owner.Get()||CDO->GetOuter()!=Owner->GetOuter()||!CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return J;
+        TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(Function.Get(),EFieldIterationFlags::None);It;++It)Now.Add(*It);if(Now.Num()>MaxParameters||(!Initial&&Now!=Inventory))return J;if(Initial)Inventory=Now;
+        J->SetStringField(TEXT("owner"),Owner->GetPathName());J->SetStringField(TEXT("owner_flags"),LexToString(uint32(Owner->GetFlags())));J->SetStringField(TEXT("owner_class_flags"),LexToString(uint32(Owner->GetClassFlags())));J->SetStringField(TEXT("owner_super"),Owner->GetSuperClass()->GetPathName());J->SetStringField(TEXT("owner_cdo"),CDO->GetPathName());J->SetStringField(TEXT("owner_cdo_flags"),LexToString(uint32(CDO->GetFlags())));J->SetStringField(TEXT("function"),Function->GetPathName());J->SetStringField(TEXT("function_flags"),LexToString(uint32(Function->FunctionFlags)));J->SetNumberField(TEXT("parms_size"),Function->ParmsSize);J->SetNumberField(TEXT("num_parms"),Function->NumParms);J->SetNumberField(TEXT("owner_package_flags"),uint32(Owner->GetPackage()->GetPackageFlags()));
+        for(UObject* O:{static_cast<UObject*>(Owner.Get()),static_cast<UObject*>(Function.Get())}){auto Meta=MakeShared<FJsonObject>();const auto* Map=FMetaData::GetMapForObject(O);if(!Eligible()||(Map&&Map->Num()>1024))return J;if(Map)for(const auto& M:*Map){if(M.Value.Len()>16384)return J;Meta->SetStringField(M.Key.ToString(),M.Value);}J->SetObjectField(O->GetPathName()+TEXT(".metadata"),Meta);}
+        TArray<TSharedPtr<FJsonValue>> Rows;TSet<FName> Names;int32 Count=0;
+        for(FProperty* P:Now)
+        {
+            if(!Eligible()||!P||P->GetOwnerStruct()!=Function.Get()||P->ArrayDim!=1||!P->HasAnyPropertyFlags(CPF_Parm)||P->HasSetterOrGetter()||P->HasAnyPropertyFlags(CPF_Deprecated|CPF_InstancedReference|CPF_ContainsInstancedReference)||P->GetOffset_ForInternal()<0||P->GetSize()<=0||int64(P->GetOffset_ForInternal())+P->GetSize()>Function->ParmsSize||Names.Contains(P->GetFName()))return J;
+            Names.Add(P->GetFName());FEdGraphPinType T;const bool Converted=Schema->ConvertPropertyToPinType(P,T);if(!Eligible()||!Converted||!FixedStaticPin(T))return J;
+            // Installed K2: OutParm|ReferenceParm together, not ReferenceParm
+            // alone, sets bIsReference. Preserve the actual converted flags.
+            if(T.bIsReference!=P->HasAllPropertyFlags(CPF_OutParm|CPF_ReferenceParm)||T.bIsConst!=P->HasAnyPropertyFlags(CPF_ConstParm))return J;
+            auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("name"),P->GetName());Row->SetStringField(TEXT("kind"),P->GetClass()->GetName());Row->SetStringField(TEXT("flags"),LexToString(uint64(P->GetPropertyFlags())));Row->SetNumberField(TEXT("offset"),P->GetOffset_ForInternal());Row->SetNumberField(TEXT("size"),P->GetSize());Row->SetBoolField(TEXT("reference_parm"),P->HasAnyPropertyFlags(CPF_ReferenceParm));Row->SetObjectField(TEXT("pin_type"),FDeclarationEnumScope::MapTypeState(T));
+            const bool Input=!P->HasAnyPropertyFlags(CPF_ReturnParm)&&(!P->HasAnyPropertyFlags(CPF_OutParm)||P->HasAnyPropertyFlags(CPF_ReferenceParm));Row->SetBoolField(TEXT("input"),Input);
+            if(auto* O=CastField<FObjectProperty>(P)){if(!O->PropertyClass.IsResolved()||!DeclarationEnumLoaded(O->PropertyClass.Get()))return J;if(Initial)Types.Emplace(O->PropertyClass.Get());Row->SetStringField(TEXT("object_class"),O->PropertyClass->GetPathName());Row->SetNumberField(TEXT("object_class_flags"),uint32(O->PropertyClass->GetClassFlags()));}
+            if(auto* C=CastField<FClassProperty>(P)){if(!C->MetaClass.IsResolved()||!DeclarationEnumLoaded(C->MetaClass.Get())||!RuntimeObject::IsSupportedClass(C->MetaClass.Get()))return J;if(Initial)Types.Emplace(C->MetaClass.Get());Row->SetStringField(TEXT("meta_class"),C->MetaClass->GetPathName());Row->SetNumberField(TEXT("meta_class_flags"),uint32(C->MetaClass->GetClassFlags()));}
+            if(auto* V=CastField<FStructProperty>(P)){if(!V->Struct.IsResolved()||!DeclarationEnumLoaded(V->Struct.Get())||V->Struct.Get()!=T.PinSubCategoryObject.Get())return J;if(Initial)Types.Emplace(V->Struct.Get());FEdGraphPinType Value=T;Value.bIsReference=false;Value.bIsConst=false;const auto Source=V->Struct.Get()==TBaseStructure<FLinearColor>::Get()?MaterialLinearColorObservation(Value):Pin::ScalarValueStructSource(Value);if(!Source->GetBoolField(TEXT("native_identity_verified")))return J;Row->SetObjectField(TEXT("value_struct_source"),Source);}
+            auto Metadata=MakeShared<FJsonObject>();const auto* PM=P->GetMetaDataMap();if(PM){if(PM->Num()>1024)return J;for(const auto& M:*PM){if(M.Value.Len()>16384)return J;Metadata->SetStringField(M.Key.ToString(),M.Value);}}Row->SetObjectField(TEXT("metadata"),Metadata);Rows.Add(MakeShared<FJsonValueObject>(Row));++Count;
+        }if(Count!=Function->NumParms||!Eligible())return J;J->SetArrayField(TEXT("parameters"),Rows);J->SetBoolField(TEXT("source_signature_match"),true);return J;
+    }
+    FORCENOINLINE bool Bind(UClass* O,UFunction* F,const UEdGraphSchema_K2* S)
+    {Owner.Reset(O);Function.Reset(F);Schema.Reset(const_cast<UEdGraphSchema_K2*>(S));CDO.Reset(const_cast<UObject*>(MaterialGraphExistingCDO(O)));auto J=Snapshot(true);if(!J->GetBoolField(TEXT("source_signature_match")))return false;Before=J;return true;}
+};
 struct FPlayerObjectCallScope
 {
     FResult& R;bool Stopped=false,LoadEntered=false,Member=false,GuidFixed=false,PinsFixed=false,BindingFixed=false,ActorValue=false,ExpectedSelf=false;
+    TSharedPtr<FFixedStaticCallSource> FixedStatic;TMap<FName,FEdGraphPinType> FixedInputs,FixedOutputs;FName FixedMutable;FString FixedRequested;
     TWeakObjectPtr<UEditorEngine> Editor;TWeakObjectPtr<UWorld> World;
     TStrongObjectPtr<UClass> Owner,ReturnClass,NodeClass;TStrongObjectPtr<UScriptStruct> ReturnStruct;TStrongObjectPtr<UFunction> Function;TStrongObjectPtr<UEdGraphSchema_K2> SchemaCDO;
     TStrongObjectPtr<UBlueprint> Blueprint;TStrongObjectPtr<UEdGraph> Graph;TStrongObjectPtr<UK2Node_CallFunction> Node;
@@ -6079,8 +6125,8 @@ struct FPlayerObjectCallScope
     bool Bad(const TCHAR* Code,const TCHAR* Why)
     {
         if(Stopped) { return false; }Stopped=true;R.bSuccess=R.bPostconditionPassed=false;
-        R.bChangeStateKnown=!LoadEntered&&!R.bMutationAttempted;R.ErrorCode=Code;if(ActorValue) { R.ErrorCode.ReplaceInline(TEXT("player_getter_"),TEXT("actor_getter_")); }R.Error=Why;
-        R.Data->SetBoolField(TEXT("automatic_retry_safe"),false);R.Data->SetBoolField(Library.IsValid()?TEXT("function_library_call_observation_complete"):ActorValue?TEXT("actor_getter_observation_complete"):TEXT("player_getter_observation_complete"),false);return false;
+        R.bChangeStateKnown=!LoadEntered&&!R.bMutationAttempted;R.ErrorCode=Code;if(FixedStatic.IsValid()){R.ErrorCode.ReplaceInline(TEXT("player_getter_"),TEXT("native_static_"));}else if(ActorValue) { R.ErrorCode.ReplaceInline(TEXT("player_getter_"),TEXT("actor_getter_")); }R.Error=Why;
+        R.Data->SetBoolField(TEXT("automatic_retry_safe"),false);R.Data->SetBoolField(Library.IsValid()?TEXT("function_library_call_observation_complete"):FixedStatic.IsValid()?TEXT("native_static_call_observation_complete"):ActorValue?TEXT("actor_getter_observation_complete"):TEXT("player_getter_observation_complete"),false);return false;
     }
     static bool Live(const UObject* O)
     { return IsValid(O)&&!O->HasAnyFlags(RF_BeginDestroyed|RF_FinishDestroyed|RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects); }
@@ -6119,9 +6165,10 @@ struct FPlayerObjectCallScope
             { return Bad(TEXT("player_getter_identity_changed"),TEXT("Captured source/target class, outer, package, path or flags changed.")); }
         }return true;
     }
-    TSharedRef<FJsonObject> Source()
+    FORCENOINLINE TSharedRef<FJsonObject> Source()
     {
         if(Library.IsValid())return Library->State();
+        if(FixedStatic.IsValid())return FixedStatic->Snapshot();
         auto J=MakeShared<FJsonObject>();auto* O=Owner.Get();auto* F=Function.Get();auto* C=ReturnClass.Get();
         if(ActorValue)
         {
@@ -6204,6 +6251,8 @@ struct FPlayerObjectCallScope
     {
         if(Library.IsValid()){Owner.Reset(O);Function.Reset(F);FunctionName=Name;SourceText=Library->SignatureText;return Library->Check();}
         if(!Context()) { return false; }FunctionName=Name;
+        if(FixedStatic.IsValid())
+        {if(!Hold(O)||!Hold(F)||!Hold(FixedStatic->CDO.Get()))return false;Owner.Reset(O);Function.Reset(F);auto J=Source();if(!J->GetBoolField(TEXT("source_signature_match"))||!Text(J).Equals(Text(FixedStatic->Before.ToSharedRef()),ESearchCase::CaseSensitive))return Bad(TEXT("function_static_source_changed"),TEXT("Current fixed native signature differs before source adoption; no target writer."));SourceText=Text(J);R.Data->SetObjectField(TEXT("native_static_source_before"),J);return Check();}
         if(ActorValue)
         {
             UScriptStruct* S=Name==TEXT("K2_GetActorRotation")?TBaseStructure<FRotator>::Get():TBaseStructure<FVector>::Get();
@@ -6294,14 +6343,14 @@ struct FPlayerObjectCallScope
         for(const auto& Entry:G->Nodes) { auto* N=Entry.Get();if(!Live(N)||Seen.Contains(N)||!Hold(N)) { return Bad(TEXT("player_getter_node_invalid"),TEXT("Existing graph node role unavailable.")); }Seen.Add(N);OldNodes.Emplace(N); }
         auto J=MakeShared<FJsonObject>();if(!Retained(J)) { return Bad(TEXT("player_getter_graph_snapshot_incomplete"),TEXT("Current nodes/pins/ordered reciprocal links exceed or fail the concrete observation scope.")); }RetainedText=Text(J);return Check();
     }
-    bool Check()
+    FORCENOINLINE bool Check()
     {
         if(Library.IsValid())return LibraryBase()&&Library->Check()&&LibraryBase();
         if(!RolesCurrent()||(ActorValue&&!TargetCurrent())) { return false; }
         if(Owner.IsValid()) { auto J=Source();if(!J->GetBoolField(TEXT("source_signature_match"))||Text(J)!=SourceText) { return Bad(TEXT("player_getter_source_changed"),TEXT("Read-only native getter source identity/signature/metadata changed.")); } }
         return TargetCurrent();
     }
-    bool TargetCurrent()
+    FORCENOINLINE bool TargetCurrent()
     {
         if(Library.IsValid())return LibraryBase();
         if(Stopped) { return false; }
@@ -6328,7 +6377,7 @@ struct FPlayerObjectCallScope
             if(PinsFixed)
             {
                 if(N->Pins.Num()!=NewPinAddresses.Num()) { return Bad(TEXT("player_getter_pin_changed"),TEXT("Allocated pin array changed.")); }
-                for(int32 I=0;I<N->Pins.Num();++I) { auto* P=N->Pins[I];if(P!=NewPinAddresses[I]||!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||P->PinId!=NewPinIds[I]||!SameCapturePinType(P->PinType,NewPinTypes[I])||PinShape(P)!=NewPinShapes[I]||P->DefaultValue!=NewDefaultValues[I]||P->AutogeneratedDefaultValue!=NewAutogeneratedValues[I]||P->DefaultObject!=NewDefaultObjects[I]||P->DefaultTextValue.ToString()!=NewDefaultTexts[I]||P->bOrphanedPin||P->ParentPin||!P->SubPins.IsEmpty()||!P->LinkedTo.IsEmpty()) { return Bad(TEXT("player_getter_pin_changed"),TEXT("Current physical pin/ID/type/flags/link role differs; old raw pins are not read.")); } }
+                for(int32 I=0;I<N->Pins.Num();++I) { auto* P=N->Pins[I];if(P!=NewPinAddresses[I]||!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||P->PinId!=NewPinIds[I]||!SameCapturePinType(P->PinType,NewPinTypes[I])||PinShape(P)!=NewPinShapes[I]||(!(FixedStatic.IsValid()&&P->PinName==FixedMutable)&&(P->DefaultValue!=NewDefaultValues[I]||P->DefaultTextValue.ToString()!=NewDefaultTexts[I]))||P->AutogeneratedDefaultValue!=NewAutogeneratedValues[I]||P->DefaultObject!=NewDefaultObjects[I]||P->bOrphanedPin||P->ParentPin||!P->SubPins.IsEmpty()||!P->LinkedTo.IsEmpty()) { return Bad(TEXT("player_getter_pin_changed"),TEXT("Current physical pin/ID/type/flags/link role differs; old raw pins are not read.")); } }
             }
         }return Context();
     }
@@ -6409,10 +6458,18 @@ struct FPlayerObjectCallScope
                 NewPinAddresses.Add(P);LibraryNewPins.Add(MoveTemp(V));}
             PinsFixed=true;R.Data->SetBoolField(TEXT("function_library_call_physical_signature_verified"),true);return Check();
         }
-        if(!RolesCurrent()||!TargetCurrent()||Node->Pins.Num()!=(ActorValue?2:4)) { return Bad(TEXT("player_getter_pin_shape_invalid"),ActorValue?TEXT("Actor getter requires exact self/return physical pins."):TEXT("Getter requires exact self/world/index/return physical pins.")); }
+        if(!RolesCurrent()||!TargetCurrent()||Node->Pins.Num()!=(FixedStatic.IsValid()?FixedInputs.Num()+FixedOutputs.Num()+(Function->HasAnyFunctionFlags(FUNC_BlueprintPure)?1:3):ActorValue?2:4)) { return Bad(TEXT("player_getter_pin_shape_invalid"),ActorValue?TEXT("Actor getter requires exact self/return physical pins."):TEXT("Getter requires exact self/world/index/return physical pins.")); }
         TSet<FGuid> Ids;for(auto* P:Node->Pins)
         {
-            if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=Node.Get()||!P->PinId.IsValid()||Ids.Contains(P->PinId)||P->bOrphanedPin||P->ParentPin||!P->SubPins.IsEmpty()||!P->LinkedTo.IsEmpty()) { return Bad(TEXT("player_getter_pin_shape_invalid"),TEXT("Fresh getter pin identity/type topology invalid.")); }Ids.Add(P->PinId);NewPinAddresses.Add(P);NewPinIds.Add(P->PinId);NewPinTypes.Add(P->PinType);NewPinShapes.Add(PinShape(P));NewDefaultValues.Add(P->DefaultValue);NewAutogeneratedValues.Add(P->AutogeneratedDefaultValue);NewDefaultTexts.Add(P->DefaultTextValue.ToString());NewDefaultObjects.Add(P->DefaultObject);if(P->DefaultObject&&!Hold(P->DefaultObject)) { return false; }
+            if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=Node.Get()||!P->PinId.IsValid()||Ids.Contains(P->PinId)||P->bOrphanedPin||P->ParentPin||!P->SubPins.IsEmpty()||!P->LinkedTo.IsEmpty()) { return Bad(TEXT("player_getter_pin_shape_invalid"),TEXT("Fresh getter pin identity/type topology invalid.")); }
+            if(FixedStatic.IsValid())
+            {
+                const FEdGraphPinType* Expected=P->Direction==EGPD_Input?FixedInputs.Find(P->PinName):FixedOutputs.Find(P->PinName);
+                if(Expected){if(!SameCapturePinType(P->PinType,*Expected))return Bad(TEXT("function_static_pin_type_changed"),TEXT("Actual K2 pin differs from the installed converted native property; no default writer."));}
+                else if(P->PinName==UEdGraphSchema_K2::PN_Self){if(P->Direction!=EGPD_Input||P->PinType.PinCategory!=UEdGraphSchema_K2::PC_Object||P->PinType.PinSubCategoryObject.Get()!=Owner.Get()||!P->bHidden||P->DefaultObject!=FixedStatic->CDO.Get())return Bad(TEXT("function_static_self_pin_changed"),TEXT("Exact native library CDO self pin required."));}
+                else if((P->PinName!=UEdGraphSchema_K2::PN_Execute&&P->PinName!=UEdGraphSchema_K2::PN_Then)||P->PinType.PinCategory!=UEdGraphSchema_K2::PC_Exec||P->Direction!=(P->PinName==UEdGraphSchema_K2::PN_Execute?EGPD_Input:EGPD_Output))return Bad(TEXT("function_static_extra_pin"),TEXT("Only declared parameters, library self and standard exec/then are admitted."));
+            }
+            Ids.Add(P->PinId);NewPinAddresses.Add(P);NewPinIds.Add(P->PinId);NewPinTypes.Add(P->PinType);NewPinShapes.Add(PinShape(P));NewDefaultValues.Add(P->DefaultValue);NewAutogeneratedValues.Add(P->AutogeneratedDefaultValue);NewDefaultTexts.Add(P->DefaultTextValue.ToString());NewDefaultObjects.Add(P->DefaultObject);if(P->DefaultObject&&!Hold(P->DefaultObject)) { return false; }
         }PinsFixed=true;return Check();
     }
     bool FixBinding()
@@ -6420,7 +6477,7 @@ struct FPlayerObjectCallScope
         if(Library.IsValid()){LibraryBinding.SetExternalMember(Library->NativeBody?Library->NativeName:Library->PresetSource?FName(TEXT("PresetLoader")):FName(TEXT("CameraFacing")),Owner.Get(),Library->NativeBody?FGuid():Library->Guid);BindingFixed=true;return Check();}
         BindingFixed=true;if(!RolesCurrent()||!TargetCurrent()) { return false; }return Check();
     }
-    bool PlanDefault(const FName Name,const FString& Value)
+    FORCENOINLINE bool PlanDefault(const FName Name,const FString& Value)
     {
         if(!Check()) { return false; }
         if(Library.IsValid()&&Library->NativeBody)
@@ -6432,6 +6489,7 @@ struct FPlayerObjectCallScope
             if(Name!=TEXT("UseLegacyFacing")&&Name!=TEXT("LockY")&&Name!=TEXT("TraceMeshInitRot"))return Bad(TEXT("function_library_call_default_unsupported"),TEXT("Only the two bools and Rotator support literals; mesh/world/self require typed compiler/wire inputs."));
             for(int32 I=0;I<LibraryNewPins.Num();++I)if(LibraryNewPins[I].Name==Name&&LibraryNewPins[I].Direction==EGPD_Input){LibraryNewPins[I].Default=Value;return true;}return Bad(TEXT("function_library_call_default_missing"),TEXT("Current finite default pin missing."));
         }
+        if(FixedStatic.IsValid()){const auto* T=FixedInputs.Find(Name);if(!T||T->bIsReference||T->PinCategory==UEdGraphSchema_K2::PC_Class)return Bad(TEXT("function_static_default_scope_pending"),TEXT("Native references and class literals require typed wires; no schema setter."));FixedMutable=Name;FixedRequested=Value;return true;}
         if(Name!=TEXT("PlayerIndex")) { return Bad(TEXT("player_getter_default_plan_invalid"),TEXT("Only the exact declared PlayerIndex int input may have an explicit getter default.")); }
         for(int32 I=0;I<Node->Pins.Num();++I)
         {
@@ -6445,6 +6503,37 @@ struct FPlayerObjectCallScope
             }
         }return Bad(TEXT("player_getter_default_plan_invalid"),TEXT("Current PlayerIndex input missing from the captured physical array."));
     }
+    FORCENOINLINE bool VerifyFixedResult(bool Pure,bool& Verified)
+    {
+        if(!FixedStatic.IsValid()||!Check())return false;
+        const bool PriorVerified=Verified;
+        const bool Signature=Pure==Function->HasAnyFunctionFlags(FUNC_BlueprintPure)
+            &&Node->Pins.Num()==FixedInputs.Num()+FixedOutputs.Num()+(Pure?1:3)
+            &&Node->FunctionReference.GetMemberName()==Function->GetFName()
+            &&!Node->FunctionReference.GetMemberGuid().IsValid()&&!Node->FunctionReference.IsSelfContext()
+            &&Node->FunctionReference.GetMemberParentClass()==Owner.Get()
+            &&Node->FunctionReference.GetMemberScopeName().IsEmpty()&&!Node->FunctionReference.IsLocalScope()&&!Node->FunctionReference.IsDeprecated();
+        Verified&=Signature;
+        auto Result=MakeShared<FJsonObject>();Result->SetBoolField(TEXT("prior_common_verified"),PriorVerified);Result->SetBoolField(TEXT("fixed_signature_verified"),Signature);Result->SetBoolField(TEXT("actual_pure"),Pure);Result->SetBoolField(TEXT("expected_pure"),Function->HasAnyFunctionFlags(FUNC_BlueprintPure));Result->SetNumberField(TEXT("actual_pin_count"),Node->Pins.Num());Result->SetNumberField(TEXT("expected_pin_count"),FixedInputs.Num()+FixedOutputs.Num()+(Pure?1:3));Result->SetStringField(TEXT("first_failed_condition"),!PriorVerified?TEXT("prior_common_verification"):!Signature?TEXT("fixed_native_signature"):TEXT(""));R.Data->SetObjectField(TEXT("native_static_call_postcondition"),Result);
+        R.Data->SetBoolField(TEXT("native_static_typed_result_verified"),Verified);
+        return Check();
+    }
+    FORCENOINLINE bool VerifyAppliedDefault(UK2Node_CallFunction* Call,const UEdGraphSchema_K2* Schema,
+        const FName& Name,const FString& Value,bool& Applied)
+    {
+        if(!Check()) { return false; }auto* P=Call->FindPin(Name,EGPD_Input);
+        const bool Matches=P&&Schema->DoesDefaultValueMatch(*P,Value);if(!Check()) { return false; }P=Call->FindPin(Name,EGPD_Input);
+        const FString Error=P?Schema->IsCurrentPinDefaultValid(P):TEXT("missing current pin");if(!Check()) { return false; }Applied&=Matches&&Error.IsEmpty();return FinishFixedDefault();
+    }
+    FORCENOINLINE bool FinishFixedDefault()
+    {
+        if(!FixedStatic.IsValid()||FixedMutable.IsNone())return true;if(!Check())return false;
+        for(int32 I=0;I<Node->Pins.Num();++I)if(Node->Pins[I]->PinName==FixedMutable&&Node->Pins[I]->Direction==EGPD_Input){auto* P=Node->Pins[I];const FString Value=P->DefaultValue,Display=P->DefaultTextValue.ToString();if(!Check())return false;NewDefaultValues[I]=Value;NewDefaultTexts[I]=Display;auto Prefix=MakeShared<FJsonObject>();Prefix->SetStringField(TEXT("pin"),FixedMutable.ToString());Prefix->SetStringField(TEXT("requested"),FixedRequested);Prefix->SetStringField(TEXT("actual_default"),Value);Prefix->SetStringField(TEXT("actual_text"),Display);R.Data->SetObjectField(TEXT("native_static_last_applied_default"),Prefix);FixedMutable=NAME_None;return Check();}return Bad(TEXT("function_static_default_missing"),TEXT("Selected native default pin disappeared after schema return."));
+    }
+    FORCENOINLINE bool RemoveFailedFixedNode()
+    {
+        if(!FixedStatic.IsValid()||!Check()||!Node.IsValid())return false;R.Data->SetStringField(TEXT("failed_default_node_path"),NodePath);auto Retired=MoveTemp(Node);Retired->DestroyNode();Member=false;PinsFixed=false;FixedMutable=NAME_None;if(!Check())return false;R.Data->SetBoolField(TEXT("failed_default_node_cleanup_performed"),true);return AfterWork();
+    }
     bool Observe(TSharedRef<FJsonObject>& J)
     {
         if(!Check()||!Retained(J)) { return false; }if(Node.IsValid()) { auto N=MakeShared<FJsonObject>();if(!PlainNode(Node.Get(),N)) { return Bad(TEXT("player_getter_snapshot_incomplete"),TEXT("Current getter node snapshot incomplete.")); }auto Rows=J->GetArrayField(TEXT("nodes"));Rows.Add(MakeShared<FJsonValueObject>(N));J->SetArrayField(TEXT("nodes"),Rows);
@@ -6455,8 +6544,9 @@ struct FPlayerObjectCallScope
     bool AfterWork()
     {
         auto J=MakeShared<FJsonObject>();if(!Observe(J)) { return false; }R.Data->SetObjectField(TEXT("after"),J);R.bChanged|=Text(J)!=BeforeText;R.bChangeStateKnown=true;
+        if(FixedStatic.IsValid()){R.Data->SetObjectField(TEXT("native_static_source_after"),Source());R.Data->SetBoolField(TEXT("native_static_runtime_invocation_verified"),false);R.Data->SetStringField(TEXT("native_static_support_scope"),TEXT("Loaded exact fixed native Engine BFL source/CDO and own standard event/function caller; actual converted primitive, existing runtime native object/class, native Vector/Rotator/Transform/LinearColor value/reference pins. Actual K2 references and concrete class literals are wire-only; object defaults accept existing JSON null only; WorldContext is compiler-provided. Native Color text uses the standard schema parser. Containers, enums, arbitrary struct/class/asset literals, cold/generated/custom/latent/wildcard source and runtime execution remain incomplete."));}
         R.Data->SetStringField(TEXT("change_observation_scope"),Library.IsValid()?TEXT("Exact saved-clean BFL signature/GUID/disk and existing native source metadata; held caller classes/CDO, current graph/node/full physical pin/default/link roles. CameraFacing body/runtime/global callback effects are not certified."):TEXT("Exact native getter signature/selected metadata; current Blueprint/class/CDO identities; owned graph membership, physical pins/defaults/ordered reciprocal links, dirty/status. Global callback effects, runtime getter values and full class/CDO contents are unobserved."));
-        R.Data->SetBoolField(Library.IsValid()?TEXT("function_library_call_observation_complete"):ActorValue?TEXT("actor_getter_observation_complete"):TEXT("player_getter_observation_complete"),true);R.Data->SetBoolField(Library.IsValid()?TEXT("function_library_source_observed_unchanged"):ActorValue?TEXT("actor_getter_source_observed_unchanged"):TEXT("player_getter_source_observed_unchanged"),true);return true;
+        R.Data->SetBoolField(Library.IsValid()?TEXT("function_library_call_observation_complete"):FixedStatic.IsValid()?TEXT("native_static_call_observation_complete"):ActorValue?TEXT("actor_getter_observation_complete"):TEXT("player_getter_observation_complete"),true);R.Data->SetBoolField(Library.IsValid()?TEXT("function_library_source_observed_unchanged"):FixedStatic.IsValid()?TEXT("native_static_source_observed_unchanged"):ActorValue?TEXT("actor_getter_source_observed_unchanged"):TEXT("player_getter_source_observed_unchanged"),true);return true;
     }
 };
 }
@@ -6870,9 +6960,10 @@ FORCENOINLINE bool PrepareCallParameterTypes(UFunction* Function,const UEdGraphS
         const bool OwnValue = bOwnClassRequested && !bCustomEvent && Converted && Pin::IsScalarValueStruct(T)
             && ValueProperty && ValueProperty->Struct == T.PinSubCategoryObject.Get() && It->ArrayDim == 1
             && It->GetOwnerStruct() == Function && !It->HasAnyPropertyFlags(CPF_ReferenceParm | CPF_ConstParm);
+        const bool Fixed=PlayerScope&&PlayerScope->FixedStatic.IsValid()&&Converted&&FixedStaticPin(T);
         if (++ParameterCount > MaxParameters || !Converted
-            || (!Pin::IsPrimitive(T) && !(AuditedObjectSignature && RuntimeObject::IsSupportedPin(T)) && !CaptureExtension && !OwnValue && !PlayerPin && !ActorReturn)
-            || (It->HasAnyPropertyFlags(CPF_ReferenceParm) && !NativePresetNormalization && !(CaptureDeproject && It->GetFName() == TEXT("ScreenPosition"))
+            || (!Pin::IsPrimitive(T) && !(AuditedObjectSignature && RuntimeObject::IsSupportedPin(T)) && !CaptureExtension && !OwnValue && !PlayerPin && !ActorReturn && !Fixed)
+            || (It->HasAnyPropertyFlags(CPF_ReferenceParm) && !Fixed && !NativePresetNormalization && !(CaptureDeproject && It->GetFName() == TEXT("ScreenPosition"))
                 && !(NativeTransformBreak && It->GetFName() == TEXT("InTransform"))
                 && !(NativeNiagaraVectorSet && It->GetFName() == TEXT("ArrayData"))
                 && !(NativeStreamSampler && It->GetFName() == TEXT("Stream"))
@@ -6921,6 +7012,17 @@ FORCENOINLINE bool PrepareCallDefaults(const TSharedPtr<FJsonValue>& DefaultsVal
         const FString Key(Pair.Key.ToView()); const FName Name(*Key); const FEdGraphPinType* T = InputTypes.Find(Name);
         if (Defaults.Contains(Name)) { Fail(R, TEXT("function_defaults_invalid"), TEXT("Case-insensitive duplicate default pin name.")); return false; }
         if (!T) { Fail(R, TEXT("function_default_pin_not_found"), TEXT("A requested default does not name an input parameter of this function.")); return false; }
+        if(PlayerScope&&PlayerScope->FixedStatic.IsValid())
+        {
+            if(T->bIsReference){Fail(R,TEXT("function_static_reference_default_pending"),TEXT("Actual K2 reference pins require typed wires; supplied literals are not silently ignored. C++ ReferenceParm alone is not the K2 reference predicate."));return false;}
+            if(T->PinCategory==UEdGraphSchema_K2::PC_Class){Fail(R,TEXT("function_static_class_default_pending"),TEXT("Declared runtime native class pins support wiring; concrete Class literals remain incomplete, no loader or writer."));return false;}
+            FString Value;FEdGraphPinType V=*T;V.bIsConst=false;
+            if(V.PinCategory==UEdGraphSchema_K2::PC_Struct&&V.PinSubCategoryObject.Get()==TBaseStructure<FLinearColor>::Get())
+            {FLinearColor Color;if(Pair.Value->Type!=EJson::String||!Color.InitFromString(Pair.Value->AsString())||!FMath::IsFinite(Color.R)||!FMath::IsFinite(Color.G)||!FMath::IsFinite(Color.B)||!FMath::IsFinite(Color.A)){Fail(R,TEXT("function_static_color_default_invalid"),TEXT("LinearColor requires finite Engine '(R=...,G=...,B=...,A=...)' text; no target writer."));return false;}Value=Pair.Value->AsString();}
+            else if(Pin::IsScalarValueStruct(V)){if(!Pin::ScalarValueDefaultText(V,Pair.Value,Value,R))return false;}
+            else if(!Pin::DefaultText(V,Pair.Value,Value,R))return false;
+            Defaults.Add(Name,MoveTemp(Value));continue;
+        }
         if(bExternalLibraryRequested&&PlayerScope->Library->PresetSource&&(T->IsContainer()||T->PinCategory==UEdGraphSchema_K2::PC_Object))
         {Fail(R,TEXT("function_library_preset_input_default_unsupported"),TEXT("PresetLoader Name[]/DataTable/world inputs require typed wire/compiler context; explicit null/resource/array literals are rejected before allocation."));return false;}
         if(bExternalLibraryRequested&&(Name==TEXT("InMesh")||Name==TEXT("__WorldContext")))
@@ -7805,15 +7907,49 @@ struct FOwnRecursiveCallScope
 };
 }
 
+// Keep AJ source preparation outside the already large writer; ownership stays in AddCall.
+FORCENOINLINE FString ResolveLoadedEngineCallClass(const FString& RequestedClassPath)
+{
+    FString SelectedClassPath=RequestedClassPath;
+    if(MaterialGraphLookupReady()&&Pin::Identifier(RequestedClassPath))
+    {const FString Exact=TEXT("/Script/Engine.")+RequestedClassPath;UClass* Loaded=FindObject<UClass>(nullptr,*Exact);if(DeclarationEnumLoaded(Loaded)&&Loaded->GetPathName()==Exact&&Loaded->HasAnyClassFlags(CLASS_Native)&&!Loaded->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&Loaded->GetPackage()->GetName()==TEXT("/Script/Engine"))SelectedClassPath=Exact;}
+    return SelectedClassPath;
+}
+FORCENOINLINE void RecordLoadedEngineCallAlias(FResult& R,const FString& RequestedClassPath,const FString& SelectedClassPath,bool bRecordNoLoad)
+{
+    if(SelectedClassPath!=RequestedClassPath)
+    {
+        R.Data->SetStringField(TEXT("requested_function_class"),RequestedClassPath);
+        R.Data->SetStringField(TEXT("resolved_loaded_engine_class"),SelectedClassPath);
+        if(bRecordNoLoad)R.Data->SetBoolField(TEXT("engine_alias_load_requested"),false);
+    }
+}
+FORCENOINLINE bool PrepareFixedStaticCallSource(UClass* Owner,UFunction* Function,const UEdGraphSchema_K2* Schema,
+    const FString& FunctionName,bool bGeneratedClassRequested,const FNativeCaptureSignature* NativeCapture,
+    TUniquePtr<FPlayerObjectCallScope>& PlayerScope,FResult& R)
+{
+    if(!NativeCapture&&!PlayerScope&&!bGeneratedClassRequested&&Function->HasAllFunctionFlags(FUNC_Native|FUNC_Public|FUNC_Static|FUNC_BlueprintCallable)&&Owner->IsChildOf(UBlueprintFunctionLibrary::StaticClass()))
+    {
+        bool NeedsExpanded=false;for(TFieldIterator<FProperty> It(Function);It&&It->HasAnyPropertyFlags(CPF_Parm);++It){FEdGraphPinType T;if(!Schema->ConvertPropertyToPinType(*It,T)||!Pin::IsPrimitive(T)||It->HasAnyPropertyFlags(CPF_ReferenceParm))NeedsExpanded=true;}
+        if(NeedsExpanded)
+        {
+            auto Source=MakeShared<FFixedStaticCallSource>();if(!Source->Bind(Owner,Function,Schema)){R.Data->SetObjectField(TEXT("native_static_source_rejection"),Source->Snapshot());Fail(R,TEXT("function_static_signature_pending"),TEXT("Fixed native library source requires existing runtime owner/CDO, current primitive/native-object/class or scalar native math/LinearColor fields. Containers/custom/latent/wildcard/generated source remain incomplete."));return false;}
+            PlayerScope=MakeUnique<FPlayerObjectCallScope>(R);PlayerScope->FixedStatic=Source;if(!PlayerScope->Begin()||!PlayerScope->BindSource(Owner,Function,FunctionName)||!PlayerScope->BindSchema(Schema))return false;R.Data->SetBoolField(TEXT("native_static_fixed_signature"),true);
+        }
+    }
+    return true;
+}
 FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FString& FunctionName,
     const FString& DefaultsJson, const FString& PositionJson, const FString& GraphName, const FString& GraphId,
     const FString& RequestedGraphType, bool bCreateGraph, bool bLatent, bool bEditorOnly, bool bWildcard, bool bDeprecated, bool bInternal)
 {
-    if(bCreateGraph)return AddCallCreatingGraph(Path,RequestedClassPath,FunctionName,DefaultsJson,PositionJson,GraphName,GraphId,RequestedGraphType,bLatent,bEditorOnly,bWildcard,bDeprecated,bInternal);
+    const FString SelectedClassPath=ResolveLoadedEngineCallClass(RequestedClassPath);
+    if(bCreateGraph){auto Created=AddCallCreatingGraph(Path,SelectedClassPath,FunctionName,DefaultsJson,PositionJson,GraphName,GraphId,RequestedGraphType,bLatent,bEditorOnly,bWildcard,bDeprecated,bInternal);RecordLoadedEngineCallAlias(Created,RequestedClassPath,SelectedClassPath,false);return Created;}
     FResult R;
+    RecordLoadedEngineCallAlias(R,RequestedClassPath,SelectedClassPath,true);
     const bool NiagaraActivationAlias=RequestedClassPath.Equals(TEXT("/Script/Niagara.NiagaraComponent"),ESearchCase::CaseSensitive)
         &&(FunctionName.Equals(TEXT("Activate"),ESearchCase::CaseSensitive)||FunctionName.Equals(TEXT("Deactivate"),ESearchCase::CaseSensitive));
-    const FString ClassPath=NiagaraActivationAlias?TEXT("/Script/Engine.ActorComponent"):RequestedClassPath;
+    const FString ClassPath=NiagaraActivationAlias?TEXT("/Script/Engine.ActorComponent"):SelectedClassPath;
     const bool NiagaraLifecycleRequested=NiagaraActivationAlias||(ClassPath==TEXT("/Script/Niagara.NiagaraComponent")&&FunctionName==TEXT("SetAsset"))
         ||(ClassPath==TEXT("/Script/Engine.ActorComponent")&&(FunctionName==TEXT("Activate")||FunctionName==TEXT("Deactivate")));
     if(NiagaraLifecycleRequested)
@@ -8118,6 +8254,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         || Owner->GetBoolMetaDataHierarchical(TEXT("BlueprintInternalUseOnlyHierarchical"))
         || UEdGraphSchema_K2::HasWildcardParams(Function)))))
     { Fail(R, TEXT("function_callable_unsupported"), TEXT("Requires a public callable runtime function (Engine static, audited native instance, own generated instance or audited external component), without latent, wildcard, custom-thunk, deprecated or internal behavior.")); return R; }
+    if(!PrepareFixedStaticCallSource(Owner,Function,Schema,FunctionName,bGeneratedClassRequested,NativeCapture,PlayerScope,R))return R;
     TMap<FName, FEdGraphPinType> InputTypes, OutputTypes;
     TArray<FEdGraphPinType> OwnValueTypes; TArray<TSharedPtr<FJsonValue>> OwnValueSources, OwnValueRows;
     int32 ParameterCount = 0;
@@ -8164,6 +8301,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         R.Data->SetBoolField(TEXT("own_value_struct_signature_supported"), true);
         R.Data->SetStringField(TEXT("own_value_struct_scope"), TEXT("exact own compiled/current matching ordinary function GUID and scalar CoreUObject Vector/Rotator/Transform value parameters; no external/ref/container expansion"));
     }
+    if(PlayerScope&&PlayerScope->FixedStatic.IsValid()){PlayerScope->FixedInputs=InputTypes;PlayerScope->FixedOutputs=OutputTypes;}
     UClass* LifecycleSelectedClass = NativeComponentQuery ? UActorComponent::StaticClass() : nullptr;
     UClass* LifecycleRequestedClass = nullptr;
     TStrongObjectPtr<UClass> LifecycleClassHold;
@@ -8613,7 +8751,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         if(!PlayerScope->NodeGuid.IsValid()||!PlayerScope->Check()) { return R; }
         Call->PostPlacedNewNode();if(!PlayerScope->Check()) { return R; }
         Call->AllocateDefaultPins();if(bExternalLibraryRequested||bBFLBody)R.Data->SetBoolField(TEXT("function_library_call_allocate_pins_returned"),true);if(!PlayerScope->FreezePins()) { return R; }
-        R.Data->SetBoolField(bActorValueGetter?TEXT("actor_getter_concrete_lifecycle"):TEXT("player_getter_concrete_lifecycle"),true);
+        R.Data->SetBoolField(PlayerScope->FixedStatic.IsValid()?TEXT("native_static_concrete_lifecycle"):bActorValueGetter?TEXT("actor_getter_concrete_lifecycle"):TEXT("player_getter_concrete_lifecycle"),true);
     }
     else if (PrimitiveEvent.IsValid())
     {
@@ -8711,9 +8849,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         }
         if(PlayerScope)
         {
-            if(!PlayerScope->Check()) { return R; }P=Call->FindPin(Pair.Key,EGPD_Input);
-            const bool Matches=P&&Schema->DoesDefaultValueMatch(*P,Pair.Value);if(!PlayerScope->Check()) { return R; }P=Call->FindPin(Pair.Key,EGPD_Input);
-            const FString Error=P?Schema->IsCurrentPinDefaultValid(P):TEXT("missing current pin");if(!PlayerScope->Check()) { return R; }Applied&=Matches&&Error.IsEmpty();
+            if(!PlayerScope->VerifyAppliedDefault(Call,Schema,Pair.Key,Pair.Value,Applied))return R;
         }
         else if (PrimitiveEvent.IsValid())
         {
@@ -8735,6 +8871,7 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         }
         else { Applied &= Schema->DoesDefaultValueMatch(*P, Pair.Value) && Schema->IsCurrentPinDefaultValid(P).IsEmpty(); }
     }
+    if(PlayerScope&&PlayerScope->FixedStatic.IsValid()&&!Applied){if(!PlayerScope->RemoveFailedFixedNode())return R;Fail(R,TEXT("function_call_default_failed"),TEXT("Checked native default was rejected and only the newly created call was removed. Actual dirty/creation/removal prefix retained; no atomic rollback, compile/save or retry."));return R;}
     FBlueprintEditorUtils::MarkBlueprintAsModified(BP);
     if (!InterpolationCheckpoint(TEXT("after_mark_blueprint_modified"))) { return R; }
     if(PlayerScope) { if(!PlayerScope->Check()||!PlayerScope->AfterWork()) { return R; } }
@@ -9267,6 +9404,8 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         {Verified&=Pure==Function->HasAnyFunctionFlags(FUNC_BlueprintPure)&&PlayerScope->Check();R.Data->SetObjectField(TEXT("function_library_body_source_after"),PlayerScope->Source());if(!PlayerScope->Check())return R;R.Data->SetBoolField(TEXT("function_library_body_source_observed_unchanged"),true);R.Data->SetBoolField(TEXT("function_library_body_physical_pins_verified"),Verified);R.Data->SetBoolField(TEXT("function_library_body_runtime_invocation_verified"),false);}
         else if(bExternalLibraryRequested)
         {Verified&=!Pure&&PlayerScope->Check();if(LibraryCallVerification){LibraryCallVerification->SetBoolField(TEXT("actual_node_pure"),Pure);if(Pure&&LibraryCallVerification->GetStringField(TEXT("first_failed_condition")).IsEmpty())LibraryCallVerification->SetStringField(TEXT("first_failed_condition"),TEXT("imperative_external_call"));}R.Data->SetBoolField(TEXT("function_library_call_typed_result_verified"),Verified);R.Data->SetObjectField(TEXT("function_library_source_after"),PlayerScope->Source());R.Data->SetBoolField(TEXT("function_library_source_observed_unchanged"),PlayerScope->Check());R.Data->SetBoolField(TEXT("function_library_runtime_invocation_verified"),false);}
+        else if(PlayerScope->FixedStatic.IsValid())
+        {if(!PlayerScope->VerifyFixedResult(Pure,Verified))return R;}
         else if(bActorValueGetter)
         {
             Verified&=Pure&&Return&&Self&&Call->Pins.Num()==2&&SameCapturePinType(Return->PinType,OutputTypes.FindChecked(TEXT("ReturnValue")))&&Return->PinType.PinCategory==UEdGraphSchema_K2::PC_Struct&&Return->PinType.PinSubCategoryObject.Get()==PlayerScope->ReturnStruct.Get()
@@ -9282,11 +9421,11 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
                 &&Index->PinType.PinCategory==UEdGraphSchema_K2::PC_Int&&Call->FunctionReference.GetMemberParentClass()==Owner&&!Call->FunctionReference.IsSelfContext()&&!Call->FunctionReference.GetMemberGuid().IsValid()&&Call->FunctionReference.GetMemberName()==Function->GetFName();
         }
         auto Row=MakeShared<FJsonObject>();if(!PlayerScope->PlainNode(Call,Row)||!PlayerScope->Check()) { return R; }Row->SetStringField(TEXT("function_path"),Function->GetPathName());Merge(*R.Data,*Row);
-        if(!bExternalLibraryRequested&&!bBFLBody)R.Data->SetBoolField(bActorValueGetter?TEXT("actor_getter_typed_result_verified"):TEXT("player_getter_typed_result_verified"),Verified);R.Data->SetStringField(TEXT("runtime_reference_scope"),bBFLBody?TEXT("Exact native Engine stock UFunctions in CameraFacing BFL body; existing function names/signature policies reused, automatic Entry context/player0 only. Real float/double descriptors remain distinct; no runtime CameraFacing effect or original nodeclass parity is certified."):bExternalLibraryRequested?TEXT("Exact external generated BFL CameraFacing static GUID/member with hidden existing CDO and compiler WorldContext; SceneComponent/bool2/Rotator physical inputs; no runtime function execution"):bActorValueGetter?TEXT("Exact native Engine Actor member with Actor typed instance/self pin and CoreUObject Vector/Rotator return; RuntimeObject admission unchanged; no runtime getter execution"):TEXT("Exact native Engine GameplayStatics member and UObject world context plus Pawn/Character return descriptor; RuntimeObject admission unchanged; no runtime getter execution"));
+        if(!bExternalLibraryRequested&&!bBFLBody&&!PlayerScope->FixedStatic.IsValid())R.Data->SetBoolField(bActorValueGetter?TEXT("actor_getter_typed_result_verified"):TEXT("player_getter_typed_result_verified"),Verified);R.Data->SetStringField(TEXT("runtime_reference_scope"),bBFLBody?TEXT("Exact native Engine stock UFunctions in CameraFacing BFL body; existing function names/signature policies reused, automatic Entry context/player0 only. Real float/double descriptors remain distinct; no runtime CameraFacing effect or original nodeclass parity is certified."):bExternalLibraryRequested?TEXT("Exact external generated BFL CameraFacing static GUID/member with hidden existing CDO and compiler WorldContext; SceneComponent/bool2/Rotator physical inputs; no runtime function execution"):PlayerScope->FixedStatic.IsValid()?TEXT("Exact fixed native Engine static library source/CDO and actual declared K2 descriptors; native runtime references only; no runtime invocation verified"):bActorValueGetter?TEXT("Exact native Engine Actor member with Actor typed instance/self pin and CoreUObject Vector/Rotator return; RuntimeObject admission unchanged; no runtime getter execution"):TEXT("Exact native Engine GameplayStatics member and UObject world context plus Pawn/Character return descriptor; RuntimeObject admission unchanged; no runtime getter execution"));
         if(NativePresetNormalization){R.Data->SetStringField(TEXT("runtime_reference_scope"),TEXT("Exact native Engine String/Text normalization4 in own PresetLoader BFL body; native ERoundingMode/ESearchCase visible tokens only; whole current pins/defaults and automatic Entry context. No runtime conversion, culture result, full PresetLoader, arbitrary BFL or global enum admission."));}
         if(bBFLBody&&PlayerScope->Library->AssetBody){R.Data->SetStringField(TEXT("runtime_reference_scope"),TEXT("Exact existing AssetRegistry producer/AssetData consumer4 in own PresetLoader BFL; interface self is distinct from TScriptInterface return wrapper, full native ARFilter/AssetData roles and composite wires are checked. No registry singleton/query, GetAsset load, row evaluation, runtime or complete PresetLoader execution."));R.Data->SetBoolField(TEXT("asset_body_complex_inputs_require_connection"),true);}
         if(bExternalLibraryRequested&&PlayerScope->Library->PresetSource){R.Data->SetStringField(TEXT("runtime_reference_scope"),TEXT("Exact saved-clean generated PresetLoader BFL/static GUID and compiled Name[]/DataTable/String-double Map parameters; source locals remain metadata-only. No PresetLoader runtime or original full pipeline proof."));R.Data->SetStringField(TEXT("external_call_scope"),TEXT("Exact PresetLoader interface/call authoring; nine current CPF_Parm fields projected separately from the complete local inventory."));}
-        if(!bExternalLibraryRequested&&!bBFLBody)R.Data->SetObjectField(bActorValueGetter?TEXT("actor_getter_source_after"):TEXT("player_getter_source_after"),PlayerScope->Source());if(!PlayerScope->Check()) { return R; }
+        if(!bExternalLibraryRequested&&!bBFLBody)R.Data->SetObjectField(PlayerScope->FixedStatic.IsValid()?TEXT("native_static_source_after"):bActorValueGetter?TEXT("actor_getter_source_after"):TEXT("player_getter_source_after"),PlayerScope->Source());if(!PlayerScope->Check()) { return R; }
     }
     else if (NativeComponentLifecycle)
     { TSharedRef<FJsonObject> Row = MakeShared<FJsonObject>(); if (!LifecycleNodeReceipt(Row)) { return R; } Merge(*R.Data, *Row); }

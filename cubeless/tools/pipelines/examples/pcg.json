@@ -1,0 +1,15 @@
+{
+  "graph":"/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_001/PCG_VolumeScatter",
+  "world":"/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_001/Map_Work",
+  "actor_label":"ExampleRun001_VolumeScatter",
+  "transform":{"location":{"x":2000,"y":0,"z":200},"rotation":{"pitch":0,"yaw":0,"roll":0},"scale":{"x":2,"y":2,"z":1}},
+  "nodes":[
+    {"id":"Sampler","type":"Volume Sampler","parameters":{"VoxelSize":{"x":100,"y":100,"z":100}}},
+    {"id":"Transform","type":"Transform Points","parameters":{"ScaleMin":{"x":0.2,"y":0.2,"z":0.2},"ScaleMax":{"x":0.2,"y":0.2,"z":0.2},"Seed":42}},
+    {"id":"Meshes","type":"Static Mesh Spawner","mesh_entries":[{"mesh":"/Engine/BasicShapes/Cube.Cube","weight":1,"cast_shadow":false}]}
+  ],
+  "links":[["input","In","Sampler","Volume"],["Sampler","Out","Transform","In"],["Transform","Out","Meshes","In"],["Meshes","Out","output","Out"]],
+  "cycles":[{"updates":[{"node":"Sampler","parameters":{"VoxelSize":{"x":150,"y":150,"z":150}}}]},{"updates":[],"same_as_previous":true}],
+  "expect":{"min_instances":1,"bounds_min":[1800,-200,100],"bounds_max":[2200,200,300],"tolerance_cm":0.01},
+  "save_graph":true
+}

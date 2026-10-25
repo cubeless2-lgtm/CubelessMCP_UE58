@@ -1,0 +1,12 @@
+{
+  "blueprint": "/Game/_MCP_Temp/Production/CubelessTests/ExampleRun_001/BP_WeatherControl",
+  "mode": "create",
+  "parent_class": "/Script/Engine.Actor",
+  "save": true,
+  "components": [{"component_type":"NiagaraComponent","component_name":"WeatherFX"}],
+  "variables": [{"variable_name":"Intensity","variable_type":"float","is_exposed":true,"default_value_json":"1.5"}],
+  "graphs": [{"name":"EventGraph","type":"event","nodes":[
+    {"id":"Begin","kind":"event","arguments":{"event_name":"ReceiveBeginPlay"}},
+    {"id":"Print","kind":"call","arguments":{"function_class":"/Script/Engine.KismetSystemLibrary","function_name":"PrintString","param_defaults_json":"{\"InString\":\"CUBELESS_WEATHER_BEGINPLAY\",\"bPrintToScreen\":false,\"bPrintToLog\":true}"}}
+  ],"links":[["Begin","then","Print","execute"]]}]
+}

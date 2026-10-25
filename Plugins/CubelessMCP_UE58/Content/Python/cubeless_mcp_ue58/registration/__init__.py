@@ -19,6 +19,10 @@ from . import state_tree_schema as _state_tree_schema
 from .editor_trace_toolset import CubelessEditorTraceTools
 from . import editor_trace_schema as _editor_trace_schema
 from .enum_toolset import CubelessEnumTools
+from .enum_editing_toolset import CubelessEnumEditingTools
+from .domain_expansion_toolset import CubelessDomainExpansionTools
+from .loaded_level_instance_packing_toolset import CubelessLoadedLevelInstancePackingTools
+from .production_inspection_toolset import CubelessProductionInspectionTools
 from . import enum_schema as _enum_schema
 from .rigvm_topology_toolset import CubelessRigVMTopologyTools
 from . import rigvm_topology_schema as _rigvm_topology_schema
@@ -274,6 +278,9 @@ from . import pawn_schema as _pawn_schema
 from . import ai_live_schema as _ai_live_schema
 
 _CLASSES = (CubelessDiscoveryTools, CubelessStatusWindowTools, CubelessPythonDiagnostics, CubelessBlueprintTools, CubelessBlueprintGraphTools, CubelessMaterialTools, CubelessBatchTools, CubelessActorTools, CubelessComponentTools, CubelessParticleReceiverTools, CubelessNiagaraPlanningTools, CubelessNiagaraPreviewTools, CubelessNiagaraParameterTools, CubelessNiagaraModuleTools, CubelessNiagaraEmitterTools, CubelessNiagaraSimulationStageTools, CubelessNiagaraModuleInputTools, CubelessNiagaraScratchTools, CubelessSequencerTools, CubelessAITools, CubelessAudioTools, CubelessDataTableTools, CubelessDataAssetTools, CubelessSkeletalTools, CubelessAsyncInteropTools, CubelessVolumeTextureTools, CubelessAnimStateMachineInspectionTools, CubelessAnimationAssetMetadataTools, CubelessPhysicsAssetInspectionTools, CubelessStateTreeTools, CubelessProjectTools, CubelessEditorTraceTools, CubelessEnumTools, CubelessRigVMTopologyTools, CubelessRigVMLinkValidationTools, CubelessRigVMPinDefaultValidationTools, CubelessRigVMLinkWriterTools, CubelessRigVMPinDefaultWriterTools, CubelessAnimInstanceRuntimeTools, CubelessControlRigSolverIntentTools, CubelessControlRigTransientProbeTools, CubelessAnimInstanceRuntimePropertyProbeTools, CubelessAnimStateRuntimeResponseTools, CubelessPostProcessAnimDemoVariantTools, CubelessSkeletalBoneSamplingTools, CubelessBlendSpaceVariantTools, CubelessBlendSpacePoseGridTools, CubelessLinkedAnimGraphVariantTools, CubelessAnimStateMachineVariantTools, CubelessAnimBPLocomotionDriverTools, CubelessAnimNodePrePostRuntimePoseTools, CubelessBlueprintFunctionExtractionTools, CubelessSplineComponentPointsTools, CubelessFoliageInstanceTools, CubelessLandscapeTools, CubelessViewportCaptureTools, CubelessEditorLevelSessionTools, CubelessActorPropertyFocusTools, CubelessChaosSolverSettingsTools, CubelessChaosClothInspectionTools, CubelessChaosClothComponentTools, CubelessChaosClothAuthoringTools, CubelessLegacyChaosClothingTools, CubelessChaosCinematicSequenceTools, CubelessChaosCacheSessionTools, CubelessChaosGeometryAuthoringTools, CubelessGeometryCollectionInspectionTools, CubelessChaosTraceStrainTools, CubelessChaosLearningTools, CubelessChaosDestructionPerformanceTools, CubelessGASAuthoringTools, CubelessContentReconstructionTools, CubelessNiagaraRendererTools, CubelessNiagaraEmitterConfigurationTools, CubelessNiagaraParameterCollectionTools, CubelessNiagaraAuthoringInspectionTools, CubelessPCGInspectionTools, CubelessNiagaraCleanupTools, CubelessNiagaraInputParameterTools, CubelessNiagaraModuleInputPathTools, CubelessNiagaraDataChannelAuthoringTools, CubelessNiagaraRuntimeInspectionTools, CubelessNiagaraFactoryBootstrapTools, CubelessNiagaraResourceBindingTools, CubelessNiagaraScratchStackAuthoringTools, CubelessNiagaraEventStageTools, CubelessNiagaraPromotionTools, CubelessNiagaraSpritePresetTools, CubelessNiagaraCustomHlslConversionTools, CubelessNiagaraPreviewLabTools, CubelessBlueprintNiagaraTemplateSwapTools, CubelessPCGGraphAuthoringTools, CubelessNiagaraPreviewWorkflowTools, CubelessPIEInputTools, CubelessNiagaraSystemAnalysisTools, CubelessNiagaraPromotionManifestTools, CubelessPCGComponentGenerationTools, CubelessPCGContractAuthoringTools, CubelessPCGUtilityTools, CubelessControlRigRecipePlanningTools, CubelessControlRigRecipeAuthoringTools, CubelessTextureMaterialTools, CubelessBlueprintPropertyGraphTools, CubelessBlueprintResolutionConnectionTools, CubelessNiagaraScratchUserRecipeTools)
+_CLASSES += (CubelessEnumEditingTools, CubelessDomainExpansionTools,)
+_CLASSES += (CubelessLoadedLevelInstancePackingTools,)
+_CLASSES += (CubelessProductionInspectionTools,)
 _ASYNC_INTEROP_REGISTRATION = {"ready": False, "schema_verified": False, "stage": "not_attempted", "error": ""}
 _ANIM_STATE_MACHINE_REGISTRATION = {"ready": False, "schema_verified": False, "default_verified": False, "preparation_verified": False, "stage": "not_attempted", "error": ""}
 _PROJECT_REGISTRATION = {"ready": False, "bindings_ready": False, "schema_verified": False, "default_verified": False, "stage": "not_attempted", "error": ""}
@@ -6004,7 +6011,7 @@ def _local_facade_defaults(action, cls):
     library = getattr(unreal, "CubelessLocalApiLibrary", None)
     method = getattr(library, action + "_local_facade_defaults", None)
     if not callable(method):
-        raise RuntimeError("Native fixed Discovery/Diagnostics default attachment is unavailable")
+        raise RuntimeError("Native fixed local facade/domain default attachment is unavailable")
     result = json.loads(method(cls.static_class(), False) if action == "remove" else method(cls.static_class()))
     if type(result) is not dict:
         raise RuntimeError("Local facade attachment receipt must be an object")
@@ -9352,7 +9359,7 @@ def registration_status():
             niagara_modules["ready"] = bool(niagara_modules["ready"] and registered and schema_valid and _NIAGARA_MODULE_BATCH_REGISTRATION.get("ready") and niagara_modules["schema_verified"])
             niagara_modules["rapid_iteration_read_bindings"]["schema_verified"] = niagara_modules["schema_verified"]
             niagara_modules["rapid_iteration_read_bindings"]["ready"] = bool(niagara_modules["rapid_iteration_read_bindings"]["ready"] and niagara_modules["ready"])
-        if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics):
+        if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics, CubelessDomainExpansionTools):
             try:
                 defaults = _local_facade_defaults("verify", cls)
                 if not defaults.get("ready") or not defaults.get("verified"):
@@ -10165,7 +10172,7 @@ def register():
                 _OWNED.add(cls)
             if not registry.is_toolset_class_registered(cls):
                 raise RuntimeError(f"Official Registry rejected {cls.__name__}")
-            if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics):
+            if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics, CubelessDomainExpansionTools):
                 if cls not in _OWNED:
                     raise RuntimeError("Local facade class belongs to another owner; no wrapper attached")
                 defaults = _local_facade_defaults("install", cls)
@@ -12310,7 +12317,7 @@ def register():
                 _validate_niagara_scratch_schema(json.loads(schema))
                 _NIAGARA_SCRATCH_REGISTRATION["stage"] = "registered_schema_verified"
         except Exception as error:
-            if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics):
+            if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics, CubelessDomainExpansionTools):
                 _LOCAL_FACADE_DEFAULTS_REGISTRATION.setdefault(cls.__name__, {}).update(ready=False, error=str(error))
                 unreal.log_warning("Cubeless local facade default attachment failed: " + str(error))
                 # Native owns the captured original/wrapper until explicit safe cleanup.
@@ -13698,7 +13705,7 @@ def unregister():
     retained_chaos_cloth_inspection_owner = False
     if registry.is_available():
         for cls in reversed(_CLASSES):
-            if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics):
+            if cls in (CubelessDiscoveryTools, CubelessPythonDiagnostics, CubelessDomainExpansionTools):
                 if cls in _OWNED:
                     try:
                         removal = _local_facade_defaults("remove", cls)
@@ -14485,7 +14492,7 @@ def unregister():
             _BLENDSPACE_POSE_GRID_REGISTRATION["unregister_error"] = "Registry unavailable; native BlendSpace blendspace_pose_grid owner retained"
     # Exact successful Native cleanup already discarded its class. Preserve every remaining
     # fixed facade marker through the shared clear, including unavailable Registry/pending owners.
-    retained_local_facade_owners = _OWNED.intersection((CubelessDiscoveryTools, CubelessPythonDiagnostics))
+    retained_local_facade_owners = _OWNED.intersection((CubelessDiscoveryTools, CubelessPythonDiagnostics, CubelessDomainExpansionTools))
     _OWNED.clear()
     _OWNED.update(retained_local_facade_owners)
     if retained_state_tree_owner:

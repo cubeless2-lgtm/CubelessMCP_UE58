@@ -5,7 +5,7 @@
 // SDK StaticMeshComponent.h132-133 and MeshComponent.h29-31 are authored references;
 // public reflection reads slots/counts only. No private access, mesh/material writer,
 // new source/template constructor, renderer cache invariant or engine modification.
-// Existing native shape sources only; generated/custom/plain Scene sources, populated
+// Exact own native shape/StaticMesh sources; generated/custom/plain Scene sources, populated
 // target defaults, broad typed references and runtime propagation remain incomplete.
 // Editor-only finite port of UE56 replace_blueprint_component_class.
 // Own native Box/Sphere/Capsule -> native shape targets, including a finite own SCS scene-root slice; no runtime helpers.
@@ -150,6 +150,35 @@ bool Disk(const FString& Package, TSharedRef<FJsonObject>& J)
 bool Dirty(const FString& Package, TSharedRef<FJsonObject>& J)
 { int32 Count = 0; for (TObjectIterator<UPackage> It; It; ++It) { if (!Loaded(*It) || It->GetName() == Package) { continue; } if (++Count > MaxPackages) { return false; } J->SetBoolField(It->GetName(), It->IsDirty()); } return true; }
 
+// A successful save can load thumbnail resources. Preserve every existing
+// package's dirty bit; report additional clean packages separately from edits.
+// No package removal, old dirty-bit transition, new dirty package or non-bool
+// observation is accepted, and no authored/source baseline is replaced.
+bool SavedOtherDirty(const TSharedRef<FJsonObject>& Before,const TSharedRef<FJsonObject>& After,FResult& R)
+{
+    R.Data->SetBoolField(TEXT("after_save_existing_package_dirty_preserved"),false);
+    auto Mismatch=[&](const FString& Package,const FString& Expected,const FString& Actual)
+    {
+        auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("object"),Package);J->SetStringField(TEXT("property"),TEXT("after_save.other_package_dirty"));J->SetStringField(TEXT("expected"),Expected);J->SetStringField(TEXT("actual"),Actual);R.Data->SetObjectField(TEXT("after_save_other_dirty_first_mismatch"),J);return false;
+    };
+    for(const auto& Pair:Before->Values)
+    {
+        const auto Now=After->TryGetField(Pair.Key.ToView());
+        if(!Pair.Value.IsValid()||Pair.Value->Type!=EJson::Boolean||!Now.IsValid()||Now->Type!=EJson::Boolean||Pair.Value->AsBool()!=Now->AsBool())
+            return Mismatch(FString(Pair.Key.ToView()),Pair.Value.IsValid()&&Pair.Value->Type==EJson::Boolean?(Pair.Value->AsBool()?TEXT("dirty=true"):TEXT("dirty=false")):TEXT("boolean required"),!Now.IsValid()?TEXT("missing"):Now->Type!=EJson::Boolean?TEXT("non-boolean"):Now->AsBool()?TEXT("dirty=true"):TEXT("dirty=false"));
+    }
+    TArray<TSharedPtr<FJsonValue>> AddedClean;
+    for(const auto& Pair:After->Values)
+    {
+        if(Before->HasField(Pair.Key.ToView()))continue;
+        if(!Pair.Value.IsValid()||Pair.Value->Type!=EJson::Boolean||Pair.Value->AsBool())
+            return Mismatch(FString(Pair.Key.ToView()),TEXT("new package may only be clean"),Pair.Value.IsValid()&&Pair.Value->Type==EJson::Boolean?TEXT("dirty=true"):TEXT("non-boolean"));
+        AddedClean.Add(MakeShared<FJsonValueString>(FString(Pair.Key.ToView())));
+    }
+    R.Data->SetArrayField(TEXT("after_save_new_clean_packages"),AddedClean);
+    R.Data->SetBoolField(TEXT("after_save_existing_package_dirty_preserved"),true);return true;
+}
+
 FString ObjectPath(const UObject* O) { return O ? O->GetPathName() : FString(); }
 bool Graphs(UBlueprint* B, TSharedRef<FJsonObject>& J,FContext* Guard=nullptr,FResult* Reply=nullptr)
 {
@@ -227,6 +256,20 @@ struct FContext
      explicit FMeshField(FProperty* In):P(In),Kind(In->GetClass()),Owner(In->GetOwnerStruct()),Flags(In->GetPropertyFlags()),Offset(In->GetOffset_ForInternal()),Size(In->GetSize()),Dim(In->ArrayDim){}
      bool Exact()const{return P->GetClass()==Kind&&P->GetOwnerStruct()==Owner&&P->GetPropertyFlags()==Flags&&P->GetOffset_ForInternal()==Offset&&P->GetSize()==Size&&P->ArrayDim==Dim&&!P->HasSetterOrGetter();}};
     TArray<FMeshField> StaticMeshFields;
+    // AH: retain the original mesh source through Rename/compile. These are
+    // authored reference slots and saved asset files, not renderer caches.
+    struct FMeshSource
+    {
+        TStrongObjectPtr<UActorComponent> Template;
+        TStrongObjectPtr<UClass> Class;
+        TArray<FMeshField> Fields;
+        TArray<TStrongObjectPtr<UObject>> References;
+        struct FAsset { TStrongObjectPtr<UObject> Object; TStrongObjectPtr<UClass> Class; TStrongObjectPtr<UPackage> Package; FString Path; EObjectFlags Flags=RF_NoFlags; uint32 PackageFlags=0; };
+        TArray<FAsset> Assets;
+        TSharedRef<FJsonObject> Files=MakeShared<FJsonObject>();
+    };
+    TSharedPtr<FMeshSource> MeshSource;
+
     TStrongObjectPtr<UClass> ShapeGenerated,ShapeSkeleton,ShapeOldClass;TStrongObjectPtr<UObject> ShapeTargetCDO,ShapeHostCDO;TStrongObjectPtr<USimpleConstructionScript> ShapeSCS;
     struct FShapeNode{TStrongObjectPtr<USCS_Node> Node;TStrongObjectPtr<UActorComponent> Template;TStrongObjectPtr<UClass> Class;FName Name;FGuid Guid;TArray<USCS_Node*> Children;};
     TArray<FShapeNode> ShapeNodes;TArray<USCS_Node*> ShapeAll,ShapeRoots;
@@ -420,6 +463,68 @@ bool StaticMeshTargetCurrent(FContext& C,FResult& R,bool Bind=false)
  }
  return true;
 }
+// Existing own native mesh source only. Public reflected slots do not invoke
+// GetStaticMesh tracking, lazy asset resolution, material setters or render work.
+// File hashing stays at whole observation boundaries, never inside per-field
+// ShapeCurrent calls or each common-default setter.
+bool StaticMeshSourceCurrent(FContext& C,FResult& R,bool Bind=false)
+{
+    if (!C.MeshSource.IsValid() && (!C.OldTemplate.IsValid() || C.OldTemplate->GetClass()!=UStaticMeshComponent::StaticClass())) return true;
+    auto Bad=[&](const TCHAR* Field,const FString& Expected,const FString& Actual)
+    {
+        R.Data->SetBoolField(TEXT("static_mesh_source_references_preserved"),false);R.Data->SetBoolField(TEXT("static_mesh_source_files_preserved"),false);
+        if(R.bAttempted)return ShapeStop(C,R,Field,Expected,Actual);
+        auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("property"),Field);J->SetStringField(TEXT("expected"),Expected);J->SetStringField(TEXT("actual"),Actual);R.Data->SetObjectField(TEXT("static_mesh_source_first_mismatch"),J);
+        return Fail(R,TEXT("component_replace_mesh_source_unsupported"),TEXT("Loaded bounded runtime mesh/material source references and saved clean source packages required; no target writer."));
+    };
+    UClass* K=UStaticMeshComponent::StaticClass();
+    if(!Native(K)||!Loaded(C.OldTemplate.Get())||C.OldTemplate->GetClass()!=K)return Bad(TEXT("mesh_source_class"),TEXT("held exact native StaticMeshComponent"),TEXT("different source role"));
+    auto* Mesh=FindFProperty<FObjectProperty>(K,TEXT("StaticMesh"));auto* Materials=FindFProperty<FArrayProperty>(K,TEXT("OverrideMaterials"));auto* Inner=Materials?CastField<FObjectProperty>(Materials->Inner):nullptr;
+    if(!Mesh||!Materials||!Inner||Mesh->GetOwnerStruct()!=K||Materials->GetOwnerStruct()!=UMeshComponent::StaticClass()||Inner->GetOwner<FProperty>()!=Materials||Mesh->ArrayDim!=1||Materials->ArrayDim!=1||Inner->ArrayDim!=1||Mesh->GetSize()!=sizeof(TObjectPtr<UObject>)||Materials->GetSize()!=sizeof(TArray<TObjectPtr<UObject>>)||Inner->GetSize()!=sizeof(TObjectPtr<UObject>)||Mesh->HasSetterOrGetter()||Materials->HasSetterOrGetter()||Inner->HasSetterOrGetter()||!Mesh->PropertyClass.IsResolved()||Mesh->PropertyClass.Get()!=UStaticMesh::StaticClass()||!Inner->PropertyClass.IsResolved()||Inner->PropertyClass.Get()!=UMaterialInterface::StaticClass())return Bad(TEXT("mesh_source_fields"),TEXT("current exact authored mesh/material descriptors"),TEXT("different owner/layout/type"));
+    const bool New=Bind&&!C.MeshSource.IsValid();
+    if(New){C.MeshSource=MakeShared<FContext::FMeshSource>();C.MeshSource->Template.Reset(C.OldTemplate.Get());C.MeshSource->Class.Reset(K);C.MeshSource->Fields.Emplace(Mesh);C.MeshSource->Fields.Emplace(Materials);C.MeshSource->Fields.Emplace(Inner);}
+    if(!C.MeshSource.IsValid())return Bad(TEXT("mesh_source_baseline"),TEXT("pre-writer held source"),TEXT("missing baseline"));
+    auto& S=*C.MeshSource;
+    if(S.Template.Get()!=C.OldTemplate.Get()||S.Class.Get()!=K||S.Fields.Num()!=3||S.Fields[0].P!=Mesh||S.Fields[1].P!=Materials||S.Fields[2].P!=Inner)return Bad(TEXT("mesh_source_membership"),TEXT("same original template and field addresses"),TEXT("different source/field membership"));
+    for(const auto& F:S.Fields)if(!F.Exact())return Bad(TEXT("mesh_source_layout"),TEXT("same captured native descriptors"),TEXT("different field metadata"));
+    const auto* MeshSlot=Mesh->GetObjectPtrPropertyValuePtr(Mesh->ContainerPtrToValuePtr<void>(S.Template.Get()));FScriptArrayHelper H(Materials,Materials->ContainerPtrToValuePtr<void>(S.Template.Get()));
+    if(!MeshSlot->IsResolved()||H.Num()>256)return Bad(TEXT("mesh_source_reference_storage"),TEXT("already resolved mesh and at most256 material slots"),TEXT("unresolved or over bound"));
+    TArray<UObject*> Values;Values.Add(MeshSlot->Get());
+    for(int32 I=0;I<H.Num();++I){const auto* Slot=Inner->GetObjectPtrPropertyValuePtr(H.GetRawPtr(I));if(!Slot->IsResolved())return Bad(TEXT("mesh_source_material_slot"),TEXT("resolved original material slot"),LexToString(I));Values.Add(Slot->Get());}
+    if(New)
+    {
+        for(int32 I=0;I<Values.Num();++I)
+        {
+            UObject* O=Values[I];S.References.Emplace(O);if(!O)continue;
+            const FString ClassPath=Loaded(O)?O->GetClass()->GetPathName():FString();
+            if(!Loaded(O)||!Native(O->GetClass())||(I==0?ClassPath!=TEXT("/Script/Engine.StaticMesh"):(ClassPath!=TEXT("/Script/Engine.Material")&&ClassPath!=TEXT("/Script/Engine.MaterialInstanceConstant")))||O->HasAnyFlags(RF_Transient|RF_ClassDefaultObject|RF_ArchetypeObject)||!AssetPath(O->GetPathName())||O->GetOuter()!=O->GetOutermost()||O->GetOutermost()->GetName()==C.Package||O->GetOutermost()->IsDirty()||O->GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn|PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_PlayInEditor))return Bad(TEXT("mesh_source_asset"),TEXT("loaded saved-clean top-level runtime StaticMesh/Material/MIC asset"),Loaded(O)?O->GetPathName():TEXT("unavailable"));
+            bool Seen=false;for(const auto& A:S.Assets)Seen|=A.Object.Get()==O;if(Seen)continue;
+            FContext::FMeshSource::FAsset A;A.Object.Reset(O);A.Class.Reset(O->GetClass());A.Package.Reset(O->GetOutermost());A.Path=O->GetPathName();A.Flags=O->GetFlags();A.PackageFlags=A.Package->GetPackageFlags();S.Assets.Add(MoveTemp(A));
+        }
+    }
+    if(S.References.Num()!=Values.Num())return Bad(TEXT("mesh_source_reference_count"),LexToString(S.References.Num()),LexToString(Values.Num()));
+    for(int32 I=0;I<Values.Num();++I)if(S.References[I].Get()!=Values[I])return Bad(*(TEXT("mesh_source_reference_slot[")+LexToString(I)+TEXT("]")),ObjectPath(S.References[I].Get()),ObjectPath(Values[I]));
+    for(const auto& A:S.Assets)if(!Loaded(A.Object.Get())||!Loaded(A.Class.Get())||!Native(A.Class.Get())||!Loaded(A.Package.Get())||A.Object->GetClass()!=A.Class.Get()||A.Object->GetOuter()!=A.Package.Get()||A.Object->GetPackage()!=A.Package.Get()||A.Object->GetPathName()!=A.Path||A.Object->GetFlags()!=A.Flags||A.Package->GetPackageFlags()!=A.PackageFlags||A.Package->IsDirty())return Bad(TEXT("mesh_source_asset_identity"),A.Path,TEXT("different source identity/class/package/flags/dirty state"));
+    if(New)
+    {
+        TArray<FString> Packages;
+        for(const auto& A:S.Assets)if(!Packages.Contains(A.Package->GetName())){Packages.Add(A.Package->GetName());auto File=MakeShared<FJsonObject>();if(!Disk(A.Package->GetName(),File)||!File->GetBoolField(TEXT("exists")))return Bad(TEXT("mesh_source_saved_file"),A.Package->GetName(),TEXT("missing or outside existing file bound"));S.Files->SetObjectField(A.Package->GetName(),File);}
+        if(!Packages.IsEmpty()){auto Audit=ReadPackageDependencies(Packages,true,4096);R.Data->SetObjectField(TEXT("static_mesh_source_dependency_audit"),Audit);bool Passed=false;if(!Audit->TryGetBoolField(TEXT("passed"),Passed)||!Passed)return Bad(TEXT("mesh_source_dependencies"),TEXT("saved runtime assets without MCP/editor dependencies"),TEXT("dependency audit refused"));}
+        TArray<TSharedPtr<FJsonValue>> Refs;for(UObject* O:Values)Refs.Add(MakeShared<FJsonValueString>(ObjectPath(O)));
+        R.Data->SetArrayField(TEXT("static_mesh_source_original_references"),Refs);R.Data->SetObjectField(TEXT("static_mesh_source_saved_files"),S.Files);
+        R.Data->SetStringField(TEXT("static_mesh_source_scope"),TEXT("Exact own inactive native StaticMeshComponent; original authored mesh/material slots including order/nulls, held loaded runtime source identities and saved-clean files. No source loader/setter/renderer/physics work or asset cache invariant. Broader cold/custom/dirty source profiles and whole in-memory asset preservation remain incomplete."));
+        return StaticMeshSourceCurrent(C,R);
+    }
+    R.Data->SetBoolField(TEXT("static_mesh_source_references_preserved"),true);return true;
+}
+bool StaticMeshSourceFiles(FContext& C,FResult& R)
+{
+    if(!C.MeshSource.IsValid())return true;
+    if(!StaticMeshSourceCurrent(C,R))return false;
+    for(const auto& Item:C.MeshSource->Files->Values){auto Now=MakeShared<FJsonObject>();const bool OK=Disk(FString(Item.Key.ToView()),Now);if(!StaticMeshSourceCurrent(C,R))return false;if(!OK||!Equal(Item.Value,MakeShared<FJsonValueObject>(Now))){R.Data->SetBoolField(TEXT("static_mesh_source_files_preserved"),false);return ShapeStop(C,R,TEXT("mesh_source_saved_file"),FString(Item.Key.ToView()),TEXT("source file changed since original pre-writer observation"));}}
+    R.Data->SetBoolField(TEXT("static_mesh_source_files_preserved"),true);return true;
+}
+
 bool ShapeCurrent(FContext& C,FResult& R)
 {
     if(!C.ShapeMode||!C.ShapeBound)return true;if(R.Data->HasField(TEXT("native_scene_followup_sdk_stopped")))return false;
@@ -444,7 +549,7 @@ bool ShapeCurrent(FContext& C,FResult& R)
     if(C.NewTemplate.IsValid()){auto* P=Cast<UPrimitiveComponent>(C.NewTemplate.Get());if(!Loaded(P)||P->GetClass()!=C.TargetClass||P->GetOuter()!=C.ShapeGenerated.Get()||P->GetName()!=C.Slot||P->IsRegistered()||P->IsPreRegistering()||P->GetOwner()||P->GetWorld()||P->GetAttachParent()||!P->GetAttachChildren().IsEmpty())return ShapeStop(C,R,TEXT("new_template_role"),C.Slot,TEXT("different new class/owner/registration/attachment role"));}
     if(!C.NativeGet)for(const auto& G:C.ShapeGraphs){if(!Loaded(G.Graph.Get())||G.Graph->GetOuter()!=B||G.Graph->Nodes!=G.Nodes)return ShapeStop(C,R,TEXT("graph_node_membership"),TEXT("same held graph/node inventory"),TEXT("different graph nodes"));for(const auto& E:G.Rows){auto* N=E.Node.Get();if(!Loaded(N)||N->GetOuter()!=G.Graph.Get()||N->NodeGuid!=E.Guid||N->Pins!=E.Pins)return ShapeStop(C,R,TEXT("graph_node_pin_membership"),TEXT("same held node/GUID/physical pins"),TEXT("different node/pin roles"));for(int32 I=0;I<E.Pins.Num();++I){const auto* P=E.Pins[I];const auto& Type=E.Types[I];if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N||P->PinId!=E.PinIds[I]||!(P->PinType==Type)||P->PinType.bIsUObjectWrapper!=Type.bIsUObjectWrapper||P->PinType.bSerializeAsSinglePrecisionFloat!=Type.bSerializeAsSinglePrecisionFloat||P->PinType.PinValueType.bTerminalIsUObjectWrapper!=Type.PinValueType.bTerminalIsUObjectWrapper)return ShapeStop(C,R,TEXT("graph_physical_pin_role"),E.PinIds[I].ToString(),TEXT("different current pin role"));}}}
     if(!RootCurrent(C,R))return false;
-    if(!NativeGetCurrent(C,R))return false;return StaticMeshTargetCurrent(C,R);
+    if(!NativeGetCurrent(C,R)||!StaticMeshSourceCurrent(C,R))return false;return StaticMeshTargetCurrent(C,R);
 }
 bool ShapeBind(FContext& C,FResult& R,bool Assigned=false)
 {
@@ -459,7 +564,7 @@ bool ShapeBind(FContext& C,FResult& R,bool Assigned=false)
     if(!ShapeChildrenCurrent(C,R))return false;
     C.ShapeGraphs.Reset();C.ShapePinObjects.Reset();TArray<UEdGraph*> Graphs;B->GetAllGraphs(Graphs);if(Graphs.Num()>MaxGraphs)return Fail(R,TEXT("component_replace_native_scene_observation_bound"),TEXT("Current graph observation exceeds the existing bound."));int32 PinCount=0;
     for(auto* G:Graphs){if(!Loaded(G)||G->GetOuter()!=B)return Fail(R,TEXT("component_replace_native_scene_graph_current"),TEXT("Current own graph required."));FContext::FShapeGraph Role;Role.Graph.Reset(G);Role.Nodes=G->Nodes;for(UEdGraphNode* N:Role.Nodes){if(!Loaded(N)||N->GetOuter()!=G||N->Pins.Num()+PinCount>MaxPins)return Fail(R,TEXT("component_replace_native_scene_graph_current"),TEXT("Current bounded node/pin inventory required."));FContext::FShapeGraphNode E;E.Node.Reset(N);E.Guid=N->NodeGuid;E.Pins=N->Pins;for(auto* P:E.Pins){if(!P||P->WasTrashed()||P->GetOwningNodeUnchecked()!=N)return Fail(R,TEXT("component_replace_native_scene_graph_current"),TEXT("Current node-owned physical pin required."));E.PinIds.Add(P->PinId);E.Types.Add(P->PinType);++PinCount;}Role.Rows.Add(MoveTemp(E));}C.ShapeGraphs.Add(MoveTemp(Role));}
-    C.ShapeAssigned=Assigned;C.ShapeRetired=Assigned;C.ShapeBound=true;if(!ShapeCurrent(C,R))return false;
+    C.ShapeAssigned=Assigned;C.ShapeRetired=Assigned;C.ShapeBound=true;if(!StaticMeshSourceCurrent(C,R,true)||!ShapeCurrent(C,R))return false;
     for(const auto& G:C.ShapeGraphs)for(const auto& E:G.Rows)for(auto* P:E.Pins){C.ShapePinObjects.Emplace(P->DefaultObject.Get());if(!ShapeCurrent(C,R))return false;C.ShapePinObjects.Emplace(P->PinType.PinSubCategoryObject.Get());}
     return ShapeCurrent(C,R);
 }
@@ -473,7 +578,7 @@ void CopyShapeContract(const FContext& Old,FContext& Fresh)
  for(const auto& Source:Old.RootRows){FContext::FRootNode E;E.Node.Reset(Source.Node.Get());E.Template.Reset(Source.Template.Get());E.Class.Reset(Source.Class.Get());E.Guid=Source.Guid;E.Name=Source.Name;E.Socket=Source.Socket;E.ParentName=Source.ParentName;E.ParentOwner=Source.ParentOwner;E.NativeParent=Source.NativeParent;E.Children=Source.Children;Fresh.RootRows.Add(MoveTemp(E));}
  }
  Fresh.TargetClass=Old.TargetClass;Fresh.ShapeMode=Old.ShapeMode;Fresh.ExpectedBox=Old.ExpectedBox;Fresh.ExpectedCapsuleRadius=Old.ExpectedCapsuleRadius;Fresh.ExpectedCapsuleHalfHeight=Old.ExpectedCapsuleHalfHeight;
- Fresh.StaticMeshSourceCDO.Reset(Old.StaticMeshSourceCDO.Get());Fresh.StaticMeshFields=Old.StaticMeshFields;
+ Fresh.StaticMeshSourceCDO.Reset(Old.StaticMeshSourceCDO.Get());Fresh.StaticMeshFields=Old.StaticMeshFields;Fresh.MeshSource=Old.MeshSource;
  Fresh.ShapeChildrenMode=Old.ShapeChildrenMode;Fresh.ChildrenSCS.Reset(Old.ChildrenSCS.Get());Fresh.ChildrenAll=Old.ChildrenAll;Fresh.ChildrenRoots=Old.ChildrenRoots;
  for(const auto& Source:Old.ChildrenBaseline){FContext::FShapeNode E;E.Node.Reset(Source.Node.Get());E.Template.Reset(Source.Template.Get());E.Class.Reset(Source.Class.Get());E.Name=Source.Name;E.Guid=Source.Guid;E.Children=Source.Children;Fresh.ChildrenBaseline.Add(MoveTemp(E));}
 }
@@ -558,8 +663,8 @@ bool Prepare(const FString& RequestedPath, const FString& ComponentName, FContex
     if (Reachable.Num() != Nodes.Num() || (!C.RootMode&&(ParentCount != 1 || Roots.Contains(C.Node) || !C.Parent || !C.Parent->ComponentClass->IsChildOf(USceneComponent::StaticClass()))))
     { return Fail(R, TEXT("component_replace_root_or_children_unsupported"), TEXT("Reachable own native shape with one local Scene parent or one own parentless scene root required; inherited/native-bound variants remain incomplete.")); }
     USceneComponent* Scene = Cast<USceneComponent>(C.Node->ComponentTemplate);
-    if (!Loaded(Scene) || (Scene->GetClass() != UBoxComponent::StaticClass() && Scene->GetClass() != USphereComponent::StaticClass() && Scene->GetClass()!=UCapsuleComponent::StaticClass() && !(ReturnedTarget==UStaticMeshComponent::StaticClass()&&Scene->GetClass()==ReturnedTarget)) || Scene->IsRegistered() || Scene->IsPreRegistering() || Scene->GetOwner() || Scene->GetWorld() || Scene->GetAttachParent() || Scene->GetAttachChildren().Num() != 0)
-    { return Fail(R, TEXT("component_replace_source_class_unsupported"), TEXT("Exact native unregistered/non-preregistering own Box/Sphere/Capsule template without owner/world/template attachments required.")); }
+    if (!Loaded(Scene) || (Scene->GetClass() != UBoxComponent::StaticClass() && Scene->GetClass() != USphereComponent::StaticClass() && Scene->GetClass()!=UCapsuleComponent::StaticClass() && Scene->GetClass()!=UStaticMeshComponent::StaticClass()) || Scene->IsRegistered() || Scene->IsPreRegistering() || Scene->GetOwner() || Scene->GetWorld() || Scene->GetAttachParent() || Scene->GetAttachChildren().Num() != 0)
+    { return Fail(R, TEXT("component_replace_source_class_unsupported"), TEXT("Exact native unregistered/non-preregistering own Box/Sphere/Capsule/StaticMesh template without owner/world/template attachments required.")); }
     C.ShapeChildrenMode = !C.Node->GetChildNodes().IsEmpty();
     C.Slot = C.Node->GetVariableName().ToString() + USimpleConstructionScript::ComponentTemplateNameSuffix;
     if (Scene->GetName() != C.Slot || FindObject<UObject>(B->GeneratedClass, *C.Slot) != Scene) { return Fail(R, TEXT("component_replace_template_slot_collision"), TEXT("Selected template must be the sole exact standard generated-class template slot; no repeated collision Rename is admitted.")); }
@@ -707,8 +812,8 @@ bool Capture(FContext& C, FObservation& O, FResult& R, const TCHAR* Key)
     auto Selected = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("selected"), Selected); Selected->SetObjectField(TEXT("summary"), Summary(C.Node)); Selected->SetObjectField(TEXT("common"), Common(CastChecked<UPrimitiveComponent>(C.Node->ComponentTemplate))); Selected->SetStringField(TEXT("parent_guid"), C.RootMode?FString():C.Parent->VariableGuid.ToString()); Selected->SetStringField(TEXT("parent_name"), C.RootMode?FString():C.Parent->GetVariableName().ToString());
     Selected->SetStringField(TEXT("slot"), C.Slot); Selected->SetBoolField(TEXT("current_slot_matches_selected"), FindObject<UObject>(B->GeneratedClass, *C.Slot) == C.Node->ComponentTemplate); Selected->SetStringField(TEXT("archetype_path"), ObjectPath(C.Node->ComponentTemplate->GetArchetype()));
     auto Graph = MakeShared<FJsonObject>(); O.State->SetObjectField(TEXT("graphs"), Graph);
-    if (!Graphs(B, Graph,C.ShapeMode?&C:nullptr,&R) || !Sources(B->ParentClass, O.NativeSources,C.ShapeMode?(C.TargetClass==UCapsuleComponent::StaticClass()||C.TargetClass==UStaticMeshComponent::StaticClass())?C.TargetClass:C.OldTemplate.IsValid()&&C.OldTemplate->GetClass()==UCapsuleComponent::StaticClass()?UCapsuleComponent::StaticClass():nullptr:nullptr,C.ShapeMode?&C:nullptr,&R) || !Disk(C.Package, O.DiskState) || !Dirty(C.Package, O.OtherDirty)) { return false; }
-    if(!ShapeCurrent(C,R))return false;O.bComplete = true; J->SetBoolField(TEXT("complete"), true); return true;
+    if (!Graphs(B, Graph,C.ShapeMode?&C:nullptr,&R) || !Sources(B->ParentClass, O.NativeSources,C.MeshSource.IsValid()?UStaticMeshComponent::StaticClass():C.ShapeMode?(C.TargetClass==UCapsuleComponent::StaticClass()||C.TargetClass==UStaticMeshComponent::StaticClass())?C.TargetClass:C.OldTemplate.IsValid()&&C.OldTemplate->GetClass()==UCapsuleComponent::StaticClass()?UCapsuleComponent::StaticClass():nullptr:nullptr,C.ShapeMode?&C:nullptr,&R) || !Disk(C.Package, O.DiskState) || !Dirty(C.Package, O.OtherDirty)) { return false; }
+    if(!ShapeCurrent(C,R)||!StaticMeshSourceFiles(C,R))return false;O.bComplete = true; J->SetBoolField(TEXT("complete"), true); return true;
 }
 // Only a confirmed successful full compile may replace this exact owned CDO
 // with the same identity and the precise constructor-cleared load bits.
@@ -743,7 +848,7 @@ bool SameUnselected(const FObservation& A, const FObservation& B, const FString&
     return A.State->Values.Num() == B.State->Values.Num();
 }
 void ClearFinal(FResult& R)
-{ for (const TCHAR* K : { TEXT("observations_complete"), TEXT("source_preserved"), TEXT("unselected_state_preserved"), TEXT("independent_readback_passed") }) { R.Data->SetBoolField(K, false); } }
+{ for (const TCHAR* K : { TEXT("observations_complete"), TEXT("source_preserved"), TEXT("unselected_state_preserved"), TEXT("independent_readback_passed") }) { R.Data->SetBoolField(K, false); } for(const TCHAR* K:{TEXT("static_mesh_source_references_preserved"),TEXT("static_mesh_source_files_preserved")})if(R.Data->HasField(K))R.Data->SetBoolField(K,false); }
 bool Fences(const FObservation& Before, const FObservation& After, FContext& C, FResult& R)
 {
     const bool Complete = Before.bComplete && After.bComplete; R.Data->SetBoolField(TEXT("observations_complete"), Complete);
@@ -2238,7 +2343,7 @@ FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& Co
         if (C.TargetClass==USphereComponent::StaticClass()&&!FMath::IsFinite(SphereRadius)) { return Fail(R, TEXT("component_replace_radius_invalid"), TEXT("Finite radius required; negative public values mean original omitted/derived radius.")); }
         if (!Prepare(BlueprintPath, ComponentName, C, R)) { return false; }
         C.OldTemplate.Reset(C.Node->ComponentTemplate); auto* Old = CastChecked<UPrimitiveComponent>(C.OldTemplate.Get());
-        C.ShapeMode=C.RootMode||C.ShapeChildrenMode||C.TargetClass!=USphereComponent::StaticClass()||Old->GetClass()==UCapsuleComponent::StaticClass();
+        C.ShapeMode=C.RootMode||C.ShapeChildrenMode||C.TargetClass!=USphereComponent::StaticClass()||Old->GetClass()==UCapsuleComponent::StaticClass()||Old->GetClass()==UStaticMeshComponent::StaticClass();
         if(!RootBegin(C,R))return false;
         if(C.ShapeMode){C.SelectedName=C.Node->GetVariableName().ToString();R.Data->SetBoolField(TEXT("native_scene_shape_replacement"),true);R.Data->SetStringField(TEXT("unsupported_original_scope"),TEXT("Root/inherited/typed-reference/live/derived and other native/custom targets remain incomplete; own non-root native shape preserves the existing SCS child subtree with original common/shape semantics."));if(C.RootMode)R.Data->SetStringField(TEXT("unsupported_original_scope"),TEXT("Own native shape root is supported with the existing common values and ordered SCS children; plain Scene/default-selected/native-bound/inherited roots, other classes, live/derived propagation and unsupported typed references remain valid incomplete."));if(!ShapeBind(C,R))return false;KeepChildrenBaseline(C,R);if(!ShapeCurrent(C,R))return false;}
         if(!NativeGetBind(C,R))return false;
@@ -2249,7 +2354,7 @@ FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& Co
         Radius = FMath::Max(0.0f, static_cast<float>(Requested)); if (!FMath::IsFinite(Requested) || !FMath::IsFinite(Radius)) { return Fail(R, TEXT("component_replace_radius_invalid"), TEXT("Effective radius must be finite in native float representation.")); }
         R.Data->SetStringField(TEXT("radius_source"), SphereRadius >= 0 ? TEXT("explicit") : Old->GetClass() == UBoxComponent::StaticClass() ? TEXT("old_box_max_absolute_extent") : TEXT("old_sphere_unscaled_radius")); R.Data->SetNumberField(TEXT("effective_sphere_radius"), Radius);
         if(C.TargetClass!=USphereComponent::StaticClass()){R.Data->RemoveField(TEXT("effective_sphere_radius"));R.Data->SetStringField(TEXT("radius_source"),TEXT("ignored_non_sphere_target"));}
-        else if(SphereRadius<0&&Old->GetClass()==UCapsuleComponent::StaticClass())R.Data->SetStringField(TEXT("radius_source"),TEXT("original_other_scene_fallback100"));
+        else if(SphereRadius<0&&(Old->GetClass()==UCapsuleComponent::StaticClass()||Old->GetClass()==UStaticMeshComponent::StaticClass()))R.Data->SetStringField(TEXT("radius_source"),TEXT("original_other_scene_fallback100"));
         if(C.ShapeMode)
         {
             if(auto* SourceCapsule=Cast<UCapsuleComponent>(Old);SourceCapsule&&(!FMath::IsFinite(SourceCapsule->GetUnscaledCapsuleRadius())||!FMath::IsFinite(SourceCapsule->GetUnscaledCapsuleHalfHeight())))return Fail(R,TEXT("component_replace_shape_defaults_unobservable"),TEXT("Finite source Capsule dimensions required."));
@@ -2263,12 +2368,17 @@ FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& Co
          R.Data->SetBoolField(TEXT("native_static_mesh_target"),true);R.Data->SetBoolField(TEXT("static_mesh_reference_written"),false);R.Data->SetBoolField(TEXT("static_mesh_runtime_verified"),false);
          R.Data->SetStringField(TEXT("effect_scope"),TEXT("Own native shape -> exact native StaticMeshComponent using original Scene/Primitive common-copy and existing SCS root/children/retirement/compile/save flow. Target CDO and returned templates keep null StaticMesh and empty OverrideMaterials; no mesh/material assignment, load, renderer setup or runtime proof. Broader original native component/source/asset profiles remain incomplete; implemented/usage validation pending."));
         }
+        if(C.MeshSource.IsValid())
+        {
+            R.Data->SetBoolField(TEXT("native_static_mesh_source"),true);R.Data->SetBoolField(TEXT("static_mesh_reference_written"),false);R.Data->SetBoolField(TEXT("static_mesh_runtime_verified"),false);
+            R.Data->SetStringField(TEXT("effect_scope"),TEXT("Own inactive native StaticMeshComponent -> admitted native Primitive target through original common defaults, template retirement, SCS root/children, compile and optional exact save. Original mesh/material references remain on the retained old template; no source asset setter or reference transfer to shape targets. No runtime propagation or whole in-memory asset/cache proof."));
+        }
         R.Data->SetStringField(TEXT("new_component_class"), C.TargetClass->GetName()); R.Data->SetStringField(TEXT("new_component_class_path"), C.TargetClass->GetPathName());
         if (!Capture(C, Before, R, TEXT("before_observation"))) { return Fail(R, TEXT("component_replace_before_unobservable"), TEXT("Preflight bounded target/source/file observation incomplete; no Modify/allocation.")); }
         R.Data->SetObjectField(TEXT("before"), Summary(C.Node));
         if (bDryRun)
         {
-            auto Preview = Summary(C.Node); Preview->SetStringField(TEXT("component_class"), C.TargetClass->GetName());Preview->SetStringField(TEXT("component_class_path"),C.TargetClass->GetPathName());if(C.ShapeMode){Preview->RemoveField(TEXT("box_extent"));Preview->RemoveField(TEXT("sphere_radius"));Preview->RemoveField(TEXT("capsule_radius"));Preview->RemoveField(TEXT("capsule_half_height"));}
+            auto Preview = Summary(C.Node); Preview->SetStringField(TEXT("component_class"), C.TargetClass->GetName());Preview->SetStringField(TEXT("component_class_path"),C.TargetClass->GetPathName());if(C.ShapeMode){if(C.MeshSource.IsValid()&&C.TargetClass!=UStaticMeshComponent::StaticClass())Preview->RemoveField(TEXT("static_mesh"));Preview->RemoveField(TEXT("box_extent"));Preview->RemoveField(TEXT("sphere_radius"));Preview->RemoveField(TEXT("capsule_radius"));Preview->RemoveField(TEXT("capsule_half_height"));}
             if(C.TargetClass==UBoxComponent::StaticClass()){Preview->SetStringField(TEXT("shape"),TEXT("box"));Preview->SetArrayField(TEXT("box_extent"),Vector(C.ExpectedBox));}else if(C.TargetClass==UCapsuleComponent::StaticClass()){Preview->SetStringField(TEXT("shape"),TEXT("capsule"));Preview->SetNumberField(TEXT("capsule_radius"),C.ExpectedCapsuleRadius);Preview->SetNumberField(TEXT("capsule_half_height"),C.ExpectedCapsuleHalfHeight);}else if(C.TargetClass==UStaticMeshComponent::StaticClass()){Preview->RemoveField(TEXT("shape"));Preview->SetStringField(TEXT("static_mesh"),TEXT(""));}else{Preview->SetStringField(TEXT("shape"),TEXT("sphere"));Preview->SetNumberField(TEXT("sphere_radius"),Radius);} R.Data->SetObjectField(TEXT("after_preview"), Preview); R.Data->SetStringField(TEXT("write_scope"), TEXT("dry_run_no_asset_mutation"));
             if (!Capture(C, Current, R, TEXT("after_observation"))) { return Fail(R, TEXT("component_replace_preview_unobservable"), TEXT("Preview returned but exact repeated current observation incomplete."), true); }
             const bool EqualAll = Equal(Before.State, Current.State) && Equal(Before.NativeSources, Current.NativeSources) && Equal(Before.DiskState, Current.DiskState) && Equal(Before.OtherDirty, Current.OtherDirty);
@@ -2298,7 +2408,7 @@ FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& Co
         if (!Fences(Before, Current, C, R) || !Readback(C, Before, Current, Radius, R, false)) { return false; }
         R.Data->SetBoolField(TEXT("after_assignment_preserved"), true); R.Stage = TEXT("structural_refresh"); ClearFinal(R); R.bKnown = false; Count(R, TEXT("structural_refresh_calls")); FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(C.Blueprint.Get());
         if(!RootCompilerReturned(C,R)||!NativeGetReturn(C,R,false))return false;
-        FContext Refreshed; const bool ContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, Refreshed, R,C.TargetClass==UStaticMeshComponent::StaticClass()?C.TargetClass:nullptr); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&(!ContextOK||C.RootMode!=Refreshed.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (ContextOK) { Refreshed.OldTemplate = MoveTemp(C.OldTemplate); Refreshed.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,Refreshed); C = MoveTemp(Refreshed);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
+        FContext Refreshed; const bool ContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, Refreshed, R,C.TargetClass==UStaticMeshComponent::StaticClass()?C.TargetClass:nullptr); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet||C.MeshSource.IsValid())&&(!ContextOK||C.RootMode!=Refreshed.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (ContextOK) { Refreshed.OldTemplate = MoveTemp(C.OldTemplate); Refreshed.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,Refreshed); C = MoveTemp(Refreshed);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
         if (!Capture(C, Current, R, TEXT("after_structural_observation")) || !ContextOK) { return Fail(R, TEXT("component_replace_structural_unobservable"), TEXT("Structural refresh returned but current admitted ownership/defaults incomplete; retained prefix, no full compile/save."), true); }
         const FObjectPropertyBase* SkeletonMember = FindFProperty<FObjectPropertyBase>(C.Blueprint->SkeletonGeneratedClass, FName(*C.SelectedName)); const bool SkeletonOK = SkeletonMember && SkeletonMember->GetOwnerClass() == C.Blueprint->SkeletonGeneratedClass && SkeletonMember->ArrayDim == 1 && SkeletonMember->PropertyClass == C.TargetClass && SkeletonMember->HasAnyPropertyFlags(CPF_BlueprintVisible);
         R.Data->SetBoolField(TEXT("skeleton_selected_member_verified"), SkeletonOK); R.Data->SetObjectField(TEXT("after"), Summary(C.Node)); R.Data->SetStringField(TEXT("write_scope"), TEXT("blueprint_scs_component_template_replacement")); Retirement(C, R, TEXT("after_structural_retirement"));
@@ -2307,14 +2417,15 @@ FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& Co
         if (!bCompile) { R.Data->SetBoolField(TEXT("saved"), false); R.Data->SetBoolField(TEXT("compile_requested"), false); R.Stage = TEXT("complete"); return true; }
         R.Stage = TEXT("compile_blueprint"); R.Data->SetBoolField(TEXT("after_configuration_observations_complete"), true); R.Data->SetBoolField(TEXT("after_configuration_source_preserved"), true); R.Data->SetBoolField(TEXT("after_configuration_unselected_state_preserved"), true); ClearFinal(R); R.bKnown = false; R.bCompileAttempted = true; Count(R, TEXT("full_compile_attempts"));
         auto CompileResult = Cubeless::UE58::CompileBlueprint(C.Blueprint->GetPathName(), false, bRefreshNodes); R.Data->SetObjectField(TEXT("compile_result"), CompileResult); bool Compiled = false; if (CompileResult->TryGetBoolField(TEXT("compiled"), Compiled)) { R.Compiled = Compiled; }
-        if(C.RootMode||C.ShapeChildrenMode||C.NativeGet)
+        if(C.RootMode||C.ShapeChildrenMode||C.NativeGet||C.MeshSource.IsValid())
         {
             bool Known=true,Unknown=false;CompileResult->TryGetBoolField(TEXT("change_state_known"),Known);CompileResult->TryGetBoolField(TEXT("outcome_unknown"),Unknown);
             if(!Known||Unknown||!R.Compiled.IsSet()){ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return Fail(R,TEXT("component_replace_compile_outcome_unobservable"),TEXT("Actual compiler receipt retained; explicit unknown or missing typed compiled status stops before Prepare/readback/source SDK."),true);}
         }
+        if(C.MeshSource.IsValid()&&!Compiled)return Fail(R,TEXT("component_replace_compile_failed"),TEXT("Known compiler failure retained; source identities remain held, no source/readback/save SDK or retry follows."),true);
         if(C.RootMode){if(!Compiled)return Fail(R,TEXT("component_replace_compile_failed"),TEXT("Known compiler failure retained; no old role readback/save/retry."),true);if(!RootCompilerReturned(C,R))return false;}
         if(C.NativeGet){if(!Compiled)return Fail(R,TEXT("component_replace_compile_failed"),TEXT("Known compiler failure retained; no old pin readback/save/retry."),true);if(!NativeGetReturn(C,R,true))return false;}
-        FContext CompiledContext; const bool CompiledContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, CompiledContext, R,C.TargetClass==UStaticMeshComponent::StaticClass()?C.TargetClass:nullptr); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&(!CompiledContextOK||C.RootMode!=CompiledContext.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (CompiledContextOK) { CompiledContext.OldTemplate = MoveTemp(C.OldTemplate); CompiledContext.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,CompiledContext); C = MoveTemp(CompiledContext);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
+        FContext CompiledContext; const bool CompiledContextOK = Prepare(C.Blueprint->GetPathName(), C.SelectedName, CompiledContext, R,C.TargetClass==UStaticMeshComponent::StaticClass()?C.TargetClass:nullptr); if((C.RootMode||C.ShapeChildrenMode||C.NativeGet||C.MeshSource.IsValid())&&(!CompiledContextOK||C.RootMode!=CompiledContext.RootMode)){R.bKnown=false;ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return false;} if (CompiledContextOK) { CompiledContext.OldTemplate = MoveTemp(C.OldTemplate); CompiledContext.NewTemplate = MoveTemp(C.NewTemplate);CopyShapeContract(C,CompiledContext); C = MoveTemp(CompiledContext);if(!ShapeBind(C,R,true)||!NativeGetStable(C,R))return false; }
         if (!Capture(C, Current, R, TEXT("after_observation")) || !CompiledContextOK) { return Fail(R, TEXT("component_replace_postcompile_unobservable"), TEXT("Full compiler attempted once; current bounded actual prefix incomplete, save suppressed."), true); }
         Retirement(C, R, TEXT("after_compile_retirement")); if (!Fences(Before, Current, C, R) || !Readback(C, Before, Current, Radius, R, Compiled)) { return false; }
         if (!R.Compiled.IsSet()) { return Fail(R, TEXT("component_replace_compile_outcome_unobservable"), TEXT("Missing typed compiler outcome; actual prefix retained, save suppressed."), true); }
@@ -2322,11 +2433,11 @@ FString ReplaceComponentClassRaw(const FString& BlueprintPath, const FString& Co
         R.Data->SetObjectField(TEXT("after"), Summary(C.Node)); R.Data->SetBoolField(TEXT("saved"), false); if (!bSave) { R.Stage = TEXT("complete"); return true; }
         R.Stage = TEXT("save_asset"); R.Data->SetBoolField(TEXT("before_save_observations_complete"), true); R.Data->SetBoolField(TEXT("before_save_source_preserved"), true); R.Data->SetBoolField(TEXT("before_save_unselected_state_preserved"), true); ClearFinal(R); R.bKnown = false; R.bSaveAttempted = true; Count(R, TEXT("save_attempt_count"));
         auto Receipt = MakeShared<FJsonObject>(); Receipt->SetStringField(TEXT("asset_path"), C.Blueprint->GetPathName()); Receipt->SetBoolField(TEXT("attempted"), true); R.Data->SetArrayField(TEXT("save_calls"), { MakeShared<FJsonValueObject>(Receipt) }); R.bSaved = UEditorAssetLibrary::SaveLoadedAsset(C.Blueprint.Get(), false); Receipt->SetBoolField(TEXT("success"), R.bSaved); R.Data->SetBoolField(TEXT("saved"), R.bSaved);
-        if((C.RootMode||C.ShapeChildrenMode||C.NativeGet)&&!R.bSaved){ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return Fail(R,TEXT("component_replace_save_failed_or_unobservable"),TEXT("Actual saveFalse receipt retained; no Capture/retirement/source SDK or retry follows."),true);}
+        if((C.RootMode||C.ShapeChildrenMode||C.NativeGet||C.MeshSource.IsValid())&&!R.bSaved){ClearFinal(R);R.Data->SetBoolField(TEXT("native_scene_child_followup_sdk_stopped"),true);return Fail(R,TEXT("component_replace_save_failed_or_unobservable"),TEXT("Actual saveFalse receipt retained; no Capture/retirement/source SDK or retry follows."),true);}
         if(!RootCurrent(C,R)||!NativeGetSaved(C,R))return false;
         FObservation Saved; const bool Complete = Capture(C, Saved, R, TEXT("after_save")); Retirement(C, R, TEXT("after_save_retirement")); R.Data->SetBoolField(TEXT("observations_complete"), Complete);
         if (!R.bSaved || !Complete) { return Fail(R, TEXT("component_replace_save_failed_or_unobservable"), TEXT("Single exact save receipt retained; successful disk writes must never be replayed because observer fails."), true); }
-        const bool State = SavedEqual(MakeShared<FJsonValueObject>(Current.State), MakeShared<FJsonValueObject>(Saved.State), C.Package), Source = Equal(Current.NativeSources, Saved.NativeSources), Other = Equal(Current.OtherDirty, Saved.OtherDirty);
+        const bool State = SavedEqual(MakeShared<FJsonValueObject>(Current.State), MakeShared<FJsonValueObject>(Saved.State), C.Package), Source = Equal(Current.NativeSources, Saved.NativeSources), Other = SavedOtherDirty(Current.OtherDirty, Saved.OtherDirty, R);
         R.bKnown = true; R.bChanged = true; R.Data->SetBoolField(TEXT("source_preserved"), Source); R.Data->SetBoolField(TEXT("unselected_state_preserved"), State && Other); R.Data->SetBoolField(TEXT("independent_readback_passed"), State); R.Data->SetBoolField(TEXT("saved_state_preserved"), State);
         if (!State || !Source || !Other || !Saved.DiskState->GetBoolField(TEXT("exists")) || Saved.DiskState->GetNumberField(TEXT("bytes")) <= 0 || C.Blueprint->GetOutermost()->IsDirty()) { return Fail(R, TEXT("component_replace_saved_postcondition_failed"), TEXT("Save receipt succeeded, but exact owned flag transition/state/source/disk/dirty proof differs; no retry or rollback.")); }
         R.Stage = TEXT("complete"); return true;

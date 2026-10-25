@@ -1,0 +1,63 @@
+{
+  "system": "/Game/_MCP_Temp/NiagaraGenerated/Production/CubelessTests/ExampleRun_HLSL/NS_Visibility",
+  "preset": "basic",
+  "save": true,
+  "settings": {
+    "spawn_rate": 16,
+    "material_path": "/Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial"
+  },
+  "scratch_user_modules": [
+    {
+      "kind": "visible_toggle",
+      "settings": {
+        "scratch_pad_name": "AV_Visibility",
+        "parameter_name": "Particles.SpriteSize",
+        "parameter_value": [
+          24,
+          24
+        ],
+        "base_module_input_default_value": [
+          24,
+          24
+        ],
+        "user_parameter_name": "User.Visible",
+        "user_parameter_default_value": true,
+        "custom_hlsl_input_name": "AVVisible",
+        "custom_hlsl_expression": "BaseValue * (AVVisible ? 1.0 : 0.0)",
+        "custom_hlsl_output_pin_name": "AVVisibleSize",
+        "custom_hlsl_signature_name": "AV_VisibleSize",
+        "target_stack_emitter_index": 0,
+        "timeout_seconds": 30
+      }
+    }
+  ],
+  "hlsl_replacements": [
+    {
+      "signature_name": "AV_VisibleSize",
+      "expected_contains": "AVVisible ? 1.0",
+      "replacement_hlsl": "BaseValue * (AVVisible ? 0.5 : 0.0)",
+      "recipe_index": 0
+    }
+  ],
+  "renderer_edits": [
+    {
+      "operation": "sprite_settings",
+      "settings": {
+        "emitter_index": 0,
+        "renderer_index": 0,
+        "sub_image_size": [
+          2,
+          2
+        ]
+      }
+    },
+    {
+      "operation": "material",
+      "settings": {
+        "emitter_index": 0,
+        "renderer_index": 0,
+        "material_path": "/Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial"
+      }
+    }
+  ]
+}

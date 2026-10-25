@@ -15,4 +15,29 @@ UE 5.8.3 공식 ModelContextProtocol 서버와 Toolset Registry를 확장하는 
 
 게임 모듈에 이 플러그인을 하드 의존성으로 추가하지 마십시오. 모듈은 Editor 대상에만 로드되며, 생성한 게임 에셋에도 Cubeless/MCP 런타임 타입을 참조시키지 않아야 합니다.
 
-현재 소스 체크포인트는 VE까지의 대표 검증 결과와 VF의 수리·소스 검토를 마친 후보를 포함합니다. VF의 Niagara Factory Batch 연결은 아직 실제 UE 공식 MCP 실행으로 검증하지 않았습니다. 소스 등록이나 대표 샘플 성공이 모든 원본 계약의 완료를 뜻하지 않습니다.
+기존 UE 5.6 전체 지원 범위의 이식은 아직 완료되지 않았습니다. 소스 등록이나 대표 샘플 성공이 모든 원본 계약의 완료를 뜻하지 않으며, 각 도구 설명에 명시된 지원 범위와 실패 시 변경·저장 상태를 확인해야 합니다.
+
+Blueprint·Niagara·PCG의 선택형 외부 실행기는 [실행기 안내](cubeless/tools/pipelines/README.md)를 참조하십시오. 플러그인 로딩에 필요한 구성은 아니며, 공식 MCP 연결을 사용합니다. Niagara edit 모드의 `save` 기본값은 `false`이고 Blueprint 바인딩과 manifest에도 같은 저장 정책을 적용합니다.
+
+로드된 LevelInstance 패킹:
+
+- 공식 MCP의 `describe_toolset`으로 `cubeless_mcp_ue58.registration.loaded_level_instance_packing_toolset.CubelessLoadedLevelInstancePackingTools`를 조회합니다.
+- `inspect_loaded_level_instance_packing(source_actor_path, target_actor_path)`으로 기존 Actor의 정확한 객체 경로를 검사합니다. 선택 상태·Actor 라벨은 사용하지 않습니다.
+- 같은 Toolset의 `pack_loaded_level_instance`를 다음 입력으로 호출합니다. 먼저 `dry_run=true`로 확인하고, 실제 반영할 때만 `false`로 바꿉니다.
+
+```json
+{
+  "source_actor_path": "/Game/Maps/Host.Host:PersistentLevel.SourceLevelInstance",
+  "target_actor_path": "/Game/Maps/Host.Host:PersistentLevel.TargetPackedLevelActor",
+  "operation_id": "pack-unique-request-001",
+  "dry_run": true,
+  "allow_replace": false,
+  "save": false
+}
+```
+
+현재는 같은 Editor 월드의 native PLA 대상과 이미 완전히 로드된 평면 구조의 non-World-Partition 원본을 지원합니다. 양쪽 WorldAsset은 비어 있지 않고 같아야 하며, 필터와 LevelInstance 편집 세션은 없어야 합니다. Blueprint/SCS 대상·중첩 LevelInstance·partitioned 원본은 거절합니다. 원본 Actor 512개, 컴포넌트 4096개, 메시 인스턴스 2048개가 초기 작업 한도입니다. 기존 대상에 데이터가 있으면 명시적인 `allow_replace=true`가 필요합니다.
+
+좌표는 UE 5.8의 streaming transform·대상 transform·pivot 계산을 따릅니다. 서로 다른 위치의 PLA로 패킹하면 원본 메시의 월드 위치가 그대로 유지된다고 가정하지 말고 `expected_engine_placement`와 실제 결과를 확인하십시오. 엔진 bool이 true여도 미지원 컴포넌트나 관측된 경고가 있으면 `packing_incomplete`이며, 대상에는 이미 메시가 생성됐을 수 있습니다. 콜백으로 상태가 바뀌면 불확실 실패로 반환하고 자동 재시도하지 않습니다. 트랜잭션은 원자적 롤백을 보장하지 않습니다.
+
+저장은 기본적으로 하지 않습니다. `save=true`는 독점 외부 Actor 패키지만 허용하며, 일반 맵 Actor에서는 변경 전에 거절합니다. 일반 맵은 결과를 확인한 뒤 별도의 명시적 맵 저장이 필요합니다. 원본을 삭제하거나 저장하지 않으며, 성공 반환도 원본 삭제의 안전성을 판정하지 않습니다.

@@ -1,0 +1,47 @@
+{
+  "system": "/Game/_MCP_Temp/NiagaraGenerated/Production/CubelessTests/ExampleRun_Authoring/NS_Authored",
+  "preset": "basic",
+  "save": true,
+  "settings": {
+    "spawn_rate": 16,
+    "material_path": "/Niagara/DefaultAssets/DefaultSpriteMaterial.DefaultSpriteMaterial"
+  },
+  "user_parameters": [
+    {
+      "name": "Sentinel",
+      "type": "bool",
+      "value": true
+    }
+  ],
+  "module_inputs": {
+    "operation": "set_existing",
+    "edits": [
+      {
+        "emitter_index": 0,
+        "module_name": "SpawnRate",
+        "input_name": "SpawnRate",
+        "value": 48.0
+      }
+    ]
+  },
+  "scratch_user_modules": [
+    {
+      "kind": "vec2",
+      "settings": {
+        "scratch_pad_name": "SizeControl",
+        "parameter_name": "Particles.SpriteSize",
+        "parameter_value": [
+          40,
+          40
+        ],
+        "user_parameter_name": "User.SpriteSize",
+        "user_parameter_default_value": [
+          40,
+          40
+        ],
+        "target_stack_emitter_index": 0,
+        "timeout_seconds": 30
+      }
+    }
+  ]
+}

@@ -19,6 +19,8 @@
 #include "NiagaraEmitterBase.h"
 #include "NiagaraEffectType.h"
 #include "NiagaraScript.h"
+#include "NiagaraCommon.h"
+#include "ViewModels/Stack/NiagaraParameterHandle.h"
 #include "NiagaraScriptSource.h"
 #include "NiagaraScratchPadContainer.h"
 #include "NiagaraGraph.h"
@@ -553,6 +555,23 @@ TSharedPtr<FJsonObject> AdoptNative(const FResult& Child,const TCHAR* Operation,
   // Single canonical owner: never place the large table in child Native/Legacy/stage/session subtrees.
   W.R.Data->SetObjectField(TEXT("graph_observation_evidence"),Evidence.Envelope);
  }
+ if(WireFits&&FCString::Strcmp(Operation,TEXT("add_niagara_stock_module_to_stack"))==0)
+ {
+  // First validate the ORIGINAL whole child against its unchanged budget.
+  // Equal before/after copies then use child-local references; they do not
+  // grow the Batch job-global evidence pool or bypass its cumulative budget.
+  auto View=MakeShared<FJsonObject>(*Child.Data);
+  const TCHAR* Pairs[][2]={{TEXT("module_source_before"),TEXT("module_source_after")},{TEXT("after_insertion"),TEXT("after")}};
+  for(const auto& Pair:Pairs)
+  {
+   const auto Before=View->TryGetField(Pair[0]),After=View->TryGetField(Pair[1]);
+   if(Before.IsValid()&&After.IsValid()&&Before->Type==EJson::Object&&EvidenceEqual(Before,After))
+   {
+    auto Ref=MakeShared<FJsonObject>();Ref->SetStringField(TEXT("graph_observation_local_ref"),Pair[0]);Ref->SetNumberField(TEXT("representation_version"),1);Ref->SetStringField(TEXT("scope"),TEXT("Same child data object; complete structural equality verified after original receipt budget."));View->SetObjectField(Pair[1],Ref);
+   }
+  }
+  Native->SetObjectField(TEXT("data"),View);Diagnostic->SetBoolField(TEXT("module_equal_graph_local_refs"),true);
+ }
  W.R.Data->SetObjectField(TEXT("last_child_receipt_diagnostic"),Diagnostic);return AdoptNativeObject(Native,Stage,true,WireFits);
 }
 TSharedPtr<FJsonObject> AdoptNative(const FString& Encoded,const TCHAR* Stage)
@@ -842,28 +861,34 @@ struct FRIExpected{TWeakObjectPtr<UNiagaraScript> Script;FNiagaraVariable Variab
 TArray<FRIExpected>* RIExpected=nullptr;
 bool SameStoreShape(UNiagaraScript* Script,const TArray<FNiagaraVariable>& Before){TArray<FNiagaraVariable> Now;Script->RapidIterationParameters.GetParameters(Now);if(Now.Num()!=Before.Num())return false;for(int32 I=0;I<Now.Num();++I)if(Now[I].GetName()!=Before[I].GetName()||Now[I].GetType()!=Before[I].GetType())return false;return true;}
 bool VerifyRI(){auto& W=*Current;if(!W.Admit(TEXT("verify_initialize_RI")))return false;for(const auto& E:*RIExpected){auto* S=E.Script.Get();if(!Live(S))return W.Fail(TEXT("niagara_sprite_preset_RI_script_lost"),TEXT("Initialize RI script expired."));const uint8* Actual=S->RapidIterationParameters.GetParameterData(E.Variable);if(!Actual||E.Bytes.Num()!=E.Variable.GetSizeInBytes()||FMemory::Memcmp(Actual,E.Bytes.GetData(),E.Bytes.Num())!=0)return W.Fail(TEXT("niagara_sprite_preset_RI_readback_failed"),TEXT("Actual typed Initialize RI bytes differ from requested stored bytes."));}return true;}
-TSharedPtr<FJsonObject> SetGeneratedPresetInitializeParticleDefaults(UNiagaraSystem* System,int32 EmitterIndex,const FVector2D& SpriteSize,double Lifetime)
+TSharedPtr<FJsonObject> SetGeneratedPresetInitializeParticleDefaults(UNiagaraSystem* System,int32 EmitterIndex,const FVector2D& SpriteSize,double Lifetime,bool InitializeScaleSize)
 {
- auto& W=*Current;auto Result=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Rows;TArray<FString> Missing;int32 SizeUpdates=0,LifeUpdates=0;
+ auto& W=*Current;auto Result=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Rows,InitialSelection;TArray<FString> Missing;int32 SizeUpdates=0,LifeUpdates=0,InitialSizeUpdates=0,UpdateInitialSizeUpdates=0;
  auto Publish=[&](){Result->SetArrayField(TEXT("updated_parameters"),Rows);Result->SetNumberField(TEXT("updated_parameter_count"),Rows.Num());Result->SetArrayField(TEXT("missing_fields"),StringArrayToJsonValues(Missing));W.R.Data->SetObjectField(TEXT("initialize_particle_partial"),Result);};
  if(!W.Admit(TEXT("initialize_RI_entry"))||System!=W.Target.Get()||EmitterIndex!=0)return ErrorResponse(TEXT("Exact created Initialize emitter unavailable"));
+ UNiagaraNodeFunctionCall* ScaleModule=nullptr;UNiagaraScript* ScaleScript=nullptr;UNiagaraGraph* ScaleGraph=nullptr;FGuid ScaleVersion;FString EmitterAlias;
+ if(InitializeScaleSize){auto* E=System->GetEmitterHandles()[0].GetInstance().Emitter.Get();auto* D=System->GetEmitterHandles()[0].GetEmitterData();auto* Source=D?Cast<UNiagaraScriptSource>(D->GraphSource):nullptr;auto* G=Source?Source->NodeGraph.Get():nullptr;if(!Live(E)||!Live(G)||!W.Pin(G))return ErrorResponse(TEXT("Exact generated scale-size source unavailable"));EmitterAlias=System->GetEmitterHandles()[0].GetName().ToString();int32 Matches=0;for(const auto& RawNode:G->Nodes)if(auto* F=Cast<UNiagaraNodeFunctionCall>(RawNode.Get());F&&F->GetFunctionName().Equals(TEXT("ScaleSpriteSize"),ESearchCase::CaseSensitive)){++Matches;ScaleModule=F;}if(Matches!=1||!Live(ScaleModule)||!Live(ScaleModule->FunctionScript)||ScaleModule->FunctionScript->GetPathName()!=TEXT("/Niagara/Modules/Update/Size/ScaleSpriteSize.ScaleSpriteSize")||ScaleModule->SelectedScriptVersion!=(ScaleModule->FunctionScript->IsVersioningEnabled()?ScaleModule->FunctionScript->GetExposedVersion().VersionGuid:FGuid())||!W.Pin(ScaleModule)||!W.Pin(ScaleModule->FunctionScript)){W.Fail(TEXT("niagara_sprite_preset_scale_initializer_role"),TEXT("Expected one exact current stock ScaleSpriteSize module/version before constant initializer writes"));return ErrorResponse(W.R.Error);}}
+ if(InitializeScaleSize){ScaleScript=ScaleModule->FunctionScript;ScaleGraph=ScaleModule->GetNiagaraGraph();ScaleVersion=ScaleModule->SelectedScriptVersion;}
+ auto ScaleCurrent=[&](){if(!InitializeScaleSize)return true;if(!W.Admit(TEXT("initialize_scale_role")))return false;if(ScaleModule->FunctionScript!=ScaleScript||ScaleModule->SelectedScriptVersion!=ScaleVersion||ScaleModule->GetNiagaraGraph()!=ScaleGraph||!ScaleGraph->Nodes.Contains(ScaleModule)||ScaleModule->GetFunctionName()!=TEXT("ScaleSpriteSize")||System->GetEmitterHandles()[0].GetName().ToString()!=EmitterAlias)return W.Fail(TEXT("niagara_sprite_preset_scale_initializer_role_changed"),TEXT("Selected scale initializer module/script/version/emitter alias changed across SDK boundary"));return true;};
  TArray<UNiagaraScript*> Scripts;System->GetEmitterHandles()[0].GetEmitterData()->GetScripts(Scripts,false,false);if(Scripts.Num()>4096)return ErrorResponse(TEXT("Initialize script bound exceeded"));for(auto* S:Scripts)if(S&&!W.Pin(S))return ErrorResponse(W.R.Error);
  if(!W.Step(TEXT("Initialize_System_Modify"),[&]{System->Modify();},true,true))return ErrorResponse(W.R.Error);
- for(auto* S:Scripts){if(!W.Admit(TEXT("initialize_script")))break;if(!S||(S->GetUsage()!=ENiagaraScriptUsage::ParticleSpawnScript&&S->GetUsage()!=ENiagaraScriptUsage::ParticleSpawnScriptInterpolated))continue;
+ for(auto* S:Scripts){if(!W.Admit(TEXT("initialize_script"))||!ScaleCurrent())break;if(!S)continue;const bool Spawn=S->GetUsage()==ENiagaraScriptUsage::ParticleSpawnScript||S->GetUsage()==ENiagaraScriptUsage::ParticleSpawnScriptInterpolated;const bool Update=S->GetUsage()==ENiagaraScriptUsage::ParticleUpdateScript;if(!Spawn&&!(InitializeScaleSize&&Update))continue;
+ FNiagaraVariable InitialSizeVariable;if(InitializeScaleSize){const auto Handle=FNiagaraParameterHandle::CreateModuleParameterHandle(FName(TEXT("Initial Sprite Size")));const auto Alias=FNiagaraParameterHandle::CreateAliasedModuleParameterHandle(Handle,ScaleModule);InitialSizeVariable=FNiagaraUtilities::ConvertVariableToRapidIterationConstantName(FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(),Alias.GetParameterHandleString()),*EmitterAlias,S->GetUsage());}
+ if(InitializeScaleSize){auto Selection=MakeShared<FJsonObject>();Selection->SetStringField(TEXT("script"),S->GetPathName());Selection->SetStringField(TEXT("emitter_handle_alias"),EmitterAlias);Selection->SetStringField(TEXT("expected_name"),InitialSizeVariable.GetName().ToString());Selection->SetStringField(TEXT("expected_struct"),InitialSizeVariable.GetType().GetScriptStruct()?InitialSizeVariable.GetType().GetScriptStruct()->GetPathName():FString());InitialSelection.Add(MakeShared<FJsonValueObject>(Selection));Result->SetArrayField(TEXT("initial_sprite_size_selection"),InitialSelection);}
  TArray<FNiagaraVariable> Params;S->RapidIterationParameters.GetParameters(Params);if(Params.Num()>65536){W.Fail(TEXT("niagara_sprite_preset_RI_bound"),TEXT("Initialize parameter bound exceeded"));break;}
- for(const auto& V:Params){if(!W.Admit(TEXT("initialize_parameter")))break;const FString Name=V.GetName().ToString();const bool Size=Name.Contains(TEXT(".SetVariables_"),ESearchCase::IgnoreCase)&&Name.EndsWith(TEXT(".Particles.SpriteSize"),ESearchCase::IgnoreCase);const bool Life=Name.Contains(TEXT(".SetVariables_"),ESearchCase::IgnoreCase)&&Name.EndsWith(TEXT(".Particles.Lifetime"),ESearchCase::IgnoreCase);if(!Size&&!Life)continue;
- const uint8* Old=S->RapidIterationParameters.GetParameterData(V);if(!Old){W.Fail(TEXT("niagara_sprite_preset_RI_data_missing"),TEXT("Matched Initialize typed declaration has no value data"));break;}if(V.GetType().GetScriptStruct()&&!W.Pin(V.GetType().GetScriptStruct()))break;if(V.GetType().GetEnum()&&!W.Pin(V.GetType().GetEnum()))break;FNiagaraVariable Updated(V);Updated.SetData(Old);TSharedPtr<FJsonValue> Previous,Desired;if(Size)Desired=NumberArrayToJson({SpriteSize.X,SpriteSize.Y});else Desired=MakeShared<FJsonValueNumber>(Lifetime);FString ConversionError;
+ for(const auto& V:Params){if(!W.Admit(TEXT("initialize_parameter")))break;const FString Name=V.GetName().ToString();const bool Size=Spawn&&Name.Contains(TEXT(".SetVariables_"),ESearchCase::IgnoreCase)&&Name.EndsWith(TEXT(".Particles.SpriteSize"),ESearchCase::IgnoreCase);const bool Life=Spawn&&Name.Contains(TEXT(".SetVariables_"),ESearchCase::IgnoreCase)&&Name.EndsWith(TEXT(".Particles.Lifetime"),ESearchCase::IgnoreCase);const bool InitialSize=InitializeScaleSize&&V==InitialSizeVariable;if(!Size&&!Life&&!InitialSize)continue;
+ const uint8* Old=S->RapidIterationParameters.GetParameterData(V);if(!Old){W.Fail(TEXT("niagara_sprite_preset_RI_data_missing"),TEXT("Matched Initialize typed declaration has no value data"));break;}if(V.GetType().GetScriptStruct()&&!W.Pin(V.GetType().GetScriptStruct()))break;if(V.GetType().GetEnum()&&!W.Pin(V.GetType().GetEnum()))break;FNiagaraVariable Updated(V);Updated.SetData(Old);TSharedPtr<FJsonValue> Previous,Desired;if(Size||InitialSize)Desired=NumberArrayToJson({SpriteSize.X,SpriteSize.Y});else Desired=MakeShared<FJsonValueNumber>(Lifetime);FString ConversionError;
  if(!W.SDK(TEXT("Initialize_ConvertTypedValue")))break;Previous=NiagaraVariableDataToJsonValue(Updated);const bool Converted=SetNiagaraVariableDataFromJson(Updated,Desired,ConversionError);if(!W.After(TEXT("Initialize_ConvertTypedValue")))break;if(!Converted){W.Fail(TEXT("niagara_sprite_preset_RI_conversion_failed"),ConversionError);break;}
  FRIExpected E;E.Script=S;E.Variable=V;E.Bytes.Append(Updated.GetData(),Updated.GetSizeInBytes());
- if(!W.Step(TEXT("Initialize_Script_Modify"),[&]{S->Modify();},true,true))break;if(!SameStoreShape(S,Params)){W.Fail(TEXT("niagara_sprite_preset_RI_shape_changed"),TEXT("RI store declarations changed in Modify callback"));break;}
+ if(!W.Step(TEXT("Initialize_Script_Modify"),[&]{S->Modify();},true,true)||!ScaleCurrent())break;if(!SameStoreShape(S,Params)){W.Fail(TEXT("niagara_sprite_preset_RI_shape_changed"),TEXT("RI store declarations changed in Modify callback"));break;}
  const FString TypeLabel=NiagaraTypeName(V.GetType()),ScriptName=S->GetName(),UsageName=NiagaraScriptUsageName(S->GetUsage());
  bool SetReturned=false;if(!W.SDK(TEXT("Initialize_SetParameterData"),true,true))break;SetReturned=S->RapidIterationParameters.SetParameterData(E.Bytes.GetData(),V,false);
- auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("field"),Size?TEXT("sprite_size"):TEXT("lifetime"));Row->SetStringField(TEXT("parameter_name"),Name);Row->SetStringField(TEXT("parameter_type"),TypeLabel);Row->SetStringField(TEXT("script_name"),ScriptName);Row->SetStringField(TEXT("script_usage"),UsageName);Row->SetField(TEXT("previous_value"),Previous);Row->SetBoolField(TEXT("setter_returned"),SetReturned);Rows.Add(MakeShared<FJsonValueObject>(Row));Publish();
- if(!W.After(TEXT("Initialize_SetParameterData")))break;if(!SameStoreShape(S,Params)){W.Fail(TEXT("niagara_sprite_preset_RI_shape_changed"),TEXT("RI store declarations changed during setter callback"));break;}
- const uint8* Actual=S->RapidIterationParameters.GetParameterData(V);if(!SetReturned||!Actual||FMemory::Memcmp(Actual,E.Bytes.GetData(),E.Bytes.Num())!=0){W.Fail(TEXT("niagara_sprite_preset_RI_readback_failed"),TEXT("Initialize setter returned false or actual bytes differ"));break;}FNiagaraVariable Readback(V);Readback.SetData(Actual);Row->SetField(TEXT("new_value"),NiagaraVariableDataToJsonValue(Readback));RIExpected->Add(MoveTemp(E));if(Size)++SizeUpdates;else ++LifeUpdates;W.R.bChanged=true;
+ auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("field"),InitialSize?TEXT("initial_sprite_size"):Size?TEXT("sprite_size"):TEXT("lifetime"));Row->SetStringField(TEXT("parameter_name"),Name);Row->SetStringField(TEXT("parameter_type"),TypeLabel);Row->SetStringField(TEXT("script_name"),ScriptName);Row->SetStringField(TEXT("script_usage"),UsageName);Row->SetField(TEXT("previous_value"),Previous);Row->SetBoolField(TEXT("setter_returned"),SetReturned);Rows.Add(MakeShared<FJsonValueObject>(Row));Publish();
+ if(!W.After(TEXT("Initialize_SetParameterData"))||!ScaleCurrent())break;if(!SameStoreShape(S,Params)){W.Fail(TEXT("niagara_sprite_preset_RI_shape_changed"),TEXT("RI store declarations changed during setter callback"));break;}
+ const uint8* Actual=S->RapidIterationParameters.GetParameterData(V);if(!SetReturned||!Actual||FMemory::Memcmp(Actual,E.Bytes.GetData(),E.Bytes.Num())!=0){W.Fail(TEXT("niagara_sprite_preset_RI_readback_failed"),TEXT("Initialize setter returned false or actual bytes differ"));break;}FNiagaraVariable Readback(V);Readback.SetData(Actual);Row->SetField(TEXT("new_value"),NiagaraVariableDataToJsonValue(Readback));RIExpected->Add(MoveTemp(E));if(InitialSize){++InitialSizeUpdates;if(Update)++UpdateInitialSizeUpdates;}else if(Size)++SizeUpdates;else ++LifeUpdates;W.R.bChanged=true;
  if(!W.Step(TEXT("Initialize_MarkPackageDirty"),[&]{System->MarkPackageDirty();},true,true))break;
  }if(!W.R.Error.IsEmpty())break;}
- if(SizeUpdates==0)Missing.Add(TEXT("sprite_size"));if(LifeUpdates==0)Missing.Add(TEXT("lifetime"));Publish();const bool Passed=W.R.Error.IsEmpty()&&Missing.IsEmpty()&&VerifyRI();Result->SetBoolField(TEXT("success"),Passed);if(!Passed){if(W.R.Error.IsEmpty())W.Fail(TEXT("niagara_sprite_preset_initialize_fields_missing"),TEXT("Missing InitializeParticle RI fields; actual partial updates retained"));Result->SetStringField(TEXT("error"),W.R.Error);return Result;}
+ if(SizeUpdates==0)Missing.Add(TEXT("sprite_size"));if(LifeUpdates==0)Missing.Add(TEXT("lifetime"));if(InitializeScaleSize&&UpdateInitialSizeUpdates!=1)Missing.Add(TEXT("initial_sprite_size_update_script"));Result->SetNumberField(TEXT("initial_sprite_size_update_count"),InitialSizeUpdates);Result->SetNumberField(TEXT("initial_sprite_size_update_script_count"),UpdateInitialSizeUpdates);Result->SetStringField(TEXT("initial_sprite_size_scope"),TEXT("Finite generated factory preset with constant authored spawn SpriteSize; seed the existing ScaleSpriteSize RI Initial Sprite Size with that same constant. No generic module default-binding or dynamic Initial-namespace equivalence claim."));Publish();const bool Passed=W.R.Error.IsEmpty()&&Missing.IsEmpty()&&ScaleCurrent()&&VerifyRI();Result->SetBoolField(TEXT("success"),Passed);if(!Passed){if(W.R.Error.IsEmpty())W.Fail(TEXT("niagara_sprite_preset_initialize_fields_missing"),TEXT("Missing InitializeParticle RI fields; actual partial updates retained"));Result->SetStringField(TEXT("error"),W.R.Error);return Result;}
  Result->SetStringField(TEXT("system_path"),System->GetPathName());Result->SetNumberField(TEXT("emitter_index"),EmitterIndex);Result->SetArrayField(TEXT("sprite_size"),NumberArrayToJsonValues({SpriteSize.X,SpriteSize.Y}));Result->SetNumberField(TEXT("lifetime"),Lifetime);Result->SetBoolField(TEXT("compile_requested"),false);Result->SetBoolField(TEXT("saved"),false);Result->SetStringField(TEXT("write_scope"),TEXT("generated_temp_initialize_particle_rapid_iteration_defaults"));return Result;
 }
 
@@ -1106,7 +1131,7 @@ bool PrepareRecipe(FWork& W,const TSharedPtr<FJsonObject>& Params,FRecipe& Out)
     double PollIntervalSeconds = 0.1;
     Params->TryGetNumberField(TEXT("poll_interval_seconds"), PollIntervalSeconds);
 
-    
+
 
     FString RequestedPreset = TEXT("basic");
     Params->TryGetStringField(TEXT("preset"), RequestedPreset);
@@ -1410,7 +1435,11 @@ bool PrepareRecipe(FWork& W,const TSharedPtr<FJsonObject>& Params,FRecipe& Out)
  Weather.Add({TEXT("curl_noise_force"),TEXT("CurlNoiseForce"),TEXT("/Niagara/Modules/Update/Forces/CurlNoiseForce.CurlNoiseForce"),{Edit(TEXT("CurlNoiseForce"),TEXT("Noise Strength"),MakeShared<FJsonValueNumber>(Settings.CurlNoiseStrength)),Edit(TEXT("CurlNoiseForce"),TEXT("Noise Frequency"),MakeShared<FJsonValueNumber>(Settings.CurlNoiseFrequency)),Edit(TEXT("CurlNoiseForce"),TEXT("Pan Noise Field"),NumberArrayToJson({Settings.CurlNoisePan.X,Settings.CurlNoisePan.Y,Settings.CurlNoisePan.Z}))}});
  Weather.Add({TEXT("wind_force"),TEXT("WindForce"),TEXT("/Niagara/Modules/Update/Forces/WindForce.WindForce"),{Edit(TEXT("WindForce"),TEXT("Wind Speed"),NumberArrayToJson({Settings.WindSpeed.X,Settings.WindSpeed.Y,Settings.WindSpeed.Z})),Edit(TEXT("WindForce"),TEXT("Wind Speed Scale"),MakeShared<FJsonValueNumber>(Settings.WindSpeedScale)),Edit(TEXT("WindForce"),TEXT("Frequency"),MakeShared<FJsonValueNumber>(Settings.WindFrequency)),Edit(TEXT("WindForce"),TEXT("Scale"),MakeShared<FJsonValueNumber>(Settings.WindScale))}});
  Weather.Add({TEXT("scale_color"),TEXT("ScaleColor"),TEXT("/Niagara/Modules/Update/Color/ScaleColor.ScaleColor"),{Edit(TEXT("ScaleColor"),TEXT("Scale RGB"),NumberArrayToJson({Settings.ColorScale.X,Settings.ColorScale.Y,Settings.ColorScale.Z})),Edit(TEXT("ScaleColor"),TEXT("Scale Alpha"),MakeShared<FJsonValueNumber>(Settings.AlphaScale))}});
- Weather.Add({TEXT("scale_sprite_size"),TEXT("ScaleSpriteSize"),TEXT("/Niagara/Modules/Update/Size/ScaleSpriteSize.ScaleSpriteSize"),{Edit(TEXT("ScaleSpriteSize"),TEXT("Uniform Curve Scale"),MakeShared<FJsonValueNumber>(Settings.SpriteUniformScale))}});
+ // Stock ScaleSpriteSize has an unlinked zero default for this input. The
+ // generated factory preset authors a constant spawn size, so initialize the
+ // matching scale baseline explicitly through the existing guarded upsert.
+ // Fresh stores may not contain this RI entry until a viewmodel resolves it.
+ Weather.Add({TEXT("scale_sprite_size"),TEXT("ScaleSpriteSize"),TEXT("/Niagara/Modules/Update/Size/ScaleSpriteSize.ScaleSpriteSize"),{Edit(TEXT("ScaleSpriteSize"),TEXT("Initial Sprite Size"),NumberArrayToJson({Settings.SpriteSize.X,Settings.SpriteSize.Y})),Edit(TEXT("ScaleSpriteSize"),TEXT("Uniform Curve Scale"),MakeShared<FJsonValueNumber>(Settings.SpriteUniformScale))}});
  for(const auto& X:Weather){Module(TEXT("add_weather_detail_")+X.Token,X.Path,TEXT("ParticleUpdateScript"));Batch(TEXT("set_weather_detail_")+X.Token+TEXT("_inputs"),TEXT("upsert"),X.Values);}}
  if(Settings.bSetInitializeParticleDefaults)Add(EStageCall::Initialize,TEXT("set_preset_initialize_particle_defaults"),Common());
  auto Renderer=Common();Renderer->SetStringField(TEXT("alignment"),Settings.Alignment);Renderer->SetStringField(TEXT("facing_mode"),Settings.FacingMode);Renderer->SetArrayField(TEXT("sub_image_size"),NumberArrayToJsonValues({Settings.SubImageSize.X,Settings.SubImageSize.Y}));Add(EStageCall::Renderer,TEXT("set_preset_sprite_renderer_settings"),Renderer);
@@ -1558,7 +1587,7 @@ struct FJobState:public TSharedFromThis<FJobState>
 {
  enum class EPhase:uint8{Prepare,Stages,WaitFactory,WaitMiddle,FinalRequest,WaitFinal,Verify,Save,Audit,Final,Terminal};
  FWork Work{true};FRecipe Recipe;TSharedPtr<FJsonObject> Requested;TStrongObjectPtr<UCubelessNiagaraSpritePresetJob> Job{nullptr};EPhase Phase=EPhase::Prepare;FTSTicker::FDelegateHandle Ticker;
- FString Id=FGuid::NewGuid().ToString(EGuidFormats::Digits),LastJson,SavedFilename,CreatedPath,WaitReason;int32 Revision=0,StageIndex=0;bool Executing=false,Prepared=false,FactoryCreated=false,FinalRequested=false,FinalIdle=false,SnapshotCaptured=false,Changed=false;
+ FString Id=FGuid::NewGuid().ToString(EGuidFormats::Digits),LastJson,SavedFilename,CreatedPath,WaitReason;int32 Revision=0,StageIndex=0,ModuleCompileRequestedStage=INDEX_NONE;bool Executing=false,Prepared=false,FactoryCreated=false,FinalRequested=false,FinalIdle=false,SnapshotCaptured=false,Changed=false;
  double Started=FPlatformTime::Seconds(),WaitStarted=0,NextPoll=0,FinalWaitStarted=-1;int32 WaitBudgetStage=INDEX_NONE;double StageWaitStarted=0;TArray<FRIExpected> Expected;TArray<TSharedPtr<FJsonValue>> StageResults;TSharedPtr<FJsonObject> AuditResult;TSharedRef<FJsonObject> FactoryWait=MakeShared<FJsonObject>(),MiddleWait=MakeShared<FJsonObject>(),FinalWait=MakeShared<FJsonObject>();
  FJobState(){Job.Reset(NewObject<UCubelessNiagaraSpritePresetJob>(GetTransientPackage(),NAME_None,RF_Transient));Work.R.bCompileRequested=true;Work.R.bSaveRequested=true;Work.R.Data->SetBoolField(TEXT("compiler_cancel_attempted"),false);Work.R.Data->SetBoolField(TEXT("automatic_retry_permitted"),false);}
  void Unhook(){if(Ticker.IsValid()){FTSTicker::GetCoreTicker().RemoveTicker(Ticker);Ticker.Reset();}}
@@ -1570,6 +1599,15 @@ struct FJobState:public TSharedFromThis<FJobState>
  {
   const bool IsTerminal=Phase==EPhase::Terminal;auto& R=Work.R;R.Data->SetStringField(TEXT("native_job_id"),Id);R.Data->SetNumberField(TEXT("native_checkpoint_revision"),++Revision);R.Data->SetBoolField(TEXT("native_job_terminal"),IsTerminal);R.Data->SetBoolField(TEXT("operation_complete"),IsTerminal);R.Data->SetNumberField(TEXT("job_elapsed_seconds"),FPlatformTime::Seconds()-Started);R.Data->SetNumberField(TEXT("completed_stage_count"),StageIndex);R.Data->SetArrayField(TEXT("stage_results"),StageResults);R.Data->SetObjectField(TEXT("factory_compile_wait"),FactoryWait);R.Data->SetObjectField(TEXT("interstage_compile_wait"),MiddleWait);R.Data->SetObjectField(TEXT("final_compile_wait"),FinalWait);R.Data->SetArrayField(TEXT("actual_save_prefix"),Work.SaveRows);R.Data->SetArrayField(TEXT("sdk_calls"),Work.Calls);R.Data->SetObjectField(TEXT("sdk_call_counts"),Work.Counts);R.Data->SetBoolField(TEXT("compiler_may_continue_after_job"),(R.bCompileAttempted||FactoryCreated||FinalRequested)&&(!FinalIdle||!R.bSuccess));R.Data->SetBoolField(TEXT("compiler_cancel_attempted"),false);R.Data->SetBoolField(TEXT("explicit_poll_pump_flush_sleep_invoked"),false);R.Data->SetBoolField(TEXT("automatic_retry_permitted"),false);R.Data->SetBoolField(TEXT("atomic_rollback_available"),false);R.Data->SetBoolField(TEXT("semantic_restore_available"),false);R.Data->SetBoolField(TEXT("full_migration_complete"),false);R.Data->SetBoolField(TEXT("requested_target_may_remain"),R.bMutationAttempted);R.Data->SetBoolField(TEXT("live_failure_observation_skipped"),!R.Error.IsEmpty());R.Data->SetStringField(TEXT("requested_object"),Work.RequestedObject);R.Data->SetStringField(TEXT("requested_package"),Work.RequestedPackage);R.Data->SetStringField(TEXT("created_path_scope"),TEXT("Captured child creation receipt; live exact binding is verified separately, never inferred on unsafe failure"));R.Data->SetBoolField(TEXT("created_target_identity_verified"),FactoryCreated);R.Data->SetBoolField(TEXT("SDK_calls_guaranteed_nonblocking"),false);R.Data->SetStringField(TEXT("saved_flag_scope"),TEXT("OR of actual SDK true returns before health checks; not full-operation or cold persistence proof; dirty is not cleared"));R.Data->SetStringField(TEXT("compile_scope"),TEXT("Factory SDK may implicitly request compilation and factory wait remains strict. After a successful owned edit, interstage/pre-final authoring waits require no active VM/GPU compile but may retain a deferred request. GU final RequestCompile is separate; requested final completion/verification/save remain strict. wait=False skips only final idle wait. SDK PreSave can synchronously wait inside SavePackage."));
   auto Session=MakeShared<FJsonObject>();Session->SetBoolField(TEXT("mutation_attempted"),R.bMutationAttempted);Session->SetBoolField(TEXT("compile_attempted"),R.bCompileAttempted);Session->SetBoolField(TEXT("saved"),R.bSaved);Session->SetArrayField(TEXT("stage_results"),StageResults);R.Data->SetObjectField(TEXT("session_execution"),Session);if(!R.Error.IsEmpty())R.Data->SetObjectField(TEXT("legacy_result"),FailureLeaf());else if(!IsTerminal||!R.Data->HasField(TEXT("legacy_result"))){auto L=FailureLeaf();L->RemoveField(TEXT("error"));L->RemoveField(TEXT("error_code"));L->SetStringField(TEXT("failed_stage"),FString());L->SetBoolField(TEXT("pending"),!IsTerminal);R.Data->SetObjectField(TEXT("legacy_result"),L);}
+  // StageResults remains the single complete root owner. Session/Legacy are
+  // diagnostic projections, not additional histories to serialize every tick.
+  for(const TCHAR* Key:{TEXT("session_execution"),TEXT("legacy_result")})
+  {
+   const TSharedPtr<FJsonObject>* Projection=nullptr;
+   if(R.Data->TryGetObjectField(Key,Projection)&&Projection&&(*Projection)->HasField(TEXT("stage_results")))
+   {(*Projection)->RemoveField(TEXT("stage_results"));(*Projection)->SetStringField(TEXT("stage_results_reference"),TEXT("data.stage_results"));}
+  }
+  R.Data->SetStringField(TEXT("stage_result_representation"),TEXT("Complete data.stage_results; Session/Legacy mirrors refer to this root. Module graph local refs resolve inside each child data object."));
   LastJson=Operations::EncodeVariableResult(R,TEXT("create_sprite_niagara_preset_system"));
   if(Safe()&&Live(Job.Get())){Job->SnapshotJson=LastJson;Job->bIsTerminal=IsTerminal;}
  }
@@ -1582,7 +1620,10 @@ struct FJobState:public TSharedFromThis<FJobState>
  // Factory and final completion still require the strict SDK outstanding predicate to clear.
  bool MayAwaitAuthoringQuiescence()const
  {
-  return FactoryCreated&&!FinalRequested&&StageIndex>1&&StageIndex<=Recipe.Plan.Num()&&StageResults.Num()==StageIndex;
+  // Stock Module Add has a strict public compile-idle precondition. Unlike
+  // the owned RI Batch child it cannot borrow deferred-request admission.
+  const bool StrictModule=Recipe.Plan.IsValidIndex(StageIndex)&&Recipe.Plan[StageIndex].Kind==EStageCall::Module;
+  return !StrictModule&&FactoryCreated&&!FinalRequested&&StageIndex>1&&StageIndex<=Recipe.Plan.Num()&&StageResults.Num()==StageIndex;
  }
  bool ObserveIdle(bool& Idle,bool AuthoringQuiescence=false)
  {
@@ -1650,11 +1691,26 @@ struct FJobState:public TSharedFromThis<FJobState>
   Idle=AuthoringQuiescence?Quiescent:StrictIdle;O->SetBoolField(TEXT("idle_observed"),StrictIdle);O->SetBoolField(TEXT("continuation_ready_observed"),Idle);O->SetBoolField(TEXT("authoring_wait_is_not_compile_completion"),AuthoringQuiescence);return true;
  }
  void BeginWait(EPhase Waiting,const FString& Reason){Phase=Waiting;const double Now=FPlatformTime::Seconds();if(Waiting==EPhase::WaitFinal){if(FinalWaitStarted<0)FinalWaitStarted=Now;WaitStarted=FinalWaitStarted;}else{if(WaitBudgetStage!=StageIndex){WaitBudgetStage=StageIndex;StageWaitStarted=Now;MiddleWait=MakeShared<FJsonObject>();}WaitStarted=StageWaitStarted;}NextPoll=Now;WaitReason=Reason;Work.R.Stage=Reason;Publish();}
+ bool RequestModuleBoundaryCompile()
+ {
+  if(!FactoryCreated||FinalRequested||!Recipe.Plan.IsValidIndex(StageIndex)||Recipe.Plan[StageIndex].Kind!=EStageCall::Module||ModuleCompileRequestedStage==StageIndex)return true;
+  const TSharedPtr<FJsonObject>* Point=nullptr;bool Needs=false,Active=true,GPU=true;
+  if(Work.R.Data->TryGetObjectField(TEXT("last_compile_point"),Point)&&Point)
+  {(*Point)->TryGetBoolField(TEXT("needs_request_compile_after"),Needs);(*Point)->TryGetBoolField(TEXT("active_compilations_after"),Active);(*Point)->TryGetBoolField(TEXT("gpu_compilation_in_progress_after"),GPU);}
+  if(!Needs||Active||GPU)return true;
+  if(!NoOuterTransaction())return false;
+  ModuleCompileRequestedStage=StageIndex;
+  if(!Work.SDK(TEXT("Preset_ModuleBoundary_RequestCompile"),true,true))return false;
+  Work.R.bCompileAttempted=true;Work.R.Compiled.Reset();const bool Launched=Work.Target->RequestCompile(false);
+  auto Receipt=MakeShared<FJsonObject>();Receipt->SetNumberField(TEXT("stage_index"),StageIndex);Receipt->SetStringField(TEXT("next_stage"),Recipe.Plan[StageIndex].Name);Receipt->SetBoolField(TEXT("request_returned"),true);Receipt->SetBoolField(TEXT("launched_compilations"),Launched);Receipt->SetBoolField(TEXT("is_final_compile"),false);
+  TArray<TSharedPtr<FJsonValue>> Prefix;const TArray<TSharedPtr<FJsonValue>>* Old=nullptr;if(Work.R.Data->TryGetArrayField(TEXT("module_boundary_compile_requests"),Old)&&Old)Prefix=*Old;Prefix.Add(MakeShared<FJsonValueObject>(Receipt));Work.R.Data->SetArrayField(TEXT("module_boundary_compile_requests"),Prefix);
+  return Work.After(TEXT("Preset_ModuleBoundary_RequestCompile"));
+ }
  void WaitTick()
  {
   const double Now=FPlatformTime::Seconds();if(Now<NextPoll)return;NextPoll=Now+FMath::Clamp(Recipe.Poll,0.02,1.0);const bool AuthoringWait=Phase==EPhase::WaitMiddle&&MayAwaitAuthoringQuiescence();bool Idle=false;if(!ObserveIdle(Idle,AuthoringWait)){Terminal(false);return;}auto Wait=Phase==EPhase::WaitFinal?FinalWait:(Phase==EPhase::WaitFactory?FactoryWait:MiddleWait);double Iterations=0;Wait->TryGetNumberField(TEXT("wait_iterations"),Iterations);Wait->SetNumberField(TEXT("wait_iterations"),Iterations+1);Wait->SetNumberField(TEXT("wait_elapsed_seconds"),Now-WaitStarted);Wait->SetBoolField(TEXT("idle_observed"),Idle);Wait->SetBoolField(TEXT("wait_timed_out"),false);Wait->SetNumberField(TEXT("timeout_seconds"),FMath::Clamp(Recipe.Timeout,0.0,60.0));Wait->SetNumberField(TEXT("poll_interval_seconds"),FMath::Clamp(Recipe.Poll,0.02,1.0));Wait->SetBoolField(TEXT("wait_for_completion"),true);
   const TSharedPtr<FJsonObject>* Point=nullptr;if(Work.R.Data->TryGetObjectField(TEXT("last_compile_point"),Point)&&Point)for(const auto& Pair:(*Point)->Values)Wait->SetField(FString(Pair.Key),Pair.Value);
-  if(Idle){if(Phase==EPhase::WaitFinal){FinalIdle=true;Phase=EPhase::Verify;}else Phase=EPhase::Stages;Work.R.Stage=AuthoringWait?TEXT("authoring_quiescent_continue_next_editor_frame"):TEXT("compile_idle_continue_next_editor_frame");Publish();return;}if(Now-WaitStarted>=FMath::Clamp(Recipe.Timeout,0.0,60.0)){Wait->SetBoolField(TEXT("wait_timed_out"),true);Work.Fail(TEXT("niagara_sprite_preset_async_compile_timeout"),TEXT("Owned compile did not become idle before monotonic timeout; partial assets remain, compiler not cancelled, no replay/save"));Terminal(false);return;}Publish();
+  if(Idle){if(Phase==EPhase::WaitFinal){FinalIdle=true;Phase=EPhase::Verify;}else Phase=EPhase::Stages;Work.R.Stage=AuthoringWait?TEXT("authoring_quiescent_continue_next_editor_frame"):TEXT("compile_idle_continue_next_editor_frame");Publish();return;}if(Now-WaitStarted>=FMath::Clamp(Recipe.Timeout,0.0,60.0)){Wait->SetBoolField(TEXT("wait_timed_out"),true);Work.Fail(TEXT("niagara_sprite_preset_async_compile_timeout"),TEXT("Owned compile did not become idle before monotonic timeout; partial assets remain, compiler not cancelled, no replay/save"));Terminal(false);return;}if(Phase==EPhase::WaitMiddle&&!RequestModuleBoundaryCompile()){Terminal(false);return;}Publish();
  }
  void Prepare()
  {
@@ -1664,7 +1720,16 @@ struct FJobState:public TSharedFromThis<FJobState>
  void Stage()
  {
   if(!NoOuterTransaction()){Terminal(false);return;}
-  if(StageIndex>=Recipe.Plan.Num()){Phase=EPhase::FinalRequest;Publish();return;}if(FactoryCreated){bool Idle=false;if(!ObserveIdle(Idle,MayAwaitAuthoringQuiescence())){Terminal(false);return;}if(!Idle){BeginWait(EPhase::WaitMiddle,TEXT("awaiting_owned_interstage_compile_idle"));return;}}
+  if(StageIndex>=Recipe.Plan.Num()){Phase=EPhase::FinalRequest;Publish();return;}
+  if(FactoryCreated)
+  {
+   bool Idle=false;if(!ObserveIdle(Idle,MayAwaitAuthoringQuiescence())){Terminal(false);return;}
+   if(!Idle)
+   {
+    if(!RequestModuleBoundaryCompile()){Terminal(false);return;}
+    BeginWait(EPhase::WaitMiddle,TEXT("awaiting_owned_interstage_compile_idle"));return;
+   }
+  }
   if(FactoryCreated&&!VerifyRI()){Terminal(false);return;}const FStagePlan& Plan=Recipe.Plan[StageIndex];TSharedPtr<FJsonObject> Leaf;Work.R.Stage=Plan.Name;
   switch(Plan.Kind){case EStageCall::Create:Leaf=HandleCreateBasicSpriteNiagaraSystem(Plan.Params);break;case EStageCall::Batch:
    {
@@ -1678,7 +1743,7 @@ struct FJobState:public TSharedFromThis<FJobState>
      return true;
     };
     Leaf=HandleSetNiagaraModuleInputsBatch(Plan.Params,&OwnedGuard);break;
-   }case EStageCall::Module:Leaf=HandleAddNiagaraStockModuleToStack(Plan.Params);break;case EStageCall::Initialize:Leaf=SetGeneratedPresetInitializeParticleDefaults(Work.Target.Get(),0,Recipe.Settings.SpriteSize,Recipe.Settings.Lifetime);break;case EStageCall::Renderer:Leaf=HandleSetNiagaraSpriteRendererSettings(Plan.Params);break;case EStageCall::Bounds:Leaf=HandleSetNiagaraEmitterFixedBounds(Plan.Params);break;case EStageCall::Local:Leaf=HandleSetNiagaraEmitterLocalSpace(Plan.Params);break;}
+   }case EStageCall::Module:Leaf=HandleAddNiagaraStockModuleToStack(Plan.Params);break;case EStageCall::Initialize:Leaf=SetGeneratedPresetInitializeParticleDefaults(Work.Target.Get(),0,Recipe.Settings.SpriteSize,Recipe.Settings.Lifetime,Recipe.Settings.bAddWeatherDetailModules);break;case EStageCall::Renderer:Leaf=HandleSetNiagaraSpriteRendererSettings(Plan.Params);break;case EStageCall::Bounds:Leaf=HandleSetNiagaraEmitterFixedBounds(Plan.Params);break;case EStageCall::Local:Leaf=HandleSetNiagaraEmitterLocalSpace(Plan.Params);break;}
   if(Leaf){Leaf->SetStringField(TEXT("stage"),Plan.Name);StageResults.Add(MakeShared<FJsonValueObject>(Leaf));if(Plan.Kind==EStageCall::Create){FString Reported;Leaf->TryGetStringField(TEXT("system_path"),Reported);const TSharedPtr<FJsonObject>* Native=nullptr;const TSharedPtr<FJsonObject>* Data=nullptr;if(Reported.IsEmpty()&&Leaf->TryGetObjectField(TEXT("native_result"),Native)&&Native&&(*Native)->TryGetObjectField(TEXT("data"),Data)&&Data)(*Data)->TryGetStringField(TEXT("created_asset_path"),Reported);if(Reported.Equals(Work.RequestedObject,ESearchCase::CaseSensitive))CreatedPath=Reported;}}Changed|=Work.R.bChanged;bool Success=false;if(Leaf)Leaf->TryGetBoolField(TEXT("success"),Success);Publish(); // actual child prefix is visible before error/terminal
   if(!Work.R.Error.IsEmpty()||!Leaf||!Success){if(Work.R.Error.IsEmpty())Work.Fail(TEXT("niagara_sprite_preset_async_stage_failed"),TEXT("Dedicated stage failed its actual target contract"));Terminal(false);return;}
   if(Plan.Kind==EStageCall::Create){FString ReturnedPath;Leaf->TryGetStringField(TEXT("system_path"),ReturnedPath);if(!Work.BindCreated(ReturnedPath)){Terminal(false);return;}CreatedPath=ReturnedPath;FactoryCreated=true;Changed=true;}

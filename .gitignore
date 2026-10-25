@@ -1,4 +1,4 @@
-# Publish only the source editor plugin and installation notes.
+# Publish editor-plugin sources, installation notes and non-temporary project content.
 /*
 !/.gitignore
 !/.gitattributes
@@ -6,6 +6,15 @@
 !/Plugins/
 /Plugins/*
 !/Plugins/CubelessMCP_UE58/
+
+# Share project content; keep owned verification assets and personal work local.
+!/Content/
+/Content/_MCP_Temp/
+/Content/Developers/
+/Content/__ExternalActors__/_MCP_Temp/
+/Content/__ExternalObjects__/_MCP_Temp/
+/Content/__ExternalActors__/Developers/
+/Content/__ExternalObjects__/Developers/
 
 # Optional production runner sources only; local projects/results stay ignored.
 !/cubeless/

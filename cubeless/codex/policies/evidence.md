@@ -6,6 +6,16 @@ Evidence records include source paths/hashes/commit, engine build, project, test
 
 Keep complete feature and pipeline tracking without requiring every verification layer for every feature. Reuse applicable evidence with its source version and scope; save/reload at meaningful persistence boundaries and group packaging at major integration or runtime-dependency changes. An untested variant remains explicitly untested even when a representative case passes.
 
+## Required plugins and conditional availability
+
+Apply this rule across all API families, pipelines, reviews, completion summaries and user-facing reports. An API that uses another plugin is available under that plugin's supported, enabled and loaded configuration. Record the required plugin names and relevant engine/version or restart conditions with the feature. If a prerequisite is disabled, report "필수 플러그인 활성화 필요"; do not count that condition as a defect, failed migration or unsupported implementation. Do not report a successful execution when only activation or registration was checked.
+
+When the intended operation succeeds with its prerequisites enabled and the applicable checks pass, report "정상 동작 확인 — 필수 플러그인: …" and mark the verified scope complete/usable. Dependencies alone are not unfinished work. Existing evidence can support this verdict without repeating successful tests. Preserve genuinely unimplemented variants, incompatible versions, failed activation/loading and actual execution failures as separate issues. Enable only the dependencies needed for the chosen feature, not all optional plugins in every project.
+
+Required standard engine/runtime plugins are legitimate output dependencies. Descriptor/config entries, receipt names or confirmed inert registration code do not by themselves prove a forbidden runtime dependency. Determine actual module type, build configuration, object references and behavior before classifying them. The prohibition on game dependencies on Cubeless, official MCP/Toolset development functionality and editor-only execution still applies; merely enabling those plugins does not satisfy it.
+
+Retain raw results from older zero-metadata checks as historical diagnostics. Once the presence is established as a normal prerequisite or harmless metadata within the verified scope, do not continue presenting it as a current blocker or unresolved functional defect. Record the current conditional verdict and its supporting evidence separately; never erase the original failure or turn an unexecuted operation into a success. Apply this prospectively and to the feature currently being handled, without a blanket reclassification of unreviewed history.
+
 Legacy ledger final dispositions are: (1) Cubeless implemented+registered+required verified behavior; (2) official tool proven equivalent in IO/defaults/errors/side effects/verification; (3) old transport-only functionality removed with evidence; (4) incomplete. Planned disposition is distinct from final disposition. File counts, routes, Python definitions and pipeline candidates overlap and must not be added as unique feature totals.
 
 Record performance with call count, compile/save count, workload and wall time. Source LOC and person-hour estimates are not measured engine performance. Past UE5.6 evidence stays labeled UE5.6 until independently rerun in UE5.8.

@@ -2,6 +2,8 @@
 
 Cubeless editor C++ and the official MCP runtime modules must not become a game dependency. An Editor module descriptor alone is insufficient proof.
 
+Keep the standard engine/runtime plugins required by the content enabled, including Niagara or GeometryCollectionPlugin when those features are used. Runtime independence means independence from MCP authoring/development functionality, not removal of legitimate engine feature dependencies. Apply the [conditional availability rule](../policies/evidence.md#required-plugins-and-conditional-availability): successful behavior under documented prerequisites is complete within its verified scope. Metadata-only findings from a stricter historical checker remain diagnostic evidence, not functional blockers once their actual role is established. Do not globally whitelist all engine plugins or ignore real editor-code/runtime reference failures.
+
 Inspect plugin descriptor dependencies, project references, build dependencies, generated asset parents/nodes/class paths and hard/soft/management package references. Forbidden output references include the actual Cubeless script module and mount names, not just a substring search.
 
 In an isolated copy, disable Cubeless and official MCP/Toolset development plugins, load the generated fixture and compile it. Build/cook/stage the Win64 game and inspect module receipts and staged files. Run the output without the MCP plugin/server and verify intended behavior. Record unrelated preexisting package errors separately. Do not add a gameplay C++ module merely to bypass a plugin build issue.

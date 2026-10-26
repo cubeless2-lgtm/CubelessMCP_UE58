@@ -6,6 +6,16 @@ Evidence records include source paths/hashes/commit, engine build, project, test
 
 Keep complete feature and pipeline tracking without requiring every verification layer for every feature. Reuse applicable evidence with its source version and scope; save/reload at meaningful persistence boundaries and group packaging at major integration or runtime-dependency changes. An untested variant remains explicitly untested even when a representative case passes.
 
+## Support scope and verification verdicts
+
+Keep implementation support and verification evidence separate within the existing records; these distinctions do not introduce new ledger status values. An untested type, inheritance case, container or unloaded reference is "미검증", not automatically "미지원" or "미구현". Missing evidence proves neither support nor lack of support. State the confirmed normal path and the remaining uncertainty separately; do not downgrade that confirmed path solely because other variants were not tested or promote those variants to verified.
+
+Use "미구현" only when source inspection confirms missing work logic. Use "현재 미지원" for an evidenced implementation restriction or incompatible API condition, with the exact condition and source or observed refusal; distinguish deliberate restrictions from defects that reject valid inputs. When the cause is not established, report the observed failure and "원인 미확인" rather than inventing a support limit.
+
+For a new failure, distinguish compile/type errors, actual engine-operation failures, verifier false rejections and intended invalid-input rejections. Confirm a verifier false rejection against the public contract, installed engine source and actual state; a failed check alone is not proof the verifier is wrong. Intended rejection is not an implementation defect. Preserve the original result and report observed changes, compile/save state and any corrected assessment separately; a later recovery or save does not make the original request successful. Never retry an uncertain mutation to resolve a reporting discrepancy.
+
+Correct misleading current descriptions and records for the feature being handled, using existing applicable evidence. Do not reclassify all historical records, repeat completed verification or rewrite APIs solely because evidence is absent. Repair code only for a confirmed defect or an explicitly requested support expansion. Retain real implementation gaps and safety checks; verification terminology changes do not relax completion requirements.
+
 ## Required plugins and conditional availability
 
 Apply this rule across all API families, pipelines, reviews, completion summaries and user-facing reports. An API that uses another plugin is available under that plugin's supported, enabled and loaded configuration. Record the required plugin names and relevant engine/version or restart conditions with the feature. If a prerequisite is disabled, report "필수 플러그인 활성화 필요"; do not count that condition as a defect, failed migration or unsupported implementation. Do not report a successful execution when only activation or registration was checked.

@@ -26,6 +26,11 @@
 !/cubeless/docs/
 /cubeless/docs/*
 !/cubeless/docs/*.md
+# Share study notes while keeping authoring scripts and raw evidence local.
+!/cubeless/studies/
+/cubeless/studies/**
+!/cubeless/studies/**/
+!/cubeless/studies/**/*.md
 !/cubeless/codex/
 /cubeless/codex/*
 !/cubeless/codex/AGENTS.md

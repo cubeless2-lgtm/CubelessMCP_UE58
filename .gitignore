@@ -69,7 +69,7 @@
 !/cubeless/tools/pipelines/examples/
 /cubeless/tools/pipelines/examples/*
 !/cubeless/tools/pipelines/examples/*.json
-/AGENTS.md
+!/AGENTS.md
 
 # Generated build/runtime state is never distribution source.
 **/Binaries/

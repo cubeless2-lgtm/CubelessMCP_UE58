@@ -73,3 +73,5 @@ Projection Target에는 `World Ray Hit Query`를 연결합니다. 쿼리는 `PCG
 - `electric_dreams_pcg_cubeless_regression_runner_pass.md`: 중간 포인트/ISM 검수와 다음 tick의 출력 materialization 경험.
 
 UE 5.8.3의 실제 노드 스키마 및 설치 엔진의 `PCGToolset.cpp`, `PCGCreatePointsGrid.cpp`, `PCGSelfPruning.h`, `PCGWorldData.cpp`를 대조했습니다. 이 실습은 native 표준 노드로 기본 원리를 학습한 범위이며 Electric Dreams 전체 그래프나 원본 스크립트의 전체 이식이 아닙니다.
+
+다음 단계인 [Electric Dreams 계층형 어셈블리·Ditch](../ElectricDreamsHierarchy/README.md)에서는 부모·자식 변환을 유지하는 복사와 강둑 배치, 필터링 후 자식 정리까지 실제 구현했습니다.

@@ -12,7 +12,7 @@ UE 5.8.3 공식 ModelContextProtocol 서버와 Toolset Registry를 확장하는 
 
 `.uproject`의 MCP/Python/Cubeless 플러그인은 Editor 대상으로 제한되어 있으며 게임 에셋은 MCP 런타임을 요구하지 않습니다. 게임을 플레이하는 데 MCP 서버를 시작할 필요는 없습니다. 플러그인만 다른 프로젝트에 설치하는 방법은 아래 절차를 따릅니다.
 
-공용 설정에는 Android 파일 서버의 PC별 `SecurityToken`을 넣지 않습니다. 필요하면 각 PC의 로컬 `Saved/Config/WindowsEditor/Engine.ini`에서 설정합니다. UE는 첫 실행에서 새 인증값을 `DefaultEngine.ini`에 자동 추가할 수 있으므로 그 값은 공용 커밋에 포함하지 않습니다. 개인 에디터 환경인 `DefaultEditorPerProjectUserSettings.ini`도 게시하지 않습니다.
+공용 Engine 설정은 UE와 빌드 도구가 읽는 `Config/<플랫폼>/<플랫폼>Engine.ini`에 저장합니다. Android와 iOS는 세로 방향으로 고정합니다. UE가 Android 파일 서버의 PC별 인증값을 자동 기록하는 `Config/DefaultEngine.ini`는 로컬 생성 파일로 취급하여 Git에서 제외합니다. 기존 로컬 파일과 `Saved/Config/WindowsEditor/Engine.ini`의 인증값은 유지합니다. 개인 에디터 환경인 `DefaultEditorPerProjectUserSettings.ini`와 `User*.ini`도 게시하지 않습니다. 설정 수정·플랫폼 추가 방법은 [공용 설정 안내](Config/README.md)를 참조하십시오.
 
 에디터 플러그인을 명령줄에서 빌드하려면 저장소 루트의 PowerShell에서 다음을 실행합니다. 엔진 설치 위치가 다르면 첫 경로를 바꿉니다.
 

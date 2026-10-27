@@ -8,6 +8,8 @@
 !/Source/
 !/Build/
 # Personal editor preferences and generated build receipts stay local.
+/Config/DefaultEngine.ini
+/Config/User*.ini
 /Config/DefaultEditorPerProjectUserSettings.ini
 /Build/Receipts/
 !/Plugins/

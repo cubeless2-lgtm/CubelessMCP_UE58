@@ -2,7 +2,25 @@
 
 UE 5.8.3 공식 ModelContextProtocol 서버와 Toolset Registry를 확장하는 Editor 전용 프로젝트 플러그인입니다. 기존 UE 5.6 기능의 이식은 진행 중이며, 전체 기능 이식을 완료한 배포판은 아닙니다.
 
-이 저장소는 플러그인의 빌드·로드·도구 등록에 필요한 소스·설정과 프로젝트의 일반 `Content/`를 추적할 수 있도록 구성합니다. `Content/_MCP_Temp/`, 개인 작업용 `Content/Developers/` 및 이 경로에 대응하는 외부 액터·오브젝트는 제외합니다. 일반 월드의 `__ExternalActors__`·`__ExternalObjects__`는 콘텐츠와 함께 추적합니다. 프로젝트 콘텐츠의 Git 추적과 플러그인 배포 ZIP은 별개이며, ZIP에는 기존 명시 배포 목록의 파일만 포함합니다. 검증용 프로젝트·자료, 빌드 산출물, 캐시와 개발 기록은 계속 제외합니다.
+이 저장소에는 실행 가능한 `UnrealMCP5_8_3.uproject`, 프로젝트 공용 `Config/`, 일반 `Content/`와 에디터 플러그인 소스가 포함됩니다. `Source/`와 `Build/`의 프로젝트 소스·리소스도 추적할 수 있도록 구성합니다. 현재 게임은 Blueprint 프로젝트이며 별도 게임 C++ 모듈은 없습니다. `Content/_MCP_Temp/`, 개인 작업용 `Content/Developers/` 및 대응하는 외부 액터·오브젝트는 제외합니다. 일반 월드의 `__ExternalActors__`·`__ExternalObjects__`는 콘텐츠와 함께 추적합니다. 프로젝트 Git 추적과 플러그인 배포 ZIP은 별개이며 ZIP에는 명시 배포 목록의 파일만 포함합니다. 검증용 프로젝트·자료, 개인 설정, 인증값, 빌드 산출물과 캐시는 제외합니다.
+
+## 저장소를 복제한 뒤 프로젝트 실행
+
+1. Unreal Engine **5.8.3**과 해당 엔진용 Visual Studio C++ 빌드 도구·Windows SDK를 설치하고 저장소를 복제합니다. 게임 C++은 없지만 소스로 제공하는 에디터 플러그인을 처음 빌드할 때 C++ 도구가 필요합니다.
+2. `UnrealMCP5_8_3.uproject`를 UE 5.8.3으로 엽니다. 엔진 선택이 필요하면 파일의 `Switch Unreal Engine version`에서 5.8을 지정합니다. 누락된 플러그인 모듈을 다시 빌드하라는 메시지가 나오면 빌드합니다. `Binaries/`, `Intermediate/`, `Saved/`, `DerivedDataCache/`, IDE 작업 파일은 각 PC에서 생성합니다.
+3. 기본 맵은 기존 `ThirdPerson/Lvl_ThirdPerson`입니다. Crimson Dawn은 `/Game/VampireSurvival/Maps/L_CrimsonDawn`을 열고 새 에디터 창에서 PIE로 실행합니다. 창 크기는432×768 또는720×1280을 권장합니다. [게임 조작·검수 기록](cubeless/studies/VampireSurvival/UPDATE_V8.md)을 참조하십시오.
+
+`.uproject`의 MCP/Python/Cubeless 플러그인은 Editor 대상으로 제한되어 있으며 게임 에셋은 MCP 런타임을 요구하지 않습니다. 게임을 플레이하는 데 MCP 서버를 시작할 필요는 없습니다. 플러그인만 다른 프로젝트에 설치하는 방법은 아래 절차를 따릅니다.
+
+공용 설정에는 Android 파일 서버의 PC별 `SecurityToken`을 넣지 않습니다. 필요하면 각 PC의 로컬 `Saved/Config/WindowsEditor/Engine.ini`에서 설정합니다. UE는 첫 실행에서 새 인증값을 `DefaultEngine.ini`에 자동 추가할 수 있으므로 그 값은 공용 커밋에 포함하지 않습니다. 개인 에디터 환경인 `DefaultEditorPerProjectUserSettings.ini`도 게시하지 않습니다.
+
+에디터 플러그인을 명령줄에서 빌드하려면 저장소 루트의 PowerShell에서 다음을 실행합니다. 엔진 설치 위치가 다르면 첫 경로를 바꿉니다.
+
+```powershell
+& 'C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat' UnrealEditor Win64 Development "-Project=$((Resolve-Path '.\UnrealMCP5_8_3.uproject').Path)" -WaitMutex -NoHotReloadFromIDE
+```
+
+2026-10-27 검증: Git 게시 대상만 추출한 검증본에서 기존 프로젝트의 `Binaries/`·`Intermediate/`·`Saved/`·`DerivedDataCache/`를 복사하지 않고 에디터 플러그인을 새로 빌드했다. 기본 ThirdPerson 맵과 Crimson Dawn 맵, 게임 Blueprint3개의 로드 및432×768 게임 타이틀 렌더를 확인했다. 클린 빌드의 익명 네임스페이스 충돌을 방지하도록 에디터 모듈은 파일별 컴파일을 사용한다. 게임 C++ 모듈은 추가하지 않았다. 게임 전체 플레이·모바일 기기 검증 범위는 [V8 기록](cubeless/studies/VampireSurvival/UPDATE_V8.md)을 따른다.
 
 설치 및 사용:
 

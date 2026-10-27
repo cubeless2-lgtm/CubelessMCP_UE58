@@ -1,8 +1,15 @@
-# Publish editor-plugin sources, installation notes and non-temporary project content.
+# Publish the runnable Unreal project, editor-plugin sources and project content.
 /*
 !/.gitignore
 !/.gitattributes
 !/README.md
+!/*.uproject
+!/Config/
+!/Source/
+!/Build/
+# Personal editor preferences and generated build receipts stay local.
+/Config/DefaultEditorPerProjectUserSettings.ini
+/Build/Receipts/
 !/Plugins/
 /Plugins/*
 !/Plugins/CubelessMCP_UE58/

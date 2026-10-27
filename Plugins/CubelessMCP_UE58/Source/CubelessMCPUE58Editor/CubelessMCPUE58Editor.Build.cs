@@ -9,6 +9,9 @@ public class CubelessMCPUE58Editor : ModuleRules
             throw new BuildException("CubelessMCPUE58Editor is an editor-only module.");
         }
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+        // Private helpers in the migrated implementation require separate translation units.
+        // Do not make clean-checkout builds depend on Adaptive Unity's writable-file heuristic.
+        bUseUnity = false;
         PrivateDependencyModuleNames.AddRange(new[]
         {
             "Core", "CoreUObject", "Engine", "UnrealEd", "AssetRegistry",

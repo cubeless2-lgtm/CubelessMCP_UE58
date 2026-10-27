@@ -2,8 +2,8 @@
 import unreal
 
 def pcg_placement(actor_path, max_instances):
-    if not unreal.SystemLibrary.get_engine_version().startswith('5.8.3-'):
-        raise ValueError('Only UE5.8.3 is implemented')
+    if not unreal.SystemLibrary.get_engine_version().startswith('5.8.'):
+        raise ValueError('Only UE5.8.x is supported')
     if type(max_instances) is not int or not 1<=max_instances<=10000:
         raise ValueError('max_instances must be 1..10000; truncation is not a complete observation')
     world=unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()

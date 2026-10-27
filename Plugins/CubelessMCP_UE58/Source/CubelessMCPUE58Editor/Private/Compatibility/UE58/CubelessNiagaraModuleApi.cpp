@@ -386,7 +386,7 @@ bool Prepare(FResult& R, FContext& C, const FString& SystemPath, const FString& 
 {
     const FEngineVersion& V = FEngineVersion::Current();
     if (!IsEditorGameThread() || IsPlaySessionActive()) { return Fail(R, TEXT("niagara_editor_state_invalid"), TEXT("Requires Editor game thread outside PIE/SIE.")); }
-    if (V.GetMajor() != 5 || V.GetMinor() != 8 || V.GetPatch() != 3) { return Fail(R, TEXT("niagara_version_unsupported"), TEXT("Only UE 5.8.3 is implemented.")); }
+    if (V.GetMajor() != 5 || V.GetMinor() != 8) { return Fail(R, TEXT("niagara_version_unsupported"), TEXT("Only UE 5.8.x is implemented.")); }
     int32 RequestedEmitterIndex; FString SystemObject, ModuleObject;
     if (!Usage(TargetUsage, C.TargetUsage)) { return Fail(R, TEXT("niagara_usage_unsupported"), TEXT("Use one of the nine legacy system/emitter/particle stack usages.")); }
     if (!Bounded(TargetUsageId) || (!TargetUsageId.IsEmpty() && !FGuid::Parse(TargetUsageId, C.UsageId)))
@@ -1360,8 +1360,8 @@ bool BatchCapture(FBatchContext& C, FBatchObservation& O, FBatchResult& R, const
 bool BatchPrepare(FBatchContext& C, FBatchResult& R, const FString& SystemPath, bool Allow, bool ReadPending = false)
 {
     const FEngineVersion& V = FEngineVersion::Current(); FString Object;
-    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8 || V.GetPatch() != 3)
-    { return BatchFail(R, TEXT("niagara_batch_editor_state_invalid"), TEXT("Idle UE5.8.3 Editor game thread is required.")); }
+    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8)
+    { return BatchFail(R, TEXT("niagara_batch_editor_state_invalid"), TEXT("Idle UE5.8.x Editor game thread is required.")); }
     if (!ObjectPath(SystemPath, Object) || BatchForbidden(Object)) { return BatchFail(R, TEXT("niagara_batch_path_invalid"), TEXT("Bounded native runtime system package/object path is required.")); }
     C.System = FindObject<UNiagaraSystem>(nullptr, *Object);
     if(C.OwnedAuthoringGuard){if(C.System)C.Keep.Emplace(C.System);if(!BatchAdmit(C,R,TEXT("owned_batch_target_resolved")))return false;}

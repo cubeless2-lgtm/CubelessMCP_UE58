@@ -463,8 +463,8 @@ void Initialize(FResult& R,const FString& PathValue,bool bSave)
 bool Base(FResult& R,FContext& C,const FString& SystemPath,bool Write,bool Allow)
 {
     R.Stage=TEXT("preflight");const auto& V=FEngineVersion::Current();FString Object;
-    if(!IsEditorGameThread()||IsPlaySessionActive()||V.GetMajor()!=5||V.GetMinor()!=8||V.GetPatch()!=3)
-    {return Fail(R,TEXT("niagara_scratch_editor_state_invalid"),TEXT("Only UE5.8.3 editor game thread outside PIE/SIE is implemented."));}
+    if(!IsEditorGameThread()||IsPlaySessionActive()||V.GetMajor()!=5||V.GetMinor()!=8)
+    {return Fail(R,TEXT("niagara_scratch_editor_state_invalid"),TEXT("Only UE5.8.x editor game thread outside PIE/SIE is implemented."));}
     if(!ObjectPath(SystemPath,Object)){return Fail(R,TEXT("niagara_scratch_system_path_invalid"),TEXT("Exact native NiagaraSystem package/object path required."));}
     C.System=FindObject<UNiagaraSystem>(nullptr,*Object);C.Keep.Reset(C.System);
     if(!Loaded(C.System)||C.System->GetClass()!=UNiagaraSystem::StaticClass()||!C.System->IsAsset()||

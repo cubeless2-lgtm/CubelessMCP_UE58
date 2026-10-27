@@ -85,8 +85,8 @@ class Session:
             self.calls.discover()
             diag = self.calls.call('target_project', 'native', 'GetEditorDiagnostics')
             require(editor_project_matches(diag['project_file'], self.args.project), 'Wrong editor project; no writes dispatched')
-            require(diag['game_thread'] and not diag['pie_or_sie_active'] and diag['engine_version'].startswith('5.8.3-'),
-                    'Idle UE5.8.3 Editor game thread required')
+            require(diag['game_thread'] and not diag['pie_or_sie_active'] and diag['engine_version'].startswith('5.8.'),
+                    'Idle UE5.8.x Editor game thread required')
             self.report['diagnostics_before'] = diag
             return self
         except Exception as error:

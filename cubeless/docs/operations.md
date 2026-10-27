@@ -43,7 +43,7 @@ BP는 create/edit·기본값·지원 노드/연결·컴포넌트와 보존 검�
 | 증상 | 확인할 사항 |
 | --- | --- |
 | 프로젝트 없음/복수/불일치 | cubeless가 .uproject 바로 아래에 있는지, 같은 루트의 --project인지 확인 |
-| 빌드 실패 | UE 5.8.3 Build.version, C++/SDK, 정확한 Editor Target, descriptor 의존 엔진 플러그인, 원 빌드 로그 확인 |
+| 빌드 실패 | UE 5.8.x Build.version, C++/SDK, 정확한 Editor Target, descriptor 의존 엔진 플러그인, 원 빌드 로그 확인 |
 | Cubeless 도구 미등록 | 플러그인/DLL·공식 Registry·Python 초기화와 pip 로그 확인; 검색 성공을 행동 검증으로 해석하지 않음 |
 | 외부 import 실패 | 외부 venv에 pipeline-requirements 설치; 프로젝트 로컬 run_pipeline.py 사용; 에디터 Python과 혼용하지 않음 |
 | MCP 연결/재시작 오류 | 실제 포트·프로세스·프로젝트 확인, 새 initialize 세션 ID 유지; 수정 재전송 금지 |
@@ -51,7 +51,7 @@ BP는 create/edit·기본값·지원 노드/연결·컴포넌트와 보존 검�
 
 ## 검증 범위와 직접 검수
 
-2026-10-25에 Windows x64/UE 5.8.3에서 배포 소스만 설치한 별도 `Studio58` 프로젝트를 빌드하고, 별도로 만든 외부 Python 3.11.15 환경에서 공식 MCP 대표 실행을 확인했습니다. C++ 도구는 MSVC 14.44.35228/Windows SDK 10.0.22621이었습니다. 플러그인 시작 코드가 도구를 자동 등록했으며 별도 검증 fixture나 시작 스크립트를 넣지 않았습니다.
+2026-10-25에 Windows x64/UE 5.8.x에서 배포 소스만 설치한 별도 `Studio58` 프로젝트를 빌드하고, 별도로 만든 외부 Python 3.11.15 환경에서 공식 MCP 대표 실행을 확인했습니다. C++ 도구는 MSVC 14.44.35228/Windows SDK 10.0.22621이었습니다. 플러그인 시작 코드가 도구를 자동 등록했으며 별도 검증 fixture나 시작 스크립트를 넣지 않았습니다.
 
 | 배포본 대표 흐름 | 엔진 도구 호출 수 | 실행 시간 |
 | --- | ---: | ---: |

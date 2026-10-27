@@ -1,6 +1,6 @@
-# CubelessMCP UE 5.8.3 도구 묶음
+# CubelessMCP UE 5.8.x 도구 묶음
 
-공식 Unreal MCP에 붙는 Editor 전용 플러그인과 선택형 BP·Niagara·PCG 외부 실행기입니다. 소스 배포이며 DLL·PDB·가상환경은 포함하지 않습니다. 설치 PC에서 UE 5.8.3과 C++ 빌드 도구로 빌드해야 합니다. 외부 실행기 없이도 에디터 플러그인을 사용할 수 있습니다.
+공식 Unreal MCP에 붙는 Editor 전용 플러그인과 선택형 BP·Niagara·PCG 외부 실행기입니다. 소스 배포이며 DLL·PDB·가상환경은 포함하지 않습니다. 설치 PC에서 UE 5.8.x과 C++ 빌드 도구로 빌드해야 합니다. 외부 실행기 없이도 에디터 플러그인을 사용할 수 있습니다.
 
 ```text
 프로젝트 루트/

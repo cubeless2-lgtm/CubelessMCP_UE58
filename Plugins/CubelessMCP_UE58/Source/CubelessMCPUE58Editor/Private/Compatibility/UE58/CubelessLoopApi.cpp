@@ -279,8 +279,8 @@ Function::FResult InspectNativeSupport(bool bAllowStockMacroLoad)
     R.Data->SetBoolField(TEXT("private_property_read_or_write_requested"), false);
     if (!IsEditorGameThread() || IsPlaySessionActive())
     { Fail(R, TEXT("loop_catalog_editor_state_invalid"), TEXT("Requires the Editor game thread outside PIE/SIE.")); return R; }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3)
-    { Fail(R, TEXT("loop_catalog_version_unsupported"), TEXT("This catalog is scoped to installed UE 5.8.3.")); return R; }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8)
+    { Fail(R, TEXT("loop_catalog_version_unsupported"), TEXT("This catalog is scoped to installed UE 5.8.x.")); return R; }
     UClass* SchemaClass = FindObject<UClass>(nullptr, TEXT("/Script/BlueprintGraph.EdGraphSchema_K2"));
     UClass* TunnelClass = FindObject<UClass>(nullptr, TEXT("/Script/BlueprintGraph.K2Node_Tunnel"));
     UClass* MacroClass = FindObject<UClass>(nullptr, TEXT("/Script/BlueprintGraph.K2Node_MacroInstance"));
@@ -1184,7 +1184,7 @@ Function::FResult AddNode(const FString& BlueprintPath, const FString& LoopType,
     R.Data->SetBoolField(TEXT("create_graph_if_missing"), bCreateGraphIfMissing);
     R.Data->SetStringField(TEXT("omitted_index_policy"), TEXT("JSON null leaves engine-allocated native default unchanged; no inferred zero literal"));
     if (!IsEditorGameThread() || IsPlaySessionActive()) { Error(R, TEXT("loop_editor_state_invalid"), TEXT("Requires the Editor game thread outside PIE/SIE.")); return R; }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3) { Error(R, TEXT("loop_version_unsupported"), TEXT("Only installed UE 5.8.3 is implemented.")); return R; }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8) { Error(R, TEXT("loop_version_unsupported"), TEXT("Only installed UE 5.8.x is implemented.")); return R; }
     if (!Arguments(C, R, LoopType, FirstIndexJson, LastIndexJson, NodePositionJson, bCreateGraphIfMissing, ElementType, TypeObject, EnumType))return R;
     if(C.bFiniteForEach)return AddFiniteForEach(C,R,BlueprintPath,GraphName,GraphId,GraphType);
     if (!ResolveTarget(C, R, BlueprintPath, GraphName, GraphId, GraphType) || !MacroSource(C, R)) { return R; }
@@ -1743,7 +1743,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
         {Bad(TEXT("bounded_exact_selectors"));return R;}
         if((!SourcePin.Equals(TEXT("OutRowNames"),ESearchCase::CaseSensitive)&&!SourcePin.Equals(TEXT("Array"),ESearchCase::CaseSensitive))||!TargetPin.Equals(TEXT("Array"),ESearchCase::CaseSensitive)){Bad(TEXT("exact_supported_pin_pair"));return R;}
         const FEngineVersion& V=FEngineVersion::Current();
-        if(V.GetMajor()!=5||V.GetMinor()!=8||V.GetPatch()!=3){Bad(TEXT("installed_version"));return R;}
+        if(V.GetMajor()!=5||V.GetMinor()!=8){Bad(TEXT("installed_version"));return R;}
         if(!Bind(GraphPath,SourcePath,TargetPath))return R;
         if(!SourcePin.Equals(MakeProducer?TEXT("Array"):TEXT("OutRowNames"),ESearchCase::CaseSensitive)){Bad(TEXT("exact_producer_pin_role"));return R;}
         if(Inapplicable)return R;

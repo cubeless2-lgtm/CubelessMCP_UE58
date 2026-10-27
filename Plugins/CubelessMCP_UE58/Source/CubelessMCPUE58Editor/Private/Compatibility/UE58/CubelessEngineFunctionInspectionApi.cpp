@@ -771,8 +771,8 @@ Function::FResult InspectCaptureSignatures()
     R.Data->SetBoolField(TEXT("asset_load_requested"), false);
     if (!IsEditorGameThread() || IsPlaySessionActive())
     { Fail(R, TEXT("engine_signature_editor_state_invalid"), TEXT("Requires the Editor game thread outside PIE/SIE.")); return R; }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3)
-    { Fail(R, TEXT("engine_signature_version_unsupported"), TEXT("This evidence adapter is scoped to installed UE 5.8.3.")); return R; }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8)
+    { Fail(R, TEXT("engine_signature_version_unsupported"), TEXT("This evidence adapter is scoped to installed UE 5.8.x.")); return R; }
     UClass* SchemaClass = FindObject<UClass>(nullptr, TEXT("/Script/BlueprintGraph.EdGraphSchema_K2"));
     const UEdGraphSchema_K2* Schema = IsValid(SchemaClass)
         ? Cast<UEdGraphSchema_K2>(SchemaClass->GetDefaultObject(false)) : nullptr;

@@ -491,7 +491,7 @@ bool Prepare(FResult& R, FContext& C, const FString& SystemPath, const FString& 
 {
     const auto& Version = FEngineVersion::Current(); FString Object; int32 EmitterIndex, ModuleIndex;
     if (!IsEditorGameThread() || IsPlaySessionActive()) { return Fail(R, TEXT("niagara_editor_state_invalid"), TEXT("Requires Editor game thread outside PIE/SIE.")); }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3) { return Fail(R, TEXT("niagara_version_unsupported"), TEXT("Only UE 5.8.3 is implemented.")); }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8) { return Fail(R, TEXT("niagara_version_unsupported"), TEXT("Only UE 5.8.x is implemented.")); }
     if (!Index(EI, EmitterIndex) || !Index(MI, ModuleIndex) || !Bounded(EN, 256) || !Bounded(MN, 256) || !Bounded(MG, 64) ||
         !Bounded(InputName, 256) || InputName.IsEmpty() || !ObjectPath(SystemPath, Object))
     { return Fail(R, TEXT("niagara_module_input_selector_invalid"), TEXT("Exact bounded names, GUID filter and int32/null indices are required.")); }

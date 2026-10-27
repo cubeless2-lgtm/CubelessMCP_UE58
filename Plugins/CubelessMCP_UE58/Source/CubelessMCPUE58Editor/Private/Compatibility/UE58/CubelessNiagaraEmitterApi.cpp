@@ -402,8 +402,8 @@ bool Prepare(FResult& R, FContext& C, const FString& TargetPath, const FString& 
     const FString& IndexJson, const FString& SourceName, const FString& NewName, bool bWrite, bool bAllowSourceEdit)
 {
     const auto& V = FEngineVersion::Current();
-    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8 || V.GetPatch() != 3)
-    { return Fail(R, TEXT("niagara_emitter_editor_state_invalid"), TEXT("Requires UE 5.8.3 editor game thread outside PIE/SIE.")); }
+    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8)
+    { return Fail(R, TEXT("niagara_emitter_editor_state_invalid"), TEXT("Requires UE 5.8.x editor game thread outside PIE/SIE.")); }
     int32 RequestedIndex; FString TargetObject;
     if (!Index(IndexJson, RequestedIndex) || !Bounded(SourceName, 256) || !Bounded(NewName, 256) || !ObjectPath(TargetPath, TargetObject))
     { return Fail(R, TEXT("niagara_emitter_selector_invalid"), TEXT("Use precise asset paths, bounded names and a null/-1/nonnegative int32 source index.")); }

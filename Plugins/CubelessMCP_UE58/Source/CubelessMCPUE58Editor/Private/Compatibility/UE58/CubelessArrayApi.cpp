@@ -216,8 +216,8 @@ Function::FResult InspectNativeSupport()
     R.Data->SetBoolField(TEXT("construction_behavior_verified"), false);
     if (!IsEditorGameThread() || IsPlaySessionActive())
     { Fail(R, TEXT("array_signature_editor_state_invalid"), TEXT("Requires the Editor game thread outside PIE/SIE.")); return R; }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3)
-    { Fail(R, TEXT("array_signature_version_unsupported"), TEXT("This evidence adapter is scoped to installed UE 5.8.3.")); return R; }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8)
+    { Fail(R, TEXT("array_signature_version_unsupported"), TEXT("This evidence adapter is scoped to installed UE 5.8.x.")); return R; }
     UClass* SchemaClass = FindObject<UClass>(nullptr, TEXT("/Script/BlueprintGraph.EdGraphSchema_K2"));
     const UEdGraphSchema_K2* Schema = FullyLoaded(SchemaClass)
         ? Cast<UEdGraphSchema_K2>(SchemaClass->GetDefaultObject(false)) : nullptr;
@@ -2309,7 +2309,7 @@ Function::FResult AddNode(const FString& BlueprintPath, const FString& Requested
     R.Data->SetStringField(TEXT("requested_graph_name"), GraphName); R.Data->SetStringField(TEXT("requested_graph_id"), GraphId); R.Data->SetStringField(TEXT("requested_graph_type"), GraphType);
     R.Data->SetBoolField(TEXT("create_graph_if_missing"), bCreateGraphIfMissing);
     if (!IsEditorGameThread() || IsPlaySessionActive()) { Error(R, TEXT("array_editor_state_invalid"), TEXT("Requires the Editor game thread outside PIE/SIE.")); return R; }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3) { Error(R, TEXT("array_version_unsupported"), TEXT("Only installed UE 5.8.3 is implemented.")); return R; }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8) { Error(R, TEXT("array_version_unsupported"), TEXT("Only installed UE 5.8.x is implemented.")); return R; }
     if (!Arguments(C, R, RequestedOperation, ElementType, ParamDefaultsJson, TypeObject, EnumType, NodePositionJson, bCreateGraphIfMissing)) { return R; }
     R.Data->SetStringField(TEXT("canonical_operation"), C.Operation->Name); R.Data->SetStringField(TEXT("element_type"), C.bVector4?TEXT("struct"):C.UdsLength?TEXT("struct"):C.StructLength?C.StructLengthKind:C.DescriptorLength?(C.ElementCategory==UEdGraphSchema_K2::PC_Class?TEXT("class"):TEXT("object")):C.ObjectScope.IsValid()?TEXT("object"):C.EnumScope.IsValid()?TEXT("enum"):C.ElementObject ? TEXT("vector") : C.ElementCategory == UEdGraphSchema_K2::PC_Int ? TEXT("int") : C.ElementCategory == UEdGraphSchema_K2::PC_Int64 ? TEXT("int64") : C.ElementCategory == UEdGraphSchema_K2::PC_Real ? (C.ElementSubCategory==UEdGraphSchema_K2::PC_Float?TEXT("float"):TEXT("double")) : C.ElementCategory==UEdGraphSchema_K2::PC_Text?TEXT("text"): C.ElementCategory == UEdGraphSchema_K2::PC_Name ? TEXT("name") : C.ElementCategory == UEdGraphSchema_K2::PC_String ? TEXT("string") : TEXT("bool"));
     FEdGraphPinType Element; Element.PinCategory = C.ElementCategory; Element.PinSubCategory = C.ElementSubCategory; Element.PinSubCategoryObject = C.ElementObject; R.Data->SetObjectField(TEXT("element_pin_type"), Function::Pin::Describe(Element));

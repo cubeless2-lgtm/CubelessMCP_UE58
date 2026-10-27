@@ -1,6 +1,6 @@
 {
   "format": "cubeless_source_bundle_v1",
-  "engine": "5.8.3",
+  "engine": "5.8.x",
   "plugin": "CubelessMCP_UE58",
   "pipeline_files": [
     "__init__.py",

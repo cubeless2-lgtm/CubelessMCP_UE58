@@ -523,7 +523,7 @@ UNiagaraSystem* Resolve(FResult& R, const FString& Input, bool bWrite, bool bAll
 {
     const FEngineVersion& Version = FEngineVersion::Current();
     if (!IsEditorGameThread() || IsPlaySessionActive()) { Fail(R, TEXT("niagara_editor_state_invalid"), TEXT("Requires Editor game thread outside PIE/SIE.")); return nullptr; }
-    if (Version.GetMajor() != 5 || Version.GetMinor() != 8 || Version.GetPatch() != 3) { Fail(R, TEXT("niagara_version_unsupported"), TEXT("Only UE 5.8.3 is implemented.")); return nullptr; }
+    if (Version.GetMajor() != 5 || Version.GetMinor() != 8) { Fail(R, TEXT("niagara_version_unsupported"), TEXT("Only UE 5.8.x is implemented.")); return nullptr; }
     FString ObjectPath = Input.TrimStartAndEnd();
     if (!ObjectPath.Contains(TEXT(".")) && FPackageName::IsValidLongPackageName(ObjectPath))
     { ObjectPath += TEXT(".") + FPackageName::GetLongPackageAssetName(ObjectPath); }

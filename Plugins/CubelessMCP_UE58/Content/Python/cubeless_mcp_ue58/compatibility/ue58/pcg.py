@@ -48,8 +48,8 @@ def dirty_packages():
 def context():
     blueprint.ensure_editor_idle()
     version = unreal.SystemLibrary.get_engine_version()
-    if not version.startswith("5.8.3-"):
-        _error("pcg_engine_version_unsupported", "This compatibility module was implemented only for UE5.8.3: " + version)
+    if not version.startswith("5.8."):
+        _error("pcg_engine_version_unsupported", "This compatibility module supports UE5.8.x: " + version)
     return {"engine_version": version, "dirty_packages": dirty_packages(),
         "dependency": "public EngineAPI + native finite-setting ToolsetLibrary API; Editor-only leaves, no ServerRPC",
         "server_rpc_dependency": False, "toolset_execute_tool_dependency": False}

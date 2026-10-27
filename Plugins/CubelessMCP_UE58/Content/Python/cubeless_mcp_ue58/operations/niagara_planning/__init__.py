@@ -8,7 +8,7 @@ from .response_schema import tool_error
 
 _LOGGER = logging.getLogger("CubelessMCP_UE58.NiagaraPlanning")
 _CONTEXT = {
-    "target_engine": "UE 5.8.3",
+    "target_engine": "UE 5.8.x",
     "source_engine_context": "UE 5.6",
     "engine_behavior_verified_in_target": False,
     "engine_api_invoked": False,

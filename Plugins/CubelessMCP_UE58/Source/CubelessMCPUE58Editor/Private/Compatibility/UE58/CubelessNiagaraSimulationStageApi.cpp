@@ -465,8 +465,8 @@ bool Prepare(FResult& R, FContext& C, const FString& SystemPath, const FString& 
     const FString& Name, bool bWrite, bool bAllowSourceEdit)
 {
     const auto& V = FEngineVersion::Current(); FString Object; int32 RequestedIndex;
-    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8 || V.GetPatch() != 3)
-    { return Fail(R, TEXT("niagara_stage_editor_state_invalid"), TEXT("Requires UE 5.8.3 editor game thread outside PIE/SIE.")); }
+    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8)
+    { return Fail(R, TEXT("niagara_stage_editor_state_invalid"), TEXT("Requires UE 5.8.x editor game thread outside PIE/SIE.")); }
     if (!ObjectPath(SystemPath, Object) || !Index(IndexJson, RequestedIndex) || !Bounded(Name, 256))
     { return Fail(R, TEXT("niagara_stage_selector_invalid"), TEXT("Use precise system path, null/nonnegative exact int32 emitter index and bounded name.")); }
     C.System = FindObject<UNiagaraSystem>(nullptr, *Object);
@@ -783,8 +783,8 @@ bool PrepareSettings(FResult& R, FSettingsContext& S, const FString& SystemPath,
     const FString& EmitterName, const FString& StageIndexJson, const FString& StageName, bool Write, bool SourceEdit)
 {
     FString Object; int32 EI, SI; const auto& V = FEngineVersion::Current();
-    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8 || V.GetPatch() != 3)
-    { return Fail(R, TEXT("niagara_stage_editor_state_invalid"), TEXT("Requires UE5.8.3 editor game thread outside PIE/SIE.")); }
+    if (!IsEditorGameThread() || IsPlaySessionActive() || V.GetMajor() != 5 || V.GetMinor() != 8)
+    { return Fail(R, TEXT("niagara_stage_editor_state_invalid"), TEXT("Requires UE5.8.x editor game thread outside PIE/SIE.")); }
     const FString EN = EmitterName.TrimStartAndEnd(), SN = StageName.TrimStartAndEnd();
     if (!ObjectPath(SystemPath, Object) || !Index(EmitterIndexJson, EI) || !Index(StageIndexJson, SI) || !Bounded(EN, 256) || !Bounded(SN, 256) || (SI == INDEX_NONE && SN.IsEmpty()))
     { return Fail(R, TEXT("niagara_stage_selector_invalid"), TEXT("Require stage index/name; joint optional selectors use exact nonnegative int32 and bounded names.")); }

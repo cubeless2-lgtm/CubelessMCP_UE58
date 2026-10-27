@@ -35,7 +35,7 @@ def inspect_ai_authoring_support():
         "mutation_attempted": False, "mutation_performed": False, "changed": False,
         "explicit_asset_load_calls": 0, "explicit_compile_calls": 0, "explicit_save_calls": 0,
         "python_type_wrapping_effects_independently_observed": False,
-        "engine_target": "Unreal Engine 5.8.3"}
+        "engine_target": "Unreal Engine 5.8.x"}
 
 
 def list_ai_assets(asset_root, asset_type, name_filter, max_results):
@@ -77,7 +77,7 @@ def list_ai_assets(asset_root, asset_type, name_filter, max_results):
         "mutation_attempted": False, "mutation_performed": False, "changed": False,
         "explicit_asset_load_calls": 0, "explicit_compile_calls": 0, "explicit_save_calls": 0,
         "registry_implicit_metadata_effects_independently_observed": False,
-        "engine_target": "Unreal Engine 5.8.3"}
+        "engine_target": "Unreal Engine 5.8.x"}
 
 
 def search_ai_behavior_tree_node_classes(category, query, include_abstract, max_results):

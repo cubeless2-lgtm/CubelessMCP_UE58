@@ -1,6 +1,6 @@
 # CubelessMCP UE5.8 operating instructions
 
-These standing rules cover Unreal production using official UE MCP and Cubeless extensions, and maintenance of those tools. User instructions and actual session permissions take precedence. Resolve the target `.uproject`, installed engine and live endpoint; never assume old paths, ports, PIDs or DLLs. The current supported engine baseline is UE 5.8.3; other versions need explicit compatibility evidence.
+These standing rules cover Unreal production using official UE MCP and Cubeless extensions, and maintenance of those tools. User instructions and actual session permissions take precedence. Resolve the target `.uproject`, installed engine and live endpoint; never assume old paths, ports, PIDs or DLLs. The supported source engine family is UE 5.8.x. Build plugin binaries for the actual installed engine build; verification evidence is scoped to its recorded patch/changelist, not automatically to future patches. Other major/minor versions require explicit compatibility work.
 
 ## Start and route
 

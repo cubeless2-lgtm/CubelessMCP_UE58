@@ -1,6 +1,6 @@
 # Duel Protocol: 전투 UMG와 UI 머티리얼
 
-UE 5.8.4 CL 58902052에서 기존 1대1 전투의 독립 사본에 실제 UMG HUD·결과 화면·재시작을 구현했다. 기존 Study 25개 파일은 보존했다. 새 콘텐츠는 `Content/Study/GameAnimationSample/ArenaUI/`에 있으며, 게임 그래프는 표준 Blueprint·UMG·Material을 사용한다. 아래 기존 검수는 Editor/PIE 범위다. 후속 MCP 비활성 패키징은 성공했으며 독립 게임의 ArenaUI 입력·화면 검수는 잠금 해제를 기다린다. 현재 상태는 [게시와 패키징](README.md#2026-10-30-게시와-mcp-비활성-패키징)을 따른다.
+UE 5.8.4 CL 58902052에서 기존 1대1 전투의 독립 사본에 실제 UMG HUD·결과 화면·재시작을 구현했다. 기존 Study 25개 파일은 보존했다. 새 콘텐츠는 `Content/Study/GameAnimationSample/ArenaUI/`에 있으며, 게임 그래프는 표준 Blueprint·UMG·Material을 사용한다. 아래 기존 검수는 Editor/PIE 범위다. 후속 MCP 비활성 Win64 패키징과 독립 게임의 ArenaUI HUD·공격·피해·패배·Retry·효과 전환 대표 검수를 마쳤다. 기존 샘플의 PoseHistory 진단과 상세 미검증 범위는 별도로 남겼다. 현재 상태는 [게시와 패키징](README.md#2026-10-30-게시와-mcp-비활성-패키징)을 따른다.
 
 **후속 리뷰 3건은 수정하고 빌드·공식 MCP 회귀 검증을 마쳤다.** UI 에셋 수정은 현재 프로젝트에 저장되어 있다. 예약 이름 보호가 포함된 새 DLL은 격리 에디터 검증 후 승인된 정상 재시작을 거쳐 실제 프로젝트에도 적용했다. 후속 Material 코멘트 수정까지 포함한 동일 소스 빌드의 해시와 공식 MCP 연결 근거를 확인했으며, 이전 재시작 승인 대기 표기는 해소됐다. 2026-10-30 게시 작업 시작 시 에디터는 실행 중이 아니었다.
 

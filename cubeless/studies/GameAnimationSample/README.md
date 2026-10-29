@@ -89,7 +89,9 @@ Win64 Development 빌드·Cook·Stage·Archive는 성공했다. 최종 BuildCook
 
 실제 IoStore 목록에서 학습 에셋 36개와 맵 8개를 확인했다. 게임 타깃의 BuildPlugins와 실제 Pak·IoStore·스테이징 파일 경로에 금지 MCP 플러그인 산출물은 없었다. 보존 대상 에셋·설정의 해시도 유지됐다. 검증용 자동 빌드 scaffolding은 Intermediate 아래에만 있으며 새 게임플레이 C++를 작성하지 않았다.
 
-독립 실행 파일은 D3D12/SM6로 시작했지만 Windows 플랫폼 설정이 우선 적용돼 기본 ThirdPerson 맵을 열었다. **ArenaUI를 포함한 학습 맵의 독립 게임 입력·화면 검수는 Windows 잠금 해제 후 계속할 상태**다. 잠금 화면에는 입력하지 않았다. 이전 Editor/PIE의 전투·HUD·Retry 성공 증거는 유지하며, 이를 이번 패키지의 실제 ArenaUI 실행 성공으로 바꾸지 않는다. 맵을 지정해 실행하려면 패키지의 `StudyCook58.exe /Game/Study/GameAnimationSample/ArenaUI/L_ArenaUI -windowed -ResX=1280 -ResY=720`을 사용한다.
+독립 실행 파일은 D3D12/SM6로 시작했다. Windows 플랫폼 설정이 우선 적용돼 기본 ThirdPerson 맵을 열었고, 이후 개발 콘솔에서 ArenaUI를 명시적으로 열었다. 사용자 잠금 해제 후 Computer Use로 HUD·적 공격 단계·피해와 체력 감소·공격 동작과 STRIKES 1·패배 결과·Retry 버튼을 확인했다. 실제 맵 재로드와 체력100/100·READY 복원, 결과 버튼과 전투 중 Tab의 FULL→REDUCED 전환도 확인했다. 테스트 게임은 Alt+F4로 정상 종료했고 PID 소멸과 LogExit를 확인했다. 맵을 지정해 실행하려면 패키지의 `StudyCook58.exe /Game/Study/GameAnimationSample/ArenaUI/L_ArenaUI -windowed -ResX=1280 -ResY=720`을 사용한다.
+
+각 ArenaUI 로드 때 기존 샘플의 `PoseHistory` 조회 오류가 한 번씩 총4회 기록됐다. 같은 진단은 이전 PIE에서도 관측됐다. 이를 삭제하거나 오류 없는 전체 애니메이션 검수로 표현하지 않는다. 이번 패키지에서는 ArenaUI 대표 경로를 실행했으며 다른 7개 맵의 개별 플레이, 회피 무적 구간의 정밀 타이밍·공격 대상 피해 수치·승리 조건 전체는 별도로 반복 검증하지 않았다. 해당 범위의 기존 PIE 증거와 패키지 실행 증거를 구분한다.
 
 로컬 재현·실패·패키지 목록·해시 근거는 `cubeless/records/operations/study-release-20261030/report.json`에 통합했다. 검증 프로젝트·캐시·DLL/PDB·패키지·원시 기록은 Git 제외 대상이다. 완성 게임의 전체 검수나 모든 애니메이션 지원 범위의 완료 판정은 아니다.
 

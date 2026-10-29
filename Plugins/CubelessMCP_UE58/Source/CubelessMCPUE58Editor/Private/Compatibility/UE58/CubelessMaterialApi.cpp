@@ -12,6 +12,7 @@
 #include "MaterialShared.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpression.h"
+#include "Materials/MaterialExpressionComment.h"
 #include "Materials/MaterialExpressionCollectionParameter.h"
 #include "Materials/MaterialExpressionCollectionTransform.h"
 #include "Materials/MaterialExpressionConstant.h"
@@ -420,6 +421,11 @@ bool ValidateMutationInputs(EOperation Operation, const TSharedPtr<FJsonObject>&
     {
         if (State.NodeCount >= MaxGraphNodes) { OutError = TEXT("Adding a node would exceed max_graph_nodes."); return false; }
         UClass* Class = FindMaterialExpressionClass(Params->GetStringField(TEXT("expression_class")));
+        if (Class && Class->IsChildOf(UMaterialExpressionComment::StaticClass()))
+        {
+            OutError = TEXT("Comment boxes require EditorComments, not expression nodes. Use CubelessMaterialCommentTools.add_material_comment; repair existing misplaced comments with repair_material_comments. No expression was created.");
+            return false;
+        }
         if (!Class || !IsVerifiedRuntimeClass(Class) || Class->HasAnyClassFlags(CLASS_Abstract | CLASS_Deprecated | CLASS_NewerVersionExists))
         {
             OutError = TEXT("Expression class must be a concrete native Engine expression, one of the eight audited native Landscape expressions, or the exact public runtime MaterialXTextureSampleParameterBlur leaf; other module/generated expression classes remain incomplete."); return false;

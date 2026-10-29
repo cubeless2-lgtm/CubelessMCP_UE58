@@ -1960,3 +1960,15 @@ cubeless/tools/pipelines/recorded_call_storage.py
 cubeless/tools/pipelines/recorded_calls.py
 cubeless/tools/pipelines/result_contracts.py
 cubeless/tools/run_pipeline.py
+Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/editor_data.py
+Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/material_comments.py
+Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/registration/material_comments_toolset.py
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessEditorDataApi.cpp
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessEditorDataApi.h
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCommentsApi.cpp
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessMaterialCommentsApi.h
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessNiagaraParticlePositionsApi.cpp
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessNiagaraParticlePositionsApi.h
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessEditorDataLibrary.cpp
+Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessEditorDataLibrary.h
+cubeless/docs/editor-data-api.md

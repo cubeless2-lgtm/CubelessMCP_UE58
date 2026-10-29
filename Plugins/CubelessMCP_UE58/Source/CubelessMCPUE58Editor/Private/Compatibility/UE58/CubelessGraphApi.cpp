@@ -3732,6 +3732,9 @@ struct FQWNodes : FQQFlowContext
  using FPin=FQQFlowContext::FPin;using FNode=FQQFlowContext::FNode;
  struct FExtra{UEdGraphNode* Key=nullptr;FString Name,ClassName,ClassPath,Title;bool Visible=false,Pinned=false;bool Variable=false,Custom=false;FMemberReference VariableRef;FName CustomName;int32 CustomFlags=0;bool CallInEditor=false;};
  TArray<FExtra> Extra;TMap<UEdGraphPin*,FGuid> OriginalIds;TMap<UEdGraphPin*,int32> OriginalOwners;int32 SelectedIndex=INDEX_NONE;bool Broken=false,Retired=false,InitialDirty=false;
+ // Read-only listings use the same owner+PinId scope as FEdGraphPinReference.
+ // Writers retain their existing admission until independently extended.
+ bool ReadOnlyOwnerScopedPins=false;
  TFunction<bool(const TCHAR*)> CompositeCurrent;TFunction<bool()> CompositeReturned;TFunction<bool(const TCHAR*)> TimelineCurrent;
  struct FSwitchRole
  {
@@ -3759,7 +3762,11 @@ struct FQWNodes : FQQFlowContext
   if(!Bind(B,G,0,0))return false;InitialDirty=B->GetPackage()->IsDirty();
   if(Nodes.Num()>1024)return Error(TEXT("initial_capture"),GraphPath,TEXT("node_count"),TEXT("<=1024"),FString::FromInt(Nodes.Num()));
   TSet<FGuid> NodeIds;for(int32 I=0;I<Nodes.Num();++I){const auto& N=Nodes[I];if(!N.Guid.IsValid()||NodeIds.Contains(N.Guid))return Error(TEXT("initial_capture"),N.Path,TEXT("node_guid"),TEXT("valid unique"),N.Guid.ToString());NodeIds.Add(N.Guid);if(!Live(N.Class))return Error(TEXT("initial_capture"),N.Path,TEXT("node_class"),TEXT("live"),TEXT("unavailable"));FExtra E;E.Key=N.Hold.Get();E.Name=E.Key->GetName();E.ClassName=N.Class->GetName();E.ClassPath=N.Class->GetPathName();E.Visible=E.Key->bCommentBubbleVisible;E.Pinned=E.Key->bCommentBubblePinned;if(auto* V=Cast<UK2Node_Variable>(E.Key)){E.Variable=true;E.VariableRef=V->VariableReference;}if(auto* C=Cast<UK2Node_CustomEvent>(E.Key)){E.Custom=true;E.CustomName=C->CustomFunctionName;E.CustomFlags=C->FunctionFlags;E.CallInEditor=C->bCallInEditor;}Extra.Add(MoveTemp(E));
-   for(const auto& P:N.Pins){if(OriginalIds.Num()>=8192||OriginalIds.Contains(P.P))return Error(TEXT("initial_capture"),N.Path,TEXT("pin_inventory"),TEXT("unique bounded pins"),TEXT("duplicate/over budget"));for(const auto& Pair:OriginalIds)if(Pair.Value==P.Id)return Error(TEXT("initial_capture"),N.Path,TEXT("pin_id"),TEXT("unique graph pin id"),P.Id.ToString());OriginalIds.Add(P.P,P.Id);OriginalOwners.Add(P.P,I);}}
+   TSet<FGuid> OwnerPinIds;
+   for(const auto& P:N.Pins){if(OriginalIds.Num()>=8192||OriginalIds.Contains(P.P))return Error(TEXT("initial_capture"),N.Path,TEXT("pin_inventory"),TEXT("unique bounded pins"),TEXT("duplicate/over budget"));
+    if(ReadOnlyOwnerScopedPins){if(OwnerPinIds.Contains(P.Id))return Error(TEXT("initial_capture"),N.Path,TEXT("pin_id"),TEXT("unique pin id within owning node"),P.Id.ToString());OwnerPinIds.Add(P.Id);}
+    else{for(const auto& Pair:OriginalIds)if(Pair.Value==P.Id)return Error(TEXT("initial_capture"),N.Path,TEXT("pin_id"),TEXT("unique graph pin id"),P.Id.ToString());}
+    OriginalIds.Add(P.P,P.Id);OriginalOwners.Add(P.P,I);}}
   if(!Membership(Nodes,OriginalIds,TEXT("initial_capture"))||!CaptureRoles())return false;return Check(TEXT("initial_capture"));
  }
  bool Membership(const TArray<FNode>& Rows,const TMap<UEdGraphPin*,FGuid>& Ids,const TCHAR* Stage)
@@ -3771,13 +3778,34 @@ struct FQWNodes : FQQFlowContext
  }
  struct FClassRole{UClass* Class=nullptr;UClass* Meta=nullptr;UClass* Super=nullptr;UObject* Outer=nullptr;UPackage* Package=nullptr;FString Path;UObject* CDO=nullptr;UObject* CDOOuter=nullptr;UPackage* CDOPackage=nullptr;FString CDOPath;};
  TArray<FClassRole> ClassRoles;TStrongObjectPtr<UClass> InheritedSkeletonParent;
+ TStrongObjectPtr<UBlueprint> ReadOnlyParentBlueprint;
+ bool ReadOnlyParentCurrent(const TCHAR* Stage)
+ {
+  if(!ReadOnlyParentBlueprint)return true;
+  auto* B=ReadOnlyParentBlueprint.Get();auto* S=InheritedSkeletonParent.Get();
+  if(!Live(B)||!Live(Parent.Get())||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Parent.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=S||!Live(S)||!Parent->ClassGeneratedBy.IsResolved()||Parent->ClassGeneratedBy.Get()!=B||!S->ClassGeneratedBy.IsResolved()||S->ClassGeneratedBy.Get()!=B)return Error(Stage,GraphPath,TEXT("read_parent_class_binding"),TEXT("same held parent Blueprint/generated/skeleton roles"),TEXT("changed"));
+  return true;
+ }
  bool CaptureRoles()
  {
+  // FastGenerateSkeletonClass uses the parent's skeleton when it exists.
+  // Admit that relation only for inspection; do not broaden writer admission.
+  if(ReadOnlyOwnerScopedPins&&Live(Skeleton.Get())&&Live(Parent.Get())&&Skeleton->GetSuperClass()!=Parent.Get())
+  {
+   auto* Actual=Skeleton->GetSuperClass();
+   if(!Parent->ClassGeneratedBy.IsResolved())return Error(TEXT("class_capture"),Parent->GetPathName(),TEXT("parent_generator"),TEXT("resolved parent Blueprint"),TEXT("unresolved"));
+   auto* B=Cast<UBlueprint>(Parent->ClassGeneratedBy.Get());
+   if(!Live(B)||B==BP.Get()||!Live(Actual)||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Actual)return Error(TEXT("class_capture"),Skeleton->GetPathName(),TEXT("skeleton_superclass"),TEXT("direct parent generated class or its current skeleton"),Live(Actual)?Actual->GetPathName():TEXT("unavailable"));
+   ReadOnlyParentBlueprint.Reset(B);InheritedSkeletonParent.Reset(Actual);
+   if(!ReadOnlyParentCurrent(TEXT("class_capture")))return false;
+   R.Data->SetStringField(TEXT("read_parent_generated_class"),Parent->GetPathName());R.Data->SetStringField(TEXT("read_parent_skeleton_class"),Actual->GetPathName());
+  }
   for(UClass* K:{Generated.Get(),Skeleton.Get()}){if(!Live(K)||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=BP.Get()||K->GetSuperClass()!=((K==Skeleton.Get()&&InheritedSkeletonParent.Get())?InheritedSkeletonParent.Get():Parent.Get())||!K->ClassDefaultObject.IsResolved())return Error(TEXT("class_capture"),GraphPath,TEXT("class_role"),TEXT("current own generated/skeleton"),TEXT("invalid"));FClassRole E;E.Class=K;E.Meta=K->GetClass();E.Super=K->GetSuperClass();E.Outer=K->GetOuter();E.Package=K->GetPackage();E.Path=K->GetPathName();E.CDO=K->ClassDefaultObject.Get();if(E.CDO){if(!Live(E.CDO)||E.CDO->GetClass()!=K||!E.CDO->HasAnyFlags(RF_ClassDefaultObject))return Error(TEXT("class_capture"),E.Path,TEXT("nullable_cdo"),TEXT("null or live exact class CDO"),TEXT("invalid"));E.CDOOuter=E.CDO->GetOuter();E.CDOPackage=E.CDO->GetPackage();E.CDOPath=E.CDO->GetPathName();}for(UObject* O:{static_cast<UObject*>(E.Meta),E.Outer,static_cast<UObject*>(E.Package),E.CDOOuter,static_cast<UObject*>(E.CDOPackage)})if(O){if(!Live(O))return Error(TEXT("class_capture"),E.Path,TEXT("owner"),TEXT("live"),TEXT("unavailable"));Holds.Emplace(O);}ClassRoles.Add(MoveTemp(E));}
   for(const auto& N:Nodes){if(!Live(N.Class))return Error(TEXT("class_capture"),N.Path,TEXT("node_class"),TEXT("live"),TEXT("unavailable"));Holds.Emplace(N.Class);}return true;
  }
  bool Roles(const TCHAR* Stage)
  {
+  if(!ReadOnlyParentCurrent(Stage))return false;
   for(const auto& E:ClassRoles){auto* K=E.Class;if(!Live(K)||K->GetClass()!=E.Meta||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=BP.Get()||K->GetSuperClass()!=E.Super||K->GetOuter()!=E.Outer||K->GetPackage()!=E.Package||K->GetPathName()!=E.Path||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=E.CDO)return Error(Stage,E.Path,TEXT("class_role"),TEXT("captured own class"),TEXT("changed"));if(E.CDO&&(!Live(E.CDO)||E.CDO->GetClass()!=K||!E.CDO->HasAnyFlags(RF_ClassDefaultObject)||E.CDO->GetOuter()!=E.CDOOuter||E.CDO->GetPackage()!=E.CDOPackage||E.CDO->GetPathName()!=E.CDOPath))return Error(Stage,E.Path,TEXT("nullable_cdo"),TEXT("captured actual CDO"),TEXT("changed"));}return true;
  }
  bool Anchors(const TCHAR* Stage)
@@ -3812,6 +3840,13 @@ struct FQWNodes : FQQFlowContext
    for(const auto& P:C.Pins){if(CandidateIds.Contains(P.P))return Error(Stage,E.Path,TEXT("pin_membership"),TEXT("unique"),TEXT("duplicate"));CandidateIds.Add(P.P,P.Id);}Candidate.Add(MoveTemp(C));}
   if(!Membership(Candidate,CandidateIds,Stage))return false;int32 CIndex=0;
   for(int32 I=0;I<Nodes.Num();++I){if(Retired&&I==SelectedIndex)continue;const auto& E=Nodes[I];const auto& C=Candidate[CIndex++];for(int32 J=0;J<E.Pins.Num();++J){const auto& P=E.Pins[J];const auto& A=C.Pins[J];if(!PinSame(P,A,Stage,E.Path))return false;
+    // Pointer identity is checked only after reacquiring live current pins above.
+    // GUID-only comparison would conflate endpoints on different owning nodes.
+    if(ReadOnlyOwnerScopedPins){
+     if(P.P!=A.P||P.Parent!=A.Parent||P.Children!=A.Children)return Error(Stage,E.Path,TEXT("pin_identity"),TEXT("captured owned pin and split hierarchy"),TEXT("changed"));
+     if(P.Links!=A.Links)return Error(Stage,E.Path,TEXT("linked_to"),TEXT("captured owned endpoint identities"),TEXT("changed"));
+     continue;
+    }
     const FGuid ParentExpected=P.Parent?OriginalIds.FindChecked(P.Parent):FGuid();const FGuid ParentActual=A.Parent?CandidateIds.FindChecked(A.Parent):FGuid();if(ParentExpected!=ParentActual||Keys(P.Children,OriginalIds)!=Keys(A.Children,CandidateIds))return Error(Stage,E.Path,TEXT("split_pin"),TEXT("captured parent/children"),TEXT("changed"));
     TArray<FGuid> Expected;for(auto* L:P.Links)if(!Broken||(I!=SelectedIndex&&OriginalOwners.FindChecked(L)!=SelectedIndex))Expected.Add(OriginalIds.FindChecked(L));const auto Actual=Keys(A.Links,CandidateIds);if(Expected!=Actual)return Error(Stage,E.Path,TEXT("linked_to"),FString::FromInt(Expected.Num()),FString::FromInt(Actual.Num()));}}
   return true;
@@ -4231,7 +4266,7 @@ bool QWResolve(const FString& B,const FString& GN,const FString& GI,const FStrin
 }
 Function::FResult ListBlueprintNodes(const FString& B,const FString& NT,const FString& Title,bool IncludePins,const FString& GN,const FString& GI,const FString& GT)
 {
- Function::FResult R;if(QWRunning){QWFail(R,TEXT("node_request_reentrant"),TEXT("List/Delete request already active."));return R;}TGuardValue<bool> Running(QWRunning,true);if(!QWText(NT)||!QWText(Title)){QWFail(R,TEXT("node_filter_invalid"),TEXT("Bounded class/title strings required."));return R;}UBlueprint* BP=nullptr;UEdGraph* G=nullptr;if(!QWResolve(B,GN,GI,GT,R,BP,G))return R;QWInit(R,TEXT("list_blueprint_nodes"));R.Stage=TEXT("initial_graph_capture");R.bSuccess=R.bPostconditionPassed=false;FQWNodes C(R);C.AllowReadOnlyLibrary=true;if(!C.Bound(BP,G)||!C.Titles())return R;
+ Function::FResult R;if(QWRunning){QWFail(R,TEXT("node_request_reentrant"),TEXT("List/Delete request already active."));return R;}TGuardValue<bool> Running(QWRunning,true);if(!QWText(NT)||!QWText(Title)){QWFail(R,TEXT("node_filter_invalid"),TEXT("Bounded class/title strings required."));return R;}UBlueprint* BP=nullptr;UEdGraph* G=nullptr;if(!QWResolve(B,GN,GI,GT,R,BP,G))return R;QWInit(R,TEXT("list_blueprint_nodes"));R.Stage=TEXT("initial_graph_capture");R.bSuccess=R.bPostconditionPassed=false;FQWNodes C(R);C.AllowReadOnlyLibrary=true;C.ReadOnlyOwnerScopedPins=true;R.Data->SetStringField(TEXT("pin_identity_scope"),TEXT("owner_node_and_pin_guid_with_current_pointer_identity"));if(!C.Bound(BP,G)||!C.Titles())return R;
  TArray<TSharedPtr<FJsonValue>> Rows;for(int32 I=0;I<C.Nodes.Num();++I){const auto& X=C.Extra[I];if((NT.IsEmpty()||X.ClassName.Contains(NT)||X.Title.Contains(NT))&&(Title.IsEmpty()||X.Title.Contains(Title)))Rows.Add(MakeShared<FJsonValueObject>(C.NodeJson(I,IncludePins)));}
  if(!C.Check(TEXT("list_publication")))return R;auto Legacy=MakeShared<FJsonObject>();Legacy->SetStringField(TEXT("blueprint"),BP->GetPathName());Legacy->SetStringField(TEXT("graph_name"),G->GetName());Legacy->SetObjectField(TEXT("graph"),C.GraphJson(C.Nodes.Num()));Legacy->SetArrayField(TEXT("nodes"),Rows);for(const auto& Pair:Legacy->Values)R.Data->SetField(Pair.Key,Pair.Value);R.Data->SetObjectField(TEXT("legacy_result"),Legacy);R.bSuccess=R.bPostconditionPassed=true;R.Stage=TEXT("complete");return R;
 }

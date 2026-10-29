@@ -1635,11 +1635,65 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         UEdGraphNode* Node = nullptr;
         int32 NodeIndex = INDEX_NONE;
         TArray<FString> MatchedPinNames;
+        FString SourcePath,GraphPath,SourceScope;
     };
 
     TArray<FMatchedParameterMapSetNode> MatchedNodes;
     TArray<TSharedPtr<FJsonValue>> CandidateValues;
+    TArray<TSharedPtr<FJsonValue>> ScopeBlockedValues;
+    const bool bHasEmitterSelector=TargetEmitterIndex!=INDEX_NONE||!TargetEmitterName.IsEmpty();
 
+    // Enumerate physical sources, not just emitter root graphs. Scratch modules
+    // live in separate script sources and can be shared by several selected calls.
+    struct FSourceTarget
+    {
+        UNiagaraScriptSource* Source = nullptr;
+        int32 EmitterIndex = INDEX_NONE;
+        FString EmitterName;
+        FString Scope;
+    };
+    TArray<FSourceTarget> SourceTargets;
+    TSet<UNiagaraGraph*> SeenGraphs;
+    TArray<TSharedPtr<FJsonValue>> SearchedGraphs;
+    auto AddSource = [&](UNiagaraScriptSourceBase* Base, int32 EmitterIndex, const FString& EmitterName, const FString& Scope) -> bool
+    {
+        if(!ContinueRead())return false;
+        auto* Source=Cast<UNiagaraScriptSource>(Base);
+        if(!Source||!Source->NodeGraph)return true;
+        if(!W.CaptureGraph(Source))return false;
+        auto* Graph=Source->NodeGraph.Get();
+        if(SeenGraphs.Contains(Graph))return true;
+        SeenGraphs.Add(Graph);
+        SourceTargets.Add({Source,EmitterIndex,EmitterName,Scope});
+        auto Row=MakeShared<FJsonObject>();
+        Row->SetStringField(TEXT("source_path"),Source->GetPathName());
+        Row->SetStringField(TEXT("graph_path"),Graph->GetPathName());
+        Row->SetStringField(TEXT("source_scope"),Scope);
+        Row->SetNumberField(TEXT("emitter_index"),EmitterIndex);
+        Row->SetStringField(TEXT("emitter_name"),EmitterName);
+        Row->SetBoolField(TEXT("owned_by_target_system"),Source->IsIn(System)&&Source->GetOutermost()==System->GetOutermost());
+        SearchedGraphs.Add(MakeShared<FJsonValueObject>(Row));
+        W.R.Data->SetArrayField(TEXT("searched_graphs"),SearchedGraphs);
+        return true;
+    };
+    auto AddScript = [&](UNiagaraScript* Script,int32 EmitterIndex,const FString& EmitterName,const FString& Scope) -> bool
+    {
+        return !Script||(W.CaptureScript(Script)&&AddSource(Script->GetLatestSource(),EmitterIndex,EmitterName,Scope));
+    };
+    auto AddContainer = [&](UNiagaraScratchPadContainer* Container,int32 EmitterIndex,const FString& EmitterName,const FString& Scope) -> bool
+    {
+        if(!Container)return true;
+        for(const TObjectPtr<UNiagaraScript>& Script:Container->Scripts)if(!AddScript(Script.Get(),EmitterIndex,EmitterName,Scope))return false;
+        return true;
+    };
+    // An emitter selector must not widen the operation to unrelated system scripts.
+    // System scratch referenced by a selected emitter is discovered below instead.
+    if(TargetEmitterIndex==INDEX_NONE&&TargetEmitterName.IsEmpty())
+    {
+        if(!AddScript(System->GetSystemSpawnScript(),INDEX_NONE,FString(),TEXT("system_main"))||
+           !AddScript(System->GetSystemUpdateScript(),INDEX_NONE,FString(),TEXT("system_main")))return W.Error(W.R.Error);
+        for(const TObjectPtr<UNiagaraScript>& Script:System->ScratchPadScripts)if(!AddScript(Script.Get(),INDEX_NONE,FString(),TEXT("system_scratch")))return W.Error(W.R.Error);
+    }
     TArray<FNiagaraEmitterHandle> EmitterHandles = System->GetEmitterHandles();
     for (int32 CurrentEmitterIndex = 0; CurrentEmitterIndex < EmitterHandles.Num(); ++CurrentEmitterIndex)
     {
@@ -1654,14 +1708,45 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         }
 
         FVersionedNiagaraEmitterData* EmitterData = EmitterHandle.GetEmitterData();
-        UNiagaraScriptSource* GraphSource = EmitterData ? Cast<UNiagaraScriptSource>(EmitterData->GraphSource) : nullptr;
-        UNiagaraGraph* Graph = GraphSource ? GraphSource->NodeGraph : nullptr;
-        if (!Graph)
+        if(EmitterData&&(!AddSource(EmitterData->GraphSource,CurrentEmitterIndex,EmitterName,TEXT("emitter_main"))||
+           !AddContainer(EmitterData->ScratchPads,CurrentEmitterIndex,EmitterName,TEXT("emitter_scratch"))||
+           !AddContainer(EmitterData->ParentScratchPads,CurrentEmitterIndex,EmitterName,TEXT("emitter_parent_scratch"))))return W.Error(W.R.Error);
+    }
+    // Complete source membership before snapshotting: adding captured objects
+    // after the checkpoint would otherwise look like an authored target change.
+    for(int32 SourceIndex=0;SourceIndex<SourceTargets.Num();++SourceIndex)
+    {
+        const FSourceTarget Target=SourceTargets[SourceIndex];
+        auto* Graph=Target.Source->NodeGraph.Get();
+        const int32 CurrentEmitterIndex=Target.EmitterIndex;
+        const FString EmitterName=Target.EmitterName;
+        for(UEdGraphNode* Node:TArray<TObjectPtr<UEdGraphNode>>(Graph->Nodes))
         {
-            continue;
+            if(auto* Call=Cast<UNiagaraNodeFunctionCall>(Node))
+            {
+                auto* Script=Call->FunctionScript.Get();
+                if(Script&&Script->IsIn(System)&&Script->GetOutermost()==System->GetOutermost())
+                {
+                    // Preserve the selected call->script relation across callbacks.
+                    bool Captured=false;for(const auto& Ref:W.ForcedScratchRefs)if(Ref.Node.Get()==Call){Captured=true;break;}
+                    if(!Captured)W.ForcedScratchRefs.Add({Call,Script});
+                    if(!AddScript(Script,CurrentEmitterIndex,EmitterName,TEXT("referenced_owned_script")))return W.Error(W.R.Error);
+                }
+            }
         }
-
-        if(!W.CaptureGraph(GraphSource))return W.Error(W.R.Error);
+    }
+    if(!ContinueRead())return W.Error(W.R.Error);
+    W.Before=W.Projection();
+    W.R.Data->SetStringField(TEXT("before_snapshot_scope"),TEXT("C3 target load/source inventory completed; checkpoint precedes candidate title/tooltip getters and every explicit writer. Loader/global SDK effects are outside this captured target scope."));
+    if(!ContinueRead())return W.Error(W.R.Error);
+    for(int32 SourceIndex=0;SourceIndex<SourceTargets.Num();++SourceIndex)
+    {
+        // Source inventory is fixed; metadata reads still revalidate captured topology.
+        const FSourceTarget Target=SourceTargets[SourceIndex];
+        auto* GraphSource=Target.Source;
+        auto* Graph=GraphSource->NodeGraph.Get();
+        const int32 CurrentEmitterIndex=Target.EmitterIndex;
+        const FString EmitterName=Target.EmitterName;
         for (int32 NodeIndex = 0; NodeIndex < Graph->Nodes.Num(); ++NodeIndex)
         {
             UEdGraphNode* Node = Graph->Nodes[NodeIndex];
@@ -1699,10 +1784,25 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
             Match.Node = Node;
             Match.NodeIndex = NodeIndex;
             Match.MatchedPinNames = MatchedPinNames;
+            Match.SourcePath=GraphSource->GetPathName();Match.GraphPath=Graph->GetPathName();Match.SourceScope=Target.Scope;
             MatchedNodes.Add(Match);
 
             TSharedPtr<FJsonObject> CandidateObject = MakeShared<FJsonObject>();
             CandidateObject->SetStringField(TEXT("emitter_name"), EmitterName);
+            CandidateObject->SetStringField(TEXT("source_path"),Match.SourcePath);
+            CandidateObject->SetStringField(TEXT("graph_path"),Match.GraphPath);
+            CandidateObject->SetStringField(TEXT("source_scope"),Match.SourceScope);
+            // A system-owned module may also drive nonselected emitters. A node
+            // GUID narrows physical nodes, not the module's callers. Do not infer
+            // exclusive use from the traversal path by which we reached it.
+            UNiagaraEmitter* SelectedEmitter=EmitterHandles.IsValidIndex(CurrentEmitterIndex)?EmitterHandles[CurrentEmitterIndex].GetInstance().Emitter:nullptr;
+            const bool bRequiresSystemScope=bHasEmitterSelector&&(!SelectedEmitter||!GraphSource->IsIn(SelectedEmitter));
+            CandidateObject->SetBoolField(TEXT("requires_system_scope"),bRequiresSystemScope);
+            if(bRequiresSystemScope)
+            {
+                CandidateObject->SetStringField(TEXT("scope_warning"),TEXT("System-owned scratch can affect nonselected callers; omit emitter selectors to explicitly operate on the System scope"));
+                ScopeBlockedValues.Add(MakeShared<FJsonValueObject>(CandidateObject));
+            }
             CandidateObject->SetNumberField(TEXT("emitter_index"), CurrentEmitterIndex);
             CandidateObject->SetNumberField(TEXT("node_index"), NodeIndex);
             CandidateObject->SetStringField(TEXT("node_name"), Node->GetName());
@@ -1724,6 +1824,7 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         Result->SetBoolField(TEXT("success"), true);
         Result->SetBoolField(TEXT("skipped_no_matches"), true);
         Result->SetStringField(TEXT("system_path"), System->GetPathName());
+        Result->SetArrayField(TEXT("searched_graphs"),SearchedGraphs);
         Result->SetArrayField(TEXT("parameter_pin_names"), StringArrayToJsonValues(ParameterPinNames));
         Result->SetNumberField(TEXT("matched_node_count"), 0);
         Result->SetNumberField(TEXT("removed_node_count"), 0);
@@ -1734,12 +1835,30 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         return Result;
     }
 
+    // Scope permission is checked for every candidate before the first Modify,
+    // not item-by-item after an earlier selected graph may already have changed.
+    if(!bDryRun&&!ScopeBlockedValues.IsEmpty())
+    {
+        if(!ContinueRead())return W.Error(W.R.Error);
+        auto Result=MakeShared<FJsonObject>();Result->SetBoolField(TEXT("success"),false);
+        Result->SetStringField(TEXT("error_code"),TEXT("niagara_cleanup_system_scope_required"));
+        Result->SetStringField(TEXT("error"),TEXT("Selected emitter references System-owned scratch; explicit whole-System scope is required before any modification"));
+        Result->SetStringField(TEXT("system_path"),System->GetPathName());
+        Result->SetArrayField(TEXT("searched_graphs"),SearchedGraphs);Result->SetArrayField(TEXT("matched_nodes"),CandidateValues);
+        Result->SetArrayField(TEXT("scope_blocked_nodes"),ScopeBlockedValues);
+        Result->SetNumberField(TEXT("matched_node_count"),MatchedNodes.Num());Result->SetNumberField(TEXT("removed_node_count"),0);
+        Result->SetBoolField(TEXT("dry_run"),false);Result->SetBoolField(TEXT("compile_requested"),false);Result->SetBoolField(TEXT("saved"),false);
+        Result->SetStringField(TEXT("write_scope"),TEXT("parameter_map_set_remove_requires_system_scope"));
+        return Result;
+    }
+
     if (MatchedNodes.Num() > 1 && !bAllowMultiple)
     {
         if(!ContinueRead())return W.Error(W.R.Error);
     TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
         Result->SetBoolField(TEXT("success"), false);
         Result->SetStringField(TEXT("system_path"), System->GetPathName());
+        Result->SetArrayField(TEXT("searched_graphs"),SearchedGraphs);
         Result->SetArrayField(TEXT("parameter_pin_names"), StringArrayToJsonValues(ParameterPinNames));
         Result->SetNumberField(TEXT("matched_node_count"), MatchedNodes.Num());
         Result->SetArrayField(TEXT("matched_nodes"), CandidateValues);
@@ -1748,10 +1867,15 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         return Result;
     }
 
-    W.Before=W.Projection();
     if(!ContinueRead())return W.Error(W.R.Error);
     TArray<TSharedPtr<FJsonValue>> RemovedValues;
     TArray<TSharedPtr<FJsonValue>> FailedValues;
+    if(bDryRun)for(const auto& V:ScopeBlockedValues)
+    {
+        auto Failure=MakeShared<FJsonObject>();Failure->SetObjectField(TEXT("candidate"),V->AsObject());
+        Failure->SetStringField(TEXT("error"),TEXT("System-owned scratch requires explicit whole-System scope; no selected-emitter-only removal is admitted"));
+        FailedValues.Add(MakeShared<FJsonValueObject>(Failure));
+    }
     int32 RemovedNodeCount = 0;
 
     if (!bDryRun)
@@ -1807,6 +1931,9 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         {
             TSharedPtr<FJsonObject> FailedObject = MakeShared<FJsonObject>();
             FailedObject->SetStringField(TEXT("emitter_name"), Match.EmitterName);
+            FailedObject->SetStringField(TEXT("source_path"),Match.SourcePath);
+            FailedObject->SetStringField(TEXT("graph_path"),Match.GraphPath);
+            FailedObject->SetStringField(TEXT("source_scope"),Match.SourceScope);
             FailedObject->SetNumberField(TEXT("emitter_index"), Match.EmitterIndex);
             FailedObject->SetNumberField(TEXT("node_index"), Match.NodeIndex);
             FailedObject->SetStringField(TEXT("node_name"), Node ? Node->GetName() : FString());
@@ -1885,6 +2012,9 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
 
         TSharedPtr<FJsonObject> RemovedObject = MakeShared<FJsonObject>();
         RemovedObject->SetStringField(TEXT("emitter_name"), Match.EmitterName);
+        RemovedObject->SetStringField(TEXT("source_path"),Match.SourcePath);
+        RemovedObject->SetStringField(TEXT("graph_path"),Match.GraphPath);
+        RemovedObject->SetStringField(TEXT("source_scope"),Match.SourceScope);
         RemovedObject->SetNumberField(TEXT("emitter_index"), Match.EmitterIndex);
         RemovedObject->SetNumberField(TEXT("node_index"), Match.NodeIndex);
         RemovedObject->SetStringField(TEXT("node_name"), Node->GetName());
@@ -1915,6 +2045,7 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
         Result->SetBoolField(TEXT("success"), FailedValues.IsEmpty());
         Result->SetBoolField(TEXT("dry_run"), true);
         Result->SetStringField(TEXT("system_path"), System->GetPathName());
+        Result->SetArrayField(TEXT("searched_graphs"),SearchedGraphs);
         Result->SetArrayField(TEXT("parameter_pin_names"), StringArrayToJsonValues(ParameterPinNames));
         Result->SetNumberField(TEXT("matched_node_count"), MatchedNodes.Num());
         Result->SetNumberField(TEXT("would_remove_node_count"), FailedValues.IsEmpty() ? MatchedNodes.Num() : 0);
@@ -1964,6 +2095,7 @@ TSharedPtr<FJsonObject> HandleRemoveNiagaraParameterMapSetNodes(FWork& W,const T
     Result->SetBoolField(TEXT("success"), FailedValues.IsEmpty());
     Result->SetBoolField(TEXT("dry_run"), false);
     Result->SetStringField(TEXT("system_path"), System->GetPathName());
+    Result->SetArrayField(TEXT("searched_graphs"),SearchedGraphs);
     Result->SetArrayField(TEXT("parameter_pin_names"), StringArrayToJsonValues(ParameterPinNames));
     Result->SetNumberField(TEXT("matched_node_count"), MatchedNodes.Num());
     Result->SetNumberField(TEXT("removed_node_count"), RemovedNodeCount);
@@ -3266,11 +3398,16 @@ FString Finish(FWork& W,const TSharedPtr<FJsonObject>& Legacy,const TCHAR* Opera
     if(Success&&W.R.Error.IsEmpty()&&!W.Before&&!W.R.bMutationAttempted){W.Before=W.Projection();W.R.Data->SetStringField(TEXT("before_snapshot_scope"),TEXT("Successful no-op inventory after load/getter admission; not proof of pre-load or global SDK purity."));}
     if(W.Before)W.R.Data->SetObjectField(TEXT("before"),W.Before);
     if(W.R.Error.IsEmpty()&&W.Before){auto After=W.Projection();W.R.Data->SetObjectField(TEXT("before"),W.Before);W.R.Data->SetObjectField(TEXT("after"),After);bool B=false,A=false;W.Before->TryGetBoolField(TEXT("source_projection_complete"),B);After->TryGetBoolField(TEXT("source_projection_complete"),A);if(B&&A){W.R.bChanged|=!Json(W.Before).Equals(Json(After),ESearchCase::CaseSensitive);Complete=W.Admit(TEXT("final_target_admission"));}}
+    const bool KnownReadOnlyC3Refusal=FString(Operation)==TEXT("remove_niagara_parameter_map_set_nodes")&&!Success&&W.R.Error.IsEmpty()&&Complete&&W.Before
+        &&!W.R.bMutationAttempted&&!W.R.bCompileAttempted&&!W.R.bSaveAttempted&&!W.R.bSaved&&!W.R.bChanged&&!W.WaitDeferred
+        &&W.Saves.IsEmpty()&&W.Compiles.IsEmpty()&&W.MutationRows.IsEmpty()&&W.Partial.IsEmpty();
     if(!Success&&W.R.Error.IsEmpty()){FString Error,Code;if(Legacy){Legacy->TryGetStringField(TEXT("error"),Error);Legacy->TryGetStringField(TEXT("error_code"),Code);}W.Fail(Code.IsEmpty()?TEXT("niagara_cleanup_request_failed"):*Code,Error.IsEmpty()?TEXT("Original cleanup returned failure; see legacy_result."):Error);}
     if(!W.SaveHealth&&W.R.Error.IsEmpty())W.Fail(TEXT("niagara_cleanup_save_failed"),TEXT("At least one actual save failed; preceding removal/save history retained."));
-    W.R.bSuccess=Success&&W.R.Error.IsEmpty();W.R.bPostconditionPassed=W.R.bSuccess;const bool ScopedKnown=W.R.bSuccess&&W.R.bPostconditionPassed&&Complete;if(ScopedKnown)W.R.bChangeStateKnown=true;
+    W.R.bSuccess=Success&&W.R.Error.IsEmpty();W.R.bPostconditionPassed=W.R.bSuccess;const bool ScopedKnown=(W.R.bSuccess&&W.R.bPostconditionPassed&&Complete)||KnownReadOnlyC3Refusal;if(ScopedKnown)W.R.bChangeStateKnown=true;
+    W.R.Data->SetBoolField(TEXT("known_read_only_C3_refusal"),KnownReadOnlyC3Refusal);
+    if(KnownReadOnlyC3Refusal)W.R.Data->SetStringField(TEXT("known_rejection_scope"),TEXT("C3 semantic refusal with no explicit writer/compile/save: complete equal before/after selected target projections and exact final admission. Captured scope begins after load/source inventory; SDK/global purity remains unverified. Semantic success/postcondition remain false."));
     W.R.Data->SetObjectField(TEXT("legacy_result"),Legacy?Legacy:MakeShared<FJsonObject>());W.R.Data->SetStringField(TEXT("operation"),Operation);W.R.Data->SetBoolField(TEXT("operation_complete"),true);W.R.Data->SetBoolField(TEXT("postcondition_passed"),W.R.bPostconditionPassed);W.R.Data->SetArrayField(TEXT("actual_save_prefix"),W.Saves);W.R.Data->SetArrayField(TEXT("actual_compile_prefix"),W.Compiles);W.R.Data->SetArrayField(TEXT("actual_item_prefix"),W.Partial);W.R.Data->SetArrayField(TEXT("actual_sdk_prefix"),W.MutationRows);W.R.Data->SetBoolField(TEXT("scoped_target_observation_complete"),Complete);W.R.Data->SetBoolField(TEXT("scoped_target_change_state_known"),ScopedKnown);
-    W.R.Data->SetStringField(TEXT("scoped_known_scope"),TEXT("Successful complete dedicated target projection and final exact object/source/version/physical graph/pin/link/stage/scratch admission only. Loader/getter/compile/global caches and every source property are outside this target scope."));
+    W.R.Data->SetStringField(TEXT("scoped_known_scope"),TEXT("Complete dedicated selected-target projection and final exact object/source/version/physical graph/pin/link/stage/scratch admission. C3 no-writer semantic refusals additionally require equal before/after checkpoints; success/postcondition remain independent. Loader/global SDK effects and uncaptured source properties are outside this target scope."));
     W.R.Data->SetStringField(TEXT("compile_scope"),TEXT("Actual RequestCompile acceptance/return is separate from compile-idle, shader/GPU/effective completion. No GT sleep/poll/process/flush. Required changing wait and User apply remain explicit incomplete until official deferred final continuation is connected."));
     W.R.Data->SetStringField(TEXT("save_scope"),TEXT("Actual SaveLoadedAsset/SavePackage returned true is OR history and survives later guard/dirty/wait failure. No unconditional dirty flag clearing after post-save callbacks. Save is not atomic cleanup or rollback."));
     W.R.Data->SetBoolField(TEXT("required_compile_wait_implemented"),false);W.R.Data->SetBoolField(TEXT("user_parameter_apply_implemented"),false);W.R.Data->SetBoolField(TEXT("atomic_asset_or_undo_rollback_verified"),false);W.R.Data->SetBoolField(TEXT("Cubeless_runtime_asset_dependency_allowed"),false);
@@ -3367,6 +3504,9 @@ struct FJobState:TSharedFromThis<FJobState>
         bool OriginalSuccess=false;if(Legacy)Legacy->TryGetBoolField(TEXT("success"),OriginalSuccess);bool Complete=false;
         if(W.R.Error.IsEmpty()&&OriginalSuccess&&!W.Before&&!W.R.bMutationAttempted){W.Before=W.Projection();W.R.Data->SetStringField(TEXT("before_snapshot_scope"),TEXT("Successful no-op inventory after load/getter admission; not pre-load/global purity proof."));}
         if(W.R.Error.IsEmpty()&&W.Before){auto After=W.Projection();W.R.Data->SetObjectField(TEXT("after"),After);bool B=false,A=false;W.Before->TryGetBoolField(TEXT("source_projection_complete"),B);After->TryGetBoolField(TEXT("source_projection_complete"),A);if(B&&A){W.R.bChanged|=!Json(W.Before).Equals(Json(After),ESearchCase::CaseSensitive);Complete=W.Admit(TEXT("final_exact_target_admission"));}}
+        const bool KnownReadOnlyC3Refusal=Operation==TEXT("remove_niagara_parameter_map_set_nodes")&&!OriginalSuccess&&W.R.Error.IsEmpty()&&Complete&&W.Before
+            &&!W.R.bMutationAttempted&&!W.R.bCompileAttempted&&!W.R.bSaveAttempted&&!W.R.bSaved&&!W.R.bChanged&&!W.WaitDeferred
+            &&W.Saves.IsEmpty()&&W.Compiles.IsEmpty()&&W.MutationRows.IsEmpty()&&W.Partial.IsEmpty();
         if(!OriginalSuccess&&W.R.Error.IsEmpty()){FString Error;if(Legacy)Legacy->TryGetStringField(TEXT("error"),Error);W.Fail(TEXT("niagara_cleanup_request_failed"),Error.IsEmpty()?TEXT("Original cleanup semantic failure; partial results retained."):Error);}
         if(!W.SaveHealth&&W.R.Error.IsEmpty())W.Fail(TEXT("niagara_cleanup_save_failed"),TEXT("Actual save failed; preceding removal/save history retained."));
         if(!GlobalsSafe()){Quarantine(TEXT("Unsafe final target observation; actual history retained without terminal publication."));return;}
@@ -3380,8 +3520,10 @@ struct FJobState:TSharedFromThis<FJobState>
         const bool KnownPreSDKRejection=!OriginalSuccess&&!W.R.Error.IsEmpty()&&W.Calls==0&&W.Counts->Values.IsEmpty()&&!SDKUnverified
             &&!W.R.bMutationAttempted&&!W.R.bCompileAttempted&&!W.R.bSaveAttempted&&!W.R.bSaved&&!W.R.bChanged
             &&W.Objects.IsEmpty()&&!W.System.IsValid()&&!W.Before&&!W.WaitDeferred&&W.Saves.IsEmpty()&&W.Compiles.IsEmpty()&&W.MutationRows.IsEmpty();
-        const bool Known=(W.R.bSuccess&&Complete)||KnownPreSDKRejection;W.R.bChangeStateKnown=Known;
-        W.R.Data->SetBoolField(TEXT("scoped_target_observation_complete"),Complete);W.R.Data->SetBoolField(TEXT("scoped_target_change_state_known"),W.R.bSuccess&&Complete);
+        const bool Known=(W.R.bSuccess&&Complete)||KnownPreSDKRejection||KnownReadOnlyC3Refusal;W.R.bChangeStateKnown=Known;
+        W.R.Data->SetBoolField(TEXT("scoped_target_observation_complete"),Complete);W.R.Data->SetBoolField(TEXT("scoped_target_change_state_known"),(W.R.bSuccess&&Complete)||KnownReadOnlyC3Refusal);
+        W.R.Data->SetBoolField(TEXT("known_read_only_C3_refusal"),KnownReadOnlyC3Refusal);
+        if(KnownReadOnlyC3Refusal)W.R.Data->SetStringField(TEXT("known_rejection_scope"),TEXT("C3 semantic refusal with no explicit writer/compile/save: complete equal before/after selected target projections and exact final admission. Captured scope begins after load/source inventory; SDK/global purity remains unverified. Semantic success/postcondition remain false."));
         W.R.Data->SetBoolField(TEXT("known_pre_SDK_rejection"),KnownPreSDKRejection);
         W.R.Data->SetBoolField(TEXT("no_target_SDK_dispatch"),W.Calls==0&&W.Counts->Values.IsEmpty()&&!SDKUnverified);
         if(KnownPreSDKRejection)W.R.Data->SetStringField(TEXT("known_rejection_scope"),TEXT("Terminal semantic refusal before any target SDK dispatch, capture, mutation, compile or save. No target projection or semantic success is claimed; pending/publication and post-SDK failure uncertainty are unchanged."));

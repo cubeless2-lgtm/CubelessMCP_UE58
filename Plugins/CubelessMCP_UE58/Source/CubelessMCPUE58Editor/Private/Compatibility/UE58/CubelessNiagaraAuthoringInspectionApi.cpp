@@ -345,6 +345,27 @@ TSharedPtr<FJsonObject> BuildNiagaraScriptCompileStatusJson(
     ScriptObject->SetBoolField(TEXT("has_warning"), IsNiagaraCompileWarningStatus(Status));
     ScriptObject->SetBoolField(TEXT("is_ready_cpu"), Script->IsReadyToRun(ENiagaraSimTarget::CPUSim));
     ScriptObject->SetBoolField(TEXT("is_ready_gpu"), Script->IsReadyToRun(ENiagaraSimTarget::GPUComputeSim));
+    // IsReadyToRun(GPU) checks VM/DI compatibility, not the current RHI shader map.
+    // Keep that legacy field intact and report the public shader result separately.
+    const bool bGPUShaderApplicable = Script->GetUsage() == ENiagaraScriptUsage::ParticleGPUComputeScript;
+    ScriptObject->SetBoolField(TEXT("gpu_shader_compilation_applicable"), bGPUShaderApplicable);
+    if (bGPUShaderApplicable)
+    {
+        const bool bShaderPending = Script->IsScriptCompilationPending(true);
+        const bool bShaderSucceeded = Script->DidScriptCompilationSucceed(true);
+        ScriptObject->SetBoolField(TEXT("gpu_shader_compilation_pending"), bShaderPending);
+        ScriptObject->SetBoolField(TEXT("gpu_shader_compilation_succeeded"), bShaderSucceeded);
+        ScriptObject->SetBoolField(TEXT("gpu_ready_to_execute"),
+            !bShaderPending && bShaderSucceeded && Script->IsReadyToRun(ENiagaraSimTarget::GPUComputeSim)
+            && (Status == ENiagaraScriptCompileStatus::NCS_UpToDate
+                || IsNiagaraCompileWarningStatus(Status)));
+    }
+    else
+    {
+        ScriptObject->SetField(TEXT("gpu_shader_compilation_pending"), MakeShared<FJsonValueNull>());
+        ScriptObject->SetField(TEXT("gpu_shader_compilation_succeeded"), MakeShared<FJsonValueNull>());
+        ScriptObject->SetField(TEXT("gpu_ready_to_execute"), MakeShared<FJsonValueNull>());
+    }
     if(!Current->After(TEXT("script_compile_status_snapshot"))) return ScriptObject;
     return ScriptObject;
 }

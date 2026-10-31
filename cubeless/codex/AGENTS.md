@@ -46,3 +46,5 @@ These standing rules cover Unreal production using official UE MCP and Cubeless 
 - The development checkout keeps previous instructions under `cubeless/records/operations/2026-10-25-agent-reorganization/` and historical lessons under `cubeless/codex/knowledge/`. These local records/archive are not required distribution files. Historical phase orders, permissions, stop conditions, PIDs and DLLs never authorize or constrain a new task by themselves.
 - `archive/ue56/` and old `.source` files are historical evidence only. UE5.6 source remains read-only unless the user explicitly requests work there. Historical lessons retain their stated engine/proof levels.
 - Do not stage, commit or push without the user's explicit request. Keep each repository's Git scope separate.
+
+- Owned verification Editor cleanup is part of task completion. Follow [verification lifecycle](workflows/verification-lifecycle.md); release keep-alive and confirm the exact owned PID exits. Never close the main/user Editor or leave an unreported background verification session.

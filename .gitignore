@@ -58,10 +58,12 @@
 !/cubeless/codex/workflows/production.md
 !/cubeless/codex/workflows/packaging.md
 !/cubeless/codex/workflows/migration.md
+!/cubeless/codex/workflows/verification-lifecycle.md
 /cubeless/tools/*
 !/cubeless/tools/run_pipeline.py
 !/cubeless/tools/package_distribution.py
 !/cubeless/tools/official_mcp_client.py
+!/cubeless/tools/finish_verification_editor.py
 !/cubeless/tools/pipeline-requirements.txt
 !/cubeless/tools/pipelines/
 /cubeless/tools/pipelines/*

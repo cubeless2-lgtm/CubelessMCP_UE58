@@ -8,3 +8,5 @@
 6. Report delivered output, checks performed, failed/not-run checks and limitations. Record normal operations separately from migration history. Continue the authorized task to completion, without resuming unrelated legacy work.
 
 For repeat work within the approved task, apply the single [pipeline promotion policy](../policies/pipeline-promotion.md). Promotion does not expand asset mutation or Git permission. User-specific production recipes remain separate from reusable tool implementation.
+
+7. Close owned verification sessions using [verification lifecycle](verification-lifecycle.md), including failure/exception paths. Report a retained session and reason when safe cleanup cannot complete.

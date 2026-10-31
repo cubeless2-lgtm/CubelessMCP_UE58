@@ -1987,3 +1987,5 @@ Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/Cubel
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessAnimationEditingLibrary.cpp
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessAnimationEditingApi.h
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessAnimationEditingApi.cpp
+cubeless/codex/workflows/verification-lifecycle.md
+cubeless/tools/finish_verification_editor.py

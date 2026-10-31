@@ -7,3 +7,5 @@ Serialize asset mutations. Batch related edits and consolidate compilation where
 Record preconditions and each completed stage. On timeout, disconnect or ambiguous result, mark outcome unknown and stop mutation retries. Reconnect and inspect target state before deciding whether a new operation is safe. Cancellation acknowledgement is not proof the engine stopped. Report partial modifications even when the request fails.
 
 Cleanup is a separate operation restricted to the exact run's test assets. It must preserve reports and must never hide the original failure. Asset creation is not transactional rollback. Do not describe transactions or Undo as all-or-nothing protection.
+
+Verification lifecycle: before finishing an owned test run, follow [verification lifecycle](../workflows/verification-lifecycle.md). Finish/cancel and reconcile owned jobs first; preserve dirty or uncertain state instead of force killing, silently saving or discarding it.

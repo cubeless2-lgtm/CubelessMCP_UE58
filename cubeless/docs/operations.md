@@ -96,3 +96,16 @@ User 선언이나 component setter의 성공은 모듈 소비의 증거와 구�
 편집 호출은 `save=false`로 묶고 확인한 소유 패키지만 별도로 저장합니다. 생성 기본 save=true·편집 실행기 기본 save=false 및 Blueprint 바인딩/manifest 저장 정책은 바꾸지 않았습니다. 사용자 월드를 저장하거나 save-all을 호출하지 않습니다. 실패 시 원시 결과의 `changes`, `compile`, `save`, `retry`, 상세 `data`를 함께 확인합니다. 이번 의도적 HLSL 오류에서는 그래프 수정·컴파일 실패·미저장이 관측됐고, 원 API의 불확실 상태는 그대로 보존했습니다. 후속 읽기와 별도 보존 저장은 원 실패의 성공이나 자동 재시도로 처리하지 않았습니다. `NS_CompileFailure`는 의도적인 컴파일 오류를 보존한 소유 테스트 에셋이며 정상 사용·게임 콘텐츠의 대상이 아닙니다.
 
 CPU/GPU 대표 렌더의 색상·크기 반영과 종료를 확인했으며, 정확한 GPU 파티클 수·좌표·모든 타입/플랫폼의 지원을 검증한 것은 아닙니다. 관측은 Windows D3D12/SM6·RTX 5060 Laptop GPU·256×256/FOV45 고정 상대 카메라에서 수행했습니다. GPU seed를 고정하지 않아 완전한 결정성을 주장하지 않습니다. 새 패키징은 수행하지 않았으며 기존 런타임 모듈 구조는 유지했습니다. 원시 성공·실패, 저장·재로드, 소스 검토와 적용 DLL 근거는 `cubeless/records/operations/niagara-practical-20261031/report.json`에 통합합니다.
+
+
+## DataTable 새 생성과 기존 행 편집의 지원 범위 — 2026-10-31
+
+공식 MCP의 `cubeless_mcp_ue58.registration.datatable_toolset.CubelessDataTableTools`를 사용한다. 기존 CRUD가 허용하는 saved-clean compiled UDS의 bounded 배열·중첩 UDS·Set/Map·byte enum·resident hard/soft 참조 필드도 `create_datatable`에서 같은 source/default/수명 보호를 거쳐 새 ordinary UDataTable을 생성할 수 있다. 새 공개 도구나 통신 경로를 추가하지 않았다. 기존 경로의 타입·깊이·원소 수·참조 제한과 K2 제한은 유지한다.
+
+```json
+{"asset_path":"/Game/Data/DT_Item","row_struct_path":"/Game/Data/S_ItemRow","save":false}
+```
+
+`asset_path`는 존재하지 않는 새 대상이어야 하며 `row_struct_path`는 먼저 저장하고 컴파일한 구조체다. dirty 구조체와 기존 대상은 변경 전에 거절한다. `save`의 기존 기본값은 true이며 false는 생성/행 수정만 하고 파일 저장을 요청하지 않는다. true는 검사한 대상 DataTable 패키지를 직접 저장하며 원본 구조체·열거형·참조 에셋을 자동 저장하지 않는다. 실패하면 success/error와 changes/save/data의 실제 변경·저장 결과를 확인한다. 원자적 롤백과 자동 재실행은 제공하지 않는다.
+
+UE5.8.4에서 byte enum+double 필드 구조체의 생성→행 추가·수정→명시 저장→새 에디터 재로드, 기존 대상/dirty source 거절을 확인했다. 후속 검증에서 int32/FString 배열, 중첩 UDS, int Set, Name→int Map의 생성·행 저장·새 프로세스 재로드와 resident CurveFloat의 non-null hard/soft 기본 참조 보존도 통과했다. 각 유형의 대표 경로 근거이며 모든 조합·경계 크기·콜백 변형의 검증 완료를 뜻하지 않는다. 후속 원시 근거는 `cubeless/records/operations/datatable-variants-20261031/report.json`이다. 전체 원본 계약이나 모든 변형 검증 완료를 의미하지 않는다. 기존 행 편집의 성공 증거는 재사용한다. 원시 근거는 로컬 `cubeless/records/operations/datatable-support-20261031/report.json`이며 배포 자료에 포함하지 않는다.

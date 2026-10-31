@@ -1,6 +1,6 @@
 # Tool optimization without feature loss
 
-Keep every legacy surface identity in the migration ledger. Counts of Python wrappers, native routes, reflected helpers and pipelines overlap; subtraction is not a duplicate count.
+When the requested optimization affects legacy contracts, preserve the affected surface identities in the migration ledger; unrelated legacy coverage is not part of the task. Counts of Python wrappers, native routes, reflected helpers and pipelines overlap; subtraction is not a duplicate count.
 
 - Preserve existing public contracts and composite/batch workflows. Share implementation behind compatibility wrappers when defaults, output, failure boundaries or verification differ. Never remove a tool because its name resembles an official tool.
 - Distinguish confirmed aliases, shared operation cores with different contracts, composite orchestration, transport-only infrastructure, and unresolved similarity. Record source path/line and runtime schema evidence separately from behavioral equivalence.
@@ -10,4 +10,4 @@ Keep every legacy surface identity in the migration ledger. Counts of Python wra
 - Claim an official replacement only after comparing input/defaults/selectors, output schema, missing/ambiguous/conflicting input errors, partial effects, transaction/dirty/compile/save behavior, retries and independent readback/reload. Composition of official APIs can implement a legacy workflow without proving one-tool equivalence.
 - Measure actual API traversal/call counts and elapsed time under stated fixture size, cache, editor process and compile/save workload. Single-trial observations are not reliable speedup estimates.
 
-Optimization evidence belongs in `cubeless/records/migration/` for contracts and `cubeless/records/verification/` for executions. Historical reports remain immutable; versioned new evidence documents tightened checks or changed registration.
+Record ordinary optimization decisions in `cubeless/records/operations/`, migration-specific contract evidence in `cubeless/records/migration/`, and executable evidence in `cubeless/records/verification/`. Historical reports remain immutable; versioned new evidence documents tightened checks or changed registration.

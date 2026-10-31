@@ -295,6 +295,8 @@ TSharedPtr<FJsonObject> AnimNotifyEventToJson(
     if(!Row()) { return MakeShared<FJsonObject>(); }Count(TEXT("AnimNotifyEventToJson_calls"));
     TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
     Object->SetNumberField(TEXT("index"), NotifyIndex);
+    Object->SetStringField(TEXT("guid"), NotifyEvent.Guid.ToString());
+    Object->SetNumberField(TEXT("time"), NotifyEvent.GetTime());
     Object->SetStringField(TEXT("name"), NotifyEvent.NotifyName.ToString());
     Object->SetStringField(TEXT("event_name"), NotifyEvent.GetNotifyEventName().ToString());
     Object->SetNumberField(TEXT("trigger_time"), NotifyEvent.GetTriggerTime());

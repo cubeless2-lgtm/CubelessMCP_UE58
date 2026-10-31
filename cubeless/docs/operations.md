@@ -109,3 +109,65 @@ CPU/GPU 대표 렌더의 색상·크기 반영과 종료를 확인했으며, 정
 `asset_path`는 존재하지 않는 새 대상이어야 하며 `row_struct_path`는 먼저 저장하고 컴파일한 구조체다. dirty 구조체와 기존 대상은 변경 전에 거절한다. `save`의 기존 기본값은 true이며 false는 생성/행 수정만 하고 파일 저장을 요청하지 않는다. true는 검사한 대상 DataTable 패키지를 직접 저장하며 원본 구조체·열거형·참조 에셋을 자동 저장하지 않는다. 실패하면 success/error와 changes/save/data의 실제 변경·저장 결과를 확인한다. 원자적 롤백과 자동 재실행은 제공하지 않는다.
 
 UE5.8.4에서 byte enum+double 필드 구조체의 생성→행 추가·수정→명시 저장→새 에디터 재로드, 기존 대상/dirty source 거절을 확인했다. 후속 검증에서 int32/FString 배열, 중첩 UDS, int Set, Name→int Map의 생성·행 저장·새 프로세스 재로드와 resident CurveFloat의 non-null hard/soft 기본 참조 보존도 통과했다. 각 유형의 대표 경로 근거이며 모든 조합·경계 크기·콜백 변형의 검증 완료를 뜻하지 않는다. 후속 원시 근거는 `cubeless/records/operations/datatable-variants-20261031/report.json`이다. 전체 원본 계약이나 모든 변형 검증 완료를 의미하지 않는다. 기존 행 편집의 성공 증거는 재사용한다. 원시 근거는 로컬 `cubeless/records/operations/datatable-support-20261031/report.json`이며 배포 자료에 포함하지 않는다.
+
+
+## 애니메이션 에셋 편집 도구 — 2026-10-31
+
+비교·보강 기준은 **공식 UE 5.8 Toolset + Cubeless**다. Monolith는 기능 공백을 찾는 참고 자료이며, 그 등록 구조·입출력·개수를 우리 계약으로 채택하지 않는다. 공식 Control Rig·Sequencer·SkeletalMesh, 기존 Cubeless의 메타데이터·Rig·BlendSpace·상태 머신 도구를 재사용한다. Montage 블렌드 시간은 공식 `editor_toolset.toolsets.object.ObjectTools.set_properties`로 실제 편집·조회·저장/재로드를 확인해 신규 도구에서 제외했다. 예: `values={"BlendIn":{"BlendTime":0.12},"BlendOut":{"BlendTime":0.18}}`를 JSON 문자열로 전달한다. 이 공식 경로의 bool 결과는 Cubeless의 구조화된 실패 결과와 동일한 계약이라는 뜻은 아니다.
+
+새 Toolset은 `cubeless_mcp_ue58.registration.animation_editing_toolset.CubelessAnimationEditingTools`다. 개별 공개 도구 17개가 하나의 Editor 전용 작업 구현을 공유한다. 범용 실행 도구로 대체하지 않으며, 공식 MCP나 엔진 소스는 수정하지 않았다.
+
+| 작업 | 호출 이름 |
+|---|---|
+| float 커브 | `add_animation_float_curve`, `set_animation_float_curve_keys`, `remove_animation_float_curve` |
+| Notify 트랙 | `add_animation_notify_track`, `remove_animation_notify_track` |
+| Notify/State | `add_animation_notify`, `add_animation_notify_state`, `set_animation_notify_timing`, `remove_animation_notify` |
+| Sync Marker | `add_animation_sync_marker`, `rename_animation_sync_marker`, `remove_animation_sync_markers` |
+| Montage 섹션 | `add_montage_section`, `set_montage_section_next`, `set_montage_section_time`, `remove_montage_section` |
+| Montage 슬롯 | `add_montage_slot` |
+
+```json
+{"asset_path":"/Game/Animations/A_Run","curve_name":"FootLock","execute":true}
+```
+
+위 입력은 `add_animation_float_curve`에 전달한다. 이어서 `set_animation_float_curve_keys`에 `keys_json="[[0,0],[0.1,1],[0.2,0]]"`를 전달한다. `execute`를 생략하면 사전 검사만 수행한다. 기본 `save=false`이며 같은 패키지에 이전 dirty 작업이 있는 상태에서 저장하려면 `save=true, allow_save_dirty_package=true`를 함께 명시한다. 저장은 그 패키지의 다른 객체를 포함할 수 있으며, 다른 패키지나 월드를 자동 저장하지 않는다. 삭제는 `execute=true, allow_remove=true`가 필요하다. 각 API의 반환 JSON에서 `stage`, `mutation_attempted`, `changed`, `change_state_known`, `save_attempted`, `saved`, `retry_risk`를 확인한다. `change_state_known=false`이면 실제 상태를 먼저 조회하며 자동 재실행하지 않는다. 저장 콜백 후 검수가 실패해도 실제 `saved` 값은 유지한다.
+
+기존 `inspect_animation_asset_metadata_guarded`를 조회에 사용한다. Notify 행에 안정적인 편집 식별자인 `guid`와 authored `time`을 추가했다. `remove_animation_notify`와 `set_animation_notify_timing`은 이 GUID를 사용하며 이름·순서로 대상을 추정하지 않는다. 새 Notify 생성 결과도 GUID를 반환한다.
+
+지원 조건과 차이:
+
+- `/Game`의 실제 `AnimSequence`·`AnimMontage`를 명시적으로 지정한다. PIE/SIE·GC·저장 중·종료 중 호출, 로드 미완료 객체, 부모 에셋 또는 로드된 자식 에셋이 있는 대상은 거절한다. Montage의 `PostEditChangeProperty→PropagateChanges`가 다른 에셋을 수정할 수 있으므로 부모/자식 전파 지원은 별도 범위다.
+- 커브 편집은 **float 커브와 선형 기본 키**를 지원한다. vector/transform·메타데이터 커브·사용자 지정 탄젠트 편집을 구현했다고 표현하지 않는다. 키 설정은 전체 교체이며 기존 탄젠트를 보존하는 병합이 아니다. 설치 `AnimationSequencerDataModel`은 모델 프레임 또는 240000fps 채널로 시간을 변환하고 선형 탄젠트를 생성한다. 프레임 충돌은 쓰기 전에 거절하며, 검수는 이 확인된 모델의 변환만 예상한다.
+- Notify는 이미 로드된 구체 클래스의 기본 인스턴스를 생성한다. 기본값과 다른 커스텀 생성자 결과는 거절될 수 있다. State는 양의 duration을 사용하고 일반 Notify의 duration은 0이다. 트랙 삭제는 비어 있는 마지막이 아닌 트랙만 허용한다. 내용의 연쇄 삭제를 제공하지 않는다.
+- Marker 삭제·이름 변경은 일치하는 모든 이름을 대상으로 한다. 변경할 새 이름이 이미 있으면 병합하지 않고 거절한다.
+- 새 Montage 섹션은 기존 다음 섹션 링크를 자동 연결하지 않는다. 삭제는 해당 섹션을 가리키는 링크를 종료로 바꾼다. 마지막 섹션·time0 섹션 삭제와 시작 섹션을 0에서 이동시키는 작업은 거절한다.
+- 슬롯은 Skeleton에 이미 존재하고 기존 Montage 슬롯과 같은 그룹이어야 한다. 반환 `skeleton_slot_groups`로 후보를 확인한다. Skeleton 슬롯 생성이나 애니메이션 segment 추가는 이 작업에 포함하지 않는다.
+- 보호 관측은 대상의 편집 값, Notify 객체 값/GUID, 커브, 본 트랙, 슬롯/segment의 authored 참조·trim·배치·속도·루프, 섹션·메타데이터와 Skeleton/소켓/참조 포즈를 대상으로 한다. 재생성 가능한 캐시를 authored 불변 값으로 취급하지 않는다. 전역 모든 객체나 임의 외부 콜백 부작용을 원자적으로 막는 기능은 아니다.
+- 명시적 graph compiler 호출은 없다. 엔진의 재압축·캐시 작업이 예약될 수 있으며 성공 반환을 압축/GPU/실제 재생 준비 완료로 해석하지 않는다. 원자적 롤백과 자동 재시도는 제공하지 않는다. 한도는 도구 설명을 따른다.
+
+UE 5.8.4에서 공식 MCP 등록·스키마, 대표 편집/의도한 사전 거절, 명시 저장과 새 프로세스 재로드를 확인했다. 검증 중 커브의 생성 탄젠트 오판과 슬롯 `changed` 집계 결함을 발견해 수정했으며, 원 실패와 별도 보존 저장은 분리했다. 원시 근거·남은 차이는 로컬 `cubeless/records/operations/animation-gap-20261031/`에 있다. 전 기능 조합, 임의 커스텀 Notify 콜백 주입과 독립 패키징 검증 완료를 의미하지 않는다. PoseSearch·Chooser와 나머지 범용 AnimGraph 공백은 별도 후속 후보이며, 이 17개를 전체 애니메이션 공백 해소로 집계하지 않는다.
+
+최초 대상 해석에서 실제 에셋 로드가 필요하면 `asset_load_attempted=true`다. PostLoad/전역 로드 콜백 이전 구간을 관측했다고 주장하지 않도록 전체 `change_state_known=false`와 `retry_risk=inspect_actual_target_after_asset_load`를 유지하고, 엔진 편집 구간의 `native_changed`·`native_change_state_known`를 별도로 반환한다. 다른 도구나 UI가 먼저 로드한 대상의 원래 디스크 링크를 이 API가 소급 증명하는 것은 아니다. 조회가 로드 이전 값의 보존 검증을 대신하지 않는다. 실패 시 최초 로드의 영향도 확인하며 수정 요청을 자동 재실행하지 않는다.
+
+Montage의 입력 시간과 기존 Notify·섹션은 캐시된 길이만 믿지 않고 실제 슬롯 세그먼트의 타임라인에 대조한다. 타임라인 밖의 기존 authored 데이터는 쓰기 전에 거절한다. 검증용으로 세그먼트만 제거하고 이벤트·섹션을 남긴 잘못된 자료는 재로드에서 엔진의 시간 보정이 발생했으므로 정상 보존 근거에서 제외했다. 별도로 만든 빈 Montage에서는 슬롯 추가·`changed=true`·저장·재로드를 확인한다. 잘못된 원 자료와 실패 결과는 유지한다. 독립 리뷰와 임의 콜백/특수 변형의 심화 검증은 이번 최소 검증과 구분한다.
+
+
+2026-10-31 리뷰 수리: P2 다섯 건을 보완했다. CDO와 새 인스턴스의 `CanBePlaced`로 배치 적합성을 검사하고, 생성·이름·배치 콜백 전에 CDO 값을 고정한다. 기존 Notify는 GUID별 실제 객체·serial·클래스·Outer를 유지하며, 시간 편집은 시작/끝 슬롯과 링크 방식을 보존한다. Relative/Proportional의 새 시간에 기존 슬롯의 세그먼트가 없으면 쓰기 전에 거절한다. 콜백 오류·보존 검사 실패 이후에는 다음 쓰기·저장을 진행하지 않는다.
+
+네이티브 호출 후 Python 결과 전달이 실패하면 해당 호출 토큰의 결과만 조회하며 수정은 재실행하지 않는다. 실제 저장이 성공했다면 원 요청은 실패로 남기되 `save_attempted=true`, `saved=true`를 유지한다. 네이티브 결과를 회수하지 못하면 `save_state_known=false`, `save_attempted=null`, `saved=null`이므로 대상·디스크와 저널을 먼저 확인한다. `change_state_known=false`도 재실행 허가가 아니다. 콜백의 실제 부작용이나 이미 완료된 저장을 자동으로 되돌리지 않는다.
+
+UE 5.8.4에서 올바른 Montage State 생성·이동·삭제, Sequence의 Montage 전용 State 사전 거절, 동일 경로 객체 교체, CDO 변조, 스크립트 예외, 저장 이후 콜백 변조와 결과 전달 예외를 확인했다. 기존 17개 기본 경로 근거에 유효한 State 근거를 보충하며 전체 고급 지원 완료와 구분한다. 비기본 슬롯의 현재 편집 중 보존은 확인했지만, 설치 엔진 `UAnimMontage::PostLoad`는 Notify를 기본 슬롯0으로 다시 연결한다(`AnimMontage.cpp:433–453`). 이 엔진의 콜드 재로드 동작을 이번 API가 수정하거나 비기본 링크의 영구 보존을 보장하지는 않는다. 일반 경로의 저장·재로드는 별도 근거로 확인한다. 독립 재리뷰에서 기존 다섯 수리를 확인했고 추가 경로 상한 결함도 보완했다. 원 실패·검수 오판·후속 보존 저장·검증 수준은 로컬 `cubeless/records/operations/animation-gap-fixes-20261031/` 및 기존 기능군 보고서에 남긴다.
+
+애니메이션 후속 보강: `notify_class`는 이미 로드된 top-level `/Package.Class` 경로를 사용한다. 전체 패키지 경로와 클래스 이름 각각이 1024 UTF-16 단위 미만이어야 하며, subobject `:`, export-text 따옴표, 역슬래시와 클래스 이름 내부 `/`는 허용하지 않는다. Python과 Native 모두 엔진 이름 조회 전에 검사한다.
+
+현재 설치 엔진의 Montage 재로드에서 비기본 Notify 링크가 실제로 슬롯0으로 바뀌는 것을 확인했다. 비기본 시작 슬롯 또는 State 끝 슬롯이 남는 모든 Montage `save=true` 요청은 `montage_nondefault_notify_link_save_refused`로 `Modify` 전에 거절한다. `save=false` 편집은 허용하고 `nondefault_montage_notify_links`에 영향 GUID와 슬롯, `persistence_warning`에 수동 저장·재로드 위험을 반환한다. 명시적으로 삭제할 Notify만 검사에서 제외하며, 다른 비기본 링크가 남으면 여전히 저장할 수 없다. 엔진을 수정하거나 MCP 전용 메타데이터·로드 보정 의존성을 출력 에셋에 추가하지 않았다. 비기본 링크의 영구 보존은 해결 완료가 아니다.
+
+등록형 Python 클래스나 요청 이후까지 살아야 하는 콜백을 검증할 때는 실제 Python 모듈을 import해 globals 수명을 유지한다. 임시 `exec` 사전을 실행 뒤 `clear()`하는 방식은 이 설치 환경의 CPython 종료 중 오류를 재현했다. 같은 기능 빌드에서 지속 모듈 방식은 정상 종료했으며, 로컬 검증 실행기도 이 방식으로 수정했다. 이 근거를 임의 Python 코드나 모든 엔진 종료 경로의 안전성 보장으로 확대하지 않는다.
+
+
+콜드 로드 저장 보호 후속 수리: 이 API가 직접 획득·로드한 Montage는 `montage_load_state_unverified=true`로 표시하며, `montage_unobserved_load_save_refused`로 `save=true`를 변경 전에 거절한다. Native weak object/serial 기록은 같은 객체의 별칭·후속 warm 요청·어댑터 재로드에도 유지된다. 로드 후 SDK 예외로 Native 호출까지 도달하지 못한 경우에는 로드 전에 남긴 Python pending 경로를 재로드에도 유지한다. 사전 검사, `save=false` 편집, `allow_save_dirty_package=true`로 이 보호를 해제하지 않는다. 해당 객체의 기본 슬롯0이 정상 원본이었다고 자동 추정하지 않으며, 검증되지 않은 저장을 다시 시도하지 않는다. `save=false` 편집은 가능하지만 원본 링크의 영구 보존을 보장하지 않는다. 현재 세션에서 이미 관측한 정상 메모리 대상 및 Sequence 경로는 이 신규 콜드 획득 제한과 구분한다. 다른 API/UI에서 일어난 과거 로드·수정의 디스크 원본 상태까지 보장하는 기능은 아니다.
+
+검증 실행기는 `sys.modules`의 실제 모듈을 유지하면서 현재 파일의 bytes를 읽어 `compile`·`exec`한다. SourceFileLoader의 `.pyc` 실행은 사용하지 않는다. 같은 경로·파일 크기·수정 시각과 오래된 Python3.11 캐시에서도 최신 소스 B를 실행했고, 먼저 실행한 콜백 A의 globals도 유지했다. 실패한 수정 요청을 자동 재시도하지 않는다.
+
+
+현재 알려진 P2: 리다이렉터를 통해 실제 Montage를 로드한 뒤 실제 대상 경로를 기록하기 전에 획득/SDK 예외가 발생하면, pending에 원래 별칭만 남을 수 있다. 이 상태에서 실제 목적지 경로로 전환한 후속 저장은 보호를 우회할 수 있다. 이 경계는 미해결이며, 해당 실패 뒤에는 실제 목적지의 저장을 진행하지 않는다. 이번 게시를 전체 저장 보호의 완성이나 해당 P2의 수리 완료로 해석하지 않는다. Native에 정체성이 기록된 객체의 warm·별칭·어댑터 재로드 보호와 현재 소스 실행/모듈 수명 검증은 별도 유효 범위로 유지한다.

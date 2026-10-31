@@ -22,6 +22,8 @@ def _validate_path(path):
         raise ValueError("Explicit bounded Unreal object/package path required")
     if any(len(part.encode('utf-16-le')) // 2 >= 1024 for part in re.split(r'[./:]', path)):
         raise ValueError('Path name segment exceeds installed FName NAME_SIZE before engine loading')
+    if len(re.split(r'[.:]', path, maxsplit=1)[0].encode('utf-16-le')) // 2 >= 1024:
+        raise ValueError('Complete package path exceeds installed FName NAME_SIZE before engine loading')
 
 
 def _object(path, loaded_only=False):
@@ -62,7 +64,10 @@ def _writer(name, arguments, dispatch):
         record['data']['native_result'] = native
         if not isinstance(native, dict) or any(type(native.get(key)) is not bool for key in (
                 'success', 'mutation_attempted', 'change_state_known',
-                'compile_attempted', 'save_attempted', 'saved')):
+                'compile_attempted')) or any(
+                    type(native.get(key)) is not bool and not (
+                        native.get('save_state_known') is False and native.get(key) is None)
+                    for key in ('save_attempted', 'saved')):
             raise ValueError('Malformed native result; inspect actual target before another mutation')
         record['data']['native_result_validated'] = True
         record['data']['native_change_state_known'] = native['change_state_known']
@@ -73,7 +78,9 @@ def _writer(name, arguments, dispatch):
         record['data']['native_expected_error_code'] = record['error_code']
         record['compile'].update(attempted=native.get('compile_attempted', False))
         record['save'].update(attempted=native.get('save_attempted', False), saved=native.get('saved', False))
-        if native.get('mutation_attempted'):
+        if 'save_state_known' in native:
+            record['save']['known'] = native['save_state_known']
+        if native.get('mutation_attempted') or not native['change_state_known']:
             record['changes'].append({'stage': native.get('stage'), 'changed': native.get('changed'),
                                       'change_state_known': native.get('change_state_known')})
         record['retry']['duplicate_risk'] = ('inspect_actual_target' if not native.get('change_state_known', False)

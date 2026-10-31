@@ -35,4 +35,8 @@ public:
  static FString SpawnEditorActorDeferred(UClass* Class,const FString& Name,const FTransform& Transform,bool Execute);
  UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
  static FString MaterialComments(UObject* Asset,const FString& Action,const FString& Text,int32 X,int32 Y,int32 Width,int32 Height,bool Execute,bool Save);
+ // Internal Editor authoring adapter, not an output runtime function or a new
+ // registry tool. Explicit target/source, event-shape only, no automatic save.
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
+ static FString AttachActorBlueprintEventInterface(UObject* Blueprint,UObject* InterfaceBlueprint,bool Execute=false);
 };

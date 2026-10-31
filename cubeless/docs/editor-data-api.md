@@ -98,3 +98,39 @@ Niagara 조회는 컴포넌트를 자동 pause/solo로 바꾸거나 tick/wait/GP
 `changed`·`change_state_known`·`mutation_attempted`, 실제 단계와 compile/save 필드를 함께 읽는다. Native 호출 후 반환 파싱이나 저널 기록에 실패해도 변경 없음으로 보고하지 않는다. 원자적 롤백이나 불확실 요청의 자동 재시도는 제공하지 않는다. 새 도구는 자동 저장하지 않으며, 소유 대상의 별도 저장·복구 성공을 원 실패의 성공으로 바꾸지 않는다.
 
 엔진 API 호출부·Python 작업 로직·공식 등록부는 분리되어 있다. C++는 Editor 플러그인 모듈에만 추가했고 게임 C++·Runtime 모듈·외부 MCP 서버는 추가하지 않았다. 이번 검증은 Editor/MCP/저장·재로드 범위이며 별도 패키징·게임 실행이나 성능 배수 측정의 증거는 아니다.
+
+## StaticMeshComponent 인스턴스 버텍스 컬러
+
+UE 5.8.4의 공개 C++ `UMeshPaintingSubsystem::SetInstanceColorDataForLOD`는 `UFUNCTION`이 아니며 Python에 노출되지 않는다. 이를 Editor 전용 래퍼로 연결했다. 공식 MCP Toolset 이름은 `cubeless_mcp_ue58.registration.instance_vertex_colors_toolset.CubelessInstanceVertexColorTools`이다.
+
+| 도구 | 동작 |
+|---|---|
+| `inspect_instance_vertex_colors` | 명시적인 `component_path`와 `lod_index`의 유효 RGBA8·원본/override 구분을 조회한다. `count=0`은 메타데이터, `include_positions=true`는 메시 로컬 좌표를 포함한다. 페이지 상한은4096이다. |
+| `set_instance_vertex_colors` | `colors_json`의 `[[r,g,b,a],...]`를 지정한 render LOD의 컴포넌트 override에 쓴다. 기본 `execute=false`는 사전 확인이며, 기존 데이터 교체에는 `allow_replace=true`가 필요하다. |
+| `clear_instance_vertex_colors` | 지정 LOD의 override와 painted cache만 제거하여 원본 메시/기본 흰색으로 되돌린다. 기본은 사전 확인이며 실제 삭제에는 `execute=true, allow_remove=true`가 필요하다. |
+
+색상 배열은 render vertex 수와 정확히 같아야 하며 각 채널은0..255 정수다. 감마 변환은 하지 않는다. UV/노멀 경계에서 분리된 정점도 각각의 인덱스이므로 원본 모델의 고유 위치 수와 다를 수 있다. 최대1048576개 정점과 전체 보존 snapshot 상한이 적용된다. 변경 후 모든 LOD의 override 합계와 painted cache 합계도 각각 이 상한을 만족해야 한다. 다른 LOD에서 엔진이 재생성할 캐시까지 사전 계산하며, 초과하면 `Modify()` 전에 `projected_color_snapshot_bound`로 거절한다.
+
+Python에서 현재 Editor 월드의 컴포넌트 객체를 명시적으로 받은 경우:
+
+```python
+import json, unreal
+lib = unreal.CubelessInstanceVertexColorLibrary
+info = json.loads(lib.inspect_instance_vertex_colors(component, count=0))
+assert info["success"]
+colors = [[255, 32, 0, 255] for _ in range(info["vertex_count"])]
+result = json.loads(lib.set_instance_vertex_colors(
+    component, json.dumps(colors), execute=True, save=False))
+```
+
+공식 MCP에서는 같은 인자에 `component` 객체 대신 정확한 `component_path`를 쓴다. 별도 MCP 서버는 필요 없다. 이 Editor 라이브러리 함수를 게임 Blueprint에 삽입하지 않는다. 결과는 표준 Engine 컴포넌트 데이터로 저장되며 게임용 MCP 모듈이나 클래스를 추가하지 않는다.
+
+필수 조건은 MeshPainting 플러그인의 활성화·로딩, 유휴 Editor의 로드·등록된 배치 StaticMeshComponent와 CPU render 데이터다. CDO/템플릿, PIE/SIE, ISM/HISM의 개별 인스턴스, SkeletalMesh에는 쓰지 않는다. 엔진의 `CanMeshPaintVertexColors()`가 거절하는 Nanite proxy/paint-disabled 대상은 쓰기 전에 거절한다. 이 API가 Nanite 설정을 자동 변경하지 않는다. 이전 메시 topology와 맞지 않는 override key는 자동 remap하지 않고 먼저 명시적 fixup을 요구한다.
+
+`save=false`가 기본이다. `save=true`는 해당 컴포넌트의 **정확한 소유 패키지**를 `UPackage::SavePackage`로 저장한다. 외부 Actor와 별도 BuiltData로 재귀 확장하는 FileHelpers 저장 경로를 사용하지 않는다. 같은 패키지의 다른 객체도 함께 저장되므로, 호출 전에 이미 dirty였다면 `allow_save_dirty_package=true`가 추가로 필요하다. `save_filename`에 대상 파일을 반환하며 이 API에서 자동 소스 제어 checkout을 요청하지 않는다. 다른 레벨·원본 메시를 일괄 저장하지 않는다. 동일 색상·캐시 또는 이미 비어 있는 삭제의 no-op은 저장하지 않는다. 원본 메시 색상·다른 LOD·transform·material은 보호한다. PaintedVertices의 Color·Position·Normal을 보존 검사하며, 새 캐시는 변경 전에 캡처한 엔진 render position·TangentZ 기대값과 대조한다. GPU 자원 해제에 엔진의 render fence를 사용하며 새 자원 초기화는 큐에 등록한다. CPU readback 성공을 GPU 완료로 표현하지 않는다.
+
+실패 시 `stage`, `first_mismatch`, `writer_entered`, `changed`, `change_state_known`, `saved`와 `package_dirty_after`를 함께 확인한다. `change_state_known=false`이면 실제 대상을 관측해야 하며 원 요청을 자동 재실행하지 않는다. 저장 후 검수가 실패하더라도 실제 `saved=true`를 유지한다. 원자적 롤백은 없다.
+
+UE 5.8.4 CL58902052에서 빌드·로딩·공식 MCP3개 스키마, 정점별 RGBA 쓰기, 두 컴포넌트·두 LOD 보존, 잘못된 배열/타입/LOD와 교체·삭제·dirty 저장 경계, 명시적 저장과 새 프로세스 재로드를 확인했다. 저장 중 정상 생성되는 lighting ID와 cache는 설치 엔진 `StaticMeshComponent::PreSave` 동작에 맞춰 준비한 뒤 다시 검사한다. 원 저장 성공을 실패로 거절했던 초기 기록은 보존했다. 빈 캐시의 다른 LOD 재생성 경계는 독립 소스 검토 근거이며 별도 상태 주입 실험은 하지 않았다. 임의 콜백 부작용·대형 메시 성능·새 패키징 검증으로 결과를 확대하지 않는다. 원시 근거는 `cubeless/records/operations/instance-vertex-colors-20261030/report.json`에 있다.
+
+후속 리뷰의 저장 범위·캐시 geometry·변경 후 총량 결함은 `instance-vertex-colors-reviewfix-20261030/report.json`에서 추적한다. 실제 엔진 콜백으로 Modify 및 저장 후 Position/Normal 변조 4조건을 감지했고, 저장 후 실패도 `saved=true`와 실제 dirty 상태를 유지했다. 외부 Actor·BuiltData의 파일 해시와 dirty 상태를 보존하면서 월드 패키지만 저장했으며, 외부 Actor 자체를 대상으로 한 독립 저장도 확인했다. 총량은 같은 production 계산 함수의 초과·정확한 상한·상한+1·cache 단독 초과 4조건으로 확인했다. 대형 엔진 메시 성능 검증은 아니다. 최초 회귀 실행의 추상 표식 객체 ensure는 테스트 자료 결함으로 보존하고 정상 메타데이터로 수정한 저장 범위 검사만 새 소유 월드에서 다시 실행했다.

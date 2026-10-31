@@ -2,6 +2,7 @@
 #include "Compatibility/UE58/CubelessEditorDataApi.h"
 #include "Compatibility/UE58/CubelessNiagaraParticlePositionsApi.h"
 #include "Compatibility/UE58/CubelessMaterialCommentsApi.h"
+#include "Compatibility/UE58/CubelessActorInterfaceApi.h"
 using namespace Cubeless::UE58::EditorData;
 FString UCubelessEditorDataLibrary::InspectBlueprintDefinition(UObject* O){return Blueprint(O);}
 FString UCubelessEditorDataLibrary::InspectEditorWorldConfiguration(){return World();}
@@ -17,3 +18,4 @@ FString UCubelessEditorDataLibrary::SpawnEditorActorDeferred(UClass* C,const FSt
 
 FString UCubelessEditorDataLibrary::InspectNiagaraParticlePositions(const FString& P,int32 E,int32 M){return Cubeless::UE58::NiagaraParticlePositions::Inspect(P,E,M);}
 FString UCubelessEditorDataLibrary::MaterialComments(UObject* A,const FString& Op,const FString& T,int32 X,int32 Y,int32 W,int32 H,bool E,bool S){return Cubeless::UE58::MaterialComments::Run(A,Op,T,X,Y,W,H,E,S);}
+FString UCubelessEditorDataLibrary::AttachActorBlueprintEventInterface(UObject* B,UObject* I,bool E){return Cubeless::UE58::ActorInterface::AttachEventInterface(B,I,E);}

@@ -32,6 +32,13 @@
   ],
   "Plugins": [
     {
+      "Name": "MeshPainting",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
+    },
+    {
       "Name": "Niagara",
       "Enabled": true,
       "TargetAllowList": [

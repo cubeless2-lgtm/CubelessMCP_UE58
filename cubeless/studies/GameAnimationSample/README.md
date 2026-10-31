@@ -55,6 +55,7 @@
 
 - [Locomotion](Locomotion.md): 입력·CMC/Mover·업데이트·Trajectory·경사.
 - [MotionMatching](MotionMatching.md): Chooser·Schema/DB·검색 채널·두 선택 경로·고정 DB 예제.
+- [MotionMatchingCombat](MotionMatchingCombat.md): 동적 Motion Matching과 기존 근접전·락온·HUD 통합, UEFN 공격 리타기팅, 실제 플레이와 저장본 콜드 재로드.
 - [Transitions](Transitions.md): Blend Stack·레이어·Montage/Slot/Notify·실제 중단과 자연 종료.
 - [Retargeting](Retargeting.md): 체형 재사용·부모 메시·비동기 준비·부분 변경 실패.
 - [Interactions](Interactions.md): 동반 상호작용·Physics Control·기상·Look-At/Control Rig.
@@ -91,11 +92,25 @@ Win64 Development 빌드·Cook·Stage·Archive는 성공했다. 최종 BuildCook
 
 독립 실행 파일은 D3D12/SM6로 시작했다. Windows 플랫폼 설정이 우선 적용돼 기본 ThirdPerson 맵을 열었고, 이후 개발 콘솔에서 ArenaUI를 명시적으로 열었다. 사용자 잠금 해제 후 Computer Use로 HUD·적 공격 단계·피해와 체력 감소·공격 동작과 STRIKES 1·패배 결과·Retry 버튼을 확인했다. 실제 맵 재로드와 체력100/100·READY 복원, 결과 버튼과 전투 중 Tab의 FULL→REDUCED 전환도 확인했다. 테스트 게임은 Alt+F4로 정상 종료했고 PID 소멸과 LogExit를 확인했다. 맵을 지정해 실행하려면 패키지의 `StudyCook58.exe /Game/Study/GameAnimationSample/ArenaUI/L_ArenaUI -windowed -ResX=1280 -ResY=720`을 사용한다.
 
-각 ArenaUI 로드 때 기존 샘플의 `PoseHistory` 조회 오류가 한 번씩 총4회 기록됐다. 같은 진단은 이전 PIE에서도 관측됐다. 이를 삭제하거나 오류 없는 전체 애니메이션 검수로 표현하지 않는다. 이번 패키지에서는 ArenaUI 대표 경로를 실행했으며 다른 7개 맵의 개별 플레이, 회피 무적 구간의 정밀 타이밍·공격 대상 피해 수치·승리 조건 전체는 별도로 반복 검증하지 않았다. 해당 범위의 기존 PIE 증거와 패키지 실행 증거를 구분한다.
+최초 패키지 검수에서는 ArenaUI 로드 때 `PoseHistory` 조회 오류가 한 번씩 총4회 기록됐고, 같은 진단은 이전 PIE에서도 관측됐다. 이 원시 실패는 보존한다. 아래 후속 수정에서 소유 전투 맵의 잘못된 데모 호출을 제거하고 재로드·PIE 재발 검증을 마쳤으며, 최초 패키지의 원래 결과를 성공으로 바꾸지는 않는다. 이번 패키지에서는 ArenaUI 대표 경로를 실행했으며 다른 7개 맵의 개별 플레이, 회피 무적 구간의 정밀 타이밍·공격 대상 피해 수치·승리 조건 전체는 별도로 반복 검증하지 않았다. 해당 범위의 기존 PIE 증거와 패키지 실행 증거를 구분한다.
 
 로컬 재현·실패·패키지 목록·해시 근거는 `cubeless/records/operations/study-release-20261030/report.json`에 통합했다. 검증 프로젝트·캐시·DLL/PDB·패키지·원시 기록은 Git 제외 대상이다. 완성 게임의 전체 검수나 모든 애니메이션 지원 범위의 완료 판정은 아니다.
 
+## 2026-10-30 PoseHistory 후속 수정
+
+원인은 소유 `L_ArenaUI`·`L_DuelLab`·`L_MeleeLab`의 Level Blueprint에 남은 데모 코드였다. BeginPlay → GetPlayerCharacter → DelayUntilNextTick → GetMesh/GetAnimInstance → MotionMatch(`AllDatabases`, `PoseHistory`) → 화면·로그 출력을 모두 끈 PrintString 순서로 실행됐다. 실제 전투 폰의 `ABP_Unarmed`에는 그 이름의 Pose History 수집 노드가 없다. 설치 엔진 `PoseSearchLibrary.cpp:1112-1127,1442-1477`과 실제 PIE AnimInstance를 대조해 확인했다. 엔진/API 결함이나 선택 플러그인 비활성 문제로 분류하지 않는다.
+
+세 소유 전투 맵에서 이 독립된 데모 노드11개씩만 제거하고 Level Blueprint를 컴파일·저장했다. 실제 Motion Matching 학습 예제, 원본 샘플, 전투 Blueprint/AnimBP·배치 Actor·GameMode는 바꾸지 않았다. 사용하지 않는 DB 목록 변수는 이번 범위에서 추가 정리하지 않았다. 엔진 검사나 로그를 끈 것이 아니며 C++·DLL 변경도 없다.
+
+공식 MCP8002의 격리 Editor에서 저장본 재로드·컴파일 상태·세 맵의 실제 PIE/플레이어 준비를 확인했고, 수정 후 PoseHistory 누락 오류는0건이었다. ArenaUI의 실제 Retry에서 새 HUD1개·체력100/100을 확인하고, 공격1회로 적 체력80과 HUD80 표시도 확인했다. 원본 관련181개 파일과 나머지 Study 파일의 해시를 보존했다. 테스트 Editor는 dirty0·PIE 종료·관측 callback 해제 후 정상 종료했다. 이 변경은 에셋만 수정하므로 새 native 빌드·패키징은 반복하지 않았다. 기존 검증 패키지는 수정 전 결과이며 수정 후 패키지 동작까지 재검증했다고 표현하지 않는다.
+
+원시 실패와 후속 관측은 로컬 `cubeless/records/operations/pose-history-20261030/report.json`에 통합했다. 첫 저장 뒤 노출되지 않은 Package.is_dirty 호출, Python의 이전 World 참조를 남긴 직접 맵 전환, Transform 문자열의 임시 주소 비교, Melee 플레이어에 없는 Health를 기대한 검수 오류를 각각 보존·정정했다. 이후에는 호출별 Python 객체 참조를 정리하고 전용 지연 맵 전환 완료를 확인했으며, Transform은 실제 숫자 값으로 비교했다. 실패한 수정 요청은 재실행하지 않았고 별도 저장 성공을 원 요청 성공으로 바꾸지 않았다. 이번 수정은 Git stage·commit·push를 하지 않았다.
+
 ## 기록 경계
+
+2026-10-30 후속으로 ArenaUI에 [Q 락온](ArenaUI.md#2026-10-30-q-락온)을 추가했다. 기존 Player/HUD2개만 변경해 카메라·캐릭터 방향과 회전 설정 복원을 연결했다. 실제 입력·거리·가림·공격/회피·사망/소멸·Retry의 대표11개 조건과 새 프로세스 저장본을 확인했다. C++·MCP 도구 추가 없이 기존 DLL을 재사용했으며 새 standalone 패키징은 이번 증거에 포함하지 않는다.
+
+2026-10-30 공격 타격 시점을 게임 시간 Tick에서 표준 Montage Notify로 옮겼다. 소유 공격자5개·`AM_StudyAttack`과 새 표준 BPI/AnimNotify2개를 사용하며, 재생 승인·취소 보호는 유지한다. 새 프로세스 재로드, 배속·pause·Stop·출처 거절·중복·표적 소멸, Melee/Duel/Arena의 실제 타격을 확인했다. 자세한 범위·실패 구분·Editor 전용 인터페이스 어댑터는 [Melee](Melee.md)에 기록했다. 원본181개와 나머지 Study/맵은 이번 작업에서 바꾸지 않았다. 현재의 단일 직렬 공격을 검증했으며 새 MCP 비활성 패키징이나 전체 전투 시스템 완성을 뜻하지 않는다.
 
 학습 Markdown은 이 폴더에 둔다. 기본 학습의 보조 Python과 원시 호출·성공·실패 결과는 로컬 `cubeless/records/operations/game-animation-sample-study-20261028/`에 두며 Git에 포함하지 않는다. 후속 발 보정·근접전·1대1 전투 기록 위치는 각 주제 문서에 연결한다. 원본 에셋의 파일 저장은 요청하지 않았다. 학습 구현 당시에는 Git 쓰기를 수행하지 않았으며, 2026-10-30에는 사용자 승인으로 위 에셋·학습 문서와 필요한 플러그인 소스를 게시한다.
 

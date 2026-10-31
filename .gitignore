@@ -98,3 +98,6 @@
 /Plugins/CubelessMCP_UE58/Content/Python/tests/
 /Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Tests/
 /Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/DomainExpansion/CubelessDomainTests.cpp
+
+# Epic sample Perforce/UGS configuration is not used by this project.
+/Build/UnrealGameSync.ini

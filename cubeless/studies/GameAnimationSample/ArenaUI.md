@@ -1,6 +1,6 @@
 # Duel Protocol: 전투 UMG와 UI 머티리얼
 
-UE 5.8.4 CL 58902052에서 기존 1대1 전투의 독립 사본에 실제 UMG HUD·결과 화면·재시작을 구현했다. 기존 Study 25개 파일은 보존했다. 새 콘텐츠는 `Content/Study/GameAnimationSample/ArenaUI/`에 있으며, 게임 그래프는 표준 Blueprint·UMG·Material을 사용한다. 아래 기존 검수는 Editor/PIE 범위다. 후속 MCP 비활성 Win64 패키징과 독립 게임의 ArenaUI HUD·공격·피해·패배·Retry·효과 전환 대표 검수를 마쳤다. 기존 샘플의 PoseHistory 진단과 상세 미검증 범위는 별도로 남겼다. 현재 상태는 [게시와 패키징](README.md#2026-10-30-게시와-mcp-비활성-패키징)을 따른다.
+UE 5.8.4 CL 58902052에서 기존 1대1 전투의 독립 사본에 실제 UMG HUD·결과 화면·재시작을 구현했다. 기존 Study 25개 파일은 보존했다. 새 콘텐츠는 `Content/Study/GameAnimationSample/ArenaUI/`에 있으며, 게임 그래프는 표준 Blueprint·UMG·Material을 사용한다. 아래 기존 검수는 Editor/PIE 범위다. 후속 MCP 비활성 Win64 패키징과 독립 게임의 ArenaUI HUD·공격·피해·패배·Retry·효과 전환 대표 검수를 마쳤다. 이후 소유 전투 맵의 잘못된 PoseHistory 데모 호출을 제거하고 재로드·PIE 재발 검증을 마쳤다. 최초 패키지의 진단과 수정 후 검증은 구분하며 상세 범위는 README 후속 수정 절을 따른다. 기존 배포·패키징 근거는 [게시와 패키징](README.md#2026-10-30-게시와-mcp-비활성-패키징)에 있으며, 이후 Notify·락온 변경은 아래 후속 검증 범위를 따른다.
 
 **후속 리뷰 3건은 수정하고 빌드·공식 MCP 회귀 검증을 마쳤다.** UI 에셋 수정은 현재 프로젝트에 저장되어 있다. 예약 이름 보호가 포함된 새 DLL은 격리 에디터 검증 후 승인된 정상 재시작을 거쳐 실제 프로젝트에도 적용했다. 후속 Material 코멘트 수정까지 포함한 동일 소스 빌드의 해시와 공식 MCP 연결 근거를 확인했으며, 이전 재시작 승인 대기 표기는 해소됐다. 2026-10-30 게시 작업 시작 시 에디터는 실행 중이 아니었다.
 
@@ -49,6 +49,22 @@ UE 5.8.4 CL 58902052에서 기존 1대1 전투의 독립 사본에 실제 UMG HU
 문양 원본은 1254×1254 RGBA이며 투명도를 확인했다. 생성 지시는 은색 마름모와 끊어진 금속 링, 청록 필라멘트·절제된 호박색 불꽃, 독자 미래주의 결투 문양, 글자/로고/배경 없이 투명한 정사각형이었다. 다른 게임의 아트나 Windows 폰트를 추출하지 않았다. 본문은 엔진 Roboto를 사용한다.
 
 ## 실제 연결과 실패 처리
+
+### 2026-10-30 Q 락온
+
+`L_ArenaUI`에서 **Q**로 현재 시야 방향의 가까운 `BP_ArenaOpponent`를 락온하거나 해제한다. 기본 획득 거리는900cm, 유지 거리는1200cm이며, 시야 방향 내적0.2 이상과 Controller의 `LineOfSightTo`를 확인한다. 대상이 가려지거나 거리 밖으로 나가고, 죽거나 소멸하면 해제한다. 플레이어 사망·라운드 종료도 해제 조건이다. 후보 전환·멀티플레이·대규모 NPC 검색 성능은 이번 범위 밖이다.
+
+락온 중에는 카메라가 대상을 부드럽게 바라보고, 이동 중인 캐릭터도 대상으로 방향을 맞춘다. 공격·회피·피격 경직 동안에는 캐릭터의 Yaw를 강제로 바꾸지 않는다. 기존 공격 승인·Notify 타격·회피·이동 잠금은 유지한다. 진입 때 Pawn의 `use_controller_rotation_yaw`와 CharacterMovement의 `orient_rotation_to_movement`, `use_controller_desired_rotation` 값을 실제로 저장한다. 해제 때 같은 Movement만 대상으로, 여전히 락온이 지정한 값인 항목만 복원한다. 카메라 각도를 이전 각도로 되돌리거나 MovementMode·속도를 바꾸지 않는다. 참조와 활성 상태를 먼저 지우므로 중복 해제는 횟수를 늘리지 않는다. `SealArenaRound`는 종료 상태 확정 뒤 기존 Montage 정리 전에 락온을 해제한다.
+
+구현은 기존 소유 `BP_ArenaPlayer`의 함수6개와 Tick 앞의 호출, `WBP_DuelHUD.Controls` 조작 안내로 제한했다. 다른 Melee/Duel 폰이나 원본 샘플에 락온을 추가하지 않았다. 새 플러그인 C++·MCP 도구·게임 런타임 MCP 호출 없이 표준 Blueprint·Engine API를 사용한다. `LockOnTarget`, `LockOnActive`, `LockOnSettingsCaptured`, 획득·해제 횟수로 PIE 상태를 확인할 수 있다.
+
+공식 MCP8002의 소유 PIE에서 실제 Q 입력·해제·자유 시점 복귀, 기본값과 다른 회전 flags 복원, 공격·회피 중 강제 Yaw 변화0도, 거리·가림에 따른 해제와 획득 거절, 대상 사망·소멸, 플레이어 사망 후 `MOVE_NONE` 유지, Retry의 새 상태까지 대표11개 조건을 확인했다. 새 프로세스에서도 저장본의 실제 Q 락온·해제1회씩과 HUD 안내를 확인했다. 원본181개·나머지Study·모든 맵은 이번 작업에서 바꾸지 않았다. 관련 패키지 의존성에 MCP 참조는 없었으며, 새 standalone cook/package/run은 이번에 반복하지 않았다. 기존 검증 DLL도 그대로 사용했다.
+
+초기 Q 핀의 실제 값이 `(`로 저장된 연결 결함은 해당 핀만 `Q`로 고쳐 컴파일·저장했다. Blueprint 작성기의 IsValid 뒤 실행 연결 오류는 실제 빈 함수 상태를 확인한 뒤 Sequence로 수정했다. 검수용 Python에 노출되지 않은 transform/deferred-spawn 호출과, 동일 메시를 지정할 때 `SetStaticMesh`가 false를 반환하는 정상 동작의 오판은 구현 결함과 구분했다. 이미 통과한6개 검사는 반복하지 않고 남은 경계만 이어갔다. 임시 가림판은 소유 PIE에서만 구성했고 Retry로 새 월드 상태를 확인했다. 원 실패·후속 상태·검수 정정은 로컬 `cubeless/records/operations/lock-on-20261030/report.json`에 연결했다. 독립 읽기 검토에서 현재 사용을 막는 중요 결함은 발견되지 않았고, 테스트 Editor2개는 dirty/PIE0에서 정상 종료했다. Git 쓰기는 하지 않았다.
+
+### 기존 전투·HUD 연결
+
+2026-10-30 플레이어·적의 타격을 공용 `AM_StudyAttack`의 애니메이션 시간0.25초 Notify로 전환했다. 표준 BPI와 AnimNotify를 사용하며 기존 HUD·라운드·공격 승인과 취소 처리는 유지한다. 플레이어20·적15의 실제 피해, 배속·pause·Stop·중복과 출처 거절을 확인했다. 표적 소멸 때는 기존 `BeginResult`/`SealArenaRound`가 공격을 취소하므로 Notify 수락0·추가 피해0·Busy/Pending 해제가 정상 결과다. 상세 근거와 범위는 [Melee](Melee.md)에 연결한다.
 
 플레이어의 기존 부모 BeginPlay는 유지한다. 첫 전투 Tick에서 HUD를 한 번 생성하고 AddToViewport한다. HUD는 OwningPlayerPawn과 명시적인 상대 클래스로 문맥을 확보한다. 모든 전투 규칙은 [Duel](Duel.md)의 기본값을 유지한다.
 

@@ -21,11 +21,19 @@ Melee는 기존 ThirdPerson CMC/Mannequin 경로를 사용한다. 앞선 Travers
 
 ## 작성한 동작 계약
 
+2026-10-30 후속 구현에서는 Melee·Duel·ArenaUI 공격자 5개에 같은 Notify 경로를 연결했다. `Melee/AN_StudyAttackHit`는 표준 `AnimNotify`, `Melee/BPI_StudyAttackNotify`는 표준 Blueprint Interface다. `HandleStudyAttackNotify`는 소유 메시·공격 Montage 참조·활성 문맥·현재 재생·Pending과 기존 사망/회피/경직/라운드 조건을 확인한다. `StudyAttackMontage` 기본값은 `AM_StudyAttack`이다. 임의의 Montage로 교체할 수 있는 일반 공격 설정 시스템은 아니며, 교체 시 재생·취소 노드와 Notify도 함께 맞춰야 한다.
+
+공식 MCP8002에서 저장 후 새 프로세스로 재로드했다. ArenaUI에서 1배속 0.250초, 0.5배속 0.500초, 2배속 0.133초에 Notify가 수락됐고, 각 애니메이션 위치는 0.250/0.250/0.267초였다. 60FPS 관측이며 배속·pause는 타이밍 검증을 위해 표적을 멀리 둔 조건이다. 일시정지 0.4초 동안 피해 없이 Pending이 유지됐고 재개 후 한 번 수락됐다. 타격 전 Stop은 피해·수락 없이 Busy/Pending을 해제했다. 실제 피해는 ArenaUI 플레이어 20, 적 15와 Melee·Duel 플레이어 20을 확인했다. 잘못된 메시·애니메이션·비활성 문맥은 Pending을 소비하지 않았고, 수락 후 중복 전달도 피해를 늘리지 않았다. Arena의 표적 소멸은 정상 `INTERRUPTED` 라운드 정리로 Notify 수락 없이 종료됐다.
+
+인터페이스 선언 편집에는 새 Editor 전용 내부 어댑터 `CubelessEditorDataLibrary.attach_actor_blueprint_event_interface`를 사용했다. 등록 도구를 추가하거나 게임에서 이 함수를 호출하지 않는다. 명시한 Actor/Character Blueprint와 컴파일·저장된 직접 Blueprint Interface의 제한된 이벤트 입력만 처리하며, 명시적 전체 컴파일·저장은 호출자가 한다. 설치 소스의 `FBlueprintEditorUtils::ImplementNewInterface`를 사용하고 구조 컴파일·콜백 이후 문맥을 재검사한다. 전체 그래프 값 보존이나 원자적 롤백을 주장하지 않고, writer 이후 변경 상태가 완전히 확인되지 않았다는 결과를 유지한다.
+
+별도 읽기 검토와 UE5.8.4 빌드를 통과했고 검증 DLL을 실제 프로젝트에 적용했다. 이번 에셋의 패키지 의존성 목록에 MCP/Toolset 참조는 없었다. 기존 MCP 비활성 패키징 증거와 이번 PIE 증거는 분리하며 새 패키징·멀티플레이·임의의 이전 Montage instance ID 구분까지 확인했다고 표현하지 않는다. 검증은 현재의 단일 직렬 공격 범위다. 원본 관련181개와 나머지 Study·맵 파일을 보존했으며, 로컬 원시 실패·후속 상태 확인·복구본은 `cubeless/records/operations/attack-notify-20261030/`에 남겼다. 검수기의 비공개 인스턴스 변수 쓰기·적 피해량20 가정·표적 클래스명 오인과 SDK의 wildcard 문자열 리터럴 실패는 게임 결함과 구분했다. Git 쓰기는 하지 않았다.
+
 ```mermaid
 flowchart LR
     Input[플레이어 0 / 좌클릭 시작] --> Admit[Busy이면 거절 / 아니면 호출 전 잠금]
     Admit --> Play[PlayAnimMontage 반환값 확인]
-    Play --> Window[재생 중 / 경과 0.25초 / HitPending]
+    Play --> Window[공격 Montage의 0.25초 Notify / HitPending]
     Window --> Trace[1회 Sphere Trace]
     Trace --> Damage[ApplyDamage]
     Damage --> Target[양수 대미지 / 생존 표적 / 체력 감소 / 피격]
@@ -34,7 +42,7 @@ flowchart LR
 ```
 
 - 기본 공격력은 20이다. 공격 중 추가 공격을 거절한다. Busy는 Montage 호출 전에 true, Pending은 false로 설정해 동기 콜백의 재진입을 막는다. 반환 후 자신이 유효하고 재생 결과가 양수이면 타격 대기·시작 시간·공격 횟수를 확정한다. 재생 실패 시 Busy/Pending을 해제하고 공격 횟수는 증가시키지 않는다.
-- Tick은 현재 Montage가 재생 중인 조건에서만 타격 시점을 처리한다. 경과 0.25초가 지나면 Pending을 먼저 해제하고 한 번 trace한다. 긴 프레임으로 재생이 이미 끝났다면 뒤늦은 타격을 발생시키지 않는다.
+- 타격은 공격 Montage의 애니메이션 시간 0.25초에 배치한 `AN_StudyAttackHit` Notify로 처리한다. `BPI_StudyAttackNotify`를 통해 소유 Actor에 출처 메시·애니메이션·Notify 시간·활성 문맥을 전달한다. 현재 공격·재생 상태를 확인한 뒤 Pending을 먼저 해제하고 한 번 trace한다. Tick은 입력과 종료·취소 정리를 담당하며 타격을 발생시키지 않는다. 종료 판단에는 `Montage_IsActive`를 사용해 일시정지 중 Pending을 보존한다.
 - trace는 Actor 중심에서 전방 55→165cm, 반경 35cm의 Visibility 구체 trace이며 자신은 무시한다. 현재는 프레임 간 무기 궤적 sweep이 아니다.
 - 유효한 hit Actor에 ApplyDamage를 호출한다. 반환 후 소스 Actor의 유효성을 다시 확인한다. `HitCount`는 양수 ApplyDamage 반환 횟수이며 실제 표적 체력 감소의 독립 증거가 아니다.
 - 표적은 양수 대미지와 생존 상태에서만 체력을 감소시키며 0 아래로 내리지 않는다. DamageEvents/LastDamage를 갱신하고 체력이 0이면 IsDead를 확정한 다음 피격 Montage를 재생한다. 그 동기 콜백에서 들어온 추가 대미지도 사망 상태로 거절한다. Montage 반환 후 사망 상태를 다시 덮어쓰지 않는다.

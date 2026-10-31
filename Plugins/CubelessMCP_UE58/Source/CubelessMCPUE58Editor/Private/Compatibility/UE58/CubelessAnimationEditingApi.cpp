@@ -1,6 +1,7 @@
 #include "Compatibility/UE58/CubelessAnimationEditingApi.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimMontage.h"
+#include "Animation/AnimComposite.h"
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "Animation/AnimData/IAnimationDataController.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
@@ -14,10 +15,13 @@
 #include "Misc/Crc.h"
 #include "Misc/CoreMisc.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/MemoryWriter.h"
+#include "UObject/ObjectKey.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
+#include "UObject/ObjectRedirector.h"
 
 namespace Cubeless::UE58::AnimationEditing
 {
@@ -31,7 +35,11 @@ TArray<FString> ReceiptOrder;
 // Per live UObject (weak serial included), not per spelling/path or saved metadata.
 // A later warm call must not turn an unobserved PostLoad into trusted persistence.
 TSet<TWeakObjectPtr<UAnimMontage>> UnobservedLoadedMontages;
-bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
+FString AcquisitionToken,AcquisitionPath;
+FDelegateHandle AcquisitionHandle;
+TSet<TWeakObjectPtr<UAnimMontage>> AcquisitionMontages;
+TAtomic<bool> AcquisitionHistoryUncertain{false};
+bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_WillBeLoaded|RF_BeginDestroyed|RF_FinishDestroyed);}
 FString Encode(const TSharedRef<J>& R){FString S;FJsonSerializer::Serialize(R,TJsonWriterFactory<>::Create(&S));return S;}
 FString Path(const UObject* O){return O?O->GetPathName():TEXT("");}
 FString Number(double X){return FString::Printf(TEXT("%.17g"),X);}
@@ -133,6 +141,17 @@ void Notify(const FAnimNotifyEvent& N,Snapshot& Out)
  Out.Add(K+TEXT("object"),Path(N.Notify));Out.Add(K+TEXT("state"),Path(N.NotifyStateClass));
  Properties(N.Notify,K+TEXT("values"),Out);Properties(N.NotifyStateClass,K+TEXT("stateValues"),Out);
 }
+bool CaptureTrack(const FAnimTrack& Track,const FString& Prefix,Snapshot& Out,FString& Error,int32& TotalSegments)
+{
+ if(Track.AnimSegments.Num()>4096-TotalSegments){Error=TEXT("Segment4096 budget exceeded");return false;}TotalSegments+=Track.AnimSegments.Num();
+ Out.Add(Prefix+TEXT(".segments"),FString::FromInt(Track.AnimSegments.Num()));
+ for(int32 I=0;I<Track.AnimSegments.Num();++I){const auto& Segment=Track.AnimSegments[I];auto* Ref=Segment.GetAnimReference().Get();if(Ref&&!Live(Ref)){Error=TEXT("Segment animation reference is not fully loaded/live");return false;}const FString Key=Prefix+FString::Printf(TEXT(".segment%d"),I);
+  // CachedPlayLength/bValid are regenerated. Preserve authored placement,
+  // trim, rate, loops and the actual reference identity/owner instead.
+  Out.Add(Key,Path(Ref)+TEXT("|")+Number(Segment.StartPos)+TEXT("|")+Number(Segment.AnimStartTime)+TEXT("|")+Number(Segment.AnimEndTime)+TEXT("|")+Number(Segment.AnimPlayRate)+TEXT("|")+FString::FromInt(Segment.LoopingCount));
+  if(Ref){FObjectKey Identity(Ref);TArray<uint8> Bytes;FMemoryWriter Writer(Bytes,false);Writer<<Identity;Out.Add(Key+TEXT(".reference_identity"),BytesToHex(Bytes.GetData(),Bytes.Num())+TEXT("|")+Path(Ref->GetClass())+TEXT("|")+Path(Ref->GetOuter()));}else Out.Add(Key+TEXT(".reference_identity"),TEXT("<null>"));
+ }return true;
+}
 bool Capture(UAnimSequenceBase* A,Snapshot& Out,FString& Error)
 {
  Out.Reset();if(!IsValid(A)){Error=TEXT("Asset became invalid");return false;}
@@ -184,15 +203,7 @@ bool Capture(UAnimSequenceBase* A,Snapshot& Out,FString& Error)
   for(int32 I=0;I<M->SlotAnimTracks.Num();++I)
   {
    const auto& Slot=M->SlotAnimTracks[I];const FString Prefix=FString::Printf(TEXT("slot.%d"),I);
-   Out.Add(Prefix+TEXT(".name"),Slot.SlotName.ToString());Out.Add(Prefix+TEXT(".segments"),FString::FromInt(Slot.AnimTrack.AnimSegments.Num()));
-   TotalSegments+=Slot.AnimTrack.AnimSegments.Num();if(TotalSegments>4096){Error=TEXT("Segment4096 budget exceeded");return false;}
-   for(int32 K=0;K<Slot.AnimTrack.AnimSegments.Num();++K)
-   {
-    const FAnimSegment& Segment=Slot.AnimTrack.AnimSegments[K];const FString Key=Prefix+FString::Printf(TEXT(".segment%d"),K);
-    // CachedPlayLength is regenerable. Preserve reference and authored trim,
-    // placement, play-rate and loop values, even though SlotAnimTracks lacks CPF_Edit.
-    Out.Add(Key,Path(Segment.GetAnimReference())+TEXT("|")+Number(Segment.StartPos)+TEXT("|")+Number(Segment.AnimStartTime)+TEXT("|")+Number(Segment.AnimEndTime)+TEXT("|")+Number(Segment.AnimPlayRate)+TEXT("|")+FString::FromInt(Segment.LoopingCount));
-   }
+   Out.Add(Prefix+TEXT(".name"),Slot.SlotName.ToString());if(!CaptureTrack(Slot.AnimTrack,Prefix,Out,Error,TotalSegments))return false;
   }
   Out.Add(TEXT("section.count"),FString::FromInt(M->CompositeSections.Num()));
   if(M->CompositeSections.Num()>1024){Error=TEXT("Section1024 budget exceeded");return false;}
@@ -201,6 +212,7 @@ bool Capture(UAnimSequenceBase* A,Snapshot& Out,FString& Error)
    const auto& Metadata=SectionValue.GetMetaData();Out.Add(Prefix+TEXT(".metadataCount"),FString::FromInt(Metadata.Num()));
    for(int32 K=0;K<Metadata.Num();++K){Out.Add(Prefix+FString::Printf(TEXT(".metadata%d"),K),Path(Metadata[K]));Properties(Metadata[K],Prefix+FString::Printf(TEXT(".metadata%d.values"),K),Out);}}
  }
+ if(auto* Composite=Cast<UAnimComposite>(A)){int32 TotalSegments=0;if(!CaptureTrack(Composite->AnimationTrack,TEXT("composite"),Out,Error,TotalSegments))return false;}
  int64 Bytes=0;for(const auto& Pair:Out)Bytes+=(Pair.Key.Len()+Pair.Value.Len())*sizeof(TCHAR);
  if(Bytes>16*1024*1024){Error=TEXT("Authored snapshot16MiB budget exceeded");return false;}
  return true;
@@ -239,6 +251,79 @@ bool SafeObjectPath(const FString& Value)
  return true;
 }
 int32 Track(UAnimSequenceBase* A,FName N){return A->AnimNotifyTracks.IndexOfByPredicate([&](const auto& T){return T.TrackName==N;});}
+
+UObject* LoadedRedirectTarget(UObject* Object)
+{
+ TSet<UObject*> Seen;
+ for(int32 Depth=0;Object&&Depth<64;++Depth)
+ {
+  if(!IsValid(Object)||Seen.Contains(Object))return nullptr;Seen.Add(Object);
+  if(auto* Redirect=Cast<UObjectRedirector>(Object))Object=Redirect->DestinationObject;
+  else return Object;
+ }
+ return nullptr;
+}
+bool RecordAcquiredMontage(UObject* Object)
+{
+ if(auto* Montage=Cast<UAnimMontage>(LoadedRedirectTarget(Object)))
+ {UnobservedLoadedMontages.Add(Montage);AcquisitionMontages.Add(Montage);return true;}
+ return false;
+}
+}
+
+
+bool CaptureReadOnlySource(UObject* Object,TMap<FString,FString>& Out,FString& Error)
+{
+ auto* A=Cast<UAnimSequenceBase>(Object);if(!IsInGameThread()||Writing||!GEditor||GEditor->PlayWorld||GEditor->bIsSimulatingInEditor||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested()||GIsImportingT3D||!Live(A)){Error=TEXT("Idle live AnimSequenceBase required for source observation");return false;}
+ if(A->Notifies.Num()>4096){Error=TEXT("Notify source snapshot budget exceeded");return false;}for(const auto& N:A->Notifies)if((N.Notify&&!Live(N.Notify))||(N.NotifyStateClass&&!Live(N.NotifyStateClass))){Error=TEXT("Source Notify lifetime invalid");return false;}
+ if(!Capture(A,Out,Error))return false;
+ if(!Live(A->GetSkeleton())){Error=TEXT("Source Skeleton invalid");return false;}
+ if(auto* Sequence=Cast<UAnimSequence>(A)){auto* Model=Sequence->GetDataModelInterface().GetObject();if(!Live(Model)){Error=TEXT("Source model invalid");return false;}Out.Add(TEXT("model.identity"),FString::FromInt(Model->GetUniqueID())+TEXT("|")+Path(Model->GetClass())+TEXT("|")+Path(Model->GetOuter()));}
+ SkeletonState(A->GetSkeleton(),Out);
+ for(const auto& N:A->Notifies){const FString Key=TEXT("notify.")+N.Guid.ToString()+TEXT(".identity");FString V;for(UObject* O:{static_cast<UObject*>(N.Notify.Get()),static_cast<UObject*>(N.NotifyStateClass.Get())})V+=O?FString::FromInt(O->GetUniqueID())+TEXT("|")+Path(O->GetClass())+TEXT("|")+Path(O->GetOuter())+TEXT(";"):TEXT("<null>;");Out.Add(Key,V);}
+ int64 Bytes=0;for(const auto& V:Out)Bytes+=(V.Key.Len()+V.Value.Len())*2;if(Bytes>4*1024*1024){Error=TEXT("Authored source snapshot exceeds4MiB");return false;}return true;
+}
+
+FString BeginAcquisition(const FString& ObjectPath,const FString& Token)
+{
+ auto R=MakeShared<J>();R->SetBoolField(TEXT("success"),false);R->SetStringField(TEXT("stage"),TEXT("acquisition_observation_begin"));R->SetStringField(TEXT("request_token"),Token);
+ FGuid Id;
+ if(IsInGameThread()&&GIsImportingT3D){R->SetStringField(TEXT("error_code"),TEXT("animation_import_in_progress"));R->SetStringField(TEXT("error"),TEXT("T3D import blocks animation acquisition before object lookup"));return Encode(R);}
+ if(!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested()||GIsImportingT3D||!GEditor||GEditor->PlayWorld||GEditor->bIsSimulatingInEditor||Writing||!AcquisitionToken.IsEmpty()||Token.Len()!=32||!FGuid::Parse(Token,Id)||!SafeObjectPath(ObjectPath))
+ {R->SetStringField(TEXT("error"),TEXT("Idle Editor and exclusive bounded top-level acquisition observation required"));return Encode(R);}
+ AcquisitionToken=Token;AcquisitionPath=ObjectPath;AcquisitionMontages.Reset();
+ AcquisitionHandle=FCoreUObjectDelegates::OnAssetLoaded.AddLambda([](UObject* Loaded)
+ {
+  // Official synchronous acquisition broadcasts on the game thread. Fail closed
+  // if an unexpected worker broadcast prevents a safe identity observation.
+  if(!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||GIsImportingT3D){AcquisitionHistoryUncertain.Store(true);return;}
+  RecordAcquiredMontage(Loaded);
+ });
+ R->SetBoolField(TEXT("success"),true);return Encode(R);
+}
+
+FString EndAcquisition(const FString& Token,bool LoadAttempted)
+{
+ auto R=MakeShared<J>();R->SetBoolField(TEXT("success"),false);R->SetStringField(TEXT("stage"),TEXT("acquisition_observation_end"));R->SetStringField(TEXT("request_token"),Token);
+ if(!IsInGameThread()){R->SetStringField(TEXT("error"),TEXT("Acquisition cleanup requires game thread"));return Encode(R);}
+ if(AcquisitionToken.IsEmpty()){R->SetBoolField(TEXT("success"),true);R->SetBoolField(TEXT("scope_active"),false);return Encode(R);}
+ if(AcquisitionToken!=Token){R->SetStringField(TEXT("error"),TEXT("Acquisition owner token mismatch; other observation preserved"));return Encode(R);}
+ FCoreUObjectDelegates::OnAssetLoaded.Remove(AcquisitionHandle);AcquisitionHandle=FDelegateHandle();
+ bool TargetRecorded=false;
+ const bool CanObserve=!IsGarbageCollecting()&&!UE::IsSavingPackage()&&!IsEngineExitRequested()&&!GIsImportingT3D;
+ if(LoadAttempted&&CanObserve)
+ {
+  // Outside T3D import, FindObject + raw redirector traversal does not load.
+  UObject* Existing=FindObject<UObject>(nullptr,*AcquisitionPath);
+  TargetRecorded=RecordAcquiredMontage(Existing);
+  if(auto* Target=Cast<UAnimMontage>(LoadedRedirectTarget(Existing)))R->SetStringField(TEXT("resolved_target_path"),Path(Target));
+ }
+ if(LoadAttempted&&!CanObserve)AcquisitionHistoryUncertain.Store(true);
+ TArray<TSharedPtr<FJsonValue>> Paths;if(CanObserve)for(const auto& Montage:AcquisitionMontages)if(Montage.IsValid())Paths.Add(MakeShared<FJsonValueString>(Path(Montage.Get())));
+ R->SetArrayField(TEXT("observed_montages"),Paths);R->SetBoolField(TEXT("requested_target_guard_recorded"),TargetRecorded);R->SetBoolField(TEXT("scope_active"),false);
+ R->SetBoolField(TEXT("success"),!AcquisitionHistoryUncertain.Load());
+ if(AcquisitionHistoryUncertain.Load())R->SetStringField(TEXT("error"),TEXT("Acquisition identity observation was incomplete; Montage saves fail closed in this session"));
+ AcquisitionToken.Reset();AcquisitionPath.Reset();AcquisitionMontages.Reset();return Encode(R);
 }
 
 FString TakeReceipt(const FString& Token)
@@ -267,12 +352,19 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
   if(!R->GetBoolField(TEXT("change_state_known")))R->SetField(TEXT("changed"),MakeShared<FJsonValueNull>());
   if(IsValid(Object))R->SetBoolField(TEXT("dirty_after"),Object->GetOutermost()->IsDirty());
   R->SetStringField(TEXT("retry_risk"),!R->GetBoolField(TEXT("change_state_known"))?TEXT("inspect_actual_target"):R->GetBoolField(TEXT("mutation_attempted"))?TEXT("mutation_attempted"):TEXT("none_observed"));return Publish();};
- if(!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested()||!GEditor||GEditor->PlayWorld||GEditor->bIsSimulatingInEditor||Writing)return Fail(TEXT("Idle Editor game thread outside GC/save/exit and no conflicting animation edit required"));
+  if(IsInGameThread()&&GIsImportingT3D){R->SetStringField(TEXT("error_code"),TEXT("animation_import_in_progress"));return Fail(TEXT("T3D import blocks animation edits before Modify"));}
+  if(!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested()||GIsImportingT3D||!GEditor||GEditor->PlayWorld||GEditor->bIsSimulatingInEditor||Writing||!AcquisitionToken.IsEmpty())return Fail(TEXT("Idle Editor game thread outside GC/save/exit and no conflicting animation edit/acquisition required"));
  UAnimSequenceBase* A=Cast<UAnimSequenceBase>(Object);
  if(!Live(A)||(A->GetClass()!=UAnimSequence::StaticClass()&&A->GetClass()!=UAnimMontage::StaticClass())||A->IsTemplate()||A->GetOuter()!=A->GetOutermost()||A->GetOutermost()->HasAnyPackageFlags(PKG_ContainsMap)||!A->GetOutermost()->GetName().StartsWith(TEXT("/Game/")))return Fail(TEXT("Exact fully loaded top-level project AnimSequence or AnimMontage asset outside map packages required"));
  if(auto* LoadedMontage=Cast<UAnimMontage>(A))
  {
   R->SetStringField(TEXT("asset"),Path(A));
+  if(AcquisitionHistoryUncertain.Load())
+  {
+   R->SetBoolField(TEXT("montage_load_state_unverified"),true);
+   R->SetStringField(TEXT("persistence_warning"),TEXT("An acquisition observation was incomplete. No later warm call or dirty approval establishes the missing identities."));
+   if(Save){R->SetStringField(TEXT("error_code"),TEXT("montage_acquisition_observation_incomplete"));return Fail(TEXT("Save refused before Modify: acquisition history is incomplete in this Editor session"));}
+  }
   if(UnobservedAssetLoad)
   {
    for(auto It=UnobservedLoadedMontages.CreateIterator();It;++It)if(!It->IsValid())It.RemoveCurrent();
@@ -314,7 +406,7 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
  {
   auto Unknown=[&](){R->SetBoolField(TEXT("change_state_known"),false);return false;};
   if(!ScriptError.IsEmpty()){R->SetStringField(TEXT("script_exception"),ScriptError);Error=TEXT("Engine callback raised a script exception; no further edit/save is issued");return Unknown();}
-  if(!IsInGameThread()||GEditor!=Editor||!GEditor||GEditor->PlayWorld||GEditor->bIsSimulatingInEditor||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested()){Error=TEXT("Editor execution context changed across callback");return Unknown();}
+  if(!IsInGameThread()||GEditor!=Editor||!GEditor||GEditor->PlayWorld||GEditor->bIsSimulatingInEditor||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested()||GIsImportingT3D){Error=TEXT("Editor execution context changed across callback");return Unknown();}
   if(!Live(A)||A->HasParentAsset()||!A->ChildrenAssets.IsEmpty()||A->GetClass()!=AssetClass||Path(A)!=AssetPath||A->GetOutermost()!=Package.Get()||A->GetSkeleton()!=Skeleton.Get()||!Live(Skeleton.Get())){Error=TEXT("Asset/skeleton lifetime, identity, ownership or parent/child propagation scope changed");return Unknown();}
   if(!CheckNotifyLeases(A,NotifyLeases,R)){Error=TEXT("Notify object identity, owner or lifetime changed across callback");return Unknown();}
   if(CdoFrozen)

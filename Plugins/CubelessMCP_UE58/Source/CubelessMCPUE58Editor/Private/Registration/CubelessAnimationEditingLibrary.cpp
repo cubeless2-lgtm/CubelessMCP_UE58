@@ -4,3 +4,7 @@ FString UCubelessAnimationEditingLibrary::EditAnimationAsset(UObject* Asset,cons
 {return Cubeless::UE58::AnimationEditing::Edit(Asset,Action,Json,Execute,Save,AllowDirty,Token,UnobservedAssetLoad);}
 FString UCubelessAnimationEditingLibrary::TakeAnimationEditReceipt(const FString& Token)
 {return Cubeless::UE58::AnimationEditing::TakeReceipt(Token);}
+FString UCubelessAnimationEditingLibrary::BeginAnimationAssetAcquisition(const FString& Path,const FString& Token)
+{return Cubeless::UE58::AnimationEditing::BeginAcquisition(Path,Token);}
+FString UCubelessAnimationEditingLibrary::EndAnimationAssetAcquisition(const FString& Token,bool Attempted)
+{return Cubeless::UE58::AnimationEditing::EndAcquisition(Token,Attempted);}

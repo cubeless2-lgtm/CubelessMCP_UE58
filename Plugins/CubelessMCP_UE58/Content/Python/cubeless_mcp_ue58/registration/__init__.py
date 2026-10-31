@@ -24,6 +24,7 @@ from .umg_composition_toolset import CubelessUMGCompositionTools
 from .editor_data_toolset import CubelessEditorDataTools
 from .material_comments_toolset import CubelessMaterialCommentTools
 from .animation_editing_toolset import CubelessAnimationEditingTools
+from .animation_production_toolset import CubelessAnimationProductionTools
 from .domain_expansion_toolset import CubelessDomainExpansionTools
 from .loaded_level_instance_packing_toolset import CubelessLoadedLevelInstancePackingTools
 from .production_inspection_toolset import CubelessProductionInspectionTools
@@ -285,6 +286,7 @@ _CLASSES = (CubelessDiscoveryTools, CubelessStatusWindowTools, CubelessPythonDia
 _CLASSES += (CubelessUMGCompositionTools, CubelessEditorDataTools,)
 _CLASSES += (CubelessMaterialCommentTools,)
 _CLASSES += (CubelessAnimationEditingTools,)
+_CLASSES += (CubelessAnimationProductionTools,)
 _CLASSES += (CubelessEnumEditingTools, CubelessDomainExpansionTools,)
 _CLASSES += (CubelessLoadedLevelInstancePackingTools,)
 _CLASSES += (CubelessProductionInspectionTools,)

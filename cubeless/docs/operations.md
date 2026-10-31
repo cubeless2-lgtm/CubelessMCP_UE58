@@ -170,4 +170,93 @@ UE 5.8.4에서 올바른 Montage State 생성·이동·삭제, Sequence의 Monta
 검증 실행기는 `sys.modules`의 실제 모듈을 유지하면서 현재 파일의 bytes를 읽어 `compile`·`exec`한다. SourceFileLoader의 `.pyc` 실행은 사용하지 않는다. 같은 경로·파일 크기·수정 시각과 오래된 Python3.11 캐시에서도 최신 소스 B를 실행했고, 먼저 실행한 콜백 A의 globals도 유지했다. 실패한 수정 요청을 자동 재시도하지 않는다.
 
 
-현재 알려진 P2: 리다이렉터를 통해 실제 Montage를 로드한 뒤 실제 대상 경로를 기록하기 전에 획득/SDK 예외가 발생하면, pending에 원래 별칭만 남을 수 있다. 이 상태에서 실제 목적지 경로로 전환한 후속 저장은 보호를 우회할 수 있다. 이 경계는 미해결이며, 해당 실패 뒤에는 실제 목적지의 저장을 진행하지 않는다. 이번 게시를 전체 저장 보호의 완성이나 해당 P2의 수리 완료로 해석하지 않는다. Native에 정체성이 기록된 객체의 warm·별칭·어댑터 재로드 보호와 현재 소스 실행/모듈 수명 검증은 별도 유효 범위로 유지한다.
+리다이렉터 획득 예외 P2 수리: 최초 `unreal.find_object` 조회 전에 요청 토큰이 소유하는 Native `OnAssetLoaded` 관찰 구간을 열어 실제 Montage 객체·serial을 기록한다. `finally`에서는 관찰을 해제하고, 이미 로드된 원 경로와 최대64단계의 raw `DestinationObject` 체인만 확인한다. 새 로드·수정·저장은 하지 않는다. 실제 목적지 기록 전에 SDK 예외가 나도 목적지 경로의 후속 `save=true`는 `montage_unobserved_load_save_refused`로 `Modify` 전에 거절한다. 어댑터 재로드와 dirty 승인도 이를 해제하지 않는다. 예상 밖 worker·GC·저장·T3D import 경계로 관찰이 불완전해지면 해당 세션의 Montage 저장을 보수적으로 차단한다. 이 관찰은 객체 정체성에 관한 것이며 PostLoad 이전 authored 값의 관측이나 복구를 뜻하지 않는다. 원 획득 실패는 실패로 유지하고, `asset_load_attempted=true`, `change_state_known=false`, `changed=null` 및 상태 확인이 필요한 재실행 위험을 반환한다.
+
+UE 5.8.4 공식 MCP에서 실제 리다이렉터 로드 후 SDK 예외, 목적지·별칭 저장 거절, 어댑터 재로드, 관찰 토큰 소유권과 정리, 새 정상 Montage의 track/State 저장 및 콜드 Sequence 저장을 확인했다. 리다이렉터·목적지 파일 해시는 보존했다. worker·GC·T3D 경계의 강제 엔진 주입은 하지 않았으며 소스 근거와 별도 검토로 확인했다. 기존 엔진의 비기본 슬롯 PostLoad 정규화와 영구 보존 제한은 그대로다.
+
+
+최초 조회·T3D import 후속 수리: 설치 엔진의 `StaticFindObject`는 T3D import 중 실제 로더를 호출할 수 있으므로, 최초 조회와 실제 경로 추출도 관찰 구간 안에 둔다. Native `BeginAcquisition`이 import 중이면 조회 전에 거절하며 직접 Native 편집과 콜백 이후 검사도 거절한다. 정상 warm 객체는 재사용하고 새 저장 제한을 만들지 않는다. 조회 또는 SDK 예외 뒤에는 `asset_lookup_attempted=true`, `asset_acquisition_state_unverified=true`, `changed=null`, `change_state_known=false`와 실제 대상 확인 위험을 반환한다. `asset_load_attempted`는 명시적 로더 분기의 진입 여부이며 조회 중 관측한 객체는 `acquisition_observation`에서 확인한다. 정리 과정에서는 로드·편집·저장을 다시 호출하지 않는다. UE5.8.4 소유 에디터에서 실제 import 플래그의 조회/로더0회, 직접 수정 차단, Modify 중 import 전환 시 후속 쓰기/저장 중단, 최초 조회 결과 유실 뒤 목적지·별칭·reload 저장 보호와 정상 warm 저장을 확인했다. 전체 T3D 씬 가져오기나 엔진 슬롯 정규화 자체의 수정은 이 근거에 포함하지 않는다.
+
+
+## 2026-10-31 — 애니메이션 제작 도구 보강
+
+공식 MCP 연결에서 `cubeless_mcp_ue58.registration.animation_production_toolset.CubelessAnimationProductionTools`를 검색하고 `describe_toolset`으로 입력·출력 스키마를 확인한다. 아래 `A`는 이 긴 도구셋 이름을 줄인 표기다. 별도 서버 연결은 필요하지 않다. 필수 플러그인은 PoseSearch·Chooser이며, 이번 실행은 UE 5.8.4 CL58902052에서 확인했다.
+
+43개 도구를 등록했다. 37개에는 기록된 대표 정상 동작 근거가 있으며, 나머지 6개는 **구현·등록됨 / 사용 검증 대기**다. 등록 수와 대표 호출 수는 전체 애니메이션 계약 완료율이 아니다. 기존 Sequence·Montage·Notify·Curve 편집17개와 기존 sample/variant 도구는 유지했다.
+
+| 기능군 | 현재 호출 이름 |
+| --- | --- |
+| PoseSearch 제작·설정 | `create_pose_search_schema`, `create_pose_search_database`, `add_pose_search_channel`, `set_pose_search_channel_settings`, `set_pose_search_sample_rate`, `add_pose_search_animation`, `set_pose_search_animation_settings`, `set_pose_search_search_settings` |
+| PoseSearch 조회·인덱스 | `inspect_pose_search_schema`, `inspect_pose_search_database`, `request_pose_search_index`, `get_pose_search_index_status` |
+| Chooser 제작·평가 | `create_chooser_table`, `set_chooser_context`, `add_chooser_column`, `add_chooser_row`, `set_chooser_fallback`, `set_chooser_bool_cell`, `set_chooser_float_cell`, `inspect_chooser_table`, `evaluate_chooser_table` |
+| AnimGraph 연결 | `bind_cached_pose`, `bind_motion_matching_database`, `bind_motion_matching_chooser`, `create_anim_layer`, `bind_linked_anim_layer`, `inspect_animation_blueprint_bindings` |
+| 상태 머신 제작·편집 | `inspect_animation_state_graph`, `create_anim_state`, `create_anim_transition`, `set_anim_entry_state`, `set_anim_transition_rule`, `set_anim_transition_settings`, `set_anim_state_sequence`, `set_anim_transition_bool_variable`, `delete_anim_state`, `delete_anim_transition` |
+| 구현·등록됨 / 정상 사용 검증 대기 | `remove_pose_search_channel`, `remove_pose_search_animation`, `set_pose_search_database_schema`, `set_chooser_result`, `remove_chooser_row`, `remove_chooser_column` |
+
+일반 AnimGraph의 노드 검색·생성·속성·핀 연결과 컴파일은 공식 `editor_toolset.toolsets.blueprint.BlueprintTools`와 `editor_toolset.toolsets.object.ObjectTools`를 재사용한다. StateMachine·SequencePlayer·CachedPose·Slot·LinkedLayer 생성과 SequencePlayer 속성 설정, 핀 연결·컴파일을 대표 경로에서 확인했다. 발견한 `type_id`를 사용해야 하며 이름을 추측하지 않는다. `find_node_types`에는 현재 스키마에 맞춰 `context_pins: []`를 전달한다. 최초 노드 검색은 macro cache를 만들면서 임시 노드를 생성·제거할 수 있으므로 사용자 그래프에서 무조건 읽기 전용이라고 취급하지 않는다.
+
+공식 Python 경로는 중첩 StateMachine의 직접 Outer를 Blueprint로 cast하다 실패했다. 해당 경로의 State·Transition·Sequence 배치·bool 조건은 이번 고정 작업 도구로 보완했다. 임의 중첩 그래프의 모든 노드 종류·연산자를 편집하는 범용 도구까지 구현한 것은 아니다.
+
+### 짧은 사용 흐름
+
+예제의 경로와 GUID는 실제 프로젝트 값으로 바꾼다. `inspect_animation_blueprint_bindings`와 `inspect_animation_state_graph`에서 대상 GUID를 얻는다. `execute=false`가 편집 도구의 기본값이며, 실제 편집은 `execute=true`로 요청한다.
+
+- PoseSearch: Schema 생성 → 필요한 channel 추가·설정 → Database 생성 → animation 추가·설정 → index 요청 → 반환된 job_id로 상태 확인. 인덱스 요청의 `success=true`와 `completed=true`를 구분한다. `in_progress`는 완료가 아니다. job_id는 현재 Editor 세션의 기록이다.
+- Chooser: 결과 에셋 클래스 지정 → class context 지정 → Bool/FloatRange 열 → 결과 행 → cell 조건. `evaluate_chooser_table`은 현재 단일 class context와 직접 속성, hard asset result 범위를 평가한다. `has_result=false`는 조건 불일치에 따른 정상적인 결과 없음일 수 있다.
+- 상태 머신: 공식 StateMachine 노드 생성 → State 생성 → Entry 연결 → `set_anim_state_sequence` → Transition 생성 → 상수 또는 기존 bool 변수 조건 연결 → 묶어서 컴파일·저장.
+
+도구 `A.set_anim_state_sequence`의 인수 예:
+
+```json
+{"asset_path":"/Game/Animation/ABP_Hero","machine_graph_name":"Locomotion","state_id":"<State GUID>","animation_path":"/Game/Animation/A_Idle.A_Idle","execute":true}
+```
+
+도구 `A.set_anim_transition_bool_variable`의 인수 예:
+
+```json
+{"asset_path":"/Game/Animation/ABP_Hero","machine_graph_name":"Locomotion","transition_id":"<Transition GUID>","variable_name":"CanMove","allow_replace":true,"execute":true,"compile_blueprint":true,"save":true}
+```
+
+도구 `A.bind_motion_matching_chooser`의 인수 예:
+
+```json
+{"asset_path":"/Game/Animation/ABP_Hero","graph_name":"AnimGraph","node_id":"<MotionMatching GUID>","chooser_path":"/Game/Animation/CHT_Locomotion","function_name":"UpdateLocomotionDatabase","execute":true,"compile_blueprint":true,"save":true}
+```
+
+마지막 예제는 이 AnimInstance를 받는 단일 class context의 Chooser와 같은 Skeleton의 Database 결과를 요구한다. 새 thread-safe OnUpdate 함수에 표준 `Chooser.EvaluateChooserMulti` → `PoseSearch.ConvertToMotionMatchingNodePure` → 유효성 분기 → `PoseSearch.SetDatabasesToSearch`를 작성한다. 기존 함수 본문은 덮어쓰지 않는다. 기존 OnUpdate 교체에는 별도 `allow_replace=true`가 필요하다. 생성된 노드는 Cubeless 함수나 클래스를 게임 실행에 사용하지 않는다.
+
+### 보호·저장·실패 의미
+
+삭제와 기존 연결 교체에는 명시적 승인 입력이 필요하다. State 삭제 시 연결된 Transition까지 지우려면 `allow_cascade=true`도 필요하다. Entry 대상·마지막 State·공유 rule/crossfade는 현재 안전한 범위 밖이라 사전에 거절한다. State 생성 위치는 엔진의 그리드 스냅을 따르며 실제 좌표를 반환한다. 새 State/Transition의 optional-pin 배열과 기본 binding 객체는 엔진이 생성하므로 빈 CDO 배열·null CDO binding과 동일하다고 가정하지 않는다.
+
+`save=false`가 기본이며 `save=true`는 명시된 단일 대상 패키지를 직접 저장한다. 이미 dirty인 패키지 저장에는 `allow_save_dirty_package=true`가 별도로 필요하다. 이 승인으로 객체·참조·수명 보호나 파괴적 변경 승인이 해제되지는 않는다. 구조 변경과 그래프 삭제는 `compile_blueprint=false`여도 엔진 내부 컴파일/재생성을 일으킬 수 있으며, 결과에서 명시적인 full compile과 구분한다. 미등록 Slot을 컴파일하면서 공유 Skeleton에 자동 추가하는 경로는 사전에 막는다.
+
+실패하면 `stage`, `mutation_attempted`, `changed`, `change_state_known`, `first_mismatch_property`, `expected`, `actual`, `compile_attempted/compiled`, `save_attempted/saved`, `retry_risk`와 실제 그래프를 확인한다. `dirty=false`만으로 변경이 없었다고 판단하지 않는다. 최초 에셋 로드 구간의 불확실성은 전체 `change_state_known=false`와 `native_change_state_known`을 분리해 반환한다. 인덱스는 authored 입력 보존과 derived-data 상태를 구분한다. 클라이언트 타임아웃은 작업 취소가 아니며, 원 요청을 자동 재실행하지 않는다. 원자적 롤백은 제공하지 않는다. 별도 보존 저장은 실패한 원 요청의 성공 증거가 아니다.
+
+Sequence 입력 보존은 기존 animation editing의 Notify·track·curve·marker·bone-model 스냅샷을 재사용하며 객체 identity도 확인한다. 기존17개의 편집 동작을 바꾼 것은 아니다. 필수 보호의 소스 검토와 대표 동작 검증을 수행했지만 임의 콜백 강제 주입·모든 사용자 클래스 검수를 완료했다고 해석하지 않는다.
+
+### 현재 제한과 남은 작업
+
+State의 일반 이름 변경, conduit·self transition·공유 rule 편집, 임의 중첩 그래프 노드/연산자 CRUD, 중복 graph 이름 선택, typed Layer interface 생성·입력 signature 변경, 일반 LinkedAnimGraph의 제자리 port 재구성은 남아 있다. `set_anim_state_sequence`는 canonical 일반 AnimSequence·정확히 같은 Skeleton·표준 binding class를 사용한다. `set_anim_transition_bool_variable`은 기존 runtime Blueprint-visible bool을 사용하며 float/enum 비교식을 만들지는 않는다. LinkedLayer 재바인딩은 같은 compiled 입력 signature를 요구하고, 현재 대표 근거는 입력이 없는 self layer다.
+
+PoseSearch의 다양한 bone/role/sample/channel 속성, 모든 검색 모드의 실사용, 추가 Chooser 열·struct 문맥·다중 문맥 평가·nested/proxy 결과와 위 6개 정상 변형은 후속 범위다. 표준 엔진 플러그인 활성화 조건은 구현 결함으로 집계하지 않는다. 새 게임 패키징·PIE·대용량 성능·모든 비동기/콜백 경계를 이번 최소 검증으로 대신하지 않는다.
+
+실행 근거와 API별 상태는 로컬 `cubeless/records/operations/animation-production-20261031/report.json`, 원본 대응 관계와 기존 집계는 migration-ledger에서 확인한다. 검증 프로젝트·원시 자료·바이너리를 배포 목록에 넣지 않았다. 이번 묶음을 마쳤으므로 사용자 지시에 따라 추가 구현을 멈춘다.
+
+
+### 2026-10-31 애니메이션 제작 P2 4건 보완
+
+Chooser 컴파일은 활성 입력·결과의 실제 진단으로 판정하고 오류가 있으면 후속 저장을 중단한다. 비활성 열과 미바인딩 Randomize의 정상 상태는 허용한다. 내부 참조 로드도 기존 Montage 획득 관찰을 거치며, 콜드 로드 전 상태는 확인된 것으로 보고하지 않는다. warm 호출·어댑터 재로드·dirty 저장 승인으로 이 보호를 해제하지 않는다.
+
+콜백 이후 입력 애니메이션·모델·Skeleton 및 참조 authored 상태를 비교한다. 불일치하면 최초 객체·속성·기대값·실제값과 변경 불확실성을 보고한다. 이미 디스크 저장이 성공한 뒤 불일치하면 `success=false, saved=true`를 유지한다. 별도 보존 저장은 원 요청의 성공이 아니다.
+
+인덱스는 Database·Schema 외 참조 애니메이션/모델의 수정도 감지한다. `inputs_changed`는 원 입력의 완료가 아니며 자동 재실행·취소 보장이 없다. 엔진 취소/정리와 원 API 결과는 따로 확인한다. 이번 대표 정상 완료·입력 변경·Modify/저장 콜백·콜드 Montage 보호 근거는 기존 기능군 `report.json`의 `review_repairs_p2_20261031`에 통합했다. 등록 43개, 대표 정상 근거 37개, 정상 사용 검증 대기 6개의 구분은 유지한다.
+
+최종 도메인 빌드는 UE 5.8.4에서 통과했으며, 실제 프로젝트와 테스트 DLL 해시가 일치한다. 검증 C++는 기록 폴더로 옮겨 최종 빌드·배포 목록에서 제외했다. 최종 공식 MCP에서 기존 저장 에셋 재로드, Chooser 컴파일·저장, MM Database·Chooser 바인딩의 컴파일·저장을 확인했다. 새 PIE·패키징과 고급 변형별 검증은 수행하지 않았다. 테스트 에디터는 모두 정상 종료했다.
+
+
+### 2026-11-01 Composite 입력과 warm 로드 완료 보호
+
+PoseSearch에 Composite를 입력할 때 세그먼트의 값·순서·실제 참조를 보존 검사한다. 캐시된 전체 길이가 같아도 콜백의 trim/rate/배치/참조 변경은 허용하지 않는다. 불일치 시 실제 실패 단계와 최초 속성을 보고하고 후속 저장을 중단한다. 이미 발견된 입력에 `RF_NeedPostLoadSubobjects` 또는 `RF_WillBeLoaded`가 남아 있으면 `input_readiness_rejected=true`로 writer 진입 전에 거절한다. 같은 요청에서 엔진 로더를 중복 실행하거나 자동 재시도하지 않는다. 정상 로드 완료 후의 새 명시 요청은 별개다.
+
+소유 에셋의 네이티브 값·참조 콜백과 pending 플래그 입장 검사를 통과했다. 새 프로세스의 공식 MCP에서 저장된 Composite 등록·저장·참조를 확인했다. 보호된 `AnimationTrack`의 Python 직접 값 조회는 제한되어 별도 재로드 값 검사는 완료로 기록하지 않았다. 검증 C++·에셋·원시 자료는 배포 리소스에서 제외한다.

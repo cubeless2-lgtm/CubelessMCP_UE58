@@ -191,6 +191,20 @@
       "TargetAllowList": [
         "Editor"
       ]
+    },
+    {
+      "Name": "PoseSearch",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
+    },
+    {
+      "Name": "Chooser",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
     }
   ]
 }

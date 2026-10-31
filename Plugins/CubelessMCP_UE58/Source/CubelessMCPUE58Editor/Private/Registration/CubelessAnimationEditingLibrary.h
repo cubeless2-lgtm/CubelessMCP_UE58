@@ -15,4 +15,8 @@ public:
      bool AllowSaveDirtyPackage=false, const FString& RequestToken=TEXT(""), bool UnobservedAssetLoad=false);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Internal", meta=(AIIgnore,DevelopmentOnly))
  static FString TakeAnimationEditReceipt(const FString& RequestToken);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Internal", meta=(AIIgnore,DevelopmentOnly))
+ static FString BeginAnimationAssetAcquisition(const FString& ObjectPath, const FString& RequestToken);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Internal", meta=(AIIgnore,DevelopmentOnly))
+ static FString EndAnimationAssetAcquisition(const FString& RequestToken, bool LoadAttempted);
 };

@@ -8233,9 +8233,14 @@ FResult AddCall(const FString& Path, const FString& RequestedClassPath, const FS
         || Function->GetFName() == TEXT("K2_SetRelativeLocation") || Function->GetFName() == TEXT("K2_SetWorldLocation") || Function->GetFName() == TEXT("SetWorldScale3D")
         || (NativeShapeBounds && Function->GetFName() == TEXT("SetBoxExtent"))));
     bool NativeGuardedValueAuthoring = NativeInterpolation || NativePhysicsAuthoring || NativeFacing || NativeSceneCamera;
+    // Admit only the stock parameterless Character.Jump declaration. This authors
+    // a normal Engine call node; it does not execute gameplay or add a runtime API.
+    const bool bCharacterJump = !bGeneratedClassRequested && Owner == ACharacter::StaticClass()
+        && Function->GetOuterUClass() == Owner && Function->GetFName() == TEXT("Jump")
+        && Function->NumParms == 0 && !Function->HasAnyFunctionFlags(FUNC_Static | FUNC_BlueprintPure);
     const bool AuditedEngineInstance = !bGeneratedClassRequested && !Function->HasAnyFunctionFlags(FUNC_Static)
         && ((Owner == UActorComponent::StaticClass() && Function->GetFName() == TEXT("GetOwner"))
-            || (Owner == AController::StaticClass() && Function->GetFName() == TEXT("SetIgnoreLookInput")) || CaptureInstance || bActorValueGetter);
+            || (Owner == AController::StaticClass() && Function->GetFName() == TEXT("SetIgnoreLookInput")) || CaptureInstance || bActorValueGetter || bCharacterJump);
     const bool AuditedObjectSignature = AuditedEngineInstance
         || (Owner == UGameplayStatics::StaticClass() && Function->GetFName() == TEXT("GetPlayerController"))
         || (Owner == UKismetSystemLibrary::StaticClass() && Function->GetFName() == TEXT("IsValid"));

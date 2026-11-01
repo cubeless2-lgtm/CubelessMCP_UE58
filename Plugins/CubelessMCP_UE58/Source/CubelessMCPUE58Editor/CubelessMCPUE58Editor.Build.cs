@@ -21,5 +21,8 @@ public class CubelessMCPUE58Editor : ModuleRules
         PrivateDependencyModuleNames.AddRange(new[] { "PoseSearch", "Chooser" });
         DynamicallyLoadedModuleNames.Add("ClothingSystemEditor");
         PrivateDependencyModuleNames.Add("MeshPaintingToolset");
+        PrivateDependencyModuleNames.Add("GraphEditor");
+        PrivateDependencyModuleNames.Add("ApplicationCore");
+        PrivateDependencyModuleNames.AddRange(new[] { "SubobjectEditor", "SubobjectDataInterface" });
     }
 }

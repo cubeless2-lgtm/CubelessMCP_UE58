@@ -29,6 +29,7 @@ from .animation_production_toolset import CubelessAnimationProductionTools
 from .domain_expansion_toolset import CubelessDomainExpansionTools
 from .loaded_level_instance_packing_toolset import CubelessLoadedLevelInstancePackingTools
 from .production_inspection_toolset import CubelessProductionInspectionTools
+from .editor_guidance_toolset import CubelessEditorGuidanceTools
 from . import enum_schema as _enum_schema
 from .rigvm_topology_toolset import CubelessRigVMTopologyTools
 from . import rigvm_topology_schema as _rigvm_topology_schema
@@ -292,6 +293,7 @@ _CLASSES += (CubelessAnimationProductionTools,)
 _CLASSES += (CubelessEnumEditingTools, CubelessDomainExpansionTools,)
 _CLASSES += (CubelessLoadedLevelInstancePackingTools,)
 _CLASSES += (CubelessProductionInspectionTools,)
+_CLASSES += (CubelessEditorGuidanceTools,)
 _ASYNC_INTEROP_REGISTRATION = {"ready": False, "schema_verified": False, "stage": "not_attempted", "error": ""}
 _ANIM_STATE_MACHINE_REGISTRATION = {"ready": False, "schema_verified": False, "default_verified": False, "preparation_verified": False, "stage": "not_attempted", "error": ""}
 _PROJECT_REGISTRATION = {"ready": False, "bindings_ready": False, "schema_verified": False, "default_verified": False, "stage": "not_attempted", "error": ""}

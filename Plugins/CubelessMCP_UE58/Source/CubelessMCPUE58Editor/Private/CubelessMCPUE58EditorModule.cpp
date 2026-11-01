@@ -1,4 +1,6 @@
 #include "Modules/ModuleManager.h"
+#include "EditorGuidance/EditorGuidance.h"
+#include "Misc/CoreDelegates.h"
 #include "Registration/CubelessLocalFacadeDefaults.h"
 #include "Compatibility/UE58/CubelessStatusWindowApi.h"
 #include "CubelessPCGNativeCanaryLibrary.h"
@@ -65,6 +67,7 @@ public:
     virtual bool SupportsDynamicReloading() override { return false; }
     virtual void StartupModule() override
     {
+        EditorGuidancePreExitHandle = FCoreDelegates::OnEnginePreExit.AddStatic(&Cubeless::EditorGuidance::Shutdown);
         if (!UToolsetRegistry::IsAvailable())
         {
             UE_LOG(LogCubelessMCPUE58, Error, TEXT("Official Toolset Registry is unavailable; Cubeless native toolset was not registered."));
@@ -144,6 +147,8 @@ public:
 
     virtual void ShutdownModule() override
     {
+        FCoreDelegates::OnEnginePreExit.Remove(EditorGuidancePreExitHandle);
+        Cubeless::EditorGuidance::Shutdown();
         Cubeless::UE58::PCGComponentGeneration::ShutdownRefreshTracking();
         Cubeless::Registration::ShutdownLocalFacadeDefaults();
         Cubeless::UE58::StatusWindow::Shutdown();
@@ -209,6 +214,7 @@ public:
     }
 
 private:
+    FDelegateHandle EditorGuidancePreExitHandle;
     bool bOwnsRegistration = false;
     Cubeless::Registration::FPythonExecutionRegistration PythonExecutionRaw;
     Cubeless::Registration::FJsonConverters JsonConverters;

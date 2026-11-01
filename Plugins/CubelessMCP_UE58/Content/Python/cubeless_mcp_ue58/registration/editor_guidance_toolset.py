@@ -13,12 +13,12 @@ def _request(action, **arguments):
 
 @unreal.uclass()
 class CubelessEditorGuidanceTools(unreal.ToolsetDefinition):
-    """Temporary Blueprint/AnimBlueprint UI guidance. No asset writes or automatic setting changes."""
+    """Temporary Blueprint/AnimBlueprint and legacy Control Rig Blueprint UI guidance. No asset writes or automatic setting changes."""
 
     @toolset_registry.tool_call
     @staticmethod
     def inspect_guidance_targets(asset_path: str) -> str:
-        """Inspect an already loaded, open standard Blueprint editor. Return graph/node GUIDs and currently displayed exact property paths. Does not load or open assets."""
+        """Inspect an already loaded, open standard Blueprint/AnimBP or legacy Control Rig Blueprint editor. Return actual graph/node/pin GUIDs, RigVM model paths where present, and currently displayed Details paths. New non-Blueprint RigVM assets are outside this route. Does not load or open assets."""
         return _request('inspect', asset_path=asset_path)
 
     @toolset_registry.tool_call

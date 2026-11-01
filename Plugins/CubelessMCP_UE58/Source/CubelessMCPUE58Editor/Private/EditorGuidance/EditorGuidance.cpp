@@ -2,6 +2,13 @@
 #include "GuideSequence.h"
 #include "BlueprintEditor.h"
 #include "BlueprintEditorTabs.h"
+#include "ControlRigBlueprintLegacy.h"
+#include "EdGraph/RigVMEdGraphNode.h"
+#include "RigVMModel/RigVMNode.h"
+#include "RigVMModel/RigVMPin.h"
+#include "RigVMModel/RigVMGraph.h"
+#include "RigVMModel/RigVMController.h"
+#include "Editor/RigVMDetailsViewWrapperObject.h"
 #include "SKismetInspector.h"
 #include "Editor.h"
 #include "Engine/Blueprint.h"
@@ -60,6 +67,7 @@ struct FTarget
     TWeakObjectPtr<UEdGraphNode> Node;
     TWeakObjectPtr<UEdGraph> Graph;
     TWeakObjectPtr<UObject> DetailsObject;
+    TWeakObjectPtr<URigVMNode> RigNode;
     TWeakPtr<FBlueprintEditor> Editor;
     FString Property, Message, State = TEXT("pending_layout");
     FString Kind = TEXT("node"), OwnerKind = TEXT("node"), Anchor;
@@ -80,12 +88,25 @@ struct FTarget
     bool Closed = false, ScrollPending = true, Painted = false, SelectionPending = false;
     double LastPaint = 0;
     int32 LayoutDelay = 3;
+    int32 RigSelectionAttempts = 0;
     FString Mode = TEXT("combined"), StepLabel;
 };
 TSharedPtr<FTarget> NodeTarget, PropertyTarget;
 FTSTicker::FDelegateHandle TickHandle;
 bool ClearRequested = false;
 bool Hidden = false;
+
+bool RigOwnerMatches(UObject* Object, URigVMNode* Node)
+{
+    auto Wrapper=Cast<URigVMDetailsViewWrapperObject>(Object);
+    return Node && Wrapper && Wrapper->IsActive() && Wrapper->GetSubject()==Node;
+}
+
+bool RigNodeMatches(UEdGraphNode* Node, URigVMNode* Model)
+{
+    auto Rig=Cast<URigVMEdGraphNode>(Node);
+    return Rig && Model && Rig->GetModelNode()==Model && Model->GetGraph() && Model->GetGraph()->GetNodes().Contains(Model);
+}
 
 FString Json(const TSharedRef<FJsonObject>& Value)
 {
@@ -134,13 +155,17 @@ TFunction<bool()> CertificateLifetime(const FTarget& Target)
     return [BPWeak=Target.Blueprint,EditorWeak=Target.Editor,NodeWeak=Target.Node,GraphWeak=Target.Graph,OwnerWeak=Target.DetailsObject,
         HadNode=Target.Node.IsValid(),HadGraph=Target.Graph.IsValid(),HadOwner=Target.DetailsObject.IsValid(),
         Kind=Target.Kind,OwnerKind=Target.OwnerKind,Identity=Target.Identity,Anchor=Target.Anchor,AnchorWeak=Target.CapturedAnchor,
-        FieldWeak=Target.VariableProperty,PinId=Target.PinId]()
+        FieldWeak=Target.VariableProperty,PinId=Target.PinId,RigWeak=Target.RigNode,HadRig=Target.RigNode.IsValid()]()
     {
         if (!IsInGameThread() || IsGarbageCollecting() || IsEngineExitRequested()) return false;
         auto BP=BPWeak.Get();auto Editor=EditorWeak.Pin();auto Node=NodeWeak.Get();auto Graph=GraphWeak.Get();
-        if (!BP || !Editor || FToolkitManager::Get().FindEditorForAsset(BP).Get()!=Editor.Get() || (HadOwner && !OwnerWeak.IsValid())) return false;
+        // RigVM Details wrappers are pooled when selection moves to another
+        // node. The certificate owns the weak semantic model identity; replay
+        // must reacquire and validate its freshly selected active wrapper.
+        if (!BP || !Editor || FToolkitManager::Get().FindEditorForAsset(BP).Get()!=Editor.Get() || (HadOwner && !HadRig && !OwnerWeak.IsValid())) return false;
         if (HadGraph) {TArray<UEdGraph*> Graphs;BP->GetAllGraphs(Graphs);if(!Graph || !Graphs.Contains(Graph))return false;}
         if (HadNode && (!Node || Node->GetGraph()!=Graph || !Graph->Nodes.Contains(Node))) return false;
+        if (HadRig && !RigNodeMatches(Node,RigWeak.Get())) return false;
         if (Kind==TEXT("pin")) {int32 Matches=0;for(auto Pin:Node->Pins)if(Pin && Pin->PinId==PinId)++Matches;if(Matches!=1)return false;}
         if (OwnerKind==TEXT("class_defaults") && (!BP->GeneratedClass || BP->GeneratedClass->GetDefaultObject(false)!=OwnerWeak.Get())) return false;
         if (OwnerKind==TEXT("component"))
@@ -209,6 +234,8 @@ TSharedPtr<SWidget> ResolveWidget(FTarget& Target)
         if (!Graphs.Contains(Target.Graph.Get()) || (Node && !Target.Graph->Nodes.Contains(Node)))
         { Target.State=TEXT("target_closed"); return nullptr; }
     }
+    if (Target.RigNode.IsValid() ? !RigNodeMatches(Node,Target.RigNode.Get()) : Cast<URigVMEdGraphNode>(Node)!=nullptr)
+    { Target.State=TEXT("target_closed"); return nullptr; }
     if (Target.OwnerKind==TEXT("class_defaults") && (!BP->GeneratedClass || BP->GeneratedClass->GetDefaultObject(false)!=Target.DetailsObject.Get()))
     { Target.State=TEXT("owner_replaced"); return nullptr; }
     if (Target.OwnerKind==TEXT("variable"))
@@ -225,11 +252,45 @@ TSharedPtr<SWidget> ResolveWidget(FTarget& Target)
         if (Target.LayoutDelay-- > 0) { Target.State=TEXT("pending_details_selection"); return nullptr; }
         auto Details=Editor->GetInspector()->GetPropertyView();
         if (!Details) { Target.State=TEXT("details_unavailable"); return nullptr; }
+        if (Target.RigNode.IsValid())
+        {
+            // A document activation can leave Details on the previous graph
+            // even when the model selection was restored. Settle this explicit
+            // request once through RigVM's native inspector route, never by
+            // passing its UEdGraph shim to the standard Blueprint inspector.
+            if (Details->GetSelectedObjects().Num()!=1 || !RigOwnerMatches(Details->GetSelectedObjects()[0].Get(),Target.RigNode.Get()))
+            {
+                if(Target.RigSelectionAttempts==0 && Editor->GetToolkitFName()==FName(TEXT("ControlRigEditor")) && Cast<UControlRigBlueprint>(BP) && Editor->IsBlueprintEditor())
+                {
+                    ++Target.RigSelectionAttempts;
+                    auto Rig=Cast<URigVMEdGraphNode>(Node);
+                    auto Controller=Rig ? Rig->GetController() : nullptr;
+                    if(!Controller || Controller->GetGraph()!=Target.RigNode->GetGraph())
+                    {Target.State=TEXT("details_selection_changed");Target.SelectionPending=false;return nullptr;}
+                    // Refresh an already restored selection without deselecting
+                    // it: clearing also tears down Control Rig manipulation
+                    // controls. Notify is the public native UI refresh route.
+                    const auto Selected=Target.RigNode->GetGraph()->GetSelectNodes();
+                    if(Selected.Num()==1 && Selected[0]==Target.RigNode->GetFName())
+                        Controller->Notify(ERigVMGraphNotifType::NodeSelectionChanged,nullptr);
+                    else Controller->SetNodeSelection(TArray<FName>{Target.RigNode->GetFName()},false,false);
+                    Target.LayoutDelay=3;Target.State=TEXT("pending_details_selection");return nullptr;
+                }
+                Target.State=++Target.RigSelectionAttempts<12 ? TEXT("pending_details_selection") : TEXT("details_selection_changed");
+                if(Target.RigSelectionAttempts>=12)Target.SelectionPending=false;
+                return nullptr;
+            }
+            Target.DetailsObject=Details->GetSelectedObjects()[0];
+            Target.SelectionPending=false;Target.LayoutDelay=3;
+            Target.State=TEXT("pending_details_layout");return nullptr;
+        }
         Target.SelectionPending=false;
         if (Details->GetSelectedObjects().Num()!=1 || Details->GetSelectedObjects()[0]!=Target.DetailsObject)
             Editor->GetInspector()->ShowDetailsForSingleObject(Target.DetailsObject.Get());
         Target.LayoutDelay=3; Target.State=TEXT("pending_details_layout"); return nullptr;
     }
+    if (Target.RigNode.IsValid() && (Target.Kind==TEXT("property") || Target.Kind==TEXT("selection")) && !RigOwnerMatches(Target.DetailsObject.Get(),Target.RigNode.Get()))
+    { Target.State=TEXT("details_selection_changed"); return nullptr; }
     if (Target.Property.IsEmpty())
     {
         if (Target.Kind == TEXT("panel") || Target.Kind == TEXT("variable") || Target.Kind == TEXT("selection"))
@@ -508,6 +569,11 @@ TSharedRef<FJsonObject> Snapshot(FTarget& Target)
     auto Out = MakeShared<FJsonObject>();
     Out->SetStringField(TEXT("state"), Target.State);
     Out->SetBoolField(TEXT("target_resolved"), Target.Resolved);
+    if(auto Model=Target.RigNode.Get())
+    {
+        Out->SetStringField(TEXT("rigvm_node_path"),Model->GetNodePath());
+        Out->SetStringField(TEXT("rigvm_model_object_path"),Model->GetPathName());
+    }
     Out->SetBoolField(TEXT("displayed"), Target.State == TEXT("displayed") && Target.Painted && FPlatformTime::Seconds()-Target.LastPaint < .5);
     Out->SetStringField(TEXT("property_path"), Target.Property);
     Out->SetStringField(TEXT("mode"), Target.Mode);
@@ -588,10 +654,17 @@ FString Request(const FString& Action, const FString& Arguments)
     auto BP = FindObject<UBlueprint>(nullptr, *AssetPath);
     if (!BP) return Fail(TEXT("loaded_blueprint_required"));
     auto Toolkit = FToolkitManager::Get().FindEditorForAsset(BP);
-    if (!Toolkit || (Toolkit->GetToolkitFName() != FName(TEXT("BlueprintEditor")) && Toolkit->GetToolkitFName() != FName(TEXT("AnimationBlueprintEditor")))) return Fail(TEXT("open_standard_blueprint_editor_required"));
+    // ControlRig's public legacy editor derives from FBlueprintEditor. The
+    // toolkit name alone is insufficient: the new RigVM editor is unrelated.
+    // IsBlueprintEditor plus the native asset class gate the installed 5.8
+    // legacy path; non-Blueprint RigVM editor assets remain explicitly refused.
+    const bool IsRig=Toolkit && Toolkit->GetToolkitFName()==FName(TEXT("ControlRigEditor")) && Cast<UControlRigBlueprint>(BP) && Toolkit->IsBlueprintEditor();
+    if (!Toolkit || (!IsRig && Toolkit->GetToolkitFName() != FName(TEXT("BlueprintEditor")) && Toolkit->GetToolkitFName() != FName(TEXT("AnimationBlueprintEditor")))) return Fail(TEXT("open_supported_blueprint_editor_required"));
     auto Editor = StaticCastSharedPtr<FBlueprintEditor>(Toolkit);
     if (Action == TEXT("inspect"))
     {
+        Out->SetStringField(TEXT("editor_type"),IsRig ? TEXT("control_rig_legacy") : TEXT("blueprint"));
+        Out->SetStringField(TEXT("asset_class"),BP->GetClass()->GetPathName());
         TArray<UEdGraph*> Graphs; BP->GetAllGraphs(Graphs); TArray<TSharedPtr<FJsonValue>> Items, GraphItems;
         for (auto Graph : Graphs) if (Graph)
         {
@@ -608,6 +681,11 @@ FString Request(const FString& Action, const FString& Arguments)
             Item->SetStringField(TEXT("title"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
             Item->SetStringField(TEXT("class"),Node->GetClass()->GetPathName());
             Item->SetStringField(TEXT("object_path"),Node->GetPathName());
+            if(auto Rig=Cast<URigVMEdGraphNode>(Node)) if(auto Model=Rig->GetModelNode())
+            {
+                Item->SetStringField(TEXT("rigvm_node_path"),Model->GetNodePath());
+                Item->SetStringField(TEXT("rigvm_model_object_path"),Model->GetPathName());
+            }
             if (auto Event=Cast<UK2Node_Event>(Node))
             {
                 Item->SetStringField(TEXT("event_member"),Event->EventReference.GetMemberName().ToString());
@@ -620,6 +698,7 @@ FString Request(const FString& Action, const FString& Arguments)
                 auto P=MakeShared<FJsonObject>(); P->SetStringField(TEXT("pin_id"),Pin->PinId.ToString()); P->SetStringField(TEXT("name"),Pin->PinName.ToString());
                 P->SetStringField(TEXT("direction"),Pin->Direction==EGPD_Input ? TEXT("input") : TEXT("output")); P->SetStringField(TEXT("category"),Pin->PinType.PinCategory.ToString());
                 P->SetBoolField(TEXT("hidden"),Pin->bHidden); Pins.Add(MakeShared<FJsonValueObject>(P));
+                if(auto Rig=Cast<URigVMEdGraphNode>(Node)) if(auto Model=Rig->FindModelPinFromGraphPin(Pin)) P->SetStringField(TEXT("rigvm_pin_path"),Model->GetPinPath());
             }
             Item->SetArrayField(TEXT("pins"),Pins);
             Items.Add(MakeShared<FJsonValueObject>(Item));
@@ -634,6 +713,15 @@ FString Request(const FString& Action, const FString& Arguments)
         TArray<TSharedPtr<FJsonValue>> Selected;
         if (Details) for (auto Object : Details->GetSelectedObjects()) if (Object.IsValid()) Selected.Add(MakeShared<FJsonValueString>(Object->GetPathName()));
         Out->SetArrayField(TEXT("details_objects"),Selected);
+        TArray<TSharedPtr<FJsonValue>> RigSubjects;
+        if(IsRig && Details)for(auto Object:Details->GetSelectedObjects())if(auto Wrapper=Cast<URigVMDetailsViewWrapperObject>(Object.Get()))
+        {
+            auto Subject=MakeShared<FJsonObject>();Subject->SetStringField(TEXT("wrapper_object_path"),Wrapper->GetPathName());
+            Subject->SetBoolField(TEXT("active"),Wrapper->IsActive());
+            if(auto Model=Cast<URigVMNode>(Wrapper->GetSubject()))Subject->SetStringField(TEXT("rigvm_node_path"),Model->GetNodePath());
+            RigSubjects.Add(MakeShared<FJsonValueObject>(Subject));
+        }
+        Out->SetArrayField(TEXT("details_rigvm_subjects"),RigSubjects);
         // Readback is independent of focus/paint evidence. Only direct scalar
         // reflected fields of the actual current selection are read here;
         // nested/container/custom rows are not evaluated or guessed.
@@ -712,6 +800,8 @@ FString Request(const FString& Action, const FString& Arguments)
         if (!Input->TryGetStringField(TEXT("target_kind"),Kind)) return Fail(TEXT("target_kind_required"));
         if (Kind==TEXT("property") && Property.IsEmpty()) return Fail(TEXT("property_path_required"));
         Input->TryGetStringField(TEXT("owner_kind"),OwnerKind); Input->TryGetStringField(TEXT("identity"),Identity); Input->TryGetStringField(TEXT("anchor"),Anchor);
+        if(IsRig && (Kind==TEXT("variable") || Kind==TEXT("component") || ((Kind==TEXT("property") || Kind==TEXT("selection")) && OwnerKind!=TEXT("node")) || (Kind==TEXT("panel") && Anchor!=TEXT("details"))))
+            return Fail(TEXT("control_rig_target_requires_graph_node_pin_or_node_details"));
         auto Target=MakeShared<FTarget>(); Target->Blueprint=BP; Target->Editor=Editor; Target->Kind=Kind; Target->OwnerKind=OwnerKind;
         Target->SourceAction=Action;Target->SourceArguments=Arguments;
         if(StepNumber>0)Target->Badge=LexToString((int32)StepNumber);
@@ -734,6 +824,8 @@ FString Request(const FString& Action, const FString& Arguments)
                 for (auto Candidate : Graph->Nodes) if (Candidate && Candidate->NodeGuid==Nid) { Node=Candidate; ++Count; }
                 if (Count!=1) return Fail(TEXT("node_missing_or_ambiguous"));
                 Target->Node=Node; Target->DetailsObject=Node;
+                if(auto Rig=Cast<URigVMEdGraphNode>(Node))
+                {Target->RigNode=Rig->GetModelNode();if(!Target->RigNode.IsValid())return Fail(TEXT("rigvm_model_node_unavailable"));}
                 if (Kind==TEXT("pin"))
                 {
                     FString Pin; Input->TryGetStringField(TEXT("pin_id"),Pin);
@@ -830,6 +922,8 @@ FString Request(const FString& Action, const FString& Arguments)
     Target->SourceAction=Action;Target->SourceArguments=Arguments;
     if(StepNumber>0)Target->Badge=LexToString((int32)StepNumber);
     Target->DetailsObject = Node;
+    if(auto Rig=Cast<URigVMEdGraphNode>(Node))
+    {Target->RigNode=Rig->GetModelNode();if(!Target->RigNode.IsValid())return Fail(TEXT("rigvm_model_node_unavailable"));}
     Target->Mode = Mode; Target->StepLabel = StepLabel;
     Target->Property = Action == TEXT("show_property") ? Property : FString(); Target->Message = Message;
     Target->SelectionPending = !Target->Property.IsEmpty();
@@ -857,7 +951,7 @@ FString Request(const FString& Action, const FString& Arguments)
         // Activating a root window can restore another document's selection.
         // Apply this explicit request once, after activation; tracking never
         // keeps overriding later user selections.
-        if (Details && (Details->GetSelectedObjects().Num() != 1 || Details->GetSelectedObjects()[0].Get() != Node))
+        if (!Target->RigNode.IsValid() && Details && (Details->GetSelectedObjects().Num() != 1 || Details->GetSelectedObjects()[0].Get() != Node))
             Editor->GetInspector()->ShowDetailsForSingleObject(Node);
         bool Found = false;
         if (Details) for (const auto& Path : Details->GetPropertiesInOrderDisplayed())

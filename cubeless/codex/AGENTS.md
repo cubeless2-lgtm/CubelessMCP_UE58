@@ -20,12 +20,13 @@ These standing rules cover Unreal production using official UE MCP and Cubeless 
 
 ## Work ownership and preservation
 
-- One owner serializes shared Editor and asset mutations on the required game thread. Parallel source work uses disjoint files. Independent QA gets a controlled handoff or an isolated project.
+- This Unreal project is the development and verification project. Perform work, builds and checks here unless the user explicitly directs otherwise. Do not create or use a separate project, project copy or temporary host project without that direction. Use owned fixtures and a controlled Editor handoff; report checks that cannot safely or technically run here.
+- One owner serializes shared Editor and asset mutations on the required game thread. Parallel source work uses disjoint files. Independent QA gets a controlled handoff or owned fixtures in this project.
 - Roles are responsibilities, not automatic processes or model assignments. Launch subagents only when the user or applicable instructions explicitly request delegation/parallel work. Do not call self-review independent review.
 - Preserve existing local changes, assets, Python startup and upper-level RetargetTools. Inspect disk and in-memory dirty state before restart; never silently save/discard user work.
 - Never retry uncertain mutations automatically. Inspect observed state after a timeout/disconnect; report partial changes and retry risk. Undo is not atomic rollback.
 - Use owned `/Game/_MCP_Temp/<feature>/CubelessTests/<unique-run>/` verification assets. Do not use `CubelessMCPTests` in new dependency-guarded inputs. Inspect verifier code before treating it as read-only.
-- Isolated verification project basenames must be at most 20 characters. Existing `cubeless/workspaces/UE58Verification/CubelessVerify58.uproject` is a candidate, not proof of a running or clean instance.
+- If a separate verification project is specifically needed, its basename must be at most 20 characters. An existing verification project is not proof of a running or clean instance.
 
 ## Tool maintenance and evidence
 

@@ -1,5 +1,7 @@
 # UE 5.8 MCP 블루프린트 작성 범위 조사
 
+최신 메인 프로젝트 구현 상태는 문서 마지막의 **2026-11-02 고정 캡처·카메라 연동 보강** 절을 따른다. 앞선 실험의 미완료·미해결 표기는 각 실험 시점의 기록이다.
+
 2026-11-01, GuideFull58, UE 5.8.4. 이 문서는 엔진의 모든 블루프린트 노드 목록이 아니라 실행 중인 Cubeless MCP의 함수 호출·이벤트·그래프 가져오기 경로를 조사한 기록이다. 소스에 존재하는 프로파일은 실제 호출 성공이나 모든 파라미터 조합의 지원을 뜻하지 않는다.
 
 ## 실제 관찰
@@ -59,3 +61,60 @@
 - 메인 PIE에서 구멍에 진입할 때 바닥 위의 밝은 부분과 캡처 합성된 어두운 몸통이 동시에 보였고, 아래쪽에 밝은 부분이 나타나는 프레임도 관찰했다. 캡처 원본을 같은 프레임에 읽어 알파를 적용해 표시했을 때도 캐릭터가 어둡게 보였다. 예시 raw center RGB는 약 `(0.0023, 0.0040, 0.0080)`이었고 이는 특정 프레임·픽셀의 값이다. 특정 광원이나 노출이 원인이라는 증거는 아니다.
 - 캐릭터의 Custom Depth와 Scene Depth를 비교해 가려진 부분만 합성하는 실험, Scene Capture `Final Color LDR`, 8배 색상 이득, PIE에서 바닥 그림자 비활성화를 시험했으나 원본과 일치하는 캐릭터 조명을 얻지 못했다. 해당 실험은 전부 원복했다. 저장된 캡처 소스는 `SceneColor HDR`, Blendable Location은 `Before Bloom`이며 명시적 Show Flags는 `DynamicShadows`, `AmbientOcclusion`, `ContactShadows` 세 항목이 꺼져 있다. 그 외 Show Flags의 최종 비트 값은 읽어 확인하지 못했다.
 - 현 시제품의 진입 중 밝기 및 색상 차이는 미해결이다. 고정 시점 및 선택한 평면에서의 PIE 동작은 확인했지만, 다양한 노출·장면, 최종 흰색 변화의 정확한 원인, 성능, 독립 패키징 실행은 검증하지 않았다. 별도 저장된 캡처·화면 증거는 `C:/CBJump01/CaptureRaw.png`, `C:/CBJump01/CaptureRawComposite.png`, `C:/CBJump01/DepthGatePaused.png`, `C:/CBJump01/DepthGateLate2.png`이다.
+
+## 2026-11-02 고정 캡처·카메라 연동 보강
+
+대상은 메인 저장소의 `UnrealMCP5_8_3.uproject`, 실행 엔진은 UE 5.8.4 CL 58902052다. GuideFull58 또는 별도 프로젝트에서 수정한 결과가 아니다. 변경한 게임 에셋은 `/Game/Study/SquareHole/`의 `BP_SquareHoleController`, `M_SquareHolePostProcess`, `RT_CharacterCapture` 세 개다. 프로젝트 C++와 MCP 런타임 API는 추가하지 않았다.
+
+### 적용한 계획과 설정
+
+1. RT를 **768×768, RGBA16F 고정**으로 바꿨다. 구멍 크기, 카메라 FOV, 화면 크기에 따라 RT를 재생성하거나 리사이즈하는 노드는 없다. 최대 구멍 반크기는 **200cm**, 기본 목표 반크기는 **100cm**다. 실제 구멍 반크기는 기존 열림·닫힘 Timeline이 0에서 목표값까지 바꾼다. `PostMID`의 `HoleTargetHalfSize`를 설정하면 목표 크기를 바꿀 수 있으며, BP와 머티리얼 모두 0~200cm로 제한한다. 최대값을 바꾸려면 이 두 제한과 캡처 시야 검증을 함께 갱신해야 한다.
+2. 제어 Actor를 `TG_POST_UPDATE_WORK`에서 갱신한다. `PlayerCameraManager`의 최종 카메라 위치와 FOV를 읽으며 특정 CameraComponent의 고정 이름에 의존하지 않는다. 캡처는 같은 카메라 원점에서 고정 구멍 중심을 향하고, 캡처 수평 FOV는 `max(메인 FOV×0.8, 70°)`다. 이 시야는 최대 반크기 200cm의 평면을 포함하도록 현재 서드퍼슨 카메라에 맞췄다. 현재 구멍 크기는 캡처 위치·회전·FOV 계산에 들어가지 않는다.
+3. PP에 캡처의 Forward/Right/Up과 `tan(FOV/2)`를 전달한다. 메인 화면 픽셀의 월드 광선을 캡처 UV로 다시 투영하므로 전체 화면 UV를 정사각형 RT에 그대로 늘이지 않는다. 캡처 UV 밖은 검은색으로 처리해 가장자리 픽셀을 늘여 붙이지 않는다. 메인 카메라의 화면비는 메인 뷰의 월드 광선에 반영된다. 이번 PIE 화면비 외 별도 세로 화면 시험은 하지 않았다.
+4. 메인 픽셀의 Scene Depth에 해당하는 월드 위치와 수평 구멍 평면의 광선 교차 거리를 비교한다. 평면보다 앞의 불투명 물체는 원래 화면을 유지한다. 구멍 안쪽만 검은 바탕과 캐릭터 캡처로 대체한다. 기본 깊이 허용치는 `DepthBias=1cm`다. 이 범위에서는 **Custom Depth/Stencil을 추가하지 않았다**. 임의 경사면, 깊이를 쓰지 않는 반투명 전경, 정사영·VR·분할 화면은 검증 범위 밖이다.
+5. 캡처는 `Use Show Only List`를 유지하고, 스킬 실행 중 매 프레임 플레이어와 Child Actor의 컴포넌트를 `ShowOnlyActorComponents(..., true)`로 등록한다. 새로 생긴 해당 컴포넌트도 다음 캡처에 포함된다. 별도 Actor로 생성하는 이펙트는 별도 Show Only 등록이 필요하다. 단순 반투명·가산 재질은 아래 후속 리뷰에서 확인했으며, 실제 Niagara 이펙트 전체의 색·알파 합성은 아직 검증하지 않았다.
+6. `Capture Every Frame`과 `Capture on Movement`를 끄고, MID와 스킬 상태를 확인한 뒤 카메라·투영 파라미터 갱신 → Show Only 갱신 → `CaptureScene` 순서로 실행한다. 대기 상태에서는 캡처하지 않는다. 렌더 상태는 유지한다.
+
+### 검은 캐릭터 현상의 원인과 수정
+
+같은 위치에서 플레이어 메시의 `Receives Decals`만 일시적으로 끈 대조 시험을 수행했다. 시간 배율을 매우 작게 한 상태로 한 프레임 이상 캡처를 갱신했을 때 검은 몸통이 원래의 흰색으로 바뀌었다. **검은 구멍 데칼이 캐릭터에 투영되는 것이 검게 변하던 주요 원인임을 확인했다.** 증거는 `Saved/SquareHoleUpgrade20261102/decal-before.png`, `decal-after.png`다.
+
+최종 구현은 캐릭터의 모든 데칼 수신을 끄지 않는다. 생성한 구멍 데칼만 숨기고, 기존 위치·높이 판단용 컴포넌트로 사용한다. 검은 구멍은 PP가 그린다. 구멍 내부의 흰 캐릭터를 확인했지만 모든 장면의 조명·노출에서 원본과 정량적으로 색이 일치한다고 검증한 것은 아니다. 기존 HDR `SceneColor`와 `Before Bloom` 순서를 유지했다.
+
+명시적으로 끈 Show Flags는 `DynamicShadows`, `AmbientOcclusion`, `ContactShadows`, `Decals`, `MotionBlur`, `TemporalAA`, `Bloom`, `Tonemapper`, `EyeAdaptation`, `Fog`, `Atmosphere`, `VolumetricFog`다. 나머지 플래그는 엔진 기본값을 따른다. 위 배열을 최종 엔진 비트 전체를 읽은 결과로 해석하지 않는다.
+
+### 실행 결과와 재현
+
+- 메인 프로젝트 PIE에서 기본 목표 반크기 100cm의 하강과 흰 캐릭터 합성을 확인했다: `Saved/SquareHoleUpgrade20261102/upgrade-first.png`.
+- 별도 `SkeletalMeshActor`를 구멍 앞에 겹쳐 놓으면 전경에 남았다. 같은 메시를 바닥 아래에 놓았을 때 캡처에 섞이지 않았다: `foreground-character.png`, `max-hole-fov60.png`.
+- 목표/현재 반크기 200cm와 메인 FOV 60°에서는 캡처 FOV 70°, 반크기 50cm와 메인 FOV 110°에서는 캡처 FOV 88°를 관찰했다. 두 경우 RT는 768×768이었다: `max-hole-fov60.png`, `small-hole-fov110.png`.
+- 연속 두 번 실행 후 시작 위치 `(0,0,91.65)`, 충돌 활성화, 그림자 활성화, SpringArm의 Capsule 부모 복구와 스킬 잠금 해제를 확인했다.
+- Show Only 갱신 보강 후 최종 저장된 BP를 다시 PIE로 실행했다. 최대 반크기 200cm의 네 모서리가 모두 캡처 UV 범위 안에 있었고, 최종 복귀도 통과했다. UV는 대략 `(0.168,0.688)`, `(0.832,0.688)`, `(0.315,0.395)`, `(0.685,0.395)`다. 이는 시험한 카메라 거리·각도의 증거이며 모든 근접·비스듬한 시야의 보증은 아니다. `Saved/SquareHoleUpgrade20261102/final-pie.json`에 기록했다.
+- BP 컴파일은 오류 0·경고 0이었다. 세 에셋을 저장했고 PIE 종료 후 더티 콘텐츠 패키지는 없었다. 직접 Asset Registry 의존성에는 MCP 패키지가 없었다. 디스크 냉시작, 플러그인 비활성화 후 로드, cook/package, MCP 없는 독립 실행, GPU 시간 측정은 이번 작업에서 수행하지 않았다.
+
+기존 기본 맵/게임모드는 변경하지 않았다. `BP_SquareHoleGameMode`로 테스트하거나 PIE 콘솔에서 다음 명령을 실행한 뒤 **P**를 누른다.
+
+```text
+open /Engine/Maps/Templates/Template_Default?game=/Game/Study/SquareHole/BP_SquareHoleGameMode.BP_SquareHoleGameMode_C
+```
+
+### 작성 경로와 실패 기록
+
+- 표준 엔진 CallFunction/VariableSet/Branch 노드는 기존 native 텍스트 가져오기를 사전 검사한 뒤 생성했다. 일반 핀 연결·기본값·컴파일 도구와 공식 `BlueprintGraphPin.try_create_connection`을 사용했다. 직접 공식 핀 연결의 전후 전체 간선 차이가 지정한 교체 한 쌍뿐인지 검사했다. 머티리얼은 `MaterialEditingLibrary`로 작성했다. 저장된 게임 그래프에 작성용 MCP 함수를 연결하지 않았다.
+- 새 BP 멤버 변수 추가는 외부 ChildActor 템플릿 인스턴스 보호 검사에서 작성 전에 거부됐다. 이어 템플릿의 ChildActor 클래스를 일시 해제하는 시도 중 에디터가 종료됐다. 직전 더티 패키지와 PIE는 없었고 저장된 파일 변경도 없었다. 같은 해제 조작은 반복하지 않고 메인 프로젝트를 재실행한 뒤 기존 MID 파라미터와 표준 엔진 노드를 사용하는 경로로 완료했다. 별도 프로젝트로 전환하지 않았다.
+- 구체 핀 교체 경로는 자체 멤버·Timeline이 있는 BP 프로파일을 거부했다. exec 교체의 기존 대상 입력에 여러 간선이 생긴 경우에도 별도 보호 검사에서 거부됐다. 상태를 재조회한 뒤 범위가 정해진 공식 핀 연결을 사용했다. float 연결로 PromotableOperator 타입이 정상 변경된 한 호출은 도구의 보존 검사에서 실패로 반환됐지만, 후속 조회에서 양방향 연결이 존재했고 컴파일·PIE는 통과했다. 그 실패 요청을 자동 재시도하지 않았다.
+
+관련 설치 엔진 근거는 `Engine/Source/Runtime/Engine/Classes/Components/SceneCaptureComponent2D.h`, `SceneCaptureComponent.h`, `Camera/PlayerCameraManager.h`, `Engine/Shaders/Private/SceneCapturePixelShader.usf`다. 실험 클라이언트·그래프 스냅샷·원시 로그는 무시되는 `Saved/SquareHoleUpgrade20261102/`에 두었다.
+
+### 후속 자체 리뷰와 알파 합성 수정
+
+사용자의 검수 후 리뷰·수정·메인 게시 요청에 따라 실제 118개 노드와 저장된 머티리얼을 검토했다. 새 실행 노드들의 연결과 고정 해상도·대기 상태 캡처 차단을 확인했고, 그래프의 호출 소유자는 표준 `/Script/Engine` 클래스였다. 별도 검토자의 독립 리뷰는 수행하지 않았다.
+
+**수정한 P2 문제:** 기존 `captured.rgb * (1 - captured.a)`는 검은 배경에 이미 합성된 캡처 RGB에 불투명도를 다시 곱했다. 캡처의 알파는 inverse opacity이며 RGB를 원래 색으로 역산한 값이 아니다. 이 중복 곱은 반투명 색을 다시 어둡게 만들고 알파를 유지하는 가산 색을 없앴다. 검은 배경과 Show Only·Fog/Atmosphere 비활성 설정을 유지한 채, 최종 합성을 `captured.rgb * inside`로 바꿨다. 캡처 RGB는 별도의 불투명도 곱 없이 구멍의 검은 바탕 위에 사용한다.
+
+- 별도 소유 테스트 경로 `/Game/_MCP_Temp/SquareHole/CubelessTests/Review20261102/`의 unlit 빨간 재질로 확인했다. opacity 0.5인 Translucent의 중앙 RT는 약 `(0.49976,0,0,0.5)`였고 기존 식의 빨간 값은 약 `0.24988`이었다. 같은 opacity의 Additive RT는 약 `(0.49976,0,0,1)`이었으며 기존 식은 빨간 값을 0으로 만들었다. 빈 배경의 RGB는 두 경우 모두 0이었다. `Saved/SquareHoleUpgrade20261102/alpha-review.json`에 수치를 기록했다.
+- 수정 후 메인 스킬의 정상 실행 중 두 테스트 재질을 별도 Show Only 등록한 메시로 바닥 아래에 배치했다. RT 빨간 값은 두 경우 모두 0.5였고, 실제 최종 구멍 화면에서도 두 재질이 빨간색으로 보였다. 스크린샷의 빨간 영역은 각각 25,846·25,691픽셀이었다. 증거는 `M_HalfOpacity-integrated-fixed.png`, `M_Additive-integrated-fixed.png`, `alpha-composite-result.json`이다. 이 픽셀 수는 출력 존재 확인이며 GPU 성능 수치나 선형 색상 일치 측정이 아니다.
+- 수정 후 최대 반크기 200cm의 캡처 모서리 범위와 스킬 종료 복귀도 다시 통과했다. 테스트는 PIE 종료로 정리했고 테스트 재질과 클라이언트는 게시 파일에 포함하지 않는다. 메인 에디터는 유지한다.
+- 최초 probe 시험은 StaticMeshActor의 Static 모빌리티 때문에 이동·메시 설정이 거부되어 빈 RT를 읽었다. Movable로 고친 새 시험에서 위 수치를 확인했다. 별도 수동 카메라 합성 시험도 캡처 위치·축이 0인 상태라 빈 화면을 내어 통과로 기록하지 않았다. 최종 출력 확인은 정상 스킬의 카메라·Tick 경로를 이용한 위 통합 시험으로 수행했다.
+
+설치 엔진의 `Engine/Shaders/Private/SceneCapturePixelShader.usf`, `SceneTexturesCommon.ush`와 `Engine/Source/Runtime/Renderer/Private/TranslucentRendering.cpp`의 SceneColor 복사 및 Translucent/Additive 블렌드 설정을 대조했다. 반투명 재질은 `Before DOF` 시험에 한정되며, 다른 translucency pass나 실제 Niagara 구성 전체, 노출 변화, 패키징·독립 실행은 여전히 미검증이다.

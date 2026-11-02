@@ -34,7 +34,7 @@ bool FRXApplyLODTest::RunTest(const FString& Parameters)
     const FMeshDescription* Base = Preview->GetMeshDescription(0);
     if (!TestNotNull(TEXT("LOD0 source exists"), Base)) { return false; }
     TArray<FRXSectionWeight> Sections;
-    for (FPolygonGroupID Group : Base->PolygonGroups().GetElementIDs()) { Sections.Add({ Group, 1.0f, false }); }
+    for (FPolygonGroupID Group : Base->PolygonGroups().GetElementIDs()) { Sections.Add({ Group, 1.0f, false, true }); }
     TMap<int32, TArray<FRXSectionWeight>> Weights;
     Weights.Add(1, Sections);
     FString Fingerprint, Error;
@@ -57,6 +57,7 @@ bool FRXApplyLODTest::RunTest(const FString& Parameters)
     {
         TestEqual(TEXT("Requested reduction restored"), Reopened->GetSourceModel(1).ReductionSettings.PercentTriangles, 0.5f);
         TestTrue(TEXT("Weights restored"), Restored.Contains(1) && Restored[1].Num() == Sections.Num());
+        TestTrue(TEXT("Silhouette preservation restored after applying"), Restored.Contains(1) && Restored[1][0].bPreserveSilhouette);
         TestFalse(TEXT("Impostor remains disabled"), bImpostor);
     }
     return true;

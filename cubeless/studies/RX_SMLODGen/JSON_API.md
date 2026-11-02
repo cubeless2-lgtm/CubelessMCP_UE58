@@ -1,6 +1,6 @@
-# RX_SMLODGen JSON API v1 / 설정 문서 v2
+# RX_SMLODGen JSON API v1 / 설정 문서 v3
 
-에디터 전용 플러그인 `RX_SMLODGen`이 활성화되고 로드된 UE 5.8.4에서 사용한다.
+에디터 전용 플러그인 `RX_SMLODGen`이 활성화되고 로드된 UE 5.8.4에서 사용한다. 외곽 실루엣 보존은 표준 `GeometryProcessing` 플러그인을 사용하며 RX 플러그인 의존성으로 활성화된다.
 게임 런타임이나 MCP 플러그인에 의존하는 API가 아니다. 기존 MCP Python 실행 도구에서도 이 에디터 API를 호출할 수 있다.
 
 ```python
@@ -38,8 +38,9 @@ rx('save_json', filename='bench_lod.json')
 | op | 입력 | 결과와 변경 범위 |
 |---|---|---|
 | `describe` | 없음 | 명령 및 사용 조건, 세션 유무 |
-| `open` | `asset` | `/Game/` Static Mesh로 전용 RX 창과 임시 사본 생성. 기존 세션이 있으면 거부 |
-| `get` | 없음 | 전체 `settings`, `preview_current`, 표시 LOD별 실제 `triangles`/`vertices`/`impostor` |
+| `open` | 선택 `asset` | Static Mesh로 전용 RX 창과 임시 사본 생성. 생략하면 플러그인의 기본 박스를 열며, 기존 창은 포커스한다. 기존 창에 다른 `asset`을 지정하면 기존 설정의 복구 JSON을 저장한 뒤 대상을 교체 |
+| `load_asset` | `asset` | 콘텐츠 브라우저 드롭과 같은 대상 교체. `/Game/`, `/Engine/`, 플러그인의 유효한 Static Mesh 오브젝트 경로 허용. 기존 설정은 `autoswap_<GUID>.json`으로 보존 |
+| `get` | 없음 | 전체 `settings`, `preview_current`, 표시 LOD별 실제 `triangles`/`vertices`/`impostor`, 현재 뷰포트와 섹션 통계 |
 | `set` | 전체 `settings` | 검증 후 사본의 설정만 교체. 원본이나 디스크를 변경하지 않음 |
 | `resize` | `count` | 편집 LOD 개수 변경. 임포스터 제외. 이후 `rebuild` 필요 |
 | `remove_lod` | `lod` | LOD 1 이상 제거. 이후 `rebuild` 필요 |
@@ -54,16 +55,20 @@ rx('save_json', filename='bench_lod.json')
 
 파일 이름은 경로 없는 이름만 허용한다. UI 파일 대화상자에서는 사용자가 직접 경로를 지정할 수 있다.
 `get.viewport`에는 미리보기 월드의 `world_time`/`world_ticks`, `fixed_exposure`/`ev100`, `forced_lod`와 Slate 합성 설정도 반환한다. `forced_lod: -1`은 Auto이며 0 이상은 강제 표시할 LOD 번호다. 뷰포트의 노출은 표시용 옵션이며 저장하는 LOD JSON의 설정에 포함하지 않는다.
+`get.window_topmost`는 시스템 전역 최상위 여부이며 현재는 `false`다. `window_owned_by_editor: true`이면 언리얼 메인 창에 네이티브 소유 창으로 연결되어 메인 창보다 앞에 유지되며 다른 프로그램보다 우선하지 않는다. 메인 창이 아직 없는 특수 실행에서는 일반 독립 창으로 연다.
+`current_lod`는 현재 카메라에서 계산한 표시 LOD, `current_screen_size`는 현재 바운드의 투영 스크린 크기다. 전환 임계값인 `preview_lods[].screen_size`와 구분한다. 새 메시가 첫 프레임을 그리기 전에는 `current_lod: -1`이다. 렌더링 후에는 해당 LOD의 `triangles`, `vertices`, `sections: [{section, triangles, vertices}]`와 `statistics_text`를 반환한다. 섹션 버텍스는 인덱스가 참조하는 고유 렌더 버텍스 수이므로 UV/노멀 분할을 포함하며 섹션 간에 공유된 버텍스는 각 섹션에서 센다. Nanite의 실시간 클러스터 수가 아니라 기본 LOD 지오메트리 통계다.
+`describe.default_asset`은 `/RX_SMLODGen/Meshes/SM_DefaultBox.SM_DefaultBox`다. 대상 교체 전에 복구 파일 저장이 실패하거나 새 메시 초기화에 실패하면 기존 세션을 유지한다. 이전 설정을 복원하려면 그 JSON의 `asset`으로 대상을 연 뒤 `load_json`, `rebuild` 순서로 호출한다.
 `get.preview_lods[].screen_size`는 현재 표시 기준이다. 자동 계산 중에는 렌더 데이터의 값을, 수동 모드에서는 설정된 소스 값을 읽는다. `settings.lods[].screen_size`는 설정용 소스 값이므로 자동 모드의 실제 전환값과 다를 수 있다.
 `preview_current: false`이면 표시 메시가 아직 새 설정으로 갱신되지 않은 상태다. 실제 전환 결과를 평가하기 전에 `rebuild`를 호출한다. UI에서 화면 크기를 직접 편집하면 자동 계산을 끄고 입력을 보존한다. UI의 빌드 세팅은 숨겨져 있지만 JSON의 `build` 데이터는 유지한다.
 오류/타임아웃 후 변경 명령을 자동 반복하지 않는다. `get`으로 관찰 가능한 상태와 원본 dirty 상태를 확인한다.
 
 ## 설정 문서
 
-루트 필드는 `schema: RX_SMLODGen`, `version: 2`, `weight_semantics: preservation`, `asset`, `source_id`, `impostor`, `auto_screen_size`, `lod_group`, `general`, `materials`, `lods`이다. 요청 API 자체의 버전은 1을 유지한다.
+루트 필드는 `schema: RX_SMLODGen`, `version: 3`, `weight_semantics: preservation`, `asset`, `source_id`, `impostor`, `auto_screen_size`, `lod_group`, `general`, `materials`, `lods`이다. 요청 API 자체의 버전은 1을 유지한다. 설정 버전 1·2를 계속 읽으며, 이전 JSON에 실루엣 플래그가 없으면 `false`로 가져온다.
 `general`에는 플랫폼/품질별 최소 LOD, 스트리밍 바이어스/LOD 수 및 LOD 스트리밍 설정을 보관한다.
 각 LOD에는 `index`, `geometry_id`, `import_filename`, 엔진 구조체의 `reduction`/`build`/`screen_size`, `sections`, `section_overrides`가 있다.
-`sections`는 LOD 0의 Polygon Group ID를 사용하는 `group`, 0~1 `weight`, `excluded` 배열이다.
+`sections`는 LOD 0의 Polygon Group ID를 사용하는 `group`, 0~1 `weight`, `excluded`, `preserve_silhouette` 배열이다. v3의 `preserve_silhouette`은 Boolean 필수 항목이다.
+`preserve_silhouette: true`이면 열린 경계·비평면 모서리·UV/노멀 경계를 고정한 제약 QEM으로 평면 내부를 줄인다. 비평면 판단의 법선 내적 오차는 `1e-8`이다. 곡면이나 경계가 많으면 목표보다 삼각형이 많이 남거나 감소하지 않을 수 있다. 가중치 0에서도 작동하며 감소 제외/가중치 1은 전체 원본을 보존한다. 결합 한계치는 0이어야 한다. 서로 다른 가중치 또는 실루엣 옵션을 가진 섹션이 맞닿은 경우 기존 안전 제약에 따라 거부한다.
 `section_overrides`는 섹션별 머티리얼 슬롯, 그림자, 충돌, 레이 트레이싱, 디스턴스 필드 및 불투명 플래그를 보관한다.
 `materials`는 슬롯 이름과 머티리얼 에셋 경로를 보관한다. 배열의 순서와 슬롯 식별자를 임의로 바꾸지 않는다.
 
@@ -73,7 +78,7 @@ JSON은 메시의 버텍스나 촬영한 텍스처 자체를 포함하지 않는
 엔진 구조체 필드 이름은 `get` 결과를 사용한다. UE 버전마다 달라질 수 있는 필드를 수작업으로 추측하지 않는다.
 
 가중치의 목표 잔존 비율은 `percentTriangles + (1 - percentTriangles) * weight`이다. 기본값 0은 원래 감소를 그대로 적용하고, 1은 섹션을 완전히 보존한다. 예를 들어 삼각형 잔존 비율 0.5에서 가중치 0은 50%, 0.5는 75%, 1은 100%를 남긴다. 제외한 섹션도 100%를 보존한다.
-이전 설정 문서 버전 1과 원본 에셋의 버전 1 가중치 메타데이터를 읽을 때는 `새 가중치 = 1 - 이전 가중치`로 자동 변환하여 감소 결과를 유지한다. 숫자를 그대로 둔 채 버전만 2로 고치지 않는다. 가져온 후 저장/내보내기는 버전 2 형식으로 기록한다.
+이전 설정 문서 버전 1과 원본 에셋의 버전 1 가중치 메타데이터를 읽을 때는 `새 가중치 = 1 - 이전 가중치`로 자동 변환하여 감소 결과를 유지한다. 숫자를 그대로 둔 채 버전만 고치지 않는다. 가져온 후 저장/내보내기는 버전 3 형식으로 기록한다.
 가중치를 다르게 준 맞닿은 섹션, Nanite, 비율 외 감소 조건 등은 현재 감소기의 제한으로 거부될 수 있다.
 임포스터는 설정 LOD 개수와 별도로 표시 메시의 마지막에 한 개만 존재한다. 재생성은 같은 마지막 인덱스를 교체한다.
 임포스터 버텍스의 셰이딩 노말은 모두 메시 로컬 +Z이다. 머티리얼은 VertexNormalWS를 월드 공간 Normal 입력으로 사용하여 양면의 뒷면에서도 위쪽 노말이 반전되지 않도록 한다. 네 수직 평면의 배치와 삼각형 와인딩은 유지한다.

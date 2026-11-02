@@ -6,6 +6,7 @@
 #include "OverlappingCorners.h"
 #include "StaticMeshAttributes.h"
 #include "StaticMeshOperations.h"
+#include "RXSilhouetteReduction.h"
 
 bool RXSectionReduction::Reduce(const FMeshDescription& Source, const FMeshReductionSettings& Settings,
     const TArray<FRXSectionWeight>& Sections, FMeshDescription& Output,
@@ -25,6 +26,8 @@ bool RXSectionReduction::Reduce(const FMeshDescription& Source, const FMeshReduc
         Error = TEXT("Provide exactly one weight for each source polygon group.");
         return false;
     }
+    if (Settings.WeldingThreshold > 0 && Sections.ContainsByPredicate([](const FRXSectionWeight& Section){ return Section.bPreserveSilhouette; }))
+    { Error = TEXT("외곽 실루엣 보존은 경계 정점을 이동하지 않도록 결합 한계치 0이 필요합니다."); return false; }
     TSet<FPolygonGroupID> Seen;
     for (const FRXSectionWeight& Section : Sections)
     {
@@ -90,9 +93,10 @@ bool RXSectionReduction::Reduce(const FMeshDescription& Source, const FMeshReduc
     // A uniform weight is exactly the engine-wide reduction case. Reducing
     // the intact mesh preserves the engine's normal section-boundary behavior.
     const float FirstWeight = Sections[0].bExcluded ? 1.0f : Sections[0].Weight;
-    const bool bUniformWeight = Sections.ContainsByPredicate([FirstWeight](const FRXSectionWeight& Item)
+    const bool bSilhouette = Sections[0].bPreserveSilhouette;
+    const bool bUniformWeight = Sections.ContainsByPredicate([FirstWeight, bSilhouette](const FRXSectionWeight& Item)
     {
-        return (Item.bExcluded ? 1.0f : Item.Weight) != FirstWeight;
+        return (Item.bExcluded ? 1.0f : Item.Weight) != FirstWeight || Item.bPreserveSilhouette != bSilhouette;
     }) == false;
     if (bUniformWeight)
     {
@@ -103,7 +107,9 @@ bool RXSectionReduction::Reduce(const FMeshDescription& Source, const FMeshReduc
         FMeshDescription Reduced;
         FStaticMeshAttributes(Reduced).Register();
         float MaxDeviation = 0.0f;
-        Reducer->ReduceMeshDescription(Reduced, MaxDeviation, Source, Corners, Uniform);
+        if (bSilhouette)
+        { if (!RXSilhouetteReduction::Reduce(Source, Uniform.PercentTriangles, Reduced, Error)) { return false; } }
+        else { Reducer->ReduceMeshDescription(Reduced, MaxDeviation, Source, Corners, Uniform); }
         if (Reduced.Triangles().Num() == 0)
         {
             Error = TEXT("The reducer returned an empty mesh.");
@@ -219,7 +225,9 @@ bool RXSectionReduction::Reduce(const FMeshDescription& Source, const FMeshReduc
             FOverlappingCorners Corners;
             FStaticMeshOperations::FindOverlappingCorners(Corners, Isolated, PerSection.WeldingThreshold);
             float MaxDeviation = 0.0f;
-            Reducer->ReduceMeshDescription(Reduced, MaxDeviation, Isolated, Corners, PerSection);
+            if (Section.bPreserveSilhouette)
+            { if (!RXSilhouetteReduction::Reduce(Isolated, PerSection.PercentTriangles, Reduced, Error)) { return false; } }
+            else { Reducer->ReduceMeshDescription(Reduced, MaxDeviation, Isolated, Corners, PerSection); }
         }
         Record.OutputTriangles = Reduced.Triangles().Num();
         if (Record.OutputTriangles <= 0 || Reduced.PolygonGroups().Num() != 1)

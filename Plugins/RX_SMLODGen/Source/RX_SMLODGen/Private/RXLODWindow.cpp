@@ -33,6 +33,10 @@
 #include "DetailLayoutBuilder.h"
 #include "PropertyHandle.h"
 #include "Dom/JsonObject.h"
+#include "DragAndDrop/AssetDragDropOp.h"
+#include "SceneManagement.h"
+#include "SceneView.h"
+#include "RXLODStats.h"
 
 namespace
 {
@@ -45,7 +49,8 @@ namespace
 
 TSharedRef<SWidget> SRXLODWindow::Area(const FString& Label, TSharedRef<SWidget> Body, bool Expanded)
 {
-    const FString StableLabel = BuildingLOD >= 0 && Label.StartsWith(FString::Printf(TEXT("LOD %d"), BuildingLOD)) ? TEXT("LOD") : Label;
+    FString StableLabel = BuildingLOD >= 0 && Label.StartsWith(FString::Printf(TEXT("LOD %d"), BuildingLOD)) ? TEXT("LOD") : Label;
+    if (Label.StartsWith(TEXT("섹션 ")) && Label.Contains(TEXT("    "))) { StableLabel = Label.Left(Label.Find(TEXT("    "))); }
     const FString Key = FString::Printf(TEXT("%d|%s"), BuildingLOD, *StableLabel);
     const bool* Previous = ExpandedAreas.Find(Key);
     const TWeakPtr<SRXLODWindow> WeakThis = SharedThis(this);
@@ -98,6 +103,23 @@ public:
         }
     }
     uint64 WorldTicks = 0;
+    TWeakObjectPtr<UStaticMeshComponent> MeshComponent;
+    int32 CurrentLOD = INDEX_NONE;
+    float CurrentScreenSize = 0;
+    void DrawCanvas(FViewport& InViewport, FSceneView& View, FCanvas& Canvas) override
+    {
+        FEditorViewportClient::DrawCanvas(InViewport, View, Canvas);
+        CurrentLOD = INDEX_NONE;
+        if (const auto* Component = MeshComponent.Get())
+            if (const UStaticMesh* Mesh = Component->GetStaticMesh())
+                if (const auto* Data = Mesh->GetRenderData(); Data && !Data->LODResources.IsEmpty())
+                {
+                    CurrentScreenSize = ComputeBoundsScreenSize(Component->Bounds.Origin, float(Component->Bounds.SphereRadius), View);
+                    const int32 Forced = Component->GetForcedLodModel();
+                    CurrentLOD = Forced > 0 ? Forced - 1 : ComputeStaticMeshLOD(Data, Component->Bounds.Origin, float(Component->Bounds.SphereRadius), View, Mesh->GetDefaultMinLOD());
+                    CurrentLOD = FMath::Clamp(CurrentLOD, 0, Data->LODResources.Num() - 1);
+                }
+    }
     bool IsFixedExposure() const { return ExposureSettings.bFixed; }
     float GetEV100() const { return ExposureSettings.FixedEV100; }
     void SetExposure(bool Fixed, float EV100) { ExposureSettings.bFixed = Fixed; ExposureSettings.FixedEV100 = FMath::Clamp(EV100, -6.0f, 16.0f); Invalidate(); }
@@ -122,6 +144,16 @@ public:
     {
         if (!Component.IsValid()) { Component.Reset(NewObject<UStaticMeshComponent>(GetTransientPackage(), NAME_None, RF_Transient)); Scene->AddComponent(Component.Get(), FTransform::Identity); }
         Component->SetStaticMesh(Mesh); Component->SetForcedLodModel(LOD);
+        Component->SetSectionPreview(INDEX_NONE); Component->SelectedEditorSection = INDEX_NONE;
+        auto* RXClient = static_cast<FRXLODViewportClient*>(Client.Get());
+        RXClient->MeshComponent = Component.Get(); RXClient->CurrentLOD = INDEX_NONE;
+        SectionCounts.Empty();
+        if (const auto* Data = Mesh->GetRenderData())
+            for (const auto& Resource : Data->LODResources)
+            {
+                auto& Counts = SectionCounts.AddDefaulted_GetRef();
+                for (int32 Section = 0; Section < Resource.Sections.Num(); ++Section) { Counts.Add(RXLODStats::Section(Resource, Section)); }
+            }
         if (!bFramed)
         {
             const FVector Center = Mesh->GetBoundingBox().GetCenter();
@@ -129,6 +161,48 @@ public:
             Client->SetViewLocation(Location); Client->SetViewRotation((Center - Location).Rotation()); bFramed = true;
         }
         Invalidate();
+    }
+    void ResetFrame() { bFramed = false; }
+    TFunction<void(UStaticMesh*)> OnMeshDropped;
+    FReply OnDragOver(const FGeometry&, const FDragDropEvent& Event) override
+    {
+        const auto Op = Event.GetOperationAs<FAssetDragDropOp>();
+        if (!Op) { return FReply::Unhandled(); }
+        const bool Valid = Op->GetAssets().Num() == 1 && Op->GetAssets()[0].AssetClassPath == UStaticMesh::StaticClass()->GetClassPathName();
+        Op->SetToolTip(Valid ? T(TEXT("RX LOD 편집 대상으로 불러오기")) : T(TEXT("스태틱 메시 하나를 드롭하세요.")), nullptr);
+        return FReply::Handled();
+    }
+    void OnDragLeave(const FDragDropEvent& Event) override
+    { if (const auto Op = Event.GetOperationAs<FAssetDragDropOp>()) { Op->ResetToDefaultToolTip(); } }
+    FReply OnDrop(const FGeometry&, const FDragDropEvent& Event) override
+    {
+        const auto Op = Event.GetOperationAs<FAssetDragDropOp>();
+        if (!Op) { return FReply::Unhandled(); }
+        Op->ResetToDefaultToolTip();
+        // Reject unsupported drops before loading potentially expensive assets.
+        const bool Valid = Op->GetAssets().Num() == 1 && Op->GetAssets()[0].AssetClassPath == UStaticMesh::StaticClass()->GetClassPathName();
+        UStaticMesh* Mesh = Valid ? Cast<UStaticMesh>(Op->GetAssets()[0].GetAsset()) : nullptr;
+        if (OnMeshDropped) { OnMeshDropped(Mesh); }
+        return FReply::Handled();
+    }
+    FText StatisticsText() const
+    {
+        const auto* RXClient = static_cast<FRXLODViewportClient*>(Client.Get());
+        const UStaticMesh* Mesh = Component.IsValid() ? Component->GetStaticMesh() : nullptr;
+        const auto* Data = Mesh ? Mesh->GetRenderData() : nullptr;
+        const int32 LOD = RXClient->CurrentLOD;
+        if (!Data || !Data->LODResources.IsValidIndex(LOD)) { return T(TEXT("메시 통계 준비 중…")); }
+        const auto& Resource = Data->LODResources[LOD];
+        FString Text = FString::Printf(TEXT("현재 LOD: %d (%s)\n현재 스크린 크기: %.6f\n폴리곤(삼각형): %u\n버텍스: %u"), LOD,
+            Component->GetForcedLodModel() == 0 ? TEXT("자동") : TEXT("고정"), RXClient->CurrentScreenSize, Resource.GetNumTriangles(), Resource.GetNumVertices());
+        if (Mesh->IsNaniteEnabled()) { Text += TEXT("\nNanite: 기본 LOD 지오메트리 통계"); }
+        if (SectionCounts.IsValidIndex(LOD))
+            for (int32 Section = 0; Section < SectionCounts[LOD].Num(); ++Section)
+            {
+                const auto& Count = SectionCounts[LOD][Section];
+                Text += FString::Printf(TEXT("\n섹션 %d: 폴리곤 %u · 버텍스 %u"), Section, Count.Triangles, Count.Vertices);
+            }
+        return T(Text);
     }
     void ForceLOD(int32 LOD) { if (Component.IsValid()) { Component->SetForcedLodModel(FMath::Clamp(LOD, 0, Component->GetStaticMesh() ? Component->GetStaticMesh()->GetNumSourceModels() : 0)); Invalidate(); } }
     void Isolate(int32 Section, bool Enabled) { if (Component.IsValid()) { Component->SetSectionPreview(Enabled ? Section : INDEX_NONE); Invalidate(); } }
@@ -145,6 +219,26 @@ public:
         Result->SetBoolField(TEXT("fixed_exposure"), FixedExposure()); Result->SetNumberField(TEXT("ev100"), ExposureEV100());
         Result->SetBoolField(TEXT("slate_composited"), true);
         Result->SetNumberField(TEXT("forced_lod"), Component.IsValid() ? Component->GetForcedLodModel() - 1 : -1);
+        Result->SetNumberField(TEXT("current_lod"), RXClient->CurrentLOD);
+        Result->SetNumberField(TEXT("current_screen_size"), RXClient->CurrentScreenSize);
+        Result->SetStringField(TEXT("statistics_text"), StatisticsText().ToString());
+        TArray<TSharedPtr<FJsonValue>> Sections;
+        const int32 LOD = RXClient->CurrentLOD;
+        const auto* Data = Component.IsValid() && Component->GetStaticMesh() ? Component->GetStaticMesh()->GetRenderData() : nullptr;
+        if (Data && Data->LODResources.IsValidIndex(LOD))
+        {
+            Result->SetNumberField(TEXT("triangles"), Data->LODResources[LOD].GetNumTriangles());
+            Result->SetNumberField(TEXT("vertices"), Data->LODResources[LOD].GetNumVertices());
+        }
+        if (SectionCounts.IsValidIndex(LOD))
+            for (int32 Index = 0; Index < SectionCounts[LOD].Num(); ++Index)
+            {
+                auto Section = MakeShared<FJsonObject>(); Section->SetNumberField(TEXT("section"), Index);
+                Section->SetNumberField(TEXT("triangles"), SectionCounts[LOD][Index].Triangles);
+                Section->SetNumberField(TEXT("vertices"), SectionCounts[LOD][Index].Vertices);
+                Sections.Add(MakeShared<FJsonValueObject>(Section));
+            }
+        Result->SetArrayField(TEXT("sections"), Sections);
         return Result;
     }
 protected:
@@ -160,6 +254,7 @@ private:
     TUniquePtr<FPreviewScene> Scene;
     TStrongObjectPtr<UStaticMeshComponent> Component;
     bool bFramed = false;
+    TArray<TArray<FRXSectionStats>> SectionCounts;
 };
 
 void SRXLODWindow::Construct(const FArguments& Args)
@@ -188,6 +283,13 @@ void SRXLODWindow::Construct(const FArguments& Args)
                     .IsEnabled_Lambda([this](){ return Viewport->FixedExposure(); })
                     .OnValueCommitted_Lambda([this](float Value, ETextCommit::Type){ Viewport->SetExposure(true, Value); })]]
             ]
+            + SOverlay::Slot().VAlign(VAlign_Top).HAlign(HAlign_Left).Padding(16, 48, 16, 40)
+            [SNew(SBox).WidthOverride(320).MaxDesiredHeight(300)
+                [SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).BorderBackgroundColor(FLinearColor(0.015f, 0.015f, 0.015f, 0.8f)).Padding(10)
+                    [SNew(SScrollBox) + SScrollBox::Slot()
+                        [SNew(STextBlock).Text_Lambda([this](){ return Viewport->StatisticsText(); }).SimpleTextMode(true)
+                            .ColorAndOpacity(FLinearColor::White).ShadowOffset(FVector2D(1, 1))
+                            .ToolTipText(T(TEXT("현재 카메라에서 계산한 스크린 크기와 표시 LOD의 렌더 지오메트리 통계입니다. 폴리곤은 삼각형 수이며, 섹션 버텍스는 해당 섹션이 참조하는 고유 렌더 버텍스 수입니다. UV·노멀 경계에서 분리된 버텍스도 포함합니다.")))]]]]
             + SOverlay::Slot().VAlign(VAlign_Bottom).Padding(8)
             [SNew(SBorder)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){ return T(Session->Status); })]]
         ]
@@ -202,6 +304,7 @@ void SRXLODWindow::Construct(const FArguments& Args)
             + SVerticalBox::Slot().FillHeight(1)[SNew(SScrollBox) + SScrollBox::Slot()[SAssignNew(Panel, SVerticalBox)]]
         ]
     ];
+    Viewport->OnMeshDropped = [this](UStaticMesh* Mesh){ FString E; if (!RXLOD::LoadAsset(Mesh, E)) { Error(E); } };
     Viewport->SetMesh(Session->Display.Get(), SelectedLOD);
     RefreshPanel();
 }
@@ -342,6 +445,7 @@ TSharedRef<SWidget> SRXLODWindow::SectionsPanel(int32 LOD)
                     const FPolygonGroupID Group = Weight.Group;
                     auto Get = [this, LOD, Group]() -> FRXSectionWeight& { return *Session->GetWeights(LOD).FindByPredicate([Group](const FRXSectionWeight& W){ return W.Group == Group; }); };
                     Fields->AddSlot().AutoHeight()[Row(FString::Printf(TEXT("섹션 가중치 (그룹 %d)"), Group.GetValue()), NumberBox<float>([Get](){ return Get().Weight; }, [Get](float V){ Get().Weight = V; }, 0, 1))];
+                    Fields->AddSlot().AutoHeight()[Row(TEXT("외곽 실루엣 보존"), SNew(SCheckBox).IsChecked_Lambda([Get](){ return Get().bPreserveSilhouette ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([Get](ECheckBoxState State){ Get().bPreserveSilhouette = State == ECheckBoxState::Checked; }))];
                     Fields->AddSlot().AutoHeight()[Row(TEXT("감소 제외"), SNew(SCheckBox).IsChecked_Lambda([Get](){ return Get().bExcluded ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([Get](ECheckBoxState State){ Get().bExcluded = State == ECheckBoxState::Checked; }))];
                 }
             }
@@ -349,9 +453,11 @@ TSharedRef<SWidget> SRXLODWindow::SectionsPanel(int32 LOD)
         else if (LOD == 0)
         {
             Fields->AddSlot().AutoHeight()[Row(TEXT("섹션 가중치 (LOD 0 원본 보존)"), SNew(SNumericEntryBox<float>).Value(1.0f).IsEnabled(false))];
+            Fields->AddSlot().AutoHeight()[Row(TEXT("외곽 실루엣 보존"), SNew(SCheckBox).IsChecked(ECheckBoxState::Checked).IsEnabled(false))];
             Fields->AddSlot().AutoHeight()[Row(TEXT("감소 제외"), SNew(SCheckBox).IsChecked(ECheckBoxState::Checked).IsEnabled(false))];
         }
-        Body->AddSlot().AutoHeight()[Area(FString::Printf(TEXT("섹션 %d"), Section), Fields)];
+        const auto Counts = RXLODStats::Section(Data->LODResources[LOD], Section);
+        Body->AddSlot().AutoHeight()[Area(FString::Printf(TEXT("섹션 %d    폴리곤: %u  버텍스: %u"), Section, Counts.Triangles, Counts.Vertices), Fields)];
     }
     return Body;
 }
@@ -397,6 +503,29 @@ TSharedRef<SWidget> SRXLODWindow::CommonPanel()
 }
 
 void SRXLODWindow::Error(const FString& Text) { Session->Status = Text; }
+FReply SRXLODWindow::OnDragOver(const FGeometry&, const FDragDropEvent& Event)
+{
+    return Viewport->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()) ? Viewport->OnDragOver(Viewport->GetCachedGeometry(), Event) : FReply::Unhandled();
+}
+FReply SRXLODWindow::OnDrop(const FGeometry&, const FDragDropEvent& Event)
+{
+    // The stats overlay can be the hit-test target. Forward its unhandled drop
+    // only inside the viewport so the property panel never changes the asset.
+    return Viewport->GetCachedGeometry().IsUnderLocation(Event.GetScreenSpacePosition()) ? Viewport->OnDrop(Viewport->GetCachedGeometry(), Event) : FReply::Unhandled();
+}
+void SRXLODWindow::OnDragLeave(const FDragDropEvent& Event) { Viewport->OnDragLeave(Event); }
+void SRXLODWindow::SetSession(TSharedPtr<FRXLODSession> NewSession)
+{
+    Session = MoveTemp(NewSession); SelectedLOD = 0; bCustom = false; VisibleLODs.Empty(); ExpandedAreas.Empty(); JsonFilename.Empty();
+    Viewport->ResetFrame(); Viewport->SetMesh(Session->Display.Get(), 0); RefreshPanel();
+}
+#if WITH_DEV_AUTOMATION_TESTS
+bool SRXLODWindow::DropAssetsForTest(const TArray<FAssetData>& Assets)
+{
+    const FDragDropEvent Event(FPointerEvent(), FAssetDragDropOp::New(Assets));
+    return Viewport->OnDragOver(FGeometry(), Event).IsEventHandled() && Viewport->OnDrop(FGeometry(), Event).IsEventHandled();
+}
+#endif
 TSharedRef<FJsonObject> SRXLODWindow::ViewportDiagnostics() const { return Viewport->Diagnostics(); }
 void SRXLODWindow::SelectLOD(int32 LOD) { SelectedLOD = LOD + 1; Viewport->ForceLOD(SelectedLOD); RefreshPanel(); }
 bool SRXLODWindow::RefreshPreview(FString& E)

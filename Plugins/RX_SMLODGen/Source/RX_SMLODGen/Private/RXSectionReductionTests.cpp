@@ -112,4 +112,45 @@ bool FRXSectionReductionTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRXSilhouetteTest, "RX.SMLODGen.SilhouettePreservation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRXSilhouetteTest::RunTest(const FString&)
+{
+    FMeshDescription Source;
+    FStaticMeshAttributes Attr(Source); Attr.Register(); Attr.GetVertexInstanceUVs().SetNumChannels(1);
+    const auto Unused = Source.CreatePolygonGroup();
+    const auto Group = AddGrid(Source, 0); Source.DeletePolygonGroup(Unused);
+    auto Colors = Attr.GetVertexInstanceColors();
+    for (const auto Instance : Source.VertexInstances().GetElementIDs()) { Colors[Instance] = FVector4f(0.2f, 0.4f, 0.6f, 1.0f); }
+    FMeshReductionSettings Settings; Settings.PercentTriangles = 0.05f;
+    const TArray<FRXSectionWeight> Weights = { { Group, 0, false, true } };
+    FMeshDescription Output; TArray<FRXSectionReductionResult> Results; FString E;
+    if (!TestTrue(TEXT("Silhouette-only option triggers constrained reduction"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E))) { AddError(E); return false; }
+    TestTrue(TEXT("Planar interior reduces"), Output.Triangles().Num() < Source.Triangles().Num());
+    TestTrue(TEXT("Protected outline may keep more than requested"), Output.Triangles().Num() > FMath::CeilToInt(Source.Triangles().Num() * Settings.PercentTriangles));
+    const auto InPositions = FStaticMeshConstAttributes(Source).GetVertexPositions();
+    const auto OutPositions = FStaticMeshConstAttributes(Output).GetVertexPositions();
+    TSet<FVector3f> OutputPositions;
+    for (const auto V : Output.Vertices().GetElementIDs()) { OutputPositions.Add(OutPositions[V]); }
+    for (const auto V : Source.Vertices().GetElementIDs())
+    {
+        const auto P = InPositions[V];
+        if (P.X == 0 || P.X == 80 || P.Y == 0 || P.Y == 80) { TestTrue(TEXT("Every outline vertex stays in place"), OutputPositions.Contains(P)); }
+    }
+    TestTrue(TEXT("Sparse section identity survives conversion"), Output.IsPolygonGroupValid(Group));
+    TestEqual(TEXT("Material slot identity survives conversion"), FStaticMeshConstAttributes(Output).GetPolygonGroupMaterialSlotNames()[Group], FName(TEXT("SharedMaterial")));
+    for (const auto Instance : Output.VertexInstances().GetElementIDs())
+    { TestTrue(TEXT("Vertex colors retain linear values"), FStaticMeshConstAttributes(Output).GetVertexInstanceColors()[Instance].Equals(FVector4f(0.2f, 0.4f, 0.6f, 1.0f), 0.001f)); }
+    Attr.GetVertexPositions()[FVertexID(40)].Z = 20;
+    if (TestTrue(TEXT("Nonplanar feature reduces safely"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E)))
+    {
+        bool FoundApex = false; const auto Positions = FStaticMeshConstAttributes(Output).GetVertexPositions();
+        for (const auto V : Output.Vertices().GetElementIDs()) { FoundApex |= Positions[V] == FVector3f(40, 40, 20); }
+        TestTrue(TEXT("Nonplanar feature apex is pinned"), FoundApex);
+    }
+    Settings.WeldingThreshold = 0.1f;
+    TestFalse(TEXT("Silhouette mode rejects welding that could move contours"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E));
+    return true;
+}
+
 #endif

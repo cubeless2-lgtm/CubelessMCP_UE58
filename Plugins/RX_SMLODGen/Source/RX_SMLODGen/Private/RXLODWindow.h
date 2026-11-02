@@ -8,6 +8,7 @@ class SRXLODViewport;
 class SVerticalBox;
 class IStructureDetailsView;
 class FJsonObject;
+struct FAssetData;
 class SRXLODWindow : public SCompoundWidget
 {
 public:
@@ -16,6 +17,13 @@ public:
     void RefreshPanel();
     bool RefreshPreview(FString& Error);
     void SelectLOD(int32 LOD);
+    void SetSession(TSharedPtr<FRXLODSession> NewSession);
+    FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override;
+    FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override;
+    void OnDragLeave(const FDragDropEvent& Event) override;
+#if WITH_DEV_AUTOMATION_TESTS
+    bool DropAssetsForTest(const TArray<FAssetData>& Assets);
+#endif
     TSharedRef<FJsonObject> ViewportDiagnostics() const;
 private:
     TSharedPtr<FRXLODSession> Session;

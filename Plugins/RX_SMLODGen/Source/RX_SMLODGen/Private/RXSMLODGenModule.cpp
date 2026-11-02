@@ -11,6 +11,7 @@
 #include "RXLODWindow.h"
 #include "RXSMLODGenLibrary.h"
 #include "Framework/Application/SlateApplication.h"
+#include "Framework/Docking/TabManager.h"
 #include "Widgets/SWindow.h"
 #include "Misc/MessageDialog.h"
 #include "Misc/FileHelper.h"
@@ -20,6 +21,7 @@
 #include "StaticMeshResources.h"
 #include "ImageUtils.h"
 #include "FbxMeshUtils.h"
+#include "Misc/PackageName.h"
 
 namespace
 {
@@ -31,15 +33,47 @@ namespace
 
 bool RXLOD::Open(UStaticMesh* Mesh, FString& Error)
 {
-    if (ActiveSession.IsValid()) { Error = TEXT("기존 RX LOD 창을 닫은 뒤 다른 메시를 여세요."); return false; }
+    if (ActiveSession.IsValid())
+    {
+        if (Mesh && Mesh != ActiveSession->Original.Get() && !LoadAsset(Mesh, Error)) { return false; }
+        if (auto Window = ActiveWindow.Pin()) { Window->BringToFront(); }
+        return true;
+    }
+    if (!Mesh) { Mesh = LoadObject<UStaticMesh>(nullptr, DefaultMeshPath); }
+    if (!Mesh) { Error = TEXT("기본 박스 에셋을 찾지 못했습니다: ") + FString(DefaultMeshPath); return false; }
     auto Session = MakeShared<FRXLODSession>();
     if (!Session->Initialize(Mesh, Error)) { return false; }
+    Session->Status += TEXT(" 콘텐츠 브라우저의 스태틱 메시를 뷰포트에 드롭하면 편집 대상을 바꿀 수 있습니다.");
+    // Native ownership keeps the tool above UE without becoming system-topmost.
     auto Window = SNew(SWindow).Title(FText::FromString(TEXT("RX_SMLODGen · ") + Mesh->GetName())).ClientSize(FVector2D(1400, 850));
     auto Panel = SNew(SRXLODWindow).Session(Session);
     Window->SetContent(Panel);
     Window->SetOnWindowClosed(FOnWindowClosed::CreateLambda([](const TSharedRef<SWindow>&){ ActiveSession.Reset(); ActiveWindow.Reset(); ActivePanel.Reset(); }));
     ActiveSession = Session; ActiveWindow = Window; ActivePanel = Panel;
-    FSlateApplication::Get().AddWindow(Window);
+    if (const auto Parent = FGlobalTabmanager::Get()->GetRootWindow())
+    { FSlateApplication::Get().AddWindowAsNativeChild(Window, Parent.ToSharedRef()); }
+    else { FSlateApplication::Get().AddWindow(Window); }
+    return true;
+}
+
+bool RXLOD::LoadAsset(UStaticMesh* Mesh, FString& Error)
+{
+    if (!Mesh) { Error = TEXT("콘텐츠 브라우저에서 스태틱 메시 하나를 뷰포트에 드롭하세요."); return false; }
+    if (!ActiveSession.IsValid()) { return Open(Mesh, Error); }
+    if (Mesh == ActiveSession->Original.Get()) { return true; }
+    // Prepare the replacement first: a failed initialization never loses edits.
+    auto Replacement = MakeShared<FRXLODSession>();
+    if (!Replacement->Initialize(Mesh, Error)) { return false; }
+    auto Panel = ActivePanel.Pin(); auto Window = ActiveWindow.Pin();
+    if (!Panel || !Window) { Error = TEXT("RX LOD 창이 닫혀 있습니다."); return false; }
+    const FString Folder = FPaths::ProjectSavedDir() / TEXT("RX_SMLODGen/Presets");
+    const FString Recovery = Folder / (TEXT("autoswap_") + FGuid::NewGuid().ToString(EGuidFormats::Digits) + TEXT(".json"));
+    IFileManager::Get().MakeDirectory(*Folder, true);
+    if (!FFileHelper::SaveStringToFile(ActiveSession->ExportJson(), *Recovery, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+    { Error = TEXT("기존 미리보기의 복구 JSON 저장에 실패하여 메시 교체를 중단했습니다."); return false; }
+    ActiveSession = Replacement; Panel->SetSession(Replacement);
+    Window->SetTitle(FText::FromString(TEXT("RX_SMLODGen · ") + Mesh->GetName()));
+    ActiveSession->Status = TEXT("편집 대상: ") + Mesh->GetPathName() + TEXT(" · 이전 설정: ") + FPaths::GetCleanFilename(Recovery);
     return true;
 }
 
@@ -53,17 +87,21 @@ FString RXLOD::Execute(const FString& Request)
     if (Op == TEXT("describe"))
     {
         OK = true; Reply->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen"));
-        Reply->SetStringField(TEXT("ops"), TEXT("describe,open,get,set,resize,remove_lod,import_lod,view_lod,rebuild,apply,save_json,load_json,snapshot,close"));
-        Reply->SetStringField(TEXT("instructions"), TEXT("open: asset=/Game/path.Mesh; get: returns complete settings; set: settings=complete get result, validates asset and source_id, edits preview only; rebuild: builds preview; apply: confirm=true, mutates original but does not save; save_json/load_json: filename=leaf.json in Saved/RX_SMLODGen/Presets; close: confirm=true; failures never auto-retry."));
-        Reply->SetNumberField(TEXT("settings_version"), 2);
+        Reply->SetStringField(TEXT("ops"), TEXT("describe,open,load_asset,get,set,resize,remove_lod,import_lod,view_lod,rebuild,apply,save_json,load_json,snapshot,close"));
+        Reply->SetStringField(TEXT("instructions"), TEXT("open: optional asset object path, omitted uses bundled box; load_asset: asset object path, archives prior settings as autoswap_GUID.json before replacement; get: complete settings and live viewport metrics; set: settings=complete get result, validates asset and source_id, edits preview only; rebuild: builds preview; apply: confirm=true, mutates original but does not save; save_json/load_json: filename=leaf.json in Saved/RX_SMLODGen/Presets; close: confirm=true; failures never auto-retry."));
+        Reply->SetNumberField(TEXT("settings_version"), 3);
+        Reply->SetStringField(TEXT("default_asset"), DefaultMeshPath);
         Reply->SetStringField(TEXT("weight_formula"), TEXT("keep = reduction.percentTriangles + (1 - reduction.percentTriangles) * weight; weight 0 = normal reduction, weight 1 = preserve; excluded -> keep 1; v1 imports invert weight; triangle percentage reduction, BaseLOD 0; unequal touching sections currently rejected."));
         Reply->SetBoolField(TEXT("session_open"), ActiveSession.IsValid());
     }
-    else if (Op == TEXT("open"))
+    else if (Op == TEXT("open") || Op == TEXT("load_asset"))
     {
         FString Asset;
-        if (!Root->TryGetStringField(TEXT("asset"), Asset) || !Asset.StartsWith(TEXT("/Game/"))) { Error = TEXT("asset must be a /Game Static Mesh object path."); }
-        else { OK = Open(LoadObject<UStaticMesh>(nullptr, *Asset), Error); }
+        const bool HasAsset = Root->TryGetStringField(TEXT("asset"), Asset);
+        if (!HasAsset && !Root->HasField(TEXT("asset")) && Op == TEXT("open")) { OK = Open(nullptr, Error); }
+        else if (!HasAsset || !FPackageName::IsValidObjectPath(Asset)) { Error = TEXT("asset must be a Static Mesh object path."); }
+        else if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, *Asset)) { OK = Op == TEXT("open") ? Open(Mesh, Error) : LoadAsset(Mesh, Error); }
+        else { Error = TEXT("Static Mesh asset not found: ") + Asset; }
     }
     else if (!ActiveSession.IsValid()) { Error = TEXT("No session. Call open first."); }
     else if (Op == TEXT("get"))
@@ -72,6 +110,11 @@ FString RXLOD::Execute(const FString& Request)
         Reply->SetObjectField(TEXT("settings"), Settings); OK = true;
         Reply->SetBoolField(TEXT("preview_current"), ActiveSession->IsPreviewCurrent());
         if (auto Panel = ActivePanel.Pin()) { Reply->SetObjectField(TEXT("viewport"), Panel->ViewportDiagnostics()); }
+        if (auto Window = ActiveWindow.Pin())
+        {
+            Reply->SetBoolField(TEXT("window_topmost"), Window->IsTopmostWindow());
+            Reply->SetBoolField(TEXT("window_owned_by_editor"), Window->GetParentWindow().IsValid());
+        }
         TArray<TSharedPtr<FJsonValue>> Metrics;
         if (const auto* Data = ActiveSession->Display->GetRenderData())
             for (int32 LOD = 0; LOD < Data->LODResources.Num(); ++LOD)
@@ -180,7 +223,7 @@ private:
     {
         FToolMenuOwnerScoped Owner(this);
         UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Window")->FindOrAddSection("WindowLayout").AddMenuEntry("RXSMLODGenOpenPreview",
-            NSLOCTEXT("RXSMLODGen", "OpenRXWindow", "RX_SMLODGen · LOD 편집"), NSLOCTEXT("RXSMLODGen", "OpenRXWindowTip", "선택한 메시 또는 액터를 임시 사본으로 열어 LOD를 편집합니다."),
+            NSLOCTEXT("RXSMLODGen", "OpenRXWindow", "RX_SMLODGen · LOD 편집"), NSLOCTEXT("RXSMLODGen", "OpenRXWindowTip", "선택한 메시를 편집합니다. 선택한 메시가 없으면 기본 박스로 열립니다. 콘텐츠 브라우저의 스태틱 메시를 뷰포트에 드롭해 편집 대상을 바꿀 수 있습니다."),
             FSlateIcon(), FUIAction(FExecuteAction::CreateRaw(this, &FRXSMLODGenModule::OpenSelection)));
     }
     void OpenSelection()
@@ -197,8 +240,7 @@ private:
             }
         }
         FString Error;
-        if (!Mesh) { Error = TEXT("콘텐츠 브라우저에서 Static Mesh 하나를 선택하거나 메시가 하나인 액터를 선택하세요."); }
-        else if (RXLOD::Open(Mesh, Error)) { return; }
+        if (RXLOD::Open(Mesh, Error)) { return; }
         FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(Error));
     }
 };

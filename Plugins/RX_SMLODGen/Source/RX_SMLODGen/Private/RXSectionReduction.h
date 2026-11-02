@@ -12,6 +12,7 @@ struct FRXSectionWeight
     // Preservation strength: 0 = normal reduction, 1 = keep the source section.
     float Weight = 0.0f;
     bool bExcluded = false;
+    bool bPreserveSilhouette = false;
 };
 
 struct FRXSectionReductionResult

@@ -5,9 +5,12 @@
   "FriendlyName": "RX Static Mesh LOD Generator",
   "Description": "Experimental editor-only static mesh LOD preview and authoring tool.",
   "Category": "Editor",
-  "CanContainContent": false,
+  "CanContainContent": true,
   "EnabledByDefault": false,
   "IsBetaVersion": true,
+  "Plugins": [
+    { "Name": "GeometryProcessing", "Enabled": true, "TargetAllowList": ["Editor"] }
+  ],
   "Modules": [
     { "Name": "RX_SMLODGen", "Type": "Editor", "LoadingPhase": "Default" }
   ]

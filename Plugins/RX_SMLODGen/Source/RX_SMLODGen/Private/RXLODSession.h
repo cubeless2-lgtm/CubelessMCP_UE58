@@ -33,5 +33,7 @@ public:
 namespace RXLOD
 {
     bool Open(UStaticMesh* Mesh, FString& Error);
+    bool LoadAsset(UStaticMesh* Mesh, FString& Error);
+    inline constexpr const TCHAR* DefaultMeshPath = TEXT("/RX_SMLODGen/Meshes/SM_DefaultBox.SM_DefaultBox");
     FString Execute(const FString& Request);
 }

@@ -133,7 +133,7 @@ bool FRXLODSession::Rebuild(FString& Error)
     Work->PostEditChange(); Finish(Work.Get());
     for (auto& Pair : Weights)
     {
-        const bool bWeighted = Pair.Value.ContainsByPredicate([](const FRXSectionWeight& W) { return W.bExcluded || W.Weight != 0.0f; });
+        const bool bWeighted = Pair.Value.ContainsByPredicate([](const FRXSectionWeight& W) { return W.bExcluded || W.bPreserveSilhouette || W.Weight != 0.0f; });
         if (!bWeighted) { continue; }
         TStrongObjectPtr<UStaticMesh> Reduced;
         TArray<FRXSectionReductionResult> Results;
@@ -178,7 +178,7 @@ bool FRXLODSession::Apply(FString& Error)
     if (!IsPreviewCurrent()) { Error = TEXT("설정 변경 후 미리보기를 먼저 갱신하세요 (rebuild)."); return false; }
     TMap<int32, TArray<FRXSectionWeight>> Active;
     for (const auto& Pair : Weights)
-        if (Pair.Value.ContainsByPredicate([](const FRXSectionWeight& W) { return W.bExcluded || W.Weight != 0.0f; })) { Active.Add(Pair.Key, Pair.Value); }
+        if (Pair.Value.ContainsByPredicate([](const FRXSectionWeight& W) { return W.bExcluded || W.bPreserveSilhouette || W.Weight != 0.0f; })) { Active.Add(Pair.Key, Pair.Value); }
     bool bStarted = false; TArray<FString> Packages;
     const bool bOK = RXApplyLOD::Apply(Original.Get(), Preview.Get(), Baseline, Active, bImpostor, bStarted, Packages, Error, bImpostor ? &Impostor : nullptr);
     if (!bOK && bStarted) { Error = TEXT("원본 변경이 시작된 뒤 실패했습니다. 원본을 확인하세요.\n") + Error; }
@@ -190,7 +190,7 @@ bool FRXLODSession::Apply(FString& Error)
 FString FRXLODSession::ExportJson() const
 {
     auto Root = MakeShared<FJsonObject>();
-    Root->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen")); Root->SetNumberField(TEXT("version"), 2);
+    Root->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen")); Root->SetNumberField(TEXT("version"), 3);
     Root->SetStringField(TEXT("weight_semantics"), TEXT("preservation"));
     Root->SetStringField(TEXT("asset"), Original->GetPathName());
     const auto* Bulk = Preview->GetSourceModel(0).GetMeshDescriptionBulkData();
@@ -220,7 +220,7 @@ FString FRXLODSession::ExportJson() const
         TArray<TSharedPtr<FJsonValue>> Rows;
         if (const auto* Found = Weights.Find(LOD))
             for (const auto& W : *Found)
-            { auto Row = MakeShared<FJsonObject>(); Row->SetNumberField(TEXT("group"), W.Group.GetValue()); Row->SetNumberField(TEXT("weight"), W.Weight); Row->SetBoolField(TEXT("excluded"), W.bExcluded); Rows.Add(MakeShared<FJsonValueObject>(Row)); }
+            { auto Row = MakeShared<FJsonObject>(); Row->SetNumberField(TEXT("group"), W.Group.GetValue()); Row->SetNumberField(TEXT("weight"), W.Weight); Row->SetBoolField(TEXT("excluded"), W.bExcluded); Row->SetBoolField(TEXT("preserve_silhouette"), W.bPreserveSilhouette); Rows.Add(MakeShared<FJsonValueObject>(Row)); }
         Item->SetArrayField(TEXT("sections"), Rows); LODs.Add(MakeShared<FJsonValueObject>(Item));
         TArray<TSharedPtr<FJsonValue>> Overrides;
         for (int32 Section = 0; Section < Preview->GetSectionInfoMap().GetSectionNumber(LOD); ++Section)
@@ -245,14 +245,14 @@ bool FRXLODSession::ImportJson(const FString& Json, FString& Error)
     FString Schema, Asset, Source, Group; int32 Version = 0; bool Include = false, Auto = false;
     const TArray<TSharedPtr<FJsonValue>>* LODs = nullptr;
     const FMeshDescriptionBulkData* Bulk = Preview->GetSourceModel(0).GetMeshDescriptionBulkData();
-    if (!Root->TryGetStringField(TEXT("schema"), Schema) || Schema != TEXT("RX_SMLODGen") || !Root->TryGetNumberField(TEXT("version"), Version) || (Version != 1 && Version != 2) ||
+    if (!Root->TryGetStringField(TEXT("schema"), Schema) || Schema != TEXT("RX_SMLODGen") || !Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 3) ||
         !Root->TryGetStringField(TEXT("asset"), Asset) || Asset != Original->GetPathName() || !Root->TryGetStringField(TEXT("source_id"), Source) || !Bulk || Source != Bulk->GetUnversionedIdString() ||
         !Root->TryGetBoolField(TEXT("impostor"), Include) || !Root->TryGetBoolField(TEXT("auto_screen_size"), Auto) || !Root->TryGetStringField(TEXT("lod_group"), Group) ||
         !Root->TryGetArrayField(TEXT("lods"), LODs) || LODs->Num() < 1 || LODs->Num() > MAX_STATIC_MESH_LODS - (Include ? 1 : 0))
     { Error = TEXT("스키마 버전, 에셋/소스 식별자 또는 LOD 범위가 맞지 않습니다."); return false; }
     FString Semantics;
-    if (Version == 2 && (!Root->TryGetStringField(TEXT("weight_semantics"), Semantics) || Semantics != TEXT("preservation")))
-    { Error = TEXT("버전 2 JSON은 보존 가중치(weight_semantics: preservation)를 사용해야 합니다."); return false; }
+    if (Version >= 2 && (!Root->TryGetStringField(TEXT("weight_semantics"), Semantics) || Semantics != TEXT("preservation")))
+    { Error = TEXT("버전 2 이상 JSON은 보존 가중치(weight_semantics: preservation)를 사용해야 합니다."); return false; }
     TArray<FName> Groups; UStaticMesh::GetLODGroups(Groups);
     if (FName(*Group) != NAME_None && !Groups.Contains(FName(*Group))) { Error = TEXT("알 수 없는 LOD 그룹입니다."); return false; }
     TStrongObjectPtr<UStaticMesh> Candidate(DuplicateObject<UStaticMesh>(Preview.Get(), GetTransientPackage())); Finish(Candidate.Get());
@@ -298,12 +298,15 @@ bool FRXLODSession::ImportJson(const FString& Json, FString& Error)
         TArray<FRXSectionWeight> Rows; TSet<int32> Seen;
         for (const auto& Value : *Sections)
         {
-            const TSharedPtr<FJsonObject>* Row = nullptr; int32 GroupIndex = -1; double Weight = 0; bool Excluded = false;
+            const TSharedPtr<FJsonObject>* Row = nullptr; int32 GroupIndex = -1; double Weight = 0; bool Excluded = false, PreserveSilhouette = false;
             if (!Value->TryGetObject(Row) || !Row || !*Row || !(*Row)->TryGetNumberField(TEXT("group"), GroupIndex) || Seen.Contains(GroupIndex) ||
                 !Candidate->GetMeshDescription(0)->IsPolygonGroupValid(FPolygonGroupID(GroupIndex)) || !(*Row)->TryGetNumberField(TEXT("weight"), Weight) ||
                 !FMath::IsFinite(Weight) || Weight < 0 || Weight > 1 || !(*Row)->TryGetBoolField(TEXT("excluded"), Excluded) || Index == 0)
             { Error = TEXT("섹션 식별자 또는 가중치가 잘못되었습니다."); return false; }
-            Seen.Add(GroupIndex); Rows.Add({ FPolygonGroupID(GroupIndex), Version == 1 ? 1.0f - float(Weight) : float(Weight), Excluded });
+            if ((Version >= 3 || (*Row)->HasField(TEXT("preserve_silhouette"))) &&
+                (!(*Row)->HasTypedField<EJson::Boolean>(TEXT("preserve_silhouette")) || !(*Row)->TryGetBoolField(TEXT("preserve_silhouette"), PreserveSilhouette)))
+            { Error = TEXT("외곽 실루엣 보존 값은 참/거짓이어야 합니다."); return false; }
+            Seen.Add(GroupIndex); Rows.Add({ FPolygonGroupID(GroupIndex), Version == 1 ? 1.0f - float(Weight) : float(Weight), Excluded, PreserveSilhouette });
         }
         if (!Rows.IsEmpty()) { NewWeights.Add(Index, Rows); }
         const TArray<TSharedPtr<FJsonValue>>* Overrides = nullptr;

@@ -24,13 +24,21 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
     if (!TestTrue(TEXT("Create isolated session"), Session->Initialize(Cube, E))) { AddError(E); return false; }
     if (!TestTrue(TEXT("Add LOD"), Session->Resize(2, E))) { return false; }
     Session->Preview->GetSourceModel(1).ReductionSettings.PercentTriangles = 0.5f;
-    auto& Rows = Session->GetWeights(1); for (auto& W : Rows) { W.Weight = 0; W.bExcluded = true; }
+    auto& Rows = Session->GetWeights(1); for (auto& W : Rows) { W.Weight = 0; W.bExcluded = true; W.bPreserveSilhouette = true; }
     if (!TestTrue(TEXT("Weighted edit preview"), Session->Rebuild(E))) { AddError(E); return false; }
     const FString Json = Session->ExportJson();
     Rows[0].Weight = 0.75f; Rows[0].bExcluded = false;
     if (!TestTrue(TEXT("JSON import"), Session->ImportJson(Json, E))) { AddError(E); return false; }
     TestEqual(TEXT("Weight restored"), Session->Weights[1][0].Weight, 0.0f);
     TestTrue(TEXT("Exclusion restored"), Session->Weights[1][0].bExcluded);
+    TestTrue(TEXT("Silhouette preservation restored from JSON"), Session->Weights[1][0].bPreserveSilhouette);
+    TSharedPtr<FJsonObject> V2; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), V2);
+    V2->SetNumberField(TEXT("version"), 2);
+    for (const auto& LOD : V2->GetArrayField(TEXT("lods")))
+        for (const auto& Section : LOD->AsObject()->GetArrayField(TEXT("sections"))) { Section->AsObject()->RemoveField(TEXT("preserve_silhouette")); }
+    FString V2Json; FJsonSerializer::Serialize(V2.ToSharedRef(), TJsonWriterFactory<>::Create(&V2Json));
+    TestTrue(TEXT("Old v2 JSON without silhouette flag imports"), Session->ImportJson(V2Json, E));
+    TestFalse(TEXT("Old v2 defaults silhouette preservation off"), Session->Weights[1][0].bPreserveSilhouette);
     TestEqual(TEXT("Reduction restored"), Session->Preview->GetSourceModel(1).ReductionSettings.PercentTriangles, 0.5f);
     TSharedPtr<FJsonObject> Legacy;
     FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Legacy);
@@ -40,6 +48,11 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
     if (TestTrue(TEXT("Import v1 JSON settings"), Session->ImportJson(LegacyJson, E)))
     { TestEqual(TEXT("v1 reduction weight migrates to v2 preservation weight"), Session->Weights[1][0].Weight, 0.8f); }
     const FString Before = Session->ExportJson();
+    TSharedPtr<FJsonObject> Invalid; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Before), Invalid);
+    Invalid->GetArrayField(TEXT("lods"))[1]->AsObject()->GetArrayField(TEXT("sections"))[0]->AsObject()->SetStringField(TEXT("preserve_silhouette"), TEXT("true"));
+    FString InvalidJson; FJsonSerializer::Serialize(Invalid.ToSharedRef(), TJsonWriterFactory<>::Create(&InvalidJson));
+    TestFalse(TEXT("Non-Boolean silhouette flag is rejected"), Session->ImportJson(InvalidJson, E));
+    TestEqual(TEXT("Bad flag leaves session unchanged"), Session->ExportJson(), Before);
     TestFalse(TEXT("Malformed settings rejected"), Session->ImportJson(TEXT("{}"), E));
     TestEqual(TEXT("Failure preserves session"), Session->ExportJson(), Before);
     TestEqual(TEXT("Original LOD count unchanged"), Cube->GetNumSourceModels(), OriginalLODs);

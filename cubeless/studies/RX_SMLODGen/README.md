@@ -2,6 +2,39 @@
 
 상태: UE 5.8.4에서 RX 전용 LOD 편집 창과 JSON 인터페이스를 구현했다. 합성 테스트 에셋의 적용·저장·별도 프로세스 재로드를 확인했다. 실제 사용 에셋의 시각 품질과 독립 검토, cook/package 실행은 아직 미검증이다.
 
+## 2026-11-03 리뷰 수정 및 외곽 실루엣 보존
+
+- 아래 전역 최상위 창 설정은 사용자의 후속 요구에 따라 폐기했다. 현재 RX 창은 시스템 전역 최상위가 아니며 언리얼 메인 창의 네이티브 소유 창으로만 유지한다. 다른 프로그램을 가리지 않는다. `get.window_topmost`는 false, `window_owned_by_editor`는 true다.
+- 각 감소 LOD의 섹션 가중치 바로 아래에 `외곽 실루엣 보존` 체크와 한국어 툴팁을 추가했다. 기본값은 false이며 LOD 0은 원본 보존 상태로 비활성화한다. 가중치 0에서도 독립적으로 작동한다. 기존 `SilhouetteImportance` 값만 바꾸는 방식은 설치된 Quadric 감소기에서 해당 값이 사용되지 않아 채택하지 않았다.
+- 표준 GeometryProcessing의 속성 기반 QEM 감소기를 사용한다. 열린 경계, 비평면 모서리, UV/노멀·머티리얼 경계의 정점/에지를 고정하고 평면 내부를 줄인다. 비평면 판단의 법선 내적 오차는 1e-8이다. 곡면이나 경계가 많은 경우 목표보다 삼각형이 많이 남거나 감소하지 않을 수 있다. 섹션의 원본 Group ID, 머티리얼 슬롯 이름과 선형 버텍스 컬러를 보존한다. 결합 한계치는 0이어야 하며 서로 다른 가중치/실루엣 옵션의 맞닿은 섹션은 기존 보수적 제약에 따라 거부한다. Epic 소스 수정이나 비공개 감소기 헤더 포함은 하지 않았다.
+- JSON과 에셋 메타데이터 버전을 3으로 올려 섹션별 `preserve_silhouette` Boolean을 보관한다. 버전 1·2를 계속 읽고 없는 플래그는 false로 가져온다. 원본 적용 시에도 이 옵션을 저장하고 편집 세션을 다시 열면 복원한다. 생성된 메시에는 표준 MeshDescription/StaticMesh 데이터만 기록하며 새 런타임 클래스를 만들지 않았다. GeometryProcessing은 에디터 도구 의존성으로 명시했다.
+- 단독 소스 리뷰에서 잘못된 asset JSON 타입이 기본 박스 열기로 처리되는 경로와, 거부한 비 Static Mesh 드롭을 로드하던 경로를 수정했다. 새 실루엣 플래그는 문자열 "true"가 아니라 실제 Boolean만 받도록 검증한다. 스키마 및 통계·드롭·창 우선순위 변경도 함께 검토했다. 별도 독립 리뷰를 수행했다고 주장하지 않으며 cook/package 검증은 이번 범위에 포함하지 않는다.
+- 최초 전체 실행 `Saved/RX_SMLODGen/review_silhouette_20261103/report/index.json`은 18개 중 16개 성공/2개 실패였다. JSON의 문자열→Boolean 자동 변환 문제를 수정했다. 평면 격자에서 경계 32개를 고정해도 삼각형 32개 목표에 도달할 수 있는데 더 많이 남아야 한다고 가정한 검증 기준도 수정했다. 외곽 정점·비평면 꼭짓점 고정, 섹션 ID/이름 및 선형 컬러 검사는 이 실행에서도 통과했다. 원본 실패 자료는 보존한다.
+- 수정 후 `Saved/RX_SMLODGen/review_silhouette_fixed_20261103/report/index.json`의 SessionJSON, SilhouettePreservation, WeightMetadata 3개 성공/실패·경고 0을 확인했다. 전체 실행의 기존 통과 항목과 합쳐 18개 고유 검사의 성공을 확인했으며 마지막 빌드로 전체 18개를 다시 실행했다고 주장하지 않는다. 테스트 PID 34064와 21008은 모두 종료됐다. UE 5.8.4 CL 58902052 Win64 Development Editor 모듈 빌드 성공. 최종 DLL SHA-256: `B983429E6DB5B2646086550157676943AEE04779CFF0250C36092A3F37371FF0`.
+- 실제 창에서 기본 박스의 가중치 0/실루엣 보존 true/삼각형 목표 50%를 설정하고 LOD 1의 36개 삼각형·48개 렌더 버텍스를 확인했다(LOD 0은 48개/54개). 목표 24개보다 보존 제약이 우선한 결과다. `Saved/RX_SMLODGen/Previews/silhouette_ui_review_20261103.png`에서 새 체크와 통계를 확인했고 잘못된 `open.asset: 42` 요청도 거부됐다.
+- 기존 사용자 설정은 `recovery_review_P39048.json`에 보존한 뒤 메인 PID 39048을 정상 종료했다. 같은 프로젝트의 사용자 검토용 PID 38276에서 `bench` 설정을 버전 3으로 이관·복원했고, 버전/새 기본 플래그를 제외한 전체 설정의 일치를 확인했다. `Saved/RX_SMLODGen/review_launch_20261103/native_window.json`의 Win32 전역 최상위 비트는 false이며 소유 창은 같은 PID의 언리얼 메인 창이다. `restored_live.json`의 dirty 패키지/PIE는 없으며 사용자 원본 Apply/저장은 호출하지 않았다. 이 사용자 검토용 에디터만 열어 둔다. Computer Use는 사용하지 않았다.
+
+## 2026-11-03 창 우선순위 (이전 전역 최상위 구현)
+
+- RX 창에 `IsTopmostWindow(true)`를 지정하고 `FGlobalTabmanager`의 메인 창에 `AddWindowAsNativeChild`로 연결했다. 메인 에디터를 클릭해도 RX 창이 뒤로 내려가지 않게 하며 비모달 상태로 콘텐츠 브라우저의 드래그를 받는다. 메인 창이 없는 특수 실행은 소유 관계 없이 최상위 창으로 연다.
+- 창 구조를 바꾼 뒤의 `Saved/RX_SMLODGen/topmost_20261103/report/index.json`: 관련 검사 3개 성공, 실패/경고 0. DefaultAssetAndDrop에 최상위 설정과 메인 창 소유 관계 검증을 추가했고, 자식 창에서의 드롭·통계 및 기존 WindowJSONAPI가 성공했다. 테스트 PID 36500 종료 확인. DLL SHA-256: `0DB9152D7EFBD04EF6FE30A0F4686E3E9F8C8644A79145DD15A5EE765E0246FF`.
+- 메시 교체 후 통계 텍스트의 앞부분이 잘리는 캡처를 발견했다. 고정 너비/왼쪽 정렬만으로는 해소되지 않아 갱신되는 통계 텍스트에 `SimpleTextMode(true)`를 적용했다. 통계 영역은 320 Slate 단위이며 섹션이 많으면 세로로 스크롤한다. 한국어·수치·여러 줄 표시를 실제 벤치 캡처에서 확인했다.
+- 재시작 전에 최신 `bench` 세션을 `recovery_topmost_P30180.json`과 `before_topmost_state.json`에 보존했다. 이전 통계 검증 후 창의 대상이 기본 박스에서 bench로 바뀐 것을 관찰했으므로 그 당시의 1개 LOD 세션을 유지하며 이전 3개 LOD 복구본으로 덮어쓰지 않았다. 이전 복구 JSON도 보존한다. dirty 패키지/PIE가 없는 것을 확인하고 PID 30180을 정상 종료했다.
+- 같은 프로젝트를 사용자 검토용 PID 28612로 다시 열어 직전 설정을 복원했고 전체 설정 JSON이 일치하는 것을 확인했다. `Saved/RX_SMLODGen/topmost_launch_20261103/native_window.json`에서 Win32 `WS_EX_TOPMOST`와 소유 창의 PID/제목이 언리얼 메인 창인 것을 별도로 확인했다. `current_live.json`의 dirty 패키지/PIE는 없으며 원본 Apply/저장은 호출하지 않았다. 캡처는 `Saved/RX_SMLODGen/Previews/bench_topmost_stats_20261103_0229.png`이고 사용자 검토용 에디터와 RX 창은 열어 둔다.
+- 마지막 텍스트 표시 보완 후 모듈 빌드 성공. 최종 DLL SHA-256: `275B415F7FCDC884C6709E7B40E8649CD81537F1C5EDD60CC77D78B0284F6BAF`. `recovery_statstext_P28612.json`으로 최신 설정을 보존하고 PID 28612의 `LogExit: Exiting`을 확인한 뒤 같은 프로젝트를 PID 39048로 다시 열었다. 전체 설정 JSON 복원 일치, 최상위/소유 창 플래그, dirty 패키지/PIE 없음을 확인했다. 최종 화면 `Saved/RX_SMLODGen/Previews/bench_statstext_20261103_0232.png`에서 현재 LOD·스크린 크기·전체/섹션 통계 문구가 잘리지 않는 것을 확인했다. 이 마지막 텍스트 렌더링 변경 후 자동화 3개를 다시 돌린 것은 아니며 실제 창으로 검증했다. 사용자 검토용 PID 39048만 열어 둔다.
+
+## 2026-11-03 뷰포트 통계와 기본 박스·메시 드롭
+
+- 뷰포트 왼쪽 위에 현재 LOD(자동/고정), 현재 카메라의 스크린 크기, 폴리곤(삼각형)·렌더 버텍스 수와 섹션별 수치를 표시한다. `FEditorViewportClient::DrawCanvas`의 실제 `FSceneView`를 사용하며 설치된 Static Mesh Editor와 같은 `ComputeBoundsScreenSize` / `ComputeStaticMeshLOD` 계산을 따른다. 전환 임계값과 현재 투영 크기를 구분한다. Nanite 메시에서는 기본 LOD 지오메트리 통계임을 표시한다.
+- 섹션 헤더에도 폴리곤·버텍스 수를 추가했다. 각 섹션의 인덱스 버퍼에서 실제로 참조하는 고유 렌더 버텍스를 센다. UV/노멀 분할을 포함하며 섹션 간 공유 버텍스는 각 섹션에 포함된다. 통계는 메시 교체/재빌드 때 계산해 캐시한다. 많은 섹션은 통계 영역을 스크롤해서 확인할 수 있다.
+- 플러그인의 `CanContainContent`를 활성화하고 [SM_DefaultBox.uasset](../../../Plugins/RX_SMLODGen/Content/Meshes/SM_DefaultBox.uasset)를 추가했다. 엔진 기본 Cube를 복제한 100cm 정육면체이며 경로는 `/RX_SMLODGen/Meshes/SM_DefaultBox.SM_DefaultBox`다. 선택한 메시/단일 메시 액터가 없으면 이 박스로 창을 연다. `open` API의 `asset`도 생략할 수 있다.
+- 콘텐츠 브라우저에서 스태틱 메시 하나를 뷰포트로 드롭하면 새 임시 사본을 초기화한 뒤 기존 창의 대상을 교체하고 새 바운드에 카메라를 맞춘다. 통계 오버레이 위에 드롭해도 뷰포트로 전달하며 디테일 패널 영역의 드롭은 처리하지 않는다. 새 메시 초기화 또는 복구 JSON 저장 실패 시 기존 세션을 유지한다. 교체 전 설정은 `Saved/RX_SMLODGen/Presets/autoswap_<GUID>.json`으로 보존한다. 원본 적용은 기존처럼 명시적인 버튼/API로만 수행한다.
+- JSON API에 `load_asset`과 `get.viewport.current_lod/current_screen_size/triangles/vertices/sections/statistics_text`를 추가했다. 자세한 의미와 복원 순서는 [JSON_API.md](JSON_API.md)를 따른다.
+- UE 5.8.4 CL 58902052 Win64 Development Editor의 RX_SMLODGen 모듈 빌드 성공. 이 단계 안내/툴팁 문구를 포함한 DLL SHA-256: `A87E9169967488C5FC379EB229D6CE4A1C898E9CAC81FEEC7CB496DA44BF9BE6`. 이후 창 우선순위 빌드는 위 항목을 따른다.
+- `Saved/RX_SMLODGen/stats_drop_final_20261103/report/index.json`: DefaultAssetAndDrop, SectionStatistics, WindowJSONAPI 3개 성공, 실패/경고 0. 기본 박스의 별도 프로세스 재로드, 선택 없는 open, 실제 Slate asset drag/drop 이벤트, 무효 드롭 시 기존 세션 유지, 미저장 설정의 자동 복구 JSON, 원본 보존, 강제 LOD와 전체/섹션 통계 일치 및 기존 JSON 동작을 검사했다. 테스트 PID 33456은 테스트 큐 완료 후 엔진의 TestExit 상태 0으로 종료됐다. 전체 기능 검사를 다시 수행한 것은 아니다. 이후 안내/툴팁 문자열만 정리하고 모듈을 다시 빌드했다.
+- 최초 실행 `Saved/RX_SMLODGen/stats_drop_20261103/tests.log`에서는 DefaultAssetAndDrop은 성공했으나 합성 SectionStatistics 테스트의 스택 `FStaticMeshLODResources` 참조 카운트 때문에 검증 프로세스가 종료됐다. 테스트 픽스처를 `bAddRef=false`로 고친 뒤 위 후속 실행이 성공했다. 이 오류는 통계 집계 로직이나 사용자 메시에서 발생한 것이 아니다. 최초 로그와 캡처는 보존한다.
+- Computer Use를 사용하지 않았다. 원래 PID 38716의 dirty 패키지/PIE 없음과 설정 백업 `recovery_before_stats_drop_20261103.json`을 확인한 뒤 RX 창과 메인 창을 정상 종료했다. 사용자의 실제 에셋에 Apply/저장을 호출하지 않았다. 독립 검토 및 cook/package 실행은 이번 변경의 검증 범위가 아니다.
+
 ## 2026-11-03 패널 정리와 화면 크기 직접 편집
 
 - LOD별 빌드 세팅 카테고리와 해당 입력 위젯을 UI에서 제거했다. 기존 빌드 설정 값과 JSON 입출력은 유지한다.

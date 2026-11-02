@@ -10,6 +10,7 @@ public class RX_SMLODGen : ModuleRules
             "Core", "CoreUObject", "Engine", "UnrealEd", "Slate", "SlateCore", "InputCore",
             "ToolMenus", "ContentBrowser", "AssetRegistry", "StaticMeshEditor",
             "MeshDescription", "StaticMeshDescription", "MeshReductionInterface", "MeshUtilitiesCommon",
+            "GeometryCore", "DynamicMesh", "MeshConversion",
             "RenderCore", "RHI", "Json", "JsonUtilities", "PropertyEditor", "DesktopPlatform"
         });
     }

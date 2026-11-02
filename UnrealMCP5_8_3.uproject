@@ -5,6 +5,13 @@
   "Description": "",
   "Plugins": [
     {
+      "Name": "RX_SMLODGen",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
+    },
+    {
       "Name": "PythonScriptPlugin",
       "Enabled": true,
       "TargetAllowList": [

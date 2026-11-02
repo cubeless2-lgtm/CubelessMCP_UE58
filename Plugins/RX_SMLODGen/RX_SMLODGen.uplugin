@@ -1,0 +1,14 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0-dev",
+  "FriendlyName": "RX Static Mesh LOD Generator",
+  "Description": "Experimental editor-only static mesh LOD preview and authoring tool.",
+  "Category": "Editor",
+  "CanContainContent": false,
+  "EnabledByDefault": false,
+  "IsBetaVersion": true,
+  "Modules": [
+    { "Name": "RX_SMLODGen", "Type": "Editor", "LoadingPhase": "Default" }
+  ]
+}

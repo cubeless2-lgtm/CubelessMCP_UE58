@@ -445,7 +445,13 @@ TSharedRef<SWidget> SRXLODWindow::SectionsPanel(int32 LOD)
                     const FPolygonGroupID Group = Weight.Group;
                     auto Get = [this, LOD, Group]() -> FRXSectionWeight& { return *Session->GetWeights(LOD).FindByPredicate([Group](const FRXSectionWeight& W){ return W.Group == Group; }); };
                     Fields->AddSlot().AutoHeight()[Row(FString::Printf(TEXT("섹션 가중치 (그룹 %d)"), Group.GetValue()), NumberBox<float>([Get](){ return Get().Weight; }, [Get](float V){ Get().Weight = V; }, 0, 1))];
-                    Fields->AddSlot().AutoHeight()[Row(TEXT("외곽 실루엣 보존"), SNew(SCheckBox).IsChecked_Lambda([Get](){ return Get().bPreserveSilhouette ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([Get](ECheckBoxState State){ Get().bPreserveSilhouette = State == ECheckBoxState::Checked; }))];
+                    for (const auto& Option : TArray<TPair<FString, bool FRXSectionWeight::*>>{
+                        { TEXT("열린 외곽 경계 보존"), &FRXSectionWeight::bPreserveOpenBoundary },
+                        { TEXT("꺾인 모서리 보존"), &FRXSectionWeight::bPreserveSharpEdges },
+                        { TEXT("UV·노멀·머티리얼 경계 보존"), &FRXSectionWeight::bPreserveAttributeSeams } })
+                        Fields->AddSlot().AutoHeight()[Row(Option.Key, SNew(SCheckBox)
+                            .IsChecked_Lambda([Get, Option](){ return Get().*Option.Value ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                            .OnCheckStateChanged_Lambda([Get, Option](ECheckBoxState State){ Get().*Option.Value = State == ECheckBoxState::Checked; }))];
                     Fields->AddSlot().AutoHeight()[Row(TEXT("감소 제외"), SNew(SCheckBox).IsChecked_Lambda([Get](){ return Get().bExcluded ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([Get](ECheckBoxState State){ Get().bExcluded = State == ECheckBoxState::Checked; }))];
                 }
             }
@@ -453,7 +459,8 @@ TSharedRef<SWidget> SRXLODWindow::SectionsPanel(int32 LOD)
         else if (LOD == 0)
         {
             Fields->AddSlot().AutoHeight()[Row(TEXT("섹션 가중치 (LOD 0 원본 보존)"), SNew(SNumericEntryBox<float>).Value(1.0f).IsEnabled(false))];
-            Fields->AddSlot().AutoHeight()[Row(TEXT("외곽 실루엣 보존"), SNew(SCheckBox).IsChecked(ECheckBoxState::Checked).IsEnabled(false))];
+            for (const TCHAR* Label : { TEXT("열린 외곽 경계 보존"), TEXT("꺾인 모서리 보존"), TEXT("UV·노멀·머티리얼 경계 보존") })
+                Fields->AddSlot().AutoHeight()[Row(Label, SNew(SCheckBox).IsChecked(ECheckBoxState::Unchecked).IsEnabled(false))];
             Fields->AddSlot().AutoHeight()[Row(TEXT("감소 제외"), SNew(SCheckBox).IsChecked(ECheckBoxState::Checked).IsEnabled(false))];
         }
         const auto Counts = RXLODStats::Section(Data->LODResources[LOD], Section);

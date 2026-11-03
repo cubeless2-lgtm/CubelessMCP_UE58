@@ -2,7 +2,26 @@
 
 상태: UE 5.8.4에서 RX 전용 LOD 편집 창과 JSON 인터페이스를 구현했다. 합성 테스트 에셋의 적용·저장·별도 프로세스 재로드를 확인했다. 실제 사용 에셋의 시각 품질과 독립 검토, cook/package 실행은 아직 미검증이다.
 
-## 2026-11-03 리뷰 수정 및 외곽 실루엣 보존
+## 2026-11-03 선택형 보호 리뷰 수정
+
+- 단독 소스 리뷰에서 `FAttrMeshSimplification`의 `MeshBoundaryConstraint`, `GroupBoundaryConstraint`, `MaterialBoundaryConstraint`가 초기화되지 않은 것을 확인했다. 설치된 엔진의 `MeshSimplification.cpp`는 에지 축소 성공 후 이 값을 다시 사용한다. RX에서 열린 경계/머티리얼 경계 선택을 명시적으로 설정하고, 선택 대상이 아닌 폴리곤 그룹 경계는 NoConstraint로 초기화했다. 예기치 않은 제약 재적용 가능성을 제거한 수정이며 독립 리뷰를 수행했다고 주장하지 않는다.
+- UV/노멀 분할이 없는 평면에서도 머티리얼만 다른 두 섹션의 경계를 유지하는 회귀 검사를 보강했다. 새 세 옵션, 기본값 모두 false, v1~3 이관, 분리 섹션의 ID 정리와 원본 Group ID 보존도 검토했다.
+- `Saved/RX_SMLODGen/selection_review_20261103/report/index.json`: 관련 7개 성공, 실패/경고 0. AttributeBoundaryProtection, SectionReduction, SilhouettePreservation, SilhouetteSelections, WeightedPreview, SessionJSON, WeightMetadata를 실행했다. 이전 전체 21개 성공 자료는 아래 기록을 유지하며, 이번 초기화 수정 후 전체 21개를 다시 실행했다고 주장하지 않는다. 테스트 PID 39576 종료 확인.
+- UE 5.8.4 CL 58902052 Win64 Development Editor 모듈 빌드 성공. DLL SHA-256: `3EB33CB1D74C21AB6391BB86C18CC685D54902B27E29D9AF51B45AA71EC33A49`. 원래 PID 14604의 미저장 패키지/PIE 없음과 RX 설정 백업을 확인한 뒤 정상 종료했고 `LogExit: Exiting`을 확인했다. 복구 정보는 `Saved/RX_SMLODGen/selection_review_20261103/before_restart.json`이다. 원본 Apply/저장 및 Computer Use는 사용하지 않았다.
+- 같은 프로젝트를 사용자 검토용 PID 36444로 다시 열고, 백업한 RX 설정과 강제 표시 LOD를 복원했다. 전체 설정 JSON의 일치와 dirty 패키지/PIE 없음, 전역 최상위 false·에디터 소유 관계 true를 확인했다. 증거는 `Saved/RX_SMLODGen/selection_review_launch_20261103/restored.json`이며 이 에디터는 사용자 검토용으로 열어 둔다.
+
+## 2026-11-03 선택형 외곽 보호
+
+- 섹션 가중치 아래의 통합 체크를 `열린 외곽 경계 보존`, `꺾인 모서리 보존`, `UV·노멀·머티리얼 경계 보존`으로 나눴다. 사용자의 최종 지시에 따라 새 설정의 기본값은 세 옵션 모두 false다. LOD 0에서는 세 항목을 체크 해제 상태로 비활성화하며 원본 보존은 별도의 감소 제외 표시로 유지한다.
+- 세 보호 종류는 독립적으로 제약을 구성한다. 열린 경계 옵션은 한 면에만 연결된 가장자리를 고정한다. 꺾인 모서리 옵션은 두 면의 비평면 모서리를 고정한다. 속성 경계 옵션은 내부 UV·노멀 분할선과 머티리얼 섹션 경계를 고정한다. 선택하지 않은 열린 경계가 전역 seam 설정 때문에 암묵적으로 고정되지 않도록 감소기의 전역 seam 잠금을 사용하지 않고 선택된 에지와 정점만 명시적으로 제약한다.
+- 기존 가져오기/베이크 LOD와 Nanite는 창 열기만으로 원본 지오메트리를 다시 생성하거나 기존 동작을 거부하지 않도록 보호 감소를 자동 활성화하지 않는다. 신규/기존 LOD 모두 필요한 옵션을 명시적으로 선택한다. 기존 JSON/메타데이터에 명시적으로 저장한 선택은 기본값 변경으로 덮어쓰지 않는다.
+- JSON/에셋 메타데이터 버전은 4다. `preserve_open_boundary`, `preserve_sharp_edges`, `preserve_attribute_seams` 세 필수 Boolean을 보관한다. 기존 v3의 `preserve_silhouette` true/false는 세 옵션 모두 true/false로 복원한다. 플래그가 없는 v1·2 저장본은 모두 false로 가져온다. UI·미리보기·원본 적용·메타데이터 복원은 같은 선택을 사용한다. [JSON_API.md](JSON_API.md)에 현재 형식을 기록했다.
+- 최초 `Saved/RX_SMLODGen/selections_20261103/report/index.json`: 21개 중 20개 성공/1개 실패. 서로 다른 가중치의 섹션을 분리한 후 정점 ID에 빈 구간이 남으면 DynamicMesh 변환에서 삼각형이 누락되는 문제를 확인했다. 변환 전에 MeshDescription ID를 정리하고, Polygon Group→원본 Group ID 매핑을 전달해 섹션 식별자는 보존하도록 수정했다. 원본 실패 자료는 보존한다.
+- 그 수정 후 `Saved/RX_SMLODGen/selections_fixed_20261103/report/index.json`의 관련 5개가 성공했다. 이후 사용자의 최종 지시로 기본값을 모두 false로 변경하고 `Saved/RX_SMLODGen/selections_all_off_20261103/report/index.json`에서 전체 21개 성공, 실패/경고 0을 확인했다. 공통 JSON 직렬화의 8가지 선택 조합, 메타데이터 왕복, v3 통합 플래그 이관, 열린 경계 정점 고정, UV 경계만 켠 경우, 비평면 꼭짓점 고정, 가져온 LOD 소스 유지와 기존 적용·임포스터·창/JSON 동작을 포함한다. 테스트 PID 36040, 29048, 28560 종료를 확인했다.
+- UE 5.8.4 CL 58902052 Win64 Development Editor 모듈 빌드 성공. 최종 DLL SHA-256: `B0EBBDD0C58457B88D79C202864A6D8D7EDC10DE4AE4E966ED6416EF7A1E9EBC`. 재시작 전 PID 38276의 dirty 패키지/PIE가 없고 RX 편집 세션이 닫힌 것을 확인했다. 보존할 활성 RX 설정이 없어 이전 bench 설정을 자동으로 다시 열거나 덮어쓰지 않았다. 전제 조건은 `Saved/RX_SMLODGen/before_selections_editor_state.json`에 기록했다. 원본 Apply/저장 및 Computer Use는 사용하지 않았다.
+- 같은 프로젝트를 사용자 검토용 PID 14604로 다시 열고 기본 박스의 임시 LOD 1에서 세 체크가 모두 꺼진 것을 확인했다. `Saved/RX_SMLODGen/selections_launch_20261103/all_off_live.json`은 v4와 세 false 값, 메인 창 소유 관계, 전역 최상위 false 및 dirty 패키지/PIE 없음을 기록한다. `Saved/RX_SMLODGen/Previews/selections_all_off_20261103.png`에서 실제 UI도 확인했다. 사용자 검토용 에디터와 임시 미리보기만 열어 둔다.
+
+## 2026-11-03 리뷰 수정 및 외곽 실루엣 보존 (이전 통합 옵션)
 
 - 아래 전역 최상위 창 설정은 사용자의 후속 요구에 따라 폐기했다. 현재 RX 창은 시스템 전역 최상위가 아니며 언리얼 메인 창의 네이티브 소유 창으로만 유지한다. 다른 프로그램을 가리지 않는다. `get.window_topmost`는 false, `window_owned_by_editor`는 true다.
 - 각 감소 LOD의 섹션 가중치 바로 아래에 `외곽 실루엣 보존` 체크와 한국어 툴팁을 추가했다. 기본값은 false이며 LOD 0은 원본 보존 상태로 비활성화한다. 가중치 0에서도 독립적으로 작동한다. 기존 `SilhouetteImportance` 값만 바꾸는 방식은 설치된 Quadric 감소기에서 해당 값이 사용되지 않아 채택하지 않았다.

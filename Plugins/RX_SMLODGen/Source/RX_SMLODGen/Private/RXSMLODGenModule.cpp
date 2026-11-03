@@ -89,7 +89,7 @@ FString RXLOD::Execute(const FString& Request)
         OK = true; Reply->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen"));
         Reply->SetStringField(TEXT("ops"), TEXT("describe,open,load_asset,get,set,resize,remove_lod,import_lod,view_lod,rebuild,apply,save_json,load_json,snapshot,close"));
         Reply->SetStringField(TEXT("instructions"), TEXT("open: optional asset object path, omitted uses bundled box; load_asset: asset object path, archives prior settings as autoswap_GUID.json before replacement; get: complete settings and live viewport metrics; set: settings=complete get result, validates asset and source_id, edits preview only; rebuild: builds preview; apply: confirm=true, mutates original but does not save; save_json/load_json: filename=leaf.json in Saved/RX_SMLODGen/Presets; close: confirm=true; failures never auto-retry."));
-        Reply->SetNumberField(TEXT("settings_version"), 3);
+        Reply->SetNumberField(TEXT("settings_version"), 4);
         Reply->SetStringField(TEXT("default_asset"), DefaultMeshPath);
         Reply->SetStringField(TEXT("weight_formula"), TEXT("keep = reduction.percentTriangles + (1 - reduction.percentTriangles) * weight; weight 0 = normal reduction, weight 1 = preserve; excluded -> keep 1; v1 imports invert weight; triangle percentage reduction, BaseLOD 0; unequal touching sections currently rejected."));
         Reply->SetBoolField(TEXT("session_open"), ActiveSession.IsValid());

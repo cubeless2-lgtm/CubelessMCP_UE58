@@ -24,21 +24,21 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
     if (!TestTrue(TEXT("Create isolated session"), Session->Initialize(Cube, E))) { AddError(E); return false; }
     if (!TestTrue(TEXT("Add LOD"), Session->Resize(2, E))) { return false; }
     Session->Preview->GetSourceModel(1).ReductionSettings.PercentTriangles = 0.5f;
-    auto& Rows = Session->GetWeights(1); for (auto& W : Rows) { W.Weight = 0; W.bExcluded = true; W.bPreserveSilhouette = true; }
+    auto& Rows = Session->GetWeights(1); for (auto& W : Rows) { W.Weight = 0; W.bExcluded = true; W.bPreserveOpenBoundary = true; }
     if (!TestTrue(TEXT("Weighted edit preview"), Session->Rebuild(E))) { AddError(E); return false; }
     const FString Json = Session->ExportJson();
     Rows[0].Weight = 0.75f; Rows[0].bExcluded = false;
     if (!TestTrue(TEXT("JSON import"), Session->ImportJson(Json, E))) { AddError(E); return false; }
     TestEqual(TEXT("Weight restored"), Session->Weights[1][0].Weight, 0.0f);
     TestTrue(TEXT("Exclusion restored"), Session->Weights[1][0].bExcluded);
-    TestTrue(TEXT("Silhouette preservation restored from JSON"), Session->Weights[1][0].bPreserveSilhouette);
+    TestTrue(TEXT("Silhouette preservation restored from JSON"), Session->Weights[1][0].bPreserveOpenBoundary);
     TSharedPtr<FJsonObject> V2; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), V2);
     V2->SetNumberField(TEXT("version"), 2);
     for (const auto& LOD : V2->GetArrayField(TEXT("lods")))
-        for (const auto& Section : LOD->AsObject()->GetArrayField(TEXT("sections"))) { Section->AsObject()->RemoveField(TEXT("preserve_silhouette")); }
+        for (const auto& Section : LOD->AsObject()->GetArrayField(TEXT("sections"))) { for (const TCHAR* Flag : { TEXT("preserve_open_boundary"), TEXT("preserve_sharp_edges"), TEXT("preserve_attribute_seams") }) { Section->AsObject()->RemoveField(Flag); } }
     FString V2Json; FJsonSerializer::Serialize(V2.ToSharedRef(), TJsonWriterFactory<>::Create(&V2Json));
     TestTrue(TEXT("Old v2 JSON without silhouette flag imports"), Session->ImportJson(V2Json, E));
-    TestFalse(TEXT("Old v2 defaults silhouette preservation off"), Session->Weights[1][0].bPreserveSilhouette);
+    TestFalse(TEXT("Old v2 defaults silhouette preservation off"), Session->Weights[1][0].bPreserveOpenBoundary);
     TestEqual(TEXT("Reduction restored"), Session->Preview->GetSourceModel(1).ReductionSettings.PercentTriangles, 0.5f);
     TSharedPtr<FJsonObject> Legacy;
     FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), Legacy);
@@ -49,7 +49,7 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
     { TestEqual(TEXT("v1 reduction weight migrates to v2 preservation weight"), Session->Weights[1][0].Weight, 0.8f); }
     const FString Before = Session->ExportJson();
     TSharedPtr<FJsonObject> Invalid; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Before), Invalid);
-    Invalid->GetArrayField(TEXT("lods"))[1]->AsObject()->GetArrayField(TEXT("sections"))[0]->AsObject()->SetStringField(TEXT("preserve_silhouette"), TEXT("true"));
+    Invalid->GetArrayField(TEXT("lods"))[1]->AsObject()->GetArrayField(TEXT("sections"))[0]->AsObject()->SetStringField(TEXT("preserve_open_boundary"), TEXT("true"));
     FString InvalidJson; FJsonSerializer::Serialize(Invalid.ToSharedRef(), TJsonWriterFactory<>::Create(&InvalidJson));
     TestFalse(TEXT("Non-Boolean silhouette flag is rejected"), Session->ImportJson(InvalidJson, E));
     TestEqual(TEXT("Bad flag leaves session unchanged"), Session->ExportJson(), Before);
@@ -83,6 +83,28 @@ bool FRXSessionImpostorTest::RunTest(const FString& Parameters)
     Session->bImpostor = false;
     if (!TestTrue(TEXT("Disable impostor"), Session->Rebuild(E))) { AddError(E); return false; }
     TestEqual(TEXT("Only generated last LOD removed"), Session->Display->GetNumSourceModels(), EditableCount);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRXImportedProtectionTest, "RX.SMLODGen.ImportedLODProtectionDefaults", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRXImportedProtectionTest::RunTest(const FString&)
+{
+    UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    auto Session = MakeShared<FRXLODSession>(); FString E;
+    if (!Session->Initialize(Cube, E) || !Session->Resize(2, E)) { AddError(E); return false; }
+    const auto& New = Session->GetWeights(1)[0];
+    TestFalse(TEXT("Generated LOD defaults to all protections off"), New.HasProtection());
+    FMeshDescription Imported(*Session->Preview->GetMeshDescription(0));
+    const int32 Triangles = Imported.Triangles().Num();
+    Session->Preview->CreateMeshDescription(1, MoveTemp(Imported));
+    UStaticMesh::FCommitMeshDescriptionParams Params; Params.bMarkPackageDirty = false;
+    Session->Preview->CommitMeshDescription(1, Params);
+    auto& Reduction = Session->Preview->GetSourceModel(1).ReductionSettings;
+    Reduction.BaseLODModel = 1; Reduction.PercentTriangles = 1;
+    Session->Weights.Reset();
+    TestFalse(TEXT("Existing authored LOD does not auto-enable a replacement reduction"), Session->GetWeights(1)[0].HasProtection());
+    if (!TestTrue(TEXT("Authored LOD previews without overwriting its source"), Session->Rebuild(E))) { AddError(E); return false; }
+    TestEqual(TEXT("Authored LOD geometry stays intact"), Session->Display->GetMeshDescription(1)->Triangles().Num(), Triangles);
     return true;
 }
 

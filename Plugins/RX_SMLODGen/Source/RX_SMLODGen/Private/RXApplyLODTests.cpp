@@ -57,7 +57,7 @@ bool FRXApplyLODTest::RunTest(const FString& Parameters)
     {
         TestEqual(TEXT("Requested reduction restored"), Reopened->GetSourceModel(1).ReductionSettings.PercentTriangles, 0.5f);
         TestTrue(TEXT("Weights restored"), Restored.Contains(1) && Restored[1].Num() == Sections.Num());
-        TestTrue(TEXT("Silhouette preservation restored after applying"), Restored.Contains(1) && Restored[1][0].bPreserveSilhouette);
+        TestTrue(TEXT("Silhouette preservation restored after applying"), Restored.Contains(1) && Restored[1][0].bPreserveOpenBoundary);
         TestFalse(TEXT("Impostor remains disabled"), bImpostor);
     }
     return true;

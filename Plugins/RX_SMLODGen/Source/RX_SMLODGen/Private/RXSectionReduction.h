@@ -12,7 +12,12 @@ struct FRXSectionWeight
     // Preservation strength: 0 = normal reduction, 1 = keep the source section.
     float Weight = 0.0f;
     bool bExcluded = false;
-    bool bPreserveSilhouette = false;
+    bool bPreserveOpenBoundary = false;
+    bool bPreserveSharpEdges = false;
+    bool bPreserveAttributeSeams = false;
+    bool HasProtection() const { return bPreserveOpenBoundary || bPreserveSharpEdges || bPreserveAttributeSeams; }
+    bool HasSameProtection(const FRXSectionWeight& Other) const
+    { return bPreserveOpenBoundary == Other.bPreserveOpenBoundary && bPreserveSharpEdges == Other.bPreserveSharpEdges && bPreserveAttributeSeams == Other.bPreserveAttributeSeams; }
 };
 
 struct FRXSectionReductionResult

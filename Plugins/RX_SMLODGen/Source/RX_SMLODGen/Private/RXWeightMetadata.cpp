@@ -1,4 +1,5 @@
 #include "RXWeightMetadata.h"
+#include "RXSilhouetteSettings.h"
 
 #include "Dom/JsonObject.h"
 #include "JsonObjectConverter.h"
@@ -13,7 +14,7 @@ bool RXWeightMetadata::Encode(const FString& SourceId, const TMap<int32, FRXStor
 {
     if (SourceId.IsEmpty()) { Error = TEXT("Missing LOD 0 identity."); return false; }
     TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
-    Root->SetNumberField(TEXT("version"), 3);
+    Root->SetNumberField(TEXT("version"), 4);
     Root->SetStringField(TEXT("source_id"), SourceId);
     if (ImpostorLOD < INDEX_NONE || ImpostorMaterialSlot < INDEX_NONE || (ImpostorLOD < 0) != (ImpostorMaterialSlot < 0) || ImpostorLOD == 0)
     { Error = TEXT("Invalid impostor LOD or material slot."); return false; }
@@ -44,7 +45,7 @@ bool RXWeightMetadata::Encode(const FString& SourceId, const TMap<int32, FRXStor
             Row->SetNumberField(TEXT("group"), Group);
             Row->SetNumberField(TEXT("weight"), Section.Weight);
             Row->SetBoolField(TEXT("excluded"), Section.bExcluded);
-            Row->SetBoolField(TEXT("preserve_silhouette"), Section.bPreserveSilhouette);
+            RXSilhouetteSettings::Write(*Row, Section);
             Sections.Add(MakeShared<FJsonValueObject>(Row));
         }
         Entry->SetArrayField(TEXT("sections"), Sections);
@@ -68,7 +69,7 @@ bool RXWeightMetadata::Decode(const FString& Json, FString& OutSourceId, TMap<in
     int32 Version = 0;
     FString SourceId;
     const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
-    if (!Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 3) ||
+    if (!Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 4) ||
         !Root->TryGetStringField(TEXT("source_id"), SourceId) || SourceId.IsEmpty() ||
         !Root->TryGetArrayField(TEXT("lods"), Entries) || Entries->Num() > 32)
     { Error = TEXT("Unsupported or incomplete weight metadata."); return false; }
@@ -99,17 +100,16 @@ bool RXWeightMetadata::Decode(const FString& Json, FString& OutSourceId, TMap<in
             const TSharedPtr<FJsonObject>* Row = nullptr;
             int32 Group = -1;
             double Weight = -1;
-            bool bExcluded = false, bPreserveSilhouette = false;
+            bool bExcluded = false;
             if (!SectionValue.IsValid() || !SectionValue->TryGetObject(Row) || !Row || !Row->IsValid() ||
                 !(*Row)->TryGetNumberField(TEXT("group"), Group) || Group < 0 || Seen.Contains(Group) ||
                 !(*Row)->TryGetNumberField(TEXT("weight"), Weight) || !FMath::IsFinite(Weight) || Weight < 0 || Weight > 1 ||
                 !(*Row)->TryGetBoolField(TEXT("excluded"), bExcluded))
             { Error = TEXT("Invalid section entry in weight metadata."); return false; }
-            if ((Version >= 3 || (*Row)->HasField(TEXT("preserve_silhouette"))) &&
-                (!(*Row)->HasTypedField<EJson::Boolean>(TEXT("preserve_silhouette")) || !(*Row)->TryGetBoolField(TEXT("preserve_silhouette"), bPreserveSilhouette)))
-            { Error = TEXT("Invalid silhouette preservation flag."); return false; }
-            Seen.Add(Group);
-            LOD.Sections.Add({ FPolygonGroupID(Group), Version == 1 ? 1.0f - float(Weight) : float(Weight), bExcluded, bPreserveSilhouette });
+            FRXSectionWeight Settings{ FPolygonGroupID(Group), Version == 1 ? 1.0f - float(Weight) : float(Weight), bExcluded };
+            if (!RXSilhouetteSettings::Read(**Row, Version, Settings))
+            { Error = TEXT("Invalid silhouette preservation flags."); return false; }
+            Seen.Add(Group); LOD.Sections.Add(Settings);
         }
         LODs.Add(Index, MoveTemp(LOD));
     }

@@ -123,7 +123,8 @@ bool FRXSilhouetteTest::RunTest(const FString&)
     auto Colors = Attr.GetVertexInstanceColors();
     for (const auto Instance : Source.VertexInstances().GetElementIDs()) { Colors[Instance] = FVector4f(0.2f, 0.4f, 0.6f, 1.0f); }
     FMeshReductionSettings Settings; Settings.PercentTriangles = 0.05f;
-    const TArray<FRXSectionWeight> Weights = { { Group, 0, false, true } };
+    TArray<FRXSectionWeight> Weights = { { Group, 0, false, true } };
+    TestTrue(TEXT("Open-only selection leaves other protections off"), Weights[0].bPreserveOpenBoundary && !Weights[0].bPreserveSharpEdges && !Weights[0].bPreserveAttributeSeams);
     FMeshDescription Output; TArray<FRXSectionReductionResult> Results; FString E;
     if (!TestTrue(TEXT("Silhouette-only option triggers constrained reduction"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E))) { AddError(E); return false; }
     TestTrue(TEXT("Planar interior reduces"), Output.Triangles().Num() < Source.Triangles().Num());
@@ -141,6 +142,7 @@ bool FRXSilhouetteTest::RunTest(const FString&)
     TestEqual(TEXT("Material slot identity survives conversion"), FStaticMeshConstAttributes(Output).GetPolygonGroupMaterialSlotNames()[Group], FName(TEXT("SharedMaterial")));
     for (const auto Instance : Output.VertexInstances().GetElementIDs())
     { TestTrue(TEXT("Vertex colors retain linear values"), FStaticMeshConstAttributes(Output).GetVertexInstanceColors()[Instance].Equals(FVector4f(0.2f, 0.4f, 0.6f, 1.0f), 0.001f)); }
+    Weights[0].bPreserveSharpEdges = true;
     Attr.GetVertexPositions()[FVertexID(40)].Z = 20;
     if (TestTrue(TEXT("Nonplanar feature reduces safely"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E)))
     {
@@ -150,6 +152,54 @@ bool FRXSilhouetteTest::RunTest(const FString&)
     }
     Settings.WeldingThreshold = 0.1f;
     TestFalse(TEXT("Silhouette mode rejects welding that could move contours"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FRXAttributeBoundaryTest, "RX.SMLODGen.AttributeBoundaryProtection", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FRXAttributeBoundaryTest::RunTest(const FString&)
+{
+    FMeshDescription Source; FStaticMeshAttributes Attr(Source); Attr.Register();
+    Attr.GetVertexInstanceUVs().SetNumChannels(1);
+    const auto Group = AddGrid(Source, 0);
+    const auto Positions = Attr.GetVertexPositions(); auto UVs = Attr.GetVertexInstanceUVs();
+    for (const auto Triangle : Source.Triangles().GetElementIDs())
+    {
+        float CenterX = 0;
+        for (const auto Vertex : Source.GetTriangleVertices(Triangle)) { CenterX += Positions[Vertex].X / 3; }
+        for (const auto Instance : Source.GetTriangleVertexInstances(Triangle))
+        {
+            const auto P = Positions[Source.GetVertexInstanceVertex(Instance)];
+            UVs.Set(Instance, 0, FVector2f(P.X / 80 + (CenterX > 40 ? 2.0f : 0), P.Y / 80));
+        }
+    }
+    FMeshReductionSettings Settings; Settings.PercentTriangles = 0.05f;
+    TArray<FRXSectionWeight> Weights = { { Group, 0, false, false, false, true } };
+    FMeshDescription Output; TArray<FRXSectionReductionResult> Results; FString E;
+    if (!TestTrue(TEXT("Attribute protection works with both geometry protections disabled"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E))) { AddError(E); return false; }
+    TSet<FVector3f> Found; const auto Reduced = FStaticMeshConstAttributes(Output).GetVertexPositions();
+    for (const auto V : Output.Vertices().GetElementIDs()) { Found.Add(Reduced[V]); }
+    for (int32 Y = 0; Y <= 80; Y += 10) { TestTrue(TEXT("UV split-line vertex stays fixed"), Found.Contains(FVector3f(40, Y, 0))); }
+    TestTrue(TEXT("Unconstrained interior still reduces"), Output.Triangles().Num() < Source.Triangles().Num());
+
+    // A material-only seam must stay fixed even without any UV/normal split.
+    const auto Right = Source.CreatePolygonGroup();
+    Attr.GetPolygonGroupMaterialSlotNames()[Right] = TEXT("RightMaterial");
+    for (const auto Instance : Source.VertexInstances().GetElementIDs()) { UVs.Set(Instance, 0, FVector2f::ZeroVector); }
+    TArray<FPolygonID> RightPolygons;
+    for (const auto Polygon : Source.Polygons().GetElementIDs())
+    {
+        float CenterX = 0; const auto Vertices = Source.GetPolygonVertices(Polygon);
+        for (const auto V : Vertices) { CenterX += Positions[V].X / Vertices.Num(); }
+        if (CenterX > 40) { RightPolygons.Add(Polygon); }
+    }
+    for (const auto Polygon : RightPolygons) { Source.SetPolygonPolygonGroup(Polygon, Right); }
+    Weights.Add({ Right, 0, false, false, false, true });
+    if (!TestTrue(TEXT("Material-only boundary protection reduces"), RXSectionReduction::Reduce(Source, Settings, Weights, Output, Results, E))) { AddError(E); return false; }
+    Found.Reset(); const auto MaterialPositions = FStaticMeshConstAttributes(Output).GetVertexPositions();
+    for (const auto V : Output.Vertices().GetElementIDs()) { Found.Add(MaterialPositions[V]); }
+    for (int32 Y = 0; Y <= 80; Y += 10) { TestTrue(TEXT("Material split-line vertex stays fixed"), Found.Contains(FVector3f(40, Y, 0))); }
+    TestTrue(TEXT("Material sections retain their identity"), Output.IsPolygonGroupValid(Group) && Output.IsPolygonGroupValid(Right));
+    TestTrue(TEXT("Material protection still allows reduction"), Output.Triangles().Num() < Source.Triangles().Num());
     return true;
 }
 

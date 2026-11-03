@@ -1,4 +1,4 @@
-# RX_SMLODGen JSON API v1 / 설정 문서 v3
+# RX_SMLODGen JSON API v1 / 설정 문서 v4
 
 에디터 전용 플러그인 `RX_SMLODGen`이 활성화되고 로드된 UE 5.8.4에서 사용한다. 외곽 실루엣 보존은 표준 `GeometryProcessing` 플러그인을 사용하며 RX 플러그인 의존성으로 활성화된다.
 게임 런타임이나 MCP 플러그인에 의존하는 API가 아니다. 기존 MCP Python 실행 도구에서도 이 에디터 API를 호출할 수 있다.
@@ -64,11 +64,19 @@ rx('save_json', filename='bench_lod.json')
 
 ## 설정 문서
 
-루트 필드는 `schema: RX_SMLODGen`, `version: 3`, `weight_semantics: preservation`, `asset`, `source_id`, `impostor`, `auto_screen_size`, `lod_group`, `general`, `materials`, `lods`이다. 요청 API 자체의 버전은 1을 유지한다. 설정 버전 1·2를 계속 읽으며, 이전 JSON에 실루엣 플래그가 없으면 `false`로 가져온다.
+루트 필드는 `schema: RX_SMLODGen`, `version: 4`, `weight_semantics: preservation`, `asset`, `source_id`, `impostor`, `auto_screen_size`, `lod_group`, `general`, `materials`, `lods`이다. 요청 API 자체의 버전은 1을 유지한다. 설정 버전 1·2·3을 계속 읽는다.
 `general`에는 플랫폼/품질별 최소 LOD, 스트리밍 바이어스/LOD 수 및 LOD 스트리밍 설정을 보관한다.
 각 LOD에는 `index`, `geometry_id`, `import_filename`, 엔진 구조체의 `reduction`/`build`/`screen_size`, `sections`, `section_overrides`가 있다.
-`sections`는 LOD 0의 Polygon Group ID를 사용하는 `group`, 0~1 `weight`, `excluded`, `preserve_silhouette` 배열이다. v3의 `preserve_silhouette`은 Boolean 필수 항목이다.
-`preserve_silhouette: true`이면 열린 경계·비평면 모서리·UV/노멀 경계를 고정한 제약 QEM으로 평면 내부를 줄인다. 비평면 판단의 법선 내적 오차는 `1e-8`이다. 곡면이나 경계가 많으면 목표보다 삼각형이 많이 남거나 감소하지 않을 수 있다. 가중치 0에서도 작동하며 감소 제외/가중치 1은 전체 원본을 보존한다. 결합 한계치는 0이어야 한다. 서로 다른 가중치 또는 실루엣 옵션을 가진 섹션이 맞닿은 경우 기존 안전 제약에 따라 거부한다.
+`sections`는 LOD 0의 Polygon Group ID를 사용하는 `group`, 0~1 `weight`, `excluded`와 아래 세 개의 필수 Boolean 보호 옵션을 보관하는 배열이다.
+
+| v4 필드 | UI | 새로 생성하는 LOD의 기본값 |
+|---|---|---|
+| `preserve_open_boundary` | 열린 외곽 경계 보존 | `false` |
+| `preserve_sharp_edges` | 꺾인 모서리 보존 | `false` |
+| `preserve_attribute_seams` | UV·노멀·머티리얼 경계 보존 | `false` |
+
+각 옵션이 선택한 정점만 고정한 제약 QEM을 사용한다. 비평면 모서리 판단의 법선 내적 오차는 `1e-8`이다. 세 옵션은 서로 독립적이며 전부 false면 기존 엔진 감소 경로를 사용한다. 보호한 경계가 많으면 목표보다 삼각형이 많이 남거나 감소하지 않을 수 있다. 가중치 0에서도 작동하며 감소 제외/가중치 1은 전체 원본을 보존한다. 보호 옵션을 켜면 결합 한계치는 0이어야 한다. 서로 다른 가중치 또는 보호 옵션을 가진 섹션이 맞닿은 경우 기존 안전 제약에 따라 거부한다.
+이전 v3의 `preserve_silhouette: true`는 세 옵션을 모두 true로, false는 모두 false로 변환한다. v1·2에서 기존 플래그가 없으면 전부 false로 가져와 저장본의 선택을 유지한다. 새 설정은 세 옵션이 모두 false다. 보호 옵션을 켜지 않은 기존 가져오기/베이크 LOD와 Nanite는 보호 감소를 자동 활성화하지 않는다. 필요한 옵션은 지원 조건을 맞춘 뒤 명시적으로 선택한다.
 `section_overrides`는 섹션별 머티리얼 슬롯, 그림자, 충돌, 레이 트레이싱, 디스턴스 필드 및 불투명 플래그를 보관한다.
 `materials`는 슬롯 이름과 머티리얼 에셋 경로를 보관한다. 배열의 순서와 슬롯 식별자를 임의로 바꾸지 않는다.
 
@@ -78,7 +86,7 @@ JSON은 메시의 버텍스나 촬영한 텍스처 자체를 포함하지 않는
 엔진 구조체 필드 이름은 `get` 결과를 사용한다. UE 버전마다 달라질 수 있는 필드를 수작업으로 추측하지 않는다.
 
 가중치의 목표 잔존 비율은 `percentTriangles + (1 - percentTriangles) * weight`이다. 기본값 0은 원래 감소를 그대로 적용하고, 1은 섹션을 완전히 보존한다. 예를 들어 삼각형 잔존 비율 0.5에서 가중치 0은 50%, 0.5는 75%, 1은 100%를 남긴다. 제외한 섹션도 100%를 보존한다.
-이전 설정 문서 버전 1과 원본 에셋의 버전 1 가중치 메타데이터를 읽을 때는 `새 가중치 = 1 - 이전 가중치`로 자동 변환하여 감소 결과를 유지한다. 숫자를 그대로 둔 채 버전만 고치지 않는다. 가져온 후 저장/내보내기는 버전 3 형식으로 기록한다.
+이전 설정 문서 버전 1과 원본 에셋의 버전 1 가중치 메타데이터를 읽을 때는 `새 가중치 = 1 - 이전 가중치`로 자동 변환하여 감소 결과를 유지한다. 숫자를 그대로 둔 채 버전만 고치지 않는다. 가져온 후 저장/내보내기는 버전 4 형식으로 기록한다.
 가중치를 다르게 준 맞닿은 섹션, Nanite, 비율 외 감소 조건 등은 현재 감소기의 제한으로 거부될 수 있다.
 임포스터는 설정 LOD 개수와 별도로 표시 메시의 마지막에 한 개만 존재한다. 재생성은 같은 마지막 인덱스를 교체한다.
 임포스터 버텍스의 셰이딩 노말은 모두 메시 로컬 +Z이다. 머티리얼은 VertexNormalWS를 월드 공간 Normal 입력으로 사용하여 양면의 뒷면에서도 위쪽 노말이 반전되지 않도록 한다. 네 수직 평면의 배치와 삼각형 와인딩은 유지한다.

@@ -2,6 +2,8 @@
 
 #include "RXImpostorMaterial.h"
 #include "Materials/MaterialExpressionTextureSample.h"
+#include "Materials/MaterialExpressionShadowReplace.h"
+#include "Materials/MaterialExpressionConstant.h"
 #include "Materials/MaterialExpressionVertexNormalWS.h"
 #include "Misc/AutomationTest.h"
 
@@ -28,7 +30,18 @@ bool FRXImpostorMaterialTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Normal uses world-space vertex normal without two-sided tangent flip"), !Preview.Material->bTangentSpaceNormal && Data->Normal.Expression && Data->Normal.Expression->IsA<UMaterialExpressionVertexNormalWS>());
         UMaterialExpressionTextureSample* Sample = Cast<UMaterialExpressionTextureSample>(Data->BaseColor.Expression);
         TestTrue(TEXT("Base color and opacity use the generated atlas"), Sample && Sample->Texture == Preview.Texture.Get() &&
-            Data->OpacityMask.Expression == Sample && Data->OpacityMask.OutputIndex == 4);
+            Cast<UMaterialExpressionShadowReplace>(Data->OpacityMask.Expression) != nullptr);
+        const auto* Switch = Cast<UMaterialExpressionShadowReplace>(Data->OpacityMask.Expression);
+        if (Switch)
+        {
+            const auto* Zero = Cast<UMaterialExpressionConstant>(Switch->Shadow.Expression);
+            TestTrue(TEXT("Visible mask retains atlas alpha"), Switch->Default.Expression == Sample && Switch->Default.OutputIndex == 4);
+            TestTrue(TEXT("Shadow pass discards every card pixel"), Zero && Zero->R == 0.0f);
+        }
+        TestTrue(TEXT("External light response remains lit"), Preview.Material->GetShadingModels().HasShadingModel(MSM_DefaultLit));
+        const int32 Expressions = Preview.Material->GetExpressions().Num();
+        RXImpostorMaterial::SetUpNoCastShadow(Preview.Material.Get());
+        TestEqual(TEXT("Regeneration does not duplicate shadow switch"), Preview.Material->GetExpressions().Num(), Expressions);
     }
     UTexture2D* ExistingTexture = Preview.Texture.Get();
     Pixels.Pop();

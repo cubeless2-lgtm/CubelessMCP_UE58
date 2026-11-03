@@ -118,6 +118,7 @@ void RXImpostorAssets::CommitReplacement(FRXImpostorAssets& Assets)
     Assets.Texture->PostEditChange(); Assets.Texture->MarkPackageDirty();
     Assets.Material->Modify();
     RXImpostorMaterial::SetUpNormals(Assets.Material.Get());
+    RXImpostorMaterial::SetUpNoCastShadow(Assets.Material.Get());
     Assets.Material->PostEditChange(); Assets.Material->MarkPackageDirty();
     Assets.ReplacementPixels.Reset();
 }

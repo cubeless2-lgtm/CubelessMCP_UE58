@@ -1,24 +1,25 @@
 #include "RXImpostorPreview.h"
+#include "RXImpostorDirections.h"
 
 #include "RXImpostorAtlas.h"
 #include "RXImpostorCapture.h"
 #include "RXImpostorMesh.h"
 
 bool RXImpostorPreview::Build(UStaticMesh* Source, FIntPoint TileSize, int32 Padding, int32 Subdivisions,
-    FRXImpostorPreview& Output, FString& Error)
+    FRXImpostorPreview& Output, FString& Error, int32 Directions)
 {
-    if (!Source || !IsInGameThread() || Source->IsCompiling())
+    if (!RXImpostorDirections::IsValid(Directions) || !Source || !IsInGameThread() || Source->IsCompiling())
     {
         Error = TEXT("A ready source mesh and the game thread are required.");
         return false;
     }
     FMeshDescription Geometry;
-    if (!RXImpostorMesh::Build(Source->GetBoundingBox(), Subdivisions, TileSize, Padding, Geometry, Error))
+    if (!RXImpostorMesh::Build(Source->GetBoundingBox(), Subdivisions, TileSize, Padding, Geometry, Error, Directions))
     {
         return false;
     }
     TArray<TArray<FColor>> Tiles;
-    if (!RXImpostorCapture::Capture(Source, TileSize, Tiles, Error))
+    if (!RXImpostorCapture::Capture(Source, TileSize, Tiles, Error, Directions))
     {
         return false;
     }
@@ -29,6 +30,7 @@ bool RXImpostorPreview::Build(UStaticMesh* Source, FIntPoint TileSize, int32 Pad
         return false;
     }
     FRXImpostorPreview Result;
+    Result.Directions = Directions;
     if (!RXImpostorMaterial::CreatePreview(Pixels, AtlasSize, Result.Material, Error))
     {
         return false;

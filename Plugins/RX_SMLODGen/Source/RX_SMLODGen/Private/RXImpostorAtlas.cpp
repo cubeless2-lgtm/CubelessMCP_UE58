@@ -4,15 +4,15 @@ bool RXImpostorAtlas::Pack(const TArray<TArray<FColor>>& Tiles, FIntPoint TileSi
     TArray<FColor>& Pixels, FIntPoint& AtlasSize, FString& Error)
 {
     Error.Reset();
-    if (Tiles.Num() != 4 || TileSize.X <= 0 || TileSize.Y <= 0 || Padding < 0 || Padding > 64)
+    if ((Tiles.Num() != 2 && Tiles.Num() != 4) || TileSize.X <= 0 || TileSize.Y <= 0 || Padding < 0 || Padding > 64)
     {
-        Error = TEXT("Exactly four equally sized tiles and padding from 0 to 64 are required.");
+        Error = TEXT("Exactly two or four equally sized tiles and padding from 0 to 64 are required.");
         return false;
     }
     const int64 TilePixels = int64(TileSize.X) * TileSize.Y;
     const int64 PaddedWidth = int64(TileSize.X) + 2 * Padding;
     const int64 PaddedHeight = int64(TileSize.Y) + 2 * Padding;
-    const int64 Width = PaddedWidth * 4;
+    const int64 Width = PaddedWidth * Tiles.Num();
     if (Width > 8192 || PaddedHeight > 8192 || TilePixels > MAX_int32)
     {
         Error = TEXT("The atlas exceeds the 8192 pixel size limit.");
@@ -28,7 +28,7 @@ bool RXImpostorAtlas::Pack(const TArray<TArray<FColor>>& Tiles, FIntPoint TileSi
     }
     TArray<FColor> Result;
     Result.SetNumUninitialized(int32(Width * PaddedHeight));
-    for (int32 TileIndex = 0; TileIndex < 4; ++TileIndex)
+    for (int32 TileIndex = 0; TileIndex < Tiles.Num(); ++TileIndex)
     {
         for (int32 Y = 0; Y < int32(PaddedHeight); ++Y)
         {

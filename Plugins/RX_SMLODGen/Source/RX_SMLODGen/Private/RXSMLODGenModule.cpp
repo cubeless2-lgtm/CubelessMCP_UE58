@@ -87,9 +87,10 @@ FString RXLOD::Execute(const FString& Request)
     if (Op == TEXT("describe"))
     {
         OK = true; Reply->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen"));
-        Reply->SetStringField(TEXT("ops"), TEXT("describe,open,load_asset,get,set,resize,remove_lod,import_lod,view_lod,rebuild,apply,save_json,load_json,snapshot,close"));
+        Reply->SetStringField(TEXT("ops"), TEXT("describe,open,load_asset,panel_mode,get,set,resize,remove_lod,import_lod,view_lod,rebuild,apply,save_json,load_json,snapshot,close"));
         Reply->SetStringField(TEXT("instructions"), TEXT("open: optional asset object path, omitted uses bundled box; load_asset: asset object path, archives prior settings as autoswap_GUID.json before replacement; get: complete settings and live viewport metrics; set: settings=complete get result, validates asset and source_id, edits preview only; rebuild: builds preview; apply: confirm=true, mutates original but does not save; save_json/load_json: filename=leaf.json in Saved/RX_SMLODGen/Presets; close: confirm=true; failures never auto-retry."));
-        Reply->SetNumberField(TEXT("settings_version"), 4);
+        Reply->SetNumberField(TEXT("settings_version"), 5);
+        Reply->SetStringField(TEXT("impostor_modes"), TEXT("settings.impostor_directions: 2 = front/side, 4 = front/45/side/135 (default); settings versions 1-4 migrate to 4; exactly one final LOD, replacement on rebuild; cards do not cast shadows."));
         Reply->SetStringField(TEXT("default_asset"), DefaultMeshPath);
         Reply->SetStringField(TEXT("weight_formula"), TEXT("keep = reduction.percentTriangles + (1 - reduction.percentTriangles) * weight; weight 0 = normal reduction, weight 1 = preserve; excluded -> keep 1; v1 imports invert weight; triangle percentage reduction, BaseLOD 0; unequal touching sections currently rejected."));
         Reply->SetBoolField(TEXT("session_open"), ActiveSession.IsValid());
@@ -109,7 +110,7 @@ FString RXLOD::Execute(const FString& Request)
         TSharedPtr<FJsonObject> Settings; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(ActiveSession->ExportJson()), Settings);
         Reply->SetObjectField(TEXT("settings"), Settings); OK = true;
         Reply->SetBoolField(TEXT("preview_current"), ActiveSession->IsPreviewCurrent());
-        if (auto Panel = ActivePanel.Pin()) { Reply->SetObjectField(TEXT("viewport"), Panel->ViewportDiagnostics()); }
+        if (auto Panel = ActivePanel.Pin()) { Reply->SetObjectField(TEXT("viewport"), Panel->ViewportDiagnostics()); Reply->SetStringField(TEXT("panel_mode"), Panel->IsSimpleMode() ? TEXT("simple") : TEXT("advanced")); }
         if (auto Window = ActiveWindow.Pin())
         {
             Reply->SetBoolField(TEXT("window_topmost"), Window->IsTopmostWindow());
@@ -120,6 +121,12 @@ FString RXLOD::Execute(const FString& Request)
             for (int32 LOD = 0; LOD < Data->LODResources.Num(); ++LOD)
             { auto Metric = MakeShared<FJsonObject>(); Metric->SetNumberField(TEXT("lod"), LOD); Metric->SetNumberField(TEXT("triangles"), Data->LODResources[LOD].GetNumTriangles()); Metric->SetNumberField(TEXT("vertices"), Data->LODResources[LOD].GetNumVertices()); Metric->SetBoolField(TEXT("impostor"), LOD == ActiveSession->ImpostorLOD); Metric->SetNumberField(TEXT("screen_size"), ActiveSession->GetScreenSize(LOD).Default); Metrics.Add(MakeShared<FJsonValueObject>(Metric)); }
         Reply->SetArrayField(TEXT("preview_lods"), Metrics);
+    }
+    else if (Op == TEXT("panel_mode"))
+    {
+        FString Mode;
+        if (!Root->TryGetStringField(TEXT("mode"), Mode) || (Mode != TEXT("simple") && Mode != TEXT("advanced"))) { Error = TEXT("mode must be simple or advanced."); }
+        else if (auto Panel = ActivePanel.Pin()) { Panel->SetSimpleMode(Mode == TEXT("simple")); OK = true; Reply->SetStringField(TEXT("panel_mode"), Mode); }
     }
     else if (Op == TEXT("set"))
     {

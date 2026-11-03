@@ -1,4 +1,5 @@
 #include "RXApplyLOD.h"
+#include "RXImpostorDirections.h"
 
 #include "Misc/SecureHash.h"
 #include "Misc/PackageName.h"
@@ -60,15 +61,15 @@ bool RXApplyLOD::Fingerprint(UStaticMesh* Mesh, FString& OutHash, FString& Error
 }
 
 bool RXApplyLOD::RestorePreviewSettings(UStaticMesh* Original, UStaticMesh* Preview,
-    TMap<int32, TArray<FRXSectionWeight>>& OutWeights, bool& bOutIncludeImpostor, FString& Error)
+    TMap<int32, TArray<FRXSectionWeight>>& OutWeights, bool& bOutIncludeImpostor, FString& Error, int32* OutImpostorDirections)
 {
     if (!Original || !Preview || !IsInGameThread()) { Error = TEXT("Invalid preview or source."); return false; }
     const FString Json = Original->GetOutermost()->GetMetaData().GetValue(Original, RXWeightMetadata::Key());
-    if (Json.IsEmpty()) { OutWeights.Reset(); bOutIncludeImpostor = false; Error.Reset(); return true; }
+    if (Json.IsEmpty()) { OutWeights.Reset(); bOutIncludeImpostor = false; if (OutImpostorDirections) { *OutImpostorDirections = 4; } Error.Reset(); return true; }
     FString SourceId;
     TMap<int32, FRXStoredLODWeights> LODs;
-    int32 ImpostorLOD = INDEX_NONE, ImpostorSlot = INDEX_NONE;
-    if (!RXWeightMetadata::Decode(Json, SourceId, LODs, ImpostorLOD, ImpostorSlot, Error)) { return false; }
+    int32 ImpostorLOD = INDEX_NONE, ImpostorSlot = INDEX_NONE, Directions = 4;
+    if (!RXWeightMetadata::Decode(Json, SourceId, LODs, ImpostorLOD, ImpostorSlot, Error, &Directions)) { return false; }
     if (SourceId != GetSourceId(Original)) { Error = TEXT("Stored section weights do not match the current LOD 0 source."); return false; }
     if (ImpostorLOD != INDEX_NONE && (ImpostorLOD != Preview->GetNumSourceModels() - 1 ||
         !Preview->GetStaticMaterials().IsValidIndex(ImpostorSlot)))
@@ -111,18 +112,19 @@ bool RXApplyLOD::RestorePreviewSettings(UStaticMesh* Original, UStaticMesh* Prev
     }
     OutWeights = MoveTemp(Weights);
     bOutIncludeImpostor = ImpostorLOD != INDEX_NONE;
+    if (OutImpostorDirections) { *OutImpostorDirections = Directions; }
     Error.Reset();
     return true;
 }
 
 bool RXApplyLOD::Apply(UStaticMesh* Original, UStaticMesh* Preview, const FString& BaselineHash,
     const TMap<int32, TArray<FRXSectionWeight>>& Weights, bool bIncludeImpostor,
-    bool& bMutationStarted, TArray<FString>& OutCreatedPackages, FString& Error, const FRXImpostorPreview* PreparedImpostor)
+    bool& bMutationStarted, TArray<FString>& OutCreatedPackages, FString& Error, const FRXImpostorPreview* PreparedImpostor, int32 ImpostorDirections)
 {
     bMutationStarted = false;
     OutCreatedPackages.Reset();
     Error.Reset();
-    if (!IsInGameThread() || !Original || !Preview || Original == Preview ||
+    if (!RXImpostorDirections::IsValid(ImpostorDirections) || !IsInGameThread() || !Original || !Preview || Original == Preview ||
         Original->IsCompiling() || Preview->IsCompiling() || Preview->GetNumSourceModels() < 1)
     { Error = TEXT("Source or preview is unavailable or still compiling."); return false; }
     if (!GEditor || GEditor->PlayWorld || GEditor->bIsSimulatingInEditor)
@@ -197,10 +199,10 @@ bool RXApplyLOD::Apply(UStaticMesh* Original, UStaticMesh* Preview, const FStrin
         { Error = TEXT("The last screen size is too small to append an impostor LOD; adjust it first."); return false; }
         if (!SelectedImpostor)
         {
-            if (!RXImpostorPreview::Build(Preview, FIntPoint(512, 512), 4, 4, Impostor, Error)) { return false; }
+            if (!RXImpostorPreview::Build(Preview, FIntPoint(512, 512), 4, 4, Impostor, Error, ImpostorDirections)) { return false; }
             SelectedImpostor = &Impostor;
         }
-        if (!SelectedImpostor->Geometry || !SelectedImpostor->Material.Texture.IsValid() || !SelectedImpostor->Material.Material.IsValid()) { Error = TEXT("Prepared impostor is incomplete."); return false; }
+        if (SelectedImpostor->Directions != ImpostorDirections || !SelectedImpostor->Geometry || !SelectedImpostor->Material.Texture.IsValid() || !SelectedImpostor->Material.Material.IsValid()) { Error = TEXT("Prepared impostor is incomplete."); return false; }
         ImpostorLOD = Staged.Num();
         ImpostorSlot = Preview->GetStaticMaterials().Num();
         FStagedLOD& Entry = Staged.AddDefaulted_GetRef();
@@ -214,7 +216,7 @@ bool RXApplyLOD::Apply(UStaticMesh* Original, UStaticMesh* Preview, const FStrin
         Entry.Description = MakeUnique<FMeshDescription>(*SelectedImpostor->Geometry);
     }
     FString Metadata;
-    if (!RXWeightMetadata::Encode(GetSourceId(Original), Stored, ImpostorLOD, ImpostorSlot, Metadata, Error)) { return false; }
+    if (!RXWeightMetadata::Encode(GetSourceId(Original), Stored, ImpostorLOD, ImpostorSlot, Metadata, Error, ImpostorDirections)) { return false; }
     if (!Fingerprint(Original, CurrentHash, Error) || CurrentHash != BaselineHash || Original->GetOutermost()->IsDirty())
     { Error = TEXT("Original mesh changed while the preview was being prepared."); return false; }
 
@@ -260,6 +262,7 @@ bool RXApplyLOD::Apply(UStaticMesh* Original, UStaticMesh* Preview, const FStrin
         Original->GetStaticMaterials().Add(FStaticMaterial(Assets.Material.Get(), SlotName, SlotName));
         FMeshSectionInfo SectionInfo(ImpostorSlot);
         SectionInfo.bEnableCollision = false;
+        SectionInfo.bCastShadow = false;
         Original->GetSectionInfoMap().Set(ImpostorLOD, 0, SectionInfo);
         Original->GetOriginalSectionInfoMap().Set(ImpostorLOD, 0, SectionInfo);
     }

@@ -29,6 +29,10 @@ bool FRXImpostorAtlasTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Top-left padding preserves alpha and tile"), Pixels[Tile * 4] == Tiles[Tile][0]);
         TestTrue(TEXT("Bottom-right padding preserves alpha and tile"), Pixels[3 * Size.X + Tile * 4 + 3] == Tiles[Tile][3]);
     }
+    Tiles.SetNum(2);
+    TestTrue(TEXT("Pack two image tiles"), RXImpostorAtlas::Pack(Tiles, FIntPoint(2, 2), 1, Pixels, Size, Error));
+    TestEqual(TEXT("Two-view atlas width"), Size.X, 8);
+    TestTrue(TEXT("Side tile retains alpha and padding"), Pixels[7] == Tiles[1][1]);
     const int32 OriginalCount = Pixels.Num();
     Tiles[0].Pop();
     TestFalse(TEXT("Reject malformed tile"), RXImpostorAtlas::Pack(Tiles, FIntPoint(2, 2), 1, Pixels, Size, Error));

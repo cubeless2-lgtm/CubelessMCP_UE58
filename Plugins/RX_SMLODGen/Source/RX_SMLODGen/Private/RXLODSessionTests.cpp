@@ -26,9 +26,11 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
     Session->Preview->GetSourceModel(1).ReductionSettings.PercentTriangles = 0.5f;
     auto& Rows = Session->GetWeights(1); for (auto& W : Rows) { W.Weight = 0; W.bExcluded = true; W.bPreserveOpenBoundary = true; }
     if (!TestTrue(TEXT("Weighted edit preview"), Session->Rebuild(E))) { AddError(E); return false; }
+    Session->ImpostorDirections = 2;
     const FString Json = Session->ExportJson();
     Rows[0].Weight = 0.75f; Rows[0].bExcluded = false;
     if (!TestTrue(TEXT("JSON import"), Session->ImportJson(Json, E))) { AddError(E); return false; }
+    TestEqual(TEXT("Direction count restored from v5 JSON"), Session->ImpostorDirections, 2);
     TestEqual(TEXT("Weight restored"), Session->Weights[1][0].Weight, 0.0f);
     TestTrue(TEXT("Exclusion restored"), Session->Weights[1][0].bExcluded);
     TestTrue(TEXT("Silhouette preservation restored from JSON"), Session->Weights[1][0].bPreserveOpenBoundary);
@@ -38,6 +40,7 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
         for (const auto& Section : LOD->AsObject()->GetArrayField(TEXT("sections"))) { for (const TCHAR* Flag : { TEXT("preserve_open_boundary"), TEXT("preserve_sharp_edges"), TEXT("preserve_attribute_seams") }) { Section->AsObject()->RemoveField(Flag); } }
     FString V2Json; FJsonSerializer::Serialize(V2.ToSharedRef(), TJsonWriterFactory<>::Create(&V2Json));
     TestTrue(TEXT("Old v2 JSON without silhouette flag imports"), Session->ImportJson(V2Json, E));
+    TestEqual(TEXT("Old JSON defaults to four directions"), Session->ImpostorDirections, 4);
     TestFalse(TEXT("Old v2 defaults silhouette preservation off"), Session->Weights[1][0].bPreserveOpenBoundary);
     TestEqual(TEXT("Reduction restored"), Session->Preview->GetSourceModel(1).ReductionSettings.PercentTriangles, 0.5f);
     TSharedPtr<FJsonObject> Legacy;
@@ -47,7 +50,20 @@ bool FRXSessionJsonTest::RunTest(const FString& Parameters)
     FString LegacyJson; FJsonSerializer::Serialize(Legacy.ToSharedRef(), TJsonWriterFactory<>::Create(&LegacyJson));
     if (TestTrue(TEXT("Import v1 JSON settings"), Session->ImportJson(LegacyJson, E)))
     { TestEqual(TEXT("v1 reduction weight migrates to v2 preservation weight"), Session->Weights[1][0].Weight, 0.8f); }
+    TSharedPtr<FJsonObject> V4; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Json), V4);
+    V4->SetNumberField(TEXT("version"), 4); V4->RemoveField(TEXT("impostor_directions")); FString V4Text;
+    FJsonSerializer::Serialize(V4.ToSharedRef(), TJsonWriterFactory<>::Create(&V4Text));
+    TestTrue(TEXT("V4 JSON without mode imports"), Session->ImportJson(V4Text, E));
+    TestEqual(TEXT("V4 preserves original four-view behavior"), Session->ImpostorDirections, 4);
     const FString Before = Session->ExportJson();
+    TSharedPtr<FJsonObject> BadMode; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Before), BadMode);
+    for (double Count : { 3.0, 2.5, 0.0 })
+    {
+        BadMode->SetNumberField(TEXT("impostor_directions"), Count); FString Encoded;
+        FJsonSerializer::Serialize(BadMode.ToSharedRef(), TJsonWriterFactory<>::Create(&Encoded));
+        TestFalse(TEXT("Invalid direction counts rejected"), Session->ImportJson(Encoded, E));
+        TestEqual(TEXT("Bad mode leaves session unchanged"), Session->ExportJson(), Before);
+    }
     TSharedPtr<FJsonObject> Invalid; FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Before), Invalid);
     Invalid->GetArrayField(TEXT("lods"))[1]->AsObject()->GetArrayField(TEXT("sections"))[0]->AsObject()->SetStringField(TEXT("preserve_open_boundary"), TEXT("true"));
     FString InvalidJson; FJsonSerializer::Serialize(Invalid.ToSharedRef(), TJsonWriterFactory<>::Create(&InvalidJson));
@@ -76,9 +92,12 @@ bool FRXSessionImpostorTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Impostor is actual display LOD"), Session->Display->GetNumSourceModels(), EditableCount + 1);
     TestEqual(TEXT("Impostor is last"), Session->ImpostorLOD, EditableCount);
     TestTrue(TEXT("Impostor description in edit preview"), Session->Display->IsMeshDescriptionValid(EditableCount));
+    Session->ImpostorDirections = 2;
     if (!TestTrue(TEXT("Replace impostor"), Session->Rebuild(E))) { AddError(E); return false; }
     TestEqual(TEXT("Regeneration does not append"), Session->Display->GetNumSourceModels(), EditableCount + 1);
     TestEqual(TEXT("Regeneration does not duplicate material slot"), Session->Display->GetStaticMaterials().Num(), Materials);
+    TestEqual(TEXT("Two-direction replacement has two cards"), Session->Impostor.Geometry->Triangles().Num(), 64);
+    TestFalse(TEXT("Impostor section casts no self shadow"), Session->Display->GetSectionInfoMap().Get(EditableCount, 0).bCastShadow);
     TestEqual(TEXT("Logical settings mesh preserved"), Session->Preview->GetNumSourceModels(), EditableCount);
     Session->bImpostor = false;
     if (!TestTrue(TEXT("Disable impostor"), Session->Rebuild(E))) { AddError(E); return false; }
@@ -260,6 +279,7 @@ bool FRXScreenSizeTest::RunTest(const FString& Parameters)
     {
         auto& Screen = Session->Preview->GetSourceModel(LOD).ScreenSize; Screen.Default = Values[LOD]; Screen.PerPlatform.Add(TEXT("Windows"), Values[LOD] * 0.9f);
     }
+    Session->ImpostorDirections = 2;
     const FString Json = Session->ExportJson();
     if (!TestTrue(TEXT("Screen sizes survive JSON import"), Session->ImportJson(Json, E))) { AddError(E); return false; }
     for (int32 LOD = 0; LOD < 3; ++LOD)

@@ -42,6 +42,15 @@ bool FRXImpostorPreviewTest::RunTest(const FString& Parameters)
         const FVector4f Normal = Vertices.VertexTangentZ(Index);
         if (!FVector3f(Normal.X, Normal.Y, Normal.Z).Equals(FVector3f(0, 0, 1), 0.01f)) { AddError(TEXT("Rendered vertex normal must point up")); break; }
     }
+    if (TestTrue(TEXT("Build two-view GPU preview"), RXImpostorPreview::Build(Source, FIntPoint(64, 64), 2, 4, Preview, Error, 2)))
+    {
+        TestEqual(TEXT("Two-view atlas width"), Preview.Material.Texture->Source.GetSizeX(), int64(136));
+        TestEqual(TEXT("Two-view geometry"), Preview.Geometry->Triangles().Num(), 64);
+        TestEqual(TEXT("Prepared preview carries selected mode"), Preview.Directions, 2);
+        const FBox B = Preview.Mesh->GetBoundingBox();
+        TestTrue(TEXT("Two-view rendered bounds match"), SourceBounds.Min.Equals(B.Min, 0.01) && SourceBounds.Max.Equals(B.Max, 0.01));
+    }
+    else { AddError(Error); }
     Preview.Mesh.Reset();
     Preview.Material.Material.Reset();
     Preview.Material.Texture.Reset();

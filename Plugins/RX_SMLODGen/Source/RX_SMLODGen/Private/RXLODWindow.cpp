@@ -43,15 +43,15 @@ namespace
     FText T(const FString& Text) { return FText::FromString(Text); }
     TSharedRef<SWidget> Row(const FString& Label, TSharedRef<SWidget> Value)
     { const FText Tip = RXLODTooltips::Label(Label); Value->SetToolTipText(Tip); return SNew(SHorizontalBox).ToolTipText(Tip) + SHorizontalBox::Slot().FillWidth(0.48f).VAlign(VAlign_Center).Padding(8, 3)[SNew(STextBlock).Text(T(Label)).ToolTipText(Tip)] + SHorizontalBox::Slot().FillWidth(0.52f).Padding(4, 3)[Value]; }
-    template<typename Number> TSharedRef<SWidget> NumberBox(TFunction<Number()> Get, TFunction<void(Number)> Set, Number Min, Number Max)
-    { return SNew(SNumericEntryBox<Number>).MinValue(Min).MaxValue(Max).Value_Lambda([Get]() -> TOptional<Number>{ return Get(); }).OnValueCommitted_Lambda([Set, Min, Max](Number Value, ETextCommit::Type){ Set(FMath::Clamp(Value, Min, Max)); }); }
+    template<typename Number> TSharedRef<SWidget> NumberBox(TFunction<Number()> Get, TFunction<void(Number)> Set, Number Min, Number Max, TOptional<int32> MaxDigits = {})
+    { return SNew(SNumericEntryBox<Number>).MinValue(Min).MaxValue(Max).MaxFractionalDigits(MaxDigits).Value_Lambda([Get]() -> TOptional<Number>{ return Get(); }).OnValueCommitted_Lambda([Set, Min, Max](Number Value, ETextCommit::Type){ Set(FMath::Clamp(Value, Min, Max)); }); }
 }
 
 TSharedRef<SWidget> SRXLODWindow::Area(const FString& Label, TSharedRef<SWidget> Body, bool Expanded)
 {
     FString StableLabel = BuildingLOD >= 0 && Label.StartsWith(FString::Printf(TEXT("LOD %d"), BuildingLOD)) ? TEXT("LOD") : Label;
     if (Label.StartsWith(TEXT("섹션 ")) && Label.Contains(TEXT("    "))) { StableLabel = Label.Left(Label.Find(TEXT("    "))); }
-    const FString Key = FString::Printf(TEXT("%d|%s"), BuildingLOD, *StableLabel);
+    const FString Key = FString::Printf(TEXT("%s|%d|%s"), bSimpleMode ? TEXT("simple") : TEXT("advanced"), BuildingLOD, *StableLabel);
     const bool* Previous = ExpandedAreas.Find(Key);
     const TWeakPtr<SRXLODWindow> WeakThis = SharedThis(this);
     return SNew(SExpandableArea).InitiallyCollapsed(!(Previous ? *Previous : Expanded))
@@ -207,6 +207,8 @@ public:
     void ForceLOD(int32 LOD) { if (Component.IsValid()) { Component->SetForcedLodModel(FMath::Clamp(LOD, 0, Component->GetStaticMesh() ? Component->GetStaticMesh()->GetNumSourceModels() : 0)); Invalidate(); } }
     void Isolate(int32 Section, bool Enabled) { if (Component.IsValid()) { Component->SetSectionPreview(Enabled ? Section : INDEX_NONE); Invalidate(); } }
     void Highlight(int32 Section, bool Enabled) { if (Component.IsValid()) { Component->SelectedEditorSection = Enabled ? Section : INDEX_NONE; Component->MarkRenderStateDirty(); Invalidate(); } }
+    bool IsIsolated(int32 LOD, int32 Section) const { return Component.IsValid() && Component->GetForcedLodModel() == LOD + 1 && Component->SectionIndexPreview == Section; }
+    bool IsHighlighted(int32 LOD, int32 Section) const { return Component.IsValid() && Component->GetForcedLodModel() == LOD + 1 && Component->SelectedEditorSection == Section; }
     bool FixedExposure() const { return static_cast<FRXLODViewportClient*>(Client.Get())->IsFixedExposure(); }
     float ExposureEV100() const { return static_cast<FRXLODViewportClient*>(Client.Get())->GetEV100(); }
     void SetExposure(bool Fixed, float Value) { static_cast<FRXLODViewportClient*>(Client.Get())->SetExposure(Fixed, Value); }
@@ -301,6 +303,21 @@ void SRXLODWindow::Construct(const FArguments& Args)
                 + SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(T(TEXT("저장"))).ToolTipText(RXLODTooltips::Label(TEXT("저장"))).OnClicked_Lambda([this](){ return JsonFile(false, false); })]
                 + SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(T(TEXT("내보내기"))).ToolTipText(RXLODTooltips::Label(TEXT("내보내기"))).OnClicked_Lambda([this](){ return JsonFile(false, true); })]
             ]
+            + SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 6)
+            [SNew(SHorizontalBox)
+                + SHorizontalBox::Slot().FillWidth(1)
+                [SNew(SCheckBox).Style(FAppStyle::Get(), "ToggleButtonCheckbox").Padding(FMargin(18, 7))
+                    .IsChecked_Lambda([this](){ return bSimpleMode ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState State){ if (State == ECheckBoxState::Checked) { SetSimpleMode(true); } })
+                    .ToolTipText(T(TEXT("자주 쓰는 LOD 개수, 리듀스율, 스크린 사이즈와 모든 섹션 옵션을 표시합니다. 고급 탭과 같은 설정을 편집합니다.")))
+                    [SNew(STextBlock).Text(T(TEXT("심플"))).Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))]]
+                + SHorizontalBox::Slot().FillWidth(1).Padding(2, 0, 0, 0)
+                [SNew(SCheckBox).Style(FAppStyle::Get(), "ToggleButtonCheckbox").Padding(FMargin(18, 7))
+                    .IsChecked_Lambda([this](){ return bSimpleMode ? ECheckBoxState::Unchecked : ECheckBoxState::Checked; })
+                    .OnCheckStateChanged_Lambda([this](ECheckBoxState State){ if (State == ECheckBoxState::Checked) { SetSimpleMode(false); } })
+                    .ToolTipText(T(TEXT("기존의 전체 LOD 설정과 임포스터 설정을 표시합니다. 심플 탭에서 바꾼 값도 그대로 이어집니다.")))
+                    [SNew(STextBlock).Text(T(TEXT("고급"))).Font(FAppStyle::GetFontStyle("DetailsView.CategoryFontStyle"))]]
+            ]
             + SVerticalBox::Slot().FillHeight(1)[SNew(SScrollBox) + SScrollBox::Slot()[SAssignNew(Panel, SVerticalBox)]]
         ]
     ];
@@ -334,6 +351,14 @@ void SRXLODWindow::RefreshPanel()
     for (int32 LOD = 0; LOD <= Count; ++LOD) { LODChoices.Add(MakeShared<FString>(LOD == 0 ? TEXT("LOD Auto") : FString::Printf(TEXT("LOD %d%s"), LOD - 1, LOD - 1 == Session->GetVisibleImpostorLOD() ? TEXT(" (임포스터)") : TEXT("")))); }
     SelectedLOD = FMath::Clamp(SelectedLOD, 0, Count);
     if (ViewportLODSelector.IsValid()) { ViewportLODSelector->RefreshOptions(); ViewportLODSelector->SetSelectedItem(LODChoices[SelectedLOD]); }
+    if (bSimpleMode)
+    {
+        Panel->AddSlot().AutoHeight().Padding(4, 4, 4, 10)[LODCountControl()];
+        for (int32 LOD = 0; LOD < Count; ++LOD) { Panel->AddSlot().AutoHeight().Padding(0, 0, 0, 8)[SimpleLODPanel(LOD)]; }
+        Panel->AddSlot().AutoHeight().Padding(0, 6)[Area(TEXT("임포스터"), ImpostorPanel())];
+        Panel->AddSlot().AutoHeight().Padding(0, 4)[SNew(SButton).Text(T(TEXT("미리보기 변경 내용 적용"))).ToolTipText(RXLODTooltips::Label(TEXT("미리보기 변경 내용 적용"))).OnClicked(this, &SRXLODWindow::Rebuild)];
+        return;
+    }
     auto Select = SNew(SComboBox<TSharedPtr<FString>>).OptionsSource(&LODChoices).InitiallySelectedItem(LODChoices[SelectedLOD])
         .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item){ return SNew(STextBlock).Text(T(*Item)); })
         .OnSelectionChanged_Lambda([this](TSharedPtr<FString> Item, ESelectInfo::Type Info){ const int32 Index = LODChoices.IndexOfByKey(Item); if (Index >= 0 && Info != ESelectInfo::Direct) { SelectLOD(Index - 1); } })
@@ -351,11 +376,88 @@ void SRXLODWindow::RefreshPanel()
         if ((!bCustom && (SelectedLOD == 0 || LOD == SelectedLOD - 1)) || (bCustom && VisibleLODs.Contains(LOD)))
             Panel->AddSlot().AutoHeight().Padding(0, 3)[LODPanel(LOD)];
     Panel->AddSlot().AutoHeight()[Area(TEXT("LOD 설정"), CommonPanel())];
-    auto ImpostorControls = SNew(SVerticalBox);
-    ImpostorControls->AddSlot().AutoHeight()[Row(TEXT("마지막 LOD에 임포스터"), SNew(SCheckBox).IsChecked(Session->bImpostor ? ECheckBoxState::Checked : ECheckBoxState::Unchecked).OnCheckStateChanged_Lambda([this](ECheckBoxState State){ Session->bImpostor = State == ECheckBoxState::Checked; Rebuild(); }))];
-    ImpostorControls->AddSlot().AutoHeight()[SNew(SButton).Text(T(TEXT("임포스터 다시 생성 (마지막 LOD 교체)"))).ToolTipText(RXLODTooltips::Label(TEXT("임포스터 다시 생성 (마지막 LOD 교체)"))).IsEnabled_Lambda([this](){ return Session->bImpostor; }).OnClicked(this, &SRXLODWindow::Rebuild)];
-    Panel->AddSlot().AutoHeight().Padding(0, 6)[Area(TEXT("임포스터"), ImpostorControls)];
+    Panel->AddSlot().AutoHeight().Padding(0, 6)[Area(TEXT("임포스터"), ImpostorPanel())];
     Panel->AddSlot().AutoHeight()[SNew(SButton).Text(T(TEXT("미리보기 변경 내용 적용"))).ToolTipText(RXLODTooltips::Label(TEXT("미리보기 변경 내용 적용"))).OnClicked(this, &SRXLODWindow::Rebuild)];
+}
+
+TSharedRef<SWidget> SRXLODWindow::ImpostorPanel()
+{
+    auto Controls = SNew(SVerticalBox);
+    Controls->AddSlot().AutoHeight()[Row(TEXT("마지막 LOD에 임포스터"), SNew(SCheckBox).IsChecked_Lambda([this](){ return Session->bImpostor ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
+        .OnCheckStateChanged_Lambda([this](ECheckBoxState State){ Session->bImpostor = State == ECheckBoxState::Checked; Rebuild(); }))];
+    Controls->AddSlot().AutoHeight()[Row(TEXT("임포스터 방향"), SNew(SComboBox<TSharedPtr<FString>>).OptionsSource(&ImpostorChoices)
+        .InitiallySelectedItem(ImpostorChoices[Session->ImpostorDirections == 2 ? 0 : 1])
+        .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item){ return SNew(STextBlock).Text(T(*Item)); })
+        .OnSelectionChanged_Lambda([this](TSharedPtr<FString> Item, ESelectInfo::Type Info){ const int32 Index = ImpostorChoices.IndexOfByKey(Item); if (Index >= 0 && Info != ESelectInfo::Direct) { Session->ImpostorDirections = Index == 0 ? 2 : 4; if (Session->bImpostor) { Rebuild(); } } })
+        [SNew(STextBlock).Text_Lambda([this](){ return T(*ImpostorChoices[Session->ImpostorDirections == 2 ? 0 : 1]); })])];
+    Controls->AddSlot().AutoHeight()[SNew(SButton).Text(T(TEXT("임포스터 다시 생성 (마지막 LOD 교체)"))).ToolTipText(RXLODTooltips::Label(TEXT("임포스터 다시 생성 (마지막 LOD 교체)")))
+        .IsEnabled_Lambda([this](){ return Session->bImpostor; }).OnClicked(this, &SRXLODWindow::Rebuild)];
+    return Controls;
+}
+
+TSharedRef<SWidget> SRXLODWindow::LODCountControl()
+{
+    return Row(TEXT("LOD 개수 (임포스터 제외)"), NumberBox<int32>(
+        [this](){ return Session->Preview->GetNumSourceModels(); },
+        [this](int32 Count){ FString E; if (Session->Resize(Count, E)) { Rebuild(); } else { Error(E); } }, 1, MAX_STATIC_MESH_LODS - (Session->bImpostor ? 1 : 0)));
+}
+
+void SRXLODWindow::SetSimpleMode(bool Simple)
+{
+    if (bSimpleMode == Simple) { return; }
+    bSimpleMode = Simple;
+    RefreshPanel();
+}
+
+bool SRXLODWindow::SetSimpleReduction(int32 LOD, float PercentRemoved, bool Vertices)
+{
+    if (!Session->Preview->IsSourceModelValid(LOD) || !FMath::IsFinite(PercentRemoved) || PercentRemoved < 0 || PercentRemoved > 100)
+    { Error(TEXT("리듀스율은 0~100 사이의 유한한 값이어야 합니다.")); return false; }
+    auto& Settings = Session->Preview->GetSourceModel(LOD).ReductionSettings;
+    (Vertices ? Settings.PercentVertices : Settings.PercentTriangles) = 1.0f - PercentRemoved / 100.0f;
+    return true;
+}
+
+bool SRXLODWindow::SetSimpleScreenSize(int32 LOD, float Value)
+{
+    if (!Session->Preview->IsSourceModelValid(LOD)) { Error(TEXT("편집할 LOD가 없습니다.")); return false; }
+    auto Screen = Session->Preview->GetSourceModel(LOD).ScreenSize; Screen.Default = Value;
+    FString E;
+    if (!Session->SetScreenSize(LOD, Screen, E)) { Error(E); return false; }
+    RegisterActiveTimer(0.0f, FWidgetActiveTimerDelegate::CreateSP(this, &SRXLODWindow::RefreshPanelNextTick));
+    return true;
+}
+
+TSharedRef<SWidget> SRXLODWindow::SimpleLODPanel(int32 LOD)
+{
+    TGuardValue<int32> LODScope(BuildingLOD, LOD);
+    const bool Impostor = LOD == Session->GetVisibleImpostorLOD();
+    FString Label = FString::Printf(TEXT("LOD %d%s"), LOD, Impostor ? TEXT(" · 임포스터") : TEXT(""));
+    if (const auto* Data = Session->Display->GetRenderData(); Data && Data->LODResources.IsValidIndex(LOD))
+    { Label += FString::Printf(TEXT("    트라이앵글: %u  버텍스: %u"), Data->LODResources[LOD].GetNumTriangles(), Data->LODResources[LOD].GetNumVertices()); }
+    auto Body = SNew(SVerticalBox);
+    if (Impostor)
+    {
+        Body->AddSlot().AutoHeight()[Row(TEXT("리듀스율 (%)"), SNew(STextBlock).Text(T(TEXT("임포스터 자동 생성"))).ColorAndOpacity(FSlateColor::UseSubduedForeground()))];
+        Body->AddSlot().AutoHeight()[Row(TEXT("스크린 사이즈"), SNew(STextBlock).Text_Lambda([this, LOD](){ return T(FString::Printf(TEXT("%.6f (자동)"), Session->GetScreenSize(LOD).Default)); }))];
+    }
+    else
+    {
+        const auto Criterion = Session->Preview->GetSourceModel(LOD).ReductionSettings.TerminationCriterion;
+        for (const bool Vertices : { false, true })
+        {
+            if ((Vertices && Criterion == EStaticMeshReductionTerimationCriterion::Triangles) || (!Vertices && Criterion == EStaticMeshReductionTerimationCriterion::Vertices)) { continue; }
+            const FString RateLabel = Criterion == EStaticMeshReductionTerimationCriterion::Any
+                ? (Vertices ? TEXT("리듀스율 (버텍스, %)") : TEXT("리듀스율 (삼각형, %)")) : TEXT("리듀스율 (%)");
+            Body->AddSlot().AutoHeight()[Row(RateLabel, NumberBox<float>(
+                [this, LOD, Vertices](){ const auto& Settings = Session->Preview->GetSourceModel(LOD).ReductionSettings; return 100.0f * (1.0f - (Vertices ? Settings.PercentVertices : Settings.PercentTriangles)); },
+                [this, LOD, Vertices](float Value){ SetSimpleReduction(LOD, Value, Vertices); }, 0, 100, 2))];
+        }
+        Body->AddSlot().AutoHeight()[Row(TEXT("스크린 사이즈"), NumberBox<float>(
+            [this, LOD](){ return Session->GetScreenSize(LOD).Default; }, [this, LOD](float Value){ SetSimpleScreenSize(LOD, Value); }, 0, MAX_flt))];
+    }
+    Body->AddSlot().AutoHeight().Padding(0, 6, 0, 0)[Area(TEXT("섹션"), SectionsPanel(LOD), LOD > 0)];
+    return Area(Label, Body);
 }
 
 TSharedRef<SWidget> SRXLODWindow::LODPanel(int32 LOD)
@@ -420,8 +522,8 @@ TSharedRef<SWidget> SRXLODWindow::SectionsPanel(int32 LOD)
             .OnGenerateWidget_Lambda([](TSharedPtr<FString> Item){ return SNew(STextBlock).Text(T(*Item)); })
             .OnSelectionChanged_Lambda([this, LOD, Section](TSharedPtr<FString> Item, ESelectInfo::Type){ const int32 Index = MaterialChoices.IndexOfByKey(Item); if (Session->Preview->GetStaticMaterials().IsValidIndex(Index)) { auto Info = Session->Preview->GetSectionInfoMap().Get(LOD, Section); Info.MaterialIndex = Index; Session->Preview->GetSectionInfoMap().Set(LOD, Section, Info); Session->Preview->GetOriginalSectionInfoMap().Set(LOD, Section, Info); } })
             [SNew(STextBlock).Text_Lambda([this, LOD, Section, MaterialIndex](){ const int32 Index = LOD == Session->GetVisibleImpostorLOD() ? MaterialIndex : Session->Preview->GetSectionInfoMap().Get(LOD, Section).MaterialIndex; return T(MaterialChoices.IsValidIndex(Index) ? *MaterialChoices[Index] : TEXT("없음")); })])];
-        Fields->AddSlot().AutoHeight()[Row(TEXT("강조"), SNew(SCheckBox).OnCheckStateChanged_Lambda([this, LOD, Section](ECheckBoxState State){ SelectedLOD = LOD + 1; Viewport->ForceLOD(LOD + 1); Viewport->Highlight(Section, State == ECheckBoxState::Checked); }))];
-        Fields->AddSlot().AutoHeight()[Row(TEXT("격리"), SNew(SCheckBox).OnCheckStateChanged_Lambda([this, LOD, Section](ECheckBoxState State){ SelectedLOD = LOD + 1; Viewport->ForceLOD(LOD + 1); Viewport->Isolate(Section, State == ECheckBoxState::Checked); }))];
+        Fields->AddSlot().AutoHeight()[Row(TEXT("강조"), SNew(SCheckBox).IsChecked_Lambda([this, LOD, Section](){ return Viewport->IsHighlighted(LOD, Section) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this, LOD, Section](ECheckBoxState State){ SelectedLOD = LOD + 1; Viewport->ForceLOD(LOD + 1); Viewport->Highlight(Section, State == ECheckBoxState::Checked); }))];
+        Fields->AddSlot().AutoHeight()[Row(TEXT("격리"), SNew(SCheckBox).IsChecked_Lambda([this, LOD, Section](){ return Viewport->IsIsolated(LOD, Section) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this, LOD, Section](ECheckBoxState State){ SelectedLOD = LOD + 1; Viewport->ForceLOD(LOD + 1); Viewport->Isolate(Section, State == ECheckBoxState::Checked); }))];
         for (const auto& Flag : TArray<TPair<FString, bool FMeshSectionInfo::*>>{ { TEXT("그림자 드리우기"), &FMeshSectionInfo::bCastShadow }, { TEXT("충돌 활성화"), &FMeshSectionInfo::bEnableCollision }, { TEXT("레이 트레이싱 표시"), &FMeshSectionInfo::bVisibleInRayTracing }, { TEXT("디스턴스 필드 라이팅 영향"), &FMeshSectionInfo::bAffectDistanceFieldLighting }, { TEXT("불투명 강제"), &FMeshSectionInfo::bForceOpaque } })
             Fields->AddSlot().AutoHeight()[Row(Flag.Key, SNew(SCheckBox).IsEnabled(LOD != Session->GetVisibleImpostorLOD())
                 .IsChecked_Lambda([this, LOD, Section, Flag](){ const auto Info = LOD == Session->GetVisibleImpostorLOD() ? Session->Display->GetSectionInfoMap().Get(LOD, Section) : Session->Preview->GetSectionInfoMap().Get(LOD, Section); return (Info.*Flag.Value) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
@@ -500,7 +602,7 @@ TSharedRef<SWidget> SRXLODWindow::CommonPanel()
             if (FProperty* P = FindFProperty<FProperty>(UStaticMesh::StaticClass(), It->GetFName()))
                 if (P->SameType(*It)) { P->CopyCompleteValue(P->ContainerPtrToValuePtr<void>(Session->Preview.Get()), It->ContainerPtrToValuePtr<void>(Ptr)); }
     })];
-    Body->AddSlot().AutoHeight()[Row(TEXT("LOD 개수 (임포스터 제외)"), NumberBox<int32>([this](){ return Session->Preview->GetNumSourceModels(); }, [this](int32 Count){ FString E; if (Session->Resize(Count, E)) { Rebuild(); } else { Error(E); } }, 1, MAX_STATIC_MESH_LODS))];
+    Body->AddSlot().AutoHeight()[LODCountControl()];
     Body->AddSlot().AutoHeight()[Row(TEXT("LOD 거리 자동 계산"), SNew(SCheckBox).IsChecked_Lambda([this](){ return Session->Preview->GetAutoComputeLODScreenSize() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; }).OnCheckStateChanged_Lambda([this](ECheckBoxState State){ Session->SetAutoScreenSize(State == ECheckBoxState::Checked); Rebuild(); }))];
     FSinglePropertyParams Params; Params.NameOverride = T(TEXT("LOD 스트리밍"));
     auto Streaming = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor")).CreateSingleProperty(Session->Preview.Get(), TEXT("LODStreaming"), Params);

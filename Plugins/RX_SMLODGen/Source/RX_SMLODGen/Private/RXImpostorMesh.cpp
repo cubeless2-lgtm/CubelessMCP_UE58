@@ -1,14 +1,15 @@
 #include "RXImpostorMesh.h"
+#include "RXImpostorDirections.h"
 
 #include "StaticMeshAttributes.h"
 
 bool RXImpostorMesh::Build(const FBox& SourceBounds, int32 Subdivisions, FIntPoint TileSize, int32 Padding,
-    FMeshDescription& Output, FString& Error)
+    FMeshDescription& Output, FString& Error, int32 Directions)
 {
     Error.Reset();
-    if (!SourceBounds.IsValid || SourceBounds.Min.ContainsNaN() || SourceBounds.Max.ContainsNaN() ||
+    if (!RXImpostorDirections::IsValid(Directions) || !SourceBounds.IsValid || SourceBounds.Min.ContainsNaN() || SourceBounds.Max.ContainsNaN() ||
         Subdivisions < 2 || Subdivisions > 32 || TileSize.X <= 0 || TileSize.Y <= 0 ||
-        Padding < 0 || Padding > 64 || (int64(TileSize.X) + 2 * Padding) * 4 > 8192 ||
+        Padding < 0 || Padding > 64 || (int64(TileSize.X) + 2 * Padding) * Directions > 8192 ||
         int64(TileSize.Y) + 2 * Padding > 8192)
     {
         Error = TEXT("Invalid bounds, subdivisions, atlas tile size, or padding.");
@@ -37,9 +38,9 @@ bool RXImpostorMesh::Build(const FBox& SourceBounds, int32 Subdivisions, FIntPoi
     const FPolygonGroupID Group = Mesh.CreatePolygonGroup();
     Names[Group] = FName("Impostor");
 
-    for (int32 Plane = 0; Plane < 4; ++Plane)
+    for (int32 Plane = 0; Plane < Directions; ++Plane)
     {
-        const double Angle = UE_PI * double(Plane) / 4.0;
+        const double Angle = RXImpostorDirections::Angle(Plane, Directions);
         // Unreal's forward direction is +X. Each plane's positive side faces
         // forward, forward-right, right, then rear-right respectively.
         const FVector Facing(FMath::Cos(Angle), FMath::Sin(Angle), 0.0);
@@ -78,7 +79,7 @@ bool RXImpostorMesh::Build(const FBox& SourceBounds, int32 Subdivisions, FIntPoi
                 BinormalSigns[Instances[Index]] = 1.0f;
                 const double CaptureU = 0.5 + Horizontal * HalfWidth / OrthoWidth;
                 const double CaptureV = 0.5 - (Height * 2.0 - 1.0) * Extent.Z / OrthoHeight;
-                const double AtlasU = (Plane * PaddedWidth + Padding + 0.5 + CaptureU * (TileSize.X - 1)) / (4.0 * PaddedWidth);
+                const double AtlasU = (Plane * PaddedWidth + Padding + 0.5 + CaptureU * (TileSize.X - 1)) / (double(Directions) * PaddedWidth);
                 const double AtlasV = (Padding + 0.5 + CaptureV * (TileSize.Y - 1)) / PaddedHeight;
                 UVs.Set(Instances[Index], 0, FVector2f(float(AtlasU), float(AtlasV)));
             }

@@ -1,4 +1,5 @@
 #include "RXImpostorCapture.h"
+#include "RXImpostorDirections.h"
 
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
@@ -10,10 +11,10 @@
 #include "RHI.h"
 #include "UnrealClient.h"
 
-bool RXImpostorCapture::Capture(UStaticMesh* Source, FIntPoint TileSize, TArray<TArray<FColor>>& Tiles, FString& Error)
+bool RXImpostorCapture::Capture(UStaticMesh* Source, FIntPoint TileSize, TArray<TArray<FColor>>& Tiles, FString& Error, int32 Directions)
 {
     Error.Reset();
-    if (!IsInGameThread() || !Source || Source->IsCompiling() || GUsingNullRHI ||
+    if (!RXImpostorDirections::IsValid(Directions) || !IsInGameThread() || !Source || Source->IsCompiling() || GUsingNullRHI ||
         TileSize.X < 16 || TileSize.Y < 16 || TileSize.X > 2048 || TileSize.Y > 2048)
     {
         Error = TEXT("Capture requires the game thread, a ready mesh, a rendering device, and tile dimensions from 16 to 2048.");
@@ -36,6 +37,7 @@ bool RXImpostorCapture::Capture(UStaticMesh* Source, FIntPoint TileSize, TArray<
     UStaticMeshComponent* Component = NewObject<UStaticMeshComponent>(GetTransientPackage(), NAME_None, RF_Transient);
     Component->SetStaticMesh(Source);
     Component->SetForcedLodModel(1);
+    Component->SetCastShadow(false);
     Scene.AddComponent(Component, FTransform::Identity);
 
     UTextureRenderTarget2D* Target = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), NAME_None, RF_Transient);
@@ -53,9 +55,9 @@ bool RXImpostorCapture::Capture(UStaticMesh* Source, FIntPoint TileSize, TArray<
     Scene.AddComponent(Capture, FTransform::Identity);
 
     TArray<TArray<FColor>> LocalTiles;
-    for (int32 Plane = 0; Plane < 4; ++Plane)
+    for (int32 Plane = 0; Plane < Directions; ++Plane)
     {
-        const double Angle = UE_PI * double(Plane) / 4.0;
+        const double Angle = RXImpostorDirections::Angle(Plane, Directions);
         const FVector Facing(FMath::Cos(Angle), FMath::Sin(Angle), 0.0);
         const FVector Along(Facing.Y, -Facing.X, 0.0);
         const double ProjectedHalfWidth = FMath::Abs(Along.X) * Extent.X + FMath::Abs(Along.Y) * Extent.Y;

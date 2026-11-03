@@ -40,6 +40,7 @@ rx('save_json', filename='bench_lod.json')
 | `describe` | 없음 | 명령 및 사용 조건, 세션 유무 |
 | `open` | 선택 `asset` | Static Mesh로 전용 RX 창과 임시 사본 생성. 생략하면 플러그인의 기본 박스를 열며, 기존 창은 포커스한다. 기존 창에 다른 `asset`을 지정하면 기존 설정의 복구 JSON을 저장한 뒤 대상을 교체 |
 | `load_asset` | `asset` | 콘텐츠 브라우저 드롭과 같은 대상 교체. `/Game/`, `/Engine/`, 플러그인의 유효한 Static Mesh 오브젝트 경로 허용. 기존 설정은 `autoswap_<GUID>.json`으로 보존 |
+| `panel_mode` | `mode: "simple"` 또는 `"advanced"` | 오른쪽 설정 탭만 전환. 설정 값·메시·원본을 변경하지 않음 |
 | `get` | 없음 | 전체 `settings`, `preview_current`, 표시 LOD별 실제 `triangles`/`vertices`/`impostor`, 현재 뷰포트와 섹션 통계 |
 | `set` | 전체 `settings` | 검증 후 사본의 설정만 교체. 원본이나 디스크를 변경하지 않음 |
 | `resize` | `count` | 편집 LOD 개수 변경. 임포스터 제외. 이후 `rebuild` 필요 |
@@ -54,6 +55,7 @@ rx('save_json', filename='bench_lod.json')
 | `close` | `confirm: true` | 임시 편집 세션 닫기. 유지할 설정은 먼저 JSON으로 저장 |
 
 파일 이름은 경로 없는 이름만 허용한다. UI 파일 대화상자에서는 사용자가 직접 경로를 지정할 수 있다.
+`get.panel_mode`는 현재 오른쪽 탭(`simple`/`advanced`)이다. 처음 열면 심플 탭이며 표시 모드는 에셋 설정 JSON에 포함하지 않는다. 심플 탭은 LOD 개수, 각 LOD의 리듀스율·스크린 사이즈, 기존 섹션 옵션 전부를 같은 편집 세션에 연결한다. 심플 리듀스율은 줄이는 비율이므로 `100 * (1 - percentTriangles)` 또는 버텍스 종료 기준에서는 `100 * (1 - percentVertices)`다. Any 기준은 두 비율을 각각 표시한다. 단순 화면 크기 편집은 고급의 플랫폼별 재정의를 유지하고 자동 계산을 끈다. 두 탭의 마지막 임포스터 설정은 같은 활성화·방향 선택·재생성 파라미터를 공유한다. 심플의 생성된 임포스터 LOD 카드에는 자동 화면 크기와 섹션 옵션을 표시한다.
 `get.viewport`에는 미리보기 월드의 `world_time`/`world_ticks`, `fixed_exposure`/`ev100`, `forced_lod`와 Slate 합성 설정도 반환한다. `forced_lod: -1`은 Auto이며 0 이상은 강제 표시할 LOD 번호다. 뷰포트의 노출은 표시용 옵션이며 저장하는 LOD JSON의 설정에 포함하지 않는다.
 `get.window_topmost`는 시스템 전역 최상위 여부이며 현재는 `false`다. `window_owned_by_editor: true`이면 언리얼 메인 창에 네이티브 소유 창으로 연결되어 메인 창보다 앞에 유지되며 다른 프로그램보다 우선하지 않는다. 메인 창이 아직 없는 특수 실행에서는 일반 독립 창으로 연다.
 `current_lod`는 현재 카메라에서 계산한 표시 LOD, `current_screen_size`는 현재 바운드의 투영 스크린 크기다. 전환 임계값인 `preview_lods[].screen_size`와 구분한다. 새 메시가 첫 프레임을 그리기 전에는 `current_lod: -1`이다. 렌더링 후에는 해당 LOD의 `triangles`, `vertices`, `sections: [{section, triangles, vertices}]`와 `statistics_text`를 반환한다. 섹션 버텍스는 인덱스가 참조하는 고유 렌더 버텍스 수이므로 UV/노멀 분할을 포함하며 섹션 간에 공유된 버텍스는 각 섹션에서 센다. Nanite의 실시간 클러스터 수가 아니라 기본 LOD 지오메트리 통계다.
@@ -64,7 +66,7 @@ rx('save_json', filename='bench_lod.json')
 
 ## 설정 문서
 
-루트 필드는 `schema: RX_SMLODGen`, `version: 4`, `weight_semantics: preservation`, `asset`, `source_id`, `impostor`, `auto_screen_size`, `lod_group`, `general`, `materials`, `lods`이다. 요청 API 자체의 버전은 1을 유지한다. 설정 버전 1·2·3을 계속 읽는다.
+루트 필드는 `schema: RX_SMLODGen`, `version: 5`, `weight_semantics: preservation`, `asset`, `source_id`, `impostor`, `impostor_directions`, `auto_screen_size`, `lod_group`, `general`, `materials`, `lods`이다. 요청 API 자체의 버전은 1을 유지한다. 설정 버전 1·2·3·4를 계속 읽는다. `impostor_directions`는 정확히 2 또는 4이며 기본값은 4다. v5에서는 필수이고 구버전 JSON은 4로 이관한다. 2는 정면(+X)·측면(+Y), 4는 0·45·90·135도다. `set` 후 `rebuild`로 마지막 임포스터를 교체한다. 방향 수를 바꿔도 임포스터 LOD/머티리얼 슬롯은 늘어나지 않는다.
 `general`에는 플랫폼/품질별 최소 LOD, 스트리밍 바이어스/LOD 수 및 LOD 스트리밍 설정을 보관한다.
 각 LOD에는 `index`, `geometry_id`, `import_filename`, 엔진 구조체의 `reduction`/`build`/`screen_size`, `sections`, `section_overrides`가 있다.
 `sections`는 LOD 0의 Polygon Group ID를 사용하는 `group`, 0~1 `weight`, `excluded`와 아래 세 개의 필수 Boolean 보호 옵션을 보관하는 배열이다.
@@ -89,8 +91,10 @@ JSON은 메시의 버텍스나 촬영한 텍스처 자체를 포함하지 않는
 이전 설정 문서 버전 1과 원본 에셋의 버전 1 가중치 메타데이터를 읽을 때는 `새 가중치 = 1 - 이전 가중치`로 자동 변환하여 감소 결과를 유지한다. 숫자를 그대로 둔 채 버전만 고치지 않는다. 가져온 후 저장/내보내기는 버전 4 형식으로 기록한다.
 가중치를 다르게 준 맞닿은 섹션, Nanite, 비율 외 감소 조건 등은 현재 감소기의 제한으로 거부될 수 있다.
 임포스터는 설정 LOD 개수와 별도로 표시 메시의 마지막에 한 개만 존재한다. 재생성은 같은 마지막 인덱스를 교체한다.
-임포스터 버텍스의 셰이딩 노말은 모두 메시 로컬 +Z이다. 머티리얼은 VertexNormalWS를 월드 공간 Normal 입력으로 사용하여 양면의 뒷면에서도 위쪽 노말이 반전되지 않도록 한다. 네 수직 평면의 배치와 삼각형 와인딩은 유지한다.
+임포스터 버텍스의 셰이딩 노말은 모두 메시 로컬 +Z이다. 머티리얼은 VertexNormalWS를 월드 공간 Normal 입력으로 사용하여 양면의 뒷면에서도 위쪽 노말이 반전되지 않도록 한다. 선택한 수의 수직 양면 평면을 사용하며 반대쪽 면은 같은 이미지를 재사용한다. 두 모드 모두 원본 바운드와 피벗을 유지한다.
 원본에 다시 적용할 때는 소유권 메타데이터가 있는 기존 임포스터 텍스처·머티리얼을 재사용한다. 미저장 변경이 있는 기존 에셋은 덮어쓰지 않는다.
 
 원본 적용은 미저장 원본, 외부 변경, 원본 에디터 열림, PIE/SIE 등을 검사한다. 부분 실패 시 Undo를 완전한 롤백으로 보장하지 않는다.
 적용 후 원본과 생성/갱신된 텍스처·머티리얼을 함께 저장하고, 재적용하려면 RX 창을 다시 연다.
+
+임포스터는 Base Color 캡처를 사용해 조명을 아틀라스에 굽지 않는다. 기본 Lit·Masked·TwoSided 재질을 유지하며 ShadowPassSwitch의 Shadow 입력을 0으로 연결하고 생성 LOD 섹션의 CastShadow를 끈다. 따라서 카드가 서로/바닥에 드리우는 그림자를 함께 제거한다. 기존 소유 머티리얼을 교체할 때도 이 그래프를 보완한다. 외부 그림자 수신은 유지하며 Lumen·SSAO·컨택트 그림자·LOD 0 기반 디스턴스 필드/라이트맵의 어두워짐까지 완전히 제거하는 보장은 하지 않는다.

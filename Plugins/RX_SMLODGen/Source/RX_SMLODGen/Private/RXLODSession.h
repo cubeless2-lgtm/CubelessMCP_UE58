@@ -15,6 +15,7 @@ public:
     TMap<int32, TArray<FRXSectionWeight>> Weights;
     FRXImpostorPreview Impostor;
     bool bImpostor = false;
+    int32 ImpostorDirections = 4;
     int32 ImpostorLOD = INDEX_NONE;
     int32 GetVisibleImpostorLOD() const { return bImpostor && ImpostorLOD == Preview->GetNumSourceModels() ? ImpostorLOD : INDEX_NONE; }
     bool Initialize(UStaticMesh* Mesh, FString& Error);

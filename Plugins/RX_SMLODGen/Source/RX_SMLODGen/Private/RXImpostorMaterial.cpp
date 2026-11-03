@@ -1,6 +1,8 @@
 #include "RXImpostorMaterial.h"
 
 #include "Materials/MaterialExpressionTextureSample.h"
+#include "Materials/MaterialExpressionShadowReplace.h"
+#include "Materials/MaterialExpressionConstant.h"
 #include "Materials/MaterialExpressionVertexNormalWS.h"
 
 void RXImpostorMaterial::SetUpNormals(UMaterial* Material)
@@ -17,6 +19,22 @@ void RXImpostorMaterial::SetUpNormals(UMaterial* Material)
     // aligned with the mesh's up axis on both sides without TwoSidedSign flipping.
     Material->bTangentSpaceNormal = false;
     Data->Normal.Connect(0, Normal);
+}
+
+void RXImpostorMaterial::SetUpNoCastShadow(UMaterial* Material)
+{
+    auto* Data = Material->GetEditorOnlyData();
+    if (!Data || !Data->OpacityMask.Expression) { return; }
+    if (Cast<UMaterialExpressionShadowReplace>(Data->OpacityMask.Expression)) { return; }
+    const EObjectFlags Flags = Material->HasAnyFlags(RF_Transient) ? RF_Transient : RF_Transactional;
+    auto* Switch = NewObject<UMaterialExpressionShadowReplace>(Material, NAME_None, Flags);
+    auto* Zero = NewObject<UMaterialExpressionConstant>(Material, NAME_None, Flags);
+    Zero->R = 0.0f;
+    Switch->Default = Data->OpacityMask;
+    Switch->Shadow.Connect(0, Zero);
+    Material->GetExpressionCollection().AddExpression(Switch);
+    Material->GetExpressionCollection().AddExpression(Zero);
+    Data->OpacityMask.Connect(0, Switch);
 }
 
 bool RXImpostorMaterial::CreatePreview(const TArray<FColor>& Pixels, FIntPoint Size,
@@ -54,6 +72,7 @@ bool RXImpostorMaterial::CreatePreview(const TArray<FColor>& Pixels, FIntPoint S
     Data->BaseColor.Connect(0, Sample);
     Data->OpacityMask.Connect(4, Sample);
     SetUpNormals(Material.Get());
+    SetUpNoCastShadow(Material.Get());
     Material->PostEditChange();
     Output.Texture = MoveTemp(Texture);
     Output.Material = MoveTemp(Material);

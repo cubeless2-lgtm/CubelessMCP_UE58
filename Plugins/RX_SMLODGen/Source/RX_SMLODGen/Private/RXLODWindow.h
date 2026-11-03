@@ -18,6 +18,10 @@ public:
     bool RefreshPreview(FString& Error);
     void SelectLOD(int32 LOD);
     void SetSession(TSharedPtr<FRXLODSession> NewSession);
+    void SetSimpleMode(bool Simple);
+    bool IsSimpleMode() const { return bSimpleMode; }
+    bool SetSimpleReduction(int32 LOD, float PercentRemoved, bool Vertices = false);
+    bool SetSimpleScreenSize(int32 LOD, float ScreenSize);
     FReply OnDragOver(const FGeometry& Geometry, const FDragDropEvent& Event) override;
     FReply OnDrop(const FGeometry& Geometry, const FDragDropEvent& Event) override;
     void OnDragLeave(const FDragDropEvent& Event) override;
@@ -35,11 +39,16 @@ private:
     TSet<int32> VisibleLODs;
     int32 SelectedLOD = 0;
     bool bCustom = false;
+    bool bSimpleMode = true;
     FString JsonFilename;
     TMap<FString, bool> ExpandedAreas;
     int32 BuildingLOD = INDEX_NONE;
     TSharedRef<SWidget> Area(const FString& Label, TSharedRef<SWidget> Body, bool Expanded = true);
     TSharedRef<SWidget> LODPanel(int32 LOD);
+    TSharedRef<SWidget> SimpleLODPanel(int32 LOD);
+    TSharedRef<SWidget> LODCountControl();
+    TSharedRef<SWidget> ImpostorPanel();
+    TArray<TSharedPtr<FString>> ImpostorChoices = { MakeShared<FString>(TEXT("2방향 · 정면 / 측면")), MakeShared<FString>(TEXT("4방향 · 정면 / 45° / 측면 / 135°")) };
     TSharedRef<SWidget> SectionsPanel(int32 LOD);
     TSharedRef<SWidget> CommonPanel();
     TSharedRef<SWidget> StructEditor(UScriptStruct* Type, const void* Data, TFunction<void(const void*)> Commit, bool bHidePercent = false);

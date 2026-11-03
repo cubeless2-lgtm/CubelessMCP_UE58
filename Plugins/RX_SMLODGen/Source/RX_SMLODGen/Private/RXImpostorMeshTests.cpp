@@ -42,6 +42,25 @@ bool FRXImpostorMeshTest::RunTest(const FString& Parameters)
             break;
         }
     }
+    FMeshDescription Two;
+    if (TestTrue(TEXT("Build front and side cards"), RXImpostorMesh::Build(Bounds, 4, FIntPoint(128, 128), 2, Two, Error, 2)))
+    {
+        TestEqual(TEXT("Two cards halve triangles"), Two.Triangles().Num(), 2 * 4 * 4 * 2);
+        FStaticMeshConstAttributes A(Two); FBox TwoBounds(ForceInit);
+        for (auto V : Two.Vertices().GetElementIDs()) { TwoBounds += FVector(A.GetVertexPositions()[V]); }
+        TestTrue(TEXT("Two cards preserve bounds"), TwoBounds.Min.Equals(Bounds.Min, 0.001) && TwoBounds.Max.Equals(Bounds.Max, 0.001));
+        for (auto V : Two.Vertices().GetElementIDs())
+        {
+            const FVector P(A.GetVertexPositions()[V]); const int32 Plane = V.GetValue() / 25;
+            if (!FMath::IsNearlyEqual(Plane == 0 ? P.X : P.Y, Plane == 0 ? Bounds.GetCenter().X : Bounds.GetCenter().Y, 0.001)) { AddError(TEXT("Two planes must face +X and +Y")); break; }
+        }
+        for (auto I : Two.VertexInstances().GetElementIDs())
+        {
+            const int32 Plane = I.GetValue() / 25; const auto UV = A.GetVertexInstanceUVs().Get(I, 0);
+            if (!A.GetVertexInstanceNormals()[I].Equals(FVector3f(0, 0, 1), 0.001f) || UV.X < (Plane * 132.0f + 2) / 264 || UV.X > (Plane * 132.0f + 130) / 264) { AddError(TEXT("Two-card up normals and atlas tiles must match")); break; }
+        }
+    }
+    TestFalse(TEXT("Reject unsupported three-direction mode"), RXImpostorMesh::Build(Bounds, 4, FIntPoint(128, 128), 2, Two, Error, 3));
     const int32 PreviousTriangles = Mesh.Triangles().Num();
     TestFalse(TEXT("Rejects flat source bounds"), RXImpostorMesh::Build(FBox(FVector::ZeroVector, FVector(1, 1, 0)), 4, FIntPoint(128, 128), 2, Mesh, Error));
     TestEqual(TEXT("Invalid bounds leave output unchanged"), Mesh.Triangles().Num(), PreviousTriangles);

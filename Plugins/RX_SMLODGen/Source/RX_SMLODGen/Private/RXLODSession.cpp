@@ -1,4 +1,5 @@
 #include "RXLODSession.h"
+#include "RXImpostorDirections.h"
 #include "RXSilhouetteSettings.h"
 #include "RXApplyLOD.h"
 #include "RXWeightedPreview.h"
@@ -45,7 +46,7 @@ bool FRXLODSession::Initialize(UStaticMesh* Mesh, FString& Error)
     Preview.Reset(DuplicateObject<UStaticMesh>(Mesh, GetTransientPackage()));
     Preview->SetFlags(RF_Transient); Preview->ClearFlags(RF_Public | RF_Standalone);
     Finish(Preview.Get());
-    if (!RXApplyLOD::RestorePreviewSettings(Mesh, Preview.Get(), Weights, bImpostor, Error)) { return false; }
+    if (!RXApplyLOD::RestorePreviewSettings(Mesh, Preview.Get(), Weights, bImpostor, Error, &ImpostorDirections)) { return false; }
     return Rebuild(Error);
 }
 
@@ -149,7 +150,7 @@ bool FRXLODSession::Rebuild(FString& Error)
         { Error = TEXT("임포스터에는 비 Nanite 메시와 마지막 LOD 슬롯이 필요합니다."); return false; }
         if (!Preview->GetAutoComputeLODScreenSize() && Work->GetSourceModel(Work->GetNumSourceModels() - 1).ScreenSize.Default <= 0)
         { Error = TEXT("임포스터를 추가하려면 마지막 일반 LOD의 화면 크기가 0보다 커야 합니다."); return false; }
-        if (!RXImpostorPreview::Build(Work.Get(), FIntPoint(512, 512), 4, 4, NewImpostor, Error)) { return false; }
+        if (!RXImpostorPreview::Build(Work.Get(), FIntPoint(512, 512), 4, 4, NewImpostor, Error, ImpostorDirections)) { return false; }
         NewImpostorLOD = Work->GetNumSourceModels();
         Work->SetNumSourceModels(NewImpostorLOD + 1);
         FMeshDescription Geometry(*NewImpostor.Geometry);
@@ -157,8 +158,9 @@ bool FRXLODSession::Rebuild(FString& Error)
         const FName Slot(TEXT("RXImpostor"));
         for (FPolygonGroupID Group : Geometry.PolygonGroups().GetElementIDs()) { Attributes.GetPolygonGroupMaterialSlotNames()[Group] = Slot; }
         const int32 Material = Work->GetStaticMaterials().Add(FStaticMaterial(NewImpostor.Material.Material.Get(), Slot, Slot));
-        Work->GetSectionInfoMap().Set(NewImpostorLOD, 0, FMeshSectionInfo(Material));
-        Work->GetOriginalSectionInfoMap().Set(NewImpostorLOD, 0, FMeshSectionInfo(Material));
+        FMeshSectionInfo SectionInfo(Material); SectionInfo.bCastShadow = false; SectionInfo.bEnableCollision = false;
+        Work->GetSectionInfoMap().Set(NewImpostorLOD, 0, SectionInfo);
+        Work->GetOriginalSectionInfoMap().Set(NewImpostorLOD, 0, SectionInfo);
         auto& Model = Work->GetSourceModel(NewImpostorLOD);
         Model.ReductionSettings = FMeshReductionSettings(); Model.ReductionSettings.BaseLODModel = NewImpostorLOD;
         Model.BuildSettings.bRecomputeNormals = false; Model.BuildSettings.bRecomputeTangents = false; Model.BuildSettings.bGenerateLightmapUVs = false;
@@ -181,7 +183,7 @@ bool FRXLODSession::Apply(FString& Error)
     for (const auto& Pair : Weights)
         if (Pair.Value.ContainsByPredicate([](const FRXSectionWeight& W) { return W.bExcluded || W.HasProtection() || W.Weight != 0.0f; })) { Active.Add(Pair.Key, Pair.Value); }
     bool bStarted = false; TArray<FString> Packages;
-    const bool bOK = RXApplyLOD::Apply(Original.Get(), Preview.Get(), Baseline, Active, bImpostor, bStarted, Packages, Error, bImpostor ? &Impostor : nullptr);
+    const bool bOK = RXApplyLOD::Apply(Original.Get(), Preview.Get(), Baseline, Active, bImpostor, bStarted, Packages, Error, bImpostor ? &Impostor : nullptr, ImpostorDirections);
     if (!bOK && bStarted) { Error = TEXT("원본 변경이 시작된 뒤 실패했습니다. 원본을 확인하세요.\n") + Error; }
     for (const FString& Package : Packages) { Error += TEXT("\n미저장 에셋: ") + Package; }
     if (bOK) { Status = TEXT("원본에 적용했습니다. 원본과 생성된 에셋을 함께 저장하세요. 재적용하려면 저장 후 RX 창을 다시 여세요.") + Error; }
@@ -191,7 +193,8 @@ bool FRXLODSession::Apply(FString& Error)
 FString FRXLODSession::ExportJson() const
 {
     auto Root = MakeShared<FJsonObject>();
-    Root->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen")); Root->SetNumberField(TEXT("version"), 4);
+    Root->SetStringField(TEXT("schema"), TEXT("RX_SMLODGen")); Root->SetNumberField(TEXT("version"), 5);
+    Root->SetNumberField(TEXT("impostor_directions"), ImpostorDirections);
     Root->SetStringField(TEXT("weight_semantics"), TEXT("preservation"));
     Root->SetStringField(TEXT("asset"), Original->GetPathName());
     const auto* Bulk = Preview->GetSourceModel(0).GetMeshDescriptionBulkData();
@@ -246,11 +249,13 @@ bool FRXLODSession::ImportJson(const FString& Json, FString& Error)
     FString Schema, Asset, Source, Group; int32 Version = 0; bool Include = false, Auto = false;
     const TArray<TSharedPtr<FJsonValue>>* LODs = nullptr;
     const FMeshDescriptionBulkData* Bulk = Preview->GetSourceModel(0).GetMeshDescriptionBulkData();
-    if (!Root->TryGetStringField(TEXT("schema"), Schema) || Schema != TEXT("RX_SMLODGen") || !Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 4) ||
+    if (!Root->TryGetStringField(TEXT("schema"), Schema) || Schema != TEXT("RX_SMLODGen") || !Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 5) ||
         !Root->TryGetStringField(TEXT("asset"), Asset) || Asset != Original->GetPathName() || !Root->TryGetStringField(TEXT("source_id"), Source) || !Bulk || Source != Bulk->GetUnversionedIdString() ||
         !Root->TryGetBoolField(TEXT("impostor"), Include) || !Root->TryGetBoolField(TEXT("auto_screen_size"), Auto) || !Root->TryGetStringField(TEXT("lod_group"), Group) ||
         !Root->TryGetArrayField(TEXT("lods"), LODs) || LODs->Num() < 1 || LODs->Num() > MAX_STATIC_MESH_LODS - (Include ? 1 : 0))
     { Error = TEXT("스키마 버전, 에셋/소스 식별자 또는 LOD 범위가 맞지 않습니다."); return false; }
+    int32 Directions = 4;
+    if (!RXImpostorDirections::Read(*Root, Version, Directions)) { Error = TEXT("임포스터 방향 수는 2 또는 4여야 합니다."); return false; }
     FString Semantics;
     if (Version >= 2 && (!Root->TryGetStringField(TEXT("weight_semantics"), Semantics) || Semantics != TEXT("preservation")))
     { Error = TEXT("버전 2 이상 JSON은 보존 가중치(weight_semantics: preservation)를 사용해야 합니다."); return false; }
@@ -334,7 +339,7 @@ bool FRXLODSession::ImportJson(const FString& Json, FString& Error)
         if (!P || !FJsonObjectConverter::JsonValueToUProperty(Field.Value, P, P->ContainerPtrToValuePtr<void>(Candidate.Get()), 0, 0))
         { Error = TEXT("공통 설정 값을 읽지 못했습니다."); return false; }
     }
-    Preview = MoveTemp(Candidate); Weights = MoveTemp(NewWeights); bImpostor = Include;
+    Preview = MoveTemp(Candidate); Weights = MoveTemp(NewWeights); bImpostor = Include; ImpostorDirections = Directions;
     Status = TEXT("JSON 설정을 가져왔습니다. 미리보기 갱신을 눌러 확인하세요.");
     Error.Reset(); return true;
 }

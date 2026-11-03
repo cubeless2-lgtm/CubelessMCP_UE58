@@ -1,4 +1,5 @@
 #include "RXWeightMetadata.h"
+#include "RXImpostorDirections.h"
 #include "RXSilhouetteSettings.h"
 
 #include "Dom/JsonObject.h"
@@ -10,11 +11,12 @@
 const TCHAR* RXWeightMetadata::Key() { return TEXT("RX_SMLODGen_Weights_v1"); }
 
 bool RXWeightMetadata::Encode(const FString& SourceId, const TMap<int32, FRXStoredLODWeights>& LODs,
-    int32 ImpostorLOD, int32 ImpostorMaterialSlot, FString& OutJson, FString& Error)
+    int32 ImpostorLOD, int32 ImpostorMaterialSlot, FString& OutJson, FString& Error, int32 ImpostorDirections)
 {
-    if (SourceId.IsEmpty()) { Error = TEXT("Missing LOD 0 identity."); return false; }
+    if (SourceId.IsEmpty() || !RXImpostorDirections::IsValid(ImpostorDirections)) { Error = TEXT("Missing LOD 0 identity or invalid impostor directions (2 or 4 required)."); return false; }
     TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
-    Root->SetNumberField(TEXT("version"), 4);
+    Root->SetNumberField(TEXT("version"), 5);
+    Root->SetNumberField(TEXT("impostor_directions"), ImpostorDirections);
     Root->SetStringField(TEXT("source_id"), SourceId);
     if (ImpostorLOD < INDEX_NONE || ImpostorMaterialSlot < INDEX_NONE || (ImpostorLOD < 0) != (ImpostorMaterialSlot < 0) || ImpostorLOD == 0)
     { Error = TEXT("Invalid impostor LOD or material slot."); return false; }
@@ -61,7 +63,7 @@ bool RXWeightMetadata::Encode(const FString& SourceId, const TMap<int32, FRXStor
 }
 
 bool RXWeightMetadata::Decode(const FString& Json, FString& OutSourceId, TMap<int32, FRXStoredLODWeights>& OutLODs,
-    int32& OutImpostorLOD, int32& OutImpostorMaterialSlot, FString& Error)
+    int32& OutImpostorLOD, int32& OutImpostorMaterialSlot, FString& Error, int32* OutImpostorDirections)
 {
     TSharedPtr<FJsonObject> Root;
     TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
@@ -69,10 +71,12 @@ bool RXWeightMetadata::Decode(const FString& Json, FString& OutSourceId, TMap<in
     int32 Version = 0;
     FString SourceId;
     const TArray<TSharedPtr<FJsonValue>>* Entries = nullptr;
-    if (!Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 4) ||
+    if (!Root->TryGetNumberField(TEXT("version"), Version) || (Version < 1 || Version > 5) ||
         !Root->TryGetStringField(TEXT("source_id"), SourceId) || SourceId.IsEmpty() ||
         !Root->TryGetArrayField(TEXT("lods"), Entries) || Entries->Num() > 32)
     { Error = TEXT("Unsupported or incomplete weight metadata."); return false; }
+    int32 Directions = 4;
+    if (!RXImpostorDirections::Read(*Root, Version, Directions)) { Error = TEXT("Impostor directions must be 2 or 4."); return false; }
     TMap<int32, FRXStoredLODWeights> LODs;
     int32 ImpostorLOD = INDEX_NONE;
     int32 ImpostorMaterialSlot = INDEX_NONE;
@@ -117,6 +121,7 @@ bool RXWeightMetadata::Decode(const FString& Json, FString& OutSourceId, TMap<in
     OutLODs = MoveTemp(LODs);
     OutImpostorLOD = ImpostorLOD;
     OutImpostorMaterialSlot = ImpostorMaterialSlot;
+    if (OutImpostorDirections) { *OutImpostorDirections = Directions; }
     Error.Reset();
     return true;
 }

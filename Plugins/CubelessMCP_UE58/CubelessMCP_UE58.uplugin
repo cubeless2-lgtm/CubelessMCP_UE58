@@ -32,6 +32,11 @@
   ],
   "Plugins": [
     {
+      "Name": "DeformerGraph",
+      "Enabled": true,
+      "TargetAllowList": ["Editor"]
+    },
+    {
       "Name": "MeshPainting",
       "Enabled": true,
       "TargetAllowList": [

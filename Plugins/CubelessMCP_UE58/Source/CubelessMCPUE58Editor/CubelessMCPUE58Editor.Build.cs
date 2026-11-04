@@ -25,5 +25,6 @@ public class CubelessMCPUE58Editor : ModuleRules
         PrivateDependencyModuleNames.Add("RigVMEditor");
         PrivateDependencyModuleNames.Add("ApplicationCore");
         PrivateDependencyModuleNames.AddRange(new[] { "SubobjectEditor", "SubobjectDataInterface" });
+        PrivateDependencyModuleNames.Add("OptimusCore");
     }
 }

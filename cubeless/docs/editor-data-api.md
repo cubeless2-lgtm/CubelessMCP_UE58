@@ -134,3 +134,79 @@ result = json.loads(lib.set_instance_vertex_colors(
 UE 5.8.4 CL58902052에서 빌드·로딩·공식 MCP3개 스키마, 정점별 RGBA 쓰기, 두 컴포넌트·두 LOD 보존, 잘못된 배열/타입/LOD와 교체·삭제·dirty 저장 경계, 명시적 저장과 새 프로세스 재로드를 확인했다. 저장 중 정상 생성되는 lighting ID와 cache는 설치 엔진 `StaticMeshComponent::PreSave` 동작에 맞춰 준비한 뒤 다시 검사한다. 원 저장 성공을 실패로 거절했던 초기 기록은 보존했다. 빈 캐시의 다른 LOD 재생성 경계는 독립 소스 검토 근거이며 별도 상태 주입 실험은 하지 않았다. 임의 콜백 부작용·대형 메시 성능·새 패키징 검증으로 결과를 확대하지 않는다. 원시 근거는 `cubeless/records/operations/instance-vertex-colors-20261030/report.json`에 있다.
 
 후속 리뷰의 저장 범위·캐시 geometry·변경 후 총량 결함은 `instance-vertex-colors-reviewfix-20261030/report.json`에서 추적한다. 실제 엔진 콜백으로 Modify 및 저장 후 Position/Normal 변조 4조건을 감지했고, 저장 후 실패도 `saved=true`와 실제 dirty 상태를 유지했다. 외부 Actor·BuiltData의 파일 해시와 dirty 상태를 보존하면서 월드 패키지만 저장했으며, 외부 Actor 자체를 대상으로 한 독립 저장도 확인했다. 총량은 같은 production 계산 함수의 초과·정확한 상한·상한+1·cache 단독 초과 4조건으로 확인했다. 대형 엔진 메시 성능 검증은 아니다. 최초 회귀 실행의 추상 표식 객체 ensure는 테스트 자료 결함으로 보존하고 정상 메타데이터로 수정한 저장 범위 검사만 새 소유 월드에서 다시 실행했다.
+
+
+## 2026-11-04 모찌 C++ 노출 요청 2차
+
+요청서는 RX UE 5.6 관측이다. 설치된 UE 5.8.4 소스에서 다시 확인해 엔진 수정 대신 Editor 전용 `CubelessAuthoringAccessTools`와 기존 도구를 연결했다. 현재 검증 상태는 로컬 `records/operations/authoring-access-20261104/report.json`에 기록한다. 등록만으로 모든 변형의 동작 완료를 뜻하지 않는다.
+
+공식 Toolset 이름은 `cubeless_mcp_ue58.registration.authoring_access_toolset.CubelessAuthoringAccessTools`다. 도구는 명시적인 전체 asset/component 경로를 받으며 UI 선택에 의존하지 않는다.
+
+| 원문 | 현재 경로와 범위 |
+|---|---|
+| 최우선 Skeleton.remove_bones_from_skeleton | `remove_skeleton_bones`: 기본 사전 확인, 루트 제외, 부모 제거 시 자손 집합 계산. 실행에는 `allow_remove=true`와 `allow_dependent_updates=true` 모두 필요하다. |
+| 최우선 OptimusDeformer.compile | `compile_optimus_deformer`, `inspect_optimus_deformer`. 필수 플러그인 DeformerGraph를 Editor 대상 의존성으로 선언한다. |
+| A-1 CurveFloat.float_curve | `inspect_float_curve`, `set_float_curve_keys`: 키·모드·탄젠트·가중치, 기본값·외삽 보존. 샘플링으로 키를 추측하지 않는다. |
+| A-2 NiagaraSystem.exposed_parameters | 기존 `CubelessNiagaraParameterTools.inspect_niagara_user_parameters`; 새 중복 도구를 등록하지 않는다. |
+| A-3/4 Timeline tracks / Blueprint.Timelines | `inspect_blueprint_timelines`: source-local float/vector/color/event 트랙과 곡선 참조. 반환된 곡선은 별도로 조회한다. |
+| A-5 EdGraph.Nodes | 기존 graph `inspect_graph`; 추가 `inspect_specialized_anim_graph`는 ControlRig 실제 클래스와 PoseDriver 이름·코멘트의 묶음 조회다. |
+| A-6 Texture2D.Source | `inspect_texture_source_pixels`: mip별 원래 포맷 바이트, 포맷·bytes_per_pixel 포함. 한 block/layer, mip 256MiB와 페이지 4096픽셀 상한. RGBA8·GPU 데이터로 오인하지 않는다. |
+| A-7/B-3/B-4 World persistent/streaming/visibility | 기존 `inspect_editor_world_configuration`: loaded_levels의 persistent 식별자와 visible, streaming 실제·목표 상태. |
+| A-8 AnimSequence.target_frame_rate | 기존 `inspect_animation_asset_metadata_guarded`의 `sampling_frame_rate`와 `data_model_frame_rate`; 설치 엔진의 실제 target getter는 GetSamplingFrameRate다. |
+| A-9 AssetImportInfo.source_files | `inspect_asset_import_sources`: import-data 경로, 원본 상대·해석 경로, timestamp와 기록 hash. 파일 읽기·재임포트는 하지 않는다. |
+| A-10 PoseDriverTarget.target_name | 실제 필드는 `DrivenName`; `inspect_specialized_anim_graph`의 `pose_driver_driven_names`. 존재하지 않는 이름을 엔진에 추가하지 않는다. |
+| A-11/12 ControlRig class/comment | `inspect_specialized_anim_graph`: Node.GetControlRigAssetReference().GetBlueprintClass()와 UEdGraphNode.NodeComment. |
+| A-13 CameraAnimationSequence.bound_actor_class | `inspect_camera_animation_binding`: BoundActorClass soft 경로. 클래스 로드·바인딩 변경 없음. |
+| A-14 MaterialEditorOnlyData.expression_collection | 기존 `CubelessMaterialTools.list_material_nodes`와 머티리얼 함수 코멘트 도구를 사용한다. 컬렉션 직접 노출을 추가하지 않는다. |
+| A-15 Montage.composite_sections | 기존 `inspect_animation_asset_metadata_guarded`: 이름·시작/끝·길이·다음 섹션 및 슬롯·세그먼트; 기존 Montage 편집 17개 도구를 유지한다. |
+| B-1/2 Package.is_dirty / opened assets | `inspect_asset_editing_state`: 이미 로드된 에셋 패키지 dirty·전체 열린 에디터 에셋. 관측 결과는 저장 잠금이나 덮어쓰기 승인이 아니다. |
+| B-5 deferred spawn | 기존 `spawn_editor_actor_deferred`: Editor 월드에서 한 요청 안에 begin/finish 수행. 요청 사이에 미완성 Actor를 남기는 토큰 API는 제공하지 않는다. |
+| B-6 PoseAsset.is_valid_additive | `inspect_pose_asset_additive`: 엔진 flag 조회이며 포즈 품질 보증은 아니다. |
+| B-7/8/9 SkeletalMeshComponent | `inspect_skeletal_component_state`, `set_skeletal_post_process_disabled`, `tick_skeletal_animation`. 로드된 Editor 컴포넌트만 수정·tick하며 PIE/SIE·CDO는 거절한다. |
+| B-10 Texture2D.post_edit_change | `refresh_texture_editor_data`: 명시 실행, authored 값·소스 식별자 보존 검사, 자원 갱신 요청과 GPU 완료 구분. |
+| B-11 BoneReference.bone_name | 설치 Python 반영 여부를 실행 기록에서 확인한다. 구조체를 UObject처럼 get_class로 호출하지 않는다. |
+| B-12 binding ID | 기존 SequencerScripting `MovieSceneBindingExtensions.get_id(binding)`. 의미가 다른 binding-ID struct와 GUID를 혼동하지 않는다. |
+| B-13 ObjectLibrary | 기존 AssetRegistry 필터와 EditorAssetLibrary.load_asset/AssetData.get_asset 조합을 사용한다. 모든 에셋을 무조건 로드하는 새 ObjectLibrary 도구를 추가하지 않는다. |
+| C/E RX 전용 클래스 | 현재 표준 엔진 프로젝트에 RX 클래스가 없으므로 구현·설치됐다고 표현하지 않는다. RX 쪽 라이브러리의 정확한 함수명을 별도로 확인해야 한다. |
+| D 오호출 | 올바른 기존 이름을 사용한다. 새 엔진 함수·동명 alias를 양산하지 않는다. 특히 AnimationLibrary Notify, Blueprint.get_blueprint_parent_class, MovieSceneTimeUnit은 새 C++ 노출 대상이 아니다. |
+
+### 호출 예제와 중요한 경계
+
+```json
+{"toolset_name":"cubeless_mcp_ue58.registration.authoring_access_toolset.CubelessAuthoringAccessTools","tool_name":"remove_skeleton_bones","arguments":{"asset_path":"/Game/MySkeleton","bone_names_json":"[\"unused_leaf\"]"}}
+```
+
+사전 확인의 `planned_removed_bones`와 `loaded_animations_subject_to_validation`을 먼저 확인한다. 실제 제거는 같은 명시 입력에 `execute=true, allow_remove=true, allow_dependent_updates=true`를 사용한다. 엔진은 GUID·remapping·retarget metadata·blend profile을 갱신하고 유효하지 않은 virtual bone을 제거하며 이미 로드된 애니메이션을 검증한다. 이 부작용은 원자적이지 않으며 메시/애니메이션 원본을 일괄 재작성·저장하는 기능이 아니다. 제거 성공을 원본/참조 에셋을 안전하게 삭제해도 된다는 판정으로 사용하지 않는다.
+
+`set_float_curve_keys`는 `keys_json='[{"time":0,"value":0},{"time":1,"value":1}]'`처럼 전달한다. 기존 키 교체·전체 비우기는 `allow_replace=true`가 필요하다. interp/tangent 모드는 0..2, weight 모드는 0..3이고 기본값은 linear/auto/unweighted다. 명시한 탄젠트를 자동 재계산하지 않는다. 기본값·외삽·event 설정을 바꾸지 않는다.
+
+Skeleton/Curve 저장은 기본 false이고 `save=true`일 때 정확한 대상 패키지만 UPackage::SavePackage로 저장한다. 이미 dirty인 패키지는 `allow_save_dirty_package=true`도 필요하다. 다른 패키지를 자동 저장하지 않는다. Texture 갱신·컴포넌트 조작·Optimus 컴파일은 자동 저장하지 않는다. 실패에서는 `stage`, `first_mismatch`, `mutation_attempted`, `changed`, `change_state_known`, `compile_attempted`, `save_attempted`, `saved`, `package_dirty_after`를 함께 읽는다. 저장 후 검수가 실패해도 실제 saved 결과를 유지한다. 불확실한 요청은 재실행하지 않는다.
+
+Optimus CompileEnd는 비동기 셰이더 컴파일이 끝나기 전에 발생한다. `graph_compile_succeeded=true`와 CompiledWithWarnings는 그래프 단계 성공이며 `full_compile_complete=null`, `shader_completion_verified=false`를 유지한다. 현재 도구의 상태 조회는 GPU 준비 완료를 인증하지 않는다. 늦게 오는 shader 진단까지 수집했다고 주장하지 않으며 콜백 관찰자는 동기 호출 범위가 끝나면 해제한다.
+
+### 2026-11-04 공식 MCP 실행 결과
+
+현재 개발 프로젝트의 UE5.8.4 CL58902052, 검증된 DLL로 도구16개의 검색·등록·입출력 스키마와 도구별 기본 정상 호출을 확인했다. 대표 호출 31건 중 정상 22건, 의도한 사전 거절 9건이 기대 결과와 일치했다. CurveFloat의 키·탄젠트 가중치 저장과 교체/no-op/dirty 저장 경계, Skeleton161→160 leaf 제거·승인/루트/자손 보호, 원래 예제 사본의 Optimus 그래프 컴파일, 텍스처 source bytes·import 정보·갱신, PoseAsset·카메라 soft binding, 컴포넌트 상태/토글/tick을 확인했다. CurveFloat와 Skeleton 패키지를 실제 reload하여 값과 제거 결과를 확인했으며, 컴포넌트 변경은 소유 테스트 맵에 명시 저장했다. 기존 Content8551개 파일은 모두 기준 해시를 유지했고 dirty/PIE 없이 소유 검증 에디터를 정상 종료했다. 프로젝트 재실행 시 Python startup에서 자동 등록한다.
+
+원문 BoneReference.bone_name은 설치5.8 Python의 get_editor_property로 실제 조회되어 추가 getter가 필요하지 않다. 일반 AnimBlueprint1315개 노드의 조회를 확인했으나 해당 에셋에는 ControlRig/PoseDriver 노드가 없었다. 그 특화 분기와 비어 있지 않은 Timeline 트랙, 임의 콜백·고급 변형의 상세 검증 및 새 C++ 독립 검토는 후속 범위다. Optimus의 Compiled 상태와 단일 커널 shader-success 로그를 전체 GPU 준비 완료로 확대하지 않는다. 전체 프로젝트 빌드의 기존 RX_SMLODGen unity 이름 충돌은 별도이며, 이번 Cubeless 모듈 빌드와 실제 프로젝트 로딩은 통과했다.
+
+검수 준비 스크립트는 소유 맵으로 전환하면서 Python 실행기의 context 검사를 실패시켰다. 원 실패를 유지하고 생성·저장된 실제 상태와 비활성 transaction을 별도 관측한 뒤 진행했으며 원 요청은 반복하지 않았다. 후속 저장·재로드 성공도 원 실패의 성공으로 바꾸지 않았다. 원시 근거는 records/operations/authoring-access-20261104/report.json에 연결한다.
+
+### 2026-11-04 리뷰 P2 3건 수정
+
+`set_float_curve_keys`는 탄젠트를 자동 계산하는 `FRichCurve::SetKeys()` 대신 `Reset`·`ReserveKeys`·`AddKey`·`GetKey`로 입력 키 전체를 구성한다. Auto 모드와 Linear/User 모드의 명시 탄젠트 및 가중치가 저장·재로드 후에도 유지된다. 기본값과 infinity 설정도 유지하며, 같은 입력은 저장하지 않는 no-op다.
+
+`remove_skeleton_bones`는 `Modify()` 직후 소켓 값과 참조·순서를 검사하고 통과한 경우에만 본 제거 API를 호출한다. `set_skeletal_post_process_disabled`도 setter 전에 소유 Actor·월드·transform·메시·등록 상태를 다시 검사한다. 콜백이 상태를 바꾸면 추가 writer와 저장을 중단하고 변경 상태를 불확실로 유지한다. 콜백이 이미 만든 변경을 롤백했다고 표현하지 않는다.
+
+현재 프로젝트 UE5.8.4의 수정 DLL 빌드·로딩, 공식16개 스키마와 영향 경로의 대표9회 호출(정상7·의도 거절2)을 확인했다. 실제 Modify 콜백을 주입한 소켓 값/목록 및 컴포넌트 등록/Actor 위치 경계와 명시 탄젠트 검사 등 Automation 3건이 통과했다. CurveFloat·Skeleton 저장·패키지 재로드와 기존 Content8551개 해시 보존을 확인했다. 저장·재로드를 감싼 Python 요청은 실행 완료 후 문맥 검사에서 실패했으며 원 실패를 보존했다. 해당 요청을 반복하지 않고 별도 읽기 전용 조회로 실제 값·clean 상태와 비활성 transaction을 확인했다. 소유 에디터는 정상 종료했다. 상세 증거와 남은 범위는 기존 `records/operations/authoring-access-20261104/report.json`의 `review_p2_repairs`에 연결한다. 임의의 모든 콜백·부분 저장·고급 변형과 독립 리뷰까지 완료한 것은 아니다.
+
+
+### 2026-11-04 마무리 검증 완료
+
+앞선 미검증 목록 중 비어 있지 않은 Timeline과 ControlRig/PoseDriver 특화 조회를 이번에 검증했다. 현재 UE5.8.4 CL58902052에서 수정 모듈 빌드, 공식 MCP16개 스키마와 정상 CurveFloat 조회, 네이티브 회귀6개가 모두 통과했다. 특화 분기는 네이티브 API 호출로 검증했으며 모든 변형을 공식 MCP로 다시 실행했다고 확대하지 않는다. 변경하지 않은 도구의 기존 공식 MCP 기본 동작과 저장·재로드 근거는 그대로 유지한다.
+
+`inspect_float_curve`와 `set_float_curve_keys`는 기존 default/key time/value/tangent/weight의 NaN/±Inf를 `non_finite_curve_data`로 거절하고 `Modify`·저장에 진입하지 않는다. 7개 필드×3개 비정상 값×읽기/편집42조건과 유효한 FLT_MAX 기본값을 검사했다. 응답 직렬화 실패 경로도 관측한 변경·저장 상태를 유지한다.
+
+하나의 Timeline에 float/vector/linear_color/event 트랙4개를 넣어 이름·정확한 곡선 참조·external flag를 확인했다. Blueprint와 정확한 EdGraph 경로에서 ControlRig 클래스·코멘트, PoseDriver의 DrivenName2개를 확인했다. 별도 소스 리뷰의 잔여 P2는 해결됐으며 최종 소스 독립 리뷰에서 추가 결함은 발견되지 않았다.
+
+원본과 이전 소유 fixture를 포함한 Content8562개 파일의 해시를 유지했고 콘텐츠 추가도 없다. dirty/PIE 없이 소유 PID33452가 exit0과 `LogExit: Exiting`으로 종료됐다. 이번 요청의 구현과 해당 기본·특화 검증은 완료다. 임의의 모든 상속·콜백 조합, 새 패키징 실행과 Optimus 전체 GPU 완료 인증은 이 결과에 포함하지 않는다. 상세 결과는 `records/operations/authoring-access-20261104/finish-complete.json`, 원시 실행은 `finish-8454f7bf16/report.json`에 있다. 커밋·푸시는 하지 않았다.

@@ -44,6 +44,7 @@ def payload_files():
         'cubeless/tools/pipeline-requirements.txt',
         'cubeless/codex/workflows/verification-lifecycle.md',
         'cubeless/tools/finish_verification_editor.py',
+        'cubeless/tools/start_verification_editor.ps1',
         *('cubeless/tools/pipelines/' + name for name in manifest['pipeline_files']),
     ]
     missing = [p for p in required if p not in files]

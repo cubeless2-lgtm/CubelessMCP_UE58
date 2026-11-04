@@ -1,6 +1,29 @@
 # Owned verification Editor lifecycle
 
-This project is the development and verification target. Do not create or use a separate project, project copy or temporary host project unless the user explicitly directs otherwise. Prefer the existing Editor when safe. Before launching a verification Editor, record the exact project, owned process PID/start time, endpoint, bootstrap and log. Never claim ownership of a preexisting user/main Editor or use process-name-wide termination. The user's preexisting Editor is outside cleanup scope, even when it uses the verification project.
+This project is the development and verification target. Use a separate project only at the user's explicit direction. A preexisting Editor belongs to the user throughout verification.
+
+## Reuse a running Editor first
+
+1. Identify the target `.uproject` and inspect live UnrealEditor/UnrealEditor-Cmd processes and their listening ports. On Windows use `Get-CimInstance Win32_Process` and `Get-NetTCPConnection -State Listen` on the host to match the listener's owning PID. If the sandbox cannot see host processes, use the normal read-only approval path. If an Editor is starting, wait for that PID within a bounded deadline. An inaccessible inventory, an unknown owner, a different project, or a failed MCP probe requires reconciliation before any launch.
+2. Probe the observed local endpoint using the expected project and PID. From the project root, use the following command with the actual `$project`, `$endpoint`, `$editorPid`, and a fresh `$probeReceipt` under `cubeless/records/verification/`.
+
+```powershell
+python -B cubeless/tools/official_mcp_client.py --endpoint $endpoint --expected-project $project --expected-pid $editorPid --output $probeReceipt
+```
+
+3. Reuse that connection when the probe passes. The receipt records official initialization, discovery, and native Editor diagnostics. Check dirty packages, PIE/SIE and pending work before any write. A successful identity check grants neither ownership nor permission to close the Editor. Discovery without the two identity arguments only inventories tools.
+
+## Start only when needed
+
+When no Editor is running and the chosen port is free, request launch approval through the active execution policy as required. Identify the exact engine executable, project and port in the request. Use a fresh `$launchReceipt` in an existing directory under `cubeless/records/verification/`. Run this as a separate launch-only action:
+
+```powershell
+& ./cubeless/tools/start_verification_editor.ps1 -EditorExe $editorExe -Project $project -Port $port -Receipt $launchReceipt
+```
+
+The launcher checks the inventory again and records the actual PID and UTC start time. It opens the engine Entry map in unattended mode to suppress interactive startup questions such as the Zen maintenance wait prompt. A launched receipt confirms process creation only. Wait for that PID to own the selected listener, then run the read-only probe above with the recorded PID and a fresh probe receipt. Track launch refusal, process exit, MCP initialization/discovery failure and identity mismatch separately. If a call times out or the receipt is incomplete, inspect the process, listener and Editor log before deciding what happened. Never start a second Editor as a connection retry.
+
+## Finish an owned verification session
 
 Do not use `-ExecutePythonScript` plus unconditional keep-alive as an unattended indefinite session. A one-shot script should finish without keep-alive. A multi-stage verification session may keep alive only while its owning runner is active. That runner must have a bounded execution deadline and a finally cleanup path after evidence publication. A timeout does not authorize force-kill or uncertain mutation replay.
 
@@ -8,8 +31,8 @@ On success, failure or interruption: stop issuing new writes, finish/cancel owne
 
 For an owned `-ExecutePythonScript` keep-alive Editor, the external helper `cubeless/tools/finish_verification_editor.py` accepts only isolated projects below `cubeless/workspaces`; do not use it against this project or bypass its checks. For an owned Editor in this project, prefer a one-shot script that exits normally, or use its normal window close after reconciling jobs and checking the exact PID, project, PIE/SIE and dirty packages. Never close the user's preexisting Editor. For a qualifying isolated project, invoke the helper with explicit `--endpoint`, `--expected-project`, `--expected-pid` and fresh `--output`; it rediscovers the Python tool, checks identity and clean state, then clears `set_keep_python_script_alive(False)`. It is not a general process killer.
 
-Caller must confirm that exact PID exits and inspect the shutdown log. An HTTP disconnect can be an expected exit but is not proof; inspect process state without blindly retrying the mutation. For an Editor launched without a keep-alive script, use its normal owned window close after the same checks, not a force kill. Preserve other Editor PIDs. Record cleanup as complete only after actual exit.
+Caller must confirm that exact PID exits and inspect the shutdown log. An HTTP disconnect can be an expected exit but is not proof; inspect process state without blindly retrying the mutation. For an Editor launched without a keep-alive script, close its owned window normally after the same checks. A hidden Editor can have a zero .NET `MainWindowHandle`. In that case match the receipt PID and UTC start time, identify its unique project main window, and send normal `WM_CLOSE` only to that window. Preserve the process if identity or cleanliness is uncertain. Record cleanup as complete only after actual exit.
 
 Historical bootstraps/reports stay immutable. Do not rerun them as current launch templates. Carry this lifecycle into each new verification runner rather than patching archived experiments en masse.
 
-Distribution: this workflow and `cubeless/tools/finish_verification_editor.py` must be included together in the source bundle. The helper uses the bundled stdlib-only `official_mcp_client.py`; it starts no server and introduces no game runtime dependency. It requires a running official MCP endpoint with Cubeless diagnostics and Python execution tools available. The caller must establish ownership from the launch record; a matching PID/project and keep-alive flag alone do not establish ownership. Reconcile pending work before invocation, and confirm process exit separately afterward.
+Ship this workflow with `cubeless/tools/start_verification_editor.ps1`, `official_mcp_client.py` and `finish_verification_editor.py`. The isolated-project finish helper requires a running official MCP endpoint with Cubeless diagnostics and Python execution tools. Establish ownership from the launch record, reconcile pending work before cleanup and confirm process exit separately.

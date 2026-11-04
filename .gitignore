@@ -65,6 +65,7 @@
 !/cubeless/tools/package_distribution.py
 !/cubeless/tools/official_mcp_client.py
 !/cubeless/tools/finish_verification_editor.py
+!/cubeless/tools/start_verification_editor.ps1
 !/cubeless/tools/pipeline-requirements.txt
 !/cubeless/tools/pipelines/
 /cubeless/tools/pipelines/*

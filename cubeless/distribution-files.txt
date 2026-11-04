@@ -2008,6 +2008,7 @@ Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/Cubel
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessAnimationProductionLibrary.cpp
 cubeless/codex/workflows/verification-lifecycle.md
 cubeless/tools/finish_verification_editor.py
+cubeless/tools/start_verification_editor.ps1
 Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/registration/editor_guidance_toolset.py
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/CubelessEditorGuidanceLibrary.cpp
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/EditorGuidance/EditorGuidance.cpp

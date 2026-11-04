@@ -4,14 +4,14 @@ This project is the development and verification target. Use a separate project 
 
 ## Reuse a running Editor first
 
-1. Identify the target `.uproject` and inspect live UnrealEditor/UnrealEditor-Cmd processes and their listening ports. On Windows use `Get-CimInstance Win32_Process` and `Get-NetTCPConnection -State Listen` on the host to match the listener's owning PID. If the sandbox cannot see host processes, use the normal read-only approval path. If an Editor is starting, wait for that PID within a bounded deadline. An inaccessible inventory, an unknown owner, a different project, or a failed MCP probe requires reconciliation before any launch.
+1. Identify the target `.uproject` and inspect live UnrealEditor processes, including Win64 configuration suffixes (such as DebugGame) and Cmd variants, and their listening ports. On Windows use `Get-CimInstance Win32_Process` and `Get-NetTCPConnection -State Listen` on the host to match the listener's owning PID. If the sandbox cannot see host processes, use the normal read-only approval path. If an Editor is starting, wait for that PID within a bounded deadline. An inaccessible inventory, an unknown owner, a different project, or a failed MCP probe requires reconciliation before any launch.
 2. Probe the observed local endpoint using the expected project and PID. From the project root, use the following command with the actual `$project`, `$endpoint`, `$editorPid`, and a fresh `$probeReceipt` under `cubeless/records/verification/`.
 
 ```powershell
 python -B cubeless/tools/official_mcp_client.py --endpoint $endpoint --expected-project $project --expected-pid $editorPid --output $probeReceipt
 ```
 
-3. Reuse that connection when the probe passes. The receipt records official initialization, discovery, and native Editor diagnostics. Check dirty packages, PIE/SIE and pending work before any write. A successful identity check grants neither ownership nor permission to close the Editor. Discovery without the two identity arguments only inventories tools.
+3. The probe closes its own MCP session after recording diagnostics. Before sending any writes, open the actual working session with the same expected project and PID and verify identity again in that session. For production pipelines, pass `--expected-pid $editorPid`; their shared Session checks identity before admitting domain work. For direct Python callers, construct `OfficialMCPClient(endpoint, expected_project=project, expected_pid=editor_pid)`, call `initialize()`, then `verify_editor_identity()`, and keep that client for the work. Guarded mutations require verification again after close or reinitialization. HTTP redirects are refused. Check dirty packages, PIE/SIE and pending work before any write. Identity verification grants no ownership or shutdown permission. Discovery without the identity arguments only inventories tools.
 
 ## Start only when needed
 
@@ -21,7 +21,7 @@ When no Editor is running and the chosen port is free, request launch approval t
 & ./cubeless/tools/start_verification_editor.ps1 -EditorExe $editorExe -Project $project -Port $port -Receipt $launchReceipt
 ```
 
-The launcher checks the inventory again and records the actual PID and UTC start time. It opens the engine Entry map in unattended mode to suppress interactive startup questions such as the Zen maintenance wait prompt. A launched receipt confirms process creation only. Wait for that PID to own the selected listener, then run the read-only probe above with the recorded PID and a fresh probe receipt. Track launch refusal, process exit, MCP initialization/discovery failure and identity mismatch separately. If a call times out or the receipt is incomplete, inspect the process, listener and Editor log before deciding what happened. Never start a second Editor as a connection retry.
+The launcher checks Engine/Build/Build.version for UE 5.8.x before starting any process, then checks the inventory again and records the actual PID and UTC start time. It opens the engine Entry map in unattended mode to suppress interactive startup questions such as the Zen maintenance wait prompt. A launched receipt confirms process creation only. Wait for that PID to own the selected listener, then run the read-only probe above with the recorded PID and a fresh probe receipt. Track launch refusal, process exit, MCP initialization/discovery failure and identity mismatch separately. If a call times out or the receipt is incomplete, inspect the process, listener and Editor log before deciding what happened. Never start a second Editor as a connection retry.
 
 ## Finish an owned verification session
 

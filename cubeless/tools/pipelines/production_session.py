@@ -8,7 +8,8 @@ import uuid
 from .recorded_calls import RecordedCalls
 from .recorded_call_storage import require_fresh_receipt_paths
 from .result_contracts import require
-from .layout import bundle_root, project_file, project_path, editor_project_matches, verification_output
+from .layout import bundle_root, project_file, project_path, verification_output
+from official_mcp_client import MCPError
 
 NATIVE = 'CubelessMCPUE58Editor.CubelessNativeToolset'
 
@@ -16,12 +17,15 @@ NATIVE = 'CubelessMCPUE58Editor.CubelessNativeToolset'
 def arguments(description, argv=None):
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument('--endpoint', required=True)
+    parser.add_argument('--expected-pid', required=True, type=int, help='PID observed owning the MCP listener')
     parser.add_argument('--project', type=Path, help='Host .uproject; relative to the bundle parent project')
     parser.add_argument('--input', required=True, type=Path)
     parser.add_argument('--output', type=Path, help='Fresh result path, relative to project root by default')
     parser.add_argument('--apply', action='store_true', help='Dispatch writes; otherwise validate/preview only')
     parser.add_argument('--verification', action='store_true', help='Restrict result output to this bundle records/verification')
     args = parser.parse_args(argv)
+    if args.expected_pid <= 0:
+        parser.error('--expected-pid must be positive')
     try:
         args.project = project_file(args.project)
         args.input = project_path(args.input, args.project)
@@ -52,6 +56,8 @@ def package(value):
 
 class Session:
     def __init__(self, args, domain, toolsets):
+        require(type(getattr(args, 'expected_pid', None)) is int and args.expected_pid > 0,
+                'A positive expected_pid from the observed Editor is required')
         args.project = project_file(args.project)
         args.input = project_path(args.input, args.project)
         args.output = (verification_output(args.output, args.project) if getattr(args, 'verification', False)
@@ -73,23 +79,26 @@ class Session:
         require_fresh_receipt_paths(self.output)
         self.report = dict(schema='cubeless_production_pipeline_v1', domain=domain, status='running',
             operation_id=uuid.uuid4().hex,
-            stage='initialize', started_ns=time.time_ns(), input=self.config, project=str(args.project.resolve()),
+            stage='initialize', started_ns=time.time_ns(), input=self.config, project=str(args.project.resolve()), expected_pid=args.expected_pid,
             client_source=str(Path(__file__).resolve()), cubeless=str(bundle_root()),
             apply=args.apply, stages=[], changes=[], outcome_unknown=False, automatic_retries=0,
             actual_change_scope='See per-stage native receipts; no atomic rollback',
             next_action='Inspect actual assets and operation IDs before any new mutation')
-        self.calls = RecordedCalls(args.endpoint, self.output, self.report, dict(native=NATIVE, **toolsets), storage_v2=True)
+        self.calls = RecordedCalls(args.endpoint, self.output, self.report, dict(native=NATIVE, **toolsets), storage_v2=True,
+                                   expected_project=args.project, expected_pid=args.expected_pid)
 
     def __enter__(self):
         try:
             self.calls.discover()
-            diag = self.calls.call('target_project', 'native', 'GetEditorDiagnostics')
-            require(editor_project_matches(diag['project_file'], self.args.project), 'Wrong editor project; no writes dispatched')
+            self.report['stage'] = 'target_project'
+            diag = self.calls.client.verify_editor_identity()
             require(diag['game_thread'] and not diag['pie_or_sie_active'] and diag['engine_version'].startswith('5.8.'),
                     'Idle UE5.8.x Editor game thread required')
             self.report['diagnostics_before'] = diag
             return self
         except Exception as error:
+            if self.report['stage'] == 'target_project' and isinstance(error, MCPError):
+                self.report['diagnostics_before'] = error.detail
             self.__exit__(type(error), error, error.__traceback__)
             raise
 

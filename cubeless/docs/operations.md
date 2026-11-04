@@ -5,9 +5,9 @@
 `<Python>`은 프로젝트의 외부 가상환경, `<Run>`은 해당 프로젝트의 `cubeless/tools/run_pipeline.py` 절대 경로입니다. 입력 예제는 실행마다 새 소유 에셋 이름을 지정합니다.
 
 ```powershell
-& '<Python>' '<Run>' blueprint --endpoint http://127.0.0.1:8000/mcp --input cubeless/tools/pipelines/examples/blueprint.json
-& '<Python>' '<Run>' niagara --endpoint http://127.0.0.1:8000/mcp --input cubeless/tools/pipelines/examples/niagara.json
-& '<Python>' '<Run>' pcg --endpoint http://127.0.0.1:8000/mcp --input cubeless/tools/pipelines/examples/pcg.json
+& '<Python>' '<Run>' blueprint --endpoint http://127.0.0.1:8000/mcp --expected-pid $editorPid --input cubeless/tools/pipelines/examples/blueprint.json
+& '<Python>' '<Run>' niagara --endpoint http://127.0.0.1:8000/mcp --expected-pid $editorPid --input cubeless/tools/pipelines/examples/niagara.json
+& '<Python>' '<Run>' pcg --endpoint http://127.0.0.1:8000/mcp --expected-pid $editorPid --input cubeless/tools/pipelines/examples/pcg.json
 ```
 
 각 명령은 preview로 입력·스키마·현재 대상의 일부 사전 조건을 확인합니다. 모든 엔진 변경을 시뮬레이션하는 dry-run이나 실행 성공 보장이 아닙니다. 실제 변경에는 `--apply`를 추가합니다. 결과 경로를 명시한다면 매 실행 새 `--output`을 씁니다. PCG 예제의 `world`는 별도 소유 테스트 맵과 일치해야 하며 실행기는 현재 사용자 월드를 자동 전환·저장하지 않습니다.

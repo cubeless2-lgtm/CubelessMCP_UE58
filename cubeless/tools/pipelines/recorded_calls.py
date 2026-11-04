@@ -9,9 +9,10 @@ from pipelines.recorded_call_storage import ReceiptStorage, StorageError
 
 
 class RecordedCalls:
-    def __init__(self, endpoint, output, report, toolsets, *, storage_v2=False):
+    def __init__(self, endpoint, output, report, toolsets, *, storage_v2=False,
+                 expected_project=None, expected_pid=None):
         self.storage = ReceiptStorage(output, report) if storage_v2 else None
-        self.client = OfficialMCPClient(endpoint)
+        self.client = OfficialMCPClient(endpoint, expected_project=expected_project, expected_pid=expected_pid)
         self.output, self.report, self.toolsets = output, report, toolsets
         self.schemas = {}
 

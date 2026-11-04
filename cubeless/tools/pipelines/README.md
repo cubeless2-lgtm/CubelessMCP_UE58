@@ -1,6 +1,6 @@
 # 선택형 UE 5.8.3 실무 실행기
 
-전체 설치·운영은 [도구 묶음 안내](../../README.md)를 참조하십시오. `python <프로젝트>/cubeless/tools/run_pipeline.py blueprint|niagara|pcg --endpoint URL --input cubeless/...json`은 어디서 실행해도 실행기 파일 위치의 배포본을 식별합니다. `.uproject`가 하나면 `--project`를 생략할 수 있고, 결과 경로 생략 시 `cubeless/records/operations`에 새 고유 결과를 만듭니다. 사용자 입력·출력 및 설정 파일 내부의 명시된 파일 상대 경로는 프로젝트 루트 기준이며 기존 cwd 상대 호출과 다릅니다. `--verification`은 결과를 해당 `cubeless/records/verification` 아래로 제한합니다. 기존 `-m pipelines.production_*` 호출은 PYTHONPATH를 이 묶음의 tools로 지정하면 계속 사용할 수 있습니다.
+전체 설치·운영은 [도구 묶음 안내](../../README.md)를 참조하십시오. `python <프로젝트>/cubeless/tools/run_pipeline.py blueprint|niagara|pcg --endpoint URL --expected-pid PID --input cubeless/...json`은 어디서 실행해도 실행기 파일 위치의 배포본을 식별합니다. `.uproject`가 하나면 `--project`를 생략할 수 있고, 결과 경로 생략 시 `cubeless/records/operations`에 새 고유 결과를 만듭니다. 사용자 입력·출력 및 설정 파일 내부의 명시된 파일 상대 경로는 프로젝트 루트 기준이며 기존 cwd 상대 호출과 다릅니다. `--verification`은 결과를 해당 `cubeless/records/verification` 아래로 제한합니다. 기존 `-m pipelines.production_*` 호출은 PYTHONPATH를 이 묶음의 tools로 지정하면 계속 사용할 수 있습니다.
 
 프로젝트의 공식 ModelContextProtocol 서버와 등록된 Cubeless 도구를 호출합니다. 별도 MCP 서버나 TCP 브릿지가 아니며, 플러그인 로딩에 필요하지 않습니다. 외부 Python에서는 `unreal`을 import하지 않습니다.
 
@@ -8,14 +8,14 @@
 
 ## 환경과 실행
 
-UE 5.8.3 에디터에서 공식 ModelContextProtocol, Toolset Registry, CubelessMCP_UE58 및 작업에 필요한 Niagara/PCG 플러그인을 활성화합니다. 실제 실행 중인 프로젝트 파일과 MCP 주소를 지정합니다. 다음은 프로젝트 루트에서 실행하는 PowerShell 예입니다.
+UE 5.8.3 에디터에서 공식 ModelContextProtocol, Toolset Registry, CubelessMCP_UE58 및 작업에 필요한 Niagara/PCG 플러그인을 활성화합니다. 실제 실행 중인 프로젝트 파일과 MCP 주소를 지정합니다. 리스너를 소유한 에디터 PID를 확인해 $editorPid에 넣습니다. 새 작업 세션은 이 PID와 프로젝트를 다시 확인합니다. 다음은 프로젝트 루트에서 실행하는 PowerShell 예입니다.
 
 ```powershell
 py -3 -m venv cubeless/.venv-pipelines
 & cubeless/.venv-pipelines/Scripts/python.exe -m pip install -r cubeless/tools/pipeline-requirements.txt
 $env:PYTHONPATH=(Resolve-Path cubeless/tools).Path
 & cubeless/.venv-pipelines/Scripts/python.exe -m pipelines.production_blueprint `
-  --endpoint http://127.0.0.1:8000/mcp --project ./UnrealMCP5_8_3.uproject `
+  --endpoint http://127.0.0.1:8000/mcp --expected-pid $editorPid --project ./UnrealMCP5_8_3.uproject `
   --input cubeless/tools/pipelines/examples/blueprint.json `
   --output cubeless/records/operations/my-bp-preview.json
 ```

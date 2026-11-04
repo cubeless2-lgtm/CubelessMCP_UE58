@@ -35,7 +35,7 @@ $Project = '<프로젝트 루트>/어떤이름.uproject'
 ```powershell
 python -m venv '<프로젝트 루트>/cubeless/.venv-pipelines'
 & '<프로젝트 루트>/cubeless/.venv-pipelines/Scripts/python.exe' -m pip install -r '<프로젝트 루트>/cubeless/tools/pipeline-requirements.txt'
-& '<프로젝트 루트>/cubeless/.venv-pipelines/Scripts/python.exe' '<프로젝트 루트>/cubeless/tools/run_pipeline.py' blueprint --endpoint http://127.0.0.1:8000/mcp --input cubeless/tools/pipelines/examples/blueprint.json
+& '<프로젝트 루트>/cubeless/.venv-pipelines/Scripts/python.exe' '<프로젝트 루트>/cubeless/tools/run_pipeline.py' blueprint --endpoint http://127.0.0.1:8000/mcp --expected-pid $editorPid --input cubeless/tools/pipelines/examples/blueprint.json
 ```
 
 마지막 명령은 preview이며 실행 위치는 어느 디렉터리여도 됩니다. `-m pipelines.production_*`도 기존과 같이 지원하지만 모듈 검색을 위해 해당 묶음의 `cubeless/tools`를 PYTHONPATH에 지정해야 합니다. 새 진입점은 이 설정이 필요 없습니다.

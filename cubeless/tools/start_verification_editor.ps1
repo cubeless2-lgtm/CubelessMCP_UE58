@@ -40,6 +40,17 @@ try {
     $state.editor = $exe.FullName
     $state.project = $selected.FullName
 
+    $state.stage = 'validate_engine'
+    $versionFile = Join-Path $exe.Directory.Parent.Parent.FullName 'Build/Build.version'
+    $version = Get-Content -LiteralPath $versionFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($version -isnot [pscustomobject] -or
+        ($version.MajorVersion -isnot [int] -and $version.MajorVersion -isnot [long]) -or
+        ($version.MinorVersion -isnot [int] -and $version.MinorVersion -isnot [long]) -or
+        $version.MajorVersion -ne 5 -or $version.MinorVersion -ne 8) {
+        throw 'The selected engine must declare integer MajorVersion 5 and MinorVersion 8 in Engine/Build/Build.version.'
+    }
+    $state.stage = 'validate_paths'
+
     $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Receipt)
     $path = [IO.Path]::GetFullPath($path)
     $verification = [IO.Path]::Combine($root, 'cubeless', 'records', 'verification') + '\'
@@ -59,7 +70,9 @@ try {
     try { $lockHeld = $mutex.WaitOne(0) }
     catch [Threading.AbandonedMutexException] { $lockHeld = $true; throw 'Previous launcher was interrupted; reconcile its receipt and process.' }
     if (-not $lockHeld) { throw 'Another verification launcher is active.' }
-    $editors = @(Get-Process | Where-Object { $_.ProcessName -in 'UnrealEditor', 'UnrealEditor-Cmd' })
+    $editors = @(Get-Process | Where-Object {
+        $_.ProcessName -match '^UnrealEditor(?:-Win64-(?:Debug|DebugGame|Development|Shipping|Test))?(?:-Cmd)?$'
+    })
     if ($editors.Count) { throw "An Editor already exists (PID $($editors.Id -join ', ')); check its project and connection." }
     $listeners = [Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
     if ($listeners | Where-Object Port -eq $Port) { throw "TCP port $Port is occupied." }

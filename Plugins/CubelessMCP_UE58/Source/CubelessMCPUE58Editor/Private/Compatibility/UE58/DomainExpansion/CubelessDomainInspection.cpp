@@ -65,7 +65,7 @@ bool RestorePackageAfterRollback(UPackage& Package,bool DirtyBefore,bool ValuesR
 FObject PCGCounts(const FObject& P,bool ForceReadbackFailure=false)
 {
     const FString Path=String(P,TEXT("asset_path")), Name=String(P,TEXT("node_name"));
-    if(!Path.StartsWith(TEXT("/Game/_MCP_Temp/")) || !FPackageName::IsValidLongPackageName(Path) || Path.Contains(TEXT("//")) || Name.IsEmpty()) { return Error(TEXT("Canonical temp graph path and exact node_name required")); }
+    if(!Cubeless::UE58::DomainExpansion::CanonicalGamePath(Path) || Name.IsEmpty()) { return Error(TEXT("Canonical /Game graph path and exact node_name required")); }
     UPCGGraph* Graph=Asset<UPCGGraph>(P);
     if(!Graph || Graph->GetOutermost()->GetName()!=Path) { return Error(TEXT("Exact nonredirected PCG graph required")); }
     UPCGNode* Match=nullptr;
@@ -87,6 +87,8 @@ FObject PCGCounts(const FObject& P,bool ForceReadbackFailure=false)
     for(int32 I=0;I<4;++I) { Proposed->SetNumberField(Keys[I],After[I]); }
     R->SetObjectField(TEXT("before"),BeforeJSON); R->SetObjectField(TEXT("after"),BeforeJSON); R->SetObjectField(TEXT("proposed"),Proposed); R->SetBoolField(TEXT("dry_run"),DryRun); R->SetBoolField(TEXT("read_only"),DryRun); R->SetBoolField(TEXT("mutation_performed"),false); R->SetBoolField(TEXT("package_dirty_before"),DirtyBefore); R->SetBoolField(TEXT("package_dirty_after"),DirtyBefore);
     if(DryRun) { return R; }
+    FString TargetWhy;
+    if(!Cubeless::UE58::DomainExpansion::WritableGameTarget(Graph,TargetWhy) || !Cubeless::UE58::DomainExpansion::WritableGameTarget(Settings,TargetWhy)) { return Error(TargetWhy); }
     const TSharedPtr<FJsonObject>* Expected=nullptr;
     if(!P->TryGetObjectField(TEXT("expected"),Expected) || !Expected || (*Expected)->Values.Num()!=4) { return Error(TEXT("All four expected counts required")); }
     for(int32 I=0;I<4;++I) { double V; const auto Value=(*Expected)->TryGetField(Keys[I]); if(!Value || Value->Type!=EJson::Number || !Value->TryGetNumber(V) || V!=Before[I]) { return Error(TEXT("expected_current mismatch; inspect again")); } }
@@ -95,14 +97,15 @@ FObject PCGCounts(const FObject& P,bool ForceReadbackFailure=false)
     if(!Changed) { R->SetBoolField(TEXT("no_op"),true); R->SetBoolField(TEXT("postcondition_verified"),true); return R; }
     TStrongObjectPtr<UPCGGraph> GraphHold(Graph);TStrongObjectPtr<UPCGNode> NodeHold(Match);TStrongObjectPtr<UPCGSettings> SettingsHold(Settings);TStrongObjectPtr<UPackage> PackageHold(Package);
     const FString GraphPath=Graph->GetPathName(),NodePath=Match->GetPathName(),SettingsPath=Settings->GetPathName();
-    auto CurrentSettings=[&]{return Cubeless::UE58::DomainExpansion::SafeContext()&&IsValid(Graph)&&IsValid(Match)&&IsValid(Settings)&&Graph->GetPackage()==PackageHold.Get()&&Graph->GetPathName()==GraphPath&&Match->GetPathName()==NodePath&&Settings->GetPathName()==SettingsPath&&Graph->GetNodes().Contains(Match)&&Match->GetSettings()==Settings&&Settings->IsIn(Graph);};
-    auto Unknown=[&]{R->SetBoolField(TEXT("success"),false);R->SetBoolField(TEXT("change_state_known"),false);R->SetBoolField(TEXT("mutation_performed"),true);R->SetBoolField(TEXT("do_not_retry"),true);R->SetStringField(TEXT("error"),TEXT("PCG graph/settings identity changed during callback; stop without rollback or further SDK"));return R;};
-    FScopedTransaction Transaction(NSLOCTEXT("CubelessDomainExpansion","UE58PCGCounts","Configure PCG Custom HLSL Elements")); Graph->Modify();if(!CurrentSettings())return Unknown(); Settings->Modify();if(!CurrentSettings())return Unknown();
-    auto Write=[&](const int32* Values) { for(int32 I=0;I<4;++I) { if(!CurrentSettings())return false;Properties[I]->SetPropertyValue_InContainer(Settings,Values[I]); FPropertyChangedEvent Event(Properties[I]); static_cast<UObject*>(Settings)->PostEditChangeProperty(Event);if(!CurrentSettings())return false; }return true; };
+    auto CurrentSettings=[&]{FString ScopeWhy;return Cubeless::UE58::DomainExpansion::WritableGameTarget(Graph,ScopeWhy)&&Cubeless::UE58::DomainExpansion::WritableGameTarget(Settings,ScopeWhy)&&IsValid(Match)&&Graph->GetPackage()==PackageHold.Get()&&Graph->GetPathName()==GraphPath&&Match->GetPathName()==NodePath&&Settings->GetPathName()==SettingsPath&&Graph->GetNodes().Contains(Match)&&Match->GetSettings()==Settings&&Settings->IsIn(Graph);};
+    auto Unknown=[&]{R->SetBoolField(TEXT("success"),false);R->SetBoolField(TEXT("change_state_known"),false);R->SetBoolField(TEXT("mutation_performed"),true);R->SetBoolField(TEXT("do_not_retry"),true);R->SetStringField(TEXT("error"),TEXT("PCG graph/settings identity or authored counts changed during callback; stop without rollback or further SDK"));return R;};
+    auto ValuesEqual=[&](const int32* Values){for(int32 I=0;I<4;++I)if(Properties[I]->GetPropertyValue_InContainer(Settings)!=Values[I])return false;return true;};
+    FScopedTransaction Transaction(NSLOCTEXT("CubelessDomainExpansion","UE58PCGCounts","Configure PCG Custom HLSL Elements")); Graph->Modify();if(!CurrentSettings()||!ValuesEqual(Before))return Unknown(); Settings->Modify();if(!CurrentSettings()||!ValuesEqual(Before))return Unknown();
+    auto Write=[&](const int32* Values) { int32 Staged[4]; for(int32 I=0;I<4;++I) Staged[I]=Properties[I]->GetPropertyValue_InContainer(Settings); for(int32 I=0;I<4;++I) { if(!CurrentSettings()||!ValuesEqual(Staged))return false; Properties[I]->SetPropertyValue_InContainer(Settings,Values[I]); Staged[I]=Values[I]; FPropertyChangedEvent Event(Properties[I]); static_cast<UObject*>(Settings)->PostEditChangeProperty(Event); if(!CurrentSettings()||!ValuesEqual(Staged))return false; } return true; };
     auto Verify=[&](const int32* Values) { for(int32 I=0;I<4;++I) { if(Properties[I]->GetPropertyValue_InContainer(Settings)!=Values[I]) { return false; } } return true; };
     if(!Write(After))return Unknown(); const bool Verified=Verify(After) && !ForceReadbackFailure;
     if(!Verified) { if(!Write(Before))return Unknown(); const bool Restored=RestorePackageAfterRollback(*Package,DirtyBefore,Verify(Before)); if(Restored) { Transaction.Cancel(); } R->SetBoolField(TEXT("success"),false); R->SetStringField(TEXT("error"),TEXT("Readback failed; inspect rollback before writing again")); R->SetBoolField(TEXT("do_not_retry"),true); R->SetBoolField(TEXT("rollback_verified"),Restored); }
-    else { Graph->MarkPackageDirty();if(!CurrentSettings())return Unknown(); }
+    else { Graph->MarkPackageDirty();if(!CurrentSettings()||!ValuesEqual(After))return Unknown(); }
     FObject Current=MakeShared<FJsonObject>(); for(int32 I=0;I<4;++I) { Current->SetNumberField(Keys[I],Properties[I]->GetPropertyValue_InContainer(Settings)); }
     R->SetObjectField(TEXT("after"),Current); R->SetBoolField(TEXT("mutation_performed"),true); R->SetBoolField(TEXT("postcondition_verified"),Verified); R->SetBoolField(TEXT("package_dirty_after"),Package->IsDirty()); return R;
 }
@@ -188,8 +191,8 @@ FObject Body(const FObject& P,bool bConfigure)
     Proposed->SetNumberField(TEXT("position_iterations"),Position); Proposed->SetNumberField(TEXT("velocity_iterations"),Velocity); Proposed->SetNumberField(TEXT("projection_iterations"),Projection);
     R->SetObjectField(TEXT("proposed"),Proposed);
     if(bDryRun) { return R; }
-    UWorld* World=C->GetWorld();
-    if(GEditor->PlayWorld || !World || !World->GetOutermost()->GetName().StartsWith(TEXT("/Game/_MCP_Temp/"))) { return Error(TEXT("Apply requires an editor temp map outside PIE")); }
+    FString TargetWhy;
+    if(!Cubeless::UE58::DomainExpansion::WritableGameTarget(C,TargetWhy)) { return Error(TargetWhy); }
     if(String(P,TEXT("expected_state_hash"))!=String(Before,TEXT("state_hash"))) { return Error(TEXT("state_hash mismatch; inspect again before applying")); }
     if((B->GetPositionSolverIterationCount()>=0)==Override && B->GetAllowPartialIslandSleep()==Sleep && B->PositionSolverIterationCount==Position && B->VelocitySolverIterationCount==Velocity && B->ProjectionSolverIterationCount==Projection)
     {
@@ -201,10 +204,10 @@ FObject Body(const FObject& P,bool bConfigure)
     R->SetBoolField(TEXT("package_dirty_before"),DirtyBefore);
     TStrongObjectPtr<UPrimitiveComponent> ComponentHold(C);TStrongObjectPtr<AActor> OwnerHold(C->GetOwner());TStrongObjectPtr<UPackage> PackageHold(Package);
     const FString ComponentPath=C->GetPathName();
-    auto CurrentBody=[&]{return Cubeless::UE58::DomainExpansion::SafeContext()&&IsValid(C)&&IsValid(OwnerHold.Get())&&C->GetOwner()==OwnerHold.Get()&&C->GetPackage()==PackageHold.Get()&&C->GetPathName()==ComponentPath&&C->GetBodyInstance(NAME_None,false)==B&&!B->WeldParent&&B->OwnerComponent.Get()==C;};
-    auto Unknown=[&]{R->SetBoolField(TEXT("success"),false);R->SetBoolField(TEXT("change_state_known"),false);R->SetBoolField(TEXT("mutation_performed"),true);R->SetBoolField(TEXT("do_not_retry"),true);R->SetStringField(TEXT("error"),TEXT("Body identity/context changed across a callback; stop without follow-up SDK"));return R;};
+    auto CurrentBody=[&]{FString ScopeWhy;return Cubeless::UE58::DomainExpansion::WritableGameTarget(C,ScopeWhy)&&IsValid(OwnerHold.Get())&&C->GetOwner()==OwnerHold.Get()&&C->GetPackage()==PackageHold.Get()&&C->GetPathName()==ComponentPath&&C->GetBodyInstance(NAME_None,false)==B&&!B->WeldParent&&B->OwnerComponent.Get()==C;};
+    auto Unknown=[&]{R->SetBoolField(TEXT("success"),false);R->SetBoolField(TEXT("change_state_known"),false);R->SetBoolField(TEXT("mutation_performed"),true);R->SetBoolField(TEXT("do_not_retry"),true);R->SetStringField(TEXT("error"),TEXT("Body identity/context or authored settings changed across a callback; stop without follow-up SDK"));return R;};
     FScopedTransaction Transaction(NSLOCTEXT("CubelessDomainExpansion","UE58BodySettings","Configure Body Solver Settings"));
-    C->Modify();if(!CurrentBody())return Unknown();C->GetOwner()->Modify();if(!CurrentBody())return Unknown();
+    C->Modify();if(!CurrentBody()||String(BodyState(*B),TEXT("state_hash"))!=String(Before,TEXT("state_hash")))return Unknown();C->GetOwner()->Modify();if(!CurrentBody()||String(BodyState(*B),TEXT("state_hash"))!=String(Before,TEXT("state_hash")))return Unknown();
     ApplyBodySettings(*B,static_cast<uint8>(Position),static_cast<uint8>(Velocity),static_cast<uint8>(Projection),Override,Sleep);if(!CurrentBody())return Unknown();
     const bool Verified=(B->GetPositionSolverIterationCount()>=0)==Override && B->GetAllowPartialIslandSleep()==Sleep && B->PositionSolverIterationCount==Position && B->VelocitySolverIterationCount==Velocity && B->ProjectionSolverIterationCount==Projection;
     if(!Verified)
@@ -216,7 +219,7 @@ FObject Body(const FObject& P,bool bConfigure)
         if(RollbackVerified) { Transaction.Cancel(); }
         R->SetBoolField(TEXT("rollback_verified"),RollbackVerified);
     }
-    if(Verified) { C->MarkPackageDirty();if(!CurrentBody())return Unknown(); }
+    if(Verified) { const FString AppliedHash=String(BodyState(*B),TEXT("state_hash"));C->MarkPackageDirty();if(!CurrentBody()||String(BodyState(*B),TEXT("state_hash"))!=AppliedHash)return Unknown(); }
     R->SetBoolField(TEXT("package_dirty_after"),Package->IsDirty()); R->SetBoolField(TEXT("mutation_performed"),true); R->SetBoolField(TEXT("postcondition_verified"),Verified); R->SetObjectField(TEXT("after"),BodyState(*B));
     return R;
 }
@@ -379,6 +382,7 @@ bool FCubelessDomainInspectionPCGRollback::RunTest(const FString& Parameters)
     const FObject Denied=PCGCounts(P);
     TestFalse(TEXT("External shared settings rejected"),Denied->GetBoolField(TEXT("success")));
     TestFalse(TEXT("External package untouched"),ExternalPackage->IsDirty());
+    Package->SetDirtyFlag(false); // Owned in-memory automation fixture; no persistent asset was created.
     return true;
 }
 

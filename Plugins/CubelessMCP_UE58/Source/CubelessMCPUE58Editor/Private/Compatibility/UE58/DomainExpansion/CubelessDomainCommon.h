@@ -4,6 +4,8 @@
 #include "Dom/JsonObject.h"
 #include "Editor.h"
 #include "Engine/World.h"
+#include "Engine/Level.h"
+#include "GameFramework/Actor.h"
 #include "EngineUtils.h"
 #include "Components/ActorComponent.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -49,25 +51,54 @@ inline FObject Error(const FString& Message)
 	auto R=Result(); R->SetBoolField(TEXT("success"),false); R->SetStringField(TEXT("error"),Message);
 	R->SetStringField(TEXT("error_code"),TEXT("ue58_authoring_validation")); return R;
 }
+// A loader/auditor can invoke arbitrary editor callbacks before our first writer.
+// Zero explicit writes does not prove absence of callback mutations or saves.
+inline FObject PreflightFailureAfterLoad(const FString& Target,UObject* Source,const FString& Stage,const FString& Message)
+{
+    auto R=Error(Message);
+    R->SetStringField(TEXT("stage"),Stage);R->SetStringField(TEXT("target_path"),Target);
+    R->SetBoolField(TEXT("mutation_attempted"),false);R->SetBoolField(TEXT("writer_entered"),false);
+    R->SetField(TEXT("mutation_performed"),MakeShared<FJsonValueNull>());
+    R->SetField(TEXT("changed"),MakeShared<FJsonValueNull>());
+    R->SetBoolField(TEXT("change_state_known"),false);R->SetBoolField(TEXT("read_only"),false);
+    R->SetBoolField(TEXT("do_not_retry"),true);R->SetBoolField(TEXT("postcondition_verified"),false);
+    R->SetBoolField(TEXT("compile_attempted"),false);R->SetBoolField(TEXT("save_attempted"),false);
+    R->SetField(TEXT("saved"),MakeShared<FJsonValueNull>());
+    R->SetStringField(TEXT("state_scope"),TEXT("No explicit writer/compile/save entered; load/audit callback effects are not fully known. Inspect source and target before a new request."));
+    R->SetBoolField(TEXT("observation_available"),SafeContext());
+    if(SafeContext())
+    {
+        UPackage* TargetPackage=FindPackage(nullptr,*Target);
+        R->SetBoolField(TEXT("target_package_observed_in_memory"),Live(TargetPackage));
+        if(Live(TargetPackage))R->SetBoolField(TEXT("target_package_dirty_observed"),TargetPackage->IsDirty());
+        R->SetBoolField(TEXT("source_observed_live"),Live(Source));
+        if(Live(Source)&&Live(Source->GetPackage()))R->SetBoolField(TEXT("source_package_dirty_observed"),Source->GetPackage()->IsDirty());
+    }
+    return R;
+}
 inline FString String(const FObject& P,const TCHAR* Key)
 {
 	FString S; if(P)P->TryGetStringField(Key,S); return S;
 }
 inline bool DryRun(const FObject& P) { return !P || !P->HasTypedField<EJson::Boolean>(TEXT("dry_run")) || P->GetBoolField(TEXT("dry_run")); }
-inline bool CanonicalTempPath(const FString& Path)
+inline bool CanonicalGamePath(const FString& Path)
 {
-	return BoundedText(Path,NAME_SIZE-1) && (Path.Len()+1+FPackageName::GetLongPackageAssetName(Path).Len()<NAME_SIZE) && Path.StartsWith(TEXT("/Game/_MCP_Temp/")) && !Path.Contains(TEXT("//")) &&
+	return BoundedText(Path,NAME_SIZE-1) && (Path.Len()+1+FPackageName::GetLongPackageAssetName(Path).Len()<NAME_SIZE) && Path.StartsWith(TEXT("/Game/")) && !Path.Contains(TEXT("//")) &&
 		!Path.Contains(TEXT(".")) && FPackageName::IsValidLongPackageName(Path);
 }
-inline bool UnusedAssetPath(const FString& Path,FString& Why)
+inline bool CanonicalTempPath(const FString& Path)
+{return CanonicalGamePath(Path) && Path.StartsWith(TEXT("/Game/_MCP_Temp/"));}
+inline bool UnusedAssetPath(const FString& Path,FString& Why,bool AllowGamePath=false)
 {
-	if(!SafeContext() || !CanonicalTempPath(Path)) { Why=TEXT("Canonical unused temp asset path required"); return false; }
+	if(!SafeContext() || !(AllowGamePath ? CanonicalGamePath(Path) : CanonicalTempPath(Path))) { Why=AllowGamePath ? TEXT("Canonical unused /Game asset path and idle Editor required") : TEXT("Canonical unused temp asset path required"); return false; }
 	const FString ObjectPath=Path+TEXT(".")+FPackageName::GetLongPackageAssetName(Path);
 	if(FindPackage(nullptr,*Path) || FPackageName::DoesPackageExist(Path) ||
 		FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath)).IsValid())
 	{ Why=TEXT("Target already exists in memory, registry or disk; overwrite is refused"); return false; }
 	return true;
 }
+inline bool UnusedGameAssetPath(const FString& Path,FString& Why)
+{return UnusedAssetPath(Path,Why,true);}
 inline FObject CandidateFailure(UObject* Object,const FString& Why,bool Pending=false)
 {
 	auto R=Error(Why); R->SetBoolField(TEXT("read_only"),false); R->SetBoolField(TEXT("mutation_performed"),true);
@@ -120,6 +151,32 @@ inline bool Writable(UObject* Object,FString& Why)
 {
 	if(!Live(Object) || !CanonicalTempPath(Object->GetOutermost()->GetName())) { Why=TEXT("Only an exact temp-owned target is writable"); return false; }
 	if(!SafeContext()) { Why=TEXT("An idle editor outside PIE is required"); return false; }
+	return true;
+}
+// Explicitly selected production writers use package/world ownership, not a test-folder name.
+// No save occurs. External Actor packages remain excluded until their dirty/rollback scope is supported.
+inline bool WritableGameTarget(UObject* Object,FString& Why)
+{
+	if(!SafeContext()) { Why=TEXT("An idle Editor outside PIE/SIE, GC and save is required"); return false; }
+	if(!Live(Object) || Object->IsTemplate() || Object->HasAnyFlags(RF_Transient)) { Why=TEXT("A live non-template project target is required"); return false; }
+	UPackage* Package=Object->GetPackage();
+	if(!Live(Package) || !CanonicalGamePath(Package->GetName()))
+	{ Why=TEXT("An exact /Game target in one non-external package is required"); return false; }
+	// UE5.8 GetOutermost is an alias of GetPackage. Check each physical Outer instead.
+	const UObject* Outer=Object;
+	for(;Outer && !Outer->IsA<UPackage>();Outer=Outer->GetOuter())
+	{
+		if(!Live(Outer) || Outer->IsTemplate() || Outer->HasAnyFlags(RF_Transient) || Outer->GetExternalPackage()!=nullptr)
+		{ Why=TEXT("Target outer chain must remain live, non-template and non-external"); return false; }
+	}
+	if(Outer!=Package) { Why=TEXT("Target physical Outer package changed"); return false; }
+	if(auto* Component=Cast<UActorComponent>(Object))
+	{
+		UWorld* World=GEditor->GetEditorWorldContext().World(); AActor* Owner=Component->GetOwner();
+		if(!Live(World) || World->WorldType!=EWorldType::Editor || World->bIsTearingDown || !Live(Owner) || Owner->IsTemplate() || Owner->HasAnyFlags(RF_Transient) ||
+			Component->GetWorld()!=World || Owner->GetWorld()!=World || !Owner->GetComponents().Contains(Component) || Owner->GetOutermost()!=Package || Owner->GetPackage()!=Package || !Live(Owner->GetLevel()) || Owner->GetLevel()->GetOutermost()!=Package)
+		{ Why=TEXT("A placed component owned by the current Editor world in one non-external /Game map package is required"); return false; }
+	}
 	return true;
 }
 template<typename T> T* Component(const FObject& P)

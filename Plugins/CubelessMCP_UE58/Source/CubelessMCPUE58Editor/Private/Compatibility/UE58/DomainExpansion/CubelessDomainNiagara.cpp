@@ -12,6 +12,8 @@
 #include "Misc/AutomationTest.h"
 #include "UObject/StructOnScope.h"
 #include "Curves/CurveFloat.h"
+#include "PackageTools.h"
+#include "HAL/FileManager.h"
 #endif
 
 namespace Cubeless::UE58::DomainExpansion
@@ -190,7 +192,8 @@ namespace
 struct FNiagaraBuildJob
 {
     TStrongObjectPtr<UNiagaraSystem> Candidate,Source;
-    TStrongObjectPtr<UPackage> Package;
+    TStrongObjectPtr<UPackage> Package,SourcePackage;
+    TStrongObjectPtr<UClass> SourceClass;
     TWeakObjectPtr<UWorld> World;
     FString Path,SourcePath,Phase=TEXT("initial_compile");
     FObject Request,Reply;
@@ -201,7 +204,7 @@ struct FNiagaraBuildJob
     {
         return SafeContext()&&Live(Candidate.Get())&&Live(Package.Get())&&Live(World.Get())&&!World->bIsTearingDown&&
             GEditor->GetEditorWorldContext().World()==World.Get()&&Candidate->GetPackage()==Package.Get()&&Candidate->GetPathName()==Path&&
-            (!Source.IsValid()||(Live(Source.Get())&&Source->GetPathName()==SourcePath&&!Source->GetPackage()->IsDirty()));
+            (SourcePath.IsEmpty()?Source.Get()==nullptr:(Live(Source.Get())&&Live(SourcePackage.Get())&&Live(SourceClass.Get())&&Source->GetClass()==SourceClass.Get()&&Source->GetPackage()==SourcePackage.Get()&&Source->GetPathName()==SourcePath&&!SourcePackage->IsDirty()));
     }
 };
 TMap<FString,TSharedPtr<FNiagaraBuildJob>> NiagaraBuilds;
@@ -218,7 +221,7 @@ void FailJob(FNiagaraBuildJob& J,const FString& Why,bool Pending=false)
     J.Reply->SetStringField(TEXT("target_path"),J.Path);
     J.Reply->SetStringField(TEXT("stage"),J.Phase);
     J.Reply->SetBoolField(TEXT("operation_complete"),true);
-    J.Done=true;J.Source.Reset();J.Package.Reset();J.World.Reset();
+    J.Done=true;J.Source.Reset();J.SourcePackage.Reset();J.SourceClass.Reset();J.Package.Reset();J.World.Reset();
 }
 bool Busy(const UNiagaraSystem* System)
 {return System->HasOutstandingCompilationRequests(true)||System->HasActiveCompilations();}
@@ -227,7 +230,7 @@ void Advance(FNiagaraBuildJob& J)
     if(J.Done)return;
     if(!J.Current()){FailJob(J,TEXT("Candidate/source/Editor identity changed; stop without follow-up writer"));return;}
     FString Conflict;if(!CheckAuthored(J.Candidate.Get(),J.Authored,Conflict)){FailJob(J,Conflict);return;}
-    if(J.Phase==TEXT("initial_compile")||J.Phase==TEXT("final_compile"))
+    if(J.Phase==TEXT("initial_compile")||J.Phase==TEXT("final_compile")||J.Phase==TEXT("post_publication_compile"))
     {
         // One nonblocking engine poll per frame; no Sleep or game-thread wait loop.
         J.Candidate->PollForCompilationComplete();
@@ -264,18 +267,35 @@ void Advance(FNiagaraBuildJob& J)
             // Return to the editor before the next compile poll.
             return;
         }
-        J.Phase=TEXT("publish");
-        if(!J.Candidate->IsValid()){FailJob(J,TEXT("Candidate system invalid after compilation"));return;}
-        J.Reply=Inspect(J.Candidate.Get());
+        if(J.Phase!=TEXT("post_publication_compile"))
+        {
+            J.Phase=TEXT("publish");
+            if(!J.Candidate->IsValid()){FailJob(J,TEXT("Candidate system invalid after compilation"));return;}
+            J.Reply=Inspect(J.Candidate.Get());
+            J.Reply->SetBoolField(TEXT("compile_succeeded"),true);
+            J.Reply->SetBoolField(TEXT("compile_attempted"),true);
+            J.Reply->SetBoolField(TEXT("publication_attempted"),true);
+            PublishCandidate(J.Candidate.Get(),J.Reply);
+            if(!J.Current()){FailJob(J,TEXT("Candidate/source/Editor changed during publication"));return;}
+            if(!J.Reply->GetBoolField(TEXT("success"))){const FString Why=String(J.Reply,TEXT("error"));FailJob(J,Why.IsEmpty()?TEXT("Candidate publication failed"):Why);return;}
+            if(!CheckAuthored(J.Candidate.Get(),J.Authored,Conflict)){FailJob(J,Conflict);return;}
+            if(Busy(J.Candidate.Get()))
+            {
+                // AssetCreated/dirty callbacks may start a new compile without editing authored fields.
+                // Observe it on later frames, with the existing deadline; never publish or request it again.
+                J.Reply->SetBoolField(TEXT("pre_publication_compile_succeeded"),true);
+                J.Reply->RemoveField(TEXT("compile_succeeded"));
+                J.Reply->SetBoolField(TEXT("post_publication_compile_observed"),true);
+                J.Phase=TEXT("post_publication_compile");J.PhaseStarted=FPlatformTime::Seconds();return;
+            }
+        }
+        if(!J.Candidate->IsValid()){FailJob(J,TEXT("Candidate invalid after publication/compilation"));return;}
+        J.Reply->SetBoolField(TEXT("compilation_pending"),false);
         J.Reply->SetBoolField(TEXT("compile_succeeded"),true);
-        J.Reply->SetBoolField(TEXT("compile_attempted"),true);
-        PublishCandidate(J.Candidate.Get(),J.Reply);
-        if(!J.Current()){FailJob(J,TEXT("Candidate/source/Editor changed during publication"));return;}
-        if(!J.Reply->GetBoolField(TEXT("success"))){const FString Why=String(J.Reply,TEXT("error"));FailJob(J,Why.IsEmpty()?TEXT("Candidate publication failed"):Why);return;}
-        if(!CheckAuthored(J.Candidate.Get(),J.Authored,Conflict)){FailJob(J,Conflict);return;}
+        J.Reply->SetBoolField(TEXT("system_valid"),true);
         J.Reply->SetStringField(TEXT("stage"),TEXT("complete"));
         J.Reply->SetBoolField(TEXT("operation_complete"),true);
-        J.Done=true;J.Source.Reset();J.Package.Reset();J.World.Reset();
+        J.Done=true;J.Source.Reset();J.SourcePackage.Reset();J.SourceClass.Reset();J.Package.Reset();J.World.Reset();
     }
 }
 FObject JobReply(const FNiagaraBuildJob& J)
@@ -320,18 +340,33 @@ FObject Niagara(const FObject& P)
         return R;
     }
     const FString Target=String(P,TEXT("target_path")),Source=String(P,TEXT("source_path"));FString Why;
-    if(!UnusedAssetPath(Target,Why))return Error(Why);
+    if(!UnusedGameAssetPath(Target,Why))return Error(Why);
     if(NiagaraBuilds.Num()>=32)
     {for(auto It=NiagaraBuilds.CreateIterator();It;++It)if(It.Value()->Done){It.RemoveCurrent();break;}}
     if(NiagaraBuilds.Num()>=32)return Error(TEXT("Too many active retained Niagara operations; inspect pending work"));
     TStrongObjectPtr<UNiagaraSystem> SourceSystem(Source.IsEmpty()?nullptr:LoadObject<UNiagaraSystem>(nullptr,*Source));
-    if(!Source.IsEmpty()&&(!IndependentSavedSource(SourceSystem.Get(),Why)||Busy(SourceSystem.Get())))return Error(Why.IsEmpty()?TEXT("Fully compiled source required"):Why);
+    FString PreflightStage=TEXT("source_load_and_audit");
+    auto Reject=[&](const FString& Message){return Source.IsEmpty()?Error(Message):PreflightFailureAfterLoad(Target,SourceSystem.Get(),PreflightStage,Message);};
+    if(!Source.IsEmpty()&&(!IndependentSavedSource(SourceSystem.Get(),Why)||Busy(SourceSystem.Get())))return Reject(Why.IsEmpty()?TEXT("Fully compiled source required"):Why);
+    TStrongObjectPtr<UPackage> SourcePackage(SourceSystem.IsValid()?SourceSystem->GetPackage():nullptr);
+    TStrongObjectPtr<UClass> SourceClass(SourceSystem.IsValid()?SourceSystem->GetClass():nullptr);
+    const FString SourceIdentity=SourceSystem.IsValid()?SourceSystem->GetPathName():TEXT("");
+    auto SourceCurrent=[&]{return SafeContext()&&(Source.IsEmpty()?SourceSystem.Get()==nullptr:
+        (Live(SourceSystem.Get())&&Live(SourcePackage.Get())&&Live(SourceClass.Get())&&SourceSystem->GetPackage()==SourcePackage.Get()&&
+         SourceSystem->GetClass()==SourceClass.Get()&&SourceSystem->GetPathName()==SourceIdentity&&!SourcePackage->IsDirty()&&!Busy(SourceSystem.Get())));};
+    PreflightStage=TEXT("recipe_preflight");
     const TArray<TSharedPtr<FJsonValue>>* Specs=nullptr;
-    if(P->HasField(TEXT("emitters"))&&(!P->TryGetArrayField(TEXT("emitters"),Specs)||!Specs||Specs->Num()>16))return Error(TEXT("At most16 emitter edit specs required"));
+    if(P->HasField(TEXT("emitters"))&&(!P->TryGetArrayField(TEXT("emitters"),Specs)||!Specs||Specs->Num()>16))return Reject(TEXT("At most16 emitter edit specs required"));
+    PreflightStage=TEXT("pre_duplicate_admission");
+    if(!SourceCurrent()||!UnusedGameAssetPath(Target,Why)||!SourceCurrent())return Reject(Why.IsEmpty()?TEXT("Source/context changed before candidate creation"):Why);
     auto R=Result();R->SetBoolField(TEXT("dry_run"),DryRun(P));R->SetStringField(TEXT("target_path"),Target);
     if(DryRun(P)){R->SetStringField(TEXT("validation_level"),TEXT("path/source preflight; full candidate validation occurs during asynchronous apply"));return R;}
+    const TWeakObjectPtr<UWorld> ExpectedWorld=GEditor->GetEditorWorldContext().World();
     UPackage* Package=CreatePackage(*Target);const FName Name(*FPackageName::GetLongPackageAssetName(Target));
-    auto J=MakeShared<FNiagaraBuildJob>();J->Package.Reset(Package);J->Source.Reset(SourceSystem.Get());J->SourcePath=SourceSystem.IsValid()?SourceSystem->GetPathName():TEXT("");J->World=GEditor->GetEditorWorldContext().World();J->Request=P;
+    auto J=MakeShared<FNiagaraBuildJob>();J->Package.Reset(Package);J->Source.Reset(SourceSystem.Get());J->SourcePackage.Reset(SourcePackage.Get());J->SourceClass.Reset(SourceClass.Get());J->SourcePath=SourceIdentity;J->World=ExpectedWorld;J->Request=P;
+    J->Path=Target+TEXT(".")+Name.ToString();
+    if(!SourceCurrent()||!Live(ExpectedWorld.Get())||GEditor->GetEditorWorldContext().World()!=ExpectedWorld.Get()||!Live(Package)||Package->GetName()!=Target||FindObject<UObject>(Package,*Name.ToString()))
+    {J->Phase=TEXT("create_candidate_package");FailJob(*J,TEXT("Source/package/target changed during candidate package creation; no asset writer entered"));return JobReply(*J);}
     J->Candidate.Reset(SourceSystem.IsValid()?DuplicateObject<UNiagaraSystem>(SourceSystem.Get(),Package,Name):NewObject<UNiagaraSystem>(Package,Name,RF_Public|RF_Standalone|RF_Transactional));
     J->Path=Target+TEXT(".")+Name.ToString();
     if(!J->Candidate.IsValid()){FailJob(*J,TEXT("Unable to allocate candidate system; package may remain"));return JobReply(*J);}
@@ -350,6 +385,138 @@ FObject Niagara(const FObject& P)
     NiagaraBuilds.Add(J->Path,J);Advance(*J);if(!J->Done)StartTicker();return JobReply(*J);
 }
 #if WITH_DEV_AUTOMATION_TESTS
+// Owned, bounded integration regression: real load and publication callbacks, no user assets.
+class FNiagaraPublicationAndAdmissionCheck : public IAutomationLatentCommand
+{
+    FAutomationTestBase* Test;
+    FString Root,SourcePath,TargetPath;
+    FDelegateHandle Published;
+    int32 Step=0,PublicationCount=0;
+    bool RecompilePendingObserved=false;
+    double Started=FPlatformTime::Seconds();
+    FObject Request(const FString& Target,const FString& Source=TEXT(""))
+    {
+        auto P=MakeShared<FJsonObject>();P->SetStringField(TEXT("operation"),Source.IsEmpty()?TEXT("authoring.niagara.create"):TEXT("authoring.niagara.variant"));
+        P->SetStringField(TEXT("target_path"),Target);P->SetStringField(TEXT("source_path"),Source);P->SetBoolField(TEXT("dry_run"),false);return P;
+    }
+    void Trace(const TCHAR* Label,const FObject& R)
+    {
+        FString Text;auto Writer=TJsonWriterFactory<>::Create(&Text);FJsonSerializer::Serialize(R.ToSharedRef(),Writer);
+        Test->AddInfo(FString(Label)+TEXT(" ")+Text);
+    }
+    bool UnloadOwnedSource()
+    {
+        UPackage* Package=FindPackage(nullptr,*SourcePath);
+        if(!Package||Package->IsDirty())return false;
+        NiagaraBuilds.Remove(SourcePath+TEXT(".NS_Source"));
+        UPackageTools::FUnloadPackageParams Params({Package});Params.bResetTransBuffer=false;Params.bUnloadDirtyPackages=false;
+        UPackageTools::UnloadPackages(Params);
+        return FindObject<UNiagaraSystem>(nullptr,*(SourcePath+TEXT(".NS_Source")))==nullptr;
+    }
+public:
+    explicit FNiagaraPublicationAndAdmissionCheck(FAutomationTestBase* InTest):Test(InTest)
+    {
+        Root=TEXT("/Game/_MCP_Temp/DomainExpansion/CubelessTests/P2_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
+        SourcePath=Root+TEXT("/NS_Source");TargetPath=Root+TEXT("/NS_Collision");
+    }
+    virtual ~FNiagaraPublicationAndAdmissionCheck()
+    {
+        if(Published.IsValid())FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().OnInMemoryAssetCreated().Remove(Published);
+    }
+    virtual bool Update() override
+    {
+        if(FPlatformTime::Seconds()-Started>60.0){Test->AddError(TEXT("Owned Niagara boundary check deadline; preserve candidate and do not replay"));return true;}
+        if(Step==0)
+        {
+            Published=FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().OnInMemoryAssetCreated().AddLambda([this](UObject* Asset)
+            {
+                auto* System=Cast<UNiagaraSystem>(Asset);
+                if(System&&System->GetPathName()==SourcePath+TEXT(".NS_Source"))
+                {
+                    ++PublicationCount;
+                    if(PublicationCount==1){System->RequestCompile(true);RecompilePendingObserved=Busy(System);}
+                }
+            });
+            auto R=Niagara(Request(SourcePath));Trace(TEXT("publication_create"),R);
+            if(!Test->TestTrue(TEXT("Creation admitted"),R->GetBoolField(TEXT("success"))))return true;
+            Step=1;return false;
+        }
+        if(Step==1)
+        {
+            auto* Entry=NiagaraBuilds.Find(SourcePath+TEXT(".NS_Source"));
+            if(!Entry){Test->AddError(TEXT("Owned operation missing"));return true;}
+            if(!(*Entry)->Done)return false;
+            auto R=JobReply(**Entry);Trace(TEXT("publication_finished"),R);
+            Test->TestTrue(TEXT("Callback actually started new compilation"),RecompilePendingObserved);
+            Test->TestEqual(TEXT("Publication is not replayed after compile"),PublicationCount,1);
+            if(!Test->TestTrue(TEXT("Completed compile succeeds"),R->GetBoolField(TEXT("success"))))return true;
+            Test->TestTrue(TEXT("Post-publication compilation was observed"),R->HasTypedField<EJson::Boolean>(TEXT("post_publication_compile_observed"))&&R->GetBoolField(TEXT("post_publication_compile_observed")));
+            Test->TestTrue(TEXT("Operation completed"),R->GetBoolField(TEXT("operation_complete")));
+            Test->TestFalse(TEXT("No pending compile in final receipt"),R->GetBoolField(TEXT("compilation_pending")));
+            Test->TestFalse(TEXT("No implicit save"),R->GetBoolField(TEXT("saved")));
+            auto* System=(*Entry)->Candidate.Get();auto* Package=System->GetPackage();
+            const FString Filename=FPackageName::LongPackageNameToFilename(SourcePath,FPackageName::GetAssetPackageExtension());
+            IFileManager::Get().MakeDirectory(*FPaths::GetPath(Filename),true);
+            FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;Args.SaveFlags=SAVE_NoError;
+            if(!Test->TestTrue(TEXT("Save only owned source fixture"),UPackage::SavePackage(Package,System,*Filename,Args)))return true;
+            FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().OnInMemoryAssetCreated().Remove(Published);Published.Reset();
+            Step=2;return false; // No local job references survive into unload.
+        }
+        if(Step==2)
+        {
+            if(!Test->TestTrue(TEXT("Owned source cold before admission callback"),UnloadOwnedSource()))return true;
+            int32 Hits=0;TWeakObjectPtr<UNiagaraSystem> Intruder;
+            const auto Loaded=FCoreUObjectDelegates::OnAssetLoaded.AddLambda([&](UObject* Object)
+            {
+                if(Object&&Object->GetPathName()==SourcePath+TEXT(".NS_Source"))
+                {
+                    ++Hits;auto* Package=CreatePackage(*TargetPath);
+                    Intruder=NewObject<UNiagaraSystem>(Package,TEXT("NS_Collision"),RF_Public|RF_Standalone);
+                }
+            });
+            auto R=Niagara(Request(TargetPath,SourcePath));FCoreUObjectDelegates::OnAssetLoaded.Remove(Loaded);Trace(TEXT("load_callback_collision"),R);
+            Test->TestEqual(TEXT("Source load callback fired once"),Hits,1);
+            Test->TestFalse(TEXT("Callback target collision rejected"),R->GetBoolField(TEXT("success")));
+            Test->TestEqual(TEXT("Collision refused at final admission"),String(R,TEXT("stage")),FString(TEXT("pre_duplicate_admission")));
+            Test->TestFalse(TEXT("No asset writer entered"),R->GetBoolField(TEXT("writer_entered")));
+            Test->TestFalse(TEXT("Callback effects not reported as known unchanged"),R->GetBoolField(TEXT("change_state_known")));
+            Test->TestTrue(TEXT("Unknown change and save stay null"),R->HasTypedField<EJson::Null>(TEXT("mutation_performed"))&&R->HasTypedField<EJson::Null>(TEXT("saved")));
+            Test->TestTrue(TEXT("Callback target remains live and empty, not duplicated over"),Intruder.IsValid()&&Intruder->GetEmitterHandles().Num()==0);
+            Test->TestFalse(TEXT("No target file saved"),FPackageName::DoesPackageExist(TargetPath));
+            Step=3;return false;
+        }
+        if(Step==3)
+        {
+            if(!Test->TestTrue(TEXT("Owned source cold before dirty callback"),UnloadOwnedSource()))return true;
+            int32 Hits=0;TWeakObjectPtr<UNiagaraSystem> Source;
+            const auto Loaded=FCoreUObjectDelegates::OnAssetLoaded.AddLambda([&](UObject* Object)
+            {
+                if(Object&&Object->GetPathName()==SourcePath+TEXT(".NS_Source")){++Hits;Source=Cast<UNiagaraSystem>(Object);Object->GetPackage()->SetDirtyFlag(true);}
+            });
+            const FString Unused=Root+TEXT("/NS_SourceConflict");
+            auto R=Niagara(Request(Unused,SourcePath));FCoreUObjectDelegates::OnAssetLoaded.Remove(Loaded);Trace(TEXT("load_callback_source_dirty"),R);
+            Test->TestEqual(TEXT("Dirty callback fired once"),Hits,1);
+            Test->TestFalse(TEXT("Dirty source refused"),R->GetBoolField(TEXT("success")));
+            Test->TestFalse(TEXT("Source change remains uncertain"),R->GetBoolField(TEXT("change_state_known")));
+            Test->TestTrue(TEXT("Observed dirty source reported"),R->GetBoolField(TEXT("source_package_dirty_observed")));
+            Test->TestTrue(TEXT("No automatic retry"),R->GetBoolField(TEXT("do_not_retry")));
+            Test->TestNull(TEXT("No candidate package created"),FindPackage(nullptr,*Unused));
+            // This test changed only its own dirty flag, not authored data or a user package.
+            if(Source.IsValid())Source->GetPackage()->SetDirtyFlag(false);
+            return true;
+        }
+        return true;
+    }
+};
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDomainNiagaraPublicationAdmissionTest,
+    "CubelessMCP.DomainExpansion.Authoring.NiagaraPublicationAdmission",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FDomainNiagaraPublicationAdmissionTest::RunTest(const FString& Parameters)
+{
+    if(!TestTrue(TEXT("Idle Editor required"),SafeContext()))return false;
+    for(const auto& Entry:NiagaraBuilds)if(!Entry.Value->Done){AddError(TEXT("Existing operation active; test not started"));return false;}
+    ADD_LATENT_AUTOMATION_COMMAND(FNiagaraPublicationAndAdmissionCheck(this));return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDomainNiagaraAuthoredConflictTest,
     "CubelessMCP.DomainExpansion.Authoring.NiagaraAuthoredConflict",
     EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)

@@ -64,7 +64,7 @@ FObject Constraint(const FObject& P)
 	}
 	if(!Owner || !Instance) { return Error(TEXT("Exact constraint not found")); }
 	FPhysicsOwnerLease Lease(Owner);
-	const TFunction<bool()> Current=[&](){if(!Lease.Current())return false;if(auto* C=Cast<UPhysicsConstraintComponent>(Owner))return &C->ConstraintInstance==Instance;auto* T=Cast<UPhysicsConstraintTemplate>(Owner);return T&&KeepAsset.IsValid()&&KeepAsset->ConstraintSetup.Contains(T)&&&T->DefaultInstance==Instance;};
+	const TFunction<bool()> Current=[&](){if(!Lease.Current())return false;FString ScopeWhy;if(P->HasField(TEXT("settings"))&&!WritableGameTarget(Owner,ScopeWhy))return false;if(auto* C=Cast<UPhysicsConstraintComponent>(Owner))return &C->ConstraintInstance==Instance;auto* T=Cast<UPhysicsConstraintTemplate>(Owner);return T&&KeepAsset.IsValid()&&KeepAsset->ConstraintSetup.Contains(T)&&&T->DefaultInstance==Instance;};
 	if(!Current())return Error(TEXT("Current exact constraint owner required"));
 	const FConstraintProfileProperties BeforeProfile=Instance->ProfileInstance;
 	const FString Before=StructText(FConstraintProfileProperties::StaticStruct(),&BeforeProfile);
@@ -73,7 +73,7 @@ FObject Constraint(const FObject& P)
 	R->SetStringField(TEXT("target"),Owner->GetPathName()); R->SetBoolField(TEXT("constraint_instance_valid"),Instance->IsValidConstraintInstance());
 	R->SetBoolField(TEXT("runtime_application_confirmed"),false);
 	if(!P->HasField(TEXT("settings"))) { return R; }
-	FString Why; if(!Writable(Owner,Why)) { return Error(Why); }
+	FString Why; if(!WritableGameTarget(Owner,Why)) { return Error(Why); }
 	const TSharedPtr<FJsonObject>* Changes=nullptr;
 	if(!P->TryGetObjectField(TEXT("settings"),Changes) || !Changes) { return Error(TEXT("settings object required")); }
 	FConstraintProfileProperties Proposed=BeforeProfile;
@@ -86,7 +86,7 @@ FObject Constraint(const FObject& P)
 	if(Desired==Before) { R->SetBoolField(TEXT("no_op"),true); R->SetBoolField(TEXT("postcondition_verified"),true); return R; }
 	UPackage* Package=Owner->GetOutermost(); const bool DirtyBefore=Package->IsDirty();
 	FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP","UE58ConstraintProfile","Configure Constraint Profile"));
-	Owner->Modify();if(!Current())return PhysicsUnknown(R,TEXT("owner_modify"));if(auto* C=Cast<UActorComponent>(Owner)){C->GetOwner()->Modify();if(!Current())return PhysicsUnknown(R,TEXT("actor_modify"));}
+	Owner->Modify();if(!Current()||StructText(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance)!=Before)return PhysicsUnknown(R,TEXT("owner_modify"));if(auto* C=Cast<UActorComponent>(Owner)){C->GetOwner()->Modify();if(!Current()||StructText(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance)!=Before)return PhysicsUnknown(R,TEXT("actor_modify"));}
 	Instance->CopyProfilePropertiesFrom(Proposed);if(!Current())return PhysicsUnknown(R,TEXT("copy_constraint_profile"));
 	const bool Verified=StructText(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance)==Desired;
 	bool RolledBack=false;
@@ -96,7 +96,7 @@ FObject Constraint(const FObject& P)
 		RolledBack=StructText(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance)==Before;
 		if(RolledBack) { Package->SetDirtyFlag(DirtyBefore);if(!Current())return PhysicsUnknown(R,TEXT("restore_dirty"));Transaction.Cancel(); }
 	}
-	else { Owner->MarkPackageDirty();if(!Current())return PhysicsUnknown(R,TEXT("mark_dirty")); }
+	else { Owner->MarkPackageDirty();if(!Current()||StructText(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance)!=Desired)return PhysicsUnknown(R,TEXT("mark_dirty")); }
 	Fields=MakeShared<FJsonObject>(); Describe(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance,Fields); R->SetObjectField(TEXT("properties"),Fields);
 	R->SetStringField(TEXT("rollback_scope"),TEXT("Selected authored constraint profile and package dirty bit only; global callbacks and runtime physics are unverified"));MutationResult(R,Owner,Before,StructText(FConstraintProfileProperties::StaticStruct(),&Instance->ProfileInstance),DirtyBefore,Verified,RolledBack);
 	return R;
@@ -149,12 +149,12 @@ FObject Body(const FObject& P)
 	if(!C || C->IsA<USkinnedMeshComponent>() || C->IsA<UInstancedStaticMeshComponent>()) { return Error(TEXT("Exact non-skinned, non-instanced editor component required")); }
 	FBodyInstance* B=C->GetBodyInstance(NAME_None,false);
 	if(!B || B->WeldParent || B->OwnerComponent.Get()!=C) { return Error(TEXT("One component-owned unwelded body required")); }
-	FPhysicsOwnerLease Lease(C);const TFunction<bool()> Current=[&](){return Lease.Current()&&C->GetBodyInstance(NAME_None,false)==B&&!B->WeldParent&&B->OwnerComponent.Get()==C;};
+	FPhysicsOwnerLease Lease(C);const TFunction<bool()> Current=[&](){FString ScopeWhy;return Lease.Current()&&(!P->HasField(TEXT("settings"))||WritableGameTarget(C,ScopeWhy))&&C->GetBodyInstance(NAME_None,false)==B&&!B->WeldParent&&B->OwnerComponent.Get()==C;};
 	const auto* ResponseField=FindFProperty<FStructProperty>(FBodyInstance::StaticStruct(),TEXT("CollisionResponses"));if(!Current()||!ResponseField||ResponseField->Struct!=FCollisionResponse::StaticStruct())return Error(TEXT("Current owned body and native collision-response descriptor required"));
 	const FBodyFields Before=ReadBody(C,B); const FString BeforeText=BodyText(Before);
 	FObject R=Result(); R->SetObjectField(TEXT("properties"),BodyFields(Before)); R->SetStringField(TEXT("state_hash"),Hash(BeforeText)); R->SetBoolField(TEXT("runtime_application_confirmed"),false);
 	if(!P->HasField(TEXT("settings"))) { return R; }
-	FString Why; if(!Writable(C,Why)) { return Error(Why); }
+	FString Why; if(!WritableGameTarget(C,Why)) { return Error(Why); }
 	const TSharedPtr<FJsonObject>* Settings=nullptr;
 	if(!P->TryGetObjectField(TEXT("settings"),Settings) || !Settings || (*Settings)->Values.IsEmpty()) { return Error(TEXT("Nonempty settings required")); }
 	FBodyFields Proposed=Before;
@@ -192,10 +192,10 @@ FObject Body(const FObject& P)
 	if(!Expected(P,Hash(BeforeText))) { return Error(TEXT("state_hash mismatch; inspect again")); }
 	if(BodyText(Proposed)==BeforeText) { R->SetBoolField(TEXT("no_op"),true); R->SetBoolField(TEXT("postcondition_verified"),true); return R; }
 	UPackage* Package=C->GetOutermost(); const bool DirtyBefore=Package->IsDirty();
-	FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP","UE58BodyCollision","Configure Body Collision")); C->Modify();if(!Current())return PhysicsUnknown(R,TEXT("component_modify"));C->GetOwner()->Modify();if(!Current())return PhysicsUnknown(R,TEXT("actor_modify"));
+	FScopedTransaction Transaction(NSLOCTEXT("UnrealMCP","UE58BodyCollision","Configure Body Collision")); C->Modify();if(!Current()||BodyText(ReadBody(C,B))!=BeforeText)return PhysicsUnknown(R,TEXT("component_modify"));C->GetOwner()->Modify();if(!Current()||BodyText(ReadBody(C,B))!=BeforeText)return PhysicsUnknown(R,TEXT("actor_modify"));
 	if(!WriteBody(C,B,Proposed,Current))return PhysicsUnknown(R,TEXT("write_body"));const bool Verified=BodyText(ReadBody(C,B))==BodyText(Proposed); bool RolledBack=false;
 	if(!Verified) { if(!WriteBody(C,B,Before,Current))return PhysicsUnknown(R,TEXT("restore_body"));RolledBack=BodyText(ReadBody(C,B))==BeforeText; if(RolledBack) { Package->SetDirtyFlag(DirtyBefore);if(!Current())return PhysicsUnknown(R,TEXT("restore_body_dirty"));Transaction.Cancel(); } }
-	else { C->MarkPackageDirty();if(!Current())return PhysicsUnknown(R,TEXT("mark_body_dirty")); }
+	else { C->MarkPackageDirty();if(!Current()||BodyText(ReadBody(C,B))!=BodyText(Proposed))return PhysicsUnknown(R,TEXT("mark_body_dirty")); }
 	R->SetObjectField(TEXT("properties"),BodyFields(ReadBody(C,B))); R->SetStringField(TEXT("rollback_scope"),TEXT("Selected authored body fields/profile/responses and package dirty bit only; global callbacks and runtime physics are unverified"));MutationResult(R,C,BeforeText,BodyText(ReadBody(C,B)),DirtyBefore,Verified,RolledBack); return R;
 }
 #if WITH_DEV_AUTOMATION_TESTS

@@ -260,3 +260,47 @@ Chooser 컴파일은 활성 입력·결과의 실제 진단으로 판정하고 �
 PoseSearch에 Composite를 입력할 때 세그먼트의 값·순서·실제 참조를 보존 검사한다. 캐시된 전체 길이가 같아도 콜백의 trim/rate/배치/참조 변경은 허용하지 않는다. 불일치 시 실제 실패 단계와 최초 속성을 보고하고 후속 저장을 중단한다. 이미 발견된 입력에 `RF_NeedPostLoadSubobjects` 또는 `RF_WillBeLoaded`가 남아 있으면 `input_readiness_rejected=true`로 writer 진입 전에 거절한다. 같은 요청에서 엔진 로더를 중복 실행하거나 자동 재시도하지 않는다. 정상 로드 완료 후의 새 명시 요청은 별개다.
 
 소유 에셋의 네이티브 값·참조 콜백과 pending 플래그 입장 검사를 통과했다. 새 프로세스의 공식 MCP에서 저장된 Composite 등록·저장·참조를 확인했다. 보호된 `AnimationTrack`의 Python 직접 값 조회는 제한되어 별도 재로드 값 검사는 완료로 기록하지 않았다. 검증 C++·에셋·원시 자료는 배포 리소스에서 제외한다.
+### 실무 경로와 상세 계약 조회 (2026-11-05)
+
+기존 `CubelessDomainExpansionTools`의 다음 편집 기능은 정규 `/Game/` 대상 경로를 받는다. 도구 이름·입력 기본값·반환 형식은 유지하며 새 중복 도구를 등록하지 않는다.
+
+- PCG: `configure_pcg_custom_hlsl_elements`, `configure_pcg_manual_inspection`, `edit_pcg_manual_point_override`
+- Chaos: `configure_chaos_body_solver_overrides`, `configure_chaos_body_collision`, `configure_chaos_constraint_profile`, `configure_physics_asset_constraint_profile`
+- Cloth: `build_chaos_cloth_dataflow_graph`, `create_chaos_cloth_asset_from_template`, `edit_chaos_cloth_snapshot_history`
+
+컴포넌트 편집은 현재 Editor 월드에 배치된 실제 소유 컴포넌트를 명시해야 한다. CDO·템플릿·외부 Actor 패키지·다른 월드·PIE/SIE·GC·저장 중인 상태는 허용하지 않는다. `/Engine`과 플러그인 콘텐츠를 쓰는 기능은 아니다. PCG HLSL 경로의 각 세그먼트는 기존과 같이 영문·숫자·밑줄을 사용한다. 새 에셋 생성은 메모리·Asset Registry·디스크에서 사용하지 않은 경로만 받는다. Rig·AnimBP·Niagara 신규/variant 제작도 사용하지 않는 정규 `/Game/` 출력 경로를 받는다. 기존 원본·콜백·컴파일·비동기 완료 검사는 유지하며 자동 저장이나 덮어쓰기는 하지 않는다.
+
+먼저 `dry_run=true`로 제안과 현재 값을 확인하고, 해당 API가 요구하는 `expected_current` 또는 `expected_state_hash`를 전달하여 `dry_run=false`로 실행한다. 콜백이 입력 값·참조·대상 경로를 바꾸면 원 요청을 자동 재시도하지 않는다. 결과의 `native_result`, `change_state_known`, `stage`, `do_not_retry`, `saved`와 실제 대상을 확인한다. 이 10개 도구는 자동 저장하지 않으며, PCG 수동 delta의 재생성도 별도 요청이다. 원자적 rollback을 제공하지 않는다.
+
+Blueprint Graph와 Batch의 공식 도구 설명은 실행 목적과 주요 제한을 중심으로 줄였다. 긴 기존 계약은 같은 플러그인 안의 `operations/tool_contract_details.json`에 보존하며, 기존 `CubelessDiscoveryTools.describe_toolset`으로 조회한다. 정확한 Toolset 이름으로 `verbosity="terse"`를 먼저 사용하고, 필요한 도구 이름을 `query`로 지정해 `limit=1, verbosity="full"`로 상세 내용을 읽는다. 예:
+
+```json
+{"toolset":"cubeless_mcp_ue58.registration.batch_toolset.CubelessBatchTools","query":"execute_batch","limit":1,"verbosity":"full"}
+```
+
+`original_detailed_contract`는 보존한 원문이며 `input_schema`는 현재 공식 Registry의 스키마다. `registered=true`는 등록 상태를 뜻하며 행동 검증 완료를 뜻하지 않는다. 상세 원문은 길 수 있으므로 기본 공식 `describe_toolset`이나 간단한 검색 응답에 다시 합치지 않는다.
+
+### 제작 도구의 일반 Game 출력 경로 (2026-11-05 후속)
+
+기존 `CubelessDomainExpansionTools`의 다음 네 도구를 그대로 사용한다. 도구 수와 입력·기본값·반환 형식은 바뀌지 않았다.
+
+- `build_controlrig_physics_graph_variant`: 저장된 독립 Rig를 새 경로로 복제하고 지원하는 Physics/Dynamics 유닛을 추가한다.
+- `build_anim_blueprint_graph_variant`: 저장된 AnimBP를 새 경로로 복제하고 지원하는 AnimGraph 레시피를 적용한다.
+- `create_niagara_stateless_system`: 새 Niagara 시스템을 만든다.
+- `build_niagara_stateless_variant`: 저장된 시스템을 새 경로로 복제하고 Stateless 설정을 편집한다.
+
+예를 들어 다음 입력을 `create_niagara_stateless_system`에 전달한다.
+
+```json
+{"target_system_path":"/Game/VFX/NS_New","dry_run":false}
+```
+
+출력 이름은 메모리·Registry·디스크에 없어야 한다. `/Engine`·플러그인 마운트·객체 접미사를 포함한 경로는 거절한다. Rig/AnimBP/variant 원본은 저장된 clean 에셋이어야 하며 각 기능의 ControlRig·ControlRigPhysics/ControlRigDynamics·Niagara 등 필요한 엔진 플러그인이 활성화돼 있어야 한다.
+
+모든 도구의 기본값은 `dry_run=true`이며 자동 저장하지 않는다. Niagara의 `accepted=true`는 접수만 의미한다. `inspect_niagara_stateless_authoring`에 `system_path="/Game/VFX/NS_New"`를 전달하고 `authoring_status.operation_complete`, `success`, `compile_succeeded`를 확인한 뒤 명시적으로 저장한다. 실패·pending 후보를 재생성하지 말고 실제 대상과 상태부터 조회한다.
+
+UE 5.8.4에서 네 제작 경로·덮어쓰기/잘못된 경로 거절·소유 결과 저장과 새 프로세스 재로드를 확인했다. 고급 레시피 지원 범위와 런타임 성능 검증을 확대한 것은 아니다. 기존 `inspect_controlrig_rigvm_topology`는 Runtime Rig를 조회하지 못하는 제한이 있으며, 이번 Runtime Rig 재로드 값은 설치 엔진의 공개 조회 API로 확인했다.
+
+2026-11-05 P2 보완: 원본 로드와 감사 이후에도 대상 경로가 비어 있는지 재검사한다. 이 단계에서 거절되면 `writer_entered=false`는 우리 writer 미진입을 뜻하며, 콜백이 실제로 아무것도 바꾸지 않았다는 뜻은 아니다. `change_state_known=false`, `mutation_performed=null`, `saved=null`이면 반환된 원본·대상 관측과 실제 상태를 확인하고 자동 재시도하지 않는다. `save_attempted=false`는 명시적인 API 저장 호출이 없었다는 의미다.
+
+Niagara 게시 콜백이 컴파일을 다시 시작하면 기존 10초 단계 제한과 프레임별 폴링으로 종료를 관찰한다. 이때 재게시·컴파일 재요청·시간 제한 연장은 하지 않는다. `stage=post_publication_compile`은 아직 대기 중이며, 실패 응답의 `operation_complete=true`도 엔진 컴파일 취소를 뜻하지 않는다. `success`, `compilation_pending`, `compile_succeeded`를 함께 확인한다.

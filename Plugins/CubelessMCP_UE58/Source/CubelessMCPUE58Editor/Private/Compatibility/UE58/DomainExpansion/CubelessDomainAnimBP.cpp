@@ -57,41 +57,45 @@ FObject Recipe(const FObject& P)
 {
 	const FString Source=FPackageName::ExportTextPathToObjectPath(String(P,TEXT("source_path"))), Target=String(P,TEXT("target_path")); FString Why;
 	if(!BoundedObjectPath(Source)) { return Error(TEXT("Bounded canonical source object/package path required after export-text normalization")); }
-	if(!UnusedAssetPath(Target,Why)) { return Error(Why); }
+	if(!UnusedGameAssetPath(Target,Why)) { return Error(Why); }
 	UAnimBlueprint* SourceBP=LoadObject<UAnimBlueprint>(nullptr,*Source);
     TStrongObjectPtr<UAnimBlueprint> SourceHold(SourceBP);
-	if(!IndependentSavedSource(SourceBP,Why)) { return Error(Why); }
-	if(!SourceBP->TargetSkeleton || !SourceBP->GeneratedClass || GEditor->PlayWorld) { return Error(TEXT("Compiled source AnimBP with skeleton outside PIE required")); }
+    FString PreflightStage=TEXT("source_load_and_audit");
+    auto Reject=[&](const FString& Why){return PreflightFailureAfterLoad(Target,SourceHold.Get(),PreflightStage,Why);};
+	if(!IndependentSavedSource(SourceBP,Why)) { return Reject(Why); }
+	if(!SourceBP->TargetSkeleton || !SourceBP->GeneratedClass || GEditor->PlayWorld) { return Reject(TEXT("Compiled source AnimBP with skeleton outside PIE required")); }
 	TStrongObjectPtr<UPackage> SourcePackage(SourceBP->GetOutermost());
 	TStrongObjectPtr<UClass> SourceClass(SourceBP->GetClass()),SourceGeneratedClass(SourceBP->GeneratedClass);
 	TStrongObjectPtr<USkeleton> Skeleton(SourceBP->TargetSkeleton);
 	const FString SourceIdentity=SourceBP->GetPathName(),SourcePackageName=SourcePackage->GetName();
 	auto SourceCurrent=[&]{return SafeContext()&&Live(SourceHold.Get())&&Live(SourcePackage.Get())&&Live(SourceClass.Get())&&Live(SourceGeneratedClass.Get())&&Live(Skeleton.Get())&&SourceBP->GetClass()==SourceClass.Get()&&SourceBP->GetOutermost()==SourcePackage.Get()&&SourcePackage->GetName()==SourcePackageName&&SourceBP->GetPathName()==SourceIdentity&&!SourcePackage->IsDirty()&&SourceBP->TargetSkeleton==Skeleton.Get()&&SourceBP->GeneratedClass==SourceGeneratedClass.Get();};
+    PreflightStage=TEXT("recipe_preflight");
 	const TArray<TSharedPtr<FJsonValue>> *Nodes=nullptr,*Links=nullptr;
-	if(!P->TryGetArrayField(TEXT("nodes"),Nodes) || !Nodes || Nodes->IsEmpty() || Nodes->Num()>32 || !P->TryGetArrayField(TEXT("links"),Links) || !Links || Links->Num()>128) { return Error(TEXT("1..32 node specs and 0..128 links required")); }
+	if(!P->TryGetArrayField(TEXT("nodes"),Nodes) || !Nodes || Nodes->IsEmpty() || Nodes->Num()>32 || !P->TryGetArrayField(TEXT("links"),Links) || !Links || Links->Num()>128) { return Reject(TEXT("1..32 node specs and 0..128 links required")); }
 	TSet<FString> IDs;
 	for(const auto& Value:*Nodes)
 	{
-		if(!Value || Value->Type!=EJson::Object) { return Error(TEXT("Node spec object required")); }
+		if(!Value || Value->Type!=EJson::Object) { return Reject(TEXT("Node spec object required")); }
 		const auto Spec=Value->AsObject(); const FString ID=String(Spec,TEXT("id")), ClassPath=String(Spec,TEXT("class_path"));
 		FString ClassName; ClassPath.Split(TEXT("."),nullptr,&ClassName);
-		if(ID.IsEmpty() || ID.Len()>64 || ID==TEXT("root") || ID==TEXT("source") || IDs.Contains(ID) || !ClassPath.StartsWith(TEXT("/Script/AnimGraph.")) || !NodeClasses.Contains(ClassName)) { return Error(TEXT("Unique bounded node id and catalog class_path required")); }
-		for(TCHAR C:ID) { if(C>127 || (!FChar::IsAlnum(C) && C!=TEXT('_'))) { return Error(TEXT("Node ids must use English identifiers")); } }
+		if(ID.IsEmpty() || ID.Len()>64 || ID==TEXT("root") || ID==TEXT("source") || IDs.Contains(ID) || !ClassPath.StartsWith(TEXT("/Script/AnimGraph.")) || !NodeClasses.Contains(ClassName)) { return Reject(TEXT("Unique bounded node id and catalog class_path required")); }
+		for(TCHAR C:ID) { if(C>127 || (!FChar::IsAlnum(C) && C!=TEXT('_'))) { return Reject(TEXT("Node ids must use English identifiers")); } }
 		const FString AssetPath=FPackageName::ExportTextPathToObjectPath(String(Spec,TEXT("animation_asset")));
-		if(!AssetPath.IsEmpty()&&!BoundedObjectPath(AssetPath)){return Error(TEXT("Bounded canonical animation asset path required after export-text normalization"));}
+		if(!AssetPath.IsEmpty()&&!BoundedObjectPath(AssetPath)){return Reject(TEXT("Bounded canonical animation asset path required after export-text normalization"));}
 		IDs.Add(ID);
 	}
 	FObject R=Result(); R->SetBoolField(TEXT("dry_run"),DryRun(P)); R->SetStringField(TEXT("target_path"),Target);
 	R->SetField(TEXT("source_unchanged"),MakeShared<FJsonValueNull>());
 	R->SetStringField(TEXT("source_preservation_scope"),TEXT("Exact object/package/class/generated-class/skeleton identity and clean package; arbitrary unmarked memory changes not proven"));
-	if(DryRun(P)) { R->SetStringField(TEXT("validation_level"),TEXT("path/source/class preflight; candidate compile validates full recipe")); return R; }
 	TStrongObjectPtr<UPackage> Package;TStrongObjectPtr<UAnimBlueprint> BP;TStrongObjectPtr<UEdGraph> GraphHold;
 	TArray<TSharedPtr<FJsonValue>> Prefix;FString Stage;bool DirtyLast=false,DirtyObserved=false;
 	auto Enter=[&](const TCHAR* InStage){Stage=InStage;Prefix.Add(MakeShared<FJsonValueString>(Stage));R->SetBoolField(TEXT("read_only"),false);R->SetBoolField(TEXT("mutation_performed"),true);};
 	auto Fail=[&](const FString& Message){R->SetBoolField(TEXT("success"),false);R->SetStringField(TEXT("error"),Message);R->SetStringField(TEXT("stage"),Stage);R->SetStringField(TEXT("target_path"),Target);R->SetBoolField(TEXT("candidate_retained"),BP.Get()!=nullptr);R->SetBoolField(TEXT("change_state_known"),false);R->SetBoolField(TEXT("do_not_retry"),true);R->SetBoolField(TEXT("postcondition_verified"),false);R->SetArrayField(TEXT("actual_call_prefix"),Prefix);R->SetBoolField(TEXT("package_dirty_last_observed_valid"),DirtyObserved);if(DirtyObserved)R->SetBoolField(TEXT("package_dirty_last_observed"),DirtyLast);return R;};
 	auto CandidateCurrent=[&]{return SourceCurrent()&&Live(Package.Get())&&Live(BP.Get())&&Package->GetName()==Target&&BP->GetOutermost()==Package.Get()&&BP->GetClass()==SourceClass.Get()&&BP->GetPathName()==Target+TEXT(".")+FPackageName::GetLongPackageAssetName(Target)&&BP->TargetSkeleton==Skeleton.Get();};
+	PreflightStage=TEXT("pre_duplicate_admission");
 	// Loading/auditing sources can broadcast editor callbacks. Check vacancy again before writing.
-	if(!SourceCurrent()||!UnusedAssetPath(Target,Why)||!SourceCurrent()){return Error(Why.IsEmpty()?TEXT("Source changed before duplication"):Why);}
+	if(!SourceCurrent()||!UnusedGameAssetPath(Target,Why)||!SourceCurrent()){return Reject(Why.IsEmpty()?TEXT("Source changed before duplication"):Why);}
+	if(DryRun(P)) { R->SetStringField(TEXT("validation_level"),TEXT("path/source/class preflight; candidate compile validates full recipe")); return R; }
 	Enter(TEXT("create_candidate_package"));Package.Reset(CreatePackage(*Target));
 	if(!SourceCurrent()||!Live(Package.Get())||Package->GetName()!=Target){return Fail(TEXT("Source/package changed during candidate creation"));}
 	Enter(TEXT("duplicate_candidate"));BP.Reset(DuplicateObject<UAnimBlueprint>(SourceBP,Package.Get(),*FPackageName::GetLongPackageAssetName(Target)));

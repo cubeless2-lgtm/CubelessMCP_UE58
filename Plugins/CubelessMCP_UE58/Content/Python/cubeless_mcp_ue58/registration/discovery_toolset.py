@@ -18,7 +18,7 @@ class CubelessDiscoveryTools(unreal.ToolsetDefinition):
     @staticmethod
     def describe_toolset(toolset: str, query: str = "", offset: int = 0, limit: int = 20,
             include_schema: bool = True, verbosity: str = "full") -> str:
-        """Describe original paginated contracts/policies with actual current binding metadata. Accepts all/* and original category; limit1..50, offset>=0 and full/terse, with original defaults/errors. Original source schema remains separate from the authoritative current logical Registry schema; unconnected/ambiguous contracts stay explicit incomplete."""
+        """Describe original category/all/* contracts, or retained detailed prose for an exact registered Graph/Batch toolset name. limit=1..50 and offset>=0 paginate tool rows; verbosity is full or terse. For current-tool detail, select with terse then use the exact method query, limit=1 and full (which may be large). Original prose/schema and current Registry schema are separately labeled; metadata does not prove engine behavior. No engine operation is dispatched."""
         from ..operations.tool_discovery import describe_toolset
         return json.dumps(describe_toolset(toolset, query, offset, limit, include_schema, verbosity), ensure_ascii=False, sort_keys=True)
 

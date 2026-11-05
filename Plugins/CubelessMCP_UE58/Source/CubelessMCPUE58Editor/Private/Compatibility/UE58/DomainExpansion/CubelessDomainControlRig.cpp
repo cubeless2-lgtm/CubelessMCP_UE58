@@ -133,42 +133,46 @@ struct FRigRecipeWork
 FObject RigRecipe(const FObject& P)
 {
     FRigRecipeWork W;W.Target=String(P,TEXT("target_path"));const FString SourcePath=String(P,TEXT("source_path"));FString Why;
-    if(!BoundedObjectPath(SourcePath)||!UnusedAssetPath(W.Target,Why)){return Error(Why.IsEmpty()?TEXT("Bounded source object path required"):Why);}
+    if(!BoundedObjectPath(SourcePath)||!UnusedGameAssetPath(W.Target,Why)){return Error(Why.IsEmpty()?TEXT("Bounded source object path required"):Why);}
+    FString PreflightStage=TEXT("source_load_and_audit");
+    auto Reject=[&](const FString& Why){return PreflightFailureAfterLoad(W.Target,W.Source.Get(),PreflightStage,Why);};
     W.Source.Reset(LoadObject<UObject>(nullptr,*SourcePath));
-    if(!SafeContext()||!IndependentSavedSource(W.Source.Get(),Why)){return Error(Why.IsEmpty()?TEXT("Source load changed editor context"):Why);}
-    if(!W.Source->IsA<UControlRigRuntimeAsset>()&&!W.Source->IsA<UControlRigBlueprint>()){return Error(TEXT("Source must be a standalone runtime rig or legacy ControlRig Blueprint"));}
+    if(!SafeContext()||!IndependentSavedSource(W.Source.Get(),Why)){return Reject(Why.IsEmpty()?TEXT("Source load changed editor context"):Why);}
+    if(!W.Source->IsA<UControlRigRuntimeAsset>()&&!W.Source->IsA<UControlRigBlueprint>()){return Reject(TEXT("Source must be a standalone runtime rig or legacy ControlRig Blueprint"));}
     W.SourcePath=W.Source->GetPathName();W.SourceClass=W.Source->GetClass();W.SourcePackage.Reset(W.Source->GetOutermost());
-    if(!FPackageName::DoesPackageExist(W.SourcePackage->GetName(),&W.SourceFilename)||!FileDigest(W.SourceFilename,W.SourceDigest)||!W.SourceCurrent()){return Error(TEXT("Unable to capture clean persisted source"));}
+    if(!FPackageName::DoesPackageExist(W.SourcePackage->GetName(),&W.SourceFilename)||!FileDigest(W.SourceFilename,W.SourceDigest)||!W.SourceCurrent()){return Reject(TEXT("Unable to capture clean persisted source"));}
+    PreflightStage=TEXT("recipe_preflight");
     const TArray<TSharedPtr<FJsonValue>> *Nodes=nullptr,*Links=nullptr;
-    if(!P->TryGetArrayField(TEXT("nodes"),Nodes)||!Nodes||Nodes->IsEmpty()||Nodes->Num()>32||!P->TryGetArrayField(TEXT("links"),Links)||!Links||Links->Num()>128){return Error(TEXT("1..32 unit nodes and 0..128 exact links required"));}
+    if(!P->TryGetArrayField(TEXT("nodes"),Nodes)||!Nodes||Nodes->IsEmpty()||Nodes->Num()>32||!P->TryGetArrayField(TEXT("links"),Links)||!Links||Links->Num()>128){return Reject(TEXT("1..32 unit nodes and 0..128 exact links required"));}
     TSet<FString> Names;TMap<FString,TStrongObjectPtr<UScriptStruct>> Types;
     for(const auto& Value:*Nodes)
     {
-        if(!Value||Value->Type!=EJson::Object){return Error(TEXT("Unit node object required"));}
+        if(!Value||Value->Type!=EJson::Object){return Reject(TEXT("Unit node object required"));}
         const FObject Spec=Value->AsObject();const FString Name=String(Spec,TEXT("name")),Path=String(Spec,TEXT("struct_path"));
-        if(!EnglishIdentifier(Name)||Names.Contains(Name)||!BoundedObjectPath(Path)){return Error(TEXT("Unique bounded engine unit name and struct object path required"));}
+        if(!EnglishIdentifier(Name)||Names.Contains(Name)||!BoundedObjectPath(Path)){return Reject(TEXT("Unique bounded engine unit name and struct object path required"));}
         TStrongObjectPtr<UScriptStruct> Type(LoadObject<UScriptStruct>(nullptr,*Path));
-        if(!W.SourceCurrent()||!SupportedRigUnit(Type.Get())){return Error(TEXT("Current nondeprecated Physics/Dynamics unit struct required"));}
+        if(!W.SourceCurrent()||!SupportedRigUnit(Type.Get())){return Reject(TEXT("Current nondeprecated Physics/Dynamics unit struct required"));}
         if(Spec->HasField(TEXT("pin_defaults")))
         {
             const TSharedPtr<FJsonObject>* Defaults=nullptr;
-            if(!Spec->TryGetObjectField(TEXT("pin_defaults"),Defaults)||!Defaults||!Defaults->IsValid()||(*Defaults)->Values.Num()>64){return Error(TEXT("At most 64 pin defaults required"));}
+            if(!Spec->TryGetObjectField(TEXT("pin_defaults"),Defaults)||!Defaults||!Defaults->IsValid()||(*Defaults)->Values.Num()>64){return Reject(TEXT("At most 64 pin defaults required"));}
             for(const auto& Pair:(*Defaults)->Values)
             {
                 FString Text;
-                if(!RigPinPath(Name+TEXT(".")+Pair.Key)||!Pair.Value||!Pair.Value->TryGetString(Text)||!BoundedText(Text,4096)||HasMCPReference(Text)){return Error(TEXT("Bounded scalar pin defaults required"));}
+                if(!RigPinPath(Name+TEXT(".")+Pair.Key)||!Pair.Value||!Pair.Value->TryGetString(Text)||!BoundedText(Text,4096)||HasMCPReference(Text)){return Reject(TEXT("Bounded scalar pin defaults required"));}
             }
         }
         Names.Add(Name);Types.Add(Name,MoveTemp(Type));
     }
     for(const auto& Value:*Links)
     {
-        if(!Value||Value->Type!=EJson::Object||!RigPinPath(String(Value->AsObject(),TEXT("from_pin")))||!RigPinPath(String(Value->AsObject(),TEXT("to_pin")))){return Error(TEXT("Bounded exact link objects required"));}
+        if(!Value||Value->Type!=EJson::Object||!RigPinPath(String(Value->AsObject(),TEXT("from_pin")))||!RigPinPath(String(Value->AsObject(),TEXT("to_pin")))){return Reject(TEXT("Bounded exact link objects required"));}
     }
     W.R->SetBoolField(TEXT("dry_run"),DryRun(P));W.R->SetStringField(TEXT("target_path"),W.Target);W.R->SetBoolField(TEXT("saved"),false);
-    if(DryRun(P)){W.R->SetStringField(TEXT("validation_level"),TEXT("source/path/unit-class preflight; controller and compile validate candidate"));return W.R;}
+    PreflightStage=TEXT("pre_duplicate_admission");
     // Source loads and audits may invoke callbacks. Recheck target immediately before the first writer.
-    if(!W.SourceCurrent()||!UnusedAssetPath(W.Target,Why)||!W.SourceCurrent()){return Error(Why.IsEmpty()?TEXT("Source changed before duplication"):Why);}
+    if(!W.SourceCurrent()||!UnusedGameAssetPath(W.Target,Why)||!W.SourceCurrent()){return Reject(Why.IsEmpty()?TEXT("Source changed before duplication"):Why);}
+    if(DryRun(P)){W.R->SetStringField(TEXT("validation_level"),TEXT("source/path/unit-class preflight; controller and compile validate candidate"));return W.R;}
     W.Enter(TEXT("create_candidate_package"));W.Package.Reset(CreatePackage(*W.Target));
     if(!W.SourceCurrent()||!Live(W.Package.Get())||W.Package->GetName()!=W.Target){W.Known=false;return W.Fail(TEXT("Candidate package creation changed identity/context"));}
     W.Enter(TEXT("duplicate_candidate"));W.Candidate.Reset(DuplicateObject<UObject>(W.Source.Get(),W.Package.Get(),*FPackageName::GetLongPackageAssetName(W.Target)));

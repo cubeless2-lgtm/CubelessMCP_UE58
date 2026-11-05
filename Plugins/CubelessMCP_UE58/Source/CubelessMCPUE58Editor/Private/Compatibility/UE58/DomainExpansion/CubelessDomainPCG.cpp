@@ -90,7 +90,7 @@ FObject Manual(const FObject& P)
 	const FString Op=String(P,TEXT("operation"));
 	if(Op==TEXT("authoring.pcg.inspection"))
 	{
-		FString Why; if(!Writable(C,Why)) { return Error(Why); }
+		FString Why; if(!WritableGameTarget(C,Why)) { return Error(Why); }
 		bool Enabled; if(!P->TryGetBoolField(TEXT("enabled"),Enabled)) { return Error(TEXT("enabled must be boolean")); }
 		for(auto It=OwnedInspection.CreateIterator();It;++It) { if(!It->IsValid()) { It.RemoveCurrent(); } }
 		FObject R=Result(); R->SetBoolField(TEXT("dry_run"),DryRun(P)); R->SetBoolField(TEXT("owned_reference_before"),OwnedInspection.Contains(C));
@@ -126,7 +126,7 @@ FObject Manual(const FObject& P)
 		}
 		R->SetArrayField(TEXT("targets"),Rows); R->SetBoolField(TEXT("inspection_enabled"),C->GetExecutionState().GetInspection().IsInspecting()); R->SetBoolField(TEXT("truncated"),All.Num()==256); return R;
 	}
-	FString Why; if(!Writable(C,Why)) { return Error(Why); }
+	FString Why; if(!WritableGameTarget(C,Why)) { return Error(Why); }
 	const FTarget* T=nullptr; for(const auto& Row:All) { if(KeyText(Row.Key.Hash)==TargetKey) { if(T) { return Error(TEXT("Ambiguous storage key")); } T=&Row; } }
 	if(!T) { return Error(TEXT("Exact target_key from current inspection required")); }
 	auto Stored=Container->Get<FPCGDeltaCollection>(T->Key); const auto* Current=Stored.IsValid() ? Stored.GetPtr<FPCGDeltaCollection>() : nullptr;
@@ -193,14 +193,15 @@ FObject Manual(const FObject& P)
 	const FPCGSourceDataContainer Before=*Container; const bool DirtyBefore=C->GetOutermost()->IsDirty();
     TStrongObjectPtr<UPCGComponent> ComponentHold(C);TStrongObjectPtr<AActor> ActorHold(C->GetOwner());TStrongObjectPtr<UPackage> PackageHold(C->GetPackage());
     const FString ComponentPath=C->GetPathName();const auto InspectionGeneration=C->GetExecutionState().GetInspection().GetExecutedStacksGeneration();
-    auto CurrentOwner=[&]{return SafeContext()&&Live(ComponentHold.Get())&&Live(ActorHold.Get())&&Live(PackageHold.Get())&&C->GetOwner()==ActorHold.Get()&&C->GetPackage()==PackageHold.Get()&&C->GetPathName()==ComponentPath&&!C->IsGenerating()&&!C->IsCleaningUp()&&C->GetExecutionState().GetSourceDataContainer()==Container&&C->GetExecutionState().GetInspection().GetExecutedStacksGeneration()==InspectionGeneration;};
+    auto CurrentOwner=[&]{FString ScopeWhy;return WritableGameTarget(ComponentHold.Get(),ScopeWhy)&&Live(ActorHold.Get())&&Live(PackageHold.Get())&&C->GetOwner()==ActorHold.Get()&&C->GetPackage()==PackageHold.Get()&&C->GetPathName()==ComponentPath&&!C->IsGenerating()&&!C->IsCleaningUp()&&C->GetExecutionState().GetSourceDataContainer()==Container&&C->GetExecutionState().GetInspection().GetExecutedStacksGeneration()==InspectionGeneration;};
     auto Unknown=[&]{auto X=Error(TEXT("PCG component/container/inspection changed during callback; stop without follow-up writer"));X->SetBoolField(TEXT("change_state_known"),false);X->SetBoolField(TEXT("mutation_performed"),true);X->SetBoolField(TEXT("read_only"),false);X->SetBoolField(TEXT("do_not_retry"),true);X->SetStringField(TEXT("stage"),TEXT("pcg_mutation_callback"));return X;};
-	FScopedTransaction Transaction(NSLOCTEXT("CubelessDomainExpansion","UE58PCGManual","Edit PCG Manual Point Override")); C->Modify();if(!CurrentOwner())return Unknown();C->GetOwner()->Modify();if(!CurrentOwner())return Unknown();
+	auto OriginalState=[&]{if(!CurrentOwner())return false;auto Entry=Container->Get<FPCGDeltaCollection>(T->Key);return TargetHash(C,*T,Entry.IsValid()?Entry.GetPtr<FPCGDeltaCollection>():nullptr)==BeforeHash;};
+	FScopedTransaction Transaction(NSLOCTEXT("CubelessDomainExpansion","UE58PCGManual","Edit PCG Manual Point Override")); C->Modify();if(!OriginalState())return Unknown();C->GetOwner()->Modify();if(!OriginalState())return Unknown();
 	Container->Store(T->Key,Proposed); Container->MarkDirty();if(!CurrentOwner())return Unknown();
 	auto After=Container->Get<FPCGDeltaCollection>(T->Key); const bool Verified=After.IsValid() && CollectionHash(After.GetPtr<FPCGDeltaCollection>())==CollectionHash(&Proposed);
 	bool Restored=false;
 	if(!Verified) { *Container=Before; Container->MarkDirty(); auto Back=Container->Get<FPCGDeltaCollection>(T->Key); Restored=CollectionHash(Back.IsValid() ? Back.GetPtr<FPCGDeltaCollection>() : nullptr)==CollectionHash(Current); if(Restored) { C->GetOutermost()->SetDirtyFlag(DirtyBefore); Transaction.Cancel(); } }
-	else { C->MarkPackageDirty();if(!CurrentOwner())return Unknown(); }
+	else { C->MarkPackageDirty();if(!CurrentOwner())return Unknown();auto Entry=Container->Get<FPCGDeltaCollection>(T->Key);if(!Entry.IsValid()||CollectionHash(Entry.GetPtr<FPCGDeltaCollection>())!=CollectionHash(&Proposed))return Unknown(); }
 	R->SetBoolField(TEXT("read_only"),false); R->SetBoolField(TEXT("mutation_performed"),true); R->SetBoolField(TEXT("postcondition_verified"),Verified); R->SetBoolField(TEXT("requires_regeneration"),true); R->SetBoolField(TEXT("runtime_application_confirmed"),false);
 	auto Observed=Container->Get<FPCGDeltaCollection>(T->Key);
     R->SetBoolField(TEXT("package_dirty_before"),DirtyBefore); R->SetBoolField(TEXT("package_dirty_after"),C->GetOutermost()->IsDirty()); R->SetStringField(TEXT("state_hash"),TargetHash(C,*T,Observed.IsValid()?Observed.GetPtr<FPCGDeltaCollection>():nullptr));

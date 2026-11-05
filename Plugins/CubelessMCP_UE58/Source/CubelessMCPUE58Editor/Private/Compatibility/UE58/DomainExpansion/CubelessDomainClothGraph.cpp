@@ -80,10 +80,12 @@ FObject GraphRecipe(const FObject& P)
 {
  FString Why; const FString Target=String(P,TEXT("target_path")),Source=String(P,TEXT("source_path"));
  if(!ClothGraphContext()||!ClothGraphPath(Target))return Error(TEXT("Idle Editor and bounded target asset path required"));
- if(!UnusedAssetPath(Target,Why)) { return Error(Why); }
+ if(!UnusedGameAssetPath(Target,Why)) { return Error(Why); }
  if(!ClothGraphPath(Source,true))return Error(TEXT("Bounded source Dataflow path required"));
  TStrongObjectPtr<UDataflow> SourceHold(Source.IsEmpty()?nullptr:LoadObject<UDataflow>(nullptr,*Source));UDataflow* Original=SourceHold.Get();
  if(!Source.IsEmpty() && (!Original || !IndependentSavedSource(Original,Why))) { return Error(Why.IsEmpty() ? TEXT("Saved Dataflow source required") : Why); }
+ TStrongObjectPtr<UPackage> SourcePackage(Original?Original->GetOutermost():nullptr);const FString SourceResolvedPath=Original?Original->GetPathName():FString();
+ auto SourceCurrent=[&]{return !Original||(Live(Original)&&Live(SourcePackage.Get())&&Original->GetOutermost()==SourcePackage.Get()&&Original->GetPathName()==SourceResolvedPath&&!SourcePackage->IsDirty());};
  if(!GEditor || GEditor->PlayWorld) { return Error(TEXT("Author outside PIE")); }
  const TArray<TSharedPtr<FJsonValue>> *Nodes=nullptr,*Links=nullptr;
  if(!P->TryGetArrayField(TEXT("nodes"),Nodes) || Nodes->IsEmpty() || Nodes->Num()>32 || !P->TryGetArrayField(TEXT("links"),Links) || Links->Num()>128) { return Error(TEXT("1..32 nodes and 0..128 links required")); }
@@ -98,12 +100,13 @@ FObject GraphRecipe(const FObject& P)
  }
  auto R=Result(); R->SetBoolField(TEXT("dry_run"),DryRun(P));
  if(DryRun(P)) { R->SetStringField(TEXT("validation_level"),TEXT("source/path/node-type preflight; native connections validate candidate")); return R; }
+ if(!UnusedGameAssetPath(Target,Why)||!SourceCurrent()){auto Failure=ClothGraphUnknown(Target,TEXT("before_candidate_creation"));Failure->SetBoolField(TEXT("writer_attempted"),false);Failure->SetStringField(TEXT("admission_error"),Why.IsEmpty()?TEXT("Source changed after preflight"):Why);return Failure;}
  UPackage* Package=CreatePackage(*Target);
  TStrongObjectPtr<UDataflow> Candidate(Original ? DuplicateObject<UDataflow>(Original,Package,*FPackageName::GetLongPackageAssetName(Target)) : NewObject<UDataflow>(Package,*FPackageName::GetLongPackageAssetName(Target),RF_Public|RF_Standalone|RF_Transactional));
  if(!Candidate.IsValid()) { return Error(TEXT("Unable to create Dataflow candidate")); } Candidate->SetFlags(RF_Public|RF_Standalone|RF_Transactional);
  const FString CandidatePath=Candidate->GetPathName();TStrongObjectPtr<UPackage> KeepPackage(Package);TWeakObjectPtr<UEditorEngine> Editor(GEditor);TWeakObjectPtr<UWorld> World(GEditor->GetEditorWorldContext().World());
  auto Graph=Candidate->GetDataflowGraph();if(!Graph || Graph->GetNodes().Num()>512) { return CandidateFailure(Candidate.Get(),TEXT("Bounded candidate graph required")); }
- auto Current=[&](){return ClothGraphContext()&&GEditor==Editor.Get()&&GEditor->GetEditorWorldContext().World()==World.Get()&&IsValid(World.Get())&&!World->bIsTearingDown&&Candidate.IsValid()&&!Candidate->HasAnyFlags(RF_BeginDestroyed|RF_FinishDestroyed)&&Candidate->GetOutermost()==KeepPackage.Get()&&Candidate->GetPathName()==CandidatePath&&Candidate->GetDataflowGraph()==Graph&&(!Original||(IsValid(Original)&&!Original->GetOutermost()->IsDirty()));};
+ auto Current=[&](){FString ScopeWhy;return ClothGraphContext()&&GEditor==Editor.Get()&&GEditor->GetEditorWorldContext().World()==World.Get()&&IsValid(World.Get())&&!World->bIsTearingDown&&WritableGameTarget(Candidate.Get(),ScopeWhy)&&Candidate->GetOutermost()==KeepPackage.Get()&&Candidate->GetPathName()==CandidatePath&&Candidate->GetDataflowGraph()==Graph&&SourceCurrent();};
  if(!Current())return ClothGraphUnknown(Target,TEXT("candidate_creation"));
  Candidate->Schema=LoadClass<UEdGraphSchema>(nullptr,TEXT("/Script/DataflowEditor.DataflowSchema"));if(!Current())return ClothGraphUnknown(Target,TEXT("schema_load"));
  if(!Candidate->Schema) { return CandidateFailure(Candidate.Get(),TEXT("Stock Dataflow editor schema unavailable")); }
@@ -185,18 +188,21 @@ FObject CreateCloth(const FObject& P)
 {
  FString Why; const FString Target=String(P,TEXT("target_path")),Path=String(P,TEXT("template_path"));
  if(!ClothGraphContext()||!ClothGraphPath(Target))return Error(TEXT("Idle Editor and bounded target asset path required"));
- if(!UnusedAssetPath(Target,Why)) { return Error(Why); }
+ if(!UnusedGameAssetPath(Target,Why)) { return Error(Why); }
  if(!ClothGraphPath(Path))return Error(TEXT("Bounded template Dataflow path required"));TStrongObjectPtr<UDataflow> KeepTemplate(LoadObject<UDataflow>(nullptr,*Path));UDataflow* Template=KeepTemplate.Get();
  if(!Template || !IndependentSavedSource(Template,Why)) { return Error(Why.IsEmpty() ? TEXT("Saved independent Dataflow template required") : Why); }
+ TStrongObjectPtr<UPackage> TemplatePackage(Template->GetOutermost());const FString TemplateResolvedPath=Template->GetPathName();
+ auto TemplateCurrent=[&]{return Live(Template)&&Live(TemplatePackage.Get())&&Template->GetOutermost()==TemplatePackage.Get()&&Template->GetPathName()==TemplateResolvedPath&&!TemplatePackage->IsDirty();};
  if(!Template->GetDataflowGraph() || Template->GetDataflowGraph()->GetNodes().Num()>512) { return Error(TEXT("Bounded template graph required")); }
  bool Evaluate=false; if(P->HasField(TEXT("evaluate")) && !P->TryGetBoolField(TEXT("evaluate"),Evaluate)) { return Error(TEXT("evaluate must be boolean")); }
  if(!GEditor || GEditor->PlayWorld) { return Error(TEXT("Create outside PIE")); }
  auto R=Result(); R->SetBoolField(TEXT("dry_run"),DryRun(P)); if(DryRun(P)) { return R; }
+ if(!UnusedGameAssetPath(Target,Why)||!TemplateCurrent()){auto Failure=ClothGraphUnknown(Target,TEXT("before_cloth_creation"));Failure->SetBoolField(TEXT("writer_attempted"),false);Failure->SetStringField(TEXT("admission_error"),Why.IsEmpty()?TEXT("Template changed after preflight"):Why);return Failure;}
  UPackage* Package=CreatePackage(*Target);
  TStrongObjectPtr<UChaosClothAsset> Asset(Cast<UChaosClothAsset>(UChaosClothAssetFactory::CreateClothAssetFromTemplate(UChaosClothAsset::StaticClass(),Package,*FPackageName::GetLongPackageAssetName(Target),RF_Public|RF_Standalone|RF_Transactional,&Path,true)));
  if(!Asset.IsValid()) { return CandidateFailure(nullptr,TEXT("Native cloth template creation failed; inspect target package")); }
  TStrongObjectPtr<UPackage> KeepPackage(Package);const FString AssetPath=Asset->GetPathName();TWeakObjectPtr<UEditorEngine> Editor(GEditor);TWeakObjectPtr<UWorld> World(GEditor->GetEditorWorldContext().World());
- auto Current=[&](){return ClothGraphContext()&&GEditor==Editor.Get()&&GEditor->GetEditorWorldContext().World()==World.Get()&&IsValid(World.Get())&&!World->bIsTearingDown&&Asset.IsValid()&&!Asset->HasAnyFlags(RF_BeginDestroyed|RF_FinishDestroyed)&&Asset->GetOutermost()==KeepPackage.Get()&&Asset->GetPathName()==AssetPath&&IsValid(Template)&&!Template->GetOutermost()->IsDirty();};
+ auto Current=[&](){FString ScopeWhy;return ClothGraphContext()&&GEditor==Editor.Get()&&GEditor->GetEditorWorldContext().World()==World.Get()&&IsValid(World.Get())&&!World->bIsTearingDown&&WritableGameTarget(Asset.Get(),ScopeWhy)&&Asset->GetOutermost()==KeepPackage.Get()&&Asset->GetPathName()==AssetPath&&TemplateCurrent();};
  if(!Current())return ClothGraphUnknown(Target,TEXT("cloth_factory"));UDataflow* Embedded=Asset->GetDataflowInstance().GetDataflowAsset();TStrongObjectPtr<UDataflow> KeepEmbedded(Embedded);
  if(!Embedded || !Embedded->IsIn(Asset.Get()) || Embedded->GetOutermost()!=Package) { return CandidateFailure(Asset.Get(),TEXT("Native factory did not create an owned embedded Dataflow")); }
  if(Evaluate){const bool Updated=Asset->GetDataflowInstance().UpdateOwnerAsset(false);if(!Current()||!IsValid(Embedded)||Asset->GetDataflowInstance().GetDataflowAsset()!=Embedded)return ClothGraphUnknown(Target,TEXT("cloth_evaluation"));if(!Updated)return CandidateFailure(Asset.Get(),TEXT("Native embedded Dataflow evaluation failed; no save attempted"));}

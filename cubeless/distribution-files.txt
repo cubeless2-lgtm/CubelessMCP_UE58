@@ -2022,3 +2022,4 @@ Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Compatibility/UE58/CubelessAuthoringAccessApi.h
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessAuthoringAccessLibrary.cpp
 Plugins/CubelessMCP_UE58/Source/CubelessMCPUE58Editor/Private/Registration/CubelessAuthoringAccessLibrary.h
+Plugins/CubelessMCP_UE58/Content/Python/cubeless_mcp_ue58/operations/tool_contract_details.json

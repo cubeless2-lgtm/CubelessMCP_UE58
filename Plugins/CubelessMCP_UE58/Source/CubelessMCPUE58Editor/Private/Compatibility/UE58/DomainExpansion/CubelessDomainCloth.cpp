@@ -64,7 +64,8 @@ FObject Snapshots(const FObject& P,bool ForceFailure=false)
     auto Current=[&]()
     {
         if(!ClothHistoryContext()||GEditor!=Editor.Get()||GEditor->GetEditorWorldContext().World()!=World.Get()||!IsValid(World.Get())||World->bIsTearingDown||!IsValid(Asset)||Asset->HasAnyFlags(RF_BeginDestroyed|RF_FinishDestroyed)||Asset->GetClass()!=KeepClass.Get()||Asset->GetOutermost()!=KeepPackage.Get()||Asset->GetPathName()!=AssetPath||Asset->GetDataflowGraph()!=Graph||!Graph->GetNodes().Contains(Match)||Match->GetGuid()!=NodeGuid||Match->TypedScriptStruct()!=NodeType)return false;
-        return FindFProperty<FStructProperty>(NodeType,TEXT("Snapshots"))==Property&&Property->ContainerPtrToValuePtr<FDataflowToolNodeSnapshotSet>(Match.Get())==Set;
+        FString ScopeWhy;const FString RequestedAction=String(P,TEXT("action"));
+        return (RequestedAction.IsEmpty()||RequestedAction==TEXT("inspect")||WritableGameTarget(Asset,ScopeWhy))&&FindFProperty<FStructProperty>(NodeType,TEXT("Snapshots"))==Property&&Property->ContainerPtrToValuePtr<FDataflowToolNodeSnapshotSet>(Match.Get())==Set;
     };
     if(!Current())return Error(TEXT("Current Dataflow/node/snapshot ownership required"));
     uint64 Bytes=0; for(const auto& S:Set->GetSnapshots()) { Bytes+=S.Data.GetAllocatedSize(); }
@@ -72,7 +73,7 @@ FObject Snapshots(const FObject& P,bool ForceFailure=false)
 	FObject R=SnapshotRows(Editable,Set); const FString BeforeHash=String(R,TEXT("state_hash"));
 	if(BeforeHash.IsEmpty()) { return Error(TEXT("Unable to fingerprint snapshot data")); }
 	const FString Action=String(P,TEXT("action")); if(Action.IsEmpty() || Action==TEXT("inspect")) { return R; }
-	FString Why; if(!Writable(Asset,Why)) { return Error(Why); }
+	FString Why; if(!WritableGameTarget(Asset,Why)) { return Error(Why); }
 	double RawIndex=-1;
 	if(!P->TryGetNumberField(TEXT("index"),RawIndex) || !FMath::IsFinite(RawIndex) || FMath::FloorToDouble(RawIndex)!=RawIndex || RawIndex<0 || RawIndex>=Set->GetSnapshots().Num()) { return Error(TEXT("Valid exact snapshot index required")); }
 	const int32 Index=static_cast<int32>(RawIndex);

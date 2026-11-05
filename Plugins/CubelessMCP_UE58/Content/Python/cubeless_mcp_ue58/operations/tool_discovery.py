@@ -33,6 +33,51 @@ def _contracts():
     return json.loads(Path(__file__).with_name("discovery_contracts.json").read_text(encoding="utf-8"))
 
 
+def _contract_details():
+    # Optional on-demand prose, not a dispatch table or source of live schemas.
+    # Keep the original category catalog and its public behavior unchanged.
+    return json.loads(Path(__file__).with_name("tool_contract_details.json").read_text(encoding="utf-8"))
+
+
+def _describe_current_contract(toolset, query, offset, limit, include_schema, mode, details):
+    """Read retained detail for an exact current toolset without executing it."""
+    source = details["toolsets"][toolset]
+    bindings = _bindings()
+    selected = []
+    needle = query.strip().casefold()
+    exact = [name for name in source["tools"] if name.casefold() == needle]
+    for name, original in source["tools"].items():
+        current = [item for item in bindings.get(name, []) if item["toolset"] == toolset]
+        binding = current[0] if len(current) == 1 else None
+        description = (binding or {}).get("description", "")
+        if (exact and name not in exact) or (not exact and needle and needle not in
+                " ".join((name, description, original)).casefold()):
+            continue
+        selected.append((name, original, binding, len(current)))
+    rows = []
+    for name, original, binding, count in selected[offset:offset + limit]:
+        item = dict(name=name, toolset=toolset, registered=count == 1,
+            binding_candidates=count, current_binding=(dict(toolset=toolset, method=binding["method"])
+                if binding is not None else None),
+            description=(binding or {}).get("description", ""))
+        if mode == "full":
+            item["original_detailed_contract"] = original
+            item["original_detailed_contract_provenance"] = details["provenance"]
+            if include_schema and binding is not None:
+                item["input_schema"] = copy.deepcopy(binding["schema"])
+        else:
+            item["summary"] = _terse(item["description"])
+        rows.append(item)
+    next_offset = offset + len(rows)
+    return dict(success=True, exposure_mode="current_contract_details", toolset=toolset,
+        query=query, offset=offset, limit=limit, total_matches=len(selected),
+        returned_tools=len(rows), next_offset=next_offset if next_offset < len(selected) else None,
+        tools=rows, contract_source="cubeless_mcp_ue58/operations/tool_contract_details.json",
+        schema_authority="Current official Registry; retained original prose is not a support/completion verdict",
+        engine_behavior_proven_by_metadata=False,
+        next_step="Use verbosity='terse' to select; request one exact method with limit=1 and verbosity='full' for retained detail. Full detail may be large. Call the current registered toolset directly.")
+
+
 def _schema_accepts(value, schema):
     if not isinstance(schema, dict):
         return False
@@ -327,6 +372,20 @@ def describe_toolset(toolset, query="", offset=0, limit=20, include_schema=True,
     try:
         from .local_api import _runtime
         _runtime()
+        # An exact canonical name opts into retained current-tool prose. Legacy
+        # categories/all/* keep their original schema/policy/pagination contract.
+        exact_toolset = toolset.strip()
+        if exact_toolset.startswith("cubeless_mcp_ue58.registration."):
+            details = _contract_details()
+            if exact_toolset in details["toolsets"]:
+                if offset < 0:
+                    return _error("offset must be at least 0", "invalid_offset", offset=offset)
+                if not 1 <= limit <= 50:
+                    return _error("limit must be between 1 and 50", "invalid_limit", limit=limit)
+                mode = verbosity.strip().lower()
+                if mode not in ("full", "terse"):
+                    return _error("verbosity must be either 'full' or 'terse'", "invalid_verbosity", verbosity=verbosity)
+                return _describe_current_contract(exact_toolset, query, offset, limit, include_schema, mode, details)
         _, records, _ = _records()
         category = toolset.strip().lower()
         categories = sorted({r["category"] for r in records})

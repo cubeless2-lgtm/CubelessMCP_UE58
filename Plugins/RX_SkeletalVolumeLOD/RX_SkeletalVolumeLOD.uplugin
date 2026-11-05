@@ -1,0 +1,18 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "RX Skeletal Volume LOD",
+  "Description": "Generates a volume-remeshed skeletal LOD1 with baked textures on a copy of the source asset.",
+  "Category": "Editor",
+  "CanContainContent": false,
+  "EnabledByDefault": false,
+  "IsBetaVersion": true,
+  "Modules": [
+    { "Name": "RX_SkeletalVolumeLOD", "Type": "Editor", "LoadingPhase": "Default" }
+  ],
+  "Plugins": [
+    { "Name": "GeometryProcessing", "Enabled": true },
+    { "Name": "MeshModelingToolset", "Enabled": true }
+  ]
+}

@@ -16,6 +16,7 @@
 /Plugins/*
 !/Plugins/CubelessMCP_UE58/
 !/Plugins/RX_SMLODGen/
+!/Plugins/RX_SkeletalVolumeLOD/
 
 # Share project content; keep owned verification assets and personal work local.
 !/Content/

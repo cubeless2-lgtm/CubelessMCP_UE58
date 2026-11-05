@@ -63,6 +63,10 @@
 #include "FloatRangeColumn.h"
 #include "RandomizeColumn.h"
 #include "OutputObjectColumn.h"
+#include "EnumColumn.h"
+#include "GameplayTagColumn.h"
+#include "GameplayTagsManager.h"
+#include "JsonObjectConverter.h"
 
 namespace Cubeless::UE58::AnimationProduction
 {
@@ -92,10 +96,10 @@ bool RuntimeReference(UObject* O)
 bool RuntimeAudit(UObject* Root,FString& Error,TSharedPtr<J> Observation=nullptr);
 UObject* Reference(const FString& P,TSharedPtr<J> Observation=nullptr,bool RuntimeSoft=false)
 {
- if(P.Len()>1023||(!RuntimeSoft&&!P.StartsWith(TEXT("/Game/"))&&!P.StartsWith(TEXT("/Script/"))))return nullptr;for(const TCHAR C:P)if(C<32||C=='\''||C=='"'||C=='\\'||C==':')return nullptr;
+ if(P.Len()>1023||(!RuntimeSoft&&!P.StartsWith(TEXT("/Game/"))&&!P.StartsWith(TEXT("/Script/"))))return nullptr;for(const TCHAR C:P)if(C<32||C=='\''||C=='"'||C=='\\')return nullptr;
  FString Canonical=P;if(!P.Contains(TEXT(".")))Canonical+=TEXT(".")+FPackageName::GetLongPackageAssetName(P);if(RuntimeSoft&&!FPackageName::IsValidObjectPath(Canonical))return nullptr;
  const FString Token=FGuid::NewGuid().ToString(EGuidFormats::Digits);TSharedPtr<J> Begin,End;
- const FString BeginText=AnimationEditing::BeginAcquisition(Canonical,Token);
+ const FString BeginText=AnimationEditing::BeginAcquisition(FSoftObjectPath(Canonical).GetAssetPathString(),Token);
  if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(BeginText),Begin)||!Begin||!Begin->GetBoolField(TEXT("success"))){if(Observation)Observation->SetStringField(TEXT("input_acquisition_error"),BeginText);return nullptr;}
  if(Observation)Observation->SetBoolField(TEXT("input_lookup_attempted"),true);UObject* Resolved=FindObject<UObject>(nullptr,*Canonical);const bool Pending=Resolved&&!Live(Resolved);const bool Attempt=Resolved==nullptr;
  // Never force a second loader against an already discovered pending object.
@@ -107,7 +111,13 @@ UObject* Reference(const FString& P,TSharedPtr<J> Observation=nullptr,bool Runti
  if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(EndText),End)||!End||!End->GetBoolField(TEXT("success"))){if(Observation){Observation->SetStringField(TEXT("input_acquisition_error"),EndText);Observation->SetBoolField(TEXT("change_state_known"),false);}return nullptr;}
  return Resolved;
 }
-bool Target(UObject* O){return Live(O)&&Kind(O)&&!O->IsTemplate()&&O->GetOuter()==O->GetOutermost()&&O->GetOutermost()->GetName().StartsWith(TEXT("/Game/"))&&!O->GetOutermost()->HasAnyPackageFlags(PKG_ContainsMap);}
+bool Target(UObject* O)
+{
+ if(!Live(O)||!Kind(O)||O->IsTemplate()||!O->GetOutermost()->GetName().StartsWith(TEXT("/Game/"))||O->GetOutermost()->HasAnyPackageFlags(PKG_ContainsMap))return false;
+ if(O->GetOuter()==O->GetOutermost())return true;
+ auto* C=Cast<UChooserTable>(O);auto* Root=C?C->RootChooser.Get():nullptr;
+ return Live(Root)&&Root!=C&&!Root->RootChooser&&Root->GetOuter()==Root->GetOutermost()&&C->IsIn(Root)&&C->GetOutermost()==Root->GetOutermost()&&Root->NestedObjects.Contains(C);
+}
 struct Lease
 {
  TStrongObjectPtr<UObject> Object,Outer;TStrongObjectPtr<UClass> Class;TWeakObjectPtr<UObject> Serial;FString Name;
@@ -166,7 +176,7 @@ void Props(UObject* O,const FString& Prefix,Snap& Out)
  for(TFieldIterator<FProperty> P(O->GetClass());P;++P)
  {
   if(P->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_DuplicateTransient)||P->GetFName()==TEXT("ErrorMsg")||P->GetFName()==TEXT("ErrorType")||P->GetFName()==TEXT("bHasCompilerMessage"))continue;
-  if(!P->HasAnyPropertyFlags(CPF_Edit)&&!(Cast<USkeleton>(O)&&(P->GetFName()==TEXT("SlotGroups")||P->GetFName()==TEXT("BoneTree")||P->GetFName()==TEXT("VirtualBones")))&&P->GetFName()!=TEXT("DatabaseAnimationAssets")&&P->GetFName()!=TEXT("ResultsStructs")&&P->GetFName()!=TEXT("ColumnsStructs")&&P->GetFName()!=TEXT("DisabledRows")&&P->GetFName()!=TEXT("FallbackResult"))continue;
+  if(!P->HasAnyPropertyFlags(CPF_Edit)&&!(Cast<USkeleton>(O)&&(P->GetFName()==TEXT("SlotGroups")||P->GetFName()==TEXT("BoneTree")||P->GetFName()==TEXT("VirtualBones")))&&P->GetFName()!=TEXT("DatabaseAnimationAssets")&&P->GetFName()!=TEXT("ResultsStructs")&&P->GetFName()!=TEXT("ColumnsStructs")&&P->GetFName()!=TEXT("DisabledRows")&&P->GetFName()!=TEXT("FallbackResult")&&P->GetFName()!=TEXT("RootChooser")&&P->GetFName()!=TEXT("NestedObjects"))continue;
   // Schema finalization regenerates role bone references, not authored role identity.
   if(auto* S=Cast<UPoseSearchSchema>(O);S&&P->GetFName()==TEXT("Skeletons"))
   {int I=0;for(const auto& Role:S->GetRoledSkeletons())Out.Add(Prefix+FString::Printf(TEXT(".Skeleton%d"),I++),Path(Role.Skeleton)+TEXT("|")+Path(Role.MirrorDataTable)+TEXT("|")+Role.Role.ToString());continue;}
@@ -190,6 +200,8 @@ bool Same(const Snap& Expected,const Snap& Actual,TSharedRef<J> R)
 bool CaptureInput(UObject* O,Snap& Out,FString& Error)
 {
  Out.Reset();if(!Live(O)){Error=TEXT("Input lifetime invalid");return false;}
+ if(auto* Enum=Cast<UEnum>(O)){if(Enum->NumEnums()>4096)return false;for(int I=0;I<Enum->NumEnums();++I)Out.Add(FString::Printf(TEXT("enum.%d"),I),Enum->GetNameByIndex(I).ToString()+TEXT("=")+FString::Printf(TEXT("%lld"),Enum->GetValueByIndex(I)));}
+ if(auto* Struct=Cast<UStruct>(O)){int I=0;for(TFieldIterator<FProperty> P(Struct);P;++P){if(++I>4096)return false;Out.Add(TEXT("type.")+P->GetName(),P->GetCPPType()+TEXT("|")+FString::FromInt(P->GetOffset_ForInternal())+TEXT("|")+FString::Printf(TEXT("%llu"),uint64(P->GetPropertyFlags())));}}
  if(Kind(O))return Capture(O,Out,true);
  if(O->IsA<UAnimSequenceBase>())return AnimationEditing::CaptureReadOnlySource(O,Out,Error);
  if(auto* Skeleton=Cast<USkeleton>(O)){
@@ -229,10 +241,10 @@ struct Guard
  bool Finish(bool Save)
  {
   R->SetStringField(TEXT("stage"),TEXT("post_edit"));Target->PostEditChange();if(!Check(Expected))return false;
-  if(auto* C=Cast<UChooserTable>(Target)){R->SetStringField(TEXT("stage"),TEXT("compile"));R->SetBoolField(TEXT("compile_attempted"),true);C->Compile(true);if(!Check(Expected))return false;if(!ChooserCompiled(C,R))return false;}
+  if(auto* C=Cast<UChooserTable>(Target)){R->SetStringField(TEXT("stage"),TEXT("compile"));R->SetBoolField(TEXT("compile_attempted"),true);auto* Root=C->GetRootChooser();TArray<UChooserTable*> Tables{Root};for(const auto& Object:Root->NestedObjects)if(auto* Child=Cast<UChooserTable>(Object.Get()))Tables.AddUnique(Child);if(Tables.Num()>257)return false;for(auto* Table:Tables){if(!Live(Table))return false;Table->Compile(true);if(!Check(Expected))return false;if(!ChooserCompiled(Table,R)){R->SetStringField(TEXT("compile_error_table"),Path(Table));return false;}}}
   FString DependencyError;if(!RuntimeAudit(Target,DependencyError,R)){R->SetStringField(TEXT("dependency_error"),DependencyError);R->SetBoolField(TEXT("change_state_known"),false);return false;}
   if(!Check(Expected))return false;R->SetStringField(TEXT("stage"),TEXT("mark_dirty"));Target->MarkPackageDirty();if(!Check(Expected))return false;
-  if(Save){R->SetStringField(TEXT("stage"),TEXT("save"));R->SetBoolField(TEXT("save_attempted"),true);auto* P=Target->GetOutermost();FSavePackageArgs A;A.TopLevelFlags=RF_Public|RF_Standalone;A.SaveFlags=SAVE_NoError;A.bSlowTask=false;const FString File=FPackageName::LongPackageNameToFilename(P->GetName(),FPackageName::GetAssetPackageExtension());const bool Saved=UPackage::SavePackage(P,Target,*File,A);R->SetBoolField(TEXT("saved"),Saved);if(!Check(Expected)||!Saved)return false;}
+  if(Save){R->SetStringField(TEXT("stage"),TEXT("save"));R->SetBoolField(TEXT("save_attempted"),true);auto* P=Target->GetOutermost();FSavePackageArgs A;A.TopLevelFlags=RF_Public|RF_Standalone;A.SaveFlags=SAVE_NoError;A.bSlowTask=false;const FString File=FPackageName::LongPackageNameToFilename(P->GetName(),FPackageName::GetAssetPackageExtension());UObject* SaveRoot=Target;if(auto* Chooser=Cast<UChooserTable>(Target))SaveRoot=Chooser->GetRootChooser();const bool Saved=UPackage::SavePackage(P,SaveRoot,*File,A);R->SetBoolField(TEXT("saved"),Saved);if(!Check(Expected)||!Saved)return false;}
   R->SetBoolField(TEXT("dirty_after"),Target->GetOutermost()->IsDirty());return true;
  }
 };
@@ -242,6 +254,62 @@ bool ColumnBinding(UChooserTable* C,int32 Context,const FString& Property,bool B
 {
  if(!C->ContextData.IsValidIndex(Context)||C->ContextData[Context].GetScriptStruct()!=FContextObjectTypeClass::StaticStruct()||Property.IsEmpty()||Property.Len()>128)return false;
  auto* Class=C->ContextData[Context].Get<FContextObjectTypeClass>().Class.Get();if(!Live(Class))return false;auto* P=FindFProperty<FProperty>(Class,*Property);if(!P||P->HasAnyPropertyFlags(CPF_EditorOnly))return false;return Bool?CastField<FBoolProperty>(P)!=nullptr:(CastField<FFloatProperty>(P)||CastField<FDoubleProperty>(P)||CastField<FIntProperty>(P));
+}
+// Only reflected properties are admitted. Function bindings and container indexing
+// are deliberately excluded: evaluating a condition must not call arbitrary code.
+FProperty* ResolveChooserBinding(UChooserTable* C,int32 Context,const FString& Property,TArray<FName>& Chain,TArray<UObject*>* Types=nullptr)
+{
+ Chain.Reset();if(!Target(C)||Property.IsEmpty()||Property.Len()>512)return nullptr;
+ auto Data=C->GetContextData();if(!Data.IsValidIndex(Context))return nullptr;UStruct* Type=nullptr;
+ if(auto* V=Data[Context].GetPtr<FContextObjectTypeClass>())Type=V->Class;
+ else if(auto* StructContext=Data[Context].GetPtr<FContextObjectTypeStruct>())Type=StructContext->Struct;
+ TArray<FString> Parts;Property.ParseIntoArray(Parts,TEXT("."),false);if(Parts.IsEmpty()||Parts.Num()>16)return nullptr;
+ FProperty* P=nullptr;
+ for(int K=0;K<Parts.Num();++K)
+ {
+  if(!Live(Type)||Parts[K].IsEmpty()||Parts[K].Len()>128)return nullptr;if(Types)Types->AddUnique(Type);
+  P=FindFProperty<FProperty>(Type,*Parts[K]);
+  if(!P){for(TFieldIterator<FProperty> It(Type);It;++It)if(It->GetAuthoredName()==Parts[K]){if(P)return nullptr;P=*It;}}
+  if(!P||P->ArrayDim!=1||P->HasAnyPropertyFlags(CPF_EditorOnly|CPF_Deprecated|CPF_Transient))return nullptr;Chain.Add(P->GetFName());
+  if(K+1<Parts.Num()){if(auto* S=CastField<FStructProperty>(P))Type=S->Struct;else if(auto* Obj=CastField<FObjectProperty>(P))Type=Obj->PropertyClass;else return nullptr;}
+ }
+ return P;
+}
+UEnum* ChooserEnum(FProperty* P)
+{
+ if(auto* B=CastField<FByteProperty>(P))return B->Enum;
+ if(auto* E=CastField<FEnumProperty>(P);E&&CastField<FByteProperty>(E->GetUnderlyingProperty()))return E->GetEnum();
+ return nullptr;
+}
+bool ChooserLeafMatches(FProperty* P,const FString& Kind)
+{
+ if(!P)return false;
+ if(Kind==TEXT("Bool"))return CastField<FBoolProperty>(P)!=nullptr;
+ if(Kind==TEXT("FloatRange"))return CastField<FFloatProperty>(P)||CastField<FDoubleProperty>(P)||CastField<FIntProperty>(P);
+ if(Kind==TEXT("Enum"))return Live(ChooserEnum(P));
+ if(Kind==TEXT("GameplayTag")){auto* S=CastField<FStructProperty>(P);return S&&S->Struct==FGameplayTagContainer::StaticStruct();}
+ return false;
+}
+const FChooserPropertyBinding* ChooserColumnBinding(const FInstancedStruct& Col,FString& Kind)
+{
+ if(auto* V=Col.GetPtr<FBoolColumn>()){Kind=TEXT("Bool");auto* P=V->InputValue.GetPtr<FBoolContextProperty>();return P?&P->Binding:nullptr;}
+ if(auto* V=Col.GetPtr<FFloatRangeColumn>()){Kind=TEXT("FloatRange");auto* P=V->InputValue.GetPtr<FFloatContextProperty>();return P?&P->Binding:nullptr;}
+ if(auto* V=Col.GetPtr<FEnumColumn>()){Kind=TEXT("Enum");auto* P=V->InputValue.GetPtr<FEnumContextProperty>();return P?&P->Binding:nullptr;}
+ if(auto* V=Col.GetPtr<FGameplayTagColumn>()){Kind=TEXT("GameplayTag");auto* P=V->InputValue.GetPtr<FGameplayTagContextProperty>();return P?&P->Binding:nullptr;}
+ return nullptr;
+}
+bool ChooserContextsMatch(UChooserTable* A,UChooserTable* B)
+{
+ auto X=A->GetContextData(),Y=B->GetContextData();if(X.Num()!=Y.Num())return false;
+ for(int K=0;K<X.Num();++K)if(X[K]!=Y[K])return false;
+ return A->GetRootChooser()->ResultType==EObjectChooserResultType::ObjectResult&&B->GetRootChooser()->ResultType==EObjectChooserResultType::ObjectResult&&Live(A->GetRootChooser()->OutputObjectType)&&Live(B->GetRootChooser()->OutputObjectType)&&B->GetRootChooser()->OutputObjectType->IsChildOf(A->GetRootChooser()->OutputObjectType);
+}
+// A result link may not introduce recursion, even through another asset's fallback.
+bool ChooserResultGraph(UChooserTable* Current,UChooserTable* Forbidden,TSet<UChooserTable*>& Stack,TSet<UChooserTable*>& Done)
+{
+ if(!Target(Current)||Current==Forbidden||Stack.Contains(Current)||Stack.Num()>=32||Done.Num()>=256)return false;if(Done.Contains(Current))return true;Stack.Add(Current);
+ auto Visit=[&](const FInstancedStruct& X){UChooserTable* Child=nullptr;if(!X.IsValid()||X.GetPtr<FAssetChooser>())return true;if(auto* N=X.GetPtr<FNestedChooser>())Child=N->Chooser;else if(auto* E=X.GetPtr<FEvaluateChooser>())Child=E->Chooser;else return false;return Child&&ChooserContextsMatch(Current,Child)&&ChooserResultGraph(Child,Forbidden,Stack,Done);};
+ for(const auto& X:Current->ResultsStructs)if(!Visit(X))return false;if(!Visit(Current->FallbackResult))return false;Stack.Remove(Current);Done.Add(Current);return true;
 }
 struct IndexInputWatch
 {
@@ -263,20 +331,137 @@ FString Inspect(UObject* O)
  if(auto* C=Cast<UChooserTable>(O)){R->SetNumberField(TEXT("row_count"),C->ResultsStructs.Num());R->SetNumberField(TEXT("column_count"),C->ColumnsStructs.Num());R->SetNumberField(TEXT("context_count"),C->ContextData.Num());}
  R->SetBoolField(TEXT("success"),true);R->SetStringField(TEXT("stage"),TEXT("complete"));return Encode(R);
 }
-FString EvaluateChooser(UObject* Object,UObject* Context)
+FString EvaluateChooser(UObject* Object,const TArray<UObject*>& Contexts,const TArray<FString>& StructJsons)
 {
- auto R=Result(TEXT("evaluate_chooser_table"));auto* C=Cast<UChooserTable>(Object);if(!Idle()||Writing||!Target(C)||!Live(Context)||!RuntimeReference(Context)||C->ContextData.Num()!=1||C->ContextData[0].GetScriptStruct()!=FContextObjectTypeClass::StaticStruct()||!Context->IsA(C->ContextData[0].Get<FContextObjectTypeClass>().Class)||C->ResultType!=EObjectChooserResultType::ObjectResult||!C->OutputObjectType)return Fail(R,TEXT("Idle direct-property Chooser with one matching class context and ObjectResult required"));TGuardValue<bool> Lock(Writing,true);Guard G(C,R);G.HoldRefs();G.Hold(Context);Snap BeforeContext;Props(Context,TEXT("context"),BeforeContext);
- for(const auto& Col:C->ColumnsStructs)
+ auto R=Result(TEXT("evaluate_chooser_table"));
+ auto* C=Cast<UChooserTable>(Object);
+ if(!Idle()||Writing||!Target(C))return Fail(R,TEXT("Idle Chooser target required"));
+ auto* Root=C->GetRootChooser();
+ const auto Data=C->GetContextData();
+ if(Data.Num()<1||Data.Num()>64||Data.Num()!=Contexts.Num()||Data.Num()!=StructJsons.Num())
+  return Fail(R,TEXT("Provide one ordered input for each Chooser context slot (1..64)"));
+ if(Root->ResultType!=EObjectChooserResultType::ObjectResult||!Live(Root->OutputObjectType))
+  return Fail(R,TEXT("ObjectResult required for editor evaluation"));
+
+ TGuardValue<bool> Lock(Writing,true);
+ Guard G(C,R);
+ G.HoldRefs();
+ if(!G.Check(G.Before))return Fail(R,TEXT("Chooser inputs could not be observed"));
+
+ // Reserve the object storage before AddObjectParam takes its first view.
+ TArray<FInstancedStruct> StructStorage;
+ StructStorage.SetNum(Data.Num());
+ FChooserEvaluationContext Evaluation;
+ Evaluation.ObjectParams.Reserve(Contexts.Num());
+
+ TMap<UObject*,Snap> ContextStates;
+ TArray<Lease> ContextHolds;
+ int64 SnapshotBytes=0;
+ auto SnapshotObject=[&](UObject* Value)
  {
-  const FChooserPropertyBinding* Binding=nullptr;bool Bool=false;
-  if(Col.GetScriptStruct()==FBoolColumn::StaticStruct()){const auto& V=Col.Get<FBoolColumn>();if(V.InputValue.GetScriptStruct()!=FBoolContextProperty::StaticStruct()||V.RowValuesWithAny.Num()!=C->ResultsStructs.Num())return Fail(R,TEXT("Malformed bool column"));Binding=&V.InputValue.Get<FBoolContextProperty>().Binding;Bool=true;}
-  else if(Col.GetScriptStruct()==FFloatRangeColumn::StaticStruct()){const auto& V=Col.Get<FFloatRangeColumn>();if(V.InputValue.GetScriptStruct()!=FFloatContextProperty::StaticStruct()||V.RowValues.Num()!=C->ResultsStructs.Num())return Fail(R,TEXT("Malformed float column"));Binding=&V.InputValue.Get<FFloatContextProperty>().Binding;}
-  else return Fail(R,TEXT("Evaluation profile admits only direct Bool/FloatRange conditions; arbitrary function bindings not executed"));
-  if(!Binding||Binding->ContextIndex!=0||Binding->IsBoundToRoot||Binding->PropertyBindingChain.Num()!=1||!ColumnBinding(C,0,Binding->PropertyBindingChain[0].ToString(),Bool))return Fail(R,TEXT("Direct single-property context binding required"));
+  if(!Live(Value)||!RuntimeReference(Value))return false;
+  if(ContextStates.Contains(Value))return true;
+  if(ContextStates.Num()>=4096)return false;
+  ContextHolds.Emplace(Value);
+  Snap State;
+  Props(Value,TEXT("context"),State);
+  if(State.Contains(TEXT("$invalid_precision_snapshot")))return false;
+  for(const auto& Pair:State)SnapshotBytes+=int64(Pair.Key.Len()+Pair.Value.Len())*sizeof(TCHAR);
+  if(SnapshotBytes>16*1024*1024)return false;
+  ContextStates.Add(Value,MoveTemp(State));
+  return true;
+ };
+ auto CheckInputs=[&]()
+ {
+  if(!G.Check(G.Before))return false;
+  for(const auto& Hold:ContextHolds)if(!Hold.Current())
+  {
+   R->SetStringField(TEXT("first_mismatch_object"),Hold.Name);
+   R->SetBoolField(TEXT("change_state_known"),false);
+   return false;
+  }
+  for(const auto& Pair:ContextStates)
+  {
+   Snap Now;
+   Props(Pair.Key,TEXT("context"),Now);
+   if(!Same(Pair.Value,Now,R))
+   {
+    R->SetStringField(TEXT("first_mismatch_object"),Path(Pair.Key));
+    R->SetBoolField(TEXT("change_state_known"),false);
+    return false;
+   }
+  }
+  return true;
+ };
+
+ int64 JsonLength=0;
+ for(int32 Index=0;Index<Data.Num();++Index)
+ {
+  UObject* Context=Contexts[Index];
+  const FString& ContextJson=StructJsons[Index];
+  R->SetNumberField(TEXT("context_index"),Index);
+  JsonLength+=ContextJson.Len();
+  if(JsonLength>262144)return Fail(R,TEXT("Aggregate struct JSON limit exceeded"));
+  if(auto* Type=Data[Index].GetPtr<FContextObjectTypeClass>())
+  {
+   if(!ContextJson.IsEmpty()||!Live(Type->Class)||!Live(Context)||!Context->IsA(Type->Class)||!SnapshotObject(Context))
+    return Fail(R,TEXT("Matching live object context required within observation budget"));
+   Evaluation.AddObjectParam(Context);
+  }
+  else if(auto* StructType=Data[Index].GetPtr<FContextObjectTypeStruct>())
+  {
+   if(Context||!Live(StructType->Struct)||ContextJson.Len()>65536)
+    return Fail(R,TEXT("Struct JSON only, at most 65536 characters, required"));
+   FInstancedStruct& Storage=StructStorage[Index];
+   // JSON evaluation owns scratch values; never let JSON conversion load references.
+   TFunction<bool(UStruct*,int)> Safe=[&](UStruct* S,int Depth){if(!Live(S)||Depth>16)return false;if(S==FGameplayTagContainer::StaticStruct())return true;for(TFieldIterator<FProperty> P(S);P;++P){if(P->ArrayDim!=1)return false;if(auto* Sub=CastField<FStructProperty>(*P)){if(!Safe(Sub->Struct,Depth+1))return false;}else if(!CastField<FNumericProperty>(*P)&&!CastField<FBoolProperty>(*P)&&!CastField<FEnumProperty>(*P)&&!CastField<FNameProperty>(*P)&&!CastField<FStrProperty>(*P))return false;}return true;};
+   if(!Safe(StructType->Struct,0))return Fail(R,TEXT("Struct JSON evaluation supports scalar/nested struct fields, without object/container/function fields"));
+   TSharedPtr<J> Values;if(!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(ContextJson),Values)||!Values)return Fail(R,TEXT("Struct JSON object required"));Storage.InitializeAs(StructType->Struct);
+   bool InvalidTag=false;auto Import=FJsonObjectConverter::CustomImportCallback::CreateLambda([&](const TSharedPtr<FJsonValue>& Value,FProperty* Property,void* Memory){auto* S=CastField<FStructProperty>(Property);if(!S||S->Struct!=FGameplayTagContainer::StaticStruct())return false;const TArray<TSharedPtr<FJsonValue>>* Tags=nullptr;const TSharedPtr<J>* TagObject=nullptr;if(!Value->TryGetObject(TagObject)||!(*TagObject)->TryGetArrayField(TEXT("tags"),Tags)||(*TagObject)->Values.Num()!=1||Tags->Num()>256){InvalidTag=true;return true;}auto& Container=*static_cast<FGameplayTagContainer*>(Memory);Container.Reset();for(const auto& Item:*Tags){FString Name;if(!Item->TryGetString(Name)||Name.IsEmpty()||Name.Len()>256){InvalidTag=true;continue;}const auto Tag=FGameplayTag::RequestGameplayTag(FName(*Name),false);if(!Tag.IsValid()){InvalidTag=true;continue;}Container.AddTag(Tag);}return true;});
+   if(!FJsonObjectConverter::JsonObjectToUStruct(Values.ToSharedRef(),StructType->Struct,Storage.GetMutableMemory(),0,0,true,nullptr,&Import)||InvalidTag)return Fail(R,TEXT("Invalid strict struct JSON"));
+   Evaluation.AddStructViewParam(FStructView(StructType->Struct,Storage.GetMutableMemory()));
+  }
+  else return Fail(R,TEXT("Unsupported context descriptor"));
  }
- for(const auto& Result:C->ResultsStructs)if(Result.GetScriptStruct()!=FAssetChooser::StaticStruct())return Fail(R,TEXT("Hard asset result rows required for deterministic editor evaluation profile"));if(C->FallbackResult.IsValid()&&C->FallbackResult.GetScriptStruct()!=FAssetChooser::StaticStruct())return Fail(R,TEXT("Hard asset or empty fallback required"));
- R->SetStringField(TEXT("stage"),TEXT("evaluate"));UObject* Chosen=UChooserFunctionLibrary::EvaluateChooser(Context,C,C->OutputObjectType);G.Hold(Chosen);Snap AfterContext;Props(Context,TEXT("context"),AfterContext);if(!G.Check(G.Before)||!Same(BeforeContext,AfterContext,R)){R->SetBoolField(TEXT("change_state_known"),false);return Fail(R,TEXT("Chooser/context changed during evaluation"));}if(Chosen&&(!Live(Chosen)||!Chosen->IsA(C->OutputObjectType)||!RuntimeReference(Chosen)))return Fail(R,TEXT("Returned object has unexpected type/lifetime/runtime scope"));R->SetStringField(TEXT("result_asset"),Path(Chosen));R->SetBoolField(TEXT("has_result"),Chosen!=nullptr);R->SetBoolField(TEXT("success"),true);R->SetStringField(TEXT("stage"),TEXT("complete"));return Encode(R);
+ R->RemoveField(TEXT("context_index"));
+ TSet<UChooserTable*> Stack,Done;if(!ChooserResultGraph(C,nullptr,Stack,Done))return Fail(R,TEXT("Acyclic supported asset/nested/evaluate result graph required"));
+ for(auto* Table:Done)
+ {
+  if(!ChooserContextsMatch(C,Table))return Fail(R,TEXT("Nested context/output contract mismatch"));
+  for(const auto& Col:Table->ColumnsStructs)
+  {
+   if(!Col.IsValid()||!Col.GetScriptStruct()->IsChildOf(FChooserColumnBase::StaticStruct()))return Fail(R,TEXT("Invalid condition column"));FInstancedStruct ColumnCopy=Col;auto& Base=ColumnCopy.GetMutable<FChooserColumnBase>();auto* Array=FindFProperty<FArrayProperty>(Col.GetScriptStruct(),Base.RowValuesPropertyName());if(!Array||FScriptArrayHelper(Array,Array->ContainerPtrToValuePtr<void>(Col.GetMemory())).Num()!=Table->ResultsStructs.Num())return Fail(R,TEXT("Condition row count mismatch"));
+   FString Kind;const auto* Binding=ChooserColumnBinding(Col,Kind);if(!Binding||!Contexts.IsValidIndex(Binding->ContextIndex)||Binding->IsBoundToRoot)return Fail(R,TEXT("Only property-bound Bool/FloatRange/Enum/GameplayTag conditions evaluated"));
+   const int32 Index=Binding->ContextIndex;
+   TArray<FString> Parts;for(FName Part:Binding->PropertyBindingChain)Parts.Add(Part.ToString());TArray<FName> Chain;auto* Leaf=ResolveChooserBinding(Table,Index,FString::Join(Parts,TEXT(".")),Chain);
+   if(!ChooserLeafMatches(Leaf,Kind)||Chain!=Binding->PropertyBindingChain)return Fail(R,TEXT("Condition property type mismatch"));
+   UObject* Context=Contexts[Index];
+   const UStruct* Type=Context?static_cast<const UStruct*>(Context->GetClass()):StructStorage[Index].GetScriptStruct();void* Memory=Context?static_cast<void*>(Context):StructStorage[Index].GetMutableMemory();
+   for(int K=0;K<Chain.Num()-1;++K){auto* P=FindFProperty<FProperty>(Type,Chain[K]);if(auto* Sub=CastField<FStructProperty>(P)){Memory=Sub->ContainerPtrToValuePtr<void>(Memory);Type=Sub->Struct;}else if(auto* Ref=CastField<FObjectProperty>(P)){UObject* Next=Ref->GetObjectPropertyValue_InContainer(Memory);if(!SnapshotObject(Next))return Fail(R,TEXT("Null/invalid nested object context"));Memory=Next;Type=Next->GetClass();}else return Fail(R,TEXT("Invalid property chain"));}
+  }
+ }
+
+ if(!CheckInputs())return Fail(R,TEXT("Chooser or context changed before compile"));
+ R->SetStringField(TEXT("stage"),TEXT("compile"));
+ R->SetBoolField(TEXT("compile_attempted"),true);
+ for(auto* Table:Done)
+ {
+  Table->Compile(true);
+  if(!CheckInputs())return Fail(R,TEXT("Chooser or context changed during compile"));
+  if(!ChooserCompiled(Table,R))
+  {
+   R->SetStringField(TEXT("compile_error_table"),Path(Table));
+   return Fail(R,TEXT("Chooser compile failed before evaluation"));
+  }
+ }
+
+ R->SetStringField(TEXT("stage"),TEXT("evaluate"));UObject* Chosen=nullptr;
+ UChooserTable::EvaluateChooser(Evaluation,C,FObjectChooserBase::FObjectChooserIteratorCallback::CreateLambda([&](UObject* Value){Chosen=Value;return FObjectChooserBase::EIteratorStatus::Stop;}));
+ G.Hold(Chosen);
+ if(!CheckInputs())return Fail(R,TEXT("Chooser or context changed during evaluation"));
+ if(Chosen&&(!Live(Chosen)||!Chosen->IsA(Root->OutputObjectType)||!RuntimeReference(Chosen)))return Fail(R,TEXT("Returned object type/lifetime invalid"));R->SetStringField(TEXT("result_asset"),Path(Chosen));R->SetBoolField(TEXT("has_result"),Chosen!=nullptr);R->SetBoolField(TEXT("success"),true);R->SetStringField(TEXT("stage"),TEXT("complete"));return Encode(R);
 }
+
 FString Create(const FString& K,const FString& P,UObject* Ref,bool Execute,bool Save)
 {
  auto R=Result(TEXT("create_")+K);if(!Idle()||Writing||!P.StartsWith(TEXT("/Game/"))||P.Len()>900||!FPackageName::IsValidLongPackageName(P)||FPackageName::GetLongPackageAssetName(P).Equals(TEXT("None"),ESearchCase::IgnoreCase)||FPackageName::DoesPackageExist(P)||FindPackage(nullptr,*P))return Fail(R,TEXT("Idle Editor, fresh unused project package path required; overwrite is never implicit"));
@@ -328,11 +513,53 @@ FString Edit(UObject* O,const FString& A,const FString& Args,bool Execute,bool S
  else if(A==TEXT("set_pose_search_search_settings")&&D)
  {if(!Number(P,TEXT("neighbors"),V,1,600)||V!=FMath::FloorToDouble(V)||!Number(P,TEXT("principal_components"),W,1,64)||W!=FMath::FloorToDouble(W)||(Text!=TEXT("BruteForce")&&Text!=TEXT("PCAKDTree")&&Text!=TEXT("VPTree")))return Fail(R,TEXT("mode BruteForce/PCAKDTree/VPTree, neighbors1..600 and principal_components1..64 required"));Apply=[&]{D->PoseSearchMode=Text==TEXT("BruteForce")?EPoseSearchMode::BruteForce:Text==TEXT("PCAKDTree")?EPoseSearchMode::PCAKDTree:EPoseSearchMode::VPTree;D->KDTreeQueryNumNeighbors=int32(V);D->NumberOfPrincipalComponents=int32(W);};}
  else if(A==TEXT("set_chooser_context")&&C)
- {Ref=LoadRef(Text);auto* Class=Cast<UClass>(Ref);if(!Live(Class)||I<0||I>C->ContextData.Num()||C->ContextData.Num()>=64)return Fail(R,TEXT("Live explicit context class and existing/append index required"));if(I<C->ContextData.Num()&&!AllowRemove)return Fail(R,TEXT("Replacing existing context requires allow_replace=true"));Apply=[=]{FInstancedStruct X;X.InitializeAs<FContextObjectTypeClass>();X.GetMutable<FContextObjectTypeClass>().Class=Class;if(I==C->ContextData.Num())C->ContextData.Add(X);else C->ContextData[I]=X;};}
+ {Ref=LoadRef(Text);auto* Class=Cast<UClass>(Ref);auto* Struct=Cast<UScriptStruct>(Ref);if(C->RootChooser||(!Live(Class)&&!Live(Struct))||I<0||I>C->ContextData.Num()||(I==C->ContextData.Num()&&I>=64))return Fail(R,TEXT("Root Chooser, live class/struct context and existing/append index required"));if(I<C->ContextData.Num()&&!AllowRemove)return Fail(R,TEXT("Replacing existing context requires allow_replace=true"));Apply=[=]{FInstancedStruct X;if(Class){X.InitializeAs<FContextObjectTypeClass>();X.GetMutable<FContextObjectTypeClass>().Class=Class;}else{X.InitializeAs<FContextObjectTypeStruct>();X.GetMutable<FContextObjectTypeStruct>().Struct=Struct;}if(I==C->ContextData.Num())C->ContextData.Add(X);else C->ContextData[I]=X;};}
  else if(A==TEXT("add_chooser_column")&&C)
- {FString Property;double Context;if(!P->TryGetStringField(TEXT("property"),Property)||!Number(P,TEXT("context"),Context,0,63)||Context!=FMath::FloorToDouble(Context)||(Text!=TEXT("Bool")&&Text!=TEXT("FloatRange"))||C->ColumnsStructs.Num()>=128||!ColumnBinding(C,int32(Context),Property,Text==TEXT("Bool")))return Fail(R,TEXT("Bool/FloatRange column requires matching existing context property, context0..63, max128 columns"));Apply=[=]{FInstancedStruct Col;if(Text==TEXT("Bool")){Col.InitializeAs<FBoolColumn>();auto& T=Col.GetMutable<FBoolColumn>();T.InputValue.InitializeAs<FBoolContextProperty>();auto& B=T.InputValue.GetMutable<FBoolContextProperty>().Binding;B.ContextIndex=int32(Context);B.PropertyBindingChain={FName(*Property)};T.SetNumRows(C->ResultsStructs.Num());}else{Col.InitializeAs<FFloatRangeColumn>();auto& T=Col.GetMutable<FFloatRangeColumn>();T.InputValue.InitializeAs<FFloatContextProperty>();auto& B=T.InputValue.GetMutable<FFloatContextProperty>().Binding;B.ContextIndex=int32(Context);B.PropertyBindingChain={FName(*Property)};T.SetNumRows(C->ResultsStructs.Num());}C->ColumnsStructs.Add(MoveTemp(Col));};}
+ {
+  FString Property;double Context;if(!P->TryGetStringField(TEXT("property"),Property)||!Number(P,TEXT("context"),Context,0,63)||Context!=FMath::FloorToDouble(Context)||C->ColumnsStructs.Num()>=128)return Fail(R,TEXT("Explicit property path, context0..63 and max128 columns required"));
+  TArray<FName> Chain;TArray<UObject*> Types;auto* Leaf=ResolveChooserBinding(C,int32(Context),Property,Chain,&Types);if(!ChooserLeafMatches(Leaf,Text))return Fail(R,TEXT("Bool/FloatRange/byte Enum/GameplayTagContainer condition requires matching reflected property path; functions/containers excluded"));
+  for(auto* Type:Types){FString Error;if(!CaptureInputs(Type,O,G.InputStates,G.Holds,Error))return Fail(R,Error);}
+  UEnum* Enum=ChooserEnum(Leaf);if(Enum){FString Error;if(!CaptureInputs(Enum,O,G.InputStates,G.Holds,Error))return Fail(R,Error);}
+  FString Match=TEXT("Any"),Direction=TEXT("RowValueInInput");bool Exact=false,Invert=false;const TSharedPtr<J>* Options=nullptr;
+  if(P->TryGetObjectField(TEXT("options"),Options)){for(const auto& Pair:(*Options)->Values){if(Text!=TEXT("GameplayTag")||(Pair.Key!=TEXT("match")&&Pair.Key!=TEXT("direction")&&Pair.Key!=TEXT("exact")&&Pair.Key!=TEXT("invert")))return Fail(R,TEXT("Only GameplayTag match/direction/exact/invert options supported"));if(Pair.Key==TEXT("match")&&!Pair.Value->TryGetString(Match))return Fail(R,TEXT("String match required"));if(Pair.Key==TEXT("direction")&&!Pair.Value->TryGetString(Direction))return Fail(R,TEXT("String direction required"));if(Pair.Key==TEXT("exact")&&!Pair.Value->TryGetBool(Exact))return Fail(R,TEXT("Boolean exact required"));if(Pair.Key==TEXT("invert")&&!Pair.Value->TryGetBool(Invert))return Fail(R,TEXT("Boolean invert required"));}}
+  if((Match!=TEXT("Any")&&Match!=TEXT("All"))||(Direction!=TEXT("RowValueInInput")&&Direction!=TEXT("InputInRowValue")))return Fail(R,TEXT("Invalid GameplayTag matching mode/direction"));
+  Apply=[&,Property,Context,Chain,Enum,Leaf,Match,Direction,Exact,Invert]{TArray<FName> Now;if(ResolveChooserBinding(C,int32(Context),Property,Now)!=Leaf||Now!=Chain||ChooserEnum(Leaf)!=Enum){Applied=false;ScriptError=TEXT("Binding type changed before column writer");return;}FInstancedStruct Col;FChooserPropertyBinding* B=nullptr;
+   if(Text==TEXT("Bool")){Col.InitializeAs<FBoolColumn>();B=&Col.GetMutable<FBoolColumn>().InputValue.GetMutable<FBoolContextProperty>().Binding;}
+   else if(Text==TEXT("FloatRange")){Col.InitializeAs<FFloatRangeColumn>();B=&Col.GetMutable<FFloatRangeColumn>().InputValue.GetMutable<FFloatContextProperty>().Binding;}
+   else if(Text==TEXT("Enum")){Col.InitializeAs<FEnumColumn>();auto& V=Col.GetMutable<FEnumColumn>();auto& Binding=V.InputValue.GetMutable<FEnumContextProperty>().Binding;Binding.Enum=Enum;B=&Binding;V.DefaultRowValue.Comparison=EEnumColumnCellValueComparison::MatchAny;}
+   else{Col.InitializeAs<FGameplayTagColumn>();auto& V=Col.GetMutable<FGameplayTagColumn>();B=&V.InputValue.GetMutable<FGameplayTagContextProperty>().Binding;V.TagMatchType=Match==TEXT("All")?EGameplayContainerMatchType::All:EGameplayContainerMatchType::Any;V.TagMatchDirection=Direction==TEXT("InputInRowValue")?EGameplayTagMatchDirection::InputInRowValue:EGameplayTagMatchDirection::RowValueInInput;V.bMatchExact=Exact;V.bInvertMatchingLogic=Invert;}
+   B->ContextIndex=int32(Context);B->PropertyBindingChain=Chain;Col.GetMutable<FChooserColumnBase>().SetNumRows(C->ResultsStructs.Num());C->ColumnsStructs.Add(MoveTemp(Col));};
+ }
  else if((A==TEXT("add_chooser_row")||A==TEXT("set_chooser_result")||A==TEXT("set_chooser_fallback"))&&C)
- {Ref=LoadRef(Text);if(!Live(Ref)||!C->OutputObjectType||!Ref->IsA(C->OutputObjectType)||C->ResultType!=EObjectChooserResultType::ObjectResult||C->ResultsStructs.Num()>=4096)return Fail(R,TEXT("Result asset must match ObjectResult class;4096 rows max"));if(A==TEXT("set_chooser_result")&&(!C->ResultsStructs.IsValidIndex(I)||!AllowRemove))return Fail(R,TEXT("Existing row and allow_replace=true required"));if(A==TEXT("set_chooser_fallback")&&C->FallbackResult.IsValid()&&!AllowRemove)return Fail(R,TEXT("Existing fallback replacement requires allow_replace=true"));Apply=[=]{FInstancedStruct X;X.InitializeAs<FAssetChooser>();X.GetMutable<FAssetChooser>().Asset=Ref;if(A==TEXT("add_chooser_row")){C->ResultsStructs.Add(X);C->DisabledRows.SetNumZeroed(C->ResultsStructs.Num());for(auto& Col:C->ColumnsStructs)Col.GetMutable<FChooserColumnBase>().SetNumRows(C->ResultsStructs.Num());}else if(A==TEXT("set_chooser_result"))C->ResultsStructs[I]=X;else C->FallbackResult=X;};}
+ {
+  FString ResultKind=TEXT("Asset");P->TryGetStringField(TEXT("result_kind"),ResultKind);Ref=LoadRef(Text);auto* Root=C->GetRootChooser();if(!Live(Ref)||!Live(Root->OutputObjectType)||Root->ResultType!=EObjectChooserResultType::ObjectResult||C->ResultsStructs.Num()>=4096)return Fail(R,TEXT("Live result and ObjectResult output class required;4096 rows max"));
+  FInstancedStruct X;
+  if(ResultKind==TEXT("Asset")){if(!Ref->IsA(Root->OutputObjectType))return Fail(R,TEXT("Asset result must match output class"));X.InitializeAs<FAssetChooser>();X.GetMutable<FAssetChooser>().Asset=Ref;}
+  else if(ResultKind==TEXT("NestedChooser")||ResultKind==TEXT("EvaluateChooser")){auto* Child=Cast<UChooserTable>(Ref);TSet<UChooserTable*> Stack,Done;if(!Target(Child)||!ChooserContextsMatch(C,Child)||!ChooserResultGraph(Child,C,Stack,Done))return Fail(R,TEXT("Chooser result requires compatible context/output and acyclic bounded result graph"));if(ResultKind==TEXT("NestedChooser")){if(Child->RootChooser!=Root||!Child->IsIn(Root))return Fail(R,TEXT("NestedChooser must be embedded in the same root asset"));X.InitializeAs<FNestedChooser>();X.GetMutable<FNestedChooser>().Chooser=Child;}else{if(Child->RootChooser)return Fail(R,TEXT("EvaluateChooser requires a top-level Chooser asset"));X.InitializeAs<FEvaluateChooser>();X.GetMutable<FEvaluateChooser>().Chooser=Child;}}
+  else return Fail(R,TEXT("result_kind must be Asset, NestedChooser or EvaluateChooser"));
+  if(A==TEXT("set_chooser_result")&&(!C->ResultsStructs.IsValidIndex(I)||!AllowRemove))return Fail(R,TEXT("Existing row and allow_replace=true required"));if(A==TEXT("set_chooser_fallback")&&C->FallbackResult.IsValid()&&!AllowRemove)return Fail(R,TEXT("Existing fallback replacement requires allow_replace=true"));
+  Apply=[=]{if(A==TEXT("add_chooser_row")){C->ResultsStructs.Add(X);C->DisabledRows.SetNumZeroed(C->ResultsStructs.Num());for(auto& Col:C->ColumnsStructs)Col.GetMutable<FChooserColumnBase>().SetNumRows(C->ResultsStructs.Num());}else if(A==TEXT("set_chooser_result"))C->ResultsStructs[I]=X;else C->FallbackResult=X;};
+ }
+ else if(A==TEXT("create_nested_chooser")&&C)
+ {
+  if(C->RootChooser||Text.IsEmpty()||Text.Len()>128||!FName::IsValidXName(Text,INVALID_OBJECTNAME_CHARACTERS)||Text.Equals(TEXT("None"),ESearchCase::IgnoreCase)||C->NestedObjects.Num()>=256||FindObject<UObject>(C,*Text))return Fail(R,TEXT("Root Chooser and fresh bounded child object name required"));
+  for(const auto& Existing:C->NestedObjects)if(!Live(Existing)||Existing->GetFName()==FName(*Text))return Fail(R,TEXT("Existing invalid or duplicate nested object"));
+  Apply=[&]{auto* Child=NewObject<UChooserTable>(C,FName(*Text),RF_Transactional);G.Hold(Child);if(!Live(Child)||!G.Check(G.Before)){Applied=false;return;}Child->RootChooser=C;Child->OutputObjectType=C->OutputObjectType;Child->ResultType=C->ResultType;
+   // Exact non-renaming AddNestedObject path. Publish only after expected state
+   // and child authored/reference snapshots exist, so listeners cannot be adopted.
+   C->NestedObjects.Add(Child);if(!Capture(C,G.Expected)){Applied=false;return;}FString Error;if(!CaptureInputs(Child,C,G.InputStates,G.Holds,Error)){Applied=false;ScriptError=Error;return;}C->NestedObjectsChanged.Broadcast();if(!G.Check(G.Expected)){Applied=false;return;}R->SetStringField(TEXT("nested_chooser"),Path(Child));};
+ }
+ else if(A==TEXT("set_chooser_enum_cell")&&C)
+ {
+  double Row;FString Comparison=TEXT("Equal");P->TryGetStringField(TEXT("comparison"),Comparison);
+  if(!C->ColumnsStructs.IsValidIndex(I)||!Number(P,TEXT("row"),Row,0,4095)||Row!=FMath::FloorToDouble(Row)||!C->ResultsStructs.IsValidIndex(int32(Row)))return Fail(R,TEXT("Existing column/row required"));auto* Col=C->ColumnsStructs[I].GetPtr<FEnumColumn>();const UEnum* Enum=Col?Col->GetEnum():nullptr;if(!Live(Enum)||(Comparison!=TEXT("Equal")&&Comparison!=TEXT("NotEqual")&&Comparison!=TEXT("Any")))return Fail(R,TEXT("Enum column with Equal/NotEqual/Any required"));
+  int64 Value=Comparison==TEXT("Any")?0:Enum->GetValueByNameString(Text);int32 Entry=Enum->GetIndexByValue(Value);if(Comparison!=TEXT("Any")&&(Entry==INDEX_NONE||Value<0||Value>255||Enum->HasMetaData(TEXT("Hidden"),Entry)||Enum->GetNameStringByIndex(Entry).EndsWith(TEXT("_MAX"))))return Fail(R,TEXT("Visible declared byte enum name required; numeric coercion is not used"));
+  FString EnumError;if(!CaptureInputs(const_cast<UEnum*>(Enum),O,G.InputStates,G.Holds,EnumError))return Fail(R,EnumError);const FName Name=Comparison==TEXT("Any")?NAME_None:Enum->GetNameByValue(Value);Apply=[=]{auto& Cell=C->ColumnsStructs[I].GetMutable<FEnumColumn>().RowValues[int32(Row)];Cell.Value=uint8(Value);Cell.ValueName=Name;Cell.Comparison=Comparison==TEXT("Any")?EEnumColumnCellValueComparison::MatchAny:Comparison==TEXT("NotEqual")?EEnumColumnCellValueComparison::MatchNotEqual:EEnumColumnCellValueComparison::MatchEqual;};
+ }
+ else if(A==TEXT("set_chooser_gameplay_tag_cell")&&C)
+ {
+  double Row;const TArray<TSharedPtr<FJsonValue>>* Tags=nullptr;if(!C->ColumnsStructs.IsValidIndex(I)||!C->ColumnsStructs[I].GetPtr<FGameplayTagColumn>()||!Number(P,TEXT("row"),Row,0,4095)||Row!=FMath::FloorToDouble(Row)||!C->ResultsStructs.IsValidIndex(int32(Row))||!P->TryGetArrayField(TEXT("tags"),Tags)||Tags->Num()>256)return Fail(R,TEXT("GameplayTag column/row and <=256 registered tag strings required"));FGameplayTagContainer Container;for(const auto& Item:*Tags){FString Tag;if(!Item->TryGetString(Tag)||Tag.IsEmpty()||Tag.Len()>256)return Fail(R,TEXT("Bounded tag name required"));const FGameplayTag Value=FGameplayTag::RequestGameplayTag(FName(*Tag),false);if(!Value.IsValid())return Fail(R,TEXT("Unknown GameplayTag; register project tags explicitly first: ")+Tag);Container.AddTag(Value);}Apply=[=]{C->ColumnsStructs[I].GetMutable<FGameplayTagColumn>().RowValues[int32(Row)]=Container;};
+ }
  else if(A==TEXT("set_chooser_cell")&&C)
  {double Row;if(!C->ColumnsStructs.IsValidIndex(I)||!Number(P,TEXT("row"),Row,0,4095)||Row!=FMath::FloorToDouble(Row)||!C->ResultsStructs.IsValidIndex(int32(Row)))return Fail(R,TEXT("Existing column/row required"));auto& Col=C->ColumnsStructs[I];if(Col.GetScriptStruct()==FBoolColumn::StaticStruct()&&(Text==TEXT("True")||Text==TEXT("False")||Text==TEXT("Any"))){Apply=[&,Row]{auto& B=C->ColumnsStructs[I].GetMutable<FBoolColumn>();B.RowValuesWithAny[int32(Row)]=Text==TEXT("True")?EBoolColumnCellValue::MatchTrue:Text==TEXT("False")?EBoolColumnCellValue::MatchFalse:EBoolColumnCellValue::MatchAny;};}else if(Col.GetScriptStruct()==FFloatRangeColumn::StaticStruct()&&Number(P,TEXT("min"),V,-1e12,1e12)&&Number(P,TEXT("max"),W,-1e12,1e12)&&V<=W){Apply=[&,Row]{auto& B=C->ColumnsStructs[I].GetMutable<FFloatRangeColumn>();auto& Cell=B.RowValues[int32(Row)];Cell.Min=V;Cell.Max=W;Cell.bNoMin=false;Cell.bNoMax=false;};}else return Fail(R,TEXT("Bool cell True/False/Any or finite FloatRange min<=max required"));}
  else if(A==TEXT("remove_chooser_row")&&C&&AllowRemove&&C->ResultsStructs.IsValidIndex(I)){Apply=[=]{for(auto& Col:C->ColumnsStructs){int Row=I;Col.GetMutable<FChooserColumnBase>().DeleteRows(MakeArrayView(&Row,1));}C->ResultsStructs.RemoveAt(I);if(C->DisabledRows.IsValidIndex(I))C->DisabledRows.RemoveAt(I);};}

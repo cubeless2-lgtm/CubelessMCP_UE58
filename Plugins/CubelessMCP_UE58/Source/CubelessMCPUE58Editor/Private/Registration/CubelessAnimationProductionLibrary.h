@@ -18,7 +18,9 @@ public:
  UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly))
  static FString BindAnimationProductionNode(UObject* Blueprint,const FString& Action,const FString& Graph,const FString& NodeId,const FString& Source,bool Execute=false,bool Compile=false,bool Save=false,bool AllowDirty=false,bool AllowReplace=false);
  UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly))
- static FString EvaluateAnimationProductionChooser(UObject* Target,UObject* Context);
+ static FString EvaluateAnimationProductionChooser(UObject* Target,UObject* Context,const FString& ContextJson=TEXT(""));
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly))
+ static FString EvaluateAnimationProductionChooserContexts(UObject* Target,const TArray<UObject*>& Contexts,const TArray<FString>& StructJsons);
  UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly))
  static FString BindAnimationProductionChooser(UObject* Blueprint,const FString& Graph,const FString& NodeId,const FString& ChooserPath,const FString& FunctionName,bool Execute=false,bool Compile=false,bool Save=false,bool AllowDirty=false,bool AllowReplace=false);
  UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly))

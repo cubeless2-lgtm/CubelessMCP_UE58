@@ -3,6 +3,35 @@ import json,uuid
 import unreal
 from cubeless_mcp_ue58.operations import editor_data
 
+def _chooser_contexts(text, reference_path, legacy_json):
+    if reference_path or legacy_json:
+        raise ValueError('contexts_json cannot be combined with legacy context inputs')
+    if not isinstance(text, str) or len(text) > 262144:
+        raise ValueError('contexts_json must be a JSON string of at most 262144 characters')
+    slots = json.loads(text)
+    if not isinstance(slots, list) or not 1 <= len(slots) <= 64:
+        raise ValueError('contexts_json requires 1 to 64 ordered slots')
+    paths, values = [], []
+    for index, slot in enumerate(slots):
+        if not isinstance(slot, dict) or len(slot) != 1:
+            raise ValueError(f'Context {index} requires exactly one object_path or struct')
+        if 'object_path' in slot:
+            editor_data._validate_path(slot['object_path'])
+            paths.append(slot['object_path'])
+            values.append('')
+        elif isinstance(slot.get('struct'), dict):
+            value = json.dumps(slot['struct'], ensure_ascii=False, allow_nan=False)
+            if len(value.encode('utf-16-le')) // 2 > 65536:
+                raise ValueError(f'Context {index} struct exceeds 65536 UTF-16 code units')
+            paths.append('')
+            values.append(value)
+        else:
+            raise ValueError(f'Context {index} requires an object_path or a struct object')
+    if sum(len(value.encode('utf-16-le')) // 2 for value in values) > 262144:
+        raise ValueError('Aggregate struct JSON limit exceeded')
+    return paths, values
+
+
 def invoke(kind, asset_path='', reference_path='', action='', arguments=None, execute=False, save=False, allow_dirty=False, allow_remove=False, job_id=''):
     loaded=False;lookup=False;native_entered=False
     def resolve(path):
@@ -11,7 +40,7 @@ def invoke(kind, asset_path='', reference_path='', action='', arguments=None, ex
         object_path=path if '.' in path.rsplit('/',1)[-1] else path+'.'+path.rsplit('/',1)[-1]
         token=uuid.uuid4().hex;attempt=False
         try:
-            begin=json.loads(unreal.CubelessAnimationEditingLibrary.begin_animation_asset_acquisition(object_path,token))
+            begin=json.loads(unreal.CubelessAnimationEditingLibrary.begin_animation_asset_acquisition(object_path.split(':',1)[0],token))
             if not begin.get('success'):raise RuntimeError('Resolution admission rejected: '+str(begin))
             lookup=True
             value=unreal.find_object(None,object_path)
@@ -22,6 +51,11 @@ def invoke(kind, asset_path='', reference_path='', action='', arguments=None, ex
             end=json.loads(unreal.CubelessAnimationEditingLibrary.end_animation_asset_acquisition(token,attempt))
             if not end.get('success'):raise RuntimeError('Resolution cleanup failed: '+str(end))
     try:
+        args = arguments or {}
+        contexts = None
+        if kind == 'evaluate' and args.get('contexts_json') is not None:
+            paths, values = _chooser_contexts(args['contexts_json'], reference_path, args.get('context_json'))
+            contexts = ([resolve(path) if path else None for path in paths], values)
         reference=resolve(reference_path) if reference_path else None
         lib=unreal.CubelessAnimationProductionLibrary
         if kind=='create':
@@ -33,7 +67,11 @@ def invoke(kind, asset_path='', reference_path='', action='', arguments=None, ex
             native_entered=True
             if kind=='inspect':raw=lib.inspect_animation_production_asset(target)
             elif kind=='index':raw=lib.animation_production_index(target,job_id,execute)
-            elif kind=='evaluate':raw=lib.evaluate_animation_production_chooser(target,reference)
+            elif kind == 'evaluate':
+                if contexts is None:
+                    raw = lib.evaluate_animation_production_chooser(target, reference, args.get('context_json', ''))
+                else:
+                    raw = lib.evaluate_animation_production_chooser_contexts(target, *contexts)
             elif kind=='state_inspect':raw=lib.inspect_animation_state_graph(target,arguments['graph'])
             elif kind=='state_edit':raw=lib.edit_animation_state_graph(target,action,arguments['graph'],encoded_args,execute,arguments.get('compile',False),save,allow_dirty,allow_remove)
             elif kind=='layer':raw=lib.create_animation_production_layer(target,arguments['name'],execute,arguments.get('compile',False),save,allow_dirty)

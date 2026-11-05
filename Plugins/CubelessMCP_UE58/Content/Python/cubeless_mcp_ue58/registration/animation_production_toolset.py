@@ -5,7 +5,7 @@ from cubeless_mcp_ue58.operations import animation_production as domain
 
 @unreal.uclass()
 class CubelessAnimationProductionTools(unreal.ToolsetDefinition):
-    """Editor-only AnimGraph bindings, StateMachine editing, PoseSearch and Chooser production. Required enabled plugins: PoseSearch, Chooser. Explicit identifiers, execute=false/save=false for edits, separate async index request/status. Owned target only, serialized journal, callback identity/authored input preservation and direct single-package save. Chooser compile diagnostics gate save; internal loads retain the session Montage save guard and report pre-load uncertainty. No rollback/retry, runtime MCP dependency, independent server or external pipeline. Basic Chooser ObjectResult, class contexts, direct Bool/Float bindings; advanced struct contexts, nested choosers and other column variants remain separate support gaps. Index DDC build is not saved-asset/runtime packaging proof."""
+    """Editor-only AnimGraph bindings, StateMachine editing, PoseSearch and Chooser production. Required enabled plugins: PoseSearch, Chooser. Explicit identifiers, execute=false/save=false for edits, separate async index request/status. Owned target only, serialized journal, callback identity/authored input preservation and direct single-package save. Chooser compile diagnostics gate save; internal loads retain the session Montage save guard and report pre-load uncertainty. No rollback/retry, runtime MCP dependency, independent server or external pipeline. Chooser supports class/struct contexts, dot property paths, Bool/FloatRange/byte Enum/GameplayTagContainer conditions and acyclic NestedChooser/EvaluateChooser results. Function/container-index bindings and proxy results are excluded. Index DDC build is not saved-asset/runtime packaging proof."""
 
     @toolset_registry.tool_call
     @staticmethod
@@ -21,8 +21,11 @@ class CubelessAnimationProductionTools(unreal.ToolsetDefinition):
 
     @toolset_registry.tool_call
     @staticmethod
-    def create_chooser_table(asset_path: str, result_class_path: str, execute: bool = False, save: bool = False) -> str:
-        'Create fresh ObjectResult Chooser, e.g. /Script/PoseSearch.PoseSearchDatabase result class. No overwrite; execute=false preflight, save=false leaves new package dirty.'
+    def create_chooser_table(asset_path: str, result_class_path: str, execute: bool = False, save: bool = False, parent_chooser_path: str | None = None, allow_save_dirty_package: bool = False) -> str:
+        """Create fresh ObjectResult Chooser. With parent_chooser_path, asset_path is a fresh simple child name; result_class_path must be empty and root context/output are inherited. No replacement. Nested save covers the root package with explicit dirty approval."""
+        if parent_chooser_path:
+            if result_class_path:return domain.reject('create_nested_chooser','Nested output class is inherited; result_class_path must be empty')
+            return domain.run('edit','create_nested_chooser',parent_chooser_path,{'value':asset_path},execute=execute,save=save,allow_dirty=allow_save_dirty_package)
         return domain.run('create','chooser_table',asset_path,reference_path=result_class_path,execute=execute,save=save)
 
     @toolset_registry.tool_call
@@ -94,32 +97,37 @@ class CubelessAnimationProductionTools(unreal.ToolsetDefinition):
     @toolset_registry.tool_call
     @staticmethod
     def set_chooser_context(asset_path: str, context_index: int, class_path: str, allow_replace: bool = False, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
-        'Append or explicitly replace a class context entry (index0..63). Editor/MCP classes refused. execute=false validates only; save=false leaves dirty. Target package only; no atomic rollback/retry.'
+        'Append or explicitly replace a root class or ScriptStruct context using the legacy class_path argument. Nested tables inherit root contexts. Replacing requires allow_replace; compile diagnostics gate optional target-package save.'
         return domain.run('edit','set_chooser_context',asset_path,{'index':context_index,'value':class_path},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=allow_replace)
 
     @toolset_registry.tool_call
     @staticmethod
-    def add_chooser_column(asset_path: str, column_type: str, property_name: str, context_index: int = 0, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
-        'Append Bool or FloatRange condition column bound to an existing matching direct reflected class property;128 columns max. execute=false validates only; save=false leaves dirty. Target package only; no atomic rollback/retry.'
-        return domain.run('edit','add_chooser_column',asset_path,{'value':column_type,'property':property_name,'context':context_index},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=False)
+    def add_chooser_column(asset_path: str, column_type: str, property_name: str, context_index: int = 0, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False, options_json: str = "{}") -> str:
+        """Append Bool/FloatRange/Enum/GameplayTag condition with a reflected dot property path. Enum requires a byte enum; GameplayTag requires GameplayTagContainer. Class/struct and nested struct/object properties supported; no function/array-index bindings. Optional GameplayTag options: match Any|All, direction RowValueInInput|InputInRowValue, exact/invert booleans. Engine defaults are retained. 128 columns max; no implicit save."""
+        try:
+            import json
+            options=json.loads(options_json)
+            if not isinstance(options,dict):raise ValueError('Options must be a JSON object')
+        except Exception as error:return domain.reject('add_chooser_column',error)
+        return domain.run('edit','add_chooser_column',asset_path,{'value':column_type,'property':property_name,'context':context_index,'options':options},execute=execute,save=save,allow_dirty=allow_save_dirty_package)
 
     @toolset_registry.tool_call
     @staticmethod
-    def add_chooser_row(asset_path: str, result_asset_path: str, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
-        'Append one class-compatible hard asset result, preserving existing rows/cells and resizing column data;4096 rows max. execute=false validates only; save=false leaves dirty. Target package only; no atomic rollback/retry.'
-        return domain.run('edit','add_chooser_row',asset_path,{'value':result_asset_path},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=False)
+    def add_chooser_row(asset_path: str, result_asset_path: str, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False, result_kind: str = "Asset") -> str:
+        """Assign Asset (default), same-root embedded NestedChooser or top-level EvaluateChooser result. Chooser links require matching context/output and an acyclic graph. Existing result replacement needs allow_replace; other rows/references preserved. No automatic save/retry."""
+        return domain.run('edit','add_chooser_row',asset_path,{'value':result_asset_path,'result_kind':result_kind},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=False)
 
     @toolset_registry.tool_call
     @staticmethod
-    def set_chooser_result(asset_path: str, row_index: int, result_asset_path: str, allow_replace: bool = False, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
-        'Replace a row result only with explicit approval. execute=false validates only; save=false leaves dirty. Target package only; no atomic rollback/retry.'
-        return domain.run('edit','set_chooser_result',asset_path,{'index':row_index,'value':result_asset_path},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=allow_replace)
+    def set_chooser_result(asset_path: str, row_index: int, result_asset_path: str, allow_replace: bool = False, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False, result_kind: str = "Asset") -> str:
+        """Assign Asset (default), same-root embedded NestedChooser or top-level EvaluateChooser result. Chooser links require matching context/output and an acyclic graph. Existing result replacement needs allow_replace; other rows/references preserved. No automatic save/retry."""
+        return domain.run('edit','set_chooser_result',asset_path,{'index':row_index,'value':result_asset_path,'result_kind':result_kind},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=allow_replace)
 
     @toolset_registry.tool_call
     @staticmethod
-    def set_chooser_fallback(asset_path: str, result_asset_path: str, allow_replace: bool = False, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
-        'Assign default asset result; existing fallback replacement needs explicit approval. execute=false validates only; save=false leaves dirty. Target package only; no atomic rollback/retry.'
-        return domain.run('edit','set_chooser_fallback',asset_path,{'value':result_asset_path},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=allow_replace)
+    def set_chooser_fallback(asset_path: str, result_asset_path: str, allow_replace: bool = False, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False, result_kind: str = "Asset") -> str:
+        """Assign Asset (default), same-root embedded NestedChooser or top-level EvaluateChooser result. Chooser links require matching context/output and an acyclic graph. Existing result replacement needs allow_replace; other rows/references preserved. No automatic save/retry."""
+        return domain.run('edit','set_chooser_fallback',asset_path,{'value':result_asset_path,'result_kind':result_kind},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=allow_replace)
 
     @toolset_registry.tool_call
     @staticmethod
@@ -188,9 +196,13 @@ class CubelessAnimationProductionTools(unreal.ToolsetDefinition):
 
     @toolset_registry.tool_call
     @staticmethod
-    def evaluate_chooser_table(asset_path: str, context_object_path: str) -> str:
-        """Evaluate direct Bool/FloatRange class-context Chooser against explicit loaded/resolvable context, returning a hard asset or valid no-result. One matching context, ObjectResult and hard asset rows/fallback only; arbitrary function bindings are refused. Native guard checks table/context preservation; no Modify, compile or save. Required plugin: Chooser."""
-        return domain.run('evaluate','evaluate_chooser_table',asset_path,reference_path=context_object_path)
+    def evaluate_chooser_table(asset_path: str, context_object_path: str | None = None, context_struct_json: str | None = None, contexts_json: str | None = None) -> str:
+        """Evaluate property-only Bool/FloatRange/Enum/GameplayTag conditions and acyclic Asset/NestedChooser/EvaluateChooser results. Supply one legacy context or contexts_json: a JSON array in context-index order, e.g. [{"object_path":"/Game/A.A"},{"struct":{"Added":{"tags":["Registered.Tag"]}}}]. Provide every slot (max 64); do not mix forms. Scratch struct fields support scalars, nested structs and GameplayTagContainer (no object refs or other containers). Returns selected asset or has_result=false; no asset save."""
+        return domain.run(
+            'evaluate', 'evaluate_chooser_table', asset_path,
+            {'context_json': context_struct_json or '', 'contexts_json': contexts_json},
+            reference_path=context_object_path or '',
+        )
 
     @toolset_registry.tool_call
     @staticmethod
@@ -274,3 +286,16 @@ class CubelessAnimationProductionTools(unreal.ToolsetDefinition):
     def set_anim_transition_bool_variable(asset_path: str, machine_graph_name: str, transition_id: str, variable_name: str, allow_replace: bool = False, execute: bool = False, compile_blueprint: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
         """Create a pure self bool-variable getter in an unshared transition rule and connect it to the rule Result. Existing runtime Blueprint-visible bool required; no implicit variable creation. Replacing an existing condition input requires allow_replace and retains previous nodes/default. Verify member identity, type and links after callbacks; optional compile and target-only save. Float/enum comparisons are outside this operation."""
         return domain.run('state_edit','set_transition_bool_variable',asset_path,{'graph':machine_graph_name,'payload':{'node_id':transition_id,'variable_name':variable_name},'compile':compile_blueprint},execute=execute,save=save,allow_dirty=allow_save_dirty_package,allow_remove=allow_replace)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def set_chooser_enum_cell(asset_path: str, column_index: int, row_index: int, value: str | None = None, comparison: str = "Equal", execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
+        """Set an Enum cell by declared enum name, with Equal/NotEqual/Any comparison. Any ignores value. Reject unknown/hidden/out-of-byte enum entries before mutation. Preserve enum references and unrelated cells; optional explicit single-package save."""
+        return domain.run('edit','set_chooser_enum_cell',asset_path,{'index':column_index,'row':row_index,'value':value or '', 'comparison':comparison},execute=execute,save=save,allow_dirty=allow_save_dirty_package)
+
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def set_chooser_gameplay_tag_cell(asset_path: str, column_index: int, row_index: int, tags: list[str], execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
+        """Set a GameplayTag cell from <=256 existing registered tag names; never registers project tags. Empty list follows the column's engine Any/All/invert semantics. Keep other cells and binding references; optional explicit single-package save."""
+        return domain.run('edit','set_chooser_gameplay_tag_cell',asset_path,{'index':column_index,'row':row_index,'tags':list(tags)},execute=execute,save=save,allow_dirty=allow_save_dirty_package)

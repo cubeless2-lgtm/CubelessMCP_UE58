@@ -6,7 +6,11 @@ FString UCubelessAnimationProductionLibrary::InspectAnimationProductionAsset(UOb
 FString UCubelessAnimationProductionLibrary::EditAnimationProductionAsset(UObject* T,const FString& A,const FString& J,bool E,bool S,bool D,bool R){return Cubeless::UE58::AnimationProduction::Edit(T,A,J,E,S,D,R);}
 FString UCubelessAnimationProductionLibrary::AnimationProductionIndex(UObject* T,const FString& J,bool S){return Cubeless::UE58::AnimationProduction::Index(T,J,S);}
 FString UCubelessAnimationProductionLibrary::BindAnimationProductionNode(UObject* B,const FString& A,const FString& G,const FString& N,const FString& S,bool E,bool C,bool V,bool D,bool R){return Cubeless::UE58::AnimationProduction::BindNode(B,A,G,N,S,E,C,V,D,R);}
-FString UCubelessAnimationProductionLibrary::EvaluateAnimationProductionChooser(UObject* T,UObject* C){return Cubeless::UE58::AnimationProduction::EvaluateChooser(T,C);}
+FString UCubelessAnimationProductionLibrary::EvaluateAnimationProductionChooser(UObject* T,UObject* C,const FString& J){return Cubeless::UE58::AnimationProduction::EvaluateChooser(T,{C},{J});}
+FString UCubelessAnimationProductionLibrary::EvaluateAnimationProductionChooserContexts(UObject* Target,const TArray<UObject*>& Contexts,const TArray<FString>& StructJsons)
+{
+ return Cubeless::UE58::AnimationProduction::EvaluateChooser(Target,Contexts,StructJsons);
+}
 
 FString UCubelessAnimationProductionLibrary::BindAnimationProductionChooser(UObject* B,const FString& G,const FString& N,const FString& P,const FString& F,bool E,bool C,bool S,bool D,bool R){return Cubeless::UE58::AnimationProduction::BindChooser(B,G,N,P,F,E,C,S,D,R);}
 

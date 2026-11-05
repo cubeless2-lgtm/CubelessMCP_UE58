@@ -5,7 +5,7 @@ namespace Cubeless::UE58::AnimationProduction
 {
 bool AuditRuntimeInput(UObject* Object,FString& Error,TSharedPtr<FJsonObject> Observation=nullptr);
 FString Create(const FString& Kind,const FString& Path,UObject* Reference,bool Execute,bool Save);
-FString EvaluateChooser(UObject* Target,UObject* Context);
+FString EvaluateChooser(UObject* Target,const TArray<UObject*>& Contexts,const TArray<FString>& StructJsons);
 FString Inspect(UObject* Target);
 FString InspectBindings(UObject* Target);
 FString Edit(UObject* Target,const FString& Action,const FString& Arguments,bool Execute,bool Save,bool AllowDirty,bool AllowRemove);

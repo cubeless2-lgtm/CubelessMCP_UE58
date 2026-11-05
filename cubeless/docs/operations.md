@@ -202,7 +202,7 @@ UE 5.8.4 공식 MCP에서 실제 리다이렉터 로드 후 SDK 예외, 목적�
 예제의 경로와 GUID는 실제 프로젝트 값으로 바꾼다. `inspect_animation_blueprint_bindings`와 `inspect_animation_state_graph`에서 대상 GUID를 얻는다. `execute=false`가 편집 도구의 기본값이며, 실제 편집은 `execute=true`로 요청한다.
 
 - PoseSearch: Schema 생성 → 필요한 channel 추가·설정 → Database 생성 → animation 추가·설정 → index 요청 → 반환된 job_id로 상태 확인. 인덱스 요청의 `success=true`와 `completed=true`를 구분한다. `in_progress`는 완료가 아니다. job_id는 현재 Editor 세션의 기록이다.
-- Chooser: 결과 에셋 클래스 지정 → class context 지정 → Bool/FloatRange 열 → 결과 행 → cell 조건. `evaluate_chooser_table`은 현재 단일 class context와 직접 속성, hard asset result 범위를 평가한다. `has_result=false`는 조건 불일치에 따른 정상적인 결과 없음일 수 있다.
+- Chooser: 결과 에셋 클래스 지정 → 문맥과 조건 열 설정 → 결과 행과 셀 설정. 평가 입력과 지원 범위는 아래 Chooser 보강 절을 참고한다. `has_result=false`는 조건 불일치에 따른 정상적인 결과 없음일 수 있다.
 - 상태 머신: 공식 StateMachine 노드 생성 → State 생성 → Entry 연결 → `set_anim_state_sequence` → Transition 생성 → 상수 또는 기존 bool 변수 조건 연결 → 묶어서 컴파일·저장.
 
 도구 `A.set_anim_state_sequence`의 인수 예:
@@ -235,7 +235,7 @@ UE 5.8.4 공식 MCP에서 실제 리다이렉터 로드 후 SDK 예외, 목적�
 
 Sequence 입력 보존은 기존 animation editing의 Notify·track·curve·marker·bone-model 스냅샷을 재사용하며 객체 identity도 확인한다. 기존17개의 편집 동작을 바꾼 것은 아니다. 필수 보호의 소스 검토와 대표 동작 검증을 수행했지만 임의 콜백 강제 주입·모든 사용자 클래스 검수를 완료했다고 해석하지 않는다.
 
-### 현재 제한과 남은 작업
+### 2026-10-31 기준 제한과 남은 작업
 
 State의 일반 이름 변경, conduit·self transition·공유 rule 편집, 임의 중첩 그래프 노드/연산자 CRUD, 중복 graph 이름 선택, typed Layer interface 생성·입력 signature 변경, 일반 LinkedAnimGraph의 제자리 port 재구성은 남아 있다. `set_anim_state_sequence`는 canonical 일반 AnimSequence·정확히 같은 Skeleton·표준 binding class를 사용한다. `set_anim_transition_bool_variable`은 기존 runtime Blueprint-visible bool을 사용하며 float/enum 비교식을 만들지는 않는다. LinkedLayer 재바인딩은 같은 compiled 입력 signature를 요구하고, 현재 대표 근거는 입력이 없는 self layer다.
 
@@ -304,3 +304,50 @@ UE 5.8.4에서 네 제작 경로·덮어쓰기/잘못된 경로 거절·소유 �
 2026-11-05 P2 보완: 원본 로드와 감사 이후에도 대상 경로가 비어 있는지 재검사한다. 이 단계에서 거절되면 `writer_entered=false`는 우리 writer 미진입을 뜻하며, 콜백이 실제로 아무것도 바꾸지 않았다는 뜻은 아니다. `change_state_known=false`, `mutation_performed=null`, `saved=null`이면 반환된 원본·대상 관측과 실제 상태를 확인하고 자동 재시도하지 않는다. `save_attempted=false`는 명시적인 API 저장 호출이 없었다는 의미다.
 
 Niagara 게시 콜백이 컴파일을 다시 시작하면 기존 10초 단계 제한과 프레임별 폴링으로 종료를 관찰한다. 이때 재게시·컴파일 재요청·시간 제한 연장은 하지 않는다. `stage=post_publication_compile`은 아직 대기 중이며, 실패 응답의 `operation_complete=true`도 엔진 컴파일 취소를 뜻하지 않는다. `success`, `compilation_pending`, `compile_succeeded`를 함께 확인한다.
+
+### Chooser 조건·구조체·하위 테이블 지원 (2026-11-06)
+
+기존 `cubeless_mcp_ue58.registration.animation_production_toolset.CubelessAnimationProductionTools`를 사용한다. 기존 43개 도구 중 Chooser 7개의 입력 범위를 확장하고 `set_chooser_enum_cell`, `set_chooser_gameplay_tag_cell` 두 호출만 추가했다. 공식 MCP/엔진 소스를 변경하거나 별도 서버를 추가하지 않았다. 필수 엔진 기능은 Chooser와 GameplayTags이며, 검증의 InheritedTagContainer 예제에는 GameplayAbilities도 사용했다.
+
+- `set_chooser_context`: 기존 `class_path` 인자에 런타임 클래스 또는 ScriptStruct 경로를 전달한다. 문맥은 루트 테이블에 정의하며 하위 테이블이 상속한다. 기존 문맥 교체에는 `allow_replace=true`가 필요하다.
+- `add_chooser_column`: `Bool`, `FloatRange`, `Enum`, `GameplayTag`를 받는다. `property_name="BodyInstance.LinearDamping"`처럼 구조체·객체의 점 구분 경로를 사용할 수 있다. Enum은 byte 기반 열거형, GameplayTag는 `FGameplayTagContainer` 속성이다. 단일 `FGameplayTag`, 함수 호출, 배열/Set/Map 인덱싱은 이번 지원 범위가 아니다.
+- `set_chooser_enum_cell`: 숫자 대신 선언된 Enum 이름을 받는다. `comparison`은 `Equal`, `NotEqual`, `Any`이며 `Any`에서는 `value`를 생략할 수 있다. 숨김·범위 밖·존재하지 않는 이름은 변경 전에 거절한다.
+- `set_chooser_gameplay_tag_cell`: 기존에 등록된 태그 문자열 목록을 받는다. 프로젝트 태그를 자동으로 추가하지 않는다. 열 생성의 `options_json`에 `match`(`Any`/`All`), `direction`(`RowValueInInput`/`InputInRowValue`), `exact`, `invert`를 지정한다. 생략하면 엔진 기본값을 사용한다. 빈 태그 목록은 선택한 엔진 매칭 규칙을 따른다.
+
+다음은 이미 문맥을 설정한 테이블에 조건을 추가하는 입력 예다.
+
+```json
+{"asset_path":"/Game/Animation/CH_Combat","column_type":"Enum","property_name":"WeaponType","execute":true}
+```
+
+`set_chooser_enum_cell` 입력:
+
+```json
+{"asset_path":"/Game/Animation/CH_Combat","column_index":0,"row_index":0,"value":"Sword","comparison":"Equal","execute":true}
+```
+
+GameplayTag 열은 `property_name="CombatState.Tags"`, `options_json="{\"match\":\"All\",\"exact\":false}"`처럼 지정하고, 셀에는 `tags=["Combat.Attacking"]`처럼 실제 프로젝트에 등록된 이름을 전달한다. 예시의 에셋·속성·Enum·태그는 사용자가 준비한 실제 값으로 바꿔야 한다.
+
+**Nested Chooser와 외부 Chooser 호출은 다르다.** 기존 `create_chooser_table`에 `parent_chooser_path`를 주면 `asset_path`를 새 하위 객체 이름으로 해석한다. `result_class_path`는 빈 문자열이어야 하며, 루트의 결과 타입·문맥을 상속한다.
+
+```json
+{"asset_path":"AttackChoices","result_class_path":"","parent_chooser_path":"/Game/Animation/CH_Combat","execute":true}
+```
+
+반환된 `nested_chooser` 전체 경로를 기존 조회·행·셀 도구의 `asset_path`로 사용한다. `add_chooser_row`, `set_chooser_result`, `set_chooser_fallback`의 `result_kind` 기본값은 기존 동작인 `Asset`이다. 같은 루트 내부 테이블을 실행하려면 `NestedChooser`, 별도 최상위 Chooser 에셋을 실행하려면 `EvaluateChooser`를 지정한다. 문맥·출력 타입 불일치와 순환 참조는 변경 전에 거절한다. 기존 결과 교체 승인은 그대로 유지한다.
+
+`evaluate_chooser_table`은 기존 단일 문맥 인자 `context_object_path`·`context_struct_json`를 계속 지원한다. 다중 문맥에는 `contexts_json`으로 테이블의 문맥 인덱스 순서에 맞춘 JSON 배열을 전달한다. 슬롯마다 객체 경로 또는 구조체 값을 하나씩 지정하며 모든 슬롯을 채워야 한다. 최대 64개이고 기존 단일 문맥 인자와 함께 사용할 수 없다.
+
+```json
+{"asset_path":"/Game/Animation/CH_Combat","contexts_json":"[{\"object_path\":\"/Game/Animation/CombatContext.CombatContext\"},{\"struct\":{\"Added\":{\"tags\":[\"Foley.Event.Punch\"]}}}]"}
+```
+
+객체는 슬롯에 선언한 클래스와 맞아야 한다. 구조체는 스칼라·중첩 구조체를 지원하며 GameplayTagContainer 필드는 `{"tags":["Foley.Event.Punch"]}` 형식이다. 구조체 JSON으로 객체 참조나 다른 컨테이너를 로드하지 않는다. 함수 호출·컨테이너 인덱싱·출력 열·Proxy 결과는 평가 범위에 포함되지 않는다. 평가 도구는 패키지를 저장하지 않으며 슬롯 형식·수·타입 오류는 평가 전에 거절한다.
+
+수정 기본값은 `execute=false`, `save=false`다. 저장은 지정 패키지 하나로 제한하며, 하위 테이블 저장은 소유 루트 패키지를 저장한다. 기존 dirty 패키지는 `allow_save_dirty_package=true`가 필요하다. 루트 문맥 변경 후 하위 테이블까지 컴파일하며 오류가 있으면 저장 전에 실패한다. 이때 변경 자체는 반영됐을 수 있으므로 `changed`, `change_state_known`, `compile_error_table`, `save_attempted`, `saved`를 확인한다. 별도 복구 성공은 원 요청의 성공이 아니다.
+
+UE 5.8.4 공식 MCP에서 Enum Equal/NotEqual/Any, 중첩 구조체 속성, Tag 상위 태그 매칭·불일치, 구조체 문맥, embedded/외부 Chooser 결과, 순환·잘못된 타입·무승인 교체·dirty 저장 거절을 확인했다. 자식 바인딩 컴파일 오류 시 실제 변경과 저장 차단도 확인했다. 명시 저장 후 새 프로세스에서 참조·결과를 재확인했고 저장 파일 6개는 재로드 동안 변하지 않았다. Enum Any 셀의 비활성 `ValueName`은 엔진 `FEnumColumn::PostLoad`가 기본 이름으로 정규화했으며 비교 규칙·숫자 값·선택 결과는 유지됐다.
+
+다중 문맥은 UE 5.8.4 공식 MCP에서 객체 5개와 구조체 1개를 섞은 Nested Chooser로 확인했다. 첫 번째·다섯 번째 객체 및 구조체 조건을 각각 바꾸면 결과가 없었고, 슬롯 누락·타입 불일치·미등록 태그·잘못된 슬롯 형식·기존 인자와 혼용은 컴파일 전에 거절됐다. 기존 단일 객체·구조체 호출도 통과했다. 평가 전후 루트·자식 authored 값과 디스크 해시가 일치했다.
+
+독립 소스 검토를 거쳤다. 임의 사용자 콜백 강제 주입, 모든 Enum·UDS·객체 체인 변형, 대형 그래프 성능과 새 패키징 실행까지 검증한 것은 아니다. 원시 성공·실패와 보존 저장은 로컬 `records/verification/chooser-support-20261105/`, 통합 결과는 기존 `records/operations/animation-production-20261031/report.json`에 남긴다.

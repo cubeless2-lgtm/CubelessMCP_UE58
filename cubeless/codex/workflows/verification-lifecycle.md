@@ -2,6 +2,8 @@
 
 This project is the development and verification target. Use a separate project only at the user's explicit direction. A preexisting Editor belongs to the user throughout verification.
 
+Use the running Editor for this project, including when verifying plugins. A separate DebugGame, headless, or parallel Editor session requires explicit user direction.
+
 ## Reuse a running Editor first
 
 1. Identify the target `.uproject` and inspect live UnrealEditor processes, including Win64 configuration suffixes (such as DebugGame) and Cmd variants, and their listening ports. On Windows use `Get-CimInstance Win32_Process` and `Get-NetTCPConnection -State Listen` on the host to match the listener's owning PID. If the sandbox cannot see host processes, use the normal read-only approval path. If an Editor is starting, wait for that PID within a bounded deadline. An inaccessible inventory, an unknown owner, a different project, or a failed MCP probe requires reconciliation before any launch.
@@ -23,13 +25,17 @@ When no Editor is running and the chosen port is free, request launch approval t
 
 The launcher checks Engine/Build/Build.version for UE 5.8.x before starting any process, then checks the inventory again and records the actual PID and UTC start time. It opens the engine Entry map in unattended mode to suppress interactive startup questions such as the Zen maintenance wait prompt. A launched receipt confirms process creation only. Wait for that PID to own the selected listener, then run the read-only probe above with the recorded PID and a fresh probe receipt. Track launch refusal, process exit, MCP initialization/discovery failure and identity mismatch separately. If a call times out or the receipt is incomplete, inspect the process, listener and Editor log before deciding what happened. Never start a second Editor as a connection retry.
 
+## Restart for a plugin build
+
+When replacing a loaded plugin DLL requires a restart and the user has authorized it, verify the current Editor's project and PID. Check dirty packages, PIE/SIE and pending work. Preserve the session if any work is unsaved or its state is uncertain. Close the current Editor normally, confirm its PID has exited, and build the exact Development Editor target for this project. After a successful build, relaunch the same `.uproject` in its regular Development Editor. Verify the new PID, project identity and plugin load before continuing validation there.
+
 ## Finish an owned verification session
 
 Do not use `-ExecutePythonScript` plus unconditional keep-alive as an unattended indefinite session. A one-shot script should finish without keep-alive. A multi-stage verification session may keep alive only while its owning runner is active. That runner must have a bounded execution deadline and a finally cleanup path after evidence publication. A timeout does not authorize force-kill or uncertain mutation replay.
 
 On success, failure or interruption: stop issuing new writes, finish/cancel owned jobs and inspect actual state. Record unresolved jobs and partial/unknown outcomes. Check exact PID, project, PIE/SIE and dirty packages immediately before shutdown. If there is dirty/unknown work, preserve the session, record PID/reason/next action and notify the user. Never save or discard automatically merely to make cleanup pass.
 
-For an owned `-ExecutePythonScript` keep-alive Editor, the external helper `cubeless/tools/finish_verification_editor.py` accepts only isolated projects below `cubeless/workspaces`; do not use it against this project or bypass its checks. For an owned Editor in this project, prefer a one-shot script that exits normally, or use its normal window close after reconciling jobs and checking the exact PID, project, PIE/SIE and dirty packages. Never close the user's preexisting Editor. For a qualifying isolated project, invoke the helper with explicit `--endpoint`, `--expected-project`, `--expected-pid` and fresh `--output`; it rediscovers the Python tool, checks identity and clean state, then clears `set_keep_python_script_alive(False)`. It is not a general process killer.
+For an owned `-ExecutePythonScript` keep-alive Editor, the external helper `cubeless/tools/finish_verification_editor.py` accepts only isolated projects below `cubeless/workspaces`; do not use it against this project or bypass its checks. For an owned Editor in this project, prefer a one-shot script that exits normally, or use its normal window close after reconciling jobs and checking the exact PID, project, PIE/SIE and dirty packages. Preserve the user's preexisting Editor during cleanup. For a qualifying isolated project, invoke the helper with explicit `--endpoint`, `--expected-project`, `--expected-pid` and fresh `--output`; it rediscovers the Python tool, checks identity and clean state, then clears `set_keep_python_script_alive(False)`. It is not a general process killer.
 
 Caller must confirm that exact PID exits and inspect the shutdown log. An HTTP disconnect can be an expected exit but is not proof; inspect process state without blindly retrying the mutation. For an Editor launched without a keep-alive script, close its owned window normally after the same checks. A hidden Editor can have a zero .NET `MainWindowHandle`. In that case match the receipt PID and UTC start time, identify its unique project main window, and send normal `WM_CLOSE` only to that window. Preserve the process if identity or cleanliness is uncertain. Record cleanup as complete only after actual exit.
 

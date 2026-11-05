@@ -21,6 +21,7 @@ These standing rules cover Unreal production using official UE MCP and Cubeless 
 ## Work ownership and preservation
 
 - This Unreal project is the development and verification project. Perform work, builds and checks here unless the user explicitly directs otherwise. Do not create or use a separate project, project copy or temporary host project without that direction. Use owned fixtures and a controlled Editor handoff; report checks that cannot safely or technically run here.
+- Reuse this project's running Editor for development and verification, including plugin work. A separate DebugGame, headless, or parallel Editor session requires explicit user direction. When a plugin DLL requires a restart, follow the [same-project restart procedure](workflows/verification-lifecycle.md#restart-for-a-plugin-build).
 - One owner serializes shared Editor and asset mutations on the required game thread. Parallel source work uses disjoint files. Independent QA gets a controlled handoff or owned fixtures in this project.
 - Roles are responsibilities, not automatic processes or model assignments. Launch subagents only when the user or applicable instructions explicitly request delegation/parallel work. Do not call self-review independent review.
 - Preserve existing local changes, assets, Python startup and upper-level RetargetTools. Inspect disk and in-memory dirty state before restart; never silently save/discard user work.
@@ -48,4 +49,4 @@ These standing rules cover Unreal production using official UE MCP and Cubeless 
 - `archive/ue56/` and old `.source` files are historical evidence only. UE5.6 source remains read-only unless the user explicitly requests work there. Historical lessons retain their stated engine/proof levels.
 - Do not stage, commit or push without the user's explicit request. Keep each repository's Git scope separate.
 
-- Owned verification Editor cleanup is part of task completion. Follow [verification lifecycle](workflows/verification-lifecycle.md); release keep-alive and confirm the exact owned PID exits. Never close the main/user Editor or leave an unreported background verification session.
+- Owned verification Editor cleanup is part of task completion. Follow [verification lifecycle](workflows/verification-lifecycle.md), release keep-alive and confirm the exact owned PID exits. Report any retained background verification session. Preserve the user's Editor during cleanup. A user-authorized plugin build restart follows the separate restart procedure.

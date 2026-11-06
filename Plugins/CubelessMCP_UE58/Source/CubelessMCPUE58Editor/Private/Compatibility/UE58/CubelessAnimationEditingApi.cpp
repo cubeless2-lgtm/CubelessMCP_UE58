@@ -4,13 +4,24 @@
 #include "Animation/AnimComposite.h"
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "Animation/AnimData/IAnimationDataController.h"
+#include "Animation/AnimData/AnimDataModel.h"
+#include "Algo/BinarySearch.h"
+#include "Channels/MovieSceneFloatChannel.h"
+#include "MovieScene.h"
+#include "MovieSceneSequence.h"
+#include "Sequencer/MovieSceneControlRigParameterSection.h"
+#include "Sequencer/MovieSceneControlRigParameterTrack.h"
+#include "Rigs/FKControlRig.h"
+#include "Rigs/RigHierarchy.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
 #include "Animation/AnimNotifies/AnimNotifyState.h"
 #include "Animation/Skeleton.h"
 #include "Animation/AnimMetaData.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "Editor.h"
+#include "Editor/Transactor.h"
 #include "HAL/FileManager.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/PackageName.h"
 #include "Misc/Crc.h"
 #include "Misc/CoreMisc.h"
@@ -45,14 +56,77 @@ FString Path(const UObject* O){return O?O->GetPathName():TEXT("");}
 FString Number(double X){return FString::Printf(TEXT("%.17g"),X);}
 template<class T> FString StructText(const T& Value)
 {FString S;T::StaticStruct()->ExportText(S,&Value,nullptr,nullptr,PPF_None,nullptr);return S;}
-FString CurveText(const FFloatCurve& C)
+FString CurveText(const FFloatCurve& C,bool ExactTangents=false)
 {
  FString V=StructText(C)+TEXT("|default=")+Number(C.FloatCurve.DefaultValue);
  for(const auto& K:C.FloatCurve.GetConstRefOfKeys())
  {V+=TEXT("|key=")+Number(K.Time)+TEXT(",")+Number(K.Value);
-  if(K.InterpMode!=RCIM_Linear||K.TangentMode!=RCTM_Auto)V+=TEXT(",tangents=")+Number(K.ArriveTangent)+TEXT(",")+Number(K.LeaveTangent)+TEXT(",")+Number(K.ArriveTangentWeight)+TEXT(",")+Number(K.LeaveTangentWeight);}
+  if(ExactTangents||K.InterpMode!=RCIM_Linear||K.TangentMode!=RCTM_Auto)V+=TEXT(",tangents=")+Number(K.ArriveTangent)+TEXT(",")+Number(K.LeaveTangent)+TEXT(",")+Number(K.ArriveTangentWeight)+TEXT(",")+Number(K.LeaveTangentWeight);}
  return V;
 }
+FName CurveControlName(FName Name)
+{
+ const FRigElementKey Curve(URigHierarchy::GetSanitizedName(Name),ERigElementType::Curve);
+ return UFKControlRig::GetControlName(Curve.Name,ERigElementType::Curve);
+}
+
+const FMovieSceneFloatChannel* FindSequencerCurveChannel(UObject* Model,FName CurveName,UMovieSceneControlRigParameterSection*& OutSection)
+{
+ OutSection=nullptr;
+ auto* Sequence=Cast<UMovieSceneSequence>(Model);
+ UMovieScene* Scene=Live(Sequence)?Sequence->GetMovieScene():nullptr;
+ if(!Live(Scene)||Scene->GetOuter()!=Model)return nullptr;
+ const UMovieSceneControlRigParameterTrack* RigTrack=nullptr;
+ for(const auto* Track:Scene->GetTracks())
+ {
+  if(const auto* Candidate=Cast<UMovieSceneControlRigParameterTrack>(Track))
+  {
+   if(RigTrack)return nullptr;
+   RigTrack=Candidate;
+  }
+ }
+ if(!Live(RigTrack)||RigTrack->GetOuter()!=Scene)return nullptr;
+ // The engine writer uses the first FK section, while cache regeneration
+ // iterates every Control Rig parameter section. Admit only one shared section.
+ for(auto* Section:RigTrack->GetAllSections())
+ {
+  if(auto* Candidate=Cast<UMovieSceneControlRigParameterSection>(Section))
+  {
+   if(OutSection||!Live(Candidate)||Candidate->GetOuter()!=RigTrack)return nullptr;
+   OutSection=Candidate;
+  }
+ }
+ auto* Rig=OutSection?OutSection->GetControlRig():nullptr;
+ if(!Live(Rig)||Rig->GetClass()!=UFKControlRig::StaticClass()||Rig->GetOuter()!=RigTrack)return nullptr;
+ const FName ControlName=CurveControlName(CurveName);
+ const FMovieSceneFloatChannel* Channel=nullptr;
+ for(const auto& Parameter:OutSection->GetScalarParameterNamesAndCurves())
+ {
+  if(Parameter.ParameterName==ControlName)
+  {
+   if(Channel)return nullptr;
+   Channel=&Parameter.ParameterCurve;
+  }
+ }
+ return Channel;
+}
+
+bool IsAlignedCurveTime(float Time,const FFrameRate& Rate)
+{
+ const double Frame=double(Time)*Rate.AsDecimal();
+ if(!FMath::IsFinite(Frame)||Frame<0||Frame>=MAX_int32-1)return false;
+ const float SubFrame=Rate.AsFrameTime(Time).GetSubFrame();
+ return FMath::IsNearlyZero(SubFrame,KINDA_SMALL_NUMBER)||FMath::IsNearlyEqual(SubFrame,1.f,KINDA_SMALL_NUMBER);
+}
+
+bool EqualCurveChannelKey(const FMovieSceneFloatValue& A,const FMovieSceneFloatValue& B)
+{
+ return A.Value==B.Value&&A.InterpMode==B.InterpMode&&A.TangentMode==B.TangentMode&&
+  A.Tangent.TangentWeightMode==B.Tangent.TangentWeightMode&&
+  A.Tangent.ArriveTangent==B.Tangent.ArriveTangent&&A.Tangent.LeaveTangent==B.Tangent.LeaveTangent&&
+  A.Tangent.ArriveTangentWeight==B.Tangent.ArriveTangentWeight&&A.Tangent.LeaveTangentWeight==B.Tangent.LeaveTangentWeight;
+}
+
 void Properties(UObject* O,const FString& Prefix,Snapshot& Out)
 {
  if(!IsValid(O))return;
@@ -152,7 +226,7 @@ bool CaptureTrack(const FAnimTrack& Track,const FString& Prefix,Snapshot& Out,FS
   if(Ref){FObjectKey Identity(Ref);TArray<uint8> Bytes;FMemoryWriter Writer(Bytes,false);Writer<<Identity;Out.Add(Key+TEXT(".reference_identity"),BytesToHex(Bytes.GetData(),Bytes.Num())+TEXT("|")+Path(Ref->GetClass())+TEXT("|")+Path(Ref->GetOuter()));}else Out.Add(Key+TEXT(".reference_identity"),TEXT("<null>"));
  }return true;
 }
-bool Capture(UAnimSequenceBase* A,Snapshot& Out,FString& Error)
+bool Capture(UAnimSequenceBase* A,Snapshot& Out,FString& Error,bool ExactCurveTangents=false)
 {
  Out.Reset();if(!IsValid(A)){Error=TEXT("Asset became invalid");return false;}
  Properties(A,TEXT("asset"),Out);
@@ -175,7 +249,7 @@ bool Capture(UAnimSequenceBase* A,Snapshot& Out,FString& Error)
   Out.Add(TEXT("model"),Path(S->GetDataModelInterface().GetObject()));
   int64 Keys=0;const auto& Curves=S->GetDataModel()->GetFloatCurves();
   if(Curves.Num()>1024){Error=TEXT("Float curve1024 budget exceeded");return false;}
-  for(const auto& C:Curves){Keys+=C.FloatCurve.GetNumKeys();Out.Add(TEXT("curve.")+C.GetName().ToString(),CurveText(C));}
+  for(const auto& C:Curves){Keys+=C.FloatCurve.GetNumKeys();Out.Add(TEXT("curve.")+C.GetName().ToString(),CurveText(C,ExactCurveTangents));}
   for(const auto& C:S->GetDataModel()->GetTransformCurves())Out.Add(TEXT("transformCurve.")+C.GetName().ToString(),StructText(C));
   if(Keys>65536){Error=TEXT("Float curve key65536 budget exceeded");return false;}
   // Public installed model API; bone tracks are preservation data, never edited here.
@@ -392,8 +466,17 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
  if(Save&&WasDirty&&!AllowDirty)return Fail(TEXT("Saving a preexisting dirty package requires allow_save_dirty_package=true"));
  FString Filename;if(Save&&(!FPackageName::TryConvertLongPackageNameToFilename(PackageName,Filename,FPackageName::GetAssetPackageExtension())||IFileManager::Get().IsReadOnly(*Filename)))return Fail(TEXT("Writable package filename required before editing"));
  TSharedPtr<J> P;if(Arguments.Len()>262144||!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Arguments),P)||!P)return Fail(TEXT("Bounded JSON object required"));
+ FString CurveMode=TEXT("Replace");
+ if(Action==TEXT("set_float_curve_keys")&&P->HasField(TEXT("edit_mode"))&&
+  (!P->TryGetStringField(TEXT("edit_mode"),CurveMode)||(CurveMode!=TEXT("Replace")&&CurveMode!=TEXT("Patch"))))
+  return Fail(TEXT("edit_mode must be Replace or Patch"));
+ const bool PatchCurve=Action==TEXT("set_float_curve_keys")&&CurveMode==TEXT("Patch");
+ if(Action==TEXT("set_float_curve_keys"))R->SetStringField(TEXT("edit_mode"),CurveMode);
  Snapshot Before,Expected,Current,SkeletonBefore;FString Error;
- if(!Capture(A,Before,Error))return Fail(Error);Expected=Before;SkeletonState(Skeleton.Get(),SkeletonBefore);
+ TFunction<bool()> CheckPatchChannel;
+ TFunction<bool()> CheckPatchController;
+ TStrongObjectPtr<UObject> PatchController;
+ if(!Capture(A,Before,Error,PatchCurve))return Fail(Error);Expected=Before;SkeletonState(Skeleton.Get(),SkeletonBefore);
  FNotifyLeases NotifyLeases;for(const auto& N:A->Notifies)if(!HoldNotify(N,NotifyLeases))return Fail(TEXT("Live existing Notify objects/classes required"));
  TStrongObjectPtr<UClass> NotifyClass;TStrongObjectPtr<UObject> NotifyCDO;
  Snapshot CdoBefore;FObjectLease CdoLease;bool CdoFrozen=false;FString CdoPath,NotifyClassPath,ScriptError;
@@ -414,7 +497,9 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
    if(!Live(NotifyClass.Get())||NotifyClass->HasAnyClassFlags(CLASS_NewerVersionExists)||Path(NotifyClass.Get())!=NotifyClassPath||!CdoLease.Matches(NotifyCDO.Get())||NotifyCDO->GetClass()!=NotifyClass.Get()||NotifyClass->GetDefaultObject(false)!=NotifyCDO.Get()||Path(NotifyCDO.Get())!=CdoPath){Error=TEXT("Notify CDO/class identity, owner or lifetime changed");return Unknown();}
    Snapshot CurrentCdo;Properties(NotifyCDO.Get(),TEXT("notify_cdo"),CurrentCdo);if(!Equal(CdoBefore,CurrentCdo,R)){Error=TEXT("Notify CDO authored defaults changed across callback");return Unknown();}
   }
-  if(!Capture(A,Current,Error))return Unknown();
+  if(!Capture(A,Current,Error,PatchCurve))return Unknown();
+  if(CheckPatchController&&!CheckPatchController()){Error=TEXT("Animation controller identity or model binding changed");return Unknown();}
+  if(CheckPatchChannel&&!CheckPatchChannel()){Error=TEXT("Float channel identity, times or key data changed unexpectedly");return Unknown();}
   if(!Equal(Want,Current,R)){Error=TEXT("Unexpected authored asset change across engine callback");return Unknown();}
   Snapshot ActualSkeleton;SkeletonState(Skeleton.Get(),ActualSkeleton);
   if(!Equal(SkeletonBefore,ActualSkeleton,R)){Error=TEXT("Skeleton authored state changed");return Unknown();}return true;
@@ -431,6 +516,18 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
 
  FName N,Other;float Time=0,Duration=0;int32 Index=INDEX_NONE,TrackIndex=INDEX_NONE;
  TArray<FRichCurveKey> Keys;
+ struct FPatchKey { int32 Index; FRichCurveKey Input; };
+ TArray<FPatchKey> PatchKeys;
+ FFloatCurve PatchExpected;
+ TStrongObjectPtr<UObject> PatchModel;
+ TStrongObjectPtr<UMovieSceneControlRigParameterSection> PatchSection;
+ TStrongObjectPtr<UControlRig> PatchRig;
+ TArray<FFrameNumber> PatchFrames;
+ TArray<FMovieSceneFloatValue> PatchValues;
+ FFrameRate PatchRate;
+ ERichCurveExtrapolation PatchPre=RCCE_Constant,PatchPost=RCCE_Constant;
+ TOptional<float> PatchDefault;
+ bool PatchSequencer=false;
  const bool Curve=Action==TEXT("add_float_curve")||Action==TEXT("remove_float_curve")||Action==TEXT("set_float_curve_keys");
  const bool AddNotify=Action==TEXT("add_notify")||Action==TEXT("add_notify_state");
  const bool NotifyEdit=Action==TEXT("remove_notify")||Action==TEXT("set_notify_timing");
@@ -444,9 +541,117 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
   if((Action==TEXT("add_float_curve"))==(C!=nullptr))return Fail(TEXT("Curve already exists or selected float curve is absent"));
   if(Action==TEXT("set_float_curve_keys"))
   {
-   const TArray<TSharedPtr<FJsonValue>>* Rows=nullptr;if(!P->TryGetArrayField(TEXT("keys"),Rows)||Rows->Num()>16384)return Fail(TEXT("keys must be at most16384 [time,value] pairs"));
+   const TArray<TSharedPtr<FJsonValue>>* Rows=nullptr;
+   if(!P->TryGetArrayField(TEXT("keys"),Rows)||Rows->Num()>(PatchCurve?64:16384))
+    return Fail(TEXT("keys must be [time,value] pairs; max64 in Patch or16384 in Replace"));
    float Previous=-1;for(const auto& V:*Rows)
    {const TArray<TSharedPtr<FJsonValue>>* Pair=nullptr;double T=0,Y=0;if(!V->TryGetArray(Pair)||Pair->Num()!=2||!(*Pair)[0]->TryGetNumber(T)||!(*Pair)[1]->TryGetNumber(Y)||!FMath::IsFinite(T)||!FMath::IsFinite(Y)||T<0||T>TimelineLength||float(T)<=Previous||FMath::Abs(Y)>1e12)return Fail(TEXT("Finite strictly increasing times within sequence and finite values required"));Keys.Emplace(float(T),float(Y));Previous=float(T);}
+   if(PatchCurve)
+   {
+    PatchModel.Reset(S->GetDataModelInterface().GetObject());
+    if(PatchModel->GetOuter()!=S)return Fail(TEXT("Patch requires an embedded sequence data model"));
+    const FString ModelClass=Path(PatchModel->GetClass());
+    PatchSequencer=ModelClass==TEXT("/Script/AnimationData.AnimationSequencerDataModel");
+    if(!PatchSequencer&&PatchModel->GetClass()!=UAnimDataModel::StaticClass())
+     return Fail(TEXT("Patch requires a supported stock animation data model"));
+    const auto& OldKeys=C->FloatCurve.GetConstRefOfKeys();
+    for(int32 I=0;I<OldKeys.Num();++I)
+     if(!FMath::IsFinite(OldKeys[I].Time)||(I>0&&OldKeys[I].Time<=OldKeys[I-1].Time))
+      return Fail(TEXT("Existing key times must be finite and strictly increasing for Patch"));
+    PatchExpected=*C;
+    if(PatchSequencer&&!Keys.IsEmpty())
+    {
+     if(!S->GetDataModel()->HasBeenPopulated()||(GEditor->Trans&&GEditor->Trans->IsActive()))
+      return Fail(TEXT("Patch requires a populated model outside an active Editor transaction"));
+     const auto* ValidationMode=IConsoleManager::Get().FindConsoleVariable(TEXT("a.AnimSequencer.ValidationMode"));
+     if(!ValidationMode||ValidationMode->GetInt()!=0)return Fail(TEXT("Sequencer validation mode disables curve cache regeneration required by Patch"));
+     const FName ControlName=CurveControlName(N);
+     for(const auto& OtherCurve:S->GetDataModel()->GetFloatCurves())
+      if(OtherCurve.GetName()!=N&&CurveControlName(OtherCurve.GetName())==ControlName)
+       return Fail(TEXT("Multiple float curves alias the same Sequencer control"));
+     UMovieSceneControlRigParameterSection* CurveSection=nullptr;
+     const auto* Channel=FindSequencerCurveChannel(PatchModel.Get(),N,CurveSection);
+     if(!Channel||Channel->GetNumKeys()!=OldKeys.Num())
+      return Fail(TEXT("Existing unambiguous matching Sequencer channel required for Patch"));
+     PatchSection.Reset(CurveSection);
+     PatchRig.Reset(CurveSection->GetControlRig());
+     PatchRate=Channel->GetTickResolution();
+     if(!PatchRate.IsValid()||PatchRate.AsDecimal()<=0)
+      return Fail(TEXT("Valid existing channel frame rate required"));
+     PatchFrames.Append(Channel->GetTimes().GetData(),Channel->GetNumKeys());
+     PatchValues.Append(Channel->GetValues().GetData(),Channel->GetNumKeys());
+     PatchPre=Channel->PreInfinityExtrap;
+     PatchPost=Channel->PostInfinityExtrap;
+     PatchDefault=Channel->GetDefault();
+     for(int32 I=0;I<OldKeys.Num();++I)
+     {
+      if(float(PatchRate.AsSeconds(PatchFrames[I]))!=OldKeys[I].Time||PatchValues[I].Value!=OldKeys[I].Value||
+       (I>0&&PatchFrames[I]<=PatchFrames[I-1]))
+       return Fail(TEXT("Rich curve and Sequencer channel have different existing time/value data"));
+     }
+     CheckPatchChannel=[&,N,ValidationMode]()
+     {
+      if(ValidationMode->GetInt()!=0||!Live(PatchModel.Get())||PatchModel->GetOuter()!=S||S->GetDataModelInterface().GetObject()!=PatchModel.Get()||!Live(PatchSection.Get()))return false;
+      UMovieSceneControlRigParameterSection* ActualSection=nullptr;
+      const auto* Actual=FindSequencerCurveChannel(PatchModel.Get(),N,ActualSection);
+      if(!Actual||ActualSection!=PatchSection.Get()||!Live(PatchRig.Get())||ActualSection->GetControlRig()!=PatchRig.Get()||
+       !S->GetDataModel()->HasBeenPopulated()||(GEditor->Trans&&GEditor->Trans->IsActive())||
+       Actual->GetTickResolution()!=PatchRate||
+       Actual->GetDefault()!=PatchDefault||Actual->PreInfinityExtrap!=PatchPre||Actual->PostInfinityExtrap!=PatchPost||
+       Actual->GetNumKeys()!=PatchFrames.Num())return false;
+      for(int32 I=0;I<PatchFrames.Num();++I)
+       if(Actual->GetTimes()[I]!=PatchFrames[I]||!EqualCurveChannelKey(Actual->GetValues()[I],PatchValues[I]))return false;
+      return true;
+     };
+    }
+    for(const auto& Requested:Keys)
+    {
+     const FKeyHandle Exact=C->FloatCurve.FindKey(Requested.Time,0.f);
+     const FKeyHandle ControllerMatch=C->FloatCurve.FindKey(Requested.Time);
+     if(Exact==FKeyHandle::Invalid()||Exact!=ControllerMatch||C->FloatCurve.GetKey(Exact).Time!=Requested.Time)
+      return Fail(TEXT("Patch requires an exact unambiguous existing key time"));
+     const FRichCurveKey& Original=C->FloatCurve.GetKey(Exact);
+     if(Original.Value==Requested.Value)continue;
+     FRichCurveKey Input=Original;
+     Input.Value=Requested.Value;
+     int32 ChannelIndex=INDEX_NONE;
+     if(PatchSequencer)
+     {
+      if(!IsAlignedCurveTime(Original.Time,PatchRate))
+       return Fail(TEXT("Patch would retime the existing Sequencer channel"));
+      const auto Frame=PatchRate.AsFrameTime(Original.Time).RoundToFrame();
+      ChannelIndex=Algo::BinarySearch(PatchFrames,Frame);
+      if(ChannelIndex==INDEX_NONE)return Fail(TEXT("Selected key has no exact channel frame"));
+      // SetCurveControlKey converts the supplied tangent values with ratio 1.
+      // Passing the original channel-space values preserves the selected key too.
+      const auto& Source=PatchValues[ChannelIndex];
+      Input.InterpMode=Source.InterpMode;
+      Input.TangentMode=Source.TangentMode;
+      Input.TangentWeightMode=Source.Tangent.TangentWeightMode;
+      Input.ArriveTangent=Source.Tangent.ArriveTangent;
+      Input.LeaveTangent=Source.Tangent.LeaveTangent;
+      Input.ArriveTangentWeight=Source.Tangent.ArriveTangentWeight;
+      Input.LeaveTangentWeight=Source.Tangent.LeaveTangentWeight;
+     }
+     PatchKeys.Add({ChannelIndex,Input});
+     PatchExpected.FloatCurve.GetKey(PatchExpected.FloatCurve.FindKey(Input.Time,0.f)).Value=Input.Value;
+    }
+    if(!PatchSequencer&&!PatchKeys.IsEmpty())
+    {
+     Keys=PatchExpected.FloatCurve.GetConstRefOfKeys();
+     FFloatCurve Simulated=PatchExpected;
+     Simulated.FloatCurve.SetKeys(Keys);
+     if(CurveText(Simulated,true)!=CurveText(PatchExpected,true))
+      return Fail(TEXT("Stock legacy controller would recompute tangents for this patch"));
+    }
+    R->SetNumberField(TEXT("requested_key_count"),Rows->Num());
+    R->SetNumberField(TEXT("planned_key_changes"),PatchKeys.Num());
+    R->SetNumberField(TEXT("applied_key_changes"),0);
+    Expected.Add(TEXT("curve.")+N.ToString(),CurveText(PatchExpected,true));
+    if(PatchSequencer)PatchExpected=*C;
+   }
+   else
+   {
    int64 Total=Keys.Num();for(const auto& Existing:S->GetDataModel()->GetFloatCurves())if(Existing.GetName()!=N)Total+=Existing.FloatCurve.GetNumKeys();
    if(Total>65536)return Fail(TEXT("Post-edit total curve key budget65536 exceeded"));
    FFloatCurve Planned=*C;Planned.FloatCurve.SetKeys(Keys);
@@ -477,6 +682,7 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
     R->SetBoolField(TEXT("curve_controller_frame_quantization"),true);
    }
    Expected.Add(TEXT("curve.")+N.ToString(),CurveText(Planned));
+   }
   }
   else if(Action==TEXT("remove_float_curve"))Expected.Remove(TEXT("curve.")+N.ToString());
   else
@@ -566,6 +772,12 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
  if(!Check(Before))return Fail(Error);
  R->SetStringField(TEXT("scope"),TEXT("Target animation asset only; skeleton and bone tracks preserved. No atomic rollback, graph compiler or automatic retry. Compression/cache work may be queued by the engine; not runtime readiness proof."));
  if(!Execute){R->SetBoolField(TEXT("success"),true);R->SetStringField(TEXT("stage"),TEXT("preflight_complete"));return Publish();}
+ if(PatchCurve&&PatchKeys.IsEmpty())
+ {
+  R->SetBoolField(TEXT("success"),true);
+  R->SetStringField(TEXT("stage"),TEXT("complete_no_change"));
+  return Publish();
+ }
  R->SetStringField(TEXT("stage"),TEXT("modify"));R->SetBoolField(TEXT("mutation_attempted"),true);R->SetBoolField(TEXT("change_state_known"),false);
  A->Modify(false);if(!Check(Before))return Fail(Error);
  bool Applied=true;
@@ -573,11 +785,44 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
  if(Curve)
  {
   auto& Controller=S->GetController();const FAnimationCurveIdentifier Id(N,ERawCurveTrackTypes::RCT_Float);
+  if(PatchCurve)
+  {
+   PatchController.Reset(Cast<UObject>(&Controller));
+   auto* ControllerPtr=&Controller;
+   CheckPatchController=[&,ControllerPtr]()
+   {
+    return Live(PatchController.Get())&&Live(PatchModel.Get())&&Cast<UObject>(ControllerPtr)==PatchController.Get()&&
+     ControllerPtr->GetModelInterface().GetObject()==PatchModel.Get()&&PatchModel->GetOuter()==S&&
+     S->GetDataModelInterface().GetObject()==PatchModel.Get();
+   };
+   const FString ExpectedControllerClass=PatchSequencer?TEXT("/Script/AnimationData.AnimSequencerController"):
+    TEXT("/Script/AnimationDataController.AnimDataController");
+   if(!Live(PatchController.Get())||Path(PatchController->GetClass())!=ExpectedControllerClass)
+    return Fail(TEXT("Patch requires the installed stock animation data controller"));
+   if(!Check(Before))return Fail(Error);
+  }
   if(Action==TEXT("add_float_curve"))Applied=Controller.AddCurve(Id,AACF_DefaultCurve);
   else if(Action==TEXT("remove_float_curve"))Applied=Controller.RemoveCurve(Id);
-  else Applied=Controller.SetCurveKeys(Id,Keys);
+  else if(PatchCurve&&PatchSequencer)
+  {
+   int32 AppliedCount=0;
+   for(const auto& Key:PatchKeys)
+   {
+    PatchValues[Key.Index].Value=Key.Input.Value;
+    PatchExpected.FloatCurve.GetKey(PatchExpected.FloatCurve.FindKey(Key.Input.Time,0.f)).Value=Key.Input.Value;
+    Expected.Add(TEXT("curve.")+N.ToString(),CurveText(PatchExpected,true));
+    // The stock per-key undo path replays rich tangents as channel tangents.
+    // Use a non-transactional controller write and verify after each notification.
+    if(!Controller.SetCurveKey(Id,Key.Input,false))
+     return Fail(TEXT("Animation data controller rejected a Patch key; inspect actual target"));
+    if(!Check(Expected))return Fail(Error);
+    R->SetNumberField(TEXT("applied_key_changes"),++AppliedCount);
+   }
+  }
+  else Applied=Controller.SetCurveKeys(Id,Keys,!PatchCurve);
   if(!Applied)return Fail(TEXT("Animation data controller rejected write; inspect actual target"));
   if(!Check(Expected))return Fail(Error);
+  if(PatchCurve&&!PatchSequencer)R->SetNumberField(TEXT("applied_key_changes"),PatchKeys.Num());
  }
  else
  {
@@ -646,6 +891,7 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
   R->SetStringField(TEXT("stage"),TEXT("save"));R->SetBoolField(TEXT("save_attempted"),true);
   FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;Args.SaveFlags=SAVE_NoError;Args.bSlowTask=false;
   const bool Saved=UPackage::SavePackage(Package.Get(),A,*Filename,Args);R->SetBoolField(TEXT("saved"),Saved);
+  if(PatchCurve&&!Saved)R->SetBoolField(TEXT("save_state_known"),false);
   if(!Check(Expected)){R->SetBoolField(TEXT("change_state_known"),false);return Fail(Error);}
   if(!Saved)return Fail(TEXT("Single target package save failed; edits remain in memory"));
  }

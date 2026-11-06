@@ -22,9 +22,9 @@ class CubelessAnimationEditingTools(unreal.ToolsetDefinition):
 
     @toolset_registry.tool_call
     @staticmethod
-    def set_animation_float_curve_keys(asset_path: str, curve_name: str, keys_json: str, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
-        """Replace all keys of an existing float curve with JSON [[time_seconds,value],...]. Strictly increasing times within sequence; max16384 keys/request and65536 total. Empty list clears keys. Linear default keys; concrete AnimSequencer controller quantizes to model-rate or240000fps and generates tangents. Colliding channel frames are refused before editing. No merge or preservation of old tangents."""
-        return domain.edit('set_float_curve_keys', asset_path, {'curve_name': curve_name, 'keys_json': keys_json}, execute, save, allow_save_dirty_package)
+    def set_animation_float_curve_keys(asset_path: str, curve_name: str, keys_json: str, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False, edit_mode: str = "Replace") -> str:
+        """Edit an existing float curve with JSON [[time_seconds,value],...]. Replace (default) replaces all keys with linear keys, [] clears. Patch changes only values at up to 64 exact existing key times, preserving key times, interpolation and tangents. No insertion or deletion in Patch. Unsupported model/channel layouts or times that could retime a channel are refused before editing. Execute and save are opt-in."""
+        return domain.edit('set_float_curve_keys', asset_path, {'curve_name': curve_name, 'keys_json': keys_json, 'edit_mode': edit_mode}, execute, save, allow_save_dirty_package)
 
     @toolset_registry.tool_call
     @staticmethod

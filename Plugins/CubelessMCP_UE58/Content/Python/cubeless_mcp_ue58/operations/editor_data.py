@@ -51,6 +51,8 @@ def _writer(name, arguments, dispatch):
     def action(record):
         record['stage'] = 'native_preflight'
         record['data']['requested_arguments'] = arguments
+        if 'save_requested' in arguments:
+            record['save']['requested'] = arguments['save_requested']
         state.checkpoint(record)
         record['data']['dispatch_started'] = True
         record['data']['native_change_state_known'] = False
@@ -80,6 +82,11 @@ def _writer(name, arguments, dispatch):
         record['save'].update(attempted=native.get('save_attempted', False), saved=native.get('saved', False))
         if 'save_state_known' in native:
             record['save']['known'] = native['save_state_known']
+        if 'save_requested' in native:
+            record['save']['requested'] = native['save_requested']
+        for key in ('saved_actor_count', 'partial_save', 'all_requested_actor_packages_saved'):
+            if key in native:
+                record['save'][key] = native[key]
         if native.get('mutation_attempted') or not native['change_state_known']:
             record['changes'].append({'stage': native.get('stage'), 'changed': native.get('changed'),
                                       'change_state_known': native.get('change_state_known')})
@@ -107,7 +114,7 @@ def _writer(name, arguments, dispatch):
     return json.dumps(result)
 
 
-def invoke(name, path=None, args=(), *, mutation=False, loaded_only=False):
+def invoke(name, path=None, args=(), *, mutation=False, loaded_only=False, save_requested=None):
     """Native compatibility layer owns engine context and post-callback validation."""
     def dispatch():
         try:
@@ -119,7 +126,29 @@ def invoke(name, path=None, args=(), *, mutation=False, loaded_only=False):
             return function(*values)
         except Exception as error:
             return _failure(name, error, dispatched=True, mutation=mutation)
-    return _writer(name, {'path': path, 'args': list(args)}, dispatch) if mutation else dispatch()
+    if not mutation:
+        return dispatch()
+    journal_arguments = {'path': path, 'args': list(args)}
+    if save_requested is not None:
+        journal_arguments['save_requested'] = save_requested
+    return _writer(name, journal_arguments, dispatch)
+
+
+def add_actors_to_data_layer(actor_paths, instance_name, execute, save):
+    name = "add_editor_actors_to_data_layer"
+    try:
+        paths = list(actor_paths)
+        if not 1 <= len(paths) <= 32:
+            raise ValueError("Provide 1 to 32 exact actor object paths")
+        for path in paths:
+            _validate_path(path)
+        if not isinstance(instance_name, str) or not 1 <= len(instance_name) <= 256:
+            raise ValueError("Bounded Data Layer instance name required")
+        if type(execute) is not bool or type(save) is not bool:
+            raise ValueError("Boolean execute and save required")
+    except (ValueError, TypeError) as error:
+        return _failure(name, error)
+    return invoke(name, args=(paths, instance_name, execute, save), mutation=execute, save_requested=save)
 
 
 def spawn_editor_actor_deferred(class_path, actor_name, transform_json, execute=False):

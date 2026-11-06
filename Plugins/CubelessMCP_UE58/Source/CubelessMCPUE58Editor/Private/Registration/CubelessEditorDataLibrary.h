@@ -12,9 +12,11 @@ public:
  UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
  static FString InspectBlueprintDefinition(UObject* Object);
  UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
- static FString InspectEditorWorldConfiguration();
+ static FString InspectEditorWorldConfiguration(bool bIncludePartitionActors=false,int32 ActorOffset=0,int32 ActorLimit=100);
  UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
  static FString InspectStaticMeshMetadata(UObject* Object);
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
+ static FString AddEditorActorsToDataLayer(const TArray<FString>& ActorPaths,const FString& DataLayerInstanceName,bool bExecute=false,bool bSave=false);
  UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))
  static FString InspectComponentAuthoringData(UObject* Object);
  UFUNCTION(BlueprintCallable,Category="Cubeless|Internal",meta=(AIIgnore,DevelopmentOnly))

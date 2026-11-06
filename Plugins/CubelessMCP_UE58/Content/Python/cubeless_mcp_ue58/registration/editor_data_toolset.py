@@ -16,9 +16,22 @@ class CubelessEditorDataTools(unreal.ToolsetDefinition):
 
     @toolset_registry.tool_call
     @staticmethod
-    def inspect_editor_world_configuration() -> str:
-        """Read current Editor world's streaming levels, actual/desired visibility, loaded levels, WorldPartition configuration and public WorldSettings bookmark slots. No cell loading, viewport/UI jump, memory/triangle estimate or RX plugin dependency."""
-        return editor_data.invoke("inspect_editor_world_configuration")
+    def inspect_editor_world_configuration(
+        include_partition_actors: bool = False, actor_offset: int = 0, actor_limit: int = 100
+    ) -> str:
+        """Read current Editor world configuration. Opt in to paged World Partition descriptors (loaded and unloaded), with GUID, path, location and Data Layer membership. actor_limit 1..200. Loaded rows also report current direct Data Layer memberships separately. No cell loading or saves."""
+        return editor_data.invoke(
+            "inspect_editor_world_configuration",
+            args=(include_partition_actors, actor_offset, actor_limit),
+        )
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def add_editor_actors_to_data_layer(
+        actor_paths: list[str], data_layer_instance_name: str, execute: bool = False, save: bool = False
+    ) -> str:
+        """Preview or add up to 32 exact loaded external actors in the current World Partition persistent level to an existing standard Data Layer. Use a resolved instance name from world inspection. Preserve existing memberships and skip duplicates. save=true saves only changed actor packages that were clean on entry. May update Editor visibility. No cell loads."""
+        return editor_data.add_actors_to_data_layer(actor_paths, data_layer_instance_name, execute, save)
 
     @toolset_registry.tool_call
     @staticmethod

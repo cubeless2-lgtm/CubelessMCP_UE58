@@ -29,7 +29,7 @@ UE 5.8.4에서 Material/MaterialFunction의 생성·동일 객체 복구·저장
 | 도구 | 제공하는 범위 |
 |---|---|
 | `inspect_blueprint_definition(asset_path)` | 부모/생성 클래스, 로컬·상속 변수와 SCS 선언, 이미 생성된 Actor CDO 컴포넌트. CDO가 없으면 unavailable로 구분하며 조회 때문에 새로 만들지 않는다. |
-| `inspect_editor_world_configuration()` | 현재 Editor 월드의 streaming/loaded level, 실제·요청 가시성, WorldPartition 설정, 표준 WorldSettings bookmark accessor. 셀을 로드하거나 셀별 삼각형/메모리를 계산하지 않는다. |
+| `inspect_editor_world_configuration()` | 현재 Editor 월드의 streaming/loaded level, 가시성, World Partition 설정 및 북마크를 읽는다. `include_partition_actors=true`로 로드·미로드 액터와 Data Layer 소속을 함께 조회한다. |
 | `inspect_static_mesh_metadata(asset_path)` | 렌더 LOD UV 수, source-model build/reduction 설정, 소켓 이름·변환. 빌드 중인 메시를 기다리지 않고 거절한다. |
 | `inspect_component_authoring_data(component_path)` | 로드된 StaticMesh 컴포넌트의 LOD 페인트/override 컬러 수, SkeletalMesh의 저장된 single-animation 기본값, HeightFog 설정. 실제 컬러 원소나 현재 재생 상태의 검수와 구분한다. |
 | `inspect_widget_animation_data(asset_path)` | 사용자 부모 클래스도 허용하는 source-local 위젯 트리·애니메이션, display/tick rate와 2D transform section mask. 상속된 source-local 배열을 하나의 배열로 합쳤다고 표현하지 않는다. |
@@ -40,6 +40,25 @@ UE 5.8.4에서 Material/MaterialFunction의 생성·동일 객체 복구·저장
 | `refresh_component_render_state(component_path, execute=false)` | 등록된 Editor 컴포넌트의 `MarkRenderStateDirty` 요청. Decal/PostProcess에도 같은 공개 엔진 경로를 사용한다. 큐 등록과 render thread/GPU 완료를 구분한다. |
 | `set_asset_package_dirty(asset_path, dirty, allow_clear=false)` | `/Game`의 명시한 비-map 에셋 **패키지** dirty flag. false로 지우려면 allow_clear=true가 필요하다. 저장·복원·수정 취소가 아니다. |
 | `spawn_editor_actor_deferred(class_path, actor_name, transform_json="{}", execute=false)` | 명시한 이름으로 Editor persistent level에 deferred spawn 후 FinishSpawning한다. 기존 이름을 교체하지 않는다. MCP 개발 클래스와 이를 참조하는 Blueprint는 생성 전에 기존 의존성 검사로 거절한다. 분리된 begin/finish 토큰이나 생성 전 임의 프로퍼티 주입은 제공하지 않으며, 임의 BP의 크래시를 방지한다고 보장하지 않는다. |
+
+`inspect_editor_world_configuration(include_partition_actors=true, actor_offset=0, actor_limit=100)`은 현재 Editor 월드의 초기화된 World Partition에 등록된 액터 디스크립터를 읽는다. `partition_actor_inventory.actors`에는 GUID, 액터 경로, 패키지, 레이블, 월드 좌표, 로드 상태, Data Layer 에셋 경로 및 엔진이 이미 해석한 레이어 인스턴스 이름이 포함된다. 레이어 이름이 아직 해석되지 않았다면 `data_layer_instance_names_resolved=false`로 표시하며 빈 소속으로 간주하지 않는다. 좌표와 소속은 디스크립터 기준이므로 저장 전 액터 편집과 다를 수 있다.
+
+기존 인자 없는 호출의 결과는 유지한다. 목록은 액터 경로와 GUID 순이며 `next_offset`으로 이어 읽는다. 페이지당 1~200개, 전체 디스크립터 10만 개까지 지원한다. 호출 간 월드가 변경되면 페이지 결과도 바뀔 수 있다. 일반 레벨과 초기화 전 World Partition에는 `available=false`와 이유를 반환한다. 셀·액터 패키지를 로드하거나 레이어를 배정·저장하지 않는다.
+
+기존 레이어에 액터를 추가하려면 `add_editor_actors_to_data_layer`를 사용한다. 월드 조회의 `actor_path`와 해석된 `data_layer_instance_names`의 정확한 이름을 전달한다. 현재 World Partition 맵의 퍼시스턴트 레벨에 로드된 외부 액터 1~32개와 같은 월드의 기존 일반 Data Layer를 지원한다. 잠긴 레이어, 미로드 액터, 다른 월드의 대상은 배정 전에 거절한다. 레이어 생성·제거와 다른 레이어에서의 이동은 지원하지 않는다.
+
+```json
+{
+  "actor_paths": ["/Game/Maps/L_Example.L_Example:PersistentLevel.StaticMeshActor_0"],
+  "data_layer_instance_name": "DataLayer_0123456789ABCDEF",
+  "execute": false,
+  "save": false
+}
+```
+
+기본 호출은 `would_add`와 기존 소속을 반환한다. `execute=true`로 실행하면 기존 소속을 유지한 채 새 소속을 추가하고, 이미 배정된 액터는 건너뛴다. 엔진은 배정 후 에디터 가시성과 선택 상태를 갱신할 수 있다. `save=true`이면 시작 시 깨끗했던 변경 액터의 외부 패키지만 각각 저장한다. 결과의 `actors`에서 액터별 소속·저장 결과를 확인한다. 최상위 `saved`는 한 개 이상 저장 성공, `partial_save`는 일부 저장 성공, `all_requested_actor_packages_saved`는 요청된 변경 패키지의 전체 저장 성공을 뜻한다. 실패하면 남은 배정이나 저장을 중단하며 자동 롤백과 재시도는 없다. 저장하려는 액터의 기존 소속 에셋도 모두 이미 로드된 표준 Data Layer 에셋이어야 한다. 엔진이 저장 과정에서 제거할 수 있는 중복·참조 불가 소속은 쓰기 전에 거절한다.
+
+배정 직후에는 결과의 `memberships_after`나 월드 인벤토리의 `loaded_data_layers.asset_paths`에서 현재 로드된 액터의 실제 소속을 확인한다. 인벤토리의 기존 `data_layer_asset_paths`와 `data_layer_instance_names`는 디스크립터 값으로 유지한다. 같은 에디터에서 맵을 다시 열어도 이 스냅샷에는 저장 전 값이 보일 수 있다. `loaded_data_layers.resolved_direct_instance_names`는 액터의 직접 소속에서 현재 해석할 수 있는 인스턴스 이름이다. 상위 Level Instance로부터 상속한 소속은 이 필드에 포함하지 않는다. 이 조회는 액터나 레이어 에셋을 로드하지 않는다.
 
 Actor·컴포넌트는 전체 object path로 지정한다. label·선택 상태·짧은 이름으로 대상을 추정하지 않는다. 에셋은 `/Game`·`/Engine`의 package/object path를 받으며 다른 플러그인 mount의 읽기 대상은 이미 로드되어 있어야 한다.
 

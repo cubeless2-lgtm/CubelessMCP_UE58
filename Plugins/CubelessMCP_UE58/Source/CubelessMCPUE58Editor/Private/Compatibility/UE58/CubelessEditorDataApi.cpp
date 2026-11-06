@@ -15,6 +15,19 @@
 #include "Engine/BookMark.h"
 #include "GameFramework/WorldSettings.h"
 #include "WorldPartition/WorldPartition.h"
+#include "WorldPartition/ActorDescContainerInstance.h"
+#include "WorldPartition/ActorDescContainerInstanceCollection.h"
+#include "WorldPartition/WorldPartitionActorDescInstance.h"
+#include "WorldPartition/DataLayer/DataLayerAsset.h"
+#include "WorldPartition/DataLayer/ExternalDataLayerAsset.h"
+#include "WorldPartition/DataLayer/DataLayerInstanceWithAsset.h"
+#include "WorldPartition/DataLayer/DataLayerManager.h"
+#include "WorldPartition/DataLayer/WorldDataLayers.h"
+#include "DataLayer/DataLayerEditorSubsystem.h"
+#include "HAL/FileManager.h"
+#include "Misc/PackageName.h"
+#include "UObject/SavePackage.h"
+#include "UObject/UObjectHash.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -121,9 +134,160 @@ FString Blueprint(UObject* Object)
  C.R->SetStringField(TEXT("component_scope"),TEXT("Local/inherited SCS declarations plus already-created Actor CDO components. Missing CDO is unavailable, not proof of no native components; no CDO is created by this query."));return C.Done();
 }
 
-FString World()
+namespace
+{
+TArray<TSharedPtr<FJsonValue>> DataLayerNames(TArrayView<const FName> Names)
+{
+ TArray<TSharedPtr<FJsonValue>> Rows;
+ for(FName Name:Names)
+ {
+  Rows.Add(MakeShared<FJsonValueString>(Name.ToString()));
+ }
+ return Rows;
+}
+
+constexpr int32 MaxActorMemberships=256;
+
+bool LayerObjectReady(const UObject* Object)
+{
+ return IsValid(Object)&&!Object->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_WillBeLoaded|RF_BeginDestroyed|RF_FinishDestroyed);
+}
+
+bool ReadAuthoredLayerPaths(AActor* Actor,TArray<FSoftObjectPath>& Paths)
+{
+ const auto* Array=FindFProperty<FArrayProperty>(AActor::StaticClass(),AActor::GetDataLayerAssetsPropertyName());
+ const auto* Inner=Array?CastField<FSoftObjectProperty>(Array->Inner):nullptr;
+ if(!Inner||Inner->PropertyClass!=UDataLayerAsset::StaticClass())return false;
+ FScriptArrayHelper Values(Array,Array->ContainerPtrToValuePtr<void>(Actor));
+ if(Values.Num()>MaxActorMemberships)return false;
+ Paths.Reset(Values.Num());
+ for(int32 Index=0;Index<Values.Num();++Index)
+ {
+  Paths.Add(Inner->GetPropertyValue(Values.GetRawPtr(Index)).ToSoftObjectPath());
+ }
+ // AActor::PreSave deduplicates with a set. Membership has no authored order.
+ Paths.Sort([](const FSoftObjectPath& A,const FSoftObjectPath& B){return A.LexicalLess(B);});
+ return true;
+}
+
+TArray<TSharedPtr<FJsonValue>> SoftPathRows(const TArray<FSoftObjectPath>& Paths)
+{
+ TArray<TSharedPtr<FJsonValue>> Rows;
+ for(const auto& PathValue:Paths)Rows.Add(MakeShared<FJsonValueString>(PathValue.ToString()));
+ return Rows;
+}
+
+// Keep descriptor fields intact and report direct authored membership separately
+// for the exact loaded actor. GetActor() on the descriptor can flush an async load.
+void ReadLoadedDataLayers(const UWorldPartition& Partition,const FWorldPartitionActorDescInstance& Desc,
+ const FString& ActorPath,FJsonObject& RowValue)
+{
+ auto Membership=MakeShared<J>();
+ RowValue.SetObjectField(TEXT("loaded_data_layers"),Membership);
+ Membership->SetBoolField(TEXT("available"),false);
+ AActor* Actor=FindObject<AActor>(nullptr,*ActorPath);
+ if(!LayerObjectReady(Actor)||Actor->IsActorBeingDestroyed()||Actor->IsTemplate()||
+  Actor->GetWorld()!=Partition.GetWorld()||Actor->GetActorGuid()!=Desc.GetGuid())
+ {
+  Membership->SetStringField(TEXT("reason"),TEXT("live_actor_identity_unavailable"));
+  return;
+ }
+ TArray<FSoftObjectPath> Paths;
+ if(!ReadAuthoredLayerPaths(Actor,Paths))
+ {
+  Membership->SetStringField(TEXT("reason"),TEXT("authored_membership_unavailable"));
+  return;
+ }
+ if(const auto* External=Actor->GetExternalDataLayerAsset())
+ {
+  Paths.AddUnique(FSoftObjectPath(External));
+  Paths.Sort([](const FSoftObjectPath& A,const FSoftObjectPath& B){return A.LexicalLess(B);});
+ }
+ TArray<FName> InstanceNames;
+ const auto* Manager=UDataLayerManager::GetDataLayerManager(Actor);
+ bool AllResolved=true;
+ for(const auto& AssetPath:Paths)
+ {
+  const auto* Asset=Cast<UDataLayerAsset>(AssetPath.ResolveObject());
+  const auto* Instance=IsValid(Manager)&&LayerObjectReady(Asset)&&FSoftObjectPath(Asset)==AssetPath?
+   Manager->GetDataLayerInstance(Asset):nullptr;
+  if(LayerObjectReady(Instance))InstanceNames.AddUnique(Instance->GetFName());
+  else AllResolved=false;
+ }
+ Membership->SetBoolField(TEXT("available"),true);
+ Membership->SetArrayField(TEXT("asset_paths"),SoftPathRows(Paths));
+ Membership->SetArrayField(TEXT("resolved_direct_instance_names"),DataLayerNames(InstanceNames));
+ Membership->SetBoolField(TEXT("all_direct_instance_names_resolved"),AllResolved);
+}
+
+bool ReadPartitionActors(const UWorldPartition& Partition,int32 Offset,int32 Limit,FJsonObject& Inventory)
+{
+ struct FEntry
+ {
+  const FWorldPartitionActorDescInstance* Descriptor;
+  FString ActorPath;
+ };
+ TArray<FEntry> Entries;
+ for(FActorDescContainerInstanceCollection::TConstIterator<> It(&Partition);It;++It)
+ {
+  const FWorldPartitionActorDescInstance* Desc=*It;
+  if(!Desc||!Desc->IsValid())continue;
+  if(Entries.Num()==100000)return false;
+  Entries.Add({Desc,Desc->GetActorSoftPath().ToString()});
+ }
+ Entries.Sort([](const FEntry& Left,const FEntry& Right)
+ {
+  const int32 PathOrder=Left.ActorPath.Compare(Right.ActorPath,ESearchCase::CaseSensitive);
+  if(PathOrder!=0)return PathOrder<0;
+  return Left.Descriptor->GetGuid()<Right.Descriptor->GetGuid();
+ });
+
+ TArray<TSharedPtr<FJsonValue>> Actors;
+ const int32 End=FMath::Min(Entries.Num(),Offset+Limit);
+ for(int32 Index=Offset;Index<End;++Index)
+ {
+  const FEntry& Entry=Entries[Index];
+  const FWorldPartitionActorDescInstance& Desc=*Entry.Descriptor;
+  auto Actor=MakeShared<J>();
+  Actor->SetStringField(TEXT("guid"),Desc.GetGuid().ToString(EGuidFormats::DigitsWithHyphens));
+  Actor->SetStringField(TEXT("actor_path"),Entry.ActorPath);
+  Actor->SetStringField(TEXT("actor_package"),Desc.GetActorPackage().ToString());
+  Actor->SetStringField(TEXT("label"),Desc.GetActorLabelOrName().ToString());
+  Actor->SetStringField(TEXT("native_class"),Desc.GetNativeClass().ToString());
+  const bool Loaded=Desc.IsLoaded();
+  Actor->SetBoolField(TEXT("loaded"),Loaded);
+  Actor->SetBoolField(TEXT("async_load_pending"),Desc.GetAsyncLoadID()!=INDEX_NONE);
+  if(const UActorDescContainerInstance* Container=Desc.GetContainerInstance())
+  {
+   const FVector Position=Container->GetTransform().TransformPosition(Desc.GetActorTransform().GetLocation());
+   if(!Position.ContainsNaN())Actor->SetArrayField(TEXT("descriptor_world_position"),Vector(Position));
+  }
+  const TArray<FName> AssetPaths=Desc.GetDataLayers();
+  Actor->SetArrayField(TEXT("data_layer_asset_paths"),DataLayerNames(AssetPaths));
+  const bool NamesResolved=Desc.HasResolvedDataLayerInstanceNames();
+  Actor->SetBoolField(TEXT("data_layer_instance_names_resolved"),NamesResolved);
+  if(NamesResolved)
+  {
+   Actor->SetArrayField(TEXT("data_layer_instance_names"),DataLayerNames(Desc.GetDataLayerInstanceNames().ToArray()));
+  }
+  if(Loaded)ReadLoadedDataLayers(Partition,Desc,Entry.ActorPath,*Actor);
+  Actors.Add(Row(Actor));
+ }
+ Inventory.SetNumberField(TEXT("total"),Entries.Num());
+ Inventory.SetNumberField(TEXT("offset"),Offset);
+ Inventory.SetNumberField(TEXT("limit"),Limit);
+ if(End<Entries.Num())Inventory.SetNumberField(TEXT("next_offset"),End);
+ else Inventory.SetField(TEXT("next_offset"),MakeShared<FJsonValueNull>());
+ Inventory.SetArrayField(TEXT("actors"),MoveTemp(Actors));
+ return true;
+}
+}
+
+FString World(bool bIncludePartitionActors,int32 ActorOffset,int32 ActorLimit)
 {
  FContext C(TEXT("inspect_editor_world_configuration"));if(!C.Ready)return Encode(C.R);auto* W=C.EditorWorld;
+ if(bIncludePartitionActors&&(ActorOffset<0||ActorOffset>100000||ActorLimit<1||ActorLimit>200))
+  return C.Fail(TEXT("Partition actor offset must be 0..100000 and limit 1..200"));
  C.R->SetStringField(TEXT("world"),Path(W));auto* P=W->GetWorldPartition();C.R->SetStringField(TEXT("world_partition"),Path(P));C.R->SetBoolField(TEXT("partitioned"),P!=nullptr);
  if(P){C.R->SetBoolField(TEXT("partition_initialized"),P->IsInitialized());C.R->SetBoolField(TEXT("streaming_enabled"),P->IsStreamingEnabled());}
  TArray<TSharedPtr<FJsonValue>> Streams,Levels,Bookmarks;
@@ -139,7 +303,336 @@ FString World()
   const auto& B=Settings->GetBookmarks();if(B.Num()>4096)return C.Fail(TEXT("Bookmark inventory exceeds bound"));
   for(int32 I=0;I<B.Num();++I){auto O=MakeShared<J>();O->SetNumberField(TEXT("index"),I);O->SetStringField(TEXT("object"),Path(B[I]));if(IsValid(B[I]))O->SetStringField(TEXT("class"),Path(B[I]->GetClass()));if(auto* Standard=Cast<UBookMark>(B[I])){O->SetArrayField(TEXT("location"),Vector(Standard->Location));O->SetStringField(TEXT("rotation"),Standard->Rotation.ToString());}Bookmarks.Add(Row(O));}
  }
+ if(bIncludePartitionActors)
+ {
+  auto Inventory=MakeShared<J>();
+  const bool Available=P&&P->IsInitialized();
+  Inventory->SetBoolField(TEXT("available"),Available);
+  if(!Available)
+  {
+   Inventory->SetStringField(TEXT("reason"),P?TEXT("partition_not_initialized"):TEXT("not_partitioned"));
+  }
+  else if(!ReadPartitionActors(*P,ActorOffset,ActorLimit,*Inventory))
+  {
+   return C.Fail(TEXT("Partition actor inventory exceeds 100000 descriptors"));
+  }
+  C.R->SetObjectField(TEXT("partition_actor_inventory"),Inventory);
+ }
  C.R->SetArrayField(TEXT("streaming_levels"),Streams);C.R->SetArrayField(TEXT("loaded_levels"),Levels);C.R->SetArrayField(TEXT("bookmarks"),Bookmarks);C.R->SetStringField(TEXT("scope"),TEXT("Current Editor world only. Does not load partition cells or calculate unloaded cell geometry/memory. Uses public AWorldSettings bookmark accessor without RX class dependency."));return C.Done();
+}
+
+namespace
+{
+bool CanPreserveMembershipOnSave(AActor* Actor,const UDataLayerManager* Manager,const TArray<FSoftObjectPath>& Paths)
+{
+ if(!Actor->SupportsDataLayerType(UDataLayerInstance::StaticClass()))return false;
+ for(int32 Index=0;Index<Paths.Num();++Index)
+ {
+  const auto& AssetPath=Paths[Index];
+  if(Index>0&&Paths[Index-1]==AssetPath)return false;
+  const auto* Asset=Cast<UDataLayerAsset>(AssetPath.ResolveObject());
+  if(!LayerObjectReady(Asset)||Asset->GetClass()!=UDataLayerAsset::StaticClass()||
+   FSoftObjectPath(Asset)!=AssetPath||!Asset->CanBeReferencedByActor(Actor))return false;
+  const UDataLayerInstance* Instance=Manager->GetDataLayerInstance(Asset);
+  if(Instance&&Instance->GetRootExternalDataLayerInstance())return false;
+ }
+ return true;
+}
+
+struct FLayerActor
+{
+ TStrongObjectPtr<AActor> Actor;
+ TStrongObjectPtr<UPackage> Package;
+ FString Path;
+ FString Filename;
+ FString PackageName;
+ FGuid Guid;
+ TArray<FSoftObjectPath> Before;
+ TArray<FSoftObjectPath> Expected;
+ TMap<FString,FString> SaveSnapshot;
+ bool DirtyBefore=false;
+ bool NeedsAdd=false;
+ bool AddAttempted=false;
+ bool SaveAttempted=false;
+ bool Saved=false;
+
+ bool Current(const FContext& Context,const ULevel* Level) const
+ {
+  return LayerObjectReady(Actor.Get())&&LayerObjectReady(Package.Get())&&
+   Context.EditorActor(Actor.Get())&&Actor->GetLevel()==Level&&Package->GetName()==PackageName&&
+   Actor->GetPathName()==Path&&Actor->GetActorGuid()==Guid&&Actor->GetExternalPackage()==Package.Get()&&
+   Actor->GetPackage()==Package.Get()&&!Actor->GetExternalDataLayerAsset()&&!Actor->IsRunningUserConstructionScript();
+ }
+};
+
+// For saving, admit only the external package containing this actor and its owned objects.
+// Compare editable values apart from the membership array before any package write.
+bool CaptureLayerSaveScope(const FLayerActor& Target,TMap<FString,FString>& Snapshot)
+{
+ TArray<UObject*> Objects;
+ GetObjectsWithPackage(Target.Package.Get(),Objects);
+ if(Objects.Num()>256||!Objects.Contains(Target.Actor.Get()))return false;
+ Snapshot.Reset();
+ int64 Characters=0;
+ for(UObject* Object:Objects)
+ {
+  if(Object==Target.Package.Get())continue;
+  if(!IsValid(Object)||(Object!=Target.Actor.Get()&&!Object->IsIn(Target.Actor.Get())))return false;
+  const FString ObjectKey=Object->GetPathName();
+  Snapshot.Add(ObjectKey,Object->GetClass()->GetPathName());
+  for(TFieldIterator<FProperty> It(Object->GetClass());It;++It)
+  {
+   const FProperty* Property=*It;
+   const FName Name=Property->GetFName();
+   const bool IsTarget=Object==Target.Actor.Get();
+   // Actor metadata edited by the World Outliner may be serialized without CPF_Edit.
+   // Transient visibility flags updated by DataLayerEditor are not persisted.
+   if((!IsTarget&&!Property->HasAnyPropertyFlags(CPF_Edit))||
+    Property->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated|CPF_SkipSerialization)||
+    (IsTarget&&Name==AActor::GetDataLayerAssetsPropertyName()))continue;
+   for(int32 Index=0;Index<Property->ArrayDim;++Index)
+   {
+    const FString Key=ObjectKey+TEXT(".")+Property->GetName()+FString::Printf(TEXT("[%d]"),Index);
+    FString Value;
+    Property->ExportTextItem_Direct(Value,Property->ContainerPtrToValuePtr<void>(Object,Index),nullptr,Object,PPF_None);
+    Characters+=Key.Len()+Value.Len();
+    if(Characters>2*1024*1024)return false;
+    Snapshot.Add(Key,MoveTemp(Value));
+   }
+  }
+ }
+ return true;
+}
+}
+
+FString AddActorsToDataLayer(const TArray<FString>& ActorPaths,const FString& InstanceName,bool Execute,bool Save)
+{
+ FContext Context(TEXT("add_editor_actors_to_data_layer"));
+ if(!Context.Ready)return Encode(Context.R);
+ auto& Result=Context.R;
+ Result->SetBoolField(TEXT("execute_requested"),Execute);
+ Result->SetBoolField(TEXT("save_requested"),Save);
+ if(Writing||ActorPaths.IsEmpty()||ActorPaths.Num()>32||InstanceName.IsEmpty()||InstanceName.Len()>256)
+  return Context.Fail(TEXT("Idle editor, 1..32 actor paths and a bounded instance name required"));
+ UWorld* World=Context.EditorWorld;
+ ULevel* Level=World->PersistentLevel;
+ UWorldPartition* Partition=World->GetWorldPartition();
+ AWorldDataLayers* WorldLayers=IsValid(Level)?Level->GetWorldDataLayers():nullptr;
+ UDataLayerManager* Manager=IsValid(Partition)?Partition->GetDataLayerManager():nullptr;
+ if(!IsValid(Partition)||!Partition->IsInitialized()||!IsValid(WorldLayers)||!IsValid(Manager)||FLevelUtils::IsLevelLocked(Level))
+  return Context.Fail(TEXT("Initialized World Partition and unlocked persistent level required"));
+ const FName LayerName(*InstanceName,FNAME_Find);
+ auto* Layer=const_cast<UDataLayerInstanceWithAsset*>(Cast<UDataLayerInstanceWithAsset>(WorldLayers->GetDataLayerInstance(LayerName)));
+ const UDataLayerAsset* LayerAsset=IsValid(Layer)?Layer->GetAsset():nullptr;
+ auto* Subsystem=GEditor->GetEditorSubsystem<UDataLayerEditorSubsystem>();
+ if(!LayerObjectReady(Layer)||Layer->GetClass()!=UDataLayerInstanceWithAsset::StaticClass()||
+  !LayerObjectReady(LayerAsset)||LayerAsset->GetClass()!=UDataLayerAsset::StaticClass()||
+  Layer->GetFName()!=LayerName||Layer->GetOuterWorldDataLayers()!=WorldLayers||
+  Layer->GetRootExternalDataLayerInstance()||Layer->IsReadOnly()||!IsValid(Subsystem))
+  return Context.Fail(TEXT("Existing writable standard Data Layer instance in the current world required"));
+
+ const TStrongObjectPtr<UWorld> WorldLease(World);
+ const TStrongObjectPtr<ULevel> LevelLease(Level);
+ const TStrongObjectPtr<UWorldPartition> PartitionLease(Partition);
+ const TStrongObjectPtr<UDataLayerManager> ManagerLease(Manager);
+ const TStrongObjectPtr<UDataLayerEditorSubsystem> SubsystemLease(Subsystem);
+ const TStrongObjectPtr<AWorldDataLayers> WorldLayerLease(WorldLayers);
+ const TStrongObjectPtr<UDataLayerInstanceWithAsset> LayerLease(Layer);
+ const TStrongObjectPtr<const UDataLayerAsset> AssetLease(LayerAsset);
+ const FSoftObjectPath LayerAssetPath(LayerAsset);
+ const FString LevelPackage=Level->GetOutermost()->GetName();
+ if(!LevelPackage.StartsWith(TEXT("/Game/"))||!FPackageName::DoesPackageExist(LevelPackage))
+  return Context.Fail(TEXT("Saved project persistent level required"));
+ const FString ExternalActorPrefix=ULevel::GetExternalActorsPath(LevelPackage)+TEXT("/");
+ Result->SetStringField(TEXT("data_layer_instance_name"),InstanceName);
+ Result->SetStringField(TEXT("data_layer_asset_path"),LayerAssetPath.ToString());
+
+ TGuardValue<bool> Guard(Writing,true);
+ TArray<FLayerActor> Targets;
+ TSet<FString> SeenPaths;
+ TSet<UPackage*> SeenPackages;
+ bool ProtectedStateUncertain=false;
+ auto ScopeCurrent=[&]()
+ {
+  return Context.Current()&&World->PersistentLevel==Level&&World->GetWorldPartition()==Partition&&IsValid(Partition)&&
+   Partition->IsInitialized()&&IsValid(Manager)&&Partition->GetDataLayerManager()==Manager&&IsValid(Level)&&!FLevelUtils::IsLevelLocked(Level)&&
+   IsValid(WorldLayers)&&Level->GetWorldDataLayers()==WorldLayers&&LayerObjectReady(Layer)&&LayerObjectReady(LayerAsset)&&
+   WorldLayers->GetDataLayerInstance(LayerName)==Layer&&Layer->GetOuterWorldDataLayers()==WorldLayers&&
+   Layer->GetAsset()==LayerAsset&&FSoftObjectPath(LayerAsset)==LayerAssetPath&&!Layer->IsReadOnly()&&IsValid(Subsystem);
+ };
+ auto Report=[&]()
+ {
+  const bool WorldKnown=Context.Current()&&World->PersistentLevel==Level;
+  bool Known=WorldKnown&&!ProtectedStateUncertain;
+  bool Changed=false;
+  int32 SavedCount=0;
+  int32 RequestedSaveCount=0;
+  TArray<TSharedPtr<FJsonValue>> Rows;
+  for(const auto& Target:Targets)
+  {
+   auto Item=MakeShared<J>();
+   Item->SetStringField(TEXT("actor_path"),Target.Path);
+   Item->SetStringField(TEXT("actor_package"),Target.PackageName);
+   Item->SetBoolField(TEXT("would_add"),Target.NeedsAdd);
+   Item->SetBoolField(TEXT("add_attempted"),Target.AddAttempted);
+   Item->SetBoolField(TEXT("dirty_before"),Target.DirtyBefore);
+   Item->SetArrayField(TEXT("memberships_before"),SoftPathRows(Target.Before));
+   TArray<FSoftObjectPath> Actual;
+   const bool Observed=WorldKnown&&Target.Current(Context,Level)&&ReadAuthoredLayerPaths(Target.Actor.Get(),Actual);
+   Item->SetBoolField(TEXT("change_state_known"),Observed);
+   if(Observed)
+   {
+    Item->SetBoolField(TEXT("changed"),Actual!=Target.Before);
+    Item->SetBoolField(TEXT("dirty_after"),Target.Package->IsDirty());
+    Item->SetArrayField(TEXT("memberships_after"),SoftPathRows(Actual));
+    Changed|=Actual!=Target.Before;
+   }
+   else Item->SetField(TEXT("changed"),MakeShared<FJsonValueNull>());
+   Known&=Observed;
+   Item->SetBoolField(TEXT("save_attempted"),Target.SaveAttempted);
+   Item->SetBoolField(TEXT("saved"),Target.Saved);
+   SavedCount+=Target.Saved?1:0;
+   RequestedSaveCount+=(Save&&Target.NeedsAdd)?1:0;
+   Rows.Add(Row(Item));
+  }
+  Result->SetArrayField(TEXT("actors"),MoveTemp(Rows));
+  Result->SetNumberField(TEXT("saved_actor_count"),SavedCount);
+  Result->SetBoolField(TEXT("saved"),SavedCount>0);
+  Result->SetBoolField(TEXT("partial_save"),SavedCount>0&&SavedCount<RequestedSaveCount);
+  Result->SetBoolField(TEXT("all_requested_actor_packages_saved"),RequestedSaveCount>0&&SavedCount==RequestedSaveCount);
+  Result->SetBoolField(TEXT("change_state_known"),Known);
+  if(Changed||Known)Result->SetBoolField(TEXT("changed"),Changed);
+  else Result->SetField(TEXT("changed"),MakeShared<FJsonValueNull>());
+  Result->SetStringField(TEXT("retry_risk"),Result->GetBoolField(TEXT("mutation_attempted"))||!Known?
+   TEXT("inspect_actual_targets_and_disk"):TEXT("none_observed"));
+ };
+ auto Fail=[&](const TCHAR* Error)
+ {
+  Report();
+  return Context.Fail(Error);
+ };
+ for(const FString& ActorPath:ActorPaths)
+ {
+  Result->SetStringField(TEXT("current_actor"),ActorPath);
+  if(!ActorPath.StartsWith(LevelPackage+TEXT("."))||ActorPath.Len()>=NAME_SIZE||!ActorPath.Contains(TEXT(":"))||SeenPaths.Contains(ActorPath))
+   return Fail(TEXT("Unique exact actor paths in the current level required"));
+  SeenPaths.Add(ActorPath);
+  AActor* Actor=FindObject<AActor>(nullptr,*ActorPath);
+  UPackage* Package=IsValid(Actor)?Actor->GetExternalPackage():nullptr;
+  if(!ScopeCurrent()||!LayerObjectReady(Actor)||!Context.EditorActor(Actor)||Actor->GetPathName()!=ActorPath||Actor->GetLevel()!=Level||
+   Actor->IsRunningUserConstructionScript()||Actor->GetExternalDataLayerAsset()||
+   UDataLayerManager::GetDataLayerManager(Actor)!=Manager||
+   !LayerObjectReady(Package)||Package!=Actor->GetPackage()||!Package->GetName().StartsWith(ExternalActorPrefix,ESearchCase::CaseSensitive)||
+   SeenPackages.Contains(Package))
+   return Fail(TEXT("Exact loaded external actor in the current persistent level required"));
+  SeenPackages.Add(Package);
+  FLayerActor Target;
+  Target.Actor.Reset(Actor);
+  Target.Package.Reset(Package);
+  Target.Path=ActorPath;
+  Target.PackageName=Package->GetName();
+  Target.Guid=Actor->GetActorGuid();
+  Target.DirtyBefore=Package->IsDirty();
+  if(!Target.Guid.IsValid()||!ReadAuthoredLayerPaths(Actor,Target.Before))
+   return Fail(TEXT("Actor identity or authored membership could not be observed"));
+  Target.Expected=Target.Before;
+  Target.NeedsAdd=!Target.Before.Contains(LayerAssetPath);
+  if(Target.NeedsAdd&&Target.Before.Num()>=MaxActorMemberships)
+   return Fail(TEXT("Adding the layer would exceed the 256 membership limit"));
+  if(Save&&Target.NeedsAdd&&
+   (Target.DirtyBefore||!FPackageName::DoesPackageExist(Package->GetName(),&Target.Filename)||
+    IFileManager::Get().IsReadOnly(*Target.Filename)||!CanPreserveMembershipOnSave(Actor,Manager,Target.Before)||
+    !CaptureLayerSaveScope(Target,Target.SaveSnapshot)))
+   return Fail(TEXT("Save requires a clean writable actor package and existing memberships that the engine can preserve"));
+  Targets.Add(MoveTemp(Target));
+ }
+ auto ExpectedState=[&]()
+ {
+  if(!ScopeCurrent())return false;
+  for(const auto& Target:Targets)
+  {
+   TArray<FSoftObjectPath> Actual;
+   if(!Target.Current(Context,Level)||!ReadAuthoredLayerPaths(Target.Actor.Get(),Actual)||Actual!=Target.Expected)
+    return false;
+   if(Save&&Target.NeedsAdd)
+   {
+    TMap<FString,FString> Now;
+    if((!Target.AddAttempted&&Target.Package->IsDirty())||
+     !CanPreserveMembershipOnSave(Target.Actor.Get(),Manager,Actual)||
+     !CaptureLayerSaveScope(Target,Now)||!Now.OrderIndependentCompareEqual(Target.SaveSnapshot))return false;
+   }
+  }
+  return true;
+ };
+ for(auto& Target:Targets)
+ {
+  Result->SetStringField(TEXT("current_actor"),Target.Path);
+  const bool CanAdd=!Target.NeedsAdd||Layer->CanAddActor(Target.Actor.Get());
+  if(!ExpectedState())
+  {
+   ProtectedStateUncertain=true;
+   return Fail(TEXT("Actor membership, package contents or Data Layer changed during preflight"));
+  }
+  if(!CanAdd)return Fail(TEXT("Engine refused actor for this Data Layer"));
+ }
+ Result->RemoveField(TEXT("current_actor"));
+ if(!Execute)
+ {
+  Report();
+  Result->SetBoolField(TEXT("success"),true);
+  Result->SetStringField(TEXT("stage"),TEXT("validated"));
+  return Encode(Result);
+ }
+
+ Result->SetStringField(TEXT("stage"),TEXT("assign"));
+ for(auto& Target:Targets)
+ {
+  if(!Target.NeedsAdd)continue;
+  Result->SetStringField(TEXT("current_actor"),Target.Path);
+  if(!ExpectedState())return Fail(TEXT("Observed state changed before assignment"));
+  Target.AddAttempted=true;
+  Result->SetBoolField(TEXT("mutation_attempted"),true);
+  Target.Expected.Add(LayerAssetPath);
+  Target.Expected.Sort([](const FSoftObjectPath& A,const FSoftObjectPath& B){return A.LexicalLess(B);});
+  const bool Added=Subsystem->AddActorToDataLayer(Target.Actor.Get(),Layer);
+  if(!ExpectedState()||!Added)
+  {
+   ProtectedStateUncertain=true;
+   return Fail(TEXT("Assignment failed or a callback changed protected state; save skipped"));
+  }
+ }
+ if(Save)
+ {
+  Result->SetStringField(TEXT("stage"),TEXT("save_actor_packages"));
+  for(auto& Target:Targets)
+  {
+   if(!Target.AddAttempted)continue;
+   Result->SetStringField(TEXT("current_actor"),Target.Path);
+   FString Filename;
+   if(!ExpectedState()||!FPackageName::DoesPackageExist(Target.Package->GetName(),&Filename)||
+    Filename!=Target.Filename||IFileManager::Get().IsReadOnly(*Filename))
+    return Fail(TEXT("Actor package changed or is no longer writable before save"));
+   FSavePackageArgs Args;
+   Args.TopLevelFlags=RF_Standalone;
+   Args.SaveFlags=SAVE_NoError;
+   Target.SaveAttempted=true;
+   Result->SetBoolField(TEXT("save_attempted"),true);
+   Target.Saved=UPackage::SavePackage(Target.Package.Get(),nullptr,*Filename,Args);
+   const bool StatePreserved=ExpectedState();
+   if(!StatePreserved)ProtectedStateUncertain=true;
+   if(!Target.Saved)
+   {
+    Result->SetBoolField(TEXT("save_state_known"),false);
+    return Fail(StatePreserved?
+     TEXT("Actor package save failed; inspect actual disk state"):
+     TEXT("Actor package save failed and a callback changed protected state; inspect actual targets and disk"));
+   }
+   if(!StatePreserved)return Fail(TEXT("A callback changed protected state after actor package save"));
+  }
+ }
+ Result->RemoveField(TEXT("current_actor"));
+ Report();
+ return Context.Done();
 }
 
 FString Mesh(UObject* Object)

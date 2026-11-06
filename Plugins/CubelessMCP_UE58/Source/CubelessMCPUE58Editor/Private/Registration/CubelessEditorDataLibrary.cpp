@@ -5,7 +5,14 @@
 #include "Compatibility/UE58/CubelessActorInterfaceApi.h"
 using namespace Cubeless::UE58::EditorData;
 FString UCubelessEditorDataLibrary::InspectBlueprintDefinition(UObject* O){return Blueprint(O);}
-FString UCubelessEditorDataLibrary::InspectEditorWorldConfiguration(){return World();}
+FString UCubelessEditorDataLibrary::InspectEditorWorldConfiguration(bool bIncludePartitionActors,int32 ActorOffset,int32 ActorLimit)
+{
+ return World(bIncludePartitionActors,ActorOffset,ActorLimit);
+}
+FString UCubelessEditorDataLibrary::AddEditorActorsToDataLayer(const TArray<FString>& ActorPaths,const FString& DataLayerInstanceName,bool bExecute,bool bSave)
+{
+ return AddActorsToDataLayer(ActorPaths,DataLayerInstanceName,bExecute,bSave);
+}
 FString UCubelessEditorDataLibrary::InspectStaticMeshMetadata(UObject* O){return Mesh(O);}
 FString UCubelessEditorDataLibrary::InspectComponentAuthoringData(UObject* O){return Component(O);}
 FString UCubelessEditorDataLibrary::InspectWidgetAnimationData(UObject* O){return Widget(O);}

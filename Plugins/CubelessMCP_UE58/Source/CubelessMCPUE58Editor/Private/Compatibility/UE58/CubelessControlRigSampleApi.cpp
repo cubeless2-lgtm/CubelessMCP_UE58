@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessControlRigSampleApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "EdGraph/EdGraph.h"
@@ -2888,7 +2889,7 @@ bool TargetSkeletonSafe(UAnimBlueprint* BP)
 }
 bool ExternalValueSafe(const FProperty* P,const void* V,int32 Depth,int32& Visits)
 {
-    if(!P||!V||Depth>8||++Visits>65536||P->ArrayDim!=1||P->ElementSize<1||P->ElementSize>1048576) { NoteUnsafe(TEXT("External descriptor value exceeds finite no-export shape/depth budget"));return false; }
+    if(!P||!V||Depth>8||++Visits>65536||P->ArrayDim!=1||P->GetElementSize()<1||P->GetElementSize()>1048576) { NoteUnsafe(TEXT("External descriptor value exceeds finite no-export shape/depth budget"));return false; }
     Count(*CurrentResult,TEXT("external_descriptor_value_reads"));
     if(CastField<FBoolProperty>(P)) { return true; }
     if(const auto* E=CastField<FEnumProperty>(P)) { return E->GetUnderlyingProperty()&&E->GetEnum()&&Hold(E->GetEnum())&&E->GetEnum()->NumEnums()<=4096; }
@@ -2930,7 +2931,7 @@ bool ClassForRigSafe(UClass* C)
     int32 Parents=0;for(UClass* P=C;P;P=P->GetSuperClass()) { if(++Parents>32||!Hold(P)) { NoteUnsafe(TEXT("Rig class lineage unavailable"));return false; } }
     auto* BP=Cast<UControlRigBlueprint>(C->ClassGeneratedBy);const bool Native=C->IsNative();
     if(!Native&&(!BP||!Hold(BP)||BP->GeneratedClass.Get()!=C||!CurrentClassesSafe(BP))) { NoteUnsafe(TEXT("Rig generated owner/class does not match current Blueprint"));return false; }
-    auto* CDO=Cast<UControlRig>(C->GetDefaultObject(false));if(!CDO||!Hold(CDO)||CDO->GetClass()!=C||CDO!=C->ClassDefaultObject) { NoteUnsafe(TEXT("Existing current loaded ControlRig CDO required"));return false; }
+    auto* CDO=Cast<UControlRig>(C->GetDefaultObject(false));if(!CDO||!Hold(CDO)||CDO->GetClass()!=C||CDO!=Cubeless::UE58::GetClassDefaultObjectSlot(C)) { NoteUnsafe(TEXT("Existing current loaded ControlRig CDO required"));return false; }
     const auto Owner=CDO->GetGeneratedByAsset();if(Owner.GetObject()||Owner.GetInterface()) { NoteUnsafe(TEXT("Asset-owned runtime bag outside current finite class branch"));return false; }
     if(!HierarchySafe(CDO->GetHierarchy())) { return false; }int32 Visits=0,Fields=0;
     for(TFieldIterator<FProperty> It(C);It;++It) { auto* P=*It;if(++Fields>4096||!Layout(P,C->GetPropertiesSize())||!Hold(P->GetOwnerStruct())||(Native&&!P->IsNative())) { NoteUnsafe(TEXT("Rig external descriptor current layout/native lineage unavailable"));return false; }if(P->IsNative()) { continue; }for(int32 I=0;I<P->ArrayDim;++I) { if(!ExternalValueSafe(P,P->ContainerPtrToValuePtr<void>(CDO,I),0,Visits)) { NoteUnsafe(TEXT("Rig external descriptor finite no-export admission failed"));return false; } } }

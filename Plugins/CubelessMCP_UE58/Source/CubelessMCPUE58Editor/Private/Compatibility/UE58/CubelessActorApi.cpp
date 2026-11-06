@@ -1,6 +1,7 @@
 // UE58 adaptation of the six named UE56 editor Actor commands.
 // Original route/behavior evidence: editor-actor-port-plan-K.md. No bridge code.
 #include "Compatibility/UE58/CubelessActorApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Algo/Count.h"
 
@@ -763,7 +764,7 @@ struct FBlueprintActorMutation
         const auto* GeneratedBP=static_cast<UBlueprintGeneratedClass*>(Class.Get());const auto* SkeletonBP=static_cast<UBlueprintGeneratedClass*>(Skeleton.Get());
         if(GeneratedBP->UberGraphFramePointerProperty!=GeneratedFrame||SkeletonBP->UberGraphFramePointerProperty!=SkeletonFrame||!GeneratedBP->SimpleConstructionScript.IsResolved()||GeneratedBP->SimpleConstructionScript.Get()!=SCS.Get())return Fail(Stage,TEXT("actor_blueprint_compiler_source_binding_changed"));
         if(!GeneratedBP->DynamicBindingObjects.IsEmpty()||!GeneratedBP->ComponentTemplates.IsEmpty()||!GeneratedBP->Timelines.IsEmpty()||!B->ComponentTemplates.IsEmpty()||!B->Timelines.IsEmpty())return Fail(Stage,TEXT("actor_blueprint_source_callbacks_changed"));
-        if(Class->GetFlags()!=ClassFlags||Skeleton->GetFlags()!=SkeletonFlags||Class->GetClassFlags()!=ClassTypeFlags||Skeleton->GetClassFlags()!=SkeletonTypeFlags||!Class->GetPathName().Equals(ClassPath,ESearchCase::CaseSensitive)||!Skeleton->GetPathName().Equals(SkeletonPath,ESearchCase::CaseSensitive)||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject.Get()!=CDO.Get()||!Live(CDO.Get())||CDO->GetClass()!=Class.Get()||CDO->GetPackage()!=Package.Get()||CDO->GetOuter()!=CDOOuter||CDO->GetFlags()!=CDOFlags||!CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)||!RootSlot(CDO.Get(),CDORoot.Get())||(CDORoot.IsValid()&&!Live(CDORoot.Get()))||!CDO->GetActorTransform().Equals(CDOTransform,0.0)||CDO->Tags!=CDOTags||!FieldsCurrent(Class.Get(),Fields)||!FieldsCurrent(Skeleton.Get(),SkeletonFields))return Fail(Stage,TEXT("actor_blueprint_source_signature_changed"));
+        if(Class->GetFlags()!=ClassFlags||Skeleton->GetFlags()!=SkeletonFlags||Class->GetClassFlags()!=ClassTypeFlags||Skeleton->GetClassFlags()!=SkeletonTypeFlags||!Class->GetPathName().Equals(ClassPath,ESearchCase::CaseSensitive)||!Skeleton->GetPathName().Equals(SkeletonPath,ESearchCase::CaseSensitive)||!Cubeless::UE58::GetClassDefaultObjectSlot(Class).IsResolved()||Class->GetDefaultObject(false)!=CDO.Get()||!Live(CDO.Get())||CDO->GetClass()!=Class.Get()||CDO->GetPackage()!=Package.Get()||CDO->GetOuter()!=CDOOuter||CDO->GetFlags()!=CDOFlags||!CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)||!RootSlot(CDO.Get(),CDORoot.Get())||(CDORoot.IsValid()&&!Live(CDORoot.Get()))||!CDO->GetActorTransform().Equals(CDOTransform,0.0)||CDO->Tags!=CDOTags||!FieldsCurrent(Class.Get(),Fields)||!FieldsCurrent(Skeleton.Get(),SkeletonFields))return Fail(Stage,TEXT("actor_blueprint_source_signature_changed"));
         if(!OwnSourceCurrent(Stage))return false;
         if(AuthoredHierarchy()){if(!AuthoredSourceCurrent(Stage))return false;}
         else
@@ -871,8 +872,8 @@ struct FBlueprintActorMutation
         SCSNode.Reset(SCS->GetRootNodes()[0]);
         if(!Live(SCSNode.Get())||!SCSNode->ComponentClass.IsResolved()||(!AuthoredHierarchy()&&SCSNode->ComponentClass.Get()!=USceneComponent::StaticClass())||!SCSNode->ComponentTemplate.IsResolved()||(!AuthoredHierarchy()&&!SCSNode->GetChildNodes().IsEmpty()))return Fail(TEXT("bind_source"),TEXT("actor_blueprint_scs_profile_pending"));
         Template.Reset(Cast<USceneComponent>(SCSNode->ComponentTemplate.Get()));
-        if(!Live(Template.Get())||!Class->ClassDefaultObject.IsResolved())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_template_unavailable"));
-        CDO.Reset(Cast<AActor>(Class->ClassDefaultObject.Get()));if(!Live(CDO.Get()))return Fail(TEXT("bind_source"),TEXT("actor_blueprint_cdo_unavailable"));
+        if(!Live(Template.Get())||!Cubeless::UE58::GetClassDefaultObjectSlot(Class).IsResolved())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_template_unavailable"));
+        CDO.Reset(Cast<AActor>(Class->GetDefaultObject(false)));if(!Live(CDO.Get()))return Fail(TEXT("bind_source"),TEXT("actor_blueprint_cdo_unavailable"));
         SCSOuter=SCS->GetOuter();SCSClass=SCS->GetClass();NodeOuter=SCSNode->GetOuter();NodeClass=SCSNode->GetClass();Holds.Emplace(SCSOuter);Holds.Emplace(SCSClass);Holds.Emplace(NodeClass);
         if(SCSClass!=USimpleConstructionScript::StaticClass()||NodeClass!=USCS_Node::StaticClass()||NodeOuter!=SCS.Get())return Fail(TEXT("bind_source"),TEXT("actor_blueprint_scs_class_pending"));
         GeneratedFrame=static_cast<UBlueprintGeneratedClass*>(Class.Get())->UberGraphFramePointerProperty;SkeletonFrame=static_cast<UBlueprintGeneratedClass*>(Skeleton.Get())->UberGraphFramePointerProperty;

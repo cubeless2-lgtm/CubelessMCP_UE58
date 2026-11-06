@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessGeneratedComponentApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "AIController.h"
 #include "Components/ActorComponent.h"
@@ -39,7 +40,7 @@ bool ResolvedParentSuper(const UClass* Class,UClass*& Out)
     // source-current checks must not traverse tracked native superclass slots.
     static FObjectProperty* const P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
     if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()
-        ||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UStruct>)
+        ||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->GetElementSize()!=sizeof(TObjectPtr<UStruct>)
         ||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)
         ||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()
         ||P->HasSetterOrGetter()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UStruct::StaticClass())return false;
@@ -116,12 +117,12 @@ TSharedRef<FJsonObject> InspectSavedRuntimeClass(UClass* Class, bool bActorParen
             auto& E=*Entry;auto* K=E.Class.Get();auto* B=E.Blueprint.Get();UClass* Super=nullptr;
             if(ObjectParent)
             {
-                if(!IsValid(K)||!IsValid(B)||!K->ClassGeneratedBy.IsResolved()||!K->ClassDefaultObject.IsResolved()
+                if(!IsValid(K)||!IsValid(B)||!K->ClassGeneratedBy.IsResolved()||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()
                     ||!B->GeneratedClass.GetGCPtr().IsResolved()||!B->ParentClass.GetGCPtr().IsResolved()
                     ||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->SimpleConstructionScript.IsResolved()
                     ||!IsValid(E.Skeleton.Get())||!E.Skeleton->ClassGeneratedBy.IsResolved())
                     return Reject(TEXT("generated_object_parent_current_changed"),TEXT("Captured Object-parent roles must remain live with resolved source slots before current identity is read; no lazy resolution or replacement."));
-                if(!IsValid(E.Skeleton.Get())||!E.Skeleton->ClassDefaultObject.IsResolved()||E.Skeleton->ClassDefaultObject.Get()!=E.SkeletonCDO.Get())return Reject(TEXT("generated_object_parent_current_changed"),TEXT("Captured current skeleton/nullable CDO slot changed during this inspection."));
+                if(!IsValid(E.Skeleton.Get())||!Cubeless::UE58::GetClassDefaultObjectSlot(E.Skeleton).IsResolved()||E.Skeleton->GetDefaultObject(false)!=E.SkeletonCDO.Get())return Reject(TEXT("generated_object_parent_current_changed"),TEXT("Captured current skeleton/nullable CDO slot changed during this inspection."));
                 UClass* SkeletonSuper=nullptr;
                 if(!ResolvedParentSuper(E.Skeleton.Get(),SkeletonSuper)||SkeletonSuper!=E.SkeletonParent.Get()||!IsValid(E.SkeletonParent.Get())||(E.SkeletonCDO.IsValid()&&(!IsValid(E.SkeletonCDO.Get())||E.SkeletonCDO->GetClass()!=E.Skeleton.Get()||E.SkeletonCDO->GetOuter()!=E.SkeletonCDOOuter.Get()||E.SkeletonCDO->GetPackage()!=E.SkeletonCDOPackage||!E.SkeletonCDO->HasAnyFlags(RF_ClassDefaultObject))))return Reject(TEXT("generated_object_parent_current_changed"),TEXT("Skeleton uses the actual native or parent-skeleton superclass; nullable CDO identity is independent of the generated CDO."));
             }
@@ -133,7 +134,7 @@ TSharedRef<FJsonObject> InspectSavedRuntimeClass(UClass* Class, bool bActorParen
                 ||(E.Skeleton.IsValid()&&(!IsValid(E.Skeleton.Get())||E.Skeleton->ClassGeneratedBy!=B))
                 ||(E.SCS.IsValid()&&(!IsValid(E.SCS.Get())||E.SCS->GetClass()!=E.SCSClass
                     ||E.SCS->GetOuter()!=E.SCSOuter||E.SCS->GetPackage()!=E.SCSPackage))
-                ||K->ClassDefaultObject!=E.CDO.Get()||K->GetOuter()!=E.Outer||K->GetPackage()!=E.Package
+                ||Cubeless::UE58::GetClassDefaultObjectSlot(K)!=E.CDO.Get()||K->GetOuter()!=E.Outer||K->GetPackage()!=E.Package
                 ||K->GetPathName()!=E.Path||B->GetPackage()!=E.Package||B->GetPackage()->IsDirty()
                 ||B->Status!=E.Status||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad
                 ||(E.CDO.IsValid()&&(!IsValid(E.CDO.Get())||E.CDO->GetClass()!=K
@@ -161,23 +162,23 @@ TSharedRef<FJsonObject> InspectSavedRuntimeClass(UClass* Class, bool bActorParen
                 if(K->HasAnyClassFlags(CLASS_Native))
                 {if(ObjectParent&&K!=UObject::StaticClass())return Reject(TEXT("generated_object_parent_native_root_pending"),TEXT("Only pure generated hierarchy ending directly at native CoreUObject.Object is admitted; other valid native bases remain incomplete."));break;}
                 SeenComponents.Add(K);auto* B=Cast<UBlueprint>(ResolvedParentPointer(K->ClassGeneratedBy));
-                if(!IsValid(B)||(ObjectParent?(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=K):B->GeneratedClass.GetGCPtr()!=K)||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()==nullptr||!K->ClassDefaultObject.IsResolved()
+                if(!IsValid(B)||(ObjectParent?(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=K):B->GeneratedClass.GetGCPtr()!=K)||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr()==nullptr||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()
                     ||!B->SimpleConstructionScript.IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved())
                     return Reject(TEXT("generated_component_parent_current_changed"),TEXT("Resolved current generated parent/CDO/optional SCS and skeleton slots required; no lazy load or CDO creation."));
                 auto E=MakeUnique<FComponentParentRole>();E->Class.Reset(K);E->Blueprint.Reset(B);
                 E->Parent.Reset(Cast<UClass>(ResolvedParentPointer(B->ParentClass.GetGCPtr())));E->Skeleton.Reset(Cast<UClass>(ResolvedParentPointer(B->SkeletonGeneratedClass.GetGCPtr())));
-                E->CDO.Reset(ResolvedParentPointer(K->ClassDefaultObject));E->SCS.Reset(ResolvedParentPointer(B->SimpleConstructionScript));
+                E->CDO.Reset(ResolvedParentPointer(Cubeless::UE58::GetClassDefaultObjectSlot(K)));E->SCS.Reset(ResolvedParentPointer(B->SimpleConstructionScript));
                 E->Outer=K->GetOuter();E->Package=K->GetPackage();E->Path=K->GetPathName();E->Status=B->Status;
-                if(K->ClassDefaultObject!=E->CDO.Get()||B->SimpleConstructionScript!=E->SCS.Get()
+                if(Cubeless::UE58::GetClassDefaultObjectSlot(K)!=E->CDO.Get()||B->SimpleConstructionScript!=E->SCS.Get()
                     ||B->SkeletonGeneratedClass.GetGCPtr()!=E->Skeleton.Get()||B->ParentClass.GetGCPtr()!=E->Parent.Get()
                     ||(E->CDO.IsValid()&&!IsValid(E->CDO.Get()))||(E->SCS.IsValid()&&!IsValid(E->SCS.Get()))
                     ||(E->Skeleton.IsValid()&&!IsValid(E->Skeleton.Get()))||!IsValid(E->Parent.Get()))
                     return Reject(TEXT("generated_component_parent_current_changed"),TEXT("Existing returned component parent roles must be live before observation."));
                 if(ObjectParent)
                 {
-                    if(!IsValid(E->Skeleton.Get())||!E->Skeleton->ClassDefaultObject.IsResolved())return Reject(TEXT("generated_object_parent_skeleton_pending"),TEXT("Current resident skeleton and resolved nullable CDO slot required; no skeleton/CDO is created."));
-                    E->SkeletonCDO.Reset(ResolvedParentPointer(E->Skeleton->ClassDefaultObject));
-                    if(E->Skeleton->ClassDefaultObject.Get()!=E->SkeletonCDO.Get())return Reject(TEXT("generated_object_parent_skeleton_pending"),TEXT("Skeleton CDO must be the current resolved-null or loaded object."));
+                    if(!IsValid(E->Skeleton.Get())||!Cubeless::UE58::GetClassDefaultObjectSlot(E->Skeleton).IsResolved())return Reject(TEXT("generated_object_parent_skeleton_pending"),TEXT("Current resident skeleton and resolved nullable CDO slot required; no skeleton/CDO is created."));
+                    E->SkeletonCDO.Reset(ResolvedParentPointer(Cubeless::UE58::GetClassDefaultObjectSlot(E->Skeleton)));
+                    if(E->Skeleton->GetDefaultObject(false)!=E->SkeletonCDO.Get())return Reject(TEXT("generated_object_parent_skeleton_pending"),TEXT("Skeleton CDO must be the current resolved-null or loaded object."));
                     UClass* ExpectedSkeletonParent=E->Parent.Get();
                     if(!E->Parent->HasAnyClassFlags(CLASS_Native))
                     {

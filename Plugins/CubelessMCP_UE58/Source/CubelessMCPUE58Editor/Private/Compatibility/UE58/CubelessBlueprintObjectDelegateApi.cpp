@@ -1,5 +1,6 @@
 // DL native delegate bind, pure Create Event and connected interface Message; Editor only.
 #include "Compatibility/UE58/CubelessBlueprintObjectDelegateApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Compatibility/UE58/CubelessFunctionPinApi.h"
 #include "Compatibility/UE58/CubelessGeneratedComponentApi.h"
@@ -144,7 +145,7 @@ struct FGeneratedBindingParent
     {
         Out=nullptr;if(!Loaded(C))return false;
         static FObjectProperty* const P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
-        if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()||P->HasSetterOrGetter()||!Same(P->PropertyClass,UStruct::StaticClass()))return false;
+        if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->GetElementSize()!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()||P->HasSetterOrGetter()||!Same(P->PropertyClass,UStruct::StaticClass()))return false;
         const TObjectPtr<UObject> Slot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(C));
         if(!Slot.IsResolved())return false;if(Same(Slot,static_cast<UObject*>(nullptr)))return true;
         auto* Found=StaticFindObject(nullptr,nullptr,*Slot.GetPathName());
@@ -166,9 +167,9 @@ struct FGeneratedBindingParent
             UBlueprint* B=Cast<UBlueprint>(Generator);if(!Loaded(B)||B==Target)return Fail(R,TEXT("binding_generated_parent_roles_pending"),TEXT("Existing distinct ancestor Blueprint role required."));
             FAncestor A;A.Blueprint=B;A.Generated=C;
             UClass* ActualGenerated=nullptr;
-            if(!HoldSlot(B->GeneratedClass.GetGCPtr(),ActualGenerated)||ActualGenerated!=C||!HoldSlot(B->SkeletonGeneratedClass.GetGCPtr(),A.Skeleton)||!Loaded(A.Skeleton)||!HoldSlot(B->ParentClass.GetGCPtr(),A.Parent)||!Loaded(A.Parent)||!HoldSlot(C->ClassDefaultObject,A.CDO)||!HoldSlot(B->SimpleConstructionScript,A.SCS))return Fail(R,TEXT("binding_generated_parent_roles_pending"),TEXT("Current generated/skeleton/parent and resolved nullable CDO/SCS roles required; none are created."));
+            if(!HoldSlot(B->GeneratedClass.GetGCPtr(),ActualGenerated)||ActualGenerated!=C||!HoldSlot(B->SkeletonGeneratedClass.GetGCPtr(),A.Skeleton)||!Loaded(A.Skeleton)||!HoldSlot(B->ParentClass.GetGCPtr(),A.Parent)||!Loaded(A.Parent)||!HoldSlot(Cubeless::UE58::GetClassDefaultObjectSlot(C),A.CDO)||!HoldSlot(B->SimpleConstructionScript,A.SCS))return Fail(R,TEXT("binding_generated_parent_roles_pending"),TEXT("Current generated/skeleton/parent and resolved nullable CDO/SCS roles required; none are created."));
             UObject* SkeletonGenerator=nullptr;UClass* GeneratedSuper=nullptr;
-            if(!HoldSlot(A.Skeleton->ClassGeneratedBy,SkeletonGenerator)||SkeletonGenerator!=B||!HoldSlot(A.Skeleton->ClassDefaultObject,A.SkeletonCDO)||!Super(A.Skeleton,A.SkeletonParent)||(A.SkeletonParent&&!Keep(A.SkeletonParent))||!Super(C,GeneratedSuper)||GeneratedSuper!=A.Parent)return Fail(R,TEXT("binding_generated_parent_roles_pending"),TEXT("Current existing skeleton generator, actual superclass and nullable CDO roles required. Skeleton superclass is not assumed equal to generated superclass."));
+            if(!HoldSlot(A.Skeleton->ClassGeneratedBy,SkeletonGenerator)||SkeletonGenerator!=B||!HoldSlot(Cubeless::UE58::GetClassDefaultObjectSlot(A.Skeleton),A.SkeletonCDO)||!Super(A.Skeleton,A.SkeletonParent)||(A.SkeletonParent&&!Keep(A.SkeletonParent))||!Super(C,GeneratedSuper)||GeneratedSuper!=A.Parent)return Fail(R,TEXT("binding_generated_parent_roles_pending"),TEXT("Current existing skeleton generator, actual superclass and nullable CDO roles required. Skeleton superclass is not assumed equal to generated superclass."));
             if(B->GetOutermost()->IsDirty()||B->BlueprintType!=BPTYPE_Normal||(B->Status!=BS_UpToDate&&B->Status!=BS_UpToDateWithWarnings)||B->bBeingCompiled||B->bQueuedForCompilation||B->bSuppressStructurallyModified||B->bIsRegeneratingOnLoad)return Fail(R,TEXT("binding_generated_parent_scope_pending"),TEXT("Saved clean normally compiled idle generated Actor ancestry required; unsupported initial state is not a callback mismatch."));
             A.Status=B->Status;A.ClassFlags=C->GetClassFlags();A.SkeletonFlags=A.Skeleton->GetClassFlags();Ancestors.Add(A);C=A.Parent;
         }
@@ -192,7 +193,7 @@ struct FGeneratedBindingParent
     bool RolesCurrent(FResult& R,const TCHAR* Boundary)
     {
         if(!Active)return true;if(Stopped)return false;
-        if(!IsEditorGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||GIsRequestingExit||UE::IsSavingPackage()||!Loaded(EditorHold.Get())||GEditor!=EditorHold.Get()||IsPlaySessionActive())return Mismatch(R,Boundary,GetPathNameSafe(Target),TEXT("EditorState"),TEXT("same_idle_editor_no_play_gc_save_exit"),TEXT("editor_unavailable_changed_or_busy"));
+        if(!IsEditorGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||IsEngineExitRequested()||UE::IsSavingPackage()||!Loaded(EditorHold.Get())||GEditor!=EditorHold.Get()||IsPlaySessionActive())return Mismatch(R,Boundary,GetPathNameSafe(Target),TEXT("EditorState"),TEXT("same_idle_editor_no_play_gc_save_exit"),TEXT("editor_unavailable_changed_or_busy"));
         if(!Loaded(Target)||!Loaded(GraphHold.Get())||!Same(Target->ParentClass.GetGCPtr(),Parent))return Mismatch(R,Boundary,GetPathNameSafe(Target),TEXT("ParentClass/GraphLifetime"),GetPathNameSafe(Parent),TEXT("unresolved_changed_or_unready"));
         if(Target->BlueprintType!=BPTYPE_Normal||Target->bBeingCompiled||Target->bQueuedForCompilation||Target->bSuppressStructurallyModified||Target->bIsRegeneratingOnLoad||Target->Status==BS_BeingCreated)return Mismatch(R,Boundary,Target->GetPathName(),TEXT("TargetAuthoringState"),TEXT("ordinary_idle_blueprint"),TEXT("nonordinary_compiling_queued_suppressed_or_regenerating"));
         UEdGraph* G=GraphHold.Get();
@@ -214,9 +215,9 @@ struct FGeneratedBindingParent
             if(!Same(B->SkeletonGeneratedClass.GetGCPtr(),A.Skeleton))return Mismatch(R,Boundary,B->GetPathName(),TEXT("SkeletonGeneratedClass"),GetPathNameSafe(A.Skeleton),TEXT("unresolved_or_changed"));
             if(!Same(B->ParentClass.GetGCPtr(),A.Parent))return Mismatch(R,Boundary,B->GetPathName(),TEXT("ParentClass"),GetPathNameSafe(A.Parent),TEXT("unresolved_or_changed"));
             if(!Same(B->SimpleConstructionScript,A.SCS))return Mismatch(R,Boundary,B->GetPathName(),TEXT("SimpleConstructionScript"),GetPathNameSafe(A.SCS),TEXT("unresolved_or_changed"));
-            if(!Same(C->ClassDefaultObject,A.CDO))return Mismatch(R,Boundary,C->GetPathName(),TEXT("ClassDefaultObject"),GetPathNameSafe(A.CDO),TEXT("unresolved_or_changed"));
+            if(!Same(Cubeless::UE58::GetClassDefaultObjectSlot(C),A.CDO))return Mismatch(R,Boundary,C->GetPathName(),TEXT("ClassDefaultObject"),GetPathNameSafe(A.CDO),TEXT("unresolved_or_changed"));
             if(!Same(C->ClassGeneratedBy,B)||!Same(A.Skeleton->ClassGeneratedBy,B))return Mismatch(R,Boundary,C->GetPathName(),TEXT("ClassGeneratedBy"),B->GetPathName(),TEXT("unresolved_or_changed"));
-            if(!Same(A.Skeleton->ClassDefaultObject,A.SkeletonCDO))return Mismatch(R,Boundary,A.Skeleton->GetPathName(),TEXT("ClassDefaultObject"),GetPathNameSafe(A.SkeletonCDO),TEXT("unresolved_or_changed"));
+            if(!Same(Cubeless::UE58::GetClassDefaultObjectSlot(A.Skeleton),A.SkeletonCDO))return Mismatch(R,Boundary,A.Skeleton->GetPathName(),TEXT("ClassDefaultObject"),GetPathNameSafe(A.SkeletonCDO),TEXT("unresolved_or_changed"));
             if(C->GetClassFlags()!=A.ClassFlags||A.Skeleton->GetClassFlags()!=A.SkeletonFlags)return Mismatch(R,Boundary,C->GetPathName(),TEXT("ClassFlags"),LexToString(uint32(A.ClassFlags))+TEXT("|")+LexToString(uint32(A.SkeletonFlags)),LexToString(uint32(C->GetClassFlags()))+TEXT("|")+LexToString(uint32(A.Skeleton->GetClassFlags())));
             UClass* GeneratedSuper=nullptr;UClass* SkeletonSuper=nullptr;
             if(!Super(C,GeneratedSuper)||GeneratedSuper!=A.Parent)return Mismatch(R,Boundary,C->GetPathName(),TEXT("SuperClass"),GetPathNameSafe(A.Parent),GetPathNameSafe(GeneratedSuper));

@@ -28,7 +28,7 @@ struct FIdentity {
 struct FWork {
  FResult R;UEditorEngine* Editor=GEditor;UEngine* Engine=GEngine;TSharedRef<FJsonObject> Counts=MakeShared<FJsonObject>();
  FWork(){R.Compiled=false;R.Data->SetObjectField(TEXT("native_call_counts"),Counts);R.Data->SetBoolField(TEXT("automatic_retry_permitted"),false);R.Data->SetBoolField(TEXT("atomic_rollback_available"),false);R.Data->SetBoolField(TEXT("gameplay_effect_verified"),false);R.Data->SetBoolField(TEXT("OS_input_injected"),false);R.Data->SetStringField(TEXT("known_scope"),TEXT("One simulated controller InputKey dispatch and immediate scoped metadata; not next-tick gameplay, multi-player isolation, or packaged execution proof."));}
- bool Safe()const{return IsInGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!GExitPurge&&!GIsSavingPackage&&GEditor==Editor&&GEngine==Engine&&Live(GEditor)&&Live(GEngine);}
+ bool Safe()const{return IsInGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!GExitPurge&&!UE::IsSavingPackage()&&GEditor==Editor&&GEngine==Engine&&Live(GEditor)&&Live(GEngine);}
  TSharedPtr<FJsonObject> Bad(const FString& Error){if(R.Error.IsEmpty()){R.ErrorCode=TEXT("pie_input_failed");R.Error=Error;}auto O=MakeShared<FJsonObject>();O->SetBoolField(TEXT("success"),false);O->SetStringField(TEXT("error"),Error);return O;}
 };
 TSharedPtr<FJsonObject> Handle(const TSharedPtr<FJsonObject>& Params,FWork& W)

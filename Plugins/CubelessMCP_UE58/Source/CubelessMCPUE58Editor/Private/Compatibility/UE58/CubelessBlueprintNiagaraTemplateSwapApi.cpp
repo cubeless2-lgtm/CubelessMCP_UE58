@@ -1,5 +1,6 @@
 // GX source candidate: Blueprint Niagara local/inherited template inspection and guarded asset swap.
 #include "Compatibility/UE58/CubelessBlueprintNiagaraTemplateSwapApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include <type_traits>
 #include "Compatibility/UE58/CubelessVariableApi.h"
 #include "Operations/CubelessVariableOperations.h"
@@ -46,7 +47,7 @@ namespace
 using Variable::FResult;
 bool Running=false;
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
-bool Safe(){return IsInGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage&&Live(GEditor);}
+bool Safe(){return IsInGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage()&&Live(GEditor);}
 bool Same(const FString& A,const FString& B){return A.Equals(B,ESearchCase::CaseSensitive);}
 bool Forbidden(const FString& S){auto L=S.ToLower();return L.Contains(TEXT("unrealmcp"))||L.Contains(TEXT("cubelessmcp"))||L.Contains(TEXT("modelcontextprotocol"))||L.Contains(TEXT("toolsetregistry"));}
 FString Json(const TSharedPtr<FJsonObject>& O){FString T;if(O)FJsonSerializer::Serialize(O.ToSharedRef(),TJsonWriterFactory<>::Create(&T));return T;}
@@ -670,7 +671,7 @@ bool CompileOwned(UBlueprint* B,USCS_Node*& Node,UNiagaraComponent*& Template,UB
  W.R.bCompileAttempted=true;W.R.Compiled.Reset();FKismetEditorUtilities::CompileBlueprint(B);W.R.Data->SetBoolField(TEXT("blueprint_compile_SDK_returned"),true);if(!W.After(TEXT("CompileBlueprint")))return false;if(B->bBeingCompiled||B->bQueuedForCompilation||!FBlueprintCompilationManager::IsGeneratedClassLayoutReady())return W.Fail(TEXT("blueprint_niagara_template_compile_not_idle"),TEXT("Compile SDK returned but Blueprint is not actually idle; no save/replay"));Class=Cast<UBlueprintGeneratedClass>(B->GeneratedClass);if(!Live(Class)||Class->ClassGeneratedBy!=B||Class->GetPackage()!=B->GetPackage()||!Live(Class->SimpleConstructionScript))return W.Fail(TEXT("blueprint_niagara_template_compiled_role_invalid"),TEXT("Current compile product ownership unavailable"));for(auto& P:W.Blueprints)if(P.Blueprint.Get()==B){P.Class=Class;P.SCS=Class->SimpleConstructionScript;P.RootSCS=B->SimpleConstructionScript;P.Reinstancing=false;}if(!W.Pin(Class)||!W.Pin(Class->SimpleConstructionScript))return false;auto Nodes=CaptureNodes(Class);Node=nullptr;Template=nullptr;for(auto* N:Nodes)if(N&&N->GetVariableName()==Variable){if(Node)return W.Fail(TEXT("blueprint_niagara_template_reacquire_ambiguous"),TEXT("Current exact SCS variable is not unique"));Node=N;}if(!Node)return W.Fail(TEXT("blueprint_niagara_template_reacquire_missing"),TEXT("Compiled SCS variable missing"));Template=Cast<UNiagaraComponent>(ActualTemplate(Node,Class));if(!Template||!SelectLocal(B,Node,Template))return false;if(Template->GetAsset()!=W.Replacement.Get())return W.Fail(TEXT("blueprint_niagara_template_compiled_assignment_changed"),TEXT("Reacquired current template lost exact replacement assignment"));const bool Passed=B->Status==BS_UpToDate||B->Status==BS_UpToDateWithWarnings;W.R.Compiled=Passed;W.R.Data->SetBoolField(TEXT("blueprint_compile_idle_verified"),true);W.R.Data->SetBoolField(TEXT("Niagara_VM_GPU_readiness_verified"),false);return Passed||W.Fail(TEXT("blueprint_niagara_template_compile_failed"),TEXT("Current Blueprint compile status failed"));}
 
 
-bool PackageOwnership(UBlueprint* B){auto& W=*Current;if(!W.Admit(TEXT("package_export_admission"))||!Live(B))return false;auto* P=B->GetPackage();auto* C=Cast<UBlueprintGeneratedClass>(B->GeneratedClass);auto* S=Cast<UBlueprintGeneratedClass>(B->SkeletonGeneratedClass);for(auto* K:{C,S})if(K&&(K->ClassGeneratedBy!=B||K->GetPackage()!=P||K->GetOuter()!=P))return W.Fail(TEXT("blueprint_niagara_template_class_package_owner"),TEXT("Blueprint class product not owned by exact package"));TArray<UObject*> DefaultObjects;for(auto* K:{C,S})if(K){auto* D=K->GetDefaultObject(false);if(D){if(!Live(D)||D->GetClass()!=K||!D->HasAnyFlags(RF_ClassDefaultObject)||D->GetPackage()!=P||D->GetOutermost()!=P)return W.Fail(TEXT("blueprint_niagara_template_CDO_owner_invalid"),TEXT("Current class CDO ownership is not exact; no save"));DefaultObjects.Add(D);}}TArray<UObject*> Exports;GetObjectsWithPackage(P,Exports,true);if(!W.Budget(Exports.Num()))return false;for(auto* O:Exports){if(!Live(O))continue;const bool Metadata=false; /* UE5.8 package FMetaData is not a UObject export; no broad metadata exemption. */const bool Owned=O==B||O->IsIn(B)||(C&&(O==C||O->IsIn(C)))||(S&&(O==S||O->IsIn(S)))||DefaultObjects.ContainsByPredicate([&](const UObject* D){return O==D||O->IsIn(D);})||Metadata;if(!Owned||O->GetPackage()!=P||O->GetOutermost()!=P||Forbidden(O->GetClass()->GetPathName())){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("foreign_export"),O->GetPathName());J->SetStringField(TEXT("class"),O->GetClass()->GetPathName());W.R.Data->SetObjectField(TEXT("package_ownership_failure"),J);return W.Fail(TEXT("blueprint_niagara_template_foreign_package_export"),TEXT("Save would include foreign package export; actual residual retained"));}}return true;}
+bool PackageOwnership(UBlueprint* B){auto& W=*Current;if(!W.Admit(TEXT("package_export_admission"))||!Live(B))return false;auto* P=B->GetPackage();auto* C=Cast<UBlueprintGeneratedClass>(B->GeneratedClass);auto* S=Cast<UBlueprintGeneratedClass>(B->SkeletonGeneratedClass);for(auto* K:{C,S})if(K&&(K->ClassGeneratedBy!=B||K->GetPackage()!=P||K->GetOuter()!=P))return W.Fail(TEXT("blueprint_niagara_template_class_package_owner"),TEXT("Blueprint class product not owned by exact package"));TArray<UObject*> DefaultObjects;for(auto* K:{C,S})if(K){auto* D=K->GetDefaultObject(false);if(D){if(!Live(D)||D->GetClass()!=K||!D->HasAnyFlags(RF_ClassDefaultObject)||D->GetPackage()!=P||D->GetOutermost()!=P)return W.Fail(TEXT("blueprint_niagara_template_CDO_owner_invalid"),TEXT("Current class CDO ownership is not exact; no save"));DefaultObjects.Add(D);}}TArray<UObject*> Exports;GetObjectsWithPackage(P,Exports,EGetObjectsFlags::IncludeNestedObjects);if(!W.Budget(Exports.Num()))return false;for(auto* O:Exports){if(!Live(O))continue;const bool Metadata=false; /* UE5.8 package FMetaData is not a UObject export; no broad metadata exemption. */const bool Owned=O==B||O->IsIn(B)||(C&&(O==C||O->IsIn(C)))||(S&&(O==S||O->IsIn(S)))||DefaultObjects.ContainsByPredicate([&](const UObject* D){return O==D||O->IsIn(D);})||Metadata;if(!Owned||O->GetPackage()!=P||O->GetOutermost()!=P||Forbidden(O->GetClass()->GetPathName())){auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("foreign_export"),O->GetPathName());J->SetStringField(TEXT("class"),O->GetClass()->GetPathName());W.R.Data->SetObjectField(TEXT("package_ownership_failure"),J);return W.Fail(TEXT("blueprint_niagara_template_foreign_package_export"),TEXT("Save would include foreign package export; actual residual retained"));}}return true;}
 bool TargetExists(const FString& ObjectPath){auto& W=*Current;if(!W.Admit(TEXT("target_exists")))return true;const FString Package=FPackageName::ObjectPathToPackageName(ObjectPath);bool Exists=FindObject<UObject>(nullptr,*ObjectPath)!=nullptr||FindPackage(nullptr,*Package)!=nullptr||FPackageName::DoesPackageExist(Package);TArray<FAssetData> Assets;if(!W.Read(TEXT("Registry_target_package"),[&]{auto& AR=FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();AR.GetAssetsByPackageName(FName(*Package),Assets,false);}))return true;return Exists||!Assets.IsEmpty();}
 bool Fresh(const FString& ObjectPath){auto& W=*Current;if(TargetExists(ObjectPath))return W.Fail(TEXT("blueprint_niagara_canary_target_exists"),TEXT("Requested canary object/package/disk/registry already exists; safe new-owned target only"));if(!W.Admit(TEXT("fresh_target_after_registry")))return false;const FString P=FPackageName::ObjectPathToPackageName(ObjectPath);if(FindObject<UObject>(nullptr,*ObjectPath)||FindPackage(nullptr,*P)||FPackageName::DoesPackageExist(P))return W.Fail(TEXT("blueprint_niagara_canary_target_collision"),TEXT("Target collision appeared after registry SDK; no overwrite/replay"));return true;}
 UBlueprint* DuplicateCanary(UBlueprint* Source,const FString& ObjectPath){auto& W=*Current;W.RequestedObject=ObjectPath;W.RequestedPackage=FPackageName::ObjectPathToPackageName(ObjectPath);FPackageName::TryConvertLongPackageNameToFilename(W.RequestedPackage,W.RequestedFilename,FPackageName::GetAssetPackageExtension());if(!W.Blueprint(Source)||!W.Idle(Source)||!Fresh(ObjectPath))return nullptr;W.Source=Source;W.SourceDirty=Source->GetPackage()->IsDirty();W.SourceProtected=true;IAssetTools* Tools=nullptr;if(!W.Read(TEXT("AssetTools_Module"),[&]{Tools=&FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools")).Get();}))return nullptr;if(!Fresh(ObjectPath)||!W.SDK(TEXT("DuplicateAsset"),true))return nullptr;UObject* O=Tools->DuplicateAsset(FPackageName::GetLongPackageAssetName(W.RequestedPackage),FPackageName::GetLongPackagePath(W.RequestedPackage),Source);auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("requested_object_path"),ObjectPath);Row->SetStringField(TEXT("requested_package"),W.RequestedPackage);Row->SetStringField(TEXT("requested_filename"),W.RequestedFilename);Row->SetBoolField(TEXT("nonnull_return"),O!=nullptr);Row->SetBoolField(TEXT("identity_verified"),false);W.CreationRows.Add(MakeShared<FJsonValueObject>(Row));W.R.Data->SetBoolField(TEXT("canary_creation_SDK_returned_nonnull"),O!=nullptr);if(!W.After(TEXT("DuplicateAsset")))return nullptr;auto* B=Cast<UBlueprint>(O);if(!B||!W.Pin(B)||!Same(B->GetPathName(),ObjectPath)||!Same(B->GetPackage()->GetName(),W.RequestedPackage)||B->GetOuter()!=B->GetPackage()||B->GetClass()!=Source->GetClass()){W.Fail(TEXT("blueprint_niagara_canary_duplicate_identity"),TEXT("Duplicate returned null or unexpected class/path/outer/package; residual not automatically deleted"));return nullptr;}Row->SetBoolField(TEXT("identity_verified"),true);Row->SetStringField(TEXT("actual_path"),B->GetPathName());W.Target=B;W.R.bChanged=true;if(!W.Blueprint(B)||!PackageOwnership(B))return nullptr;return B;}
@@ -1388,9 +1389,9 @@ struct FCanaryReplacement
   if(!Live(B)||!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!B->SimpleConstructionScript.IsResolved()
    ||B->GeneratedClass.GetGCPtr().Get()!=SourceGenerated.Get()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=SourceSkeleton.Get()||B->SimpleConstructionScript!=SourceAuthoredSCS.Get())
    return Stop(TEXT("blueprint_niagara_canary_source_role_changed"),TEXT("Captured source Blueprint class/SCS slots changed"));
-  for(auto* C:{SourceGenerated.Get(),SourceSkeleton.Get()})if(!Live(C)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=B||!C->ClassDefaultObject.IsResolved()||!C->SimpleConstructionScript.IsResolved())
+  for(auto* C:{SourceGenerated.Get(),SourceSkeleton.Get()})if(!Live(C)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=B||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||!C->SimpleConstructionScript.IsResolved())
    return Stop(TEXT("blueprint_niagara_canary_source_role_changed"),TEXT("Captured source class/CDO/SCS roles unavailable"));
-  if(SourceGenerated->ClassDefaultObject.Get()!=SourceGeneratedCDO.Get()||SourceSkeleton->ClassDefaultObject.Get()!=SourceSkeletonCDO.Get()||SourceGenerated->SimpleConstructionScript!=SourceSCS.Get()||SourceSkeleton->SimpleConstructionScript!=SourceSkeletonSCS.Get())
+  if(SourceGenerated->GetDefaultObject(false)!=SourceGeneratedCDO.Get()||SourceSkeleton->GetDefaultObject(false)!=SourceSkeletonCDO.Get()||SourceGenerated->SimpleConstructionScript!=SourceSCS.Get()||SourceSkeleton->SimpleConstructionScript!=SourceSkeletonSCS.Get())
    return Stop(TEXT("blueprint_niagara_canary_source_role_changed"),TEXT("Captured source nullable CDO/SCS slots changed"));
   return true;
  }
@@ -1404,11 +1405,11 @@ struct FCanaryReplacement
   if(!SourceGenerated.IsValid()||!SourceSkeleton.IsValid())return Stop(TEXT("blueprint_niagara_canary_source_role_scope"),TEXT("Actual source BlueprintGeneratedClass roles required"));
   for(auto* C:{SourceGenerated.Get(),SourceSkeleton.Get()})
   {
-   if(!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=B||C->GetPackage()!=B->GetPackage()||!C->ClassDefaultObject.IsResolved()||!C->SimpleConstructionScript.IsResolved())return Stop(TEXT("blueprint_niagara_canary_source_role_scope"),TEXT("Source class/CDO ownership required"));
-   auto* D=C->ClassDefaultObject.Get();
+   if(!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=B||C->GetPackage()!=B->GetPackage()||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||!C->SimpleConstructionScript.IsResolved())return Stop(TEXT("blueprint_niagara_canary_source_role_scope"),TEXT("Source class/CDO ownership required"));
+   auto* D=C->GetDefaultObject(false);
    if(D&&(!Live(D)||D->GetClass()!=C||D->GetOuter()!=C->GetOuter()||D->GetPackage()!=B->GetPackage()||!D->HasAnyFlags(RF_ClassDefaultObject)))return Stop(TEXT("blueprint_niagara_canary_source_role_scope"),TEXT("Actual nullable source CDO role required"));
   }
-  SourceGeneratedCDO.Reset(SourceGenerated->ClassDefaultObject.Get());SourceSkeletonCDO.Reset(SourceSkeleton->ClassDefaultObject.Get());SourceSCS=SourceGenerated->SimpleConstructionScript;SourceAuthoredSCS=B->SimpleConstructionScript;SourceSkeletonSCS=SourceSkeleton->SimpleConstructionScript;
+  SourceGeneratedCDO.Reset(SourceGenerated->GetDefaultObject(false));SourceSkeletonCDO.Reset(SourceSkeleton->GetDefaultObject(false));SourceSCS=SourceGenerated->SimpleConstructionScript;SourceAuthoredSCS=B->SimpleConstructionScript;SourceSkeletonSCS=SourceSkeleton->SimpleConstructionScript;
   for(UObject* O:{static_cast<UObject*>(B),static_cast<UObject*>(SourceGenerated.Get()),static_cast<UObject*>(SourceSkeleton.Get()),SourceGeneratedCDO.Get(),SourceSkeletonCDO.Get(),static_cast<UObject*>(SourceSCS.Get()),static_cast<UObject*>(SourceAuthoredSCS.Get()),static_cast<UObject*>(SourceSkeletonSCS.Get())})
    if(O){if(!Live(O))return Stop(TEXT("blueprint_niagara_canary_source_role_scope"),TEXT("Loaded nullable source role required"));SourceRoles.Add(MakeUnique<FIdentity>(O));}
   SourceCaptured=true;return W.Admit(TEXT("replacement_source_roles_captured"));
@@ -1442,10 +1443,10 @@ struct FCanaryReplacement
   J->SetStringField(TEXT("parent"),CompilerCachePath(K->GetSuperClass()));
   J->SetBoolField(TEXT("generated_by_resolved"),K->ClassGeneratedBy.IsResolved());
   if(K->ClassGeneratedBy.IsResolved()){TStrongObjectPtr<UObject> By(K->ClassGeneratedBy.Get());J->SetStringField(TEXT("generated_by"),CompilerCachePath(By.Get()));}
-  J->SetBoolField(TEXT("CDO_resolved"),K->ClassDefaultObject.IsResolved());
-  if(K->ClassDefaultObject.IsResolved())
+  J->SetBoolField(TEXT("CDO_resolved"),Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved());
+  if(Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved())
   {
-   TStrongObjectPtr<UObject> D(K->ClassDefaultObject.Get());J->SetStringField(TEXT("CDO"),CompilerCachePath(D.Get()));
+   TStrongObjectPtr<UObject> D(K->GetDefaultObject(false));J->SetStringField(TEXT("CDO"),CompilerCachePath(D.Get()));
    if(Live(D.Get())){J->SetStringField(TEXT("CDO_class"),CompilerCachePath(D->GetClass()));J->SetStringField(TEXT("CDO_outer"),CompilerCachePath(D->GetOuter()));J->SetBoolField(TEXT("CDO_default_flag"),D->HasAnyFlags(RF_ClassDefaultObject));}
   }
   J->SetBoolField(TEXT("SCS_resolved"),K->SimpleConstructionScript.IsResolved());
@@ -1475,7 +1476,7 @@ struct FCanaryReplacement
    if(!Live(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||K->GetOuter()!=GetTransientPackage()
     ||K->GetPackage()!=GetTransientPackage()||K->GetClassFlags()!=C.ClassFlags||K->IsInternalClass()!=C.Internal||K->IsRooted()||(!C.Internal&&!K->HasAnyFlags(RF_Transient))
     ||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=Old.Get()||K->GetSuperClass()!=C.Parent.Get()
-    ||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=C.CDO.Get()
+    ||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()||K->GetDefaultObject(false)!=C.CDO.Get()
     ||!K->SimpleConstructionScript.IsResolved()||K->SimpleConstructionScript.Get()!=C.SCS.Get())
     return CompilerCacheMismatch(C.Path,TEXT("compiler_class_role"),C.BeforeRole,Json(CompilerCacheRole(K)));
    if(auto* D=C.CDO.Get())if(!Live(D)||D->GetClass()!=K||D->GetOuter()!=GetTransientPackage()||D->GetPackage()!=GetTransientPackage()||!D->HasAnyFlags(RF_ClassDefaultObject))
@@ -1521,14 +1522,14 @@ struct FCanaryReplacement
   if(!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=Old.Get())return Refuse(TEXT("ClassGeneratedBy"),ObjectPath,Json(Observation));
   if(K->IsRooted())return Refuse(TEXT("rooted"),TEXT("false (SDK removes compiler class root)"),TEXT("true"));
   if(!K->HasAllClassFlags(CLASS_CompiledFromBlueprint|CLASS_NewerVersionExists)||K->HasAnyClassFlags(CLASS_Native))return Refuse(TEXT("ClassFlags"),TEXT("CompiledFromBlueprint|NewerVersionExists and not Native"),FString::Printf(TEXT("%u"),static_cast<uint32>(K->GetClassFlags())));
-  if(!K->ClassDefaultObject.IsResolved()||!K->SimpleConstructionScript.IsResolved())return Refuse(TEXT("CDO/SCS.resolved"),TEXT("true/true"),Json(Observation));
+  if(!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()||!K->SimpleConstructionScript.IsResolved())return Refuse(TEXT("CDO/SCS.resolved"),TEXT("true/true"),Json(Observation));
   const bool Reinst=K->IsInternalClass()&&K->GetSuperClass()==AActor::StaticClass();
-  const bool Trash=!K->IsInternalClass()&&K->GetSuperClass()==nullptr&&K->ClassDefaultObject.Get()==nullptr&&K->SimpleConstructionScript.Get()==nullptr&&K->HasAnyFlags(RF_Transient);
+  const bool Trash=!K->IsInternalClass()&&K->GetSuperClass()==nullptr&&K->GetDefaultObject(false)==nullptr&&K->SimpleConstructionScript.Get()==nullptr&&K->HasAnyFlags(RF_Transient);
   if(!Reinst&&!Trash)return Refuse(TEXT("compiler_role"),TEXT("internal+direct Actor REINST; or transient noninternal null-parent/null-CDO/null-SCS trash container"),Json(Observation));
   for(const auto& C:CompilerCaches)if(C.Class.Get()==K){const bool Known=CompilerCacheOwns(Ref);Observation->SetBoolField(TEXT("admitted"),Known);return Known;}
   if(CompilerCaches.Num()>=16)return Stop(TEXT("blueprint_niagara_canary_compiler_cache_budget"),TEXT("Compiler cache class bound exceeded"));
   TStrongObjectPtr<UBlueprintGeneratedClass> ClassHold(K);
-  auto* D=K->ClassDefaultObject.Get();auto* S=K->SimpleConstructionScript.Get();
+  auto* D=K->GetDefaultObject(false);auto* S=K->SimpleConstructionScript.Get();
   TStrongObjectPtr<UObject> DefaultHold(D);TStrongObjectPtr<USimpleConstructionScript> SCSHold(S);
   if(D&&(!Live(D)||D->GetClass()!=K||D->GetOuter()!=GetTransientPackage()||D->GetPackage()!=GetTransientPackage()||!D->HasAnyFlags(RF_ClassDefaultObject)))return Refuse(TEXT("ClassDefaultObject.role"),TEXT("nullable actual cache-class CDO in transient package, default flag set"),Json(Observation));
   if(S&&(!Live(S)||S->GetClass()!=USimpleConstructionScript::StaticClass()||S->GetOuter()!=K||S->GetPackage()!=GetTransientPackage()))return Refuse(TEXT("SimpleConstructionScript.role"),TEXT("nullable exact cache-owned native SCS in transient package"),Json(Observation));
@@ -1570,9 +1571,9 @@ struct FCanaryReplacement
    ||Old->GeneratedClass!=Generated.Get()||Old->SkeletonGeneratedClass!=Skeleton.Get()||Old->SimpleConstructionScript!=AuthoredSCS.Get())
    return Stop(TEXT("blueprint_niagara_canary_old_class_changed"),TEXT("Unretired target authored/generated/skeleton role changed"));
   for(auto* C:{Generated.Get(),Skeleton.Get()})if(!Live(C)||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=Old.Get()||C->GetSuperClass()!=AActor::StaticClass()
-   ||!C->ClassDefaultObject.IsResolved()||!C->SimpleConstructionScript.IsResolved())
+   ||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||!C->SimpleConstructionScript.IsResolved())
    return Stop(TEXT("blueprint_niagara_canary_old_class_changed"),TEXT("Unretired class/CDO/SCS role unavailable"));
-  if(Generated->ClassDefaultObject.Get()!=GeneratedCDO.Get()||Skeleton->ClassDefaultObject.Get()!=SkeletonCDO.Get()
+  if(Generated->GetDefaultObject(false)!=GeneratedCDO.Get()||Skeleton->GetDefaultObject(false)!=SkeletonCDO.Get()
    ||Generated->SimpleConstructionScript!=SCS.Get()||Skeleton->SimpleConstructionScript!=SkeletonSCS.Get()||!Live(SCS.Get()))
    return Stop(TEXT("blueprint_niagara_canary_old_class_changed"),TEXT("Unretired nullable CDO/SCS slot changed"));
   const auto& CurrentNodes=SCS->GetAllNodes();
@@ -1644,15 +1645,15 @@ struct FCanaryReplacement
   if(!Live(Generated.Get())||!Live(Skeleton.Get()))return Stop(TEXT("blueprint_niagara_canary_replace_class_scope"),TEXT("Actual generated/skeleton classes required"));
   for(auto* C:{Generated.Get(),Skeleton.Get()})
   {
-   if(!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=B||C->GetSuperClass()!=AActor::StaticClass()||C->GetPackage()!=OldPackage.Get()||C->GetOuter()!=OldPackage.Get()||!C->ClassDefaultObject.IsResolved()||!C->SimpleConstructionScript.IsResolved())
+   if(!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=B||C->GetSuperClass()!=AActor::StaticClass()||C->GetPackage()!=OldPackage.Get()||C->GetOuter()!=OldPackage.Get()||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||!C->SimpleConstructionScript.IsResolved())
     return Stop(TEXT("blueprint_niagara_canary_replace_class_scope"),TEXT("Actual class/CDO slot roles required; no CDO warming"));
-   auto* D=C->ClassDefaultObject.Get();auto* T=C->SimpleConstructionScript.Get();
+   auto* D=C->GetDefaultObject(false);auto* T=C->SimpleConstructionScript.Get();
    if(D&&(!Live(D)||D->GetClass()!=C||D->GetOuter()!=C->GetOuter()||D->GetPackage()!=OldPackage.Get()||!D->HasAnyFlags(RF_ClassDefaultObject)))return Stop(TEXT("blueprint_niagara_canary_replace_cdo_scope"),TEXT("Actual nullable owned CDO required"));
    if(T&&(!Live(T)||T->GetPackage()!=OldPackage.Get()))return Stop(TEXT("blueprint_niagara_canary_replace_scs_scope"),TEXT("Actual nullable owned SCS required"));
   }
-  GeneratedCDO=Generated->ClassDefaultObject.Get();SkeletonCDO=Skeleton->ClassDefaultObject.Get();SCS=Generated->SimpleConstructionScript;SkeletonSCS=Skeleton->SimpleConstructionScript;
+  GeneratedCDO=Generated->GetDefaultObject(false);SkeletonCDO=Skeleton->GetDefaultObject(false);SCS=Generated->SimpleConstructionScript;SkeletonSCS=Skeleton->SimpleConstructionScript;
   if(!Live(SCS.Get())||!Live(AuthoredSCS.Get())||AuthoredSCS->GetPackage()!=OldPackage.Get())return Stop(TEXT("blueprint_niagara_canary_replace_scs_scope"),TEXT("Actual authored/generated SCS required"));
-  TArray<UObject*> Exports;GetObjectsWithPackage(OldPackage.Get(),Exports,true);
+  TArray<UObject*> Exports;GetObjectsWithPackage(OldPackage.Get(),Exports,EGetObjectsFlags::IncludeNestedObjects);
   if(Exports.IsEmpty()||Exports.Num()>4096)return Stop(TEXT("blueprint_niagara_canary_replace_export_scope"),TEXT("Bounded selected package export inventory required"));
   static const TSet<FString> NativeClasses={TEXT("/Script/Engine.Blueprint"),TEXT("/Script/Engine.BlueprintGeneratedClass"),TEXT("/Script/Engine.SimpleConstructionScript"),TEXT("/Script/Engine.SCS_Node"),TEXT("/Script/Engine.SceneComponent"),TEXT("/Script/Niagara.NiagaraComponent"),TEXT("/Script/Engine.EdGraph"),TEXT("/Script/CoreUObject.Function"),TEXT("/Script/CoreUObject.DelegateFunction"),TEXT("/Script/BlueprintGraph.K2Node_Event"),TEXT("/Script/BlueprintGraph.K2Node_FunctionEntry"),TEXT("/Script/BlueprintGraph.K2Node_FunctionResult"),TEXT("/Script/BlueprintGraph.K2Node_CallFunction"),TEXT("/Script/BlueprintGraph.K2Node_VariableGet"),TEXT("/Script/BlueprintGraph.K2Node_VariableSet"),TEXT("/Script/BlueprintGraph.K2Node_Self"),TEXT("/Script/UnrealEd.EdGraphNode_Comment")};
   for(UObject* O:Exports)
@@ -1759,7 +1760,7 @@ struct FCanaryReplacement
   if(Remaining.IsValid())
   {
    if(!Live(Remaining.Get())){Stop(TEXT("blueprint_niagara_canary_replace_package_unavailable"),TEXT("Remaining package unavailable"));return nullptr;}
-   TArray<UObject*> Exports;GetObjectsWithPackage(Remaining.Get(),Exports,true);
+   TArray<UObject*> Exports;GetObjectsWithPackage(Remaining.Get(),Exports,EGetObjectsFlags::IncludeNestedObjects);
    for(auto* O:Exports)if(Live(O)){Stop(TEXT("blueprint_niagara_canary_replace_package_not_empty"),TEXT("Remaining package exports prevent safe duplication"));return nullptr;}
   }
   if(!SourceFence(TEXT("replacement_after_delete")))return nullptr;

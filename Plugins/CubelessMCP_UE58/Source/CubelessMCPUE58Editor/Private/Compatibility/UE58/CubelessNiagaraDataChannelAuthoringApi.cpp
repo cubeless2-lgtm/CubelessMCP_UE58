@@ -136,7 +136,7 @@ struct FWork
     {
         R.Stage=Stage;if(!R.Error.IsEmpty())return false;
         if(VariadicAsyncMode&&VariadicCancelled)return Fail(TEXT("niagara_di_variadic_input_cancelled"),VariadicCancelReason);
-        if(!IsInGameThread()||!GEditor||IsEngineExitRequested()||GExitPurge||IsGarbageCollecting()||GIsSavingPackage)return Fail(TEXT("niagara_ndc_context_unavailable"),TEXT("Live Editor game thread without GC/exit/save required; no replay."));
+        if(!IsInGameThread()||!GEditor||IsEngineExitRequested()||GExitPurge||IsGarbageCollecting()||UE::IsSavingPackage())return Fail(TEXT("niagara_ndc_context_unavailable"),TEXT("Live Editor game thread without GC/exit/save required; no replay."));
         if(Writing&&(GEditor->PlayWorld||GEditor->GetPIEWorldContext()))return Fail(TEXT("niagara_ndc_play_session_active"),TEXT("Niagara authoring requires stopped PIE/SIE."));
         UWorld* CurrentWorld=GEditor->GetEditorWorldContext().World();if(!Live(CurrentWorld)||CurrentWorld->bIsTearingDown)return Fail(TEXT("niagara_ndc_world_unavailable"),TEXT("Editor world unavailable or tearing down."));if(!WorldCaptured){World=CurrentWorld;WorldCaptured=true;}else if(World.Get()!=CurrentWorld)return Fail(TEXT("niagara_ndc_world_changed"),TEXT("Editor world changed across SDK dispatch."));
         if(ChannelCaptured&&(!Live(ChannelAsset.Get())||ChannelAsset->Get()!=ExpectedChannel.Get()))return Fail(TEXT("niagara_ndc_channel_replaced"),TEXT("Captured channel asset binding changed."));
@@ -279,7 +279,7 @@ bool FWork::RefreshVariadicReference(UNiagaraNodeFunctionCall* N)
     const bool Refreshed=N->RefreshFromExternalChanges();
     Prefix->SetBoolField(TEXT("Variadic_RefreshReference_SDK_returned"),true);Receipt->SetBoolField(TEXT("SDK_returned"),true);Receipt->SetBoolField(TEXT("SDK_refresh_returned"),Refreshed);R.Stage=TEXT("after_Variadic_RefreshReference");
     // Old pin and peer addresses below are opaque keys only. Fresh membership is established before any pin dereference.
-    if(!IsInGameThread()||!GEditor||IsEngineExitRequested()||GExitPurge||IsGarbageCollecting()||GIsSavingPackage||!Live(G)||!Live(N))return Fail(TEXT("niagara_ndc_reference_refresh_context_changed"),TEXT("Reference refresh returned without a safe held context; no pin read or follow-up SDK."));
+    if(!IsInGameThread()||!GEditor||IsEngineExitRequested()||GExitPurge||IsGarbageCollecting()||UE::IsSavingPackage()||!Live(G)||!Live(N))return Fail(TEXT("niagara_ndc_reference_refresh_context_changed"),TEXT("Reference refresh returned without a safe held context; no pin read or follow-up SDK."));
     if(!G->Nodes.IsValidIndex(NodeIndex)||G->Nodes[NodeIndex]!=N)return PinFailure(BeforeNode,INDEX_NONE,TEXT("graph.Nodes[reference index]"),FString::Printf(TEXT("%p"),static_cast<void*>(N)),G->Nodes.IsValidIndex(NodeIndex)?FString::Printf(TEXT("%p"),static_cast<void*>(G->Nodes[NodeIndex])):TEXT("index absent"),TEXT("niagara_ndc_node_identity_changed"));
     if(N->NodeGuid!=BeforeNode.Id)return PinFailure(BeforeNode,INDEX_NONE,TEXT("NodeGuid"),BeforeNode.Id.ToString(),N->NodeGuid.ToString(),TEXT("niagara_ndc_node_identity_changed"));
     if(N->Pins.Num()!=BeforeNode.Pins.Num())return PinFailure(BeforeNode,INDEX_NONE,TEXT("Pins.Num"),FString::FromInt(BeforeNode.Pins.Num()),FString::FromInt(N->Pins.Num()),TEXT("niagara_ndc_node_identity_changed"));

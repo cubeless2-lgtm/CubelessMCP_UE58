@@ -1,5 +1,6 @@
 // Original BehaviorTree Create/Set/Inspect through public Editor APIs; no gameplay helper.
 #include "Compatibility/UE58/CubelessBehaviorTreeApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessBlackboardApi.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "AISystem.h"
@@ -819,7 +820,7 @@ struct FRDComposite
             || SelectorAllowed->ArrayFlags != EArrayPropertyFlags::None || SelectorType->MetaClass != UBlackboardKeyType::StaticClass())
         { return Stop(TEXT("selector_binding"), S->GetPathName(), TEXT("AllowedTypes.Inner"), TEXT("owned native BlackboardKeyType object Inner"), TEXT("unsupported binding")); }
         FProperty* P = SelectorInner; FField& F = SelectorInnerRole;
-        F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass(); F.Offset=P->GetOffset_ForInternal(); F.Size=P->ElementSize; F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags()); F.ObjectClass=SelectorInner->PropertyClass;
+        F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass(); F.Offset=P->GetOffset_ForInternal(); F.Size=P->GetElementSize(); F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags()); F.ObjectClass=SelectorInner->PropertyClass;
         NoneByteOffset=SelectorNone->GetByteOffset(); NoneByteMask=SelectorNone->GetByteMask(); NoneFieldMask=SelectorNone->GetFieldMask();
         return Hold(S) && Hold(SelectorInner->PropertyClass) && Hold(SelectorType->MetaClass);
     }
@@ -834,7 +835,7 @@ struct FRDComposite
         { return Stop(Stage,TEXT("BlackboardKeySelector"),TEXT("typed_bindings"),TEXT("captured root/Inner field identity"),TEXT("changed; old Inner not read")); }
         const FField& F=SelectorInnerRole; FProperty* P=SelectorAllowed->Inner;
         if (!P || P->GetClass()!=F.Class || P->GetOwnerStruct()!=F.Owner || P->GetOwner<FProperty>()!=SelectorAllowed || P->GetFName()!=F.Name
-            || P->GetOffset_ForInternal()!=F.Offset || P->ElementSize!=F.Size || P->ArrayDim!=F.Dim || static_cast<uint64>(P->GetPropertyFlags())!=F.Flags
+            || P->GetOffset_ForInternal()!=F.Offset || P->GetElementSize()!=F.Size || P->ArrayDim!=F.Dim || static_cast<uint64>(P->GetPropertyFlags())!=F.Flags
             || SelectorInner->PropertyClass!=F.ObjectClass || SelectorType->MetaClass!=UBlackboardKeyType::StaticClass()
             || SelectorNone->GetByteOffset()!=NoneByteOffset || SelectorNone->GetByteMask()!=NoneByteMask || SelectorNone->GetFieldMask()!=NoneFieldMask)
         { return Stop(Stage,TEXT("BlackboardKeySelector"),TEXT("typed_layout"),TEXT("captured owner/layout/masks/Class binding"),TEXT("changed")); }
@@ -923,7 +924,7 @@ struct FRDComposite
         {
             FProperty* P=*It; if (Fields.Num()>=32 || P->ArrayDim!=1) { return false; }
             FField F; F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass();
-            F.Offset=P->GetOffset_ForInternal(); F.Size=P->ElementSize; F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags());
+            F.Offset=P->GetOffset_ForInternal(); F.Size=P->GetElementSize(); F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags());
             Fields.Add(MoveTemp(F));
         }
         return true;
@@ -936,7 +937,7 @@ struct FRDComposite
         {
             FProperty* P=FindFProperty<FProperty>(Type,F.Name);
             if (!P || P!=F.Pointer || P->GetOwnerStruct()!=F.Owner || P->GetClass()!=F.Class || P->ArrayDim!=F.Dim
-                || P->ElementSize!=F.Size || P->GetOffset_ForInternal()!=F.Offset || static_cast<uint64>(P->GetPropertyFlags())!=F.Flags)
+                || P->GetElementSize()!=F.Size || P->GetOffset_ForInternal()!=F.Offset || static_cast<uint64>(P->GetPropertyFlags())!=F.Flags)
             { return Stop(Stage,Type->GetPathName(),F.Name.ToString(),TEXT("captured public request field binding/layout"),TEXT("changed")); }
         }
         return true;
@@ -957,7 +958,7 @@ struct FRDComposite
             || Role.Inner->GetClass()!=Role.InnerRole.Class || Role.Inner->GetFName()!=Role.InnerRole.Name
             || Role.Inner->GetOwnerStruct()!=Role.InnerRole.Owner || Role.Inner->GetOwner<FProperty>()!=Role.Config
             || Role.Inner->GetOffset_ForInternal()!=Role.InnerRole.Offset || static_cast<uint64>(Role.Inner->GetPropertyFlags())!=Role.InnerRole.Flags
-            || Role.Inner->ArrayDim!=1 || Role.Inner->ElementSize!=sizeof(FAIDynamicParam)
+            || Role.Inner->ArrayDim!=1 || Role.Inner->GetElementSize()!=sizeof(FAIDynamicParam)
             || FindFProperty<FStructProperty>(FEQSParametrizedQueryExecutionRequest::StaticStruct(),TEXT("EQSQueryBlackboardKey"))!=Role.QueryKey
             || !Role.QueryKey->Struct.IsResolved() || Role.QueryKey->Struct!=FBlackboardKeySelector::StaticStruct()
             || FindFProperty<FStructProperty>(FAIDynamicParam::StaticStruct(),TEXT("BBKey"))!=Role.ParamKey
@@ -1028,7 +1029,7 @@ struct FRDComposite
         // Native AddObjectFilter must be able to use an already captured CDO;
         // no preflight GetDefaultObject(true), NewObject or scratch Init.
         auto* FilterClass=UBlackboardKeyType_Object::StaticClass();
-        if (!Native(FilterClass,TEXT("/Script/AIModule")) || !FilterClass->ClassDefaultObject.IsResolved()) { return false; }
+        if (!Native(FilterClass,TEXT("/Script/AIModule")) || !Cubeless::UE58::GetClassDefaultObjectSlot(FilterClass).IsResolved()) { return false; }
         auto* CDO=FilterClass->GetDefaultObject(false);
         auto* Defaults=Cast<UBlackboardKeyType_Object>(CDO);
         if (!Loaded(Defaults) || Defaults->GetClass()!=FilterClass || !Defaults->DefaultValue.IsResolved() || Defaults->DefaultValue!=nullptr || !AddObject(Defaults))
@@ -1089,7 +1090,7 @@ struct FRDComposite
     {
         bool Pending=false; for (const auto& Role : RunEQSRequests) { Pending|=!Role.Before.IsValid() && !Role.InitializedAdopted; }
         if (!Pending) { return true; }
-        if (!IsEditorGameThread() || IsPlaySessionActive() || IsGarbageCollecting() || GIsSavingPackage || IsEngineExitRequested() || !Resolving || Resolved || !R.bAttempted)
+        if (!IsEditorGameThread() || IsPlaySessionActive() || IsGarbageCollecting() || UE::IsSavingPackage() || IsEngineExitRequested() || !Resolving || Resolved || !R.bAttempted)
         { return Stop(TEXT("RunEQS_init_return"),TEXT("tree"),TEXT("adoption_boundary"),TEXT("original first UpdateBlackboardChange returned on owned Editor thread"),TEXT("unavailable")); }
         for (auto& Role : RunEQSRequests) if (!Role.Before.IsValid() && !Role.InitializedAdopted)
         {
@@ -1168,7 +1169,7 @@ struct FRDComposite
             Role.Config=FindFProperty<FArrayProperty>(FEQSParametrizedQueryExecutionRequest::StaticStruct(),TEXT("QueryConfig"));
             Role.Inner=Role.Config?CastField<FStructProperty>(Role.Config->Inner):nullptr;
             if (!Role.Inner || !Role.Inner->Struct.IsResolved() || Role.Inner->Struct!=FAIDynamicParam::StaticStruct()
-                || Role.Inner->ArrayDim!=1 || Role.Inner->ElementSize!=sizeof(FAIDynamicParam)
+                || Role.Inner->ArrayDim!=1 || Role.Inner->GetElementSize()!=sizeof(FAIDynamicParam)
                 || !CaptureRequestFields(FEQSParametrizedQueryExecutionRequest::StaticStruct(),Role.RequestFields)
                 || !CaptureRequestFields(FAIDynamicParam::StaticStruct(),Role.ParamFields)) { return false; }
             Role.ConfigFlags=Role.Config->ArrayFlags;
@@ -1179,8 +1180,8 @@ struct FRDComposite
             Role.ParamKey=FindFProperty<FStructProperty>(FAIDynamicParam::StaticStruct(),TEXT("BBKey"));
             if (!Role.QueryKey || !Role.ParamKey || !Role.QueryKey->Struct.IsResolved() || Role.QueryKey->Struct!=FBlackboardKeySelector::StaticStruct()
                 || !Role.ParamKey->Struct.IsResolved() || Role.ParamKey->Struct!=FBlackboardKeySelector::StaticStruct()
-                || Role.QueryKey->ArrayDim!=1 || Role.QueryKey->ElementSize!=sizeof(FBlackboardKeySelector)
-                || Role.ParamKey->ArrayDim!=1 || Role.ParamKey->ElementSize!=sizeof(FBlackboardKeySelector)) { return false; }
+                || Role.QueryKey->ArrayDim!=1 || Role.QueryKey->GetElementSize()!=sizeof(FBlackboardKeySelector)
+                || Role.ParamKey->ArrayDim!=1 || Role.ParamKey->GetElementSize()!=sizeof(FBlackboardKeySelector)) { return false; }
             auto Value=*P->ContainerPtrToValuePtr<FEQSParametrizedQueryExecutionRequest>(S.Instance);
             if (Value.QueryConfig.Num()>32 || !Value.QueryTemplate.IsResolved()) { return false; }
             if (Value.QueryTemplate!=nullptr)
@@ -1352,7 +1353,7 @@ struct FRDComposite
     {
         FProperty* P = FindFProperty<FProperty>(O.Class, F.Name);
         return P == F.Pointer && P && P->GetOwnerStruct() == F.Owner && P->GetClass() == F.Class && P->GetOffset_ForInternal() == F.Offset
-            && P->ElementSize == F.Size && P->ArrayDim == F.Dim && static_cast<uint64>(P->GetPropertyFlags()) == F.Flags
+            && P->GetElementSize() == F.Size && P->ArrayDim == F.Dim && static_cast<uint64>(P->GetPropertyFlags()) == F.Flags
             && (!F.Struct || (CastField<FStructProperty>(P) && CastFieldChecked<FStructProperty>(P)->Struct == F.Struct))
             && (!F.ObjectClass || (CastField<FObjectPropertyBase>(P) && CastFieldChecked<FObjectPropertyBase>(P)->PropertyClass == F.ObjectClass))
             && (!F.MetaClass || (CastField<FClassProperty>(P) && CastFieldChecked<FClassProperty>(P)->MetaClass == F.MetaClass));
@@ -1413,7 +1414,7 @@ struct FRDComposite
         auto* Task=static_cast<UBTTask_RunBehavior*>(Instance);
         if(Node->GetClass()!=UBehaviorTreeGraphNode_SubtreeTask::StaticClass())return Stop(TEXT("subtree_admission"),Node->GetPathName(),TEXT("editor_class"),TEXT("exact native SubtreeTask editor"),TEXT("different"));
         auto* Editor=static_cast<UBehaviorTreeGraphNode_SubtreeTask*>(Node);FObjectProperty* P=FindFProperty<FObjectProperty>(Task->GetClass(),TEXT("BehaviorAsset"));
-        if(!P||P->GetOwnerStruct()!=UBTTask_RunBehavior::StaticClass()||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UBehaviorTree>)||P->HasSetterOrGetter()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UBehaviorTree::StaticClass())return false;
+        if(!P||P->GetOwnerStruct()!=UBTTask_RunBehavior::StaticClass()||P->ArrayDim!=1||P->GetElementSize()!=sizeof(TObjectPtr<UBehaviorTree>)||P->HasSetterOrGetter()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UBehaviorTree::StaticClass())return false;
         const auto Slot=P->GetObjectPtrPropertyValue_InContainer(Task);if(!Slot.IsResolved())return Stop(TEXT("subtree_admission"),Task->GetPathName(),TEXT("BehaviorAsset"),TEXT("already resolved nullable native subtree source"),TEXT("unresolved; no loader dispatched"));
         UBehaviorTree* Asset=Task->GetSubtreeAsset();TStrongObjectPtr<UBehaviorTree> Returned(Asset);
         if(!Hold(Asset)||!Pure(TEXT("subtree_public_getter_return")))return false;
@@ -1473,7 +1474,7 @@ struct FRDComposite
     bool Pure(const TCHAR* Stage)
     {
         if (Bad) { return false; }
-        if (!IsEditorGameThread() || IsPlaySessionActive() || IsGarbageCollecting() || GIsSavingPackage || IsEngineExitRequested()) { return Stop(Stage, TEXT("editor"), TEXT("context"), TEXT("idle Editor thread"), TEXT("unavailable")); }
+        if (!IsEditorGameThread() || IsPlaySessionActive() || IsGarbageCollecting() || UE::IsSavingPackage() || IsEngineExitRequested()) { return Stop(Stage, TEXT("editor"), TEXT("context"), TEXT("idle Editor thread"), TEXT("unavailable")); }
         for (const auto& H : References) { if (!Loaded(H.Get())) { return Stop(Stage, TEXT("held reference"), TEXT("live"), TEXT("loaded"), TEXT("unavailable")); } }
         for (const auto& O : Objects)
         {
@@ -1484,7 +1485,7 @@ struct FRDComposite
         }
         for (const auto& C : NativeClasses)
         {
-            if (!Loaded(C.Pointer) || !C.Pointer->ClassDefaultObject.IsResolved() || C.Pointer->ClassDefaultObject.Get() != C.CDO || static_cast<uint32>(C.Pointer->GetClassFlags()) != C.Flags || C.Pointer->GetOutermost()->IsDirty()) { return Stop(Stage, TEXT("native class"), TEXT("default_slot/flags/package"), TEXT("captured nullable default and native role"), TEXT("changed")); }
+            if (!Loaded(C.Pointer) || !Cubeless::UE58::GetClassDefaultObjectSlot(C.Pointer).IsResolved() || C.Pointer->GetDefaultObject(false) != C.CDO || static_cast<uint32>(C.Pointer->GetClassFlags()) != C.Flags || C.Pointer->GetOutermost()->IsDirty()) { return Stop(Stage, TEXT("native class"), TEXT("default_slot/flags/package"), TEXT("captured nullable default and native role"), TEXT("changed")); }
         }
         if (!BlackboardRolesCurrent(Stage)) { return false; }
         for (const auto& Role : SelfKeyRoles)
@@ -1504,7 +1505,7 @@ struct FRDComposite
         for (const auto& F : SelectorFields)
         {
             FProperty* P = FindFProperty<FProperty>(FBlackboardKeySelector::StaticStruct(), F.Name);
-            if (P != F.Pointer || !P || P->GetOwnerStruct() != F.Owner || P->GetClass() != F.Class || P->GetOffset_ForInternal() != F.Offset || P->ElementSize != F.Size || P->ArrayDim != F.Dim || static_cast<uint64>(P->GetPropertyFlags()) != F.Flags
+            if (P != F.Pointer || !P || P->GetOwnerStruct() != F.Owner || P->GetClass() != F.Class || P->GetOffset_ForInternal() != F.Offset || P->GetElementSize() != F.Size || P->ArrayDim != F.Dim || static_cast<uint64>(P->GetPropertyFlags()) != F.Flags
                 || (F.ObjectClass && (!CastField<FObjectPropertyBase>(P) || CastFieldChecked<FObjectPropertyBase>(P)->PropertyClass != F.ObjectClass))
                 || (F.MetaClass && (!CastField<FClassProperty>(P) || CastFieldChecked<FClassProperty>(P)->MetaClass != F.MetaClass))) { return Stop(Stage, TEXT("BlackboardKeySelector"), F.Name.ToString(), TEXT("native nested descriptor binding/layout"), TEXT("changed")); }
         }
@@ -1596,7 +1597,7 @@ struct FRDComposite
         for (TFieldIterator<FProperty> It(O.Class, EFieldIteratorFlags::IncludeSuper); It; ++It)
         {
             FProperty* P = *It; if (O.Fields.Num() >= MaxProperties || P->ArrayDim < 1 || P->ArrayDim > 64 || !Hold(P->GetOwnerStruct())) { return false; }
-            FField F; F.Name = P->GetFName(); F.Pointer = P; F.Owner = P->GetOwnerStruct(); F.Class = P->GetClass(); F.Offset = P->GetOffset_ForInternal(); F.Size = P->ElementSize; F.Dim = P->ArrayDim; F.Flags = static_cast<uint64>(P->GetPropertyFlags());
+            FField F; F.Name = P->GetFName(); F.Pointer = P; F.Owner = P->GetOwnerStruct(); F.Class = P->GetClass(); F.Offset = P->GetOffset_ForInternal(); F.Size = P->GetElementSize(); F.Dim = P->ArrayDim; F.Flags = static_cast<uint64>(P->GetPropertyFlags());
             if (auto* S = CastField<FStructProperty>(P)) { F.Struct = S->Struct; if (!Hold(F.Struct)) { return false; } }
             if (auto* S = CastField<FObjectPropertyBase>(P)) { F.ObjectClass = S->PropertyClass; if (!Hold(F.ObjectClass)) { return false; } }
             if (auto* S = CastField<FClassProperty>(P)) { F.MetaClass = S->MetaClass; if (!Hold(F.MetaClass)) { return false; } }
@@ -1816,7 +1817,7 @@ struct FRDComposite
                     if (InnerNode->GetClass()==TestClass)
                     {
                         auto* P=FindFProperty<FObjectProperty>(TestClass,TEXT("NodeInstance"));
-                        if (!P || P->GetOwnerStruct()!=TestClass || P->ArrayDim!=1 || P->ElementSize!=sizeof(TObjectPtr<UObject>)) { return false; }
+                        if (!P || P->GetOwnerStruct()!=TestClass || P->ArrayDim!=1 || P->GetElementSize()!=sizeof(TObjectPtr<UObject>)) { return false; }
                         const auto* Slot=P->GetObjectPtrPropertyValuePtr(P->ContainerPtrToValuePtr<void>(InnerNode)); if (!Slot->IsResolved()) { return false; }
                         UObject* Test=Slot->Get(); if (!Loaded(Test) || Test->GetClass()!=UBTDecorator_Blackboard::StaticClass() || Test->GetOuter()!=B || static_cast<UBTNode*>(Test)->GetTreeAsset()!=B || Decorators.Contains(static_cast<UBTDecorator*>(Test)) || !AddObject(Test)) { return false; }
                         Decorators.Add(static_cast<UBTDecorator*>(Test));
@@ -1904,7 +1905,7 @@ struct FRDComposite
         R.Data->SetBoolField(TEXT("native_composite_decorator_contract"),!Composites.IsEmpty());R.Data->SetBoolField(TEXT("native_root_decorator_contract"),!RootDecoratorTests.IsEmpty());R.Data->SetNumberField(TEXT("preserved_root_decorator_count"),RootDecoratorTests.Num());
         if(!RootDecoratorTests.IsEmpty())R.Data->SetStringField(TEXT("root_decorator_scope"),TEXT("Existing normalized owned root-host native Blackboard decorators and closed Composite groups use the original Blackboard assignment/UpdateAsset writer. Ordered RootDecorators/RootDecoratorOps, authored names/types/logic/links and source preservation stay exact; SDK root parent=null/index=MAX_uint16/memory0/depth0 and editor root-level roles are planned before writes. No node creation/injection/source rewrite/runtime execution. Other decorator classes/generated/custom/unnormalized/inherited Blackboard/source and full original scope remain incomplete or usage validation pending."));
         for (TFieldIterator<FProperty> It(FBlackboardKeySelector::StaticStruct(), EFieldIteratorFlags::IncludeSuper); It; ++It)
-        { FProperty* P = *It; FField F; F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass(); F.Offset=P->GetOffset_ForInternal(); F.Size=P->ElementSize; F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags());
+        { FProperty* P = *It; FField F; F.Name=P->GetFName(); F.Pointer=P; F.Owner=P->GetOwnerStruct(); F.Class=P->GetClass(); F.Offset=P->GetOffset_ForInternal(); F.Size=P->GetElementSize(); F.Dim=P->ArrayDim; F.Flags=static_cast<uint64>(P->GetPropertyFlags());
             if (auto* C=CastField<FObjectPropertyBase>(P)) { F.ObjectClass=C->PropertyClass; if (!Hold(F.ObjectClass)) { return false; } }
             if (auto* C=CastField<FClassProperty>(P)) { F.MetaClass=C->MetaClass; if (!Hold(F.MetaClass)) { return false; } }
             SelectorFields.Add(MoveTemp(F)); }
@@ -1927,8 +1928,8 @@ struct FRDComposite
         const TArray<UClass*> SourceClasses = Classes.Array();
         for (UClass* C : SourceClasses)
         {
-            if (!Loaded(C) || !C->ClassDefaultObject.IsResolved()) { return false; }
-            UObject* D = C->ClassDefaultObject.Get(); if (!Hold(D)) { return false; }
+            if (!Loaded(C) || !Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()) { return false; }
+            UObject* D = C->GetDefaultObject(false); if (!Hold(D)) { return false; }
             if (D && (D->GetClass() != C || D->GetOuter() != C->GetOuter() || !D->HasAnyFlags(RF_ClassDefaultObject) || !AddObject(D))) { return false; }
             NativeClasses.Add({ C, D, static_cast<uint32>(C->GetClassFlags()) });
         }
@@ -2282,7 +2283,7 @@ struct FXRSummary
         if (!IsEditorGameThread() || IsPlaySessionActive() || !Loaded(Class)) { return false; }
         static FObjectProperty* const P = FindFProperty<FObjectProperty>(UStruct::StaticClass(), TEXT("SuperStruct"));
         if (!P || P->GetClass() != FObjectProperty::StaticClass() || P->GetOwnerStruct() != UStruct::StaticClass()
-            || P->GetOwnerProperty() != P || P->ArrayDim != 1 || P->ElementSize != sizeof(TObjectPtr<UStruct>)
+            || P->GetOwnerProperty() != P || P->ArrayDim != 1 || P->GetElementSize() != sizeof(TObjectPtr<UStruct>)
             || P->GetSize() != sizeof(TObjectPtr<UStruct>) || P->GetMinAlignment() != alignof(TObjectPtr<UStruct>)
             || P->GetOffset_ForInternal() < 0 || int64(P->GetOffset_ForInternal()) + P->GetSize() > UStruct::StaticClass()->GetPropertiesSize()
             || P->HasSetterOrGetter() || !P->PropertyClass.IsResolved() || P->PropertyClass != UStruct::StaticClass()) { return false; }

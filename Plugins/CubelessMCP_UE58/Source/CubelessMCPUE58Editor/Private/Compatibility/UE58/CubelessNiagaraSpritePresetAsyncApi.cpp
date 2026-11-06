@@ -68,7 +68,7 @@ constexpr const TCHAR* ProjectWeatherRainParticleMaterialPath = TEXT("/Game/MCPW
 constexpr const TCHAR* ProjectWeatherSnowParticleMaterialPath = TEXT("/Game/MCPWeather/FX/Snow/Materials/M_MCPWeather_Snow_Particle.M_MCPWeather_Snow_Particle");
 constexpr const TCHAR* NiagaraTempGenerationRoot=TEXT("/Game/_MCP_Temp/NiagaraGenerated/");
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
-bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage;}
+bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage();}
 FString Json(const TSharedPtr<FJsonObject>& O){FString S;if(O)FJsonSerializer::Serialize(O.ToSharedRef(),TJsonWriterFactory<>::Create(&S));return S;}
 bool Forbidden(const FString& S){const FString L=S.ToLower();return L.Contains(TEXT("unrealmcp"))||L.Contains(TEXT("cubelessmcp"))||L.Contains(TEXT("modelcontextprotocol"))||L.Contains(TEXT("toolsetregistry"));}
 TArray<TStrongObjectPtr<UObject>>* ExecutionPins=nullptr;
@@ -904,7 +904,7 @@ void RememberModuleEdits(const TSharedPtr<FJsonObject>& Leaf)
 
 bool PackageOwnership(FWork& W,UNiagaraSystem* Root,const TCHAR* Stage)
 {
- if(!W.Admit(Stage)||Root!=W.Target.Get()||!Live(Root))return false;UPackage* P=Root->GetOutermost();if(Root->GetOuter()!=P||Root->GetPackage()!=P||!Root->GetPathName().Equals(W.RequestedObject,ESearchCase::CaseSensitive)||!P->GetName().Equals(W.RequestedPackage,ESearchCase::CaseSensitive))return W.Fail(TEXT("niagara_sprite_preset_root_package_changed"),TEXT("Exact created root/package changed"));TArray<UObject*> Exports;if(!W.Step(TEXT("GetObjectsWithPackage_Preset"),[&]{GetObjectsWithPackage(P,Exports,true);}))return false;if(Exports.Num()>65536||!W.Budget(Exports.Num()))return W.Fail(TEXT("niagara_sprite_preset_export_bound"),TEXT("Package export capture exceeds bound"));for(UObject* O:Exports){if(!Live(O)||O->GetPackage()!=P||O->GetOutermost()!=P||(O!=Root&&!O->IsIn(Root)))return W.Fail(TEXT("niagara_sprite_preset_foreign_package_export"),TEXT("Requested package contains object outside exact created root subtree; save refused, residual retained"));if(!W.Pin(O))return false;}return W.Admit(Stage);
+ if(!W.Admit(Stage)||Root!=W.Target.Get()||!Live(Root))return false;UPackage* P=Root->GetOutermost();if(Root->GetOuter()!=P||Root->GetPackage()!=P||!Root->GetPathName().Equals(W.RequestedObject,ESearchCase::CaseSensitive)||!P->GetName().Equals(W.RequestedPackage,ESearchCase::CaseSensitive))return W.Fail(TEXT("niagara_sprite_preset_root_package_changed"),TEXT("Exact created root/package changed"));TArray<UObject*> Exports;if(!W.Step(TEXT("GetObjectsWithPackage_Preset"),[&]{GetObjectsWithPackage(P,Exports,EGetObjectsFlags::IncludeNestedObjects);}))return false;if(Exports.Num()>65536||!W.Budget(Exports.Num()))return W.Fail(TEXT("niagara_sprite_preset_export_bound"),TEXT("Package export capture exceeds bound"));for(UObject* O:Exports){if(!Live(O)||O->GetPackage()!=P||O->GetOutermost()!=P||(O!=Root&&!O->IsIn(Root)))return W.Fail(TEXT("niagara_sprite_preset_foreign_package_export"),TEXT("Requested package contains object outside exact created root subtree; save refused, residual retained"));if(!W.Pin(O))return false;}return W.Admit(Stage);
 }
 
 bool SaveNiagaraAssetDirect(UNiagaraSystem* System,FString& Filename)

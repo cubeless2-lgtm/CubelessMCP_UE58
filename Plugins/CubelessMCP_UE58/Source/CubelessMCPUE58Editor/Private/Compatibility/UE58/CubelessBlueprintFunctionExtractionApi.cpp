@@ -1,6 +1,7 @@
 // FJ: original Part8 GUID selection -> diagnostics -> real BlueprintEditor collapse.
 // Editor-only source candidate. Owned derived toolkit, no Engine patch or base-to-derived cast.
 #include "Compatibility/UE58/CubelessBlueprintFunctionExtractionApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
@@ -387,7 +388,7 @@ struct FPXComposite
         for(const auto& S:NativeSources)
         {
             if(!S.ClassIdentity.Current()||!S.FunctionIdentity.Current()||!Loaded(S.Owner.Get())||!Loaded(S.Function.Get())||S.Owner->GetClassFlags()!=S.ClassFlags||S.Owner->GetSuperClass()!=S.Super||!S.Owner->ClassGeneratedBy.IsResolved()||S.Owner->ClassGeneratedBy.Get()!=nullptr||S.Function->GetClass()!=UFunction::StaticClass()||S.Function->GetOuter()!=S.Owner.Get()||S.Function->FunctionFlags!=S.Flags||S.Function->NumParms!=S.NumParms||S.Function->ParmsSize!=S.ParmsSize||S.Function->Script!=S.Script||S.Owner->FindFunctionByName(S.Function->GetFName(),EIncludeSuperFlag::ExcludeSuper)!=S.Function.Get())return false;
-            if(!S.Owner->ClassDefaultObject.IsResolved()||S.Owner->ClassDefaultObject.Get()!=S.CDO.Get()||!S.CDOIdentity.Current()||S.CDO->GetClass()!=S.Owner.Get()||S.CDO->GetOuter()!=S.Owner->GetOuter()||S.CDO->GetPackage()!=S.Owner->GetPackage()||!S.CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
+            if(!Cubeless::UE58::GetClassDefaultObjectSlot(S.Owner).IsResolved()||S.Owner->GetDefaultObject(false)!=S.CDO.Get()||!S.CDOIdentity.Current()||S.CDO->GetClass()!=S.Owner.Get()||S.CDO->GetOuter()!=S.Owner->GetOuter()||S.CDO->GetPackage()!=S.Owner->GetPackage()||!S.CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
             TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(S.Function.Get(),EFieldIterationFlags::None);It;++It)Now.Add(*It);if(Now.Num()!=S.Fields.Num())return false;
             for(int32 I=0;I<Now.Num();++I){const auto& F=S.Fields[I];if(Now[I]!=F.P||F.P->GetClass()!=F.Class||!PrimitiveField(F.P)||F.P->GetOwnerVariant()!=FFieldVariant(S.Function.Get())||F.P->GetFName()!=F.Name||uint64(F.P->GetPropertyFlags())!=F.Flags||F.P->ArrayDim!=1||F.P->HasSetterOrGetter()||F.P->GetOffset_ForInternal()!=F.Offset||F.P->GetSize()!=F.Size)return false;if(F.Class==FBoolProperty::StaticClass()){const auto* Bool=static_cast<FBoolProperty*>(F.P);if(Bool->GetByteOffset()!=F.BoolOffset||Bool->GetByteMask()!=F.BoolByteMask||Bool->GetFieldMask()!=F.BoolFieldMask)return false;}}
             if(!SourceMetadata(S).Equals(S.Metadata,ESearchCase::CaseSensitive))return false;
@@ -402,7 +403,7 @@ struct FPXComposite
         const FNativeSource* SourceRow=NativeSources.FindByPredicate([&](const FNativeSource& V){return V.Function.Get()==Fn;});
         if(!SourceRow)
         {
-            if(!Owner->ClassDefaultObject.IsResolved())return false;UObject* ExistingCDO=Owner->ClassDefaultObject.Get();Holds.Emplace(ExistingCDO);
+            if(!Cubeless::UE58::GetClassDefaultObjectSlot(Owner).IsResolved())return false;UObject* ExistingCDO=Owner->GetDefaultObject(false);Holds.Emplace(ExistingCDO);
             if(!Loaded(ExistingCDO)||ExistingCDO->GetClass()!=Owner||ExistingCDO->GetOuter()!=Owner->GetOuter()||ExistingCDO->GetPackage()!=Owner->GetPackage()||!ExistingCDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
             if(NativeSources.Num()>=MaxNodes)return false;FNativeSource V;V.CDO.Reset(ExistingCDO);V.CDOIdentity.Capture(ExistingCDO);V.Owner.Reset(Owner);V.Function.Reset(Fn);V.ClassIdentity.Capture(Owner);V.FunctionIdentity.Capture(Fn);V.ClassFlags=Owner->GetClassFlags();V.Super=Owner->GetSuperClass();V.Flags=Fn->FunctionFlags;V.NumParms=Fn->NumParms;V.ParmsSize=Fn->ParmsSize;V.Script=Fn->Script;
             for(TFieldIterator<FProperty> It(Fn,EFieldIterationFlags::None);It;++It)

@@ -419,12 +419,12 @@ FResult PhysicsAdd(const FString& BlueprintPath, const FString& Target, const FS
     if (!Parse(ParamsJson, Params, R) || !Parse(PositionJson, Coordinates, R)
         || !PhysicsDefaults(Params, Canonical, PreparedDefaults, Adapter, R) || !Position(Coordinates, PreparedPosition, Adapter, R)) { return R; }
     Adapter->SetStringField(TEXT("canonical_function"), Canonical); Adapter->SetObjectField(TEXT("prepared_defaults"), PreparedDefaults);
-    if (!IsEditorGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || GIsRequestingExit || UE::IsSavingPackage() || !IsValid(GEditor) || IsPlaySessionActive())
+    if (!IsEditorGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || IsEngineExitRequested() || UE::IsSavingPackage() || !IsValid(GEditor) || IsPlaySessionActive())
     { Fail(R, TEXT("function_node_editor_state_invalid"), TEXT("Safe Editor game thread outside PIE/GC/exit/save required; no transaction or core dispatch.")); return R; }
     TStrongObjectPtr<UEditorEngine> Editor(GEditor); TStrongObjectPtr<UWorld> World(GEditor->GetEditorWorldContext().World());
     auto Context = [&]() -> bool
     {
-        if (!IsEditorGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || GIsRequestingExit || UE::IsSavingPackage()
+        if (!IsEditorGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || IsEngineExitRequested() || UE::IsSavingPackage()
             || !Editor.IsValid() || GEditor != Editor.Get() || !IsValid(GEditor) || !World.IsValid()) { return false; }
         if (Editor->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed) || World->HasAnyFlags(RF_BeginDestroyed | RF_FinishDestroyed) || IsPlaySessionActive()) { return false; }
         return !World->bIsTearingDown && GEditor->GetEditorWorldContext().World() == World.Get();
@@ -999,10 +999,10 @@ FResult NativeLibraryAdd(const FString& BlueprintPath,const FString& Target,cons
     Adapter->SetBoolField(TEXT("shared_original_signature_default_adapter"),true);
     Adapter->SetBoolField(TEXT("create_graph_if_missing_forwarded_to_shared_call"),CreateGraph);
     if(CreateGraph)Adapter->SetStringField(TEXT("graph_creation_scope"),TEXT("Existing shared AddCall resolves and reuses an existing selected graph or creates one missing explicitly named own direct native Actor/ActorComponent/SceneComponent function for its already-supported runtime static primitive signature/native Make-Break profile. The shared writer retains graph/default cleanup/partial and structural receipts without explicit compile/save. Source/default preflight remains before creation; original invalid-source create-before-error effects, broader owners/world-context/generated/ref/container signatures and runtime use remain incomplete; usage validation pending."));
-    if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||GIsRequestingExit||UE::IsSavingPackage()||!IsValid(GEditor))
+    if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||IsEngineExitRequested()||UE::IsSavingPackage()||!IsValid(GEditor))
     {Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Safe current Editor game thread outside saving/GC required."));return R;}
     TWeakObjectPtr<UEditorEngine> Editor=GEditor;TWeakObjectPtr<UWorld> World=GEditor->GetEditorWorldContext().World();
-    auto Context=[&](){return IsInGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!GIsRequestingExit&&!UE::IsSavingPackage()
+    auto Context=[&](){return IsInGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!IsEngineExitRequested()&&!UE::IsSavingPackage()
         &&IsValid(GEditor)&&Editor.Get()==GEditor&&!GEditor->GetPIEWorldContext()&&!GEditor->PlayWorld
         &&World.IsValid()&&IsValid(World.Get())&&!World->bIsTearingDown&&GEditor->GetEditorWorldContext().World()==World.Get();};
     if(!Context()){Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Current Editor world outside PIE required."));return R;}
@@ -1068,10 +1068,10 @@ FResult OwnAdd(const FString& BlueprintPath,const FString& Target,const FString&
     TSharedPtr<FJsonValue> Params,Coordinates; TArray<TSharedPtr<FJsonValue>> PositionValues;
     if (!Parse(ParamsJson,Params,R)||!Parse(PositionJson,Coordinates,R)||!Position(Coordinates,PositionValues,Adapter,R)) return R;
     Adapter->SetField(TEXT("requested_params"),Params);
-    if (!IsEditorGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || GIsRequestingExit || UE::IsSavingPackage() || !IsValid(GEditor) || IsPlaySessionActive())
+    if (!IsEditorGameThread() || IsGarbageCollecting() || IsEngineExitRequested() || IsEngineExitRequested() || UE::IsSavingPackage() || !IsValid(GEditor) || IsPlaySessionActive())
     { Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Idle Editor GT outside PIE/GC/save/exit is required before own lookup.")); return R; }
     TStrongObjectPtr<UEditorEngine> Editor(GEditor); TStrongObjectPtr<UWorld> World(GEditor->GetEditorWorldContext().World());
-    auto Context=[&]() { return IsEditorGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!GIsRequestingExit&&!UE::IsSavingPackage()
+    auto Context=[&]() { return IsEditorGameThread()&&!IsGarbageCollecting()&&!IsEngineExitRequested()&&!IsEngineExitRequested()&&!UE::IsSavingPackage()
         &&Editor.IsValid()&&World.IsValid()&&GEditor==Editor.Get()&&!IsPlaySessionActive()&&!World->bIsTearingDown&&GEditor->GetEditorWorldContext().World()==World.Get(); };
     if (!Context()) { Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Current Editor world is unavailable.")); return R; }
     const FString ObjectPath=BlueprintPath.Contains(TEXT("."))?BlueprintPath:BlueprintPath+TEXT(".")+FPackageName::GetShortName(BlueprintPath);
@@ -1174,12 +1174,12 @@ Function::FResult Add(const FString& BlueprintPath, const FString& Target, const
     auto Context=[&]()
     {
         if(!PlayerObject&&!ActorGetter) { return true; }
-        if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||GIsRequestingExit||UE::IsSavingPackage()||!GEditor||GEditor!=CapturedEditor.Get()||!IsValid(GEditor)) { return false; }
+        if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||IsEngineExitRequested()||UE::IsSavingPackage()||!GEditor||GEditor!=CapturedEditor.Get()||!IsValid(GEditor)) { return false; }
         return !GEditor->GetPIEWorldContext()&&!GEditor->PlayWorld&&CapturedWorld.IsValid()&&IsValid(CapturedWorld.Get())&&!CapturedWorld->bIsTearingDown&&GEditor->GetEditorWorldContext().World()==CapturedWorld.Get();
     };
     if(PlayerObject||ActorGetter)
     {
-        if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||GIsRequestingExit||UE::IsSavingPackage()||!IsValid(GEditor)) { Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Safe Editor GT required before native getter resolution."));return R; }
+        if(!IsInGameThread()||IsGarbageCollecting()||IsEngineExitRequested()||IsEngineExitRequested()||UE::IsSavingPackage()||!IsValid(GEditor)) { Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Safe Editor GT required before native getter resolution."));return R; }
         CapturedEditor=GEditor;CapturedWorld=GEditor->GetEditorWorldContext().World();if(!Context()) { Fail(R,TEXT("function_node_editor_state_invalid"),TEXT("Current Editor world outside PIE required."));return R; }
     }
     if (!IsEditorGameThread() || IsPlaySessionActive())

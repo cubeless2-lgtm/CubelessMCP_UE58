@@ -44,7 +44,7 @@ std::atomic<bool> ShuttingDown{false};
 TSharedPtr<FJobState> Pending;
 FString LastTerminal;
 bool SafeContext()
-{return IsInGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage&&GEditor;}
+{return IsInGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage()&&GEditor;}
 bool Live(const UObject* O)
 {return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
 FString Encode(const TSharedPtr<FJsonObject>& O)
@@ -185,7 +185,7 @@ struct FJobState:TSharedFromThis<FJobState>
     {
         if(!Guard(TEXT("cleanup_ownership"))){return false;}if(System->GetPackage()!=System->GetOutermost()){return Fail(TEXT("niagara_user_async_external_package"),TEXT("Externally packaged System is outside exact original package save scope."));}
         for(const auto& E:Emitters){if(E.Data){if(!Own(E.Emitter.Get())){return Fail(TEXT("niagara_user_async_external_cleanup"),TEXT("Referenced emitter is outside selected System containment/package."));}for(const auto& X:E.Renderers){if(!Own(X.Get())){return Fail(TEXT("niagara_user_async_external_cleanup"),TEXT("Renderer is outside selected System containment/package."));}}for(const auto& X:E.Stages){if(X.IsValid()&&!Own(X.Get())){return Fail(TEXT("niagara_user_async_external_cleanup"),TEXT("Stage is outside selected System containment/package."));}}}}
-        bool Valid=true;int32 Count=0;ForEachObjectWithOuter(System.Get(),[&](UObject* O){if(!Valid){return;}if(++Count>65536){Valid=false;return;}if(O&&O->IsA<UNiagaraDataInterface>()){if(!Own(O)){Valid=false;return;}Pins.Add(O);}},true);
+        bool Valid=true;int32 Count=0;ForEachObjectWithOuter(System.Get(),[&](UObject* O){if(!Valid){return;}if(++Count>65536){Valid=false;return;}if(O&&O->IsA<UNiagaraDataInterface>()){if(!Own(O)){Valid=false;return;}Pins.Add(O);}},EGetObjectsFlags::IncludeNestedObjects);
         return Valid||Fail(TEXT("niagara_user_async_DI_admission"),TEXT("Nested DI cleanup ownership or inventory bound failed before SDK writer."));
     }
     void Prepare(FExecutionPins& Pins)

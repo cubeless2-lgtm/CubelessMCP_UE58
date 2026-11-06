@@ -64,7 +64,7 @@ using Cubeless::UE58::Variable::FResult;
 constexpr const TCHAR* NiagaraTempGenerationRoot=TEXT("/Game/_MCP_Temp/NiagaraGenerated/");
 bool Running=false;
 bool DeferredLeaseActive=false;std::atomic<bool> DeferredStopping{false};
-bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage;}
+bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage();}
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
 FString Json(const TSharedPtr<FJsonObject>& O){FString S;if(O)FJsonSerializer::Serialize(O.ToSharedRef(),TJsonWriterFactory<>::Create(&S));return S;}
 FString NormalizeNiagaraObjectPathForLoad(const FString&);
@@ -114,7 +114,7 @@ struct FWork
     bool Admit(const FString& Stage)
     {
         R.Stage=Stage;if(DeferredMode&&(DeferredStopping.load()||CancelRequested))return Fail(TEXT("niagara_resource_bindings_async_cancelled"),CancelReason.IsEmpty()?TEXT("Owned resource binding continuation stopped; no further SDK."):CancelReason);if(!R.Error.IsEmpty())return false;
-        if(!IsInGameThread()||!GEditor||IsEngineExitRequested()||GExitPurge||IsGarbageCollecting()||GIsSavingPackage)return Fail(TEXT("niagara_resource_bindings_context_unavailable"),TEXT("Live Editor game thread without GC/exit/save required; no replay."));
+        if(!IsInGameThread()||!GEditor||IsEngineExitRequested()||GExitPurge||IsGarbageCollecting()||UE::IsSavingPackage())return Fail(TEXT("niagara_resource_bindings_context_unavailable"),TEXT("Live Editor game thread without GC/exit/save required; no replay."));
         if(DeferredMode&&WorldCaptured&&CapturedEditor.Get()!=GEditor)return Fail(TEXT("niagara_resource_bindings_editor_changed"),TEXT("Captured Editor changed before getter; no replay."));
         if(WriterIntent&&(GEditor->PlayWorld||GEditor->GetPIEWorldContext()))return Fail(TEXT("niagara_resource_bindings_play_session_active"),TEXT("Niagara binding authoring requires stopped PIE/SIE."));
         UWorld* CurrentWorld=GEditor->GetEditorWorldContext().World();if(!Live(CurrentWorld)||CurrentWorld->bIsTearingDown)return Fail(TEXT("niagara_resource_bindings_world_unavailable"),TEXT("Editor world unavailable or tearing down."));if(!WorldCaptured){World=CurrentWorld;if(DeferredMode)CapturedEditor=GEditor;WorldCaptured=true;}else if(World.Get()!=CurrentWorld)return Fail(TEXT("niagara_resource_bindings_world_changed"),TEXT("Editor world changed across SDK dispatch."));

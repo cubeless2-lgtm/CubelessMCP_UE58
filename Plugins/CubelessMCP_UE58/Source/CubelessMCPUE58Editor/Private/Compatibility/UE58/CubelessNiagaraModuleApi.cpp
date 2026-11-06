@@ -994,7 +994,7 @@ bool BatchCaptureGpuRole(FBatchContext& C,FBatchResult& R,int32 Index,const FNia
  FBatchGpuRole E;E.Index=Index;E.Id=H.GetId();E.Version=H.GetInstance().Version;E.Data=D;
  auto Own=[&](UObject* O){if(!BatchLive(O)||!BatchReadableChain(O))return false;E.Objects.Add(MakeUnique<FBatchIdentity>(O));return true;};
  if(!Own(C.System))return Bad(TEXT("system"));
- auto Resident=[&](const auto& Slot)->UObject* {if(!Slot.IsResolved()||Slot.GetPathName().IsEmpty())return nullptr;UObject* O=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),false);TStrongObjectPtr<UObject> Hold(BatchLive(O)?O:nullptr);return Hold.IsValid()&&Slot.GetHandle()==TObjectPtr<UObject>(Hold.Get()).GetHandle()&&Own(Hold.Get())?Hold.Get():nullptr;};
+ auto Resident=[&](const auto& Slot)->UObject* {if(!Slot.IsResolved()||Slot.GetPathName().IsEmpty())return nullptr;UObject* O=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),EFindObjectFlags::None);TStrongObjectPtr<UObject> Hold(BatchLive(O)?O:nullptr);return Hold.IsValid()&&Slot.GetHandle()==TObjectPtr<UObject>(Hold.Get()).GetHandle()&&Own(Hold.Get())?Hold.Get():nullptr;};
  const auto Instance=H.GetInstance();if(!Resident(Instance.Emitter))return Bad(TEXT("emitter"));
  E.SourceSlot=D->GraphSource;auto* Source=Cast<UNiagaraScriptSource>(Resident(E.SourceSlot));if(!Source||Source->GetClass()!=UNiagaraScriptSource::StaticClass()||!Source->IsIn(C.System)||Source->bIsCompilationCopy||Source->bIsReleased)return Bad(TEXT("GraphSource"));
  E.GraphSlot=Source->NodeGraph;auto* Graph=Cast<UNiagaraGraph>(Resident(E.GraphSlot));if(!Graph||Graph->GetClass()!=UNiagaraGraph::StaticClass()||Graph->GetOuter()!=Source)return Bad(TEXT("NodeGraph"));

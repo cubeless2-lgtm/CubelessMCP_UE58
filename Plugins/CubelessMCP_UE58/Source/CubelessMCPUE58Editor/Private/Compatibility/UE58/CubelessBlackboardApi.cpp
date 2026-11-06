@@ -7,6 +7,7 @@
 // Build/official behavior/save/reload pending; other native roots, unobserved cold-load transitions and full arbitrary callback effects incomplete.
 // Original Blackboard Create/Add/Inspect contracts through public runtime AIModule APIs.
 #include "Compatibility/UE58/CubelessBlackboardApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Compatibility/UE58/CubelessGeneratedComponentApi.h"
 #include "Editor.h"
@@ -332,7 +333,7 @@ struct FGeneratedBaseScope
         Out=nullptr;if(!Loaded(Class))return false;
         const FObjectProperty* P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
         if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()||P->GetOwnerProperty()!=P||P->ArrayDim!=1
-            ||P->ElementSize!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)
+            ||P->GetElementSize()!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)
             ||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()||P->HasSetterOrGetter()||!SlotSame(P->PropertyClass,UStruct::StaticClass()))return false;
         const auto Slot=P->GetObjectPtrPropertyValue(P->ContainerPtrToValuePtr<void>(Class));
         if(!Slot.IsResolved())return false;if(SlotSame(Slot,static_cast<UObject*>(nullptr)))return true;
@@ -351,7 +352,7 @@ struct FGeneratedBaseScope
         Q.BP=B;Q.Generated=G;Q.ObjectRoot=true;UClass* ActualGenerated=nullptr;UClass* ActualParent=nullptr;UObject* SkeletonGenerator=nullptr;
         if(!HoldSlot(B->GeneratedClass.GetGCPtr(),ActualGenerated)||ActualGenerated!=G||!HoldSlot(B->SkeletonGeneratedClass.GetGCPtr(),Q.Skeleton)||!Loaded(Q.Skeleton)
             ||!HoldSlot(B->ParentClass.GetGCPtr(),Q.Parent)||!Loaded(Q.Parent)||!HoldSlot(B->SimpleConstructionScript,Q.SCS)
-            ||!HoldSlot(G->ClassDefaultObject,Q.CDO)||!HoldSlot(Q.Skeleton->ClassDefaultObject,Q.SkeletonCDO)||!HoldSlot(Q.Skeleton->ClassGeneratedBy,SkeletonGenerator)||SkeletonGenerator!=B
+            ||!HoldSlot(Cubeless::UE58::GetClassDefaultObjectSlot(G),Q.CDO)||!HoldSlot(Cubeless::UE58::GetClassDefaultObjectSlot(Q.Skeleton),Q.SkeletonCDO)||!HoldSlot(Q.Skeleton->ClassGeneratedBy,SkeletonGenerator)||SkeletonGenerator!=B
             ||!ObjectSuper(G,ActualParent)||ActualParent!=Q.Parent||!ObjectSuper(Q.Skeleton,Q.SkeletonParent)||(Q.SkeletonParent&&!PinSource(Q.SkeletonParent)))
             return Stop(TEXT("blackboard_generated_object_roles_pending"),TEXT("Existing resolved generated/skeleton/actual superclass and nullable CDO/SCS roles required; none are created."));
         UPackage* P=G->GetPackage();
@@ -366,7 +367,7 @@ struct FGeneratedBaseScope
         UClass* Parent=nullptr;UClass* SkeletonParent=nullptr;
         return SlotSame(Q.BP->GeneratedClass.GetGCPtr(),Q.Generated)&&SlotSame(Q.BP->SkeletonGeneratedClass.GetGCPtr(),Q.Skeleton)
             &&SlotSame(Q.BP->ParentClass.GetGCPtr(),Q.Parent)&&SlotSame(Q.BP->SimpleConstructionScript,Q.SCS)&&SlotSame(Q.Generated->ClassGeneratedBy,Q.BP)&&SlotSame(Q.Skeleton->ClassGeneratedBy,Q.BP)
-            &&SlotSame(Q.Generated->ClassDefaultObject,Q.CDO)&&SlotSame(Q.Skeleton->ClassDefaultObject,Q.SkeletonCDO)
+            &&SlotSame(Cubeless::UE58::GetClassDefaultObjectSlot(Q.Generated),Q.CDO)&&SlotSame(Cubeless::UE58::GetClassDefaultObjectSlot(Q.Skeleton),Q.SkeletonCDO)
             &&ObjectSuper(Q.Generated,Parent)&&Parent==Q.Parent&&ObjectSuper(Q.Skeleton,SkeletonParent)&&SkeletonParent==Q.SkeletonParent
             &&Q.BP->Status==Q.Status&&Q.BP->BlueprintType==BPTYPE_Normal&&!Q.BP->bBeingCompiled&&!Q.BP->bQueuedForCompilation&&!Q.BP->bSuppressStructurallyModified&&!Q.BP->bIsRegeneratingOnLoad
             &&Q.Generated->GetClassFlags()==Q.Flags&&Q.Skeleton->GetClassFlags()==Q.SkeletonFlags&&!Q.Generated->GetPackage()->IsDirty();

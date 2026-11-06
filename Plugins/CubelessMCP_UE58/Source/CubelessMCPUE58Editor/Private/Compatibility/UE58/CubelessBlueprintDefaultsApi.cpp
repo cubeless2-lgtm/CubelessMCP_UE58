@@ -1,6 +1,7 @@
 // UE56 Actor-CDO tick and local SkeletalMeshComponent default contracts.
 // Dedicated public Engine authoring routes; no generic property permission bypass.
 #include "Compatibility/UE58/CubelessBlueprintDefaultsApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -831,12 +832,12 @@ struct FTickRefreshSources
     bool CallSnapshot(TSharedRef<FJsonObject>& Out,bool Initial)
     {
         if(Calls.IsEmpty())return true;UClass* NodeClass=UK2Node_CallFunction::StaticClass();
-        if(!Loaded(NodeClass)||!NodeClass->ClassDefaultObject.IsResolved()||!Loaded(CallNodeDefault.Get())||NodeClass->ClassDefaultObject.Get()!=CallNodeDefault.Get()||CallNodeDefault->GetClass()!=NodeClass||CallNodeDefault->GetOuter()!=NodeClass->GetOuter()||!CallNodeDefault->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
+        if(!Loaded(NodeClass)||!Cubeless::UE58::GetClassDefaultObjectSlot(NodeClass).IsResolved()||!Loaded(CallNodeDefault.Get())||NodeClass->GetDefaultObject(false)!=CallNodeDefault.Get()||CallNodeDefault->GetClass()!=NodeClass||CallNodeDefault->GetOuter()!=NodeClass->GetOuter()||!CallNodeDefault->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject))return false;
         auto All=MakeShared<FJsonObject>();Out->SetObjectField(TEXT("native_call_sources"),All);All->SetObjectField(TEXT("node_class"),Identity(NodeClass));All->SetObjectField(TEXT("node_cdo"),Identity(CallNodeDefault.Get()));auto NodeFields=MakeShared<FJsonObject>();if(!Properties(CallNodeDefault.Get(),{},NodeFields))return false;All->SetObjectField(TEXT("node_cdo_fields"),NodeFields);
         for(auto& Source:Calls)
         {
             auto& S=*Source;UClass* K=S.Owner.Get();UFunction* F=S.Function.Get();
-            if(!Native(K)||!K->IsChildOf(UBlueprintFunctionLibrary::StaticClass())||!Loaded(S.CDO.Get())||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=S.CDO.Get()||S.CDO->GetClass()!=K||S.CDO->GetOuter()!=K->GetOuter()||!S.CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)||!Loaded(F)||F->GetOuter()!=K||K->FindFunctionByName(F->GetFName(),EIncludeSuperFlag::ExcludeSuper)!=F)return false;
+            if(!Native(K)||!K->IsChildOf(UBlueprintFunctionLibrary::StaticClass())||!Loaded(S.CDO.Get())||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()||K->GetDefaultObject(false)!=S.CDO.Get()||S.CDO->GetClass()!=K||S.CDO->GetOuter()!=K->GetOuter()||!S.CDO->HasAllFlags(RF_ClassDefaultObject|RF_ArchetypeObject)||!Loaded(F)||F->GetOuter()!=K||K->FindFunctionByName(F->GetFName(),EIncludeSuperFlag::ExcludeSuper)!=F)return false;
             auto Row=MakeShared<FJsonObject>();All->SetObjectField(F->GetPathName(),Row);Row->SetObjectField(TEXT("owner"),Identity(K));Row->SetObjectField(TEXT("owner_cdo"),Identity(S.CDO.Get()));Row->SetObjectField(TEXT("function"),Identity(F));Row->SetStringField(TEXT("owner_flags"),LexToString(static_cast<uint32>(K->GetClassFlags())));Row->SetStringField(TEXT("function_flags"),LexToString(static_cast<uint32>(F->FunctionFlags)));Row->SetNumberField(TEXT("parms_size"),F->ParmsSize);Row->SetNumberField(TEXT("num_parms"),F->NumParms);
             auto OwnerFields=MakeShared<FJsonObject>(),FunctionFields=MakeShared<FJsonObject>();if(!Properties(S.CDO.Get(),{},OwnerFields)||!Properties(F,{},FunctionFields))return false;Row->SetObjectField(TEXT("owner_cdo_fields"),OwnerFields);Row->SetObjectField(TEXT("function_fields"),FunctionFields);
             auto Metadata=MakeShared<FJsonObject>();const auto* Meta=FMetaData::GetMapForObject(F);if(Meta){if(Meta->Num()>MaxProperties)return false;int32 Chars=0;for(const auto& M:*Meta){if((Chars+=M.Key.ToString().Len()+M.Value.Len())>MaxText)return false;Metadata->SetStringField(M.Key.ToString(),M.Value);}}Row->SetObjectField(TEXT("metadata"),Metadata);
@@ -845,7 +846,7 @@ struct FTickRefreshSources
             Describe=[&](FProperty* P,const TSharedRef<FJsonObject>& V,int32 Depth)->bool
             {
                 if(!P||Depth>8||++SignatureFieldCount>MaxProperties||P->ArrayDim!=1||P->HasSetterOrGetter()||P->HasAnyPropertyFlags(CPF_InstancedReference|CPF_ContainsInstancedReference|CPF_Deprecated))return false;
-                Current.Add(P);V->SetStringField(TEXT("name"),P->GetName());V->SetStringField(TEXT("kind"),P->GetClass()->GetName());V->SetStringField(TEXT("owner"),P->GetOwnerStruct()?P->GetOwnerStruct()->GetPathName():FString());V->SetStringField(TEXT("owner_field"),P->GetOwner<FProperty>()?P->GetOwner<FProperty>()->GetPathName():FString());V->SetStringField(TEXT("flags"),LexToString(static_cast<uint64>(P->GetPropertyFlags())));V->SetNumberField(TEXT("offset"),P->GetOffset_ForInternal());V->SetNumberField(TEXT("size"),P->GetSize());V->SetNumberField(TEXT("element_size"),P->ElementSize);
+                Current.Add(P);V->SetStringField(TEXT("name"),P->GetName());V->SetStringField(TEXT("kind"),P->GetClass()->GetName());V->SetStringField(TEXT("owner"),P->GetOwnerStruct()?P->GetOwnerStruct()->GetPathName():FString());V->SetStringField(TEXT("owner_field"),P->GetOwner<FProperty>()?P->GetOwner<FProperty>()->GetPathName():FString());V->SetStringField(TEXT("flags"),LexToString(static_cast<uint64>(P->GetPropertyFlags())));V->SetNumberField(TEXT("offset"),P->GetOffset_ForInternal());V->SetNumberField(TEXT("size"),P->GetSize());V->SetNumberField(TEXT("element_size"),P->GetElementSize());
                 auto FieldMeta=MakeShared<FJsonObject>();const auto* PMap=P->GetMetaDataMap();if(PMap){if(PMap->Num()>MaxProperties)return false;int32 Chars=0;for(const auto& M:*PMap){if((Chars+=M.Key.ToString().Len()+M.Value.Len())>MaxText)return false;FieldMeta->SetStringField(M.Key.ToString(),M.Value);}}V->SetObjectField(TEXT("metadata"),FieldMeta);
                 if(auto* Bool=CastField<FBoolProperty>(P)){V->SetNumberField(TEXT("bool_byte_mask"),Bool->GetByteMask());V->SetNumberField(TEXT("bool_field_mask"),Bool->GetFieldMask());}
                 auto Type=[&](UObject* O,const TCHAR* Key)->bool{if(!RuntimeType(O))return false;if(Initial)S.Types.Emplace(O);V->SetObjectField(Key,Identity(O));return true;};

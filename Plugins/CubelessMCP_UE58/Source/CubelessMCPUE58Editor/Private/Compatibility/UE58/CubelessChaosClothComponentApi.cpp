@@ -486,7 +486,7 @@ TSharedPtr<FJsonObject> MakeCollectionPropertySnapshot(
     bool bIncludeFlags)
 {
     TSharedPtr<FJsonObject> Property = MakeShared<FJsonObject>();
-    Property->SetStringField(TEXT("name"), Facade.GetKey(PropertyIndex));
+    Property->SetStringField(TEXT("name"), Facade.GetKeyName(PropertyIndex).ToString());
     if (bIncludeValues)
     {
         Property->SetArrayField(
@@ -748,7 +748,7 @@ TSharedPtr<FJsonObject> FindRuntimePropertySnapshot(
         return Result;
     }
     Chaos::Softs::FCollectionPropertyConstFacade Facade(Collections[LodIndex]);
-    const int32 PropertyIndex = Facade.IsValid() ? Facade.GetKeyIndex(PropertyName) : INDEX_NONE;
+    const int32 PropertyIndex = Facade.IsValid() ? Facade.GetKeyNameIndex(FName(PropertyName)) : INDEX_NONE;
     if (PropertyIndex == INDEX_NONE)
     {
         return Result;
@@ -1078,7 +1078,7 @@ bool ValidateRuntimePropertyUpdates(
         for (int32 LodIndex = FirstLod; LodIndex <= LastLod; ++LodIndex)
         {
             Chaos::Softs::FCollectionPropertyConstFacade Facade(Collections[LodIndex]);
-            const int32 PropertyIndex = Facade.IsValid() ? Facade.GetKeyIndex(Update.Name) : INDEX_NONE;
+            const int32 PropertyIndex = Facade.IsValid() ? Facade.GetKeyNameIndex(FName(Update.Name)) : INDEX_NONE;
             if (PropertyIndex == INDEX_NONE)
             {
                 OutErrors.Add(FString::Printf(
@@ -1246,7 +1246,7 @@ bool VerifyRuntimePropertyUpdate(
     for (int32 LodIndex = FirstLod; LodIndex <= LastLod; ++LodIndex)
     {
         Chaos::Softs::FCollectionPropertyConstFacade Facade(Collections[LodIndex]);
-        const int32 PropertyIndex = Facade.IsValid() ? Facade.GetKeyIndex(Update.Name) : INDEX_NONE;
+        const int32 PropertyIndex = Facade.IsValid() ? Facade.GetKeyNameIndex(FName(Update.Name)) : INDEX_NONE;
         if (PropertyIndex == INDEX_NONE)
         {
             bVerified = false;
@@ -1547,7 +1547,7 @@ bool CaptureRuntimePropertyRollbackValues(
             }
             Chaos::Softs::FCollectionPropertyConstFacade Facade(Collections[TargetLod]);
             const int32 PropertyIndex = Facade.IsValid()
-                ? Facade.GetKeyIndex(Update.Name)
+                ? Facade.GetKeyNameIndex(FName(Update.Name))
                 : INDEX_NONE;
             if (PropertyIndex == INDEX_NONE)
             {
@@ -1856,7 +1856,7 @@ bool RestoreRuntimePropertyValues(FWork& W,UChaosClothComponent* C,int32 ModelIn
     const auto& Collections=C->GetPropertyCollections(ModelIndex);bool OK=true;
     for(const auto& V:Values)
     {
-        if(!Collections.IsValidIndex(V.LodIndex)||!Collections[V.LodIndex]) { OK=false;continue; }const Chaos::Softs::FCollectionPropertyConstFacade P(Collections[V.LodIndex]);const int32 I=P.IsValid()?P.GetKeyIndex(V.Name):INDEX_NONE;
+        if(!Collections.IsValidIndex(V.LodIndex)||!Collections[V.LodIndex]) { OK=false;continue; }const Chaos::Softs::FCollectionPropertyConstFacade P(Collections[V.LodIndex]);const int32 I=P.IsValid()?P.GetKeyNameIndex(FName(V.Name)):INDEX_NONE;
         if(I==INDEX_NONE||!P.GetLowValue<FVector3f>(I).Equals(V.LowRaw,0.f)||!P.GetHighValue<FVector3f>(I).Equals(V.HighRaw,0.f)||!P.GetStringValue(I).Equals(V.StringValue,ESearchCase::CaseSensitive)||static_cast<uint8>(P.GetFlags(I))!=V.Flags) { OK=false; }
     }
     if(!OK) { Errors.Add(TEXT("Runtime raw values/flags drifted; exact-key raw restore has no confirmed public mutable route and was not attempted")); }return OK;

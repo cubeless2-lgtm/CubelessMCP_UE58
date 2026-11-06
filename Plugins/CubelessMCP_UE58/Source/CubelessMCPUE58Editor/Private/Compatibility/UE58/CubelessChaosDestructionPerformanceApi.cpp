@@ -1672,10 +1672,8 @@ bool AdvanceOneWayStagedLaunch()
             if(!BeforeSDK(TEXT("UpdateShapeCollisionFlags"))) return {};
             WriteInterface->UpdateShapeCollisionFlags(TargetPhysicsObjects, true, true);
             if(!AfterSDK()) return {};
-            WriteInterface->UpdateShapeFilterData(
-                TargetPhysicsObjects,
-                TargetFilterData.QuerySimpleFilter,
-                TargetFilterData.SimFilter);
+            // UE 5.8 leaves the legacy filter words zero in BuildBodyFilterData.
+            WriteInterface->UpdateCombinedShapeFilterData(TargetPhysicsObjects, Chaos::Filter::FCombinedShapeFilterData{});
             Session.TargetCollisionConfiguredCount = TargetPhysicsObjects.Num();
             Session.TargetCollisionConfiguredFrame = GFrameCounter;
         }

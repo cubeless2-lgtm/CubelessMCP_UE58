@@ -1,5 +1,6 @@
 // HD Editor-only PCG component generation control. Native raw contracts only.
 #include "Compatibility/UE58/CubelessPCGComponentGenerationApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessVariableApi.h"
 #include "Operations/CubelessVariableOperations.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -586,8 +587,8 @@ struct FScopedGeneration
  // RK is one extra host role in the existing CPU source lease, not a second generation writer.
  bool NativeClass(const FString& Role,UClass* K,const TSharedRef<FJsonObject>& Out)
  {
-  if(!Object(Role,K)||K->GetClass()!=UClass::StaticClass()||!K->HasAnyClassFlags(CLASS_Native)||K->HasAnyClassFlags(CLASS_CompiledFromBlueprint|CLASS_NewerVersionExists|CLASS_Deprecated)||!K->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=nullptr||!K->ClassDefaultObject.IsResolved())return Stop(TEXT("pcg_scoped_native_host_class_pending"),Role,TEXT("native_class/source/CDO_slot"),TEXT("resolved exact native compiled-in class and nullable existing CDO"),TEXT("unavailable or different role"),false);
-  UObject* D=K->ClassDefaultObject.Get();if(D&&(!Object(Role+TEXT("_cdo"),D)||D->GetClass()!=K||D->GetOuter()!=K->GetOuter()||!D->HasAnyFlags(RF_ClassDefaultObject)))return Stop(TEXT("pcg_scoped_native_host_cdo_changed"),Role,TEXT("CDO"),TEXT("nullable held exact native default role"),TEXT("different default/class/outer"),false);
+  if(!Object(Role,K)||K->GetClass()!=UClass::StaticClass()||!K->HasAnyClassFlags(CLASS_Native)||K->HasAnyClassFlags(CLASS_CompiledFromBlueprint|CLASS_NewerVersionExists|CLASS_Deprecated)||!K->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=nullptr||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved())return Stop(TEXT("pcg_scoped_native_host_class_pending"),Role,TEXT("native_class/source/CDO_slot"),TEXT("resolved exact native compiled-in class and nullable existing CDO"),TEXT("unavailable or different role"),false);
+  UObject* D=K->GetDefaultObject(false);if(D&&(!Object(Role+TEXT("_cdo"),D)||D->GetClass()!=K||D->GetOuter()!=K->GetOuter()||!D->HasAnyFlags(RF_ClassDefaultObject)))return Stop(TEXT("pcg_scoped_native_host_cdo_changed"),Role,TEXT("CDO"),TEXT("nullable held exact native default role"),TEXT("different default/class/outer"),false);
   auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("class"),ScopedObjectKey(K));J->SetStringField(TEXT("class_flags"),LexToString(uint64(K->GetClassFlags())));J->SetStringField(TEXT("cdo"),D?ScopedObjectKey(D):FString());J->SetStringField(TEXT("cdo_flags"),D?LexToString(uint64(D->GetFlags())):FString());Out->SetObjectField(Role,J);return true;
  }
  // AEE: the stock PCG volume is a native actor with native PCG/brush default subobjects.
@@ -1462,7 +1463,7 @@ struct FOwnHelperResolution
   if(AuthoredCall)
   {
    // MemberReference.h:76 stores MemberParent as a public reflected TObjectPtr; self references require its resolved-null handle.
-   if(!Live(AuthoredCall)||!MemberStruct||!MemberParentField||MemberParentField->GetOwnerStruct()!=MemberStruct||MemberParentField->ArrayDim!=1||MemberParentField->ElementSize!=sizeof(TObjectPtr<UObject>))return Diagnostic(TEXT("own_helper_member_parent_descriptor"),nullptr,AuthoredCall);
+   if(!Live(AuthoredCall)||!MemberStruct||!MemberParentField||MemberParentField->GetOwnerStruct()!=MemberStruct||MemberParentField->ArrayDim!=1||MemberParentField->GetElementSize()!=sizeof(TObjectPtr<UObject>))return Diagnostic(TEXT("own_helper_member_parent_descriptor"),nullptr,AuthoredCall);
    const auto* Slot=MemberParentField->GetObjectPtrPropertyValuePtr(MemberParentField->ContainerPtrToValuePtr<void>(&AuthoredCall->FunctionReference));const TObjectPtr<UObject> NullParent;
    if(!Slot->IsResolved()||Slot->GetHandle()!=NullParent.GetHandle()||!AuthoredCall->FunctionReference.IsSelfContext()||AuthoredCall->FunctionReference.IsLocalScope()||AuthoredCall->FunctionReference.GetMemberName()!=Name||AuthoredCall->FunctionReference.GetMemberGuid()!=Guid)return Diagnostic(TEXT("own_helper_authored_reference_changed"),nullptr,AuthoredCall);
   }
@@ -1483,7 +1484,7 @@ struct FOwnHelperResolution
   if(!W.Read(TEXT("Own_helper_package_metadata"),[&]{return &MetadataPackage->GetMetaData();},Metadata))return false;
   FOwnHelperSignature AfterMetadataA,AfterMetadataB;if(!OwnHelperSignature(Primary,AfterMetadataA)||!OwnHelperSignature(Alternate,AfterMetadataB)||!(AfterMetadataA==PrimaryBefore)||!(AfterMetadataB==AlternateBefore)||!RuntimeCallable(Primary)||!RuntimeCallable(Alternate))return Diagnostic(TEXT("own_helper_runtime_callability"),Alternate);
   Active=true;
-  MemberStruct=FMemberReference::StaticStruct();if(!W.Pin(MemberStruct))return false;MemberParentField=FindFProperty<FObjectProperty>(MemberStruct,TEXT("MemberParent"));if(!MemberParentField||MemberParentField->GetOwnerStruct()!=MemberStruct||MemberParentField->ArrayDim!=1||MemberParentField->ElementSize!=sizeof(TObjectPtr<UObject>))return Diagnostic(TEXT("own_helper_member_parent_descriptor"));
+  MemberStruct=FMemberReference::StaticStruct();if(!W.Pin(MemberStruct))return false;MemberParentField=FindFProperty<FObjectProperty>(MemberStruct,TEXT("MemberParent"));if(!MemberParentField||MemberParentField->GetOwnerStruct()!=MemberStruct||MemberParentField->ArrayDim!=1||MemberParentField->GetElementSize()!=sizeof(TObjectPtr<UObject>))return Diagnostic(TEXT("own_helper_member_parent_descriptor"));
   // Hold every actual K2 type reference before any later SDK callback. No borrowed FProperty survives a conversion.
   for(UFunction* Role:{Primary,Alternate})
   {
@@ -1667,7 +1668,7 @@ struct FBindingTemplate
  {auto* P=CastField<FArrayProperty>(Field(UPCGComponent::StaticClass(),FName(Name)));if(!P||P->ArrayDim!=1)return Check(false,Name,TEXT("native array"),TEXT("missing"));FScriptArrayHelper A(P,P->ContainerPtrToValuePtr<void>(Target));return Check(A.Num()==0,Name,TEXT("empty (no user-data PostEditChangeOwner callback)"),FString::FromInt(A.Num()),true);}
  TSharedPtr<FJsonObject> Source()
  {
-  auto J=MakeShared<FJsonObject>();if(!W.Generated||!W.Generated->ClassDefaultObject.IsResolved()||W.Generated->ClassDefaultObject.Get()!=CDO)return nullptr;
+  auto J=MakeShared<FJsonObject>();if(!W.Generated||!Cubeless::UE58::GetClassDefaultObjectSlot(W.Generated).IsResolved()||W.Generated->GetDefaultObject(false)!=CDO)return nullptr;
   auto ReadSourceBool=[&](FName Name,bool Default){auto* P=FindFProperty<FBoolProperty>(W.Generated,Name);return P&&P->ArrayDim==1?P->GetPropertyValue_InContainer(CDO):Default;};
   EPCGComponentGenerationTrigger Trigger=EPCGComponentGenerationTrigger::GenerateOnLoad;FProperty* P=FindFProperty<FProperty>(W.Generated,TriggerName);
   if(P&&P->ArrayDim==1){if(auto* E=CastField<FEnumProperty>(P)){if(!E->GetUnderlyingProperty())return nullptr;Trigger=static_cast<EPCGComponentGenerationTrigger>(E->GetUnderlyingProperty()->GetSignedIntPropertyValue(E->ContainerPtrToValuePtr<void>(CDO)));}else if(auto* B=CastField<FByteProperty>(P))Trigger=static_cast<EPCGComponentGenerationTrigger>(B->GetPropertyValue_InContainer(CDO));}
@@ -1752,7 +1753,7 @@ struct FBindingCompiler
  bool Equal(const TSharedPtr<FJsonObject>& A,const TSharedPtr<FJsonObject>& B,const FString& Object)
  {if(!A||!B)return false;FString P,E,V;return !ScopedDifference(MakeShared<FJsonValueObject>(A),MakeShared<FJsonValueObject>(B),P,E,V,true)||Stop(Object,P,E,V,TEXT("pcg_binding_compile_authored_changed"));}
  FString Role(const UObject* O)const
- {if(!O)return TEXT("<null>");if(O==W.Generated)return TEXT("$Generated");if(O==W.Skeleton)return TEXT("$Skeleton");if(W.Generated&&O==W.Generated->ClassDefaultObject.Get())return TEXT("$CDO");if(W.Skeleton&&O==W.Skeleton->ClassDefaultObject.Get())return TEXT("$SKELCDO");return O->GetPathName();}
+ {if(!O)return TEXT("<null>");if(O==W.Generated)return TEXT("$Generated");if(O==W.Skeleton)return TEXT("$Skeleton");if(W.Generated&&O==W.Generated->GetDefaultObject(false))return TEXT("$CDO");if(W.Skeleton&&O==W.Skeleton->GetDefaultObject(false))return TEXT("$SKELCDO");return O->GetPathName();}
  bool Type(const FEdGraphPinType& Source,TSharedPtr<FJsonObject>& J,const FString& Object=TEXT("pin"),FString NodeName={},FString PinName={},int32 Direction=-1)
  {
   // FEdGraphPinType and its member/terminal descriptors are copied before any
@@ -1864,7 +1865,7 @@ bool FBindingCompiler::Values(UObject* Object,TSharedPtr<FJsonObject>& Out,bool 
 bool FBindingCompiler::State(TSharedPtr<FJsonObject>& Out)
 {
  if(!W.Admit(TEXT("compiler_source_state")))return false;Out=MakeShared<FJsonObject>();TSharedPtr<FJsonObject> G;if(!Graphs(G))return false;Out->SetObjectField(TEXT("graphs"),G);TArray<TSharedPtr<FJsonValue>> Vars;if(!Variables(W.Blueprint->NewVariables,Vars))return false;Out->SetArrayField(TEXT("variables"),Vars);
- UObject* CDO=W.Generated->ClassDefaultObject.Get();TStrongObjectPtr<UObject> CDOHold(Live(CDO)?CDO:nullptr);if(!CDO||!W.Pin(CDO)||CDO->GetClass()!=W.Generated)return Stop(TEXT("CDO"),TEXT("current"),TEXT("already-created target CDO"),TEXT("missing/foreign"));TSharedPtr<FJsonObject> Defaults;if(!Values(CDO,Defaults,true))return false;Out->SetObjectField(TEXT("defaults"),Defaults);
+ UObject* CDO=W.Generated->GetDefaultObject(false);TStrongObjectPtr<UObject> CDOHold(Live(CDO)?CDO:nullptr);if(!CDO||!W.Pin(CDO)||CDO->GetClass()!=W.Generated)return Stop(TEXT("CDO"),TEXT("current"),TEXT("already-created target CDO"),TEXT("missing/foreign"));TSharedPtr<FJsonObject> Defaults;if(!Values(CDO,Defaults,true))return false;Out->SetObjectField(TEXT("defaults"),Defaults);
  auto Components=MakeShared<FJsonObject>();const auto Nodes=W.SCS->GetAllNodes();if(Nodes.Num()<1||Nodes.Num()>2)return Stop(TEXT("SCS"),TEXT("nodes"),TEXT("own PCG and optional native SceneRoot"),TEXT("other component scope pending"));
  for(auto* N:Nodes)
  {
@@ -1899,7 +1900,7 @@ bool FBindingCompiler::Prepare(const TSharedPtr<FBindingTemplate>& Template)
 {
  OldTemplate=Template;
  if(!Template||!W.SCS||W.Blueprint->ParentClass!=AActor::StaticClass()||W.Blueprint->BlueprintType!=BPTYPE_Normal||!W.Blueprint->ImplementedInterfaces.IsEmpty()||!W.Blueprint->Timelines.IsEmpty()||!W.Blueprint->MacroGraphs.IsEmpty()||!W.Blueprint->DelegateSignatureGraphs.IsEmpty()||W.Blueprint->bBeingCompiled||W.Blueprint->bQueuedForCompilation)return Stop(W.Blueprint->GetPathName(),TEXT("compile profile"),TEXT("direct Actor normal BP, own native PCG sync, no interface/timeline/macro/delegate or active compile"),TEXT("remaining valid scope pending"));
- ComponentName=Template->ComponentName;ComponentGuid=Template->NodeGuid;SelectedGuid=W.Graph->GraphGuid;SelectedName=W.Graph->GetName();OldGenerated=W.Generated;OldSkeleton=W.Skeleton;OldCDO=W.Generated->ClassDefaultObject.Get();OldSKELCDO=W.Skeleton?W.Skeleton->ClassDefaultObject.Get():nullptr;SkeletonParent=W.Skeleton?W.Skeleton->GetSuperClass():nullptr;
+ ComponentName=Template->ComponentName;ComponentGuid=Template->NodeGuid;SelectedGuid=W.Graph->GraphGuid;SelectedName=W.Graph->GetName();OldGenerated=W.Generated;OldSkeleton=W.Skeleton;OldCDO=W.Generated->GetDefaultObject(false);OldSKELCDO=W.Skeleton?W.Skeleton->GetDefaultObject(false):nullptr;SkeletonParent=W.Skeleton?W.Skeleton->GetSuperClass():nullptr;
  for(auto* O:{static_cast<UObject*>(OldGenerated),static_cast<UObject*>(OldSkeleton),OldCDO,OldSKELCDO,static_cast<UObject*>(W.SCS),static_cast<UObject*>(SkeletonParent)})if(Live(O))CompilerChildren.Emplace(O);
  if(!Live(OldGenerated)||!Live(OldSkeleton)||!Live(SkeletonParent)||!W.Pin(SkeletonParent)||!NoInstances())return false;if(!State(Before)||!Files(true))return false;
  W.R.Data->SetStringField(TEXT("compile_profile"),TEXT("owned_direct_actor_native_pcg_no_live_instances_v1"));W.R.Data->SetBoolField(TEXT("global_construction_gate_changed"),false);return true;
@@ -1916,7 +1917,7 @@ bool FBindingCompiler::Execute(UK2Node_CallFunction*& Apply,TSharedPtr<FOwnHelpe
  if(OldTemplate->GraphSource){const auto HeldSource=OldTemplate->GraphSource;W.ScopedCurrent=[HeldSource]{return HeldSource->Current();};}
  FCompilerResultsLog Log;FKismetEditorUtilities::CompileBlueprint(W.Blueprint,EBlueprintCompileOptions::None,&Log);
  // Never dereference the old Apply, raw pins, helper children or CDO again.
- auto* Gen=W.Blueprint->GeneratedClass.Get();TStrongObjectPtr<UClass> GH(Live(Gen)?Gen:nullptr);auto* Skel=W.Blueprint->SkeletonGeneratedClass.Get();TStrongObjectPtr<UClass> KH(Live(Skel)?Skel:nullptr);auto* SCS=W.Blueprint->SimpleConstructionScript.Get();TStrongObjectPtr<USimpleConstructionScript> SH(Live(SCS)?SCS:nullptr);UObject* CDO=Live(Gen)?Gen->ClassDefaultObject.Get():nullptr;TStrongObjectPtr<UObject> CH(Live(CDO)?CDO:nullptr);UObject* SKELCDO=Live(Skel)?Skel->ClassDefaultObject.Get():nullptr;TStrongObjectPtr<UObject> KCH(Live(SKELCDO)?SKELCDO:nullptr);
+ auto* Gen=W.Blueprint->GeneratedClass.Get();TStrongObjectPtr<UClass> GH(Live(Gen)?Gen:nullptr);auto* Skel=W.Blueprint->SkeletonGeneratedClass.Get();TStrongObjectPtr<UClass> KH(Live(Skel)?Skel:nullptr);auto* SCS=W.Blueprint->SimpleConstructionScript.Get();TStrongObjectPtr<USimpleConstructionScript> SH(Live(SCS)?SCS:nullptr);UObject* CDO=Live(Gen)?Gen->GetDefaultObject(false):nullptr;TStrongObjectPtr<UObject> CH(Live(CDO)?CDO:nullptr);UObject* SKELCDO=Live(Skel)?Skel->GetDefaultObject(false):nullptr;TStrongObjectPtr<UObject> KCH(Live(SKELCDO)?SKELCDO:nullptr);
  const EBlueprintStatus Status=W.Blueprint->Status.GetValue();
  W.Calls[CompileCallIndex]->AsObject()->SetBoolField(TEXT("returned"),true);W.Compile->SetBoolField(TEXT("returned"),true);W.Compile->SetNumberField(TEXT("error_count"),Log.NumErrors);W.Compile->SetNumberField(TEXT("warning_count"),Log.NumWarnings);
  TArray<TSharedPtr<FJsonValue>> Messages;for(const auto& M:Log.Messages){if(Messages.Num()>=128)break;Messages.Add(MakeShared<FJsonValueString>(M->ToText().ToString()));}W.Compile->SetArrayField(TEXT("messages"),Messages);

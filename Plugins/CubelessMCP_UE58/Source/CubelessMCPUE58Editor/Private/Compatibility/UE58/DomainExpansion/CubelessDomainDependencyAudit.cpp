@@ -396,7 +396,7 @@ void CollectMCPPackageAuditTokens(
     }
 
     TArray<UObject*> PackageExports;
-    GetObjectsWithPackage(Package, PackageExports, true, RF_Transient, EInternalObjectFlags::Garbage);
+    GetObjectsWithPackage(Package, PackageExports, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
 
     constexpr int32 MaxPackageExports = 16384;
     const int32 ExportCountToInspect = FMath::Min(PackageExports.Num(), MaxPackageExports);

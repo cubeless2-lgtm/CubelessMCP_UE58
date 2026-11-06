@@ -28,6 +28,7 @@
 #include "Modules/ModuleManager.h"
 #include "MovieScene.h"
 #include "MovieSceneBinding.h"
+#include "MovieSceneCommonHelpers.h"
 #include "MovieSceneSection.h"
 #include "Sections/MovieSceneCameraCutSection.h"
 #include "Tracks/MovieSceneCameraCutTrack.h"
@@ -120,7 +121,7 @@ struct FWork
         if(auto* S=Cast<UMovieScene>(Object))
         {
             J->SetNumberField(TEXT("display_numerator"),S->GetDisplayRate().Numerator);J->SetNumberField(TEXT("display_denominator"),S->GetDisplayRate().Denominator);J->SetNumberField(TEXT("tick_numerator"),S->GetTickResolution().Numerator);J->SetNumberField(TEXT("tick_denominator"),S->GetTickResolution().Denominator);const auto Range=S->GetPlaybackRange();J->SetBoolField(TEXT("playback_closed"),Range.HasLowerBound()&&Range.HasUpperBound());if(Range.HasLowerBound()&&Range.HasUpperBound()) { J->SetNumberField(TEXT("playback_lower"),Range.GetLowerBoundValue().Value);J->SetNumberField(TEXT("playback_upper"),Range.GetUpperBoundValue().Value); }
-            TArray<TSharedPtr<FJsonValue>> B;for(const auto& Binding:S->GetBindings()) { auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("guid"),Binding.GetObjectGuid().ToString());V->SetNumberField(TEXT("track_count"),Binding.GetTracks().Num());B.Add(MakeShared<FJsonValueObject>(V)); }J->SetArrayField(TEXT("bindings"),B);
+            TArray<TSharedPtr<FJsonValue>> B;for(const auto& Binding:AsConst(*S).GetBindings()) { auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("guid"),Binding.GetObjectGuid().ToString());V->SetNumberField(TEXT("track_count"),Binding.GetTracks().Num());B.Add(MakeShared<FJsonValueObject>(V)); }J->SetArrayField(TEXT("bindings"),B);
         }
         if(auto* S=Cast<UMovieSceneSection>(Object))
         {
@@ -690,7 +691,7 @@ TSharedPtr<FJsonObject> HandleCreateSequence(const TSharedPtr<FJsonObject>& Para
 TArray<UMovieSceneChaosCacheSection*> FindChaosSections(UMovieScene* MovieScene)
 {
     TArray<UMovieSceneChaosCacheSection*> Result;if(!MovieScene) { return Result; }
-    TArray<UMovieSceneChaosCacheTrack*> Tracks;for(const FMovieSceneBinding& Binding:MovieScene->GetBindings()) { for(UMovieSceneTrack* Base:Binding.GetTracks()) { if(auto* Track=Cast<UMovieSceneChaosCacheTrack>(Base)) { Tracks.Add(Track); } } }
+    TArray<UMovieSceneChaosCacheTrack*> Tracks;for(const FMovieSceneBinding& Binding:AsConst(*MovieScene).GetBindings()) { for(UMovieSceneTrack* Base:Binding.GetTracks()) { if(auto* Track=Cast<UMovieSceneChaosCacheTrack>(Base)) { Tracks.Add(Track); } } }
     for(auto* Track:Tracks)
     {
         if(!Work->Track(Track,TEXT("enumerated_chaos_track"),MovieScene)) { return {}; }SDK(TEXT("enumerate_chaos_sections"));const TArray<UMovieSceneSection*> Sections=Track->GetAllSections();if(!Guard()) { return {}; }
@@ -730,7 +731,7 @@ TSharedPtr<FJsonObject> HandleBindCache(const TSharedPtr<FJsonObject>& Params)
         for(auto* C:PlaybackComponents) { Write(TEXT("reapply_sim_suppression_after_notifiers"));C->ObjectType=EObjectStateTypeEnum::Chaos_Object_Kinematic;Count(TEXT("SetSimulatePhysics_calls"));C->SetSimulatePhysics(false);if(!Guard()) { return CommandError(Work->R.Error); } }
     }
     Write(TEXT("enable_observed_playback"));for(auto& O:Manager->GetObservedComponents()) { O.bPlaybackEnabled=true; }Manager->CacheMode=ECacheMode::None;Manager->StartMode=EStartMode::Timed;
-    SDK(TEXT("find_manager_binding"));FGuid BindingGuid=Sequence->FindBindingFromObject(Manager,World);if(!Guard()) { return CommandError(Work->R.Error); }const bool bReusedBinding=BindingGuid.IsValid();
+    SDK(TEXT("find_manager_binding"));FGuid BindingGuid=Sequence->FindBindingFromObject(Manager,MovieSceneHelpers::CreateTransientSharedPlaybackState(World,Sequence));if(!Guard()) { return CommandError(Work->R.Error); }const bool bReusedBinding=BindingGuid.IsValid();
     if(!BindingGuid.IsValid()) { Write(TEXT("add_manager_possessable"));Count(TEXT("add_possessable_calls"));BindingGuid=MovieScene->AddPossessable(Manager->GetActorLabel(),Manager->GetClass());if(!Guard()||!BindingGuid.IsValid()) { return CommandError(TEXT("Manager possessable allocation failed or context changed")); }Write(TEXT("bind_manager_possessable"));Count(TEXT("bind_possessable_calls"));Sequence->BindPossessableObject(BindingGuid,*Manager,World);if(!Guard()) { return CommandError(Work->R.Error); } }
     UMovieSceneChaosCacheTrack* Track=nullptr;if(const auto* B=MovieScene->FindBinding(BindingGuid)) { for(auto* Base:B->GetTracks()) { if(auto* C=Cast<UMovieSceneChaosCacheTrack>(Base)) { Track=C;break; } } }const bool bReusedTrack=Track!=nullptr;
     if(!Track) { Write(TEXT("add_chaos_cache_track"));Count(TEXT("add_track_calls"));Track=MovieScene->AddTrack<UMovieSceneChaosCacheTrack>(BindingGuid); }

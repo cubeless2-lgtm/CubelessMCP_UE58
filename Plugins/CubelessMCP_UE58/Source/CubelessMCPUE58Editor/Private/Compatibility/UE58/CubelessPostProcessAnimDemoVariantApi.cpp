@@ -410,7 +410,7 @@ bool OverwriteReferencesSafe(FTargetPlan& Plan,FWork& Work)
     if(!Work.Current()||!Plan.Existing->Current()) { return false; }
     for(FName Referencer:SavedReferencers)
     { if(!AllowedPackage(Referencer.ToString())) { Plan.Receipt->SetStringField(TEXT("protected_saved_referencer"),Referencer.ToString());return Work.Fail(TEXT("overwrite_external_reference"),TEXT("Force deletion could alter a package outside the two requested targets")); } }
-    TArray<UObject*> Referencees;GetObjectsWithPackage(CastChecked<UPackage>(Plan.Existing->Package.Get()),Referencees,true);
+    TArray<UObject*> Referencees;GetObjectsWithPackage(CastChecked<UPackage>(Plan.Existing->Package.Get()),Referencees,EGetObjectsFlags::IncludeNestedObjects);
     if(Referencees.Num()>MaxPackageObjects) { return Work.Fail(TEXT("overwrite_referencers_bound"),TEXT("Target member inventory exceeds4096 before overwrite")); }
     TArray<TStrongObjectPtr<UObject>> Held;TArray<TUniquePtr<FIdentity>> MemberIds;
     Referencees.AddUnique(Plan.Existing->Object.Get());

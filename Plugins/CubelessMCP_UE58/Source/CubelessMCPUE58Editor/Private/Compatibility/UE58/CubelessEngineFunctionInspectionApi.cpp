@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessEngineFunctionInspectionApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "EdGraphSchema_K2.h"
 #include "Editor.h"
@@ -211,7 +212,7 @@ TSharedRef<FJsonObject> DescribeAssetSearchProperty(const FProperty* P,const UEd
     if(!IsEditorGameThread()||IsPlaySessionActive()||GIsImportingT3D||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!P||Depth>1||!Loaded(Schema))return J;UStruct* Owner=P->GetOwnerStruct();if(!Loaded(Owner))return J;TStrongObjectPtr<UStruct> Held(Owner);TStrongObjectPtr<UEdGraphSchema_K2> HeldSchema(const_cast<UEdGraphSchema_K2*>(Schema));TArray<FProperty*> Fields;for(TFieldIterator<FProperty> It(Owner,EFieldIterationFlags::None);It;++It)Fields.Add(*It);
     const FProperty* Root=Container?Container:P;if(!Fields.Contains(const_cast<FProperty*>(Root)))return J;const auto* A=CastField<FArrayProperty>(Root);const auto* Set=CastField<FSetProperty>(Root);const FProperty* Child=A?A->Inner:Set?Set->ElementProp:nullptr;if(Container&&Child!=P)return J;const auto Flags=P->GetPropertyFlags();const auto Class=P->GetClass();const int32 Size=P->GetSize(),Offset=P->GetOffset_ForInternal(),Dim=P->ArrayDim;const auto* SP=CastField<FStructProperty>(P);const auto* IP=CastField<FInterfaceProperty>(P);const TObjectPtr<UScriptStruct> StructHandle=SP?SP->Struct:TObjectPtr<UScriptStruct>();const TObjectPtr<UClass> InterfaceHandle=IP?IP->InterfaceClass:TObjectPtr<UClass>();
     auto Current=[&](){if(!IsEditorGameThread()||IsPlaySessionActive()||GIsImportingT3D||GExitPurge||IsEngineExitRequested()||IsGarbageCollecting()||UE::IsSavingPackage()||!Loaded(Owner)||Owner!=Held.Get()||!Loaded(Schema)||Schema!=HeldSchema.Get())return false;TArray<FProperty*> Now;for(TFieldIterator<FProperty> It(Owner,EFieldIterationFlags::None);It;++It)Now.Add(*It);if(Now!=Fields)return false;if(A&&A->Inner!=Child||Set&&Set->ElementProp!=Child)return false;return P->GetOwnerStruct()==Owner&&P->GetClass()==Class&&P->GetPropertyFlags()==Flags&&P->GetSize()==Size&&P->GetOffset_ForInternal()==Offset&&P->ArrayDim==Dim&&(!SP||(SP->Struct.IsResolved()&&SP->Struct==StructHandle))&&(!IP||(IP->InterfaceClass.IsResolved()&&IP->InterfaceClass==InterfaceHandle));};
-    const FString Cpp=P->GetCPPType(nullptr,0);if(!Current())return J;J->SetStringField(TEXT("name"),P->GetName());J->SetStringField(TEXT("path"),P->GetPathName());J->SetStringField(TEXT("field_class"),Class->GetName());J->SetStringField(TEXT("cpp_type"),Cpp);J->SetStringField(TEXT("property_flags_string"),LexToString(uint64(Flags)));J->SetNumberField(TEXT("array_dim"),Dim);J->SetNumberField(TEXT("offset"),Offset);J->SetNumberField(TEXT("element_size"),P->ElementSize);J->SetNumberField(TEXT("size"),Size);
+    const FString Cpp=P->GetCPPType(nullptr,0);if(!Current())return J;J->SetStringField(TEXT("name"),P->GetName());J->SetStringField(TEXT("path"),P->GetPathName());J->SetStringField(TEXT("field_class"),Class->GetName());J->SetStringField(TEXT("cpp_type"),Cpp);J->SetStringField(TEXT("property_flags_string"),LexToString(uint64(Flags)));J->SetNumberField(TEXT("array_dim"),Dim);J->SetNumberField(TEXT("offset"),Offset);J->SetNumberField(TEXT("element_size"),P->GetElementSize());J->SetNumberField(TEXT("size"),Size);
     J->SetBoolField(TEXT("parm"),P->HasAnyPropertyFlags(CPF_Parm));J->SetBoolField(TEXT("return_parm"),P->HasAnyPropertyFlags(CPF_ReturnParm));J->SetBoolField(TEXT("out_parm"),P->HasAnyPropertyFlags(CPF_OutParm));J->SetBoolField(TEXT("reference_parm"),P->HasAnyPropertyFlags(CPF_ReferenceParm));J->SetBoolField(TEXT("const_parm"),P->HasAnyPropertyFlags(CPF_ConstParm));J->SetBoolField(TEXT("advanced_display"),P->HasAnyPropertyFlags(CPF_AdvancedDisplay));J->SetBoolField(TEXT("editor_only"),P->HasAnyPropertyFlags(CPF_EditorOnly));
     if(IP){const auto H=IP->InterfaceClass;J->SetStringField(TEXT("interface_class_path"),H.IsResolved()?H.GetPathName():FString());J->SetBoolField(TEXT("interface_class_handle_resolved"),H.IsResolved());if(!Current()||!IP->InterfaceClass.IsResolved()||IP->InterfaceClass!=H)return J;}
     if(SP){const auto H=SP->Struct;J->SetStringField(TEXT("struct_path"),H.IsResolved()?H.GetPathName():FString());if(!Current()||!SP->Struct.IsResolved()||SP->Struct!=H)return J;}
@@ -351,7 +352,7 @@ bool IsNormalizationTarget(const FTarget& T)
 TObjectPtr<UObject> NormalizationProbeCDO(const UClass* C)
 {
     PRAGMA_DISABLE_DEPRECATION_WARNINGS
-    const TObjectPtr<UObject> H=C->ClassDefaultObject;
+    const TObjectPtr<UObject> H=Cubeless::UE58::GetClassDefaultObjectSlot(C);
     PRAGMA_ENABLE_DEPRECATION_WARNINGS
     return H;
 }
@@ -416,9 +417,9 @@ TSharedRef<FJsonObject> Observe(const UEdGraphSchema_K2* Schema)
         const UObject* ExistingCDO=nullptr;TStrongObjectPtr<UObject> AssetSearchCDO;
         if(AssetSearchCatalog){
             PRAGMA_DISABLE_DEPRECATION_WARNINGS
-            const auto H=Owner->ClassDefaultObject;
+            const auto H=Cubeless::UE58::GetClassDefaultObjectSlot(Owner);
             PRAGMA_ENABLE_DEPRECATION_WARNINGS
-            if(H.IsResolved()&&H!=nullptr){UObject* O=StaticFindObject(nullptr,nullptr,*H.GetPathName(),false);if(H==O&&IsValid(O)){AssetSearchCDO.Reset(O);ExistingCDO=O;}}
+            if(H.IsResolved()&&H!=nullptr){UObject* O=StaticFindObject(nullptr,nullptr,*H.GetPathName(),EFindObjectFlags::None);if(H==O&&IsValid(O)){AssetSearchCDO.Reset(O);ExistingCDO=O;}}
         }else ExistingCDO = Owner->GetDefaultObject(false);
         Row->SetStringField(TEXT("declaring_existing_cdo_path"), IsValid(ExistingCDO) ? ExistingCDO->GetPathName() : FString());
         Row->SetStringField(TEXT("function_flags_string"), LexToString(static_cast<uint32>(Function->FunctionFlags)));
@@ -742,7 +743,7 @@ TSharedRef<FJsonObject> Observe(const UEdGraphSchema_K2* Schema)
             FieldRow->SetStringField(TEXT("property"), Field->GetPathName());
             FieldRow->SetStringField(TEXT("type"), Field->GetClass()->GetName());
             FieldRow->SetNumberField(TEXT("ordinal"), StorageCount); FieldRow->SetNumberField(TEXT("array_dim"), Field->ArrayDim);
-            FieldRow->SetNumberField(TEXT("offset"), Field->GetOffset_ForInternal()); FieldRow->SetNumberField(TEXT("element_size"), Field->ElementSize);
+            FieldRow->SetNumberField(TEXT("offset"), Field->GetOffset_ForInternal()); FieldRow->SetNumberField(TEXT("element_size"), Field->GetElementSize());
             FieldRow->SetBoolField(TEXT("has_getter"), Field->HasGetter()); FieldRow->SetBoolField(TEXT("has_setter"), Field->HasSetter());
             FieldRow->SetStringField(TEXT("flags"), LexToString(static_cast<uint64>(Field->GetPropertyFlags())));
             StorageFields.Add(MakeShared<FJsonValueObject>(FieldRow));

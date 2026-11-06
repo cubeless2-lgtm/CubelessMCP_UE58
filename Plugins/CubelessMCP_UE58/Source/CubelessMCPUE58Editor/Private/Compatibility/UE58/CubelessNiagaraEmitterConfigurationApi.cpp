@@ -37,7 +37,7 @@ namespace
 using Cubeless::UE58::Variable::FResult;
 bool Running=false;
 bool DeferredLeaseActive=false;
-bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage;}
+bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage();}
 constexpr const TCHAR* NiagaraTempGenerationRoot=TEXT("/Game/_MCP_Temp/NiagaraGenerated/");
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
 FString Json(const TSharedPtr<FJsonObject>& O){FString S;if(O){FJsonSerializer::Serialize(O.ToSharedRef(),TJsonWriterFactory<>::Create(&S));}return S;}
@@ -70,7 +70,7 @@ struct FWork
     bool Admit(const FString& Stage,bool ObserveFailure=false)
     {
         R.Stage=Stage;if(DeferredMode&&(CancelRequested||NiagaraEmitterEventAuthoringAsync::IsStopping()))return Fail(TEXT("niagara_emitter_async_cancelled"),CancelReason.IsEmpty()?TEXT("Owned continuation stopped; no further SDK."):CancelReason);if(!R.Error.IsEmpty()&&!ObserveFailure){return false;}
-        if(!IsInGameThread()||IsEngineExitRequested()||GExitPurge||!GEditor||IsGarbageCollecting()||GIsSavingPackage){return Fail(TEXT("niagara_emitter_context_unavailable"),TEXT("Live Editor game thread without GC/exit/package save is required; no replay."));}
+        if(!IsInGameThread()||IsEngineExitRequested()||GExitPurge||!GEditor||IsGarbageCollecting()||UE::IsSavingPackage()){return Fail(TEXT("niagara_emitter_context_unavailable"),TEXT("Live Editor game thread without GC/exit/package save is required; no replay."));}
         if(DeferredMode&&WorldCaptured&&CapturedEditor.Get()!=GEditor)return Fail(TEXT("niagara_emitter_editor_changed"),TEXT("Captured Editor changed before getter."));
         if(Writer&&(GEditor->GetPIEWorldContext()||GEditor->PlayWorld)){return Fail(TEXT("niagara_emitter_play_session_active"),TEXT("Emitter authoring requires stopped PIE/SIE."));}
         UWorld* Current=GEditor->GetEditorWorldContext().World();if(!Live(Current)||Current->bIsTearingDown){return Fail(TEXT("niagara_emitter_world_unavailable"),TEXT("Editor world is unavailable or tearing down."));}

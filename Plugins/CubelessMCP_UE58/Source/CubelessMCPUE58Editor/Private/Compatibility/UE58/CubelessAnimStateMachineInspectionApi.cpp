@@ -572,10 +572,10 @@ Variable::FResult Inspect(const FString& BlueprintName,const FString& StateMachi
         }
 
         if(!NodeSafe(StateMachineNode)) { continue; }Count(R,TEXT("state_machine_name_calls"));
-        const FString StateMachineName = StateMachineNode->GetStateMachineName();
+        const FString NodeStateMachineName = StateMachineNode->GetStateMachineName();
         const FString StateMachineTitle = StateMachineNode->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
         if (!StateMachineFilter.IsEmpty() &&
-            !StateMachineName.Contains(StateMachineFilter, ESearchCase::IgnoreCase) &&
+            !NodeStateMachineName.Contains(StateMachineFilter, ESearchCase::IgnoreCase) &&
             !StateMachineTitle.Contains(StateMachineFilter, ESearchCase::IgnoreCase))
         {
             continue;
@@ -583,7 +583,7 @@ Variable::FResult Inspect(const FString& BlueprintName,const FString& StateMachi
 
         UAnimationStateMachineGraph* StateMachineGraph = StateMachineNode->EditorStateMachineGraph;
         TSharedPtr<FJsonObject> StateMachineObject = MakeShared<FJsonObject>();
-        StateMachineObject->SetStringField(TEXT("state_machine_name"), StateMachineName);
+        StateMachineObject->SetStringField(TEXT("state_machine_name"), NodeStateMachineName);
         StateMachineObject->SetObjectField(TEXT("state_machine_node"), NodeToJson(StateMachineNode, bIncludePins));
         StateMachineObject->SetObjectField(TEXT("state_machine_graph"), GraphToJson(Blueprint, StateMachineGraph));
 

@@ -36,7 +36,7 @@ bool Running=false;
 bool Live(const UObject* O)
 { return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed); }
 bool SafeEditorGlobals()
-{ return IsEditorGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage&&Live(GEditor); }
+{ return IsEditorGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage()&&Live(GEditor); }
 bool SafeEditorContext()
 { if(!SafeEditorGlobals())return false;auto* W=GEditor->GetEditorWorldContext().World();return !W||(Live(W)&&!W->bIsTearingDown); }
 bool SafeText(const FString& S,int32 Maximum)

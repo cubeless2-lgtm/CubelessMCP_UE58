@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessBlueprintGraphTransferApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Internationalization/Text.h"
 #include "Compatibility/UE58/CubelessFunctionApi.h"
 #include "Compatibility/UE58/CubelessFunctionPinApi.h"
@@ -1410,15 +1411,15 @@ struct FOwnMacroInstanceImport
             FString GraphPath,OwnerPath;FGuid Id;if(!ObjectPath(Ref.Contains(TEXT("MacroGraph"))?Ref[TEXT("MacroGraph")]:FString(TEXT("None")),TEXT("EdGraph"),TEXT("/Script/Engine.EdGraph"),GraphPath)||!ObjectPath(Ref[TEXT("GraphBlueprint")],TEXT("Blueprint"),TEXT("/Script/Engine.Blueprint"),OwnerPath)||!FGuid::Parse(Ref[TEXT("GraphGuid")],Id)||!Id.IsValid())return Bad(TEXT("Loaded source Blueprint and a valid owned macro graph GUID required."));
             const bool External=!OwnerPath.Equals(BPPath,ESearchCase::CaseSensitive);auto* Owner=External?FindObject<UBlueprint>(nullptr,*OwnerPath):BP;TStrongObjectPtr<UBlueprint> KeepOwner(Owner);if(!Loaded(Owner)||Owner->GetClass()!=UBlueprint::StaticClass())return Bad(TEXT("Source Blueprint must already be resident; no load or fallback follows."),OwnerPath);auto* OwnerPackage=Owner->GetPackage();TStrongObjectPtr<UPackage> KeepPackage(OwnerPackage);TArray<TStrongObjectPtr<UEdGraph>> SourceGraphs;
             if(External&&(OwnerPackage==Package.Get()||Owner->GetOuter()!=OwnerPackage||Owner->BlueprintType!=BPTYPE_MacroLibrary||!OwnerPackage->GetName().StartsWith(TEXT("/Game/"))||!ReferenceGuard(OwnerPath)||!Owner->ParentClass.GetGCPtr().IsResolved()||Owner->MacroGraphs.IsEmpty()||Owner->MacroGraphs.Num()>8))return Bad(TEXT("External source requires a distinct saved resident finite native Object/Actor MacroLibrary."),OwnerPath);
-            for(const auto& Slot:Owner->MacroGraphs){if(!Slot.IsResolved())return Bad(TEXT("Source graph handle unresolved; no tracked read/resolve follows."));auto* M=static_cast<UEdGraph*>(StaticFindObject(UEdGraph::StaticClass(),nullptr,*Slot.GetPathName(),true));TStrongObjectPtr<UEdGraph> Hold(M);if(!Loaded(M)||Slot.GetHandle()!=TObjectPtr<UEdGraph>(M).GetHandle()||M->GetOuter()!=Owner||M->GetClass()!=UEdGraph::StaticClass())return Bad(TEXT("Source graph resident identity/owner differs."),OwnerPath);SourceGraphs.Add(MoveTemp(Hold));}
+            for(const auto& Slot:Owner->MacroGraphs){if(!Slot.IsResolved())return Bad(TEXT("Source graph handle unresolved; no tracked read/resolve follows."));auto* M=static_cast<UEdGraph*>(StaticFindObject(UEdGraph::StaticClass(),nullptr,*Slot.GetPathName(),EFindObjectFlags::ExactClass));TStrongObjectPtr<UEdGraph> Hold(M);if(!Loaded(M)||Slot.GetHandle()!=TObjectPtr<UEdGraph>(M).GetHandle()||M->GetOuter()!=Owner||M->GetClass()!=UEdGraph::StaticClass())return Bad(TEXT("Source graph resident identity/owner differs."),OwnerPath);SourceGraphs.Add(MoveTemp(Hold));}
             UEdGraph* M=nullptr;for(const auto& Held:SourceGraphs)if(Held->GraphGuid==Id){if(M)return Bad(TEXT("Source macro GUID ambiguous."));M=Held.Get();}
             if(!M||M==G||(!GraphPath.IsEmpty()&&!GraphPath.Equals(M->GetPathName(),ESearchCase::CaseSensitive))||!M->SubGraphs.IsEmpty()||M->Nodes.Num()>128)return Bad(TEXT("Referenced source requires a distinct existing flat macro graph; deeper variants remain incomplete."));
             O.Source=Sources.IndexOfByPredicate([&](const FSource& V){return V.Graph.Get()==M;});
             if(O.Source==INDEX_NONE)
             {
                 FSource V;V.External=External;V.Owner.Reset(Owner);V.OwnerPackage.Reset(OwnerPackage);V.OwnerPath=OwnerPath;V.PackagePath=OwnerPackage->GetName();V.MacroGraphs=MoveTemp(SourceGraphs);V.Graph.Reset(M);V.Guid=Id;V.Path=M->GetPathName();
-                if(External){const auto ParentSlot=Owner->ParentClass.GetGCPtr();auto* Native=static_cast<UClass*>(StaticFindObject(UClass::StaticClass(),nullptr,*ParentSlot.GetPathName(),true));V.NativeParent.Reset(Native);if((Native!=UObject::StaticClass()&&Native!=AActor::StaticClass())||ParentSlot.GetHandle()!=TObjectPtr<UClass>(Native).GetHandle())return Bad(TEXT("External source parent must already be exact native Object or Actor."),OwnerPath);}
-                for(const auto& Slot:M->Nodes){if(!Slot.IsResolved())return Bad(TEXT("Source node handle unresolved; no getter follows."));auto* N=static_cast<UEdGraphNode*>(StaticFindObject(UEdGraphNode::StaticClass(),nullptr,*Slot.GetPathName(),false));TStrongObjectPtr<UEdGraphNode> Hold(N);if(!Loaded(N)||Slot.GetHandle()!=TObjectPtr<UEdGraphNode>(N).GetHandle()||N->GetOuter()!=M||!N->NodeGuid.IsValid()||V.NodeIds.Contains(N->NodeGuid))return Bad(TEXT("Source node resident identity/owner/GUID differs."));V.Slots.Add(N);V.NodeIds.Add(N->NodeGuid);V.NodeClasses.Add(N->GetClass());V.Nodes.Add(MoveTemp(Hold));}
+                if(External){const auto ParentSlot=Owner->ParentClass.GetGCPtr();auto* Native=static_cast<UClass*>(StaticFindObject(UClass::StaticClass(),nullptr,*ParentSlot.GetPathName(),EFindObjectFlags::ExactClass));V.NativeParent.Reset(Native);if((Native!=UObject::StaticClass()&&Native!=AActor::StaticClass())||ParentSlot.GetHandle()!=TObjectPtr<UClass>(Native).GetHandle())return Bad(TEXT("External source parent must already be exact native Object or Actor."),OwnerPath);}
+                for(const auto& Slot:M->Nodes){if(!Slot.IsResolved())return Bad(TEXT("Source node handle unresolved; no getter follows."));auto* N=static_cast<UEdGraphNode*>(StaticFindObject(UEdGraphNode::StaticClass(),nullptr,*Slot.GetPathName(),EFindObjectFlags::None));TStrongObjectPtr<UEdGraphNode> Hold(N);if(!Loaded(N)||Slot.GetHandle()!=TObjectPtr<UEdGraphNode>(N).GetHandle()||N->GetOuter()!=M||!N->NodeGuid.IsValid()||V.NodeIds.Contains(N->NodeGuid))return Bad(TEXT("Source node resident identity/owner/GUID differs."));V.Slots.Add(N);V.NodeIds.Add(N->NodeGuid);V.NodeClasses.Add(N->GetClass());V.Nodes.Add(MoveTemp(Hold));}
                 O.Source=Sources.Add(MoveTemp(V));auto& Source=Sources[O.Source];if(External){if(!ExternalProjection(Source,Source.Projection))return false;Source.BaselineEstablished=true;if(!FPackageName::DoesPackageExist(Source.PackagePath,&Source.File))return Bad(TEXT("External source has no saved package file."),OwnerPath);Source.FileBytes=IFileManager::Get().FileSize(*Source.File);if(Source.FileBytes<=0||Source.FileBytes>67108864)return Bad(TEXT("External saved source file bound exceeded."),Source.File);const FMD5Hash InitialHash=FMD5Hash::HashFile(*Source.File);if(!InitialHash.IsValid())return Bad(TEXT("External source file hash read failed."),Source.File);Source.FileHash=LexToString(InitialHash);if(!ExternalCurrent())return false;}else if(!GraphProjection(Source,I,Source.Projection))return false;
             }
             TArray<UEdGraphPin*> SourcePorts;int32 Tunnels=0;for(const auto& Held:Sources[O.Source].Nodes){auto* N=Held.Get();if(N->GetClass()!=UK2Node_Tunnel::StaticClass())continue;++Tunnels;for(auto* P:N->Pins)SourcePorts.Add(P);}if(Tunnels!=2||SourcePorts.Num()!=O.Ports.Num()||SourcePorts.Num()>64)return Bad(TEXT("Two exact source tunnel gateways and matching complete instance port inventory required."));
@@ -1511,7 +1512,7 @@ struct FCollapsedTarget
     bool ReturnedContext()
     {
         if(Stopped)return false;
-        if(!IsInGameThread()||IsGarbageCollecting()||GIsSavingPackage||IsEngineExitRequested())return Bad(TEXT("returned_context_phase"));
+        if(!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||IsEngineExitRequested())return Bad(TEXT("returned_context_phase"));
         if(!Loaded(Editor.Get())||!Loaded(World.Get())||GEditor!=Editor.Get()||GWorld!=World.Get()
             ||Editor->GetClass()!=ReturnedEditorClass||World->GetClass()!=ReturnedWorldClass)return Bad(TEXT("returned_editor_world_role"));
         if(!Editor->PlayWorld.IsResolved()||Editor->PlayWorld.Get()!=nullptr||IsPlaySessionActive())return Bad(TEXT("returned_play_context"));
@@ -1668,7 +1669,7 @@ struct FCollapsedTarget
         if(!MathClass)return MathSources.IsEmpty()||Bad(TEXT("math_missing_class"));
         UClass* C=MathClass.Get();
         if(!Loaded(C)||C->GetClass()!=UClass::StaticClass()||!C->GetPathName().Equals(TEXT("/Script/Engine.KismetMathLibrary"),ESearchCase::CaseSensitive)||!C->HasAnyClassFlags(CLASS_Native)
-            ||!C->ClassDefaultObject.IsResolved()||C->ClassDefaultObject.Get()!=MathCDO.Get()||!Loaded(MathCDO.Get())||MathCDO->GetClass()!=C||MathCDO->GetOuter()!=C->GetOuter()||!MathCDO->HasAnyFlags(RF_ClassDefaultObject))return Bad(TEXT("math_source_class_cdo"));
+            ||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||C->GetDefaultObject(false)!=MathCDO.Get()||!Loaded(MathCDO.Get())||MathCDO->GetClass()!=C||MathCDO->GetOuter()!=C->GetOuter()||!MathCDO->HasAnyFlags(RF_ClassDefaultObject))return Bad(TEXT("math_source_class_cdo"));
         for(const auto& M:MathSources)
         {
             UFunction* F=M.Function;
@@ -1680,7 +1681,7 @@ struct FCollapsedTarget
             {
                 const auto& E=M.Fields[I];FProperty* P=Fields[I];
                 // Inventory and exact native field class precede every typed layout/default read.
-                if(P!=E.P||P->GetClass()!=E.Class||P->GetOwnerUObject()!=F||P->GetFName()!=E.Name||P->GetOffset_ForInternal()!=E.Offset||P->ElementSize!=E.Size||P->ArrayDim!=E.Dim||uint64(P->PropertyFlags)!=E.Flags)return Bad(TEXT("math_field_binding"),M.Path);
+                if(P!=E.P||P->GetClass()!=E.Class||P->GetOwnerUObject()!=F||P->GetFName()!=E.Name||P->GetOffset_ForInternal()!=E.Offset||P->GetElementSize()!=E.Size||P->ArrayDim!=E.Dim||uint64(P->PropertyFlags)!=E.Flags)return Bad(TEXT("math_field_binding"),M.Path);
                 if(E.Class==FBoolProperty::StaticClass()){auto* B=static_cast<FBoolProperty*>(P);if(B->GetBoolFieldSize()!=E.BoolSize||B->GetByteOffset()!=E.BoolOffset||B->GetByteMask()!=E.BoolByteMask||B->GetFieldMask()!=E.BoolFieldMask)return Bad(TEXT("math_bool_storage"),M.Path);}
                 const auto* Meta=P->GetMetaDataMap();if((Meta?*Meta:TMap<FName,FString>()).OrderIndependentCompareEqual(E.Meta)==false)return Bad(TEXT("math_field_metadata"),M.Path);
             }
@@ -1716,8 +1717,8 @@ struct FCollapsedTarget
         if(Plan.Calls.IsEmpty())return Plain();
         Count(R,TEXT("reference_lookup_calls"));UClass* C=FindObject<UClass>(nullptr,TEXT("/Script/Engine.KismetMathLibrary"));const TStrongObjectPtr<UClass> HeldClass(C);Count(R,TEXT("reference_lookup_returns"));
         if(!Plain())return false;
-        if(!Loaded(C)||C->GetClass()!=UClass::StaticClass()||!C->HasAnyClassFlags(CLASS_Native)||!C->ClassDefaultObject.IsResolved())return Bad(TEXT("math_source_unavailable"));
-        UObject* CDO=C->ClassDefaultObject.Get();const TStrongObjectPtr<UObject> HeldCDO(CDO);MathClass.Reset(C);MathCDO.Reset(CDO);if(!Plain())return false;
+        if(!Loaded(C)||C->GetClass()!=UClass::StaticClass()||!C->HasAnyClassFlags(CLASS_Native)||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())return Bad(TEXT("math_source_unavailable"));
+        UObject* CDO=C->GetDefaultObject(false);const TStrongObjectPtr<UObject> HeldCDO(CDO);MathClass.Reset(C);MathCDO.Reset(CDO);if(!Plain())return false;
         for(const int32 Index:Plan.Calls)
         {
             const auto& O=Plan.Objects[Index];
@@ -1732,8 +1733,8 @@ struct FCollapsedTarget
                 {
                     FProperty* P=*It;const FFieldClass* FC=P->GetClass();
                     if((FC!=FIntProperty::StaticClass()&&FC!=FBoolProperty::StaticClass())||P->GetOwnerUObject()!=F)return Bad(TEXT("math_scalar_type_pending"),Path);
-                    if(!P->HasAnyPropertyFlags(CPF_Parm)||P->HasAnyPropertyFlags(CPF_ReferenceParm|CPF_ConstParm|CPF_AdvancedDisplay|CPF_RequiredParm)||P->HasSetterOrGetter()||P->ArrayDim!=1||P->GetOffset_ForInternal()<0||P->GetOffset_ForInternal()+P->ElementSize>F->ParmsSize||M.Fields.Num()>=16)return Bad(TEXT("math_byvalue_field_pending"),Path);
-                    FMathField V;V.P=P;V.Class=FC;V.Name=P->GetFName();V.Offset=P->GetOffset_ForInternal();V.Size=P->ElementSize;V.Dim=P->ArrayDim;V.Flags=uint64(P->PropertyFlags);V.Category=FC==FIntProperty::StaticClass()?TEXT("int"):TEXT("bool");
+                    if(!P->HasAnyPropertyFlags(CPF_Parm)||P->HasAnyPropertyFlags(CPF_ReferenceParm|CPF_ConstParm|CPF_AdvancedDisplay|CPF_RequiredParm)||P->HasSetterOrGetter()||P->ArrayDim!=1||P->GetOffset_ForInternal()<0||P->GetOffset_ForInternal()+P->GetElementSize()>F->ParmsSize||M.Fields.Num()>=16)return Bad(TEXT("math_byvalue_field_pending"),Path);
+                    FMathField V;V.P=P;V.Class=FC;V.Name=P->GetFName();V.Offset=P->GetOffset_ForInternal();V.Size=P->GetElementSize();V.Dim=P->ArrayDim;V.Flags=uint64(P->PropertyFlags);V.Category=FC==FIntProperty::StaticClass()?TEXT("int"):TEXT("bool");
                     if(FC==FIntProperty::StaticClass()){if(V.Size!=sizeof(int32))return Bad(TEXT("math_int_layout"),Path);}
                     else{auto* B=static_cast<FBoolProperty*>(P);V.BoolSize=B->GetBoolFieldSize();V.BoolOffset=B->GetByteOffset();V.BoolByteMask=B->GetByteMask();V.BoolFieldMask=B->GetFieldMask();if(!B->IsNativeBool()||V.Size!=sizeof(bool)||V.BoolSize!=sizeof(bool)||V.BoolOffset!=0)return Bad(TEXT("math_bool_layout"),Path);}
                     if(const auto* Meta=P->GetMetaDataMap())V.Meta=*Meta;
@@ -2232,7 +2233,7 @@ struct FTITimelineImport
             ||FallbackDefault.Outer.Get()!=Class->GetOuter()||!Loaded(FallbackPackage.Get())||Class->GetPackage()!=FallbackPackage.Get()
             ||Class->GetOutermost()->IsDirty()!=FallbackPackageDirty||static_cast<uint32>(Class->ClassFlags)!=FallbackClassFlags
             ||!Class->HasAnyClassFlags(CLASS_Native)||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=nullptr
-            ||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject!=FallbackDefault.Hold.Get()
+            ||!Cubeless::UE58::GetClassDefaultObjectSlot(Class).IsResolved()||Cubeless::UE58::GetClassDefaultObjectSlot(Class)!=FallbackDefault.Hold.Get()
             ||FallbackDefault.Hold->GetPackage()!=FallbackPackage.Get()||static_cast<uint32>(FallbackDefault.Hold->GetFlags())!=FallbackObjectFlags)
             return Bad(TEXT("fallback_native_default_roles"),TEXT("same held native class/CDO/package and flags"),TEXT("changed/unavailable"));
         FString Actual;if(!Values(static_cast<UTimelineTemplate*>(FallbackDefault.Hold.Get()),Actual,false,false))return false;
@@ -2242,8 +2243,8 @@ struct FTITimelineImport
     {
         auto* Class=UTimelineTemplate::StaticClass();FallbackClass.Reset(Class);
         if(!Loaded(Class)||!Class->HasAnyClassFlags(CLASS_Native)||!Class->ClassGeneratedBy.IsResolved()||Class->ClassGeneratedBy!=nullptr
-            ||!Class->ClassDefaultObject.IsResolved())return Pending(TEXT("Missing-source fallback requires an already resolved loaded native TimelineTemplate class/CDO; no default object is created or loaded by preflight."));
-        auto* Default=Class->ClassDefaultObject.Get();FallbackPackage.Reset(Class->GetPackage());
+            ||!Cubeless::UE58::GetClassDefaultObjectSlot(Class).IsResolved())return Pending(TEXT("Missing-source fallback requires an already resolved loaded native TimelineTemplate class/CDO; no default object is created or loaded by preflight."));
+        auto* Default=Class->GetDefaultObject(false);FallbackPackage.Reset(Class->GetPackage());
         if(!Loaded(Default)||Default->GetClass()!=Class||Default->GetOuter()!=Class->GetOuter()||!Default->HasAnyFlags(RF_ClassDefaultObject)
             ||!Loaded(FallbackPackage.Get())||Default->GetPackage()!=FallbackPackage.Get()||!Object(Default,FallbackDefault))return Pending(TEXT("Missing-source fallback requires the actual existing native TimelineTemplate CDO ownership roles."));
         const auto* Template=static_cast<UTimelineTemplate*>(Default);

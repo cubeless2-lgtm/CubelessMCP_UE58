@@ -73,7 +73,7 @@ bool DeferredLeaseActive=false;
 std::atomic<bool> DeferredShutdownRequested{false};
 constexpr const TCHAR* NiagaraTempGenerationRoot=TEXT("/Game/_MCP_Temp/NiagaraGenerated/");
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
-bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage;}
+bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage();}
 FString Json(const TSharedPtr<FJsonObject>& O){FString S;if(O)FJsonSerializer::Serialize(O.ToSharedRef(),TJsonWriterFactory<>::Create(&S));return S;}
 bool Forbidden(const FString& S){const FString L=S.ToLower();return L.Contains(TEXT("unrealmcp"))||L.Contains(TEXT("cubelessmcp"))||L.Contains(TEXT("modelcontextprotocol"))||L.Contains(TEXT("toolsetregistry"));}
 struct FIdentity
@@ -2008,7 +2008,7 @@ TSharedPtr<FJsonObject> PointCompileSnapshot(FWork& W,UNiagaraSystem* System,dou
 }
 bool PackageOwnership(FWork& W,UNiagaraSystem* System)
 {
- if(!W.Admit(TEXT("package_writer_ownership"))||System!=W.Target.Get())return false;auto* P=System->GetOutermost();if(System->GetOuter()!=P||System->GetPackage()!=P)return W.Fail(TEXT("niagara_hlsl_conversion_root_owner_invalid"),TEXT("Exact System root package required"));TArray<UObject*> Objects;if(!W.Step(TEXT("GetObjectsWithPackage_Save"),[&]{GetObjectsWithPackage(P,Objects,true);}))return false;if(Objects.Num()>65536||!W.Budget(Objects.Num()))return false;for(auto* O:Objects){if(!Live(O)||O->GetPackage()!=P||O->GetOutermost()!=P||(O!=System&&!O->IsIn(System)))return W.Fail(TEXT("niagara_hlsl_conversion_foreign_package_export"),TEXT("Save would include export outside exact selected System subtree"));if(!W.Pin(O))return false;}if(!W.CaptureCompiledCacheRoles())return false;return W.Admit(TEXT("package_ownership_complete"));
+ if(!W.Admit(TEXT("package_writer_ownership"))||System!=W.Target.Get())return false;auto* P=System->GetOutermost();if(System->GetOuter()!=P||System->GetPackage()!=P)return W.Fail(TEXT("niagara_hlsl_conversion_root_owner_invalid"),TEXT("Exact System root package required"));TArray<UObject*> Objects;if(!W.Step(TEXT("GetObjectsWithPackage_Save"),[&]{GetObjectsWithPackage(P,Objects,EGetObjectsFlags::IncludeNestedObjects);}))return false;if(Objects.Num()>65536||!W.Budget(Objects.Num()))return false;for(auto* O:Objects){if(!Live(O)||O->GetPackage()!=P||O->GetOutermost()!=P||(O!=System&&!O->IsIn(System)))return W.Fail(TEXT("niagara_hlsl_conversion_foreign_package_export"),TEXT("Save would include export outside exact selected System subtree"));if(!W.Pin(O))return false;}if(!W.CaptureCompiledCacheRoles())return false;return W.Admit(TEXT("package_ownership_complete"));
 }
 bool SaveHlslSystem(FWork& W,UNiagaraSystem* System)
 {

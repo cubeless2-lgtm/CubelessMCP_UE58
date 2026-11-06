@@ -18,7 +18,7 @@ namespace Cubeless::UE58::NiagaraEmitterEventAuthoringAsync
 namespace
 {
 std::atomic<bool> Stopping{false};bool Starting=false;FDelegateHandle PreExit;
-bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage;}
+bool Safe(){return IsInGameThread()&&GEditor&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage();}
 struct FRecord{EJobKind Kind=EJobKind::PersistentIds;FGuid Id;TWeakObjectPtr<UCubelessNiagaraEmitterEventAuthoringJob> Object;FString Snapshot;bool Terminal=false,Registered=false;};
 TMap<const UCubelessNiagaraEmitterEventAuthoringJob*,FRecord> Records;
 bool CanStart()

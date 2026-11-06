@@ -290,7 +290,10 @@ FResult Write(int32 Kind,const FString& Path,const FString& SocketName,const FSt
  NewSN=SN;if(Kind==1&&!BoneName.IsEmpty()&&!Name(BoneName,BN,R,TEXT("bone_name"))) { return R; }
  if(Kind<2&&S->GetReferenceSkeleton().FindBoneIndex(BN)==INDEX_NONE) { Fail(R,TEXT("skeletal_socket_bone_not_found"),FString::Printf(TEXT("Bone not found in skeleton: %s"),*BoneName));return R; }
  if(Kind==1&&!Rename.IsEmpty()) { if(Dependency(Rename)||!Name(Rename,NewSN,R,TEXT("new_socket_name"))) { if(R.Error.IsEmpty()) { Fail(R,TEXT("skeletal_socket_dependency_forbidden"),TEXT("new_socket_name contains an original forbidden dependency reference.")); }return R; }if(Find(S,NewSN)) { Fail(R,TEXT("skeletal_socket_rename_collision"),FString::Printf(TEXT("Socket name already in use: %s"),*Rename));return R; } }
- FVector L,RotVector,Scale;FRotator Rot;
+ FVector L = FVector::ZeroVector;
+ FVector RotVector = FVector::ZeroVector;
+ FVector Scale = FVector::OneVector;
+ FRotator Rot = FRotator::ZeroRotator;
  if(Kind<2) { const FVector DL=Kind==0?FVector::ZeroVector:Socket->RelativeLocation,DS=Kind==0?FVector::OneVector:Socket->RelativeScale,DR=Kind==0?FVector::ZeroVector:FVector(Socket->RelativeRotation.Roll,Socket->RelativeRotation.Pitch,Socket->RelativeRotation.Yaw);
  if(!Vector(LJson,DL,L,R)||!Vector(RJson,DR,RotVector,R)||!Vector(SJson,DS,Scale,R)) { return R; }Rot=FRotator(RotVector.Y,RotVector.Z,RotVector.X); }
  TSharedPtr<FJsonObject> Before,After;R.Stage=TEXT("before_observation");if(!Capture(Asset,S,Mesh,R,TEXT("before_observation"),Before)) { R.bChangeStateKnown=false;Fail(R,TEXT("skeletal_socket_observation_incomplete"),TEXT("No explicit socket writer dispatched; loaded prestate incomplete."));return R; }

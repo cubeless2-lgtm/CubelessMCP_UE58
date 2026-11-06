@@ -442,7 +442,7 @@ UObject* EnhancedAction(const UEdGraphNode* N)
 bool SelectedDelegateGuid(const UK2Node_CreateDelegate* N,FGuid& Guid)
 {
     auto P=FindFProperty<FStructProperty>(N->GetClass(),TEXT("SelectedFunctionGuid"));
-    if(!P||P->Struct!=TBaseStructure<FGuid>::Get()||P->ElementSize!=sizeof(FGuid)) { NoteUnsafe(TEXT("CreateDelegate SelectedFunctionGuid exact reflected FGuid property unavailable"));return false; }
+    if(!P||P->Struct!=TBaseStructure<FGuid>::Get()||P->GetElementSize()!=sizeof(FGuid)) { NoteUnsafe(TEXT("CreateDelegate SelectedFunctionGuid exact reflected FGuid property unavailable"));return false; }
     Count(*CurrentResult,TEXT("reflected_property_reads"));Guid=*P->ContainerPtrToValuePtr<FGuid>(N);return true;
 }
 UFunction* ObservedFunction(const UK2Node_CallFunction* N) { Count(*CurrentResult,TEXT("function_target_get_calls"));UFunction* F=N->GetTargetFunction();if(F&&!Loaded(F)) { NoteUnsafe(TEXT("Resolved function is not fully loaded")); }return IsValid(F)?F:nullptr; }

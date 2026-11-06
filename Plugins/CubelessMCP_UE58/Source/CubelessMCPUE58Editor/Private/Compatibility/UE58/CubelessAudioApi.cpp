@@ -1,5 +1,6 @@
 // Original focused audio inspection and one-Wave-player SoundCue creation.
 #include "Compatibility/UE58/CubelessAudioApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -152,7 +153,7 @@ bool CreationSourceSuper(UClass* Class,UClass*& Out)
     Out=nullptr;if(!Loaded(Class))return false;
     static FObjectProperty* const P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
     if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()
-        ||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UStruct>)
+        ||P->GetOwnerProperty()!=P||P->ArrayDim!=1||P->GetElementSize()!=sizeof(TObjectPtr<UStruct>)
         ||P->GetSize()!=sizeof(TObjectPtr<UStruct>)||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)
         ||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()
         ||P->HasSetterOrGetter()||!P->PropertyClass.IsResolved()||P->PropertyClass!=UStruct::StaticClass())return false;
@@ -596,8 +597,8 @@ FString CreateSoundCueFromWave(const FString& InputName, const FString& SoundWav
                 if(!CreationSourceSuper(C,Super)||Super!=E.Super.Get()||!Loaded(E.Package.Get())||C->GetPackage()!=E.Package.Get()
                     ||C->GetOuter()!=E.Outer||C->GetPathName()!=E.Path||C->GetClassFlags()!=E.Flags
                     ||uint32(E.Package->GetPackageFlags())!=E.PackageFlags||E.Package->IsDirty()!=E.Dirty
-                    ||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!C->ClassDefaultObject.IsResolved()
-                    ||C->ClassDefaultObject!=E.CDO.Get())return Bad(E.Path,TEXT("native_class_source"));
+                    ||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()
+                    ||Cubeless::UE58::GetClassDefaultObjectSlot(C)!=E.CDO.Get())return Bad(E.Path,TEXT("native_class_source"));
                 if(E.CDO.IsValid()&&(!Loaded(E.CDO.Get())||E.CDO->GetClass()!=C||E.CDO->GetOuter()!=E.CDOOuter
                     ||E.CDO->GetPackage()!=E.CDOPackage||E.CDO->GetFlags()!=E.CDOFlags))return Bad(E.Path,TEXT("existing_native_cdo"));
             }
@@ -612,11 +613,11 @@ FString CreateSoundCueFromWave(const FString& InputName, const FString& SoundWav
             if(SourceChain.Num()>=64||SourceChain.Contains(C)||!Loaded(C)||!Loaded(C->GetPackage())
                 ||!C->HasAnyClassFlags(CLASS_Native)||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_CompiledFromBlueprint)
                 ||!C->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||C->GetPackage()->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly)
-                ||Forbidden(C->GetPathName())||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!C->ClassDefaultObject.IsResolved())
+                ||Forbidden(C->GetPathName())||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())
             {Fail(R,TEXT("audio_creation_source_hierarchy_pending"),TEXT("Finite already-loaded native runtime SoundWave ancestry required; generated/editor/custom unobservable sources remain incomplete."));return Encode(R);}
             UClass* Super=nullptr;if(!CreationSourceSuper(C,Super)){Fail(R,TEXT("audio_creation_source_hierarchy_pending"),TEXT("Native superclass observation failed, not an observed null terminator."));return Encode(R);}
             auto E=MakeUnique<FSourceRole>();E->Class.Reset(C);E->Super.Reset(Super);E->Package.Reset(C->GetPackage());E->Outer=C->GetOuter();E->Path=C->GetPathName();E->Flags=C->GetClassFlags();E->PackageFlags=uint32(E->Package->GetPackageFlags());E->Dirty=E->Package->IsDirty();
-            E->CDO.Reset(CreationSourcePointer(C->ClassDefaultObject));if(C->ClassDefaultObject!=E->CDO.Get()){Fail(R,TEXT("audio_creation_source_hierarchy_pending"),TEXT("Existing native CDO slot must resolve without a load/default creation."));return Encode(R);}
+            E->CDO.Reset(CreationSourcePointer(Cubeless::UE58::GetClassDefaultObjectSlot(C)));if(Cubeless::UE58::GetClassDefaultObjectSlot(C)!=E->CDO.Get()){Fail(R,TEXT("audio_creation_source_hierarchy_pending"),TEXT("Existing native CDO slot must resolve without a load/default creation."));return Encode(R);}
             if(E->CDO.IsValid()){E->CDOOuter=E->CDO->GetOuter();E->CDOPackage=E->CDO->GetPackage();E->CDOFlags=E->CDO->GetFlags();}
             SourceChain.Add(C);SourceRoles.Add(MoveTemp(E));if(!SourceCurrent())return Encode(R);C=Super;
         }

@@ -1,5 +1,6 @@
 // DK original dispatcher lifecycle and custom-event signatures; Editor only.
 #include "Compatibility/UE58/CubelessBlueprintDispatcherLifecycleApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Compatibility/UE58/CubelessFunctionPinApi.h"
 #include "Dom/JsonValue.h"
@@ -584,12 +585,12 @@ struct FWidgetLifecycleWork
         for(TFieldIterator<FProperty> It(S,EFieldIterationFlags::IncludeSuper|EFieldIterationFlags::IncludeDeprecated);It;++It)
         {
             FProperty* Q=*It;if(++Count>256||!TreeField(Q)||Q->HasAnyPropertyFlags(CPF_Transient|CPF_DuplicateTransient|CPF_NonPIEDuplicateTransient|CPF_SkipSerialization|CPF_EditorOnly))return false;
-            const int32 Offset=Q->GetOffset_ForInternal(),Span=Q->GetSize();if(Offset<0||Span<=0||int64(Offset)+Span>Size||int64(Q->ElementSize)*Q->ArrayDim!=Span)return false;
+            const int32 Offset=Q->GetOffset_ForInternal(),Span=Q->GetSize();if(Offset<0||Span<=0||int64(Offset)+Span>Size||int64(Q->GetElementSize())*Q->ArrayDim!=Span)return false;
             auto* K=Q->GetClass();
             const bool Numeric=K==FByteProperty::StaticClass()||K==FInt8Property::StaticClass()||K==FInt16Property::StaticClass()||K==FUInt16Property::StaticClass()||K==FIntProperty::StaticClass()||K==FUInt32Property::StaticClass()||K==FInt64Property::StaticClass()||K==FUInt64Property::StaticClass()||K==FFloatProperty::StaticClass()||K==FDoubleProperty::StaticClass();
             if(!Numeric)
             {
-                if(K!=FStructProperty::StaticClass())return false;auto* Nested=static_cast<FStructProperty*>(Q);if(!Nested->Struct.IsResolved()||!Loaded(Nested->Struct.Get())||Nested->Struct->GetStructureSize()!=Q->ElementSize||!CompleteNumericPOD(Nested->Struct.Get(),Depth+1))return false;
+                if(K!=FStructProperty::StaticClass())return false;auto* Nested=static_cast<FStructProperty*>(Q);if(!Nested->Struct.IsResolved()||!Loaded(Nested->Struct.Get())||Nested->Struct->GetStructureSize()!=Q->GetElementSize()||!CompleteNumericPOD(Nested->Struct.Get(),Depth+1))return false;
             }
             for(int32 I=Offset;I<Offset+Span;++I){if(Covered[I])return false;Covered[I]=1;}
         }
@@ -619,7 +620,7 @@ struct FWidgetLifecycleWork
         if(K==FStructProperty::StaticClass())
         {
             auto* SP=static_cast<FStructProperty*>(P);if(!SP->Struct.IsResolved())return false;auto* S=SP->Struct.Get();
-            if(!Loaded(S)||S->GetClass()!=UScriptStruct::StaticClass()||!S->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))||!ReferenceGuard(S->GetPathName())||S->GetStructureSize()!=P->ElementSize)return false;
+            if(!Loaded(S)||S->GetClass()!=UScriptStruct::StaticClass()||!S->GetOutermost()->GetName().StartsWith(TEXT("/Script/"))||!ReferenceGuard(S->GetPathName())||S->GetStructureSize()!=P->GetElementSize())return false;
             // Private native serialization/export state has no general reflected proof.
             if((S->StructFlags&STRUCT_ExportTextItemNative)||((S->StructFlags&STRUCT_SerializeNative)&&S!=FFontOutlineSettings::StaticStruct()))
             {
@@ -657,20 +658,20 @@ struct FWidgetLifecycleWork
         }
         if(K==FEnumProperty::StaticClass())
         {
-            auto* Inner=static_cast<FEnumProperty*>(P)->GetUnderlyingProperty();if(!TreeField(Inner)||Inner->GetSize()!=P->ElementSize)return false;
+            auto* Inner=static_cast<FEnumProperty*>(P)->GetUnderlyingProperty();if(!TreeField(Inner)||Inner->GetSize()!=P->GetElementSize())return false;
         }
-        TreeToken(Out,BytesToHex(static_cast<const uint8*>(Data),P->ElementSize));return true;
+        TreeToken(Out,BytesToHex(static_cast<const uint8*>(Data),P->GetElementSize()));return true;
     }
     bool TreeValue(FProperty* P,const void* Data,UWidgetTree* InTree,FString& Out,int32 Depth,bool Runtime)
     {
         if(!TreeField(P))return false;TreeToken(Out,P->GetName());TreeToken(Out,P->GetClass()->GetName());
-        for(int32 I=0;I<P->ArrayDim;++I)if(!TreeScalar(P,static_cast<const uint8*>(Data)+I*P->ElementSize,InTree,Out,Depth,Runtime)){if(!R.Data->HasField(TEXT("widget_tree_pending_property"))){R.Data->SetStringField(TEXT("widget_tree_pending_property"),P->GetPathName());R.Data->SetStringField(TEXT("widget_tree_pending_field_class"),P->GetClass()->GetName());}return false;}return Out.Len()<=1048576;
+        for(int32 I=0;I<P->ArrayDim;++I)if(!TreeScalar(P,static_cast<const uint8*>(Data)+I*P->GetElementSize(),InTree,Out,Depth,Runtime)){if(!R.Data->HasField(TEXT("widget_tree_pending_property"))){R.Data->SetStringField(TEXT("widget_tree_pending_property"),P->GetPathName());R.Data->SetStringField(TEXT("widget_tree_pending_field_class"),P->GetClass()->GetName());}return false;}return Out.Len()<=1048576;
     }
     bool ReadWidgetTree(UWidgetTree* InTree,FTreeState& Out)
     {
         if(!Loaded(InTree)||InTree->GetClass()!=UWidgetTree::StaticClass()||!InTree->RootWidget.IsResolved()||!InTree->NamedSlotBindings.IsEmpty())return false;
         auto* TreeRoot=InTree->RootWidget.Get();if(!Loaded(TreeRoot)||TreeRoot->GetClass()!=UCanvasPanel::StaticClass())return false;
-        TArray<UObject*> Objects;GetObjectsWithOuter(InTree,Objects,true);if(Objects.Num()>256)return false;
+        TArray<UObject*> Objects;GetObjectsWithOuter(InTree,Objects,EGetObjectsFlags::IncludeNestedObjects);if(Objects.Num()>256)return false;
         for(auto* O:Objects)
         {
             if(!Loaded(O)||!TreeNative(O->GetClass())||(!O->IsA<UWidget>()&&!O->IsA<UPanelSlot>())||O->IsA<UUserWidget>())return false;
@@ -721,7 +722,7 @@ struct FWidgetLifecycleWork
     }
     bool Context(){return !Stopped&&IsInGameThread()&&!IsGarbageCollecting()&&!UE::IsSavingPackage()&&!GExitPurge&&!IsEngineExitRequested()&&Loaded(Editor.Get())&&GEditor==Editor.Get()&&Loaded(World.Get())&&World->WorldType==EWorldType::Editor&&!World->bIsTearingDown&&Editor->PlayWorld.IsResolved()&&!Editor->PlayWorld.Get()&&!IsPlaySessionActive()&&Editor->GetEditorWorldContext().World()==World.Get();}
     bool ClassRole(UClass* C,UClass* Meta,const FString& ExpectedPath)
-    {return Loaded(C)&&C->GetClass()==Meta&&C->GetOuter()==Package.Get()&&C->GetSuperClass()==Parent.Get()&&C->ClassGeneratedBy.IsResolved()&&C->ClassGeneratedBy.Get()==BP.Get()&&C->GetPathName().Equals(ExpectedPath,ESearchCase::CaseSensitive)&&!C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&C->ClassDefaultObject.IsResolved();}
+    {return Loaded(C)&&C->GetClass()==Meta&&C->GetOuter()==Package.Get()&&C->GetSuperClass()==Parent.Get()&&C->ClassGeneratedBy.IsResolved()&&C->ClassGeneratedBy.Get()==BP.Get()&&C->GetPathName().Equals(ExpectedPath,ESearchCase::CaseSensitive)&&!C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists)&&Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved();}
     bool CDO(UClass* C,UObject* O){return !O||(Loaded(O)&&O->GetClass()==C&&O->GetOuter()==Package.Get()&&O->GetPackage()==Package.Get()&&O->HasAnyFlags(RF_ClassDefaultObject)&&O->GetFName()==FName(*(TEXT("Default__")+C->GetName())));}
     static bool SameType(const FEdGraphPinType& A,const FEdGraphPinType& B){return A==B;}
     bool OldVariables()
@@ -893,7 +894,7 @@ struct FWidgetLifecycleWork
     {
         if(!Context())return Bad(Stage,TEXT("editor_context"));auto* B=BP.Get();
         if(!Loaded(B)||B->GetClass()!=UWidgetBlueprint::StaticClass()||B->GetOuter()!=Package.Get()||!B->GetPathName().Equals(Path,ESearchCase::CaseSensitive)||!Loaded(Package.Get())||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()!=Parent.Get()||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->bSuppressStructurallyModified)return Bad(Stage,TEXT("widget_blueprint_role"));
-        if(!Loaded(Parent.Get())||Parent.Get()!=UUserWidget::StaticClass()||Parent->GetClassFlags()!=ParentFlags||!Parent->ClassDefaultObject.IsResolved()||Parent->ClassDefaultObject.Get()!=ParentCDO.Get()||(ParentCDO.IsValid()&&(!Loaded(ParentCDO.Get())||ParentCDO->GetClass()!=Parent.Get())))return Bad(Stage,TEXT("native_user_widget_parent"));
+        if(!Loaded(Parent.Get())||Parent.Get()!=UUserWidget::StaticClass()||Parent->GetClassFlags()!=ParentFlags||!Cubeless::UE58::GetClassDefaultObjectSlot(Parent).IsResolved()||Parent->GetDefaultObject(false)!=ParentCDO.Get()||(ParentCDO.IsValid()&&(!Loaded(ParentCDO.Get())||ParentCDO->GetClass()!=Parent.Get())))return Bad(Stage,TEXT("native_user_widget_parent"));
         if(B->UbergraphPages!=Uber||B->FunctionGraphs!=Functions||B->MacroGraphs!=Macros||B->DelegateSignatureGraphs.Num()!=Delegates.Num()+(GraphAdded?1:0)||!OldVariables()||!B->Bindings.IsEmpty()||!B->Animations.IsEmpty()||!B->ImplementedInterfaces.IsEmpty()||!B->WidgetVariableNameToGuidMap.OrderIndependentCompareEqual(WidgetGuids))return Bad(Stage,TEXT("authored_graph_variable_binding_inventory"));
         for(int32 I=0;I<Delegates.Num();++I)if(!B->DelegateSignatureGraphs[I].IsResolved()||B->DelegateSignatureGraphs[I].Get()!=Delegates[I].Get())return Bad(Stage,TEXT("delegate_signature_graph"));
         if(GraphAdded&&(!B->DelegateSignatureGraphs.Last().IsResolved()||B->DelegateSignatureGraphs.Last().Get()!=NewGraph))return Bad(Stage,TEXT("new_signature_graph_membership"));
@@ -906,10 +907,10 @@ struct FWidgetLifecycleWork
         if(!SourceCurrent(Stage))return false;
         if(!Rebinding||ClassesReady)
         {
-            if(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Gen.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skel.Get()||!ClassRole(Gen.Get(),GenMeta,GenPath)||!ClassRole(Skel.Get(),SkelMeta,SkelPath)||Gen->ClassDefaultObject.Get()!=GenCDO.Get()||Skel->ClassDefaultObject.Get()!=SkelCDO.Get()||!CDO(Gen.Get(),GenCDO.Get())||!CDO(Skel.Get(),SkelCDO.Get())||!CompiledTreesCurrent())return Bad(Stage,TEXT("generated_skeleton_nullable_cdo"));
+            if(!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Gen.Get()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skel.Get()||!ClassRole(Gen.Get(),GenMeta,GenPath)||!ClassRole(Skel.Get(),SkelMeta,SkelPath)||Gen->GetDefaultObject(false)!=GenCDO.Get()||Skel->GetDefaultObject(false)!=SkelCDO.Get()||!CDO(Gen.Get(),GenCDO.Get())||!CDO(Skel.Get(),SkelCDO.Get())||!CompiledTreesCurrent())return Bad(Stage,TEXT("generated_skeleton_nullable_cdo"));
         }
         if(!Rebinding){if(!Physical(Graphs))return Bad(Stage,TEXT("authored_graph_pin_values"));}else if(!Candidates.IsEmpty()&&!Physical(Candidates))return Bad(Stage,TEXT("reacquired_graph_pin_values"));
-        if(Policy.IsValid()&&(!Loaded(Policy.Get())||Policy->SaveOnCompile!=SoC_Never||!UBlueprintEditorSettings::StaticClass()->ClassDefaultObject.IsResolved()||UBlueprintEditorSettings::StaticClass()->ClassDefaultObject.Get()!=Policy.Get()))return Bad(Stage,TEXT("save_on_compile_policy"));return true;
+        if(Policy.IsValid()&&(!Loaded(Policy.Get())||Policy->SaveOnCompile!=SoC_Never||!Cubeless::UE58::GetClassDefaultObjectSlot(UBlueprintEditorSettings::StaticClass()).IsResolved()||UBlueprintEditorSettings::StaticClass()->GetDefaultObject(false)!=Policy.Get()))return Bad(Stage,TEXT("save_on_compile_policy"));return true;
     }
     bool SourceCurrent(const TCHAR* Stage)
     {
@@ -972,7 +973,7 @@ struct FWidgetLifecycleWork
         auto G=BP->GeneratedClass,S=BP->SkeletonGeneratedClass;if(!G.GetGCPtr().IsResolved()||!S.GetGCPtr().IsResolved())return Bad(Stage,TEXT("reacquire_class_slots"));
         TStrongObjectPtr<UClass> NewGen(G.GetGCPtr().Get()),NewSkel(S.GetGCPtr().Get());
         if(!ClassRole(NewGen.Get(),GenMeta,GenPath)||!ClassRole(NewSkel.Get(),SkelMeta,SkelPath))return Bad(Stage,TEXT("reacquire_class_roles"));
-        TStrongObjectPtr<UObject> NewGCDO(NewGen->ClassDefaultObject.Get()),NewSCDO(NewSkel->ClassDefaultObject.Get());if(!CDO(NewGen.Get(),NewGCDO.Get())||!CDO(NewSkel.Get(),NewSCDO.Get()))return Bad(Stage,TEXT("reacquire_nullable_cdo"));
+        TStrongObjectPtr<UObject> NewGCDO(NewGen->GetDefaultObject(false)),NewSCDO(NewSkel->GetDefaultObject(false));if(!CDO(NewGen.Get(),NewGCDO.Get())||!CDO(NewSkel.Get(),NewSCDO.Get()))return Bad(Stage,TEXT("reacquire_nullable_cdo"));
         UClass* OldGen=Gen.Get();UClass* OldSkel=Skel.Get();Gen.Reset(NewGen.Get());Skel.Reset(NewSkel.Get());GenCDO.Reset(NewGCDO.Get());SkelCDO.Reset(NewSCDO.Get());TArray<FCompiledTree> NewTrees;if(!CaptureCompiledTrees(NewTrees))return Bad(Stage,TEXT("reacquire_compiled_widget_tree"));if(NewTrees.Num()!=CompiledTrees.Num())return Bad(Stage,TEXT("compiled_tree_owner_inventory"));for(int32 I=0;I<NewTrees.Num();++I){const auto& N=NewTrees[I];const auto& E=CompiledTrees[I];if(N.Root.IsValid()&&N.State.Runtime!=AuthoredTree.Runtime&&(!E.Root.IsValid()||N.State.Runtime!=E.State.Runtime))return Bad(Stage,TEXT("compiled_tree_authored_projection"));if(!N.Root.IsValid()&&E.Root.IsValid())return Bad(Stage,TEXT("compiled_tree_root_lost"));}CompiledTrees=MoveTemp(NewTrees);ClassesReady=true;
         CompilerEventReferences.Reset();for(const auto& Row:Graphs)for(const auto& Node:Row.Nodes)if(Node.ReferenceKind==4){UFunction* Function=Skel->FindFunctionByName(Node.CustomName,EIncludeSuperFlag::ExcludeSuper);TStrongObjectPtr<UFunction> Returned(Function);if(!Current(Stage))return false;if(!Function)continue;if(!Loaded(Function)||Function->GetOuter()!=Skel.Get()||!Function->HasAllFunctionFlags(FUNC_BlueprintCallable|FUNC_BlueprintEvent)||Function->HasAnyFunctionFlags(FUNC_Net|FUNC_Static|FUNC_Native))return Bad(Stage,TEXT("custom_event_compiler_role"));FGuid ActualGuid;const bool Found=UBlueprint::GetGuidFromClassByFieldName<UFunction>(Skel.Get(),Node.CustomName,ActualGuid);if(!Current(Stage))return false;if(!Found||ActualGuid!=Node.Id)return Bad(Stage,TEXT("custom_event_compiler_guid"));FSimpleMemberReference Ref;FMemberReference::FillSimpleMemberReference<UFunction>(Function,Ref);if(!Current(Stage))return false;Holds.Emplace(Function);CompilerEventReferences.Add(Node.Id,Ref);}
         Candidates.Reset();if(!CaptureGraphs(Candidates))return Bad(Stage,TEXT("reacquire_current_inventory"));
@@ -989,11 +990,11 @@ struct FWidgetLifecycleWork
         World.Reset(GEditor->GetEditorWorldContext().World());Package.Reset(BP->GetPackage());Path=BP->GetPathName();
         if(!Context()||!Loaded(Package.Get())||BP->GetOuter()!=Package.Get()||!BP->ParentClass.GetGCPtr().IsResolved()||BP->ParentClass.GetGCPtr().Get()!=UUserWidget::StaticClass()||BP->BlueprintType!=BPTYPE_Normal||!BP->GeneratedClass.GetGCPtr().IsResolved()||!BP->SkeletonGeneratedClass.GetGCPtr().IsResolved()||!BP->WidgetTree.IsResolved()||!BP->Bindings.IsEmpty()||!BP->Animations.IsEmpty()||!BP->ImplementedInterfaces.IsEmpty()||!BP->FunctionGraphs.IsEmpty()||!BP->MacroGraphs.IsEmpty()||BP->DelegateSignatureGraphs.Num()>1||BP->NewVariables.Num()>2||BP->UbergraphPages.Num()>1)
             return Fail(R,TEXT("widget_dispatcher_profile_pending"),TEXT("Loaded direct UserWidget, existing flat EventGraph, bounded native Canvas-root WidgetTree, no functions/macros/interfaces/animations/bindings, and at most one own dispatcher plus optional factory descriptor are admitted. Wider Widgets remain incomplete."));
-        Parent.Reset(UUserWidget::StaticClass());ParentFlags=Parent->GetClassFlags();if(!Parent->ClassDefaultObject.IsResolved())return Fail(R,TEXT("widget_dispatcher_parent_pending"),TEXT("Already-resolved nullable native parent CDO required."));ParentCDO.Reset(Parent->ClassDefaultObject.Get());Tree.Reset(BP->WidgetTree.Get());if(!Loaded(Tree.Get())||Tree->GetOuter()!=BP.Get()||!Tree->RootWidget.IsResolved())return Fail(R,TEXT("widget_dispatcher_tree_pending"),TEXT("Resolved owned WidgetTree required."));
+        Parent.Reset(UUserWidget::StaticClass());ParentFlags=Parent->GetClassFlags();if(!Cubeless::UE58::GetClassDefaultObjectSlot(Parent).IsResolved())return Fail(R,TEXT("widget_dispatcher_parent_pending"),TEXT("Already-resolved nullable native parent CDO required."));ParentCDO.Reset(Parent->GetDefaultObject(false));Tree.Reset(BP->WidgetTree.Get());if(!Loaded(Tree.Get())||Tree->GetOuter()!=BP.Get()||!Tree->RootWidget.IsResolved())return Fail(R,TEXT("widget_dispatcher_tree_pending"),TEXT("Resolved owned WidgetTree required."));
         Root.Reset(Cast<UCanvasPanel>(Tree->RootWidget.Get()));if(!Loaded(Root.Get())||Root->GetClass()!=UCanvasPanel::StaticClass()||Root->GetOuter()!=Tree.Get()||!Root->Slot.IsResolved()||Root->Slot.Get()!=nullptr)return Fail(R,TEXT("widget_dispatcher_canvas_pending"),TEXT("The bounded native UMG profile requires one owned Canvas root with no parent slot."));
         Gen.Reset(BP->GeneratedClass.GetGCPtr().Get());Skel.Reset(BP->SkeletonGeneratedClass.GetGCPtr().Get());if(!Loaded(Gen.Get())||!Loaded(Skel.Get())||Gen->GetClass()!=UWidgetBlueprintGeneratedClass::StaticClass()||!Skel->GetClass()->IsChildOf(UBlueprintGeneratedClass::StaticClass()))return Fail(R,TEXT("widget_dispatcher_generated_roles_pending"),TEXT("Actual Widget generated class and observed Blueprint skeleton subtype required."));
         GenMeta=Gen->GetClass();SkelMeta=Skel->GetClass();Holds.Emplace(GenMeta);Holds.Emplace(SkelMeta);GenPath=Gen->GetPathName();SkelPath=Skel->GetPathName();
-        if(!ClassRole(Gen.Get(),GenMeta,GenPath)||!ClassRole(Skel.Get(),SkelMeta,SkelPath))return Fail(R,TEXT("widget_dispatcher_class_role_pending"),TEXT("Current class/source/outer roles required."));GenCDO.Reset(Gen->ClassDefaultObject.Get());SkelCDO.Reset(Skel->ClassDefaultObject.Get());if(!CDO(Gen.Get(),GenCDO.Get())||!CDO(Skel.Get(),SkelCDO.Get()))return Fail(R,TEXT("widget_dispatcher_cdo_role_pending"),TEXT("Existing nullable CDO roles required; none are constructed."));
+        if(!ClassRole(Gen.Get(),GenMeta,GenPath)||!ClassRole(Skel.Get(),SkelMeta,SkelPath))return Fail(R,TEXT("widget_dispatcher_class_role_pending"),TEXT("Current class/source/outer roles required."));GenCDO.Reset(Gen->GetDefaultObject(false));SkelCDO.Reset(Skel->GetDefaultObject(false));if(!CDO(Gen.Get(),GenCDO.Get())||!CDO(Skel.Get(),SkelCDO.Get()))return Fail(R,TEXT("widget_dispatcher_cdo_role_pending"),TEXT("Existing nullable CDO roles required; none are constructed."));
         CompiledTreeField=FindFProperty<FObjectProperty>(UWidgetBlueprintGeneratedClass::StaticClass(),TEXT("WidgetTree"));if(!CompiledTreeField)return Fail(R,TEXT("widget_dispatcher_compiled_tree_pending"),TEXT("Public reflected native compiled WidgetTree field required; no private member access."));CompiledTreeOffset=CompiledTreeField->GetOffset_ForInternal();
         if(!ReadWidgetTree(Tree.Get(),AuthoredTree))return Fail(R,TEXT("widget_dispatcher_authored_tree_pending"),TEXT("Bounded native UMG widget/slot ownership, closed ordered tree and reflected authored values required; custom/nested/opaque/bound trees remain incomplete."));
         if(!CaptureCompiledTrees(CompiledTrees))return Fail(R,TEXT("widget_dispatcher_compiled_tree_pending"),TEXT("Actual nullable compiled WidgetTree/root roles required."));
@@ -1001,7 +1002,7 @@ struct FWidgetLifecycleWork
         TreePath=Tree->GetPathName();RootPath=Root->GetPathName();IsVariable=Root->bIsVariable;Visibility=Root->GetVisibility();Enabled=Root->GetIsEnabled();Opacity=Root->GetRenderOpacity();Transform=Root->GetRenderTransform();Pivot=Root->GetRenderTransformPivot();Clipping=Root->GetClipping();
         for(const auto* Category:{&BP->UbergraphPages,&BP->FunctionGraphs,&BP->MacroGraphs,&BP->DelegateSignatureGraphs})for(const auto& H:*Category)if(!H.IsResolved()||!Loaded(H.Get()))return Fail(R,TEXT("widget_dispatcher_graph_slot_pending"),TEXT("Authored graph slots must already be resolved."));
         Uber=BP->UbergraphPages;Functions=BP->FunctionGraphs;Macros=BP->MacroGraphs;Delegates=BP->DelegateSignatureGraphs;Variables=BP->NewVariables;WidgetGuids=BP->WidgetVariableNameToGuidMap;
-        if(!UBlueprintEditorSettings::StaticClass()->ClassDefaultObject.IsResolved())return Fail(R,TEXT("widget_dispatcher_save_policy_pending"),TEXT("Already-resolved Editor save policy required."));Policy.Reset(Cast<UBlueprintEditorSettings>(UBlueprintEditorSettings::StaticClass()->ClassDefaultObject.Get()));
+        if(!Cubeless::UE58::GetClassDefaultObjectSlot(UBlueprintEditorSettings::StaticClass()).IsResolved())return Fail(R,TEXT("widget_dispatcher_save_policy_pending"),TEXT("Already-resolved Editor save policy required."));Policy.Reset(Cast<UBlueprintEditorSettings>(UBlueprintEditorSettings::StaticClass()->GetDefaultObject(false)));
         if(!Policy.IsValid()||Policy->SaveOnCompile!=SoC_Never)return Fail(R,TEXT("widget_dispatcher_save_policy_pending"),TEXT("Existing SaveOnCompile must be Never; settings are not changed."));
         if(!Current(TEXT("widget_dispatcher_bind"))||!CaptureGraphs(Graphs)||!Current(TEXT("widget_dispatcher_capture"))||!ObserveDelegateSources(Graphs,TEXT("create_delegate_initial_sources"))||!Displays(Graphs,TEXT("widget_dispatcher_initial_text")))return Stopped?false:Bad(TEXT("bind"),TEXT("initial_graph_capture"));
         R.Data->SetBoolField(TEXT("widget_dispatcher_contract"),true);R.Data->SetBoolField(TEXT("implicit_skeleton_compile_possible"),true);R.Data->SetStringField(TEXT("implicit_compile_scope"),TEXT("Original member/category/metadata/structural helpers may regenerate skeleton/class/CDO; actual explicit full compile and save remain zero."));R.Data->SetStringField(TEXT("blueprint"),Path);R.Data->SetBoolField(TEXT("explicit_compile_requested"),false);R.Data->SetBoolField(TEXT("explicit_save_requested"),false);R.Data->SetBoolField(TEXT("automatic_retry_performed"),false);
@@ -1151,12 +1152,12 @@ struct FGeneratedDispatcherParents
     }
     bool ClassCurrent(const FClassRole& C,UBlueprint* B)
     {
-        auto* K=C.Class.Get();if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||K->GetSuperClass()!=C.Super||K->GetPathName()!=C.Path||K->GetPropertiesSize()!=C.Size||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=B||!K->ClassDefaultObject.IsResolved()||K->ClassDefaultObject.Get()!=C.Default.Get())return Stop(TEXT("parent_class_cdo_role"),C.Path);
+        auto* K=C.Class.Get();if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||K->GetSuperClass()!=C.Super||K->GetPathName()!=C.Path||K->GetPropertiesSize()!=C.Size||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=B||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()||K->GetDefaultObject(false)!=C.Default.Get())return Stop(TEXT("parent_class_cdo_role"),C.Path);
         if(C.Default.Get()&&(!Loaded(C.Default.Get())||C.Default->GetClass()!=K||!C.Default->HasAnyFlags(RF_ClassDefaultObject)))return Stop(TEXT("parent_cdo_role"),C.Path);
         int32 I=0;for(TFieldIterator<FProperty> It(K,EFieldIterationFlags::None);It;++It,++I){if(!C.Fields.IsValidIndex(I))return Stop(TEXT("parent_field_inventory"),C.Path);const auto& F=C.Fields[I];auto* P=*It;if(P!=F.P||P->GetOwnerStruct()!=K||P->GetClass()!=F.Kind||P->GetFName()!=F.Name||uint64(P->GetPropertyFlags())!=F.Flags||P->GetOffset_ForInternal()!=F.Offset||P->GetSize()!=F.Size||P->ArrayDim!=F.Dim||P->HasSetterOrGetter())return Stop(TEXT("parent_field_role"),C.Path);if(auto* D=CastField<FMulticastDelegateProperty>(P))if(!D->SignatureFunction.IsResolved()||D->SignatureFunction.Get()!=F.DelegateSignature||(F.DelegateSignature&&!Loaded(F.DelegateSignature)))return Stop(TEXT("parent_delegate_signature_role"),C.Path);}return I==C.Fields.Num()||Stop(TEXT("parent_field_count"),C.Path);
     }
     bool LeafClass(UClass* K)
-    {return Loaded(K)&&K->GetClass()==UBlueprintGeneratedClass::StaticClass()&&K->ClassGeneratedBy.IsResolved()&&K->ClassGeneratedBy.Get()==Target.Get()&&Loaded(K->GetSuperClass())&&K->ClassDefaultObject.IsResolved()&&(!K->ClassDefaultObject.Get()||(Loaded(K->ClassDefaultObject.Get())&&K->ClassDefaultObject->GetClass()==K));}
+    {return Loaded(K)&&K->GetClass()==UBlueprintGeneratedClass::StaticClass()&&K->ClassGeneratedBy.IsResolved()&&K->ClassGeneratedBy.Get()==Target.Get()&&Loaded(K->GetSuperClass())&&Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved()&&(!K->GetDefaultObject(false)||(Loaded(K->GetDefaultObject(false))&&Cubeless::UE58::GetClassDefaultObjectSlot(K)->GetClass()==K));}
     bool Current()
     {
         if(!Active)return !Stopped;if(Stopped)return false;
@@ -1174,7 +1175,7 @@ struct FGeneratedDispatcherParents
     }
     bool BindClass(FClassRole& Out,UBlueprintGeneratedClass* K,UBlueprint* B)
     {
-        if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=B||!K->ClassDefaultObject.IsResolved())return Stop(TEXT("parent_class_binding"));Out.Class.Reset(K);Out.Default.Reset(K->ClassDefaultObject.Get());Out.Super=K->GetSuperClass();Out.Path=K->GetPathName();Out.Size=K->GetPropertiesSize();Holds.Emplace(Out.Super);
+        if(!Loaded(K)||K->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!K->ClassGeneratedBy.IsResolved()||K->ClassGeneratedBy.Get()!=B||!Cubeless::UE58::GetClassDefaultObjectSlot(K).IsResolved())return Stop(TEXT("parent_class_binding"));Out.Class.Reset(K);Out.Default.Reset(K->GetDefaultObject(false));Out.Super=K->GetSuperClass();Out.Path=K->GetPathName();Out.Size=K->GetPropertiesSize();Holds.Emplace(Out.Super);
         for(TFieldIterator<FProperty> It(K,EFieldIterationFlags::None);It;++It){auto* P=*It;if(Out.Fields.Num()>=256||P->HasSetterOrGetter()||P->GetOwnerStruct()!=K||P->ArrayDim<1||P->GetOffset_ForInternal()<0||int64(P->GetOffset_ForInternal())+P->GetSize()>Out.Size)return Stop(TEXT("parent_field_scope"));FFieldRole F;F.P=P;F.Kind=P->GetClass();F.Name=P->GetFName();F.Flags=uint64(P->GetPropertyFlags());F.Offset=P->GetOffset_ForInternal();F.Size=P->GetSize();F.Dim=P->ArrayDim;if(auto* D=CastField<FMulticastDelegateProperty>(P)){if(!D->SignatureFunction.IsResolved())return Stop(TEXT("parent_delegate_signature_unresolved"));F.DelegateSignature=D->SignatureFunction.Get();if(F.DelegateSignature){if(!Loaded(F.DelegateSignature))return Stop(TEXT("parent_delegate_signature_unavailable"));Holds.Emplace(F.DelegateSignature);}}Out.Fields.Add(MoveTemp(F));}
         return ClassCurrent(Out,B);
     }

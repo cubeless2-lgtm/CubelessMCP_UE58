@@ -1,5 +1,6 @@
 // DE specialized LocalPlayer-subsystem getter and GenericCreateObject authoring only.
 #include "Compatibility/UE58/CubelessBlueprintConstructionApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Compatibility/UE58/CubelessFunctionPinApi.h"
 #include "Dom/JsonValue.h"
@@ -466,7 +467,7 @@ struct FGeneratedConstruct
             if(!B->GeneratedClass.GetGCPtr().IsResolved()||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=Generated.Get()||B->SkeletonGeneratedClass.GetGCPtr().Get()!=Skeleton.Get())return Bad(TEXT("source_class_slots"));
             for(UClass* C:{Generated.Get(),Skeleton.Get()})if(!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy.Get()!=B||C->GetOuter()!=SourcePackage.Get()||C->GetSuperClass()!=(C==Skeleton.Get()?SourceSkeletonParent.Get():Parent.Get()))return Bad(TEXT("source_class_current"));
             if(!SourceParentCurrent())return Bad(TEXT("source_parent_roles_changed"));
-            if(Generated->GetFlags()!=GeneratedFlags||Skeleton->GetFlags()!=SkeletonFlags||Generated->GetClassFlags()!=GeneratedClassFlags||Skeleton->GetClassFlags()!=SkeletonClassFlags||!Generated->GetPathName().Equals(GeneratedPath,ESearchCase::CaseSensitive)||!Skeleton->GetPathName().Equals(SkeletonPath,ESearchCase::CaseSensitive)||!Generated->ClassDefaultObject.IsResolved()||Generated->ClassDefaultObject.Get()!=CDO.Get())return Bad(TEXT("source_class_path_or_cdo"));
+            if(Generated->GetFlags()!=GeneratedFlags||Skeleton->GetFlags()!=SkeletonFlags||Generated->GetClassFlags()!=GeneratedClassFlags||Skeleton->GetClassFlags()!=SkeletonClassFlags||!Generated->GetPathName().Equals(GeneratedPath,ESearchCase::CaseSensitive)||!Skeleton->GetPathName().Equals(SkeletonPath,ESearchCase::CaseSensitive)||!Cubeless::UE58::GetClassDefaultObjectSlot(Generated).IsResolved()||Generated->GetDefaultObject(false)!=CDO.Get())return Bad(TEXT("source_class_path_or_cdo"));
             if(CDO.IsValid()&&(!Loaded(CDO.Get())||CDO->GetClass()!=Generated.Get()||CDO->GetOuter()!=CDOOuter||CDO->GetFlags()!=CDOFlags||!CDO->GetPathName().Equals(CDOPath,ESearchCase::CaseSensitive)))return Bad(TEXT("source_cdo_current"));
             if(B->FunctionGraphs!=SourceFunctions||B->MacroGraphs!=SourceMacros||B->UbergraphPages!=SourceEvents||B->DelegateSignatureGraphs!=SourceDelegates||!FieldsCurrent(Generated.Get(),Fields)||!FieldsCurrent(Skeleton.Get(),SkeletonFields))return Bad(TEXT("source_roles"));TArray<UEdGraph*> All;B->GetAllGraphs(All);if(All!=SourceGraphs)return Bad(TEXT("source_graph_inventory"));
         }
@@ -703,8 +704,8 @@ struct FGeneratedConstruct
         if(!Context()||!Loaded(C)||C->GetClass()!=UBlueprintGeneratedClass::StaticClass()||!C->GetPathName().Equals(Path,ESearchCase::CaseSensitive)||!C->ClassGeneratedBy.IsResolved())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("An already loaded resolved generated class is required; no loader or compile fallback."));
         UObject* Object=C->ClassGeneratedBy.Get();TStrongObjectPtr<UObject> HeldObject(Object);if(!Context()||!Loaded(Object)||Object->GetClass()!=UBlueprint::StaticClass())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("Exact owning Blueprint source required."));
         auto* B=static_cast<UBlueprint*>(Object);if(B->GetOuter()!=B->GetPackage()||B->GetPackage()->IsDirty()||B->Status!=BS_UpToDate||B->BlueprintType!=BPTYPE_Normal||B->bBeingCompiled||B->bQueuedForCompilation||B->bIsRegeneratingOnLoad||B->SimpleConstructionScript||!B->ImplementedInterfaces.IsEmpty()||!B->ParentClass.GetGCPtr().IsResolved()||B->ParentClass.GetGCPtr().Get()==nullptr||!B->GeneratedClass.GetGCPtr().IsResolved()||B->GeneratedClass.GetGCPtr().Get()!=C||!B->SkeletonGeneratedClass.GetGCPtr().IsResolved()||B->NewVariables.Num()>32)return Fail(R,TEXT("construction_generated_source_scope_pending"),TEXT("Saved-clean normal UObject-family Blueprint with no SCS/interfaces and at most32 own primitive scalar/primitive Array or native Vector/Rotator/Transform scalar members required; bounded generated UObject-parent hierarchy is admitted separately, wider native/custom parents and values remain incomplete."));
-        UClass* S=B->SkeletonGeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldSkeleton(S);if(!Context()||!Loaded(S)||!C->ClassDefaultObject.IsResolved())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("Current skeleton and resolved existing nullable CDO slot required."));
-        UObject* Default=C->ClassDefaultObject.Get();TStrongObjectPtr<UObject> HeldDefault(Default);if(!Context()||(Default&&(!Loaded(Default)||Default->GetClass()!=C||Default->GetPackage()!=B->GetPackage())))return Fail(R,TEXT("construction_generated_source_cdo_unavailable"),TEXT("The returned existing CDO must be live and owned by the source; no construction fallback."));
+        UClass* S=B->SkeletonGeneratedClass.GetGCPtr().Get();TStrongObjectPtr<UClass> HeldSkeleton(S);if(!Context()||!Loaded(S)||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())return Fail(R,TEXT("construction_generated_source_unavailable"),TEXT("Current skeleton and resolved existing nullable CDO slot required."));
+        UObject* Default=C->GetDefaultObject(false);TStrongObjectPtr<UObject> HeldDefault(Default);if(!Context()||(Default&&(!Loaded(Default)||Default->GetClass()!=C||Default->GetPackage()!=B->GetPackage())))return Fail(R,TEXT("construction_generated_source_cdo_unavailable"),TEXT("The returned existing CDO must be live and owned by the source; no construction fallback."));
         UClass* ActualParent=B->ParentClass.GetGCPtr().Get();UClass* ActualSkeletonParent=UObject::StaticClass();UBlueprint* ParentBP=nullptr;
         if(ActualParent!=UObject::StaticClass())
         {
@@ -781,7 +782,7 @@ struct FGeneratedConstruct
             auto* C=E.Class.Get();auto* P=E.Package.Get();auto* D=E.Default.Get();
             if(!Loaded(C)||!Loaded(P)||!Loaded(D)||C->GetClass()!=UClass::StaticClass()||C->GetOuter()!=P||C->GetPackage()!=P
                 ||C->GetSuperClass()!=E.Super.Get()||C->GetClassFlags()!=E.ClassFlags||C->GetFlags()!=E.ClassObjectFlags
-                ||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!C->ClassDefaultObject.IsResolved()||C->ClassDefaultObject.Get()!=D
+                ||!C->ClassGeneratedBy.IsResolved()||C->ClassGeneratedBy!=nullptr||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||C->GetDefaultObject(false)!=D
                 ||!C->GetPathName().Equals(E.ClassPath,ESearchCase::CaseSensitive)||P->IsDirty()||uint32(P->GetPackageFlags())!=E.PackageFlags
                 ||D->GetClass()!=C||D->GetOuter()!=P||D->GetPackage()!=P||D->GetFlags()!=E.DefaultFlags||!D->GetPathName().Equals(E.DefaultPath,ESearchCase::CaseSensitive))return Bad(TEXT("target_native_parent_role_changed"));
         }
@@ -794,8 +795,8 @@ struct FGeneratedConstruct
         TArray<TSharedPtr<FJsonValue>> Rows;TSet<UClass*> Seen;
         for(UClass* C=TargetParent.Get();C;C=C->GetSuperClass())
         {
-            FTargetParentRole E;E.Class.Reset(C);if(!Loaded(C)||Seen.Contains(C)||Seen.Num()>=64||!C->ClassDefaultObject.IsResolved())return Bad(TEXT("target_native_parent_capture"));Seen.Add(C);
-            E.Package.Reset(C->GetPackage());E.Super.Reset(C->GetSuperClass());E.Default.Reset(C->ClassDefaultObject.Get());
+            FTargetParentRole E;E.Class.Reset(C);if(!Loaded(C)||Seen.Contains(C)||Seen.Num()>=64||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())return Bad(TEXT("target_native_parent_capture"));Seen.Add(C);
+            E.Package.Reset(C->GetPackage());E.Super.Reset(C->GetSuperClass());E.Default.Reset(C->GetDefaultObject(false));
             if(!Loaded(E.Package.Get())||!Loaded(E.Default.Get())||E.Default->GetClass()!=C||E.Default->GetOuter()!=E.Package.Get()||!E.Default->HasAnyFlags(RF_ClassDefaultObject))return Bad(TEXT("target_native_parent_CDO_unavailable"));
             E.ClassPath=C->GetPathName();E.DefaultPath=E.Default->GetPathName();E.ClassObjectFlags=C->GetFlags();E.DefaultFlags=E.Default->GetFlags();E.ClassFlags=C->GetClassFlags();E.PackageFlags=uint32(E.Package->GetPackageFlags());
             auto Row=MakeShared<FJsonObject>();Row->SetStringField(TEXT("class"),E.ClassPath);Row->SetStringField(TEXT("CDO"),E.DefaultPath);Row->SetNumberField(TEXT("class_flags"),uint32(E.ClassFlags));Row->SetNumberField(TEXT("package_flags"),E.PackageFlags);Rows.Add(MakeShared<FJsonValueObject>(Row));TargetParentRoles.Add(MoveTemp(E));

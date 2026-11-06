@@ -62,7 +62,7 @@ struct FWork
     bool Admit(const TCHAR* Stage,bool CheckTarget=true)
     {
         R.Stage=Stage;
-        if(!IsInGameThread()||IsEngineExitRequested()||GExitPurge||!GEditor||IsGarbageCollecting()||GIsSavingPackage){return Fail(TEXT("gas_editor_context_unavailable"),TEXT("Editor game thread, no GC or package save required; no automatic retry."));}
+        if(!IsInGameThread()||IsEngineExitRequested()||GExitPurge||!GEditor||IsGarbageCollecting()||UE::IsSavingPackage()){return Fail(TEXT("gas_editor_context_unavailable"),TEXT("Editor game thread, no GC or package save required; no automatic retry."));}
         if(Writer&&(GEditor->GetPIEWorldContext()||GEditor->PlayWorld)){return Fail(TEXT("gas_play_session_active"),TEXT("GAS structural authoring is unavailable during PIE/SIE."));}
         if(Cleaning&&GEditor->IsTransactionActive()){return Fail(TEXT("gas_cleanup_transaction_active"),TEXT("Cleanup stopped because an Editor transaction became active; preserve residual output."));}
         UWorld* Current=GEditor->GetEditorWorldContext().World();
@@ -512,7 +512,7 @@ void CollectMCPPackageAuditTokens(
     }
 
     TArray<UObject*> PackageExports;
-    GetObjectsWithPackage(Package, PackageExports, true, RF_Transient, EInternalObjectFlags::Garbage);
+    GetObjectsWithPackage(Package, PackageExports, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
 
     constexpr int32 MaxPackageExports = 16384;
     const int32 ExportCountToInspect = FMath::Min(PackageExports.Num(), MaxPackageExports);
@@ -813,7 +813,7 @@ bool FGasCompatibility::TryCleanupNewAssetAfterFailedDependencyAudit(UObject* Ne
     if(!CaptureOwnedClass(Blueprint->GeneratedClass,AssetName+TEXT("_C"))||!CaptureOwnedClass(Blueprint->SkeletonGeneratedClass,TEXT("SKEL_")+AssetName+TEXT("_C"))){return Refuse(TEXT("cleanup_refused: generated/skeleton class ownership or expected identity differs"));}
     const TWeakObjectPtr<UClass> OriginalGenerated=Blueprint->GeneratedClass,OriginalSkeleton=Blueprint->SkeletonGeneratedClass;
     auto OwnedClassExact=[&](){if(!Live(Blueprint)||Blueprint->GeneratedClass!=OriginalGenerated.Get()||Blueprint->SkeletonGeneratedClass!=OriginalSkeleton.Get()){return false;}for(int32 I=0;I<OwnedClasses.Num();++I){auto* C=OwnedClasses[I].Get();if(!Live(C)||C->IsRooted()||!OwnedClassTypes[I].IsValid()||C->GetClass()!=OwnedClassTypes[I].Get()||C->ClassGeneratedBy!=Blueprint||C->GetOuter()!=Package.Get()||C->GetOutermost()!=Package.Get()||!C->GetName().Equals(OwnedNames[I],ESearchCase::CaseSensitive)){return false;}}return true;};
-    auto NoForeignAssets=[&](){TArray<UObject*> Exports;GetObjectsWithPackage(Package.Get(),Exports,true,RF_Transient,EInternalObjectFlags::Garbage);for(const auto* O:Exports){if(O&&O!=NewAsset&&O->IsAsset()){bool ExactOwned=false;for(const auto& C:OwnedClasses){ExactOwned|=O==C.Get();}if(!ExactOwned){return false;}}}return true;};
+    auto NoForeignAssets=[&](){TArray<UObject*> Exports;GetObjectsWithPackage(Package.Get(),Exports,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);for(const auto* O:Exports){if(O&&O!=NewAsset&&O->IsAsset()){bool ExactOwned=false;for(const auto& C:OwnedClasses){ExactOwned|=O==C.Get();}if(!ExactOwned){return false;}}}return true;};
     if(!OwnedClassExact()||!NoForeignAssets()){return Refuse(TEXT("cleanup_refused: package contains a foreign asset or generated class changed"));}
     W.Cleanup->SetNumberField(TEXT("exact_owned_generated_class_count"),OwnedClasses.Num());
 
@@ -845,7 +845,7 @@ bool FGasCompatibility::TryCleanupNewAssetAfterFailedDependencyAudit(UObject* Ne
     if(!PackageExact()||!W.SDK(TEXT("cleanup_package_dirty_and_registry"),true)){return Refuse(TEXT("cleanup_incomplete: package unavailable after file deletion"));}Package->SetDirtyFlag(false);FAssetRegistryModule::PackageDeleted(Package.Get());
     if(!PackageExact()||!W.SDK(TEXT("cleanup_residual_observation"))){return Refuse(TEXT("cleanup_incomplete: residual observation unsafe"));}FAssetRegistryModule& Registry=FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));const bool Registered=Registry.Get().GetAssetByObjectPath(FSoftObjectPath(Path)).IsValid();
     if(!PackageExact()){return Refuse(TEXT("cleanup_incomplete: context lost during residual query"));}UObject* Remaining=FindObject<UObject>(nullptr,*Path);FString RemainingFilename;const bool PackageExists=FPackageName::DoesPackageExist(PackagePath,&RemainingFilename);
-    TArray<UObject*> ResidualExports;GetObjectsWithPackage(Package.Get(),ResidualExports,true,RF_Transient,EInternalObjectFlags::Garbage);bool ResidualAsset=false;for(const auto* O:ResidualExports){ResidualAsset|=O&&O->IsAsset();}
+    TArray<UObject*> ResidualExports;GetObjectsWithPackage(Package.Get(),ResidualExports,EGetObjectsFlags::IncludeNestedObjects,RF_Transient,EInternalObjectFlags::Garbage);bool ResidualAsset=false;for(const auto* O:ResidualExports){ResidualAsset|=O&&O->IsAsset();}
     if((Remaining&&Remaining->IsAsset())||ResidualAsset||Registered||PackageExists||FPaths::FileExists(Filename)){return Refuse(TEXT("cleanup_incomplete: object/registry/package/file residual remains"));}
     W.Cleanup->SetBoolField(TEXT("complete"),true);W.Cleanup->SetBoolField(TEXT("residual"),false);W.Cleanup->SetBoolField(TEXT("atomicity_available"),false);W.Cleanup->SetStringField(TEXT("scope"),TEXT("Exact owned new output only. Public hooks/file TOCTOU/global SDK effects are not atomically rolled back; actual saved history remains."));return true;
 }

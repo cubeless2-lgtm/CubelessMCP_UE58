@@ -8,6 +8,7 @@
 // graph-spec spatial creation, generation and actual use/save/reload remain unverified/incomplete.
 // GY dedicated PCG graph basic authoring. Editor-only source candidate; production construction GC gate remains closed.
 #include "Compatibility/UE58/CubelessPCGGraphAuthoringApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessPCGApi.h"
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
@@ -78,7 +79,7 @@ FString FreshSha256Bytes(const void*,uint32);
 // This source does not fix the preserved AI3/AJ2/AW2 GC health failure. No public override.
 constexpr bool ConstructionHealthVerified=false;
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
-bool Safe(){return IsInGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!GIsSavingPackage&&Live(GEditor);}
+bool Safe(){return IsInGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!IsGarbageCollecting()&&!UE::IsSavingPackage()&&Live(GEditor);}
 bool Same(const FString& A,const FString& B){return A.Equals(B,ESearchCase::CaseSensitive);}
 bool Forbidden(const FString& S){auto L=S.ToLower();return L.Contains(TEXT("unrealmcp"))||L.Contains(TEXT("cubelessmcp"))||L.Contains(TEXT("toolsetregistry"))||L.Contains(TEXT("modelcontextprotocol"));}
 FString Json(const TSharedPtr<FJsonObject>& O){FString S;if(O)FJsonSerializer::Serialize(O.ToSharedRef(),TJsonWriterFactory<>::Create(&S));return S;}
@@ -410,7 +411,7 @@ struct FFreshClass
  UClass* Class=nullptr;UObject* CDO=nullptr;UPackage* Package=nullptr;uint32 PackageFlags=0;EObjectFlags CDOFlags=RF_NoFlags;EClassFlags Flags=CLASS_None;int32 Size=0;TArray<FProperty*> Inventory;TArray<FFreshField> Fields;TObjectPtr<UObject> CDOHandle;TArray<UStruct*> Supers;
  bool Exact()const
  {
-  if(!Live(Class)||Class->GetPackage()!=Package||!Live(Package)||Package->IsDirty()||Package->GetPackageFlags()!=PackageFlags||Class->GetClassFlags()!=Flags||Class->GetPropertiesSize()!=Size||!Class->ClassDefaultObject.IsResolved()||Class->ClassDefaultObject!=CDOHandle||Class->ClassDefaultObject!=CDO||(CDO&&(!Live(CDO)||CDO->GetFlags()!=CDOFlags)))return false;
+  if(!Live(Class)||Class->GetPackage()!=Package||!Live(Package)||Package->IsDirty()||Package->GetPackageFlags()!=PackageFlags||Class->GetClassFlags()!=Flags||Class->GetPropertiesSize()!=Size||!Cubeless::UE58::GetClassDefaultObjectSlot(Class).IsResolved()||Cubeless::UE58::GetClassDefaultObjectSlot(Class)!=CDOHandle||Cubeless::UE58::GetClassDefaultObjectSlot(Class)!=CDO||(CDO&&(!Live(CDO)||CDO->GetFlags()!=CDOFlags)))return false;
   TArray<UStruct*> CurrentSupers;for(auto It=Class->GetSuperStructIterator();It;++It)CurrentSupers.Add(*It);if(CurrentSupers!=Supers)return false;
   TArray<FProperty*> CurrentFields;for(UStruct* Super:Supers)for(TFieldIterator<FProperty> It(Super,EFieldIterationFlags::None);It;++It)CurrentFields.Add(*It);if(CurrentFields!=Inventory)return false;
   for(const auto& Field:Fields)if(!Field.Exact())return false;return true;
@@ -435,7 +436,7 @@ struct FFreshRequest
   TArray<TFunction<bool()>> GeneralScalarChecks;UPCGSettings* GeneralMutableSettings=nullptr;FProperty* GeneralMutableField=nullptr;
   bool CaptureBegin(UPCGGraph* G)
  {
-  CapturingReferences=false;CaptureReferences.Reset();CaptureObjects.Reset();GetObjectsWithOuter(G,CaptureObjects,true);CaptureObjects.Insert(G,0);
+  CapturingReferences=false;CaptureReferences.Reset();CaptureObjects.Reset();GetObjectsWithOuter(G,CaptureObjects,EGetObjectsFlags::IncludeNestedObjects);CaptureObjects.Insert(G,0);
   if(CaptureObjects.Num()>262144)return Fail(TEXT("pcg_fresh_capture_budget"),TEXT("Owned object tree exceeds bounded capture"));
   for(UObject* O:CaptureObjects)
   {
@@ -513,21 +514,21 @@ struct FFreshRequest
  bool KeepReturned(const UObject* O,const TCHAR* Key)
  {
   W.R.Data->SetBoolField(FString(Key)+TEXT("_returned_nonnull"),O!=nullptr);W.R.Data->SetBoolField(FString(Key)+TEXT("_identity_observed"),false);
-  if(!O||!IsInGameThread()||IsGarbageCollecting()||GIsSavingPackage||GExitPurge||IsEngineExitRequested()||!Live(O))return false;
+  if(!O||!IsInGameThread()||IsGarbageCollecting()||UE::IsSavingPackage()||GExitPurge||IsEngineExitRequested()||!Live(O))return false;
   auto Identity=MakeUnique<FObjectIdentity>(O);auto J=MakeShared<FJsonObject>();J->SetStringField(TEXT("object_path"),Identity->Path);J->SetStringField(TEXT("class_path"),O->GetClass()->GetPathName());J->SetStringField(TEXT("outer_path"),O->GetOuter()?O->GetOuter()->GetPathName():FString());J->SetStringField(TEXT("package_path"),O->GetOutermost()->GetPathName());J->SetStringField(TEXT("flags_string"),FString::Printf(TEXT("%u"),static_cast<uint32>(O->GetFlags())));
   if(!W.Objects.ContainsByPredicate([&](const TUniquePtr<FObjectIdentity>& I){return !I->Retired&&I->Object.Get()==O;}))W.Objects.Add(MoveTemp(Identity));W.R.Data->SetObjectField(FString(Key)+TEXT("_identity"),J);W.R.Data->SetBoolField(FString(Key)+TEXT("_identity_observed"),true);return true;
  }
  bool ClassSource(UClass* C)
  {
   if(Sources.ContainsByPredicate([&](const FFreshClass& S){return S.Class==C;}))return true;
-  if(!W.Pin(C)||!C->HasAllClassFlags(CLASS_Native)||C->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||!C->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||C->GetPackage()->IsDirty()||!C->ClassDefaultObject.IsResolved())return Fail(TEXT("pcg_fresh_source_unsupported"),TEXT("Exact loaded native source class/package/resolved CDO required"));
-  FFreshClass S;S.Class=C;S.Package=C->GetPackage();S.PackageFlags=S.Package->GetPackageFlags();if(!W.Pin(S.Package))return false;S.Flags=C->GetClassFlags();S.Size=C->GetPropertiesSize();S.CDOHandle=C->ClassDefaultObject;
+  if(!W.Pin(C)||!C->HasAllClassFlags(CLASS_Native)||C->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||!C->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn)||C->GetPackage()->IsDirty()||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())return Fail(TEXT("pcg_fresh_source_unsupported"),TEXT("Exact loaded native source class/package/resolved CDO required"));
+  FFreshClass S;S.Class=C;S.Package=C->GetPackage();S.PackageFlags=S.Package->GetPackageFlags();if(!W.Pin(S.Package))return false;S.Flags=C->GetClassFlags();S.Size=C->GetPropertiesSize();S.CDOHandle=Cubeless::UE58::GetClassDefaultObjectSlot(C);
   for(auto It=C->GetSuperStructIterator();It;++It){UStruct* Super=*It;if(!W.Pin(Super))return false;S.Supers.Add(Super);}
   for(UStruct* Super:S.Supers)for(TFieldIterator<FProperty> It(Super,EFieldIterationFlags::None);It;++It){S.Inventory.Add(*It);S.Fields.Emplace(*It);}
   if(S.CDOHandle!=nullptr)
   {
-   UObject* Existing=StaticFindObject(nullptr,C->GetPackage(),*(TEXT("Default__")+C->GetName()),false);
-   if(!W.Admit(TEXT("existing_source_cdo_lookup"))||!Live(Existing)||C->ClassDefaultObject!=S.CDOHandle||S.CDOHandle!=Existing||Existing->GetClass()!=C||!Existing->HasAllFlags(RF_ClassDefaultObject)||!W.Pin(Existing))return Fail(TEXT("pcg_fresh_source_cdo_changed"),TEXT("Existing exact source CDO lookup role unavailable; CDO creation not requested"));S.CDO=Existing;S.CDOFlags=Existing->GetFlags();
+   UObject* Existing=StaticFindObject(nullptr,C->GetPackage(),*(TEXT("Default__")+C->GetName()),EFindObjectFlags::None);
+   if(!W.Admit(TEXT("existing_source_cdo_lookup"))||!Live(Existing)||Cubeless::UE58::GetClassDefaultObjectSlot(C)!=S.CDOHandle||S.CDOHandle!=Existing||Existing->GetClass()!=C||!Existing->HasAllFlags(RF_ClassDefaultObject)||!W.Pin(Existing))return Fail(TEXT("pcg_fresh_source_cdo_changed"),TEXT("Existing exact source CDO lookup role unavailable; CDO creation not requested"));S.CDO=Existing;S.CDOFlags=Existing->GetFlags();
   }
   if(!S.CDO)return Fail(TEXT("pcg_fresh_source_cdo_unavailable"),TEXT("Constructor source CDO must already exist; this path does not adopt lazy source creation"));Sources.Add(MoveTemp(S));return W.Admit(TEXT("captured_fresh_native_source"));
  }
@@ -541,7 +542,7 @@ struct FFreshRequest
  {
   if(!W.Admit(Stage)||!Registry)return false;const FAssetData Asset=Registry->GetAssetByObjectPath(FSoftObjectPath(ObjectPath));if(!W.Admit(Stage))return false;
   const bool RegistryPresent=Asset.IsValid();const bool FilePresent=IFileManager::Get().FileExists(*File);const bool CachedDirectory=Registry->PathExists(PackagePath);if(!W.Admit(Stage))return false;const bool Directory=CachedDirectory||IFileManager::Get().DirectoryExists(*FPaths::GetBaseFilename(File,false));
-  const bool Loaded=FindPackage(nullptr,*PackagePath)!=nullptr||StaticFindObject(nullptr,nullptr,*ObjectPath,false)!=nullptr;
+  const bool Loaded=FindPackage(nullptr,*PackagePath)!=nullptr||StaticFindObject(nullptr,nullptr,*ObjectPath,EFindObjectFlags::None)!=nullptr;
   auto J=MakeShared<FJsonObject>();J->SetBoolField(TEXT("asset_registered"),RegistryPresent);J->SetBoolField(TEXT("loaded_package_or_object"),Loaded);J->SetBoolField(TEXT("directory_exists"),Directory);J->SetBoolField(TEXT("file_exists"),FilePresent);J->SetStringField(TEXT("file_path"),File);W.R.Data->SetObjectField(Stage,J);
   return (!RegistryPresent&&!FilePresent&&!Directory&&!Loaded)||(!FailIfPresent?false:Fail(Overwrite?TEXT("pcg_existing_target_overwrite_unsupported"):TEXT("pcg_asset_exists"),TEXT("Exact registry/loaded/file/directory target must be fresh; existing data is preserved")));
  }
@@ -821,7 +822,7 @@ struct FStandalonePointLayout
 // evidence only; its value is not part of the eight authored preservation fields.
 bool FreshProjectionSource(FFreshRequest& F)
 {
- auto& W=F.W;auto* T=Cast<UScriptStruct>(StaticFindObject(nullptr,nullptr,TEXT("/Script/PCG.PCGProjectionParams"),false));
+ auto& W=F.W;auto* T=Cast<UScriptStruct>(StaticFindObject(nullptr,nullptr,TEXT("/Script/PCG.PCGProjectionParams"),EFindObjectFlags::None));
  TStrongObjectPtr<UScriptStruct> LocalStruct(Safe()&&Live(T)?T:nullptr);
  if(!LocalStruct.IsValid()||!W.Admit(TEXT("projection_struct_lookup_return"))||!Live(T)||!W.Pin(T)||!W.Pin(T->GetPackage())||T!=FPCGProjectionParams::StaticStruct()||T->GetStructureSize()!=sizeof(FPCGProjectionParams)||T->GetMinAlignment()!=alignof(FPCGProjectionParams)||!(T->StructFlags&STRUCT_Native)||T->GetSuperStruct()!=nullptr||T->GetPackage()->IsDirty()||!T->GetPackage()->HasAnyPackageFlags(PKG_CompiledIn))return F.Fail(TEXT("pcg_projection_source_pending"),TEXT("Already-existing exact native ProjectionParams source/layout required; no source construction."));
  auto Source=MakeShared<FStandaloneSelectorSource>();Source->Struct=T;Source->Super=T->GetSuperStruct();Source->Flags=T->StructFlags;Source->Size=T->GetStructureSize();Source->Align=T->GetMinAlignment();
@@ -834,7 +835,7 @@ bool FreshProjectionSource(FFreshRequest& F)
   if(I==3){if(P->GetClass()!=FStrProperty::StaticClass()||P->GetSize()!=sizeof(FString))return false;continue;}
   auto* E=CastField<FEnumProperty>(P);auto* U=E?E->GetUnderlyingProperty():nullptr;if(!E||!U||U->GetOwner<FProperty>()!=P||U->GetClass()!=FByteProperty::StaticClass()||U->ArrayDim!=1||U->GetSize()!=sizeof(uint8)||P->GetSize()!=sizeof(uint8))return false;
   const TCHAR* Path=I==4?TEXT("/Script/PCG.EPCGProjectionColorBlendMode"):I==5?TEXT("/Script/PCG.EPCGMetadataFilterMode"):I==6?TEXT("/Script/PCG.EPCGMetadataOp"):TEXT("/Script/PCG.EPCGProjectionTagMergeMode");
-  auto* Enum=Cast<UEnum>(StaticFindObject(nullptr,nullptr,Path,false));TStrongObjectPtr<UEnum> LocalEnum(Safe()&&Live(Enum)?Enum:nullptr);if(!LocalEnum.IsValid()||!W.Admit(TEXT("projection_enum_lookup_return"))||!Source->Current()||!Live(Enum)||!W.Pin(Enum)||!W.Pin(Enum->GetPackage())||!Same(Enum->GetPathName(),Path))return false;
+  auto* Enum=Cast<UEnum>(StaticFindObject(nullptr,nullptr,Path,EFindObjectFlags::None));TStrongObjectPtr<UEnum> LocalEnum(Safe()&&Live(Enum)?Enum:nullptr);if(!LocalEnum.IsValid()||!W.Admit(TEXT("projection_enum_lookup_return"))||!Source->Current()||!Live(Enum)||!W.Pin(Enum)||!W.Pin(Enum->GetPackage())||!Same(Enum->GetPathName(),Path))return false;
   Source->Enums.Emplace(E,U,Enum);
  }
  const auto Package=T->GetPackage();const auto PackageFlags=Package->GetPackageFlags();const auto ObjectFlags=T->GetFlags();
@@ -1221,7 +1222,7 @@ struct FStandaloneRequest
   TSet<UClass*> Chain;TArray<UPackage*> AuditPackages;
   for(UClass* C=First;C;)
   {
-   if(Chain.Num()>=32||Chain.Contains(C)||!Live(C)||!W.Pin(C)||C->IsEditorOnly()||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface)||Forbidden(C->GetPathName())||!C->ClassGeneratedBy.IsResolved()||!C->ClassDefaultObject.IsResolved())return Bad(TEXT("pcg_data_source_filter_source_pending"),TEXT("Loaded bounded current runtime class chain required; no class load/default creation"));Chain.Add(C);
+   if(Chain.Num()>=32||Chain.Contains(C)||!Live(C)||!W.Pin(C)||C->IsEditorOnly()||C->HasAnyClassFlags(CLASS_Deprecated|CLASS_NewerVersionExists|CLASS_Interface)||Forbidden(C->GetPathName())||!C->ClassGeneratedBy.IsResolved()||!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())return Bad(TEXT("pcg_data_source_filter_source_pending"),TEXT("Loaded bounded current runtime class chain required; no class load/default creation"));Chain.Add(C);
    auto* Package=C->GetPackage();if(!Live(Package)||!W.Pin(Package)||Package->IsDirty()||Package->HasAnyPackageFlags(PKG_EditorOnly|PKG_Developer|PKG_UncookedOnly|PKG_PlayInEditor)||C->GetOuter()!=Package)return Bad(TEXT("pcg_data_source_filter_package_pending"),TEXT("Runtime native or saved-clean generated class package required"));
    const auto GeneratedBy=C->ClassGeneratedBy;const bool NativeClass=C->HasAnyClassFlags(CLASS_Native);
    UBlueprint* BP=nullptr;TObjectPtr<UClass> Generated,Skeleton,Parent;
@@ -1235,7 +1236,7 @@ struct FStandaloneRequest
    {
     // Reuse the established source inventory/hold checks, but permit abstract
     // filters and an actual nullable existing CDO instead of constructing one.
-    FFreshClass Source;Source.Class=C;Source.Package=Package;Source.PackageFlags=Package->GetPackageFlags();Source.Flags=C->GetClassFlags();Source.Size=C->GetPropertiesSize();Source.CDOHandle=C->ClassDefaultObject;
+    FFreshClass Source;Source.Class=C;Source.Package=Package;Source.PackageFlags=Package->GetPackageFlags();Source.Flags=C->GetClassFlags();Source.Size=C->GetPropertiesSize();Source.CDOHandle=Cubeless::UE58::GetClassDefaultObjectSlot(C);
     for(auto It=C->GetSuperStructIterator();It;++It){UStruct* Super=*It;if(!W.Pin(Super))return false;Source.Supers.Add(Super);}for(UStruct* Super:Source.Supers)for(TFieldIterator<FProperty> It(Super,EFieldIterationFlags::None);It;++It){Source.Inventory.Add(*It);Source.Fields.Emplace(*It);}
     if(Source.CDOHandle!=nullptr){const FString CDOPath=Source.CDOHandle.GetPathName();UObject* D=nullptr;if(!W.Read(TEXT("data_source_filter_existing_cdo_lookup"),[&]{return StaticFindObject(nullptr,nullptr,*CDOPath);},D)||!Live(D)||Source.CDOHandle!=D||D->GetClass()!=C||!D->HasAnyFlags(RF_ClassDefaultObject)||!W.Pin(D))return false;Source.CDO=D;Source.CDOFlags=D->GetFlags();}
     if(!Source.Exact())return Bad(TEXT("pcg_data_source_filter_source_changed"),TEXT("Filter source changed during its read-only enrollment"));
@@ -1390,7 +1391,7 @@ struct FStandaloneRequest
   if(SubgraphDefaults.IsValid())
   {
    auto* C=UPCGSubgraphSettings::StaticClass();auto* D=SubgraphDefaults.Get();auto* I=SubgraphDefaultInstance.Get();
-   if(!C->ClassDefaultObject.IsResolved()||C->ClassDefaultObject.Get()!=D||!Live(D)||D->GetClass()!=C||!D->SubgraphInstance.IsResolved()||D->SubgraphInstance.Get()!=I||!D->SubgraphOverride.IsResolved()||D->SubgraphOverride.Get()!=nullptr||!Live(I)||I->GetClass()!=UPCGGraphInstance::StaticClass()||I->GetOuter()!=D||!I->Graph.IsResolved()||I->Graph.Get()!=nullptr)return Bad(TEXT("pcg_subgraph_native_defaults_changed"),TEXT("Captured constructor CDO/owned default Instance/reference cells changed"));
+   if(!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved()||C->GetDefaultObject(false)!=D||!Live(D)||D->GetClass()!=C||!D->SubgraphInstance.IsResolved()||D->SubgraphInstance.Get()!=I||!D->SubgraphOverride.IsResolved()||D->SubgraphOverride.Get()!=nullptr||!Live(I)||I->GetClass()!=UPCGGraphInstance::StaticClass()||I->GetOuter()!=D||!I->Graph.IsResolved()||I->Graph.Get()!=nullptr)return Bad(TEXT("pcg_subgraph_native_defaults_changed"),TEXT("Captured constructor CDO/owned default Instance/reference cells changed"));
   }
   for(auto& E:Subgraphs)if(!SubgraphRoleCurrent(E))return false;
   for(const auto& S:SubgraphSources)
@@ -1404,8 +1405,8 @@ struct FStandaloneRequest
  }
  bool CaptureSubgraphDefaults()
  {
-  if(SubgraphDefaults.IsValid())return Current();auto* C=UPCGSubgraphSettings::StaticClass();if(!C->ClassDefaultObject.IsResolved())return Bad(TEXT("pcg_subgraph_default_slot_pending"),TEXT("Native default slot must already be resolved"));
-  auto* D=Cast<UPCGSubgraphSettings>(C->ClassDefaultObject.Get());if(!Held.KeepReturned(D,TEXT("subgraph_constructor_default"))||!Live(D)||D->GetClass()!=C||!D->HasAnyFlags(RF_ClassDefaultObject)||!D->SubgraphInstance.IsResolved()||!D->SubgraphOverride.IsResolved()||D->SubgraphOverride.Get()!=nullptr)return Bad(TEXT("pcg_subgraph_native_defaults_pending"),TEXT("Existing exact native constructor CDO with null override required; no CDO creation"));
+  if(SubgraphDefaults.IsValid())return Current();auto* C=UPCGSubgraphSettings::StaticClass();if(!Cubeless::UE58::GetClassDefaultObjectSlot(C).IsResolved())return Bad(TEXT("pcg_subgraph_default_slot_pending"),TEXT("Native default slot must already be resolved"));
+  auto* D=Cast<UPCGSubgraphSettings>(C->GetDefaultObject(false));if(!Held.KeepReturned(D,TEXT("subgraph_constructor_default"))||!Live(D)||D->GetClass()!=C||!D->HasAnyFlags(RF_ClassDefaultObject)||!D->SubgraphInstance.IsResolved()||!D->SubgraphOverride.IsResolved()||D->SubgraphOverride.Get()!=nullptr)return Bad(TEXT("pcg_subgraph_native_defaults_pending"),TEXT("Existing exact native constructor CDO with null override required; no CDO creation"));
   auto* I=D->SubgraphInstance.Get();if(!Held.KeepReturned(I,TEXT("subgraph_default_instance"))||I->GetClass()!=UPCGGraphInstance::StaticClass()||I->GetOuter()!=D||!I->Graph.IsResolved()||I->Graph.Get()!=nullptr)return Bad(TEXT("pcg_subgraph_default_instance_pending"),TEXT("Existing constructor default Instance/null Graph must be observed and held"));
   SubgraphDefaults.Reset(D);SubgraphDefaultInstance.Reset(I);return Current();
  }
@@ -1951,7 +1952,7 @@ UObject* FreshInlineAsset(FFreshRequest& F,const TSharedPtr<FJsonValue>& Value,b
  auto& W=F.W;FString Path=StockSpawner::SpawnerInputString(Value);Path=FPackageName::ExportTextPathToObjectPath(Path).TrimStartAndEnd();Path.TrimQuotesInline();if(Path.StartsWith(TEXT("/"))&&!Path.Contains(TEXT(".")))Path+=TEXT(".")+FPackageName::GetShortName(Path);
  if(Path.IsEmpty()||!Path.StartsWith(TEXT("/"))||Path.Len()>=1024||Forbidden(Path)){InputError=TEXT("Bounded mounted non-tooling mesh/material path required");return nullptr;}
  if(!W.SDK(Mesh?TEXT("find_loaded_inline_mesh"):TEXT("find_loaded_inline_material")))return nullptr;
- UObject* Asset=StaticFindObject(nullptr,nullptr,*Path,false);const bool Held=F.KeepReturned(Asset,TEXT("inline_loaded_asset"));if(!W.After(TEXT("find_loaded_inline_asset")))return nullptr;
+ UObject* Asset=StaticFindObject(nullptr,nullptr,*Path,EFindObjectFlags::None);const bool Held=F.KeepReturned(Asset,TEXT("inline_loaded_asset"));if(!W.After(TEXT("find_loaded_inline_asset")))return nullptr;
  if(!Held||(Mesh?Asset->GetClass()!=UStaticMesh::StaticClass():!Asset->IsA<UMaterialInterface>())||Forbidden(Asset->GetPathName())||Forbidden(Asset->GetClass()->GetPathName())||Asset->GetPackage()->HasAnyPackageFlags(PKG_EditorOnly))return F.Fail(TEXT("pcg_inline_spawner_asset_not_loaded"),TEXT("Exact already-loaded StaticMesh or runtime MaterialInterface required; no loader or substitution")),nullptr;
  UPackage* Package=Asset->GetPackage();if(!W.Pin(Package)||!W.Pin(Asset->GetClass()))return nullptr;const auto Flags=Asset->GetFlags(),PackageFlags=Package->GetFlags();const uint32 Bits=Package->GetPackageFlags();const bool Dirty=Package->IsDirty();
  F.ExternalAssetChecks.Add([Asset,Package,Flags,PackageFlags,Bits,Dirty]{return Live(Asset)&&Live(Package)&&Asset->GetPackage()==Package&&Asset->GetFlags()==Flags&&Package->GetFlags()==PackageFlags&&uint32(Package->GetPackageFlags())==Bits&&Package->IsDirty()==Dirty;});return Asset;
@@ -2426,7 +2427,7 @@ bool FreshSources(FFreshRequest& F)
  for(auto& N:F.Nodes)
  {
   FString Short=N.ClassName;if(Short.StartsWith(TEXT("/Script/PCG.")))Short.RightChopInline(12);
-  const FString Path=TEXT("/Script/PCG.")+Short;N.Class=Cast<UClass>(StaticFindObject(nullptr,nullptr,*Path,false));TStrongObjectPtr<UClass> ImmediateClass(N.Class);if(!W.Admit(TEXT("find_finite_settings_class")))return false;
+  const FString Path=TEXT("/Script/PCG.")+Short;N.Class=Cast<UClass>(StaticFindObject(nullptr,nullptr,*Path,EFindObjectFlags::None));TStrongObjectPtr<UClass> ImmediateClass(N.Class);if(!W.Admit(TEXT("find_finite_settings_class")))return false;
   if(!F.GeneralNative&&StandaloneSpatialCompositionClass(N.Class))return F.Fail(TEXT("pcg_spatial_graph_spec_pending"),TEXT("Spatial composition requires the request-owned general Native worker; the old finite profile is unchanged"));
   if(!N.Class||!Same(N.Class->GetPathName(),Path)||!(Same(N.ClassName,Short)||Same(N.ClassName,Path))||!N.Class->IsChildOf(UPCGSettings::StaticClass())||!F.ClassSource(N.Class))return F.Fail(TEXT("pcg_setting_contract_unsupported"),TEXT("Already-loaded exact finite native family, PointExtents/Bounds, TransformPoints, or SurfaceSampler/Difference settings class required"));
   if(F.GeneralNative&&!FreshKnownFiniteClass(N.Class)){N.GeneralNative=true;if(!PrepareGeneralSettings(F,N))return false;continue;}
@@ -2464,7 +2465,7 @@ bool FreshSources(FFreshRequest& F)
   if(StandaloneSamplingDifferenceClass(N.Class))F.SamplingDifferenceProfile=true;
  }
  for(UClass* C:{UPCGGraph::StaticClass(),UPCGNode::StaticClass(),UPCGPin::StaticClass(),UPCGEdge::StaticClass()})if(!F.ClassSource(C))return false;
- F.FactoryClass=Cast<UClass>(StaticFindObject(nullptr,nullptr,TEXT("/Script/PCGEditor.PCGGraphFactory"),false));if(!W.Admit(TEXT("find_loaded_factory_class")))return false;
+ F.FactoryClass=Cast<UClass>(StaticFindObject(nullptr,nullptr,TEXT("/Script/PCGEditor.PCGGraphFactory"),EFindObjectFlags::None));if(!W.Admit(TEXT("find_loaded_factory_class")))return false;
  if(!F.FactoryClass||!Same(F.FactoryClass->GetPathName(),TEXT("/Script/PCGEditor.PCGGraphFactory"))||!F.FactoryClass->IsChildOf(UFactory::StaticClass())||!F.ClassSource(F.FactoryClass))return F.Fail(TEXT("pcg_fresh_factory_unavailable"),TEXT("Already-loaded exact native PCGGraphFactory subclass required; private header/UI/template path unsupported"));
  F.TemplateProperty=CastField<FObjectProperty>(FreshNativeField(F.FactoryClass,TEXT("TemplateGraph")));F.CreateProperty=CastField<FBoolProperty>(FreshNativeField(F.FactoryClass,TEXT("bCreateNew")));
  if(!F.TemplateProperty||F.TemplateProperty->PropertyClass!=UPCGGraph::StaticClass()||F.TemplateProperty->ArrayDim!=1||F.TemplateProperty->HasSetterOrGetter()||!F.CreateProperty||F.CreateProperty->HasSetterOrGetter())return F.Fail(TEXT("pcg_fresh_factory_schema"),TEXT("Exact public reflected TemplateGraph and native create flag layout required"));

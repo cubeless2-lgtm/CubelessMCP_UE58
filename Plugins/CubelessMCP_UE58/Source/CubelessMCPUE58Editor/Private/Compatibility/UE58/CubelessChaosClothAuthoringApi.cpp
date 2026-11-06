@@ -1408,13 +1408,13 @@ bool ReadClothWeightMapAssetState(
     if (Properties.IsValid())
     {
         OutState.MaxDistanceWeightMapName = Properties.GetStringValue(
-            TEXT("MaxDistance"));
+            FName(TEXT("MaxDistance")));
         OutState.FixedEndWeightMapName = Properties.GetStringValue(
-            TEXT("FixedEndWeightMap"));
+            FName(TEXT("FixedEndWeightMap")));
         OutState.KinematicSelectionName = Properties.GetStringValue(
-            TEXT("KinematicVertices3D"));
+            FName(TEXT("KinematicVertices3D")));
         OutState.FixedEndSetName = Properties.GetStringValue(
-            TEXT("FixedEndSet"));
+            FName(TEXT("FixedEndSet")));
         for (int32 PropertyIndex = 0; PropertyIndex < Properties.Num(); ++PropertyIndex)
         {
             if (Properties.GetStringValue(PropertyIndex) == WeightMapName.ToString())

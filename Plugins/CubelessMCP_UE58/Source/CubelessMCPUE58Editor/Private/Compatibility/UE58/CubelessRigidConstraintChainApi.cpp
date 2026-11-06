@@ -1,6 +1,7 @@
 // Editor-only composite UE56 rigid-chain authoring contract.
 // Public native SCS/body/constraint authoring only; no custom runtime class.
 #include "Compatibility/UE58/CubelessRigidConstraintChainApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -495,10 +496,10 @@ bool AppendCurrent(FContext* C)
     UBlueprint* B = C->Blueprint.Get(); USimpleConstructionScript* S = C->AppendSCS.Get();
     bool Good = Loaded(B) && Loaded(S) && B->SimpleConstructionScript == S && B->GeneratedClass == C->AppendGenerated.Get() && B->SkeletonGeneratedClass == C->AppendSkeleton.Get()
         && Loaded(C->AppendGenerated.Get()) && Loaded(C->AppendSkeleton.Get()) && S->GetOuter() == B->GeneratedClass && B->GeneratedClass->ClassGeneratedBy == B && B->SkeletonGeneratedClass->ClassGeneratedBy == B
-        && B->GeneratedClass->ClassDefaultObject.IsResolved() && B->GeneratedClass->ClassDefaultObject.Get() == C->AppendCDO.Get() && Loaded(C->AppendCDO.Get()) && C->AppendCDO->GetClass() == B->GeneratedClass;
+        && Cubeless::UE58::GetClassDefaultObjectSlot(B->GeneratedClass).IsResolved() && B->GeneratedClass->GetDefaultObject(false) == C->AppendCDO.Get() && Loaded(C->AppendCDO.Get()) && C->AppendCDO->GetClass() == B->GeneratedClass;
     for (const auto& Source : C->SourceCDOs)
     {
-        if (!Good || !Loaded(Source.Key) || !Source.Key->ClassDefaultObject.IsResolved() || Source.Key->ClassDefaultObject.Get() != Source.Value || (Source.Value && (!Loaded(Source.Value) || Source.Value->GetClass() != Source.Key))) { Good = false; break; }
+        if (!Good || !Loaded(Source.Key) || !Cubeless::UE58::GetClassDefaultObjectSlot(Source.Key).IsResolved() || Source.Key->GetDefaultObject(false) != Source.Value || (Source.Value && (!Loaded(Source.Value) || Source.Value->GetClass() != Source.Key))) { Good = false; break; }
     }
     if (Good)
     {
@@ -571,8 +572,8 @@ bool BindAppendPhase(FContext& C, FResult& R)
             || Generated->ClassGeneratedBy.Get() != B || Skeleton->ClassGeneratedBy.Get() != B || Generated->GetSuperClass() != AActor::StaticClass() || Skeleton->GetSuperClass() != AActor::StaticClass()
             || Generated->GetPathName() != C.PivotGeneratedPath || Skeleton->GetPathName() != C.PivotSkeletonPath) { C.Stopped = true; return AppendCheck(C, R); }
     }
-    if (!Loaded(C.AppendGenerated.Get()) || !Loaded(C.AppendSkeleton.Get()) || !B->GeneratedClass->ClassDefaultObject.IsResolved()) { C.Stopped = true; return AppendCheck(C, R); }
-    C.AppendCDO.Reset(B->GeneratedClass->ClassDefaultObject.Get());
+    if (!Loaded(C.AppendGenerated.Get()) || !Loaded(C.AppendSkeleton.Get()) || !Cubeless::UE58::GetClassDefaultObjectSlot(B->GeneratedClass).IsResolved()) { C.Stopped = true; return AppendCheck(C, R); }
+    C.AppendCDO.Reset(B->GeneratedClass->GetDefaultObject(false));
     if (C.NonRootPivot && (!Loaded(C.AppendCDO.Get()) || C.AppendCDO->GetClass() != C.AppendGenerated.Get() || C.AppendCDO->GetOuter() != C.AppendGenerated->GetOuter() || C.AppendCDO->GetPackage() != C.PivotPackage.Get() || !C.AppendCDO->HasAllFlags(RF_ClassDefaultObject | RF_ArchetypeObject))) { C.Stopped = true; return AppendCheck(C, R); }
     return AppendCheck(C, R);
 }

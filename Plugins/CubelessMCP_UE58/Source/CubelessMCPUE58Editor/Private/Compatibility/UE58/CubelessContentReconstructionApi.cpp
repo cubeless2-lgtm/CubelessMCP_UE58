@@ -368,7 +368,7 @@ template<typename T> T* NewOwnedObject(UObject* Outer, UClass* Class, FName Name
 bool AuditRuntimeReferences(UObject* O)
 {
     if (!Check() || !Live(O)) return false;
-    TArray<UObject*> Objects; GetObjectsWithPackage(O->GetPackage(), Objects, true, RF_Transient, EInternalObjectFlags::Garbage);
+    TArray<UObject*> Objects; GetObjectsWithPackage(O->GetPackage(), Objects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
     if (Objects.Num() > 100000) return Current->Fail(TEXT("reference_budget"), TEXT("Package runtime reference audit exceeded its object budget"));
     for (UObject* Item : Objects)
     {
@@ -1883,7 +1883,7 @@ int32 RepairWidgetBlueprintTree(UBlueprint* TargetBlueprint, const TMap<UObject*
     if (UPackage* Package = WidgetBlueprint->GetOutermost())
     {
         TArray<UObject*> PackageObjects;
-        GetObjectsWithPackage(Package, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+        GetObjectsWithPackage(Package, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
         for (UObject* PackageObject : PackageObjects)
         {
             if (IsLiveObjectForMCP(PackageObject))
@@ -1954,7 +1954,7 @@ int32 RepairTargetSubobjectsWithSourceClasses(const TSet<UPackage*>& TargetPacka
         }
 
         TArray<UObject*> PackageObjects;
-        GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+        GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
         for (UObject* PackageObject : PackageObjects)
         {
             if (!IsLiveObjectForMCP(PackageObject) || PackageObject->HasAnyFlags(RF_ClassDefaultObject) || PackageObject->IsA<UClass>() || PackageObject->IsA<UBlueprint>())
@@ -2034,7 +2034,7 @@ int32 RepairTargetSubobjectsWithSourceClasses(const TSet<UPackage*>& TargetPacka
         }
 
         TArray<UObject*> PackageObjects;
-        GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+        GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
         for (UObject* PackageObject : PackageObjects)
         {
             if (IsLiveObjectForMCP(PackageObject))
@@ -2107,7 +2107,7 @@ void RefreshMaterialReferencesAndCaches(
         }
 
         TArray<UObject*> PackageObjects;
-        GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+        GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
         for (UObject* PackageObject : PackageObjects)
         {
             if (!IsLiveObjectForMCP(PackageObject))
@@ -2427,7 +2427,7 @@ int32 RepairTargetWorldComponentClasses(
     }
 
     TArray<UObject*> WorldPackageObjects;
-    GetObjectsWithPackage(LoadedWorld->GetOutermost(), WorldPackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+    GetObjectsWithPackage(LoadedWorld->GetOutermost(), WorldPackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
     for (UObject* WorldPackageObject : WorldPackageObjects)
     {
         if (ShouldSkipArchiveObjectReferenceRemap(WorldPackageObject))
@@ -3035,7 +3035,7 @@ int32 RepairLoadedWorldActorInstances(
 
     bool bWorldChanged = false;
     TArray<UObject*> WorldPackageObjects;
-    GetObjectsWithPackage(LoadedWorld->GetOutermost(), WorldPackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+    GetObjectsWithPackage(LoadedWorld->GetOutermost(), WorldPackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
     for (UObject* WorldPackageObject : WorldPackageObjects)
     {
         if (!IsLiveObjectForMCP(WorldPackageObject))
@@ -8530,7 +8530,7 @@ TSharedPtr<FJsonObject> HandleRecreateContentFolderMCP(const TSharedPtr<FJsonObj
             }
 
             TArray<UObject*> PackageObjects;
-            GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+            GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
             for (UObject* PackageObject : PackageObjects)
             {
                 if (IsLiveObjectForMCP(PackageObject))
@@ -8662,7 +8662,7 @@ TSharedPtr<FJsonObject> HandleRecreateContentFolderMCP(const TSharedPtr<FJsonObj
             }
 
             TArray<UObject*> PackageObjects;
-            GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+            GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
             for (UObject* PackageObject : PackageObjects)
             {
                 if (IsLiveObjectForMCP(PackageObject))
@@ -9201,7 +9201,7 @@ TSharedPtr<FJsonObject> HandlePostprocessContentFolderMCP(const TSharedPtr<FJson
             }
 
             TArray<UObject*> PackageObjects;
-            GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+            GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
             for (UObject* PackageObject : PackageObjects)
             {
                 if (IsLiveObjectForMCP(PackageObject))
@@ -9315,7 +9315,7 @@ TSharedPtr<FJsonObject> HandlePostprocessContentFolderMCP(const TSharedPtr<FJson
             }
 
             TArray<UObject*> PackageObjects;
-            GetObjectsWithPackage(TargetPackage, PackageObjects, true, RF_Transient, EInternalObjectFlags::Garbage);
+            GetObjectsWithPackage(TargetPackage, PackageObjects, EGetObjectsFlags::IncludeNestedObjects, RF_Transient, EInternalObjectFlags::Garbage);
             for (UObject* PackageObject : PackageObjects)
             {
                 if (IsLiveObjectForMCP(PackageObject))

@@ -24,7 +24,7 @@ constexpr int32 MaxCarrier=1024*1024,MaxSlots=65536,MaxDepth=32;
 bool Running=false;
 bool Live(const UObject* O){return IsValid(O)&&!O->HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad|RF_NeedPostLoadSubobjects|RF_BeginDestroyed|RF_FinishDestroyed);}
 bool TextSafe(const FString& S,int32 Limit){if(S.Len()>Limit)return false;for(int32 I=0;I<S.Len();++I)if(S[I]==0)return false;return true;}
-bool GlobalsSafe(){return IsEditorGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!GIsSavingPackage&&!IsGarbageCollecting()&&Live(GEditor)&&GEngine==GEditor;}
+bool GlobalsSafe(){return IsEditorGameThread()&&!IsEngineExitRequested()&&!GExitPurge&&!UE::IsSavingPackage()&&!IsGarbageCollecting()&&Live(GEditor)&&GEngine==GEditor;}
 struct FContext
 {
  TWeakObjectPtr<UEditorEngine> Editor;TWeakObjectPtr<UWorld> World;TWeakObjectPtr<UClass> WorldClass;TWeakObjectPtr<UObject> WorldOuter;TWeakObjectPtr<UPackage> WorldPackage,WorldOutermost;FString WorldPath;bool HadWorld=false;

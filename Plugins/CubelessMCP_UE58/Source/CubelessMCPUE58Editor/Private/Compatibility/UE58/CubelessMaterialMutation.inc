@@ -68,7 +68,7 @@ bool IsVerifiedMaterialXBlurExpressionClass(const UClass* Class)
     // scoped to the installed UE5.8 UStruct declaration, not arbitrary classes.
     const FObjectProperty* P=FindFProperty<FObjectProperty>(UStruct::StaticClass(),TEXT("SuperStruct"));
     if(!P||P->GetClass()!=FObjectProperty::StaticClass()||P->GetOwnerStruct()!=UStruct::StaticClass()||P->GetOwnerProperty()!=P
-        ||P->ArrayDim!=1||P->ElementSize!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)
+        ||P->ArrayDim!=1||P->GetElementSize()!=sizeof(TObjectPtr<UStruct>)||P->GetSize()!=sizeof(TObjectPtr<UStruct>)
         ||P->GetMinAlignment()!=alignof(TObjectPtr<UStruct>)||P->GetOffset_ForInternal()<0
         ||int64(P->GetOffset_ForInternal())+P->GetSize()>UStruct::StaticClass()->GetPropertiesSize()||P->HasSetterOrGetter()
         ||!P->PropertyClass.IsResolved()||P->PropertyClass.GetHandle()!=TObjectPtr<UClass>(UStruct::StaticClass()).GetHandle())return false;

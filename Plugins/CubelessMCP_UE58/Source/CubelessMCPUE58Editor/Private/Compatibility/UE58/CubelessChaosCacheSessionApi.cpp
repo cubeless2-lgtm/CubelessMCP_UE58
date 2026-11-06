@@ -29,6 +29,7 @@
 #include "Modules/ModuleManager.h"
 #include "MovieScene.h"
 #include "MovieSceneBinding.h"
+#include "MovieSceneCommonHelpers.h"
 #include "MovieSceneSection.h"
 #include "Sections/MovieSceneCameraCutSection.h"
 #include "Tracks/MovieSceneCameraCutTrack.h"
@@ -140,7 +141,7 @@ struct FWork
         if(auto* S=Cast<UMovieScene>(Object))
         {
             J->SetNumberField(TEXT("display_numerator"),S->GetDisplayRate().Numerator);J->SetNumberField(TEXT("display_denominator"),S->GetDisplayRate().Denominator);J->SetNumberField(TEXT("tick_numerator"),S->GetTickResolution().Numerator);J->SetNumberField(TEXT("tick_denominator"),S->GetTickResolution().Denominator);const auto Range=S->GetPlaybackRange();J->SetBoolField(TEXT("playback_closed"),Range.HasLowerBound()&&Range.HasUpperBound());if(Range.HasLowerBound()&&Range.HasUpperBound()) { J->SetNumberField(TEXT("playback_lower"),Range.GetLowerBoundValue().Value);J->SetNumberField(TEXT("playback_upper"),Range.GetUpperBoundValue().Value); }
-            TArray<TSharedPtr<FJsonValue>> B;for(const auto& Binding:S->GetBindings()) { auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("guid"),Binding.GetObjectGuid().ToString());V->SetNumberField(TEXT("track_count"),Binding.GetTracks().Num());B.Add(MakeShared<FJsonValueObject>(V)); }J->SetArrayField(TEXT("bindings"),B);
+            TArray<TSharedPtr<FJsonValue>> B;for(const auto& Binding:AsConst(*S).GetBindings()) { auto V=MakeShared<FJsonObject>();V->SetStringField(TEXT("guid"),Binding.GetObjectGuid().ToString());V->SetNumberField(TEXT("track_count"),Binding.GetTracks().Num());B.Add(MakeShared<FJsonValueObject>(V)); }J->SetArrayField(TEXT("bindings"),B);
         }
         if(auto* S=Cast<UMovieSceneSection>(Object))
         {
@@ -906,7 +907,7 @@ void CleanupNativeValidationSession(FNativeCacheValidationSession& Session)
 bool ValidateManagerSequenceBinding(ULevelSequence* Sequence,AChaosCacheManager* Manager,UChaosCacheCollection* Collection,UWorld* World,int32& OutChaosTrackCount,int32& OutMatchingSectionCount)
 {
     OutChaosTrackCount=0;OutMatchingSectionCount=0;UMovieScene* Scene=nullptr;if(!Sequence||!Manager||!Collection||!World||!Step(TEXT("resolve_validation_scene"),[&]{Scene=Sequence->GetMovieScene();},false)||!Work->Track(Scene,TEXT("validation_movie_scene"),Sequence)) { return false; }
-    FGuid Id;if(!Step(TEXT("find_validation_manager_binding"),[&]{Id=Sequence->FindBindingFromObject(Manager,World);},false)) { return false; }const auto* Binding=Id.IsValid()?Scene->FindBinding(Id):nullptr;if(!Binding) { return false; }const TArray<UMovieSceneTrack*> Tracks=Binding->GetTracks();
+    FGuid Id;if(!Step(TEXT("find_validation_manager_binding"),[&]{Id=Sequence->FindBindingFromObject(Manager,MovieSceneHelpers::CreateTransientSharedPlaybackState(World,Sequence));},false)) { return false; }const auto* Binding=Id.IsValid()?Scene->FindBinding(Id):nullptr;if(!Binding) { return false; }const TArray<UMovieSceneTrack*> Tracks=Binding->GetTracks();
     for(auto* Base:Tracks) { if(auto* Track=Cast<UMovieSceneChaosCacheTrack>(Base)) { if(!Work->Track(Track,TEXT("validation_chaos_track"),Scene)) { return false; }++OutChaosTrackCount;TArray<UMovieSceneSection*> Sections;if(!Step(TEXT("read_validation_chaos_sections"),[&]{Sections=Track->GetAllSections();},false)) { return false; }for(auto* BaseSection:Sections) { if(auto* Section=Cast<UMovieSceneChaosCacheSection>(BaseSection)) { if(!Work->Track(Section,TEXT("validation_chaos_section"),Track)) { return false; }OutMatchingSectionCount+=Section->Params.CacheCollection==Collection?1:0; } } } }return OutChaosTrackCount==1&&OutMatchingSectionCount>0;
 }
 

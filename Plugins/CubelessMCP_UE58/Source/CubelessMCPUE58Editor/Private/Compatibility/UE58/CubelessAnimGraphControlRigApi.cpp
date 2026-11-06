@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessAnimGraphControlRigApi.h"
+#include "CubelessClassDefaultObjectAccess.h"
 #include "Compatibility/UE58/CubelessEditorApi.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "EdGraph/EdGraph.h"
@@ -1103,7 +1104,7 @@ bool CustomPinsSafe(UAnimGraphNode_ControlRig* N)
 // are admitted before the SDK exports every external variable, including unrequested ones.
 bool ExternalValueSafe(const FProperty* P,const void* V,int32 Depth,int32& Visits)
 {
-    if(!P||!V||Depth>8||++Visits>65536||P->ArrayDim!=1||P->ElementSize<1||P->ElementSize>1048576) { NoteUnsafe(TEXT("External descriptor value exceeds finite no-export shape/depth budget"));return false; }
+    if(!P||!V||Depth>8||++Visits>65536||P->ArrayDim!=1||P->GetElementSize()<1||P->GetElementSize()>1048576) { NoteUnsafe(TEXT("External descriptor value exceeds finite no-export shape/depth budget"));return false; }
     Count(*CurrentResult,TEXT("external_descriptor_value_reads"));
     if(CastField<FBoolProperty>(P)) { return true; }
     if(const auto* E=CastField<FEnumProperty>(P)) { return E->GetUnderlyingProperty()&&E->GetEnum()&&Hold(E->GetEnum())&&E->GetEnum()->NumEnums()<=4096; }
@@ -1143,7 +1144,7 @@ bool RigSourceSafe(UAnimGraphNode_ControlRig* N)
     auto* SkeletonClass=RigBlueprint->SkeletonGeneratedClass.Get();if(!SkeletonClass||!Hold(SkeletonClass)||SkeletonClass->ClassGeneratedBy!=RigBlueprint||!SkeletonClass->IsChildOf(UControlRig::StaticClass())) { NoteUnsafe(TEXT("Loaded matching rig skeleton class required before SDK target-class pin enumeration"));return false; }
     for(UClass* Owner:{Class,SkeletonClass}) { int32 Parents=0;for(UClass* C=Owner;C;C=C->GetSuperClass()) { if(++Parents>32||!Hold(C)) { NoteUnsafe(TEXT("Loaded bounded generated/skeleton rig class lineage required"));return false; } } }
     int32 SkeletonFields=0;for(TFieldIterator<FProperty> It(SkeletonClass);It;++It) { const auto* P=*It;if(++SkeletonFields>4096||!Layout(P,SkeletonClass->GetPropertiesSize())||P->ArrayDim<1||P->ArrayDim>1024||!Hold(P->GetOwnerStruct())) { NoteUnsafe(TEXT("Rig skeleton fields exceed current loaded bounded layout"));return false; } }
-    Count(*CurrentResult,TEXT("existing_rig_CDO_queries"));auto* CDO=Cast<UControlRig>(Class->GetDefaultObject(false));if(!CDO||!Hold(CDO)||CDO->GetClass()!=Class||CDO!=Class->ClassDefaultObject) { NoteUnsafe(TEXT("Existing loaded rig CDO required without validator-created CDO"));return false; }
+    Count(*CurrentResult,TEXT("existing_rig_CDO_queries"));auto* CDO=Cast<UControlRig>(Class->GetDefaultObject(false));if(!CDO||!Hold(CDO)||CDO->GetClass()!=Class||CDO!=Cubeless::UE58::GetClassDefaultObjectSlot(Class)) { NoteUnsafe(TEXT("Existing loaded rig CDO required without validator-created CDO"));return false; }
     const auto GeneratedBy=CDO->GetGeneratedByAsset();if(GeneratedBy.GetObject()||GeneratedBy.GetInterface()) { NoteUnsafe(TEXT("Nonempty runtime-asset GeneratedBy would enter mutable bag/unchecked property path before descriptor validation"));return false; }
     auto* Hierarchy=CDO->GetHierarchy();if(!Hierarchy||!Hold(Hierarchy)||Hierarchy->Num()>4096) { NoteUnsafe(TEXT("Existing loaded bounded CDO hierarchy required before SDK control iteration"));return false; }for(int32 I=0;I<Hierarchy->Num();++I) { if(!Hierarchy->Get(I)) { NoteUnsafe(TEXT("Null existing CDO hierarchy element before SDK control mapping"));return false; } }
     int32 Properties=0;for(TFieldIterator<FProperty> It(Class);It;++It) { const auto* P=*It;if(++Properties>4096||!Layout(P,Class->GetPropertiesSize())||P->ArrayDim<1||P->ArrayDim>1024||!Hold(P->GetOwnerStruct())) { NoteUnsafe(TEXT("Rig CDO fields outside finite current loaded layout"));return false; } }

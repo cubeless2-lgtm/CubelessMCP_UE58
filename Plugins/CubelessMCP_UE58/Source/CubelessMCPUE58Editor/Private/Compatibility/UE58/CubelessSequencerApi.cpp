@@ -418,7 +418,7 @@ struct FDirectorReadScope
     bool ReadDirectorClass(UClass*& Value,bool Capture=false)
     {
         auto* Field=FindFProperty<FObjectProperty>(ULevelSequence::StaticClass(),TEXT("DirectorClass"));
-        if(!Field||Field->GetOwnerClass()!=ULevelSequence::StaticClass()||Field->ArrayDim!=1||Field->ElementSize!=sizeof(TObjectPtr<UClass>)||Field->HasSetterOrGetter()
+        if(!Field||Field->GetOwnerClass()!=ULevelSequence::StaticClass()||Field->ArrayDim!=1||Field->GetElementSize()!=sizeof(TObjectPtr<UClass>)||Field->HasSetterOrGetter()
             ||!Field->PropertyClass.IsResolved()||Field->PropertyClass.Get()!=UClass::StaticClass())return Bad(Sequence->GetPathName(),TEXT("serialized_director_class_descriptor"),TEXT("native resolved UClass slot"),TEXT("unavailable/changed"));
         if(!Capture&&(Field!=DirectorClassField||Field->GetClass()!=DirectorClassKind||Field->GetOffset_ForInternal()!=DirectorClassOffset||uint64(Field->GetPropertyFlags())!=DirectorClassFlags))
             return Bad(Sequence->GetPathName(),TEXT("serialized_director_class_layout"),TEXT("captured actual descriptor/layout"),TEXT("changed"));
@@ -1794,7 +1794,7 @@ struct FCameraMaintenanceScope
         // ADJ acquires a source hold from resolved slot metadata before any tracked read.
         TObjectPtr<UObject> Slot;
         const bool ReferenceRead=Parent.bRemovalClips?SubsequenceClipSlot(Section,Kind,Slot):SubsequenceClipReference(Section,Kind,Asset);
-        if(Parent.bRemovalClips&&ReferenceRead&&Slot!=nullptr)Asset=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),false);
+        if(Parent.bRemovalClips&&ReferenceRead&&Slot!=nullptr)Asset=StaticFindObject(nullptr,nullptr,*Slot.GetPathName(),EFindObjectFlags::None);
         TStrongObjectPtr<UObject> ReturnedAsset(Asset);
         if(!ReferenceRead||!Context(Stage))return Stop(Stage);
         if(Parent.bRemovalClips){TObjectPtr<UObject> Actual;if(!SubsequenceClipSlot(Section,Kind,Actual)||!Slot.IsResolved()||Slot.GetHandle()!=Actual.GetHandle()||(Slot!=nullptr&&(!Loaded(Asset)||TObjectPtr<UObject>(Asset).GetHandle()!=Slot.GetHandle())))return Stop(Stage);}
@@ -1921,7 +1921,7 @@ struct FCameraMaintenanceScope
             ||LeafReferences->GetOwnerClass()!=ULevelSequence::StaticClass()||LeafReferences->GetOffset_ForInternal()!=LeafReferenceOffset||LeafReferences->ArrayDim!=1||!LeafReferences->Struct.IsResolved()||(LeafReady&&LeafReferences->Struct.Get()!=LeafReferenceStruct)||!Loaded(LeafReferences->Struct.Get())
             ||LeafReferences->Struct->GetPathName()!=TEXT("/Script/LevelSequence.UpgradedLevelSequenceBindingReferences")||LeafReferences->Struct->GetStructureSize()!=sizeof(FUpgradedLevelSequenceBindingReferences))
             return LeafBad(Stage,TEXT("reflected_storage_layout"),TEXT("original native possessable/reference layout"),TEXT("changed"));
-        if(LeafReady&&(FindFProperty<FSoftClassProperty>(LeafInner->Struct,TEXT("PossessedObjectClass"))!=LeafClassField||LeafClassField->GetOwnerStruct()!=LeafInner->Struct||LeafClassField->GetOffset_ForInternal()!=LeafClassOffset||LeafClassField->ArrayDim!=1||LeafClassField->ElementSize!=sizeof(FSoftObjectPtr)||!LeafClassField->MetaClass.IsResolved()||LeafClassField->MetaClass.Get()!=UObject::StaticClass()))
+        if(LeafReady&&(FindFProperty<FSoftClassProperty>(LeafInner->Struct,TEXT("PossessedObjectClass"))!=LeafClassField||LeafClassField->GetOwnerStruct()!=LeafInner->Struct||LeafClassField->GetOffset_ForInternal()!=LeafClassOffset||LeafClassField->ArrayDim!=1||LeafClassField->GetElementSize()!=sizeof(FSoftObjectPtr)||!LeafClassField->MetaClass.IsResolved()||LeafClassField->MetaClass.Get()!=UObject::StaticClass()))
             return LeafBad(Stage,TEXT("possessable_class_field"),TEXT("original native soft class field"),TEXT("changed"));
         return true;
     }
@@ -2026,7 +2026,7 @@ struct FCameraMaintenanceScope
     }
     bool MixedSlot(FObjectProperty* Field,UClass* Owner,UClass* ValueClass,const TCHAR* Name) const
     {
-        return Field&&FindFProperty<FObjectProperty>(Owner,Name)==Field&&Field->GetClass()==FObjectProperty::StaticClass()&&Field->GetOwnerClass()==Owner&&Field->ArrayDim==1&&Field->ElementSize==sizeof(TObjectPtr<UObject>)
+        return Field&&FindFProperty<FObjectProperty>(Owner,Name)==Field&&Field->GetClass()==FObjectProperty::StaticClass()&&Field->GetOwnerClass()==Owner&&Field->ArrayDim==1&&Field->GetElementSize()==sizeof(TObjectPtr<UObject>)
             &&!Field->HasSetterOrGetter()&&Field->PropertyClass.IsResolved()&&Field->PropertyClass.Get()==ValueClass;
     }
     bool MixedStorage(const TCHAR* Stage)
@@ -2034,7 +2034,7 @@ struct FCameraMaintenanceScope
         if(!MixedSlot(MixedActorTemplate,UMovieSceneSpawnableActorBinding::StaticClass(),AActor::StaticClass(),TEXT("ActorTemplate")))return MixedBad(Stage,TEXT("native SpawnableActorBinding"),TEXT("ActorTemplate descriptor"),TEXT("captured native TObjectPtr<Actor>"),TEXT("changed"));
         if(FindFProperty<FArrayProperty>(UMovieScene::StaticClass(),TEXT("Spawnables"))!=MixedSpawnableArray||MixedSpawnableArray->GetClass()!=FArrayProperty::StaticClass()||MixedSpawnableArray->GetOwnerClass()!=UMovieScene::StaticClass()||MixedSpawnableArray->Inner!=MixedSpawnableInner
             ||MixedSpawnableInner->GetClass()!=FStructProperty::StaticClass()||MixedSpawnableInner->GetOwnerProperty()!=MixedSpawnableArray||!MixedSpawnableInner->Struct.IsResolved()||MixedSpawnableInner->Struct.Get()!=MixedSpawnableStruct||!Loaded(MixedSpawnableStruct)||MixedSpawnableStruct!=FMovieSceneSpawnable::StaticStruct()||MixedSpawnableStruct->GetStructureSize()!=sizeof(FMovieSceneSpawnable)
-            ||!MixedLegacyTemplate||FindFProperty<FObjectProperty>(MixedSpawnableStruct,TEXT("ObjectTemplate"))!=MixedLegacyTemplate||MixedLegacyTemplate->GetClass()!=FObjectProperty::StaticClass()||MixedLegacyTemplate->GetOwnerStruct()!=MixedSpawnableStruct||MixedLegacyTemplate->ArrayDim!=1||MixedLegacyTemplate->ElementSize!=sizeof(TObjectPtr<UObject>)||MixedLegacyTemplate->HasSetterOrGetter()||!MixedLegacyTemplate->PropertyClass.IsResolved()||MixedLegacyTemplate->PropertyClass.Get()!=UObject::StaticClass())return MixedBad(Stage,TEXT("MovieScene"),TEXT("Spawnables descriptor"),TEXT("captured direct native layout"),TEXT("changed"));
+            ||!MixedLegacyTemplate||FindFProperty<FObjectProperty>(MixedSpawnableStruct,TEXT("ObjectTemplate"))!=MixedLegacyTemplate||MixedLegacyTemplate->GetClass()!=FObjectProperty::StaticClass()||MixedLegacyTemplate->GetOwnerStruct()!=MixedSpawnableStruct||MixedLegacyTemplate->ArrayDim!=1||MixedLegacyTemplate->GetElementSize()!=sizeof(TObjectPtr<UObject>)||MixedLegacyTemplate->HasSetterOrGetter()||!MixedLegacyTemplate->PropertyClass.IsResolved()||MixedLegacyTemplate->PropertyClass.Get()!=UObject::StaticClass())return MixedBad(Stage,TEXT("MovieScene"),TEXT("Spawnables descriptor"),TEXT("captured direct native layout"),TEXT("changed"));
         if(MixedReady&&(MixedActorTemplate->GetOffset_ForInternal()!=MixedActorOffset||MixedLegacyTemplate->GetOffset_ForInternal()!=MixedLegacyOffset||MixedSpawnableArray->GetOffset_ForInternal()!=MixedArrayOffset||uint64(MixedActorTemplate->PropertyFlags)!=MixedActorFlags||uint64(MixedLegacyTemplate->PropertyFlags)!=MixedLegacyFlags||uint64(MixedSpawnableArray->PropertyFlags)!=MixedArrayFlags||uint64(MixedSpawnableInner->PropertyFlags)!=MixedInnerFlags))return MixedBad(Stage,TEXT("native fields"),TEXT("mixed layout flags/offset"),TEXT("captured"),TEXT("changed"));
         return true;
     }
@@ -2065,7 +2065,7 @@ struct FCameraMaintenanceScope
         for(const auto& O:MixedObjects)if(O.Object->GetClass()==AActor::StaticClass())
         {
             auto* Actor=static_cast<AActor*>(O.Object);if(!Actor->GetComponents().IsEmpty()||Actor->GetRootComponent()!=nullptr)return MixedBad(Stage,Actor->GetPathName(),TEXT("template_components"),TEXT("empty plain native Actor template"),TEXT("changed"));
-            TArray<UObject*> TemplateNested;GetObjectsWithOuter(Actor,TemplateNested,true);TArray<TStrongObjectPtr<UObject>> ReturnedNested;for(auto* ChildObject:TemplateNested)ReturnedNested.Emplace(ChildObject);
+            TArray<UObject*> TemplateNested;GetObjectsWithOuter(Actor,TemplateNested,EGetObjectsFlags::IncludeNestedObjects);TArray<TStrongObjectPtr<UObject>> ReturnedNested;for(auto* ChildObject:TemplateNested)ReturnedNested.Emplace(ChildObject);
             if(!TemplateNested.IsEmpty())return MixedBad(Stage,Actor->GetPathName(),TEXT("template_nested_objects"),TEXT("empty captured inventory"),TEXT("new owned object; no child getter used"));
         }
         return true;
@@ -2082,7 +2082,7 @@ struct FCameraMaintenanceScope
     {
         if(!MixedObject(Object,AActor::StaticClass(),Stage))return false;auto* Actor=static_cast<AActor*>(Object);
         if(!Actor->GetComponents().IsEmpty()||Actor->GetRootComponent())return Fail(R,TEXT("sequencer_mixed_actor_template_pending"),TEXT("Native plain Actor template without owned components is the current readonly scope; component/custom template profiles remain valid incomplete."));
-        TArray<UObject*> Children;GetObjectsWithOuter(Actor,Children,true);TArray<TStrongObjectPtr<UObject>> ReturnedChildren;for(auto* ChildObject:Children)ReturnedChildren.Emplace(ChildObject);for(auto* ChildObject:Children)if(!Pin(ChildObject,Stage))return false;
+        TArray<UObject*> Children;GetObjectsWithOuter(Actor,Children,EGetObjectsFlags::IncludeNestedObjects);TArray<TStrongObjectPtr<UObject>> ReturnedChildren;for(auto* ChildObject:Children)ReturnedChildren.Emplace(ChildObject);for(auto* ChildObject:Children)if(!Pin(ChildObject,Stage))return false;
         if(!Check(Stage,false,false))return false;
         if(!Children.IsEmpty())return Fail(R,TEXT("sequencer_mixed_actor_template_children_pending"),TEXT("Owned nested template objects remain valid incomplete; no callback or template writer is invoked."));
         return true;

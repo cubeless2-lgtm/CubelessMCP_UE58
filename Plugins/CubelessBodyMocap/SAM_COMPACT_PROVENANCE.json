@@ -1,0 +1,20 @@
+{
+  "algorithm": "cbm_sam2_compact_features_v1",
+  "models": {
+    "sam2_image_encoder": {
+      "asset_sha256": "e6f71999fe2610992ecf6a9c26e0850666cc1e26782feeec2ff92fd3fc9cace0",
+      "onnx_sha256": "ccb43999f375972b71f6fcb5ce96ad273d3e2cf22612e5e619075f608d60b120",
+      "output_sha256": "135d19a49718c99198da136ca50e3bc38aec118ba8cf4d7b75f808feb40fb80e"
+    },
+    "sam2_mask_decoder": {
+      "asset_sha256": "2113753233e8327c71ff84d13e2f9e33dcb51efa769a0f7c3a9e87f0e5fea7e5",
+      "onnx_sha256": "5cbe98b5b38e3401a8e84d7fe98953a2269e6eb02a56b45a7c73e5f79260e5e0",
+      "output_sha256": "6169ef4652cb0aff0584394428f65210134e5c990c4b484145944f9867119e01"
+    }
+  },
+  "weights_byte_identical": true,
+  "encoder_output_bytes_before": 176160768,
+  "encoder_output_bytes_after": 20971520,
+  "onnx_version": "1.23.2",
+  "native_pair_resolution_fix": "Resolve package-only paths with LoadObject on game thread; explicit assets required; descriptor count validated before use"
+}

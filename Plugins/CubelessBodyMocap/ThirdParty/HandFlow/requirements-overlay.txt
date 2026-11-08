@@ -1,0 +1,6 @@
+# Install into HandFlow's own venv with --no-deps, over the read-only WiLoR base.
+webdataset==1.0.2
+torchdiffeq==0.2.5
+braceexpand==0.1.7
+lmdb==1.7.5
+ultralytics==8.3.80

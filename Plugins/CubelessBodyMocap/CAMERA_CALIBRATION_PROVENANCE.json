@@ -1,0 +1,12 @@
+{
+  "algorithm": "cbm_camera_seeded_v1",
+  "source_sha256": "9a54fd6f24f07f3df56625135ea951e1959c35b5bdef0ed1e12c05723a3ea7ac",
+  "source_onnx_sha256": "07ebbcf46d22e9ee47972892f6037f71c820a386cff4d1a96a3a48c2a8a01306",
+  "output_sha256": "9283c780cec9bfe2c56b27b8f485259c06b82113c9fb497096fc5d93c8330930",
+  "seeds": {
+    "/perspective_decoder/up_head/decoder/hamburger/ham/RandomUniformLike": 0.0,
+    "/perspective_decoder/latitude_head/decoder/hamburger/ham/RandomUniformLike": 1.0
+  },
+  "only_seed_attributes_changed": true,
+  "onnx_version": "1.23.2"
+}

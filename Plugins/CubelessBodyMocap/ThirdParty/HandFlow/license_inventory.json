@@ -1,0 +1,519 @@
+{
+  "revision": {
+    "repo": "mayalhc/Chamiseul_RGBMocap",
+    "commit": "4e09cfc2b322acd918e7833d50a0a00ed04ba697"
+  },
+  "files": [
+    {
+      "upstream_path": "third_party/HandFlow/LICENSE",
+      "path": "runtime/HandFlow/LICENSE",
+      "sha256": "3fe24a4b5274824f40cccb9bebcb254afe391422a83c5819b76fb1f186fcdb84",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/README.md",
+      "path": "runtime/HandFlow/README.md",
+      "sha256": "b23314225f846acb22f2ab0894ec399f4fdf135ccb4db79f9d67c04c5440e270",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/configs/inference.yaml",
+      "path": "runtime/HandFlow/configs/inference.yaml",
+      "sha256": "f494246fa8a8a327619e01cd6f86efb16a8ea0c2df4045a009e2d86bfe0d397b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/configs/model.yaml",
+      "path": "runtime/HandFlow/configs/model.yaml",
+      "sha256": "ea0910cad2d8008427a1af5522bda6b08638484c3129bcd57a7223f34b280b05",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/pose_embedding.py",
+      "path": "runtime/HandFlow/model/pose_embedding.py",
+      "sha256": "5dc278be580803343e929762c9fb9825e5476926b8d8c0b1d44c48bde251c80e",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/__init__.py",
+      "path": "runtime/HandFlow/model/__init__.py",
+      "sha256": "caaf79870a4b1bb6d09926da31ba898c2f3d1830bebd15f3664c8c08eccd61ba",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/checkpoint_utils.py",
+      "path": "runtime/HandFlow/utils/checkpoint_utils.py",
+      "sha256": "491e7307cefc9ca7ec468f8a2d91fcb78893adba30567139c721acb785c15160",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/dual_conf.py",
+      "path": "runtime/HandFlow/utils/dual_conf.py",
+      "sha256": "a696901552c2bc7a608c30d602551ab629dffd9c83644d09336a5bd93ae54a18",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/eval_utils.py",
+      "path": "runtime/HandFlow/utils/eval_utils.py",
+      "sha256": "9a4241c5f95c27c130f7774f6d319271dca159bd2b8b17160c45a6440d8192ce",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/inference_utils.py",
+      "path": "runtime/HandFlow/utils/inference_utils.py",
+      "sha256": "6ea016e84d44b6a312194cef6f3e0e080264cb3ecf51ff12040251c7ac87bacc",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/mano_utils.py",
+      "path": "runtime/HandFlow/utils/mano_utils.py",
+      "sha256": "3e67a6d5a46ba2b5503e9618b877c89c3b769067e1bca2c5fc060211058b4602",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/online_hamer.py",
+      "path": "runtime/HandFlow/utils/online_hamer.py",
+      "sha256": "27eb012f6c660a42dbdfa03ca5101faf3fa579dd7fe44b45fb63c731fbd076b4",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/vipe_worker.py",
+      "path": "runtime/HandFlow/utils/vipe_worker.py",
+      "sha256": "2c9bd746255153a5396c450c22f24aa0df97704c724885133a854c7cfaa4fc48",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/utils/__init__.py",
+      "path": "runtime/HandFlow/utils/__init__.py",
+      "sha256": "c25d0be03716eba4484437ae347951d70ae638acbfc9066dd4879bccf7bf96c7",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/feature_extractors/condition_builder.py",
+      "path": "runtime/HandFlow/model/feature_extractors/condition_builder.py",
+      "sha256": "f74a1033539a8c3297ba6e995fc9b03f4c1a24c5df7fed05b9486cf9fd0b5bdd",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/feature_extractors/hamer_extractor.py",
+      "path": "runtime/HandFlow/model/feature_extractors/hamer_extractor.py",
+      "sha256": "d62d4601ab9630162be69ee2f37a1f9f448ec35c03d4b6769887fccd7f2a19cd",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/feature_extractors/image_refiner.py",
+      "path": "runtime/HandFlow/model/feature_extractors/image_refiner.py",
+      "sha256": "637a874470a9f0a834c13b981ebf4885740c8300d2d5a222eb3417e1316bf726",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/feature_extractors/skeleton_encoder.py",
+      "path": "runtime/HandFlow/model/feature_extractors/skeleton_encoder.py",
+      "sha256": "7f00d6842f92b71b00f7743db2b0b8811266193de51ee16fcb61fcf7a32bed43",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/feature_extractors/__init__.py",
+      "path": "runtime/HandFlow/model/feature_extractors/__init__.py",
+      "sha256": "2d79f4833cee632156d4c05e410c2da00bb8dd12c9b67da994b8d8c6eec088f7",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/denoiser.py",
+      "path": "runtime/HandFlow/model/flow_matching/denoiser.py",
+      "sha256": "8c4257d3f5165ac6e45164050c4aab044851c4319f193fa83e7ba5186402661f",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/dualstream_transformer.py",
+      "path": "runtime/HandFlow/model/flow_matching/dualstream_transformer.py",
+      "sha256": "495cc1d5e191b57b819f80cbcab3df57614d53fa33ac4a06ee880b4576d958d1",
+      "license": "CC BY-NC 4.0; Apache-2.0 architectural origin also noted"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/__init__.py",
+      "path": "runtime/HandFlow/model/flow_matching/__init__.py",
+      "sha256": "8df86b8549efa52666326d6d020078bed4d2ce560982efee0cf253998ed51066",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/helpers/model_wrapper.py",
+      "path": "runtime/HandFlow/model/flow_matching/helpers/model_wrapper.py",
+      "sha256": "d9216df3b14bf1ac815de95101297352a3d5219bfa8d715f48798d9e08778ded",
+      "license": "CC BY-NC 4.0"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/helpers/path.py",
+      "path": "runtime/HandFlow/model/flow_matching/helpers/path.py",
+      "sha256": "b99b309d5e0606b758e78c38bd1b654650b390863ac7ed9fab70f92fb97ba666",
+      "license": "CC BY-NC 4.0"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/helpers/scheduler.py",
+      "path": "runtime/HandFlow/model/flow_matching/helpers/scheduler.py",
+      "sha256": "aaaa39466aa8d7457cf94e8354f9e1d6fb62fb23be839ebbdf55b0644ec5a8e8",
+      "license": "CC BY-NC 4.0"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/helpers/solver.py",
+      "path": "runtime/HandFlow/model/flow_matching/helpers/solver.py",
+      "sha256": "d48c90a27427acae9ff9eff173d72a3600fac7f1bcc5675b6269fa09c3bf49c3",
+      "license": "CC BY-NC 4.0"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/model/flow_matching/helpers/__init__.py",
+      "path": "runtime/HandFlow/model/flow_matching/helpers/__init__.py",
+      "sha256": "76183667090c43c7942ab0ddc2c6a18942dbe610cb812b000a3bfa4052401097",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/third_party/hamer/LICENSE.md",
+      "path": "runtime/HandFlow/third_party/hamer/LICENSE.md",
+      "sha256": "e666c1c800cd5b710fba860bbe45bfbc6ad7ccec3ce61cafcce190f20fb9569e",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HandFlow/third_party/hamer/hamer/models/backbones/vit.py",
+      "path": "runtime/HandFlow/third_party/hamer/hamer/models/backbones/vit.py",
+      "sha256": "cbb08aad4f46b0166eca54f4842f4b0d53db1fe155378b4c1feb59a15d4943c6",
+      "license": "OpenMMLab upstream; Apache-2.0 notice retained separately; not relabeled as original MIT work"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/LICENSE.md",
+      "path": "runtime/HaMeR/LICENSE.md",
+      "sha256": "e666c1c800cd5b710fba860bbe45bfbc6ad7ccec3ce61cafcce190f20fb9569e",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/README.md",
+      "path": "runtime/HaMeR/README.md",
+      "sha256": "2259cd50c169f530142eef97b6fd2bf4b5a04d0115f91cf2ab775debc5615892",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/__init__.py",
+      "path": "runtime/HaMeR/hamer/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs/cascade_mask_rcnn_vitdet_h_75ep.py",
+      "path": "runtime/HaMeR/hamer/configs/cascade_mask_rcnn_vitdet_h_75ep.py",
+      "sha256": "14377e23242b4edb4903f73d24dd20c97478436b3720c28232c5a32a47de550b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs/datasets_eval.yaml",
+      "path": "runtime/HaMeR/hamer/configs/datasets_eval.yaml",
+      "sha256": "c8f46369919fb5dcda8fee58638d45e6bfa9bb76ec50b09b9c015436351912b7",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs/datasets_tar.yaml",
+      "path": "runtime/HaMeR/hamer/configs/datasets_tar.yaml",
+      "sha256": "55c8c45ab119b10477848a60a030015400cb20104d2b565ab31954ac64ede98b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs/__init__.py",
+      "path": "runtime/HaMeR/hamer/configs/__init__.py",
+      "sha256": "c5f31900b8a577234afbbde38eb86d15940276219d494498a37685f110709455",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/train.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/train.yaml",
+      "sha256": "a938a1f69debd24987e46de588ae307e8bb3794fe884702271f9536e3f977d6e",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/dataset.py",
+      "path": "runtime/HaMeR/hamer/datasets/dataset.py",
+      "sha256": "7c1db71ebe976ef88c0c7bc463406092880b94b94ca6324f2019991d7bccdf47",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/image_dataset.py",
+      "path": "runtime/HaMeR/hamer/datasets/image_dataset.py",
+      "sha256": "0b6c5ae532507a6f7d5f96890073cf965c0197d8f16bf3610cee695b09fcf3ae",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/json_dataset.py",
+      "path": "runtime/HaMeR/hamer/datasets/json_dataset.py",
+      "sha256": "c57cc64651db33170c26bdb2be0a6baab0a745ec301cc6a8c72b263f2735b7b4",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/mocap_dataset.py",
+      "path": "runtime/HaMeR/hamer/datasets/mocap_dataset.py",
+      "sha256": "ca5ce5475a0199913070f66d0de80ceb9c06614ac31214038d632f8ef77bd60f",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/utils.py",
+      "path": "runtime/HaMeR/hamer/datasets/utils.py",
+      "sha256": "b52e83a1ee08a65ebd52c0981b2615a64d87d78b9c1564579aa069bb087cf2fb",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/vitdet_dataset.py",
+      "path": "runtime/HaMeR/hamer/datasets/vitdet_dataset.py",
+      "sha256": "4df039ddff9d8673356332091da642db669840544cd210e86203347d6c54e7d4",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/datasets/__init__.py",
+      "path": "runtime/HaMeR/hamer/datasets/__init__.py",
+      "sha256": "7ab6e520971c5fd76d30fb636503c5585b44d131ccf70bfcb5386c9f3f27f928",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/discriminator.py",
+      "path": "runtime/HaMeR/hamer/models/discriminator.py",
+      "sha256": "3b78591e52d4bb6eba8338b5042df4bf575ea2536710eeca65cb3ed3420fd781",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/hamer.py",
+      "path": "runtime/HaMeR/hamer/models/hamer.py",
+      "sha256": "01888ff92f5b91631f82edad26ebe8aac89d9e83d312ecc99d566b5593a3245f",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/losses.py",
+      "path": "runtime/HaMeR/hamer/models/losses.py",
+      "sha256": "58dc6a313eb366b20430c26cad9f1bad8f03dfac6cdd3300241cd5d95d10065f",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/mano_wrapper.py",
+      "path": "runtime/HaMeR/hamer/models/mano_wrapper.py",
+      "sha256": "01351e1e39b6307c0ddcf948c6e16eb255746c621a2fcf821dbb3c1f1bf05381",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/__init__.py",
+      "path": "runtime/HaMeR/hamer/models/__init__.py",
+      "sha256": "abfa8ffb8f8e50fdd29b06a331f7ebf6a8a4588fa6522f79d1551bfc9ab15d8b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/download.py",
+      "path": "runtime/HaMeR/hamer/utils/download.py",
+      "sha256": "51dd39a83ef0303552d56539ebd8aec4e79f8002fa398bd6aa603182f40adf90",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/geometry.py",
+      "path": "runtime/HaMeR/hamer/utils/geometry.py",
+      "sha256": "eec1cafd6e6ecdb62710aafe6344c3887ca4c2336f705473bf9899fd33cc0e5b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/mesh_renderer.py",
+      "path": "runtime/HaMeR/hamer/utils/mesh_renderer.py",
+      "sha256": "002dae82619961d8e39fe980a127d651c8a8572575ac9c33dd4c81ba390a7513",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/misc.py",
+      "path": "runtime/HaMeR/hamer/utils/misc.py",
+      "sha256": "c4d672eb5a7842d413faa301ee906bda63cc4ff4c9bc3664ff3499d12cd27f10",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/pose_utils.py",
+      "path": "runtime/HaMeR/hamer/utils/pose_utils.py",
+      "sha256": "2ba41175f35d4fcbc251bfdc1b2c711c9ff12282acd11b7bb5d9f264ca115f99",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/pylogger.py",
+      "path": "runtime/HaMeR/hamer/utils/pylogger.py",
+      "sha256": "2ecd8a75f958bdf4bb6924f042de83aee3b8bb88086f087c186e0b8b3b403ae6",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/renderer.py",
+      "path": "runtime/HaMeR/hamer/utils/renderer.py",
+      "sha256": "5d9ac04fd8ebe2414fa79519d30ac6cbf4b0f68a0d453b6e78047e18f05edb27",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/render_openpose.py",
+      "path": "runtime/HaMeR/hamer/utils/render_openpose.py",
+      "sha256": "ae448a984177f8364d76e02803011026b0db30042a046e970917215981fa574b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/rich_utils.py",
+      "path": "runtime/HaMeR/hamer/utils/rich_utils.py",
+      "sha256": "21d0eb4f214dba2789acb2741233318c7bb87042ffee3d6a5fd7e0e5f21c30c5",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/skeleton_renderer.py",
+      "path": "runtime/HaMeR/hamer/utils/skeleton_renderer.py",
+      "sha256": "7afcd6cdee73e9266f17b44781c7494f8a69228ca2d152c1693ab39810811313",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/utils_detectron2.py",
+      "path": "runtime/HaMeR/hamer/utils/utils_detectron2.py",
+      "sha256": "91942078e33b14df4f362fadba92337624b4c3c4c7659d6bd4bf5936fca27dae",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/utils/__init__.py",
+      "path": "runtime/HaMeR/hamer/utils/__init__.py",
+      "sha256": "13e89657027b352c01df9fc1b8241d8ca847dd7ac59e8fba15596b8e7483a1b6",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/data/mix_all.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/data/mix_all.yaml",
+      "sha256": "164e5a38f5297200de69dfbdd4043021339b4d01133be502b6a5064084783dce",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/data_filtering/low1.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/data_filtering/low1.yaml",
+      "sha256": "d198e5bc96233d87a419a632665a3cbb3f3b9f6a1c9f3262c5b6f92e29ed8143",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/experiment/default.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/experiment/default.yaml",
+      "sha256": "9f6f0edccc21cf187452c30f93512fed1a898f03a29bfa273ab25126a46f9f46",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/experiment/hamer_vit_transformer.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/experiment/hamer_vit_transformer.yaml",
+      "sha256": "a3eda5dd1523eaf708dfaec09940c782a42fe8eb24596a202dcbd68a992e2fe6",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/extras/default.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/extras/default.yaml",
+      "sha256": "a24b213091633aa52cc9e5eab77a51c9f2b99cad10becc939396cb3c3c028ca3",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/hydra/default.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/hydra/default.yaml",
+      "sha256": "b742cb8097f6de487a3c08f140bc5164282382f3d11ca0f6c770ea7ad094fc3a",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/launcher/local.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/launcher/local.yaml",
+      "sha256": "9264c00f781d7f80cc43d6250ae56b50bd8fedcc12ffbb0669b48d031dec5e77",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/launcher/slurm.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/launcher/slurm.yaml",
+      "sha256": "c89db3159b34bd8bf2e48239c0b11e6380f12efd366097fdf6ff2705690798cc",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/paths/default.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/paths/default.yaml",
+      "sha256": "44d5d9caea95148cd92379835a52763c379f77fff73e2fb297dfa9a6382cde4b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/trainer/cpu.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/trainer/cpu.yaml",
+      "sha256": "bc07c4623405252a4d70b59a6dfb17a2a5a6ace6095b0ae71040a0830f96ba32",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/trainer/ddp.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/trainer/ddp.yaml",
+      "sha256": "6ed95a164010fe9422e53534ce3f4be0235874155f4ce19f9924f83dd879675c",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/trainer/default.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/trainer/default.yaml",
+      "sha256": "fac3ffc1a4730f6bca63b4ddb9dd4447d98f1225beeef9aae0ad14b8ae08c7c1",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/trainer/default_hamer.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/trainer/default_hamer.yaml",
+      "sha256": "23879c8e41d092689e29cc278590e07dedb1b4135e6a6e994f899a9ab06abf01",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/trainer/gpu.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/trainer/gpu.yaml",
+      "sha256": "cdf36a27da89ed218c6e2fe71cba6db739dd4e2dd4fe99afdd5dbab19f9c34ad",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/configs_hydra/trainer/mps.yaml",
+      "path": "runtime/HaMeR/hamer/configs_hydra/trainer/mps.yaml",
+      "sha256": "4a86edb0a8fd30a077f527cc985648ec5484b54468dba9f621b2c584dbca8457",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/backbones/vit.py",
+      "path": "runtime/HaMeR/hamer/models/backbones/vit.py",
+      "sha256": "cbb08aad4f46b0166eca54f4842f4b0d53db1fe155378b4c1feb59a15d4943c6",
+      "license": "OpenMMLab upstream; Apache-2.0 notice retained separately; not relabeled as original MIT work"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/backbones/__init__.py",
+      "path": "runtime/HaMeR/hamer/models/backbones/__init__.py",
+      "sha256": "63e90f18063e27af8219a0b15e569db8fe303130546292da9c1635736383efc0",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/components/pose_transformer.py",
+      "path": "runtime/HaMeR/hamer/models/components/pose_transformer.py",
+      "sha256": "e7c0711ec66fdaf4b0b21cf00860d03a6803823ed8968e171ecb0b001a39afd5",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/components/t_cond_mlp.py",
+      "path": "runtime/HaMeR/hamer/models/components/t_cond_mlp.py",
+      "sha256": "a1e390ed7868596cf75fe04527e2ad6495e715464521db371d354399c25c1e36",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/components/__init__.py",
+      "path": "runtime/HaMeR/hamer/models/components/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/heads/mano_head.py",
+      "path": "runtime/HaMeR/hamer/models/heads/mano_head.py",
+      "sha256": "12e6a1a32fae78844b300544aa760bdf1d1bef47d58d0a1da4472aa0b6a7090b",
+      "license": "MIT (directory license; original notices retained)"
+    },
+    {
+      "upstream_path": "third_party/HaMeR/hamer/models/heads/__init__.py",
+      "path": "runtime/HaMeR/hamer/models/heads/__init__.py",
+      "sha256": "ddd40e556e155267e1f29b94db408de322d1dfce7cd737e4aff9e1385ee70f6a",
+      "license": "MIT (directory license; original notices retained)"
+    }
+  ],
+  "license_texts": [
+    {
+      "file": "CC-BY-NC-4.0.txt",
+      "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/CC-BY-NC-4.0.txt",
+      "sha256": "cc97a2c4ff7723a1f25179dc7c18f676fa84191bbb36ea7d0061acaf3c102559"
+    },
+    {
+      "file": "Apache-2.0.txt",
+      "source": "https://raw.githubusercontent.com/spdx/license-list-data/main/text/Apache-2.0.txt",
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+    }
+  ],
+  "note": "File-level notices take precedence over repository-level MIT. Local research installation; no redistribution of model weights or MANO."
+}

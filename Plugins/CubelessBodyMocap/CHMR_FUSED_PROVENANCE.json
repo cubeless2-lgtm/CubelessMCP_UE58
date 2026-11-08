@@ -1,0 +1,27 @@
+{
+  "algorithm": "cbm_chmr_fused_attention_v1",
+  "source": "Plugins\\CubelessBodyMocap\\Content\\Models\\Offline\\chmr_backbone.uasset",
+  "source_sha256": "97c4ff3da28fd84c98ae3db2d9ef0a36ab81fa96ede1a710af421d1887ec3ebf",
+  "source_onnx_sha256": "2c2dba8a17039d852c43c784e62dff3646ab907104306b74a585b123218d086e",
+  "output_sha256": "0e7de43e3a4d1f64640fc65cd052fcb73b836d537d172793dc61837fac30cf3f",
+  "onnx_version": "1.23.2",
+  "fused_blocks": 24,
+  "original_initializers_unchanged": true,
+  "original_initializer_dtype_counts": {
+    "1": 152,
+    "7": 8,
+    "10": 199
+  },
+  "input_shape": [
+    1,
+    3,
+    896,
+    896
+  ],
+  "tokens": 4097,
+  "heads": 16,
+  "precision_note": "Original mixed precision retained; fused arithmetic may round differently.",
+  "reproduced_tested_model_exactly": true,
+  "quality_status": "experimental; full-clip wrist outlier up to 27.093 degrees; disabled by default",
+  "tested_asset": "/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"
+}

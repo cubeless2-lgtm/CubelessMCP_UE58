@@ -104,3 +104,10 @@
 
 # Epic sample Perforce/UGS configuration is not used by this project.
 /Build/UnrealGameSync.ini
+
+# Cubeless Body Mocap source; licensed large model content remains local.
+!/Plugins/CubelessBodyMocap/
+/Plugins/CubelessBodyMocap/Content/
+
+# Bundled local FFmpeg binary is restored from the pinned provenance.
+/Plugins/CubelessBodyMocap/ThirdParty/FFmpeg/Win64/*.exe

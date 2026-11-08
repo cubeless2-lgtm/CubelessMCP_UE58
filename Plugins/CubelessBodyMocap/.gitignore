@@ -1,0 +1,17 @@
+# Local research dependencies and licensed weights. See ThirdParty/README-Hands.md.
+/ThirdParty/WiLoR/repo/
+/ThirdParty/WiLoR/venv/
+/ThirdParty/WiLoR/chumpy_src/
+/ThirdParty/MediaPipe/venv/
+/ThirdParty/MediaPipe/*.task
+/ThirdParty/HandFlow/runtime/
+/ThirdParty/HandFlow/models/
+/ThirdParty/HandFlow/venv/
+/ThirdParty/LowerBody/venv/
+/ThirdParty/LowerBody/environment.json
+
+# Generated local inference settings and test/benchmark results.
+/ThirdParty/HandFlow/handflow/
+/*_BENCHMARK.json
+/*_VALIDATION.json
+/VALIDATION.json

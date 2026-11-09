@@ -1,5 +1,17 @@
 # Cubeless Body Mocap 0.1.0
 
+## 현재 UI와 저장 흐름
+
+1. 영상·대상 메시·리타기터를 지정합니다. **Start Mocap** 위의 **HandFlow**, **본 보정**은 모두 기본 켜짐입니다. 본 보정은 손가락 관절 범위·관통 후처리이며 전신이나 손목을 변경하는 기능이 아닙니다.
+2. **Start Mocap** 한 번으로 전신 → 선택한 HandFlow → 선택한 본 보정을 처리합니다. 저장에서 네 조합을 선택할 수 있도록 본 보정은 전신 원본과 HandFlow 결과에 각각 적용합니다. 추가 모델 추론은 하지 않습니다. 실행 중 취소와 진행 표시를 제공합니다.
+3. 아래 **애니메이션 시퀀스 저장** 옆의 HandFlow·본 보정 체크로 저장할 결과를 고릅니다. 이 선택은 비교 뷰에도 반영됩니다. 계산하지 않은 조합은 안내하고 저장을 막습니다. 실행 옵션과 저장 옵션은 별개이며, 새 실행 시작 시 저장 옵션을 실행 옵션과 맞춥니다.
+4. **최종 저장 폴더 / 애니메이션 이름**의 같은 애셋을 갱신합니다. 옵션이나 플레이 레이트를 바꿔도 다른 이름을 만들지 않습니다. 최초 저장 후 플러그인이 생성한 애셋만 갱신하며, 다른 기존 애셋이나 미저장 변경이 있는 대상은 덮어쓰지 않습니다.
+5. 저장 **플레이 레이트**는 AnimSequence의 `RateScale`에 기록하며 키프레임은 재샘플링하지 않습니다. 비교 뷰의 **재생 속도**는 영상·애니메이션 미리보기용이며 저장 속도와 독립적입니다. 디코더가 지원하는 0.1~4배 범위에서 선택합니다.
+
+계산 중간 결과는 `/Game/_MCP_Temp/CBMWork/Take_<ID>/`에 보관합니다. 최종 이름의 애셋은 저장 버튼을 눌러야 생성·갱신됩니다. 중간 결과와 기존 애셋을 자동 삭제하지 않습니다. 손 검사·진단 버튼과 중복 선택 UI는 제거했으며 기존 진단 API는 유지합니다. 각 노출 파라미터에는 한글 설명 툴팁이 있습니다.
+
+아래 과거 검증 기록의 버튼 이름·저장 경로보다 이 절의 현재 UI 설명을 우선합니다.
+
 ## 다른 PC에서 처음 설치하기
 
 **Git에는 소스만 들어 있습니다.** 모델, FFmpeg 실행 파일, Python 가상환경, 컴파일된 DLL, Manny 리타깃 에셋, 테스트 영상·결과는 포함하지 않습니다. 아래 순서로 해당 PC에서 준비해야 합니다. 명령이 실패하면 다음 단계로 넘어가지 말고 [설치 오류 점검](#설치-오류-점검)을 확인하세요.
@@ -13,7 +25,7 @@
 | HandFlow 손 보강 | 독립 HandFlow Python, CUDA 가능한 NVIDIA GPU·드라이버, HandFlow/HaMeR/검출기 파일, 사용자 제공 MANO |
 | WiLoR·MediaPipe 진단 | 선택 사항. 일반 설치에는 필요하지 않으며 [진단용 환경 설명](ThirdParty/README-Hands.md) 참조 |
 
-HandFlow의 현재 구현은 `.cuda()`를 사용하므로 CPU 전용이나 AMD/Intel GPU 경로로 자동 전환되지 않습니다. CUDA를 사용할 수 없다면 우선 손 보강을 `None (original hands)`으로 설정합니다. 전신 추출의 UE NNE/DirectML 경로와 외부 Python HandFlow/CUDA 경로는 서로 다릅니다.
+HandFlow의 현재 구현은 `.cuda()`를 사용하므로 CPU 전용이나 AMD/Intel GPU 경로로 자동 전환되지 않습니다. CUDA를 사용할 수 없다면 우선 실행 옵션의 HandFlow를 해제합니다. 본 보정에도 Python 환경이 필요하므로 환경 미준비 시 본 보정도 해제합니다. 전신 추출의 UE NNE/DirectML 경로와 외부 Python HandFlow/CUDA 경로는 서로 다릅니다.
 
 ### 1. 소스·엔진·기본 도구
 
@@ -203,7 +215,7 @@ exec((cbm_tools / 'create_mannequin_preset.py').read_text(encoding='utf-8-sig'))
 | HandFlow Python | `<Plugin>/ThirdParty/HandFlow/venv/Scripts/python.exe` |
 | HandFlow Directory | `<Plugin>/ThirdParty/HandFlow` (`models` 하위 폴더가 아님) |
 
-`Video`를 해당 PC의 영상으로 지정하고 30 FPS, 2~5초로 **Start Mocap**을 실행합니다. **Enhance Hands (HandFlow)**가 체크되어 있으면 전신 결과를 저장한 뒤 같은 작업에서 HandFlow 손 보강까지 자동 실행합니다. 체크를 해제하면 전신만 저장합니다. 손 결과는 별도 애니메이션이며 전신 원본은 유지됩니다. 손 처리에 실패하거나 취소해도 이미 저장된 전신 결과는 남습니다. 필요한 손 모델 파일이 없으면 시작 전에 안내하므로 체크를 해제해 전신만 처리할 수 있습니다.
+`영상 파일`을 지정하고 30 FPS, 2~5초로 **Start Mocap**을 실행합니다. 위의 **HandFlow**와 **본 보정**이 기본으로 켜져 있어 선택한 단계를 자동 처리합니다. 모델이나 Python이 준비되지 않았다면 해당 실행 옵션을 해제하세요. 완료 후 아래 저장 옵션과 이름을 확인하고 **애니메이션 시퀀스 저장**을 누릅니다. 실행 실패·취소 시 완료된 중간 결과와 기존 애셋은 보존합니다.
 
 준비 상태 표시는 주로 파일 존재 검사이며 실제 Python import·CUDA·모델 호환성 검사를 대체하지 않습니다. `Completed`와 출력 애니메이션, 손 보존 기록, 영상과의 전체 재생을 확인합니다. 오류는 `Saved/CubelessBodyMocap/` 아래 해당 작업의 `worker.log`, `worker_status.json`, 전신 `profile.json` 및 에디터 로그를 확인합니다. 모델·중간 ONNX·빌드 결과 외에도 영상 프레임과 실행 캐시를 저장할 여유 공간이 필요합니다.
 
@@ -254,7 +266,7 @@ UE 5.8.4 CL58902052용 Windows Editor 전용 테스트 버전입니다. MetaHuma
 
 - Manny와 준비된 Retargeter가 기본 선택됩니다. 다른 캐릭터에는 해당 캐릭터용 리타기터를 지정합니다.
 - Output Folder는 `/Game/` 아래를 지정합니다. 매 실행 고유 Take 폴더를 만들어 기존 결과를 덮어쓰지 않습니다.
-- **Start Mocap**을 누릅니다. 결과 Animation Sequence는 `Take_<id>/Animation` 아래에 저장됩니다. 임시 소스 애니메이션은 저장하지 않습니다.
+- **Start Mocap**으로 계산 후 **애니메이션 시퀀스 저장**을 누릅니다. 최종 애셋은 지정한 폴더·이름으로 저장하며, 내부 계산 결과는 별도 작업 폴더에 남습니다.
 - 생성한 애니메이션을 열어 대상 캐릭터에서 미리보기·재생합니다. 발 미끄러짐, 몸 방향, 크기, 루트 이동과 영상 마지막 프레임을 확인합니다.
 - 대상 캐릭터·Retargeter는 수정하지 않습니다. 저장 실패나 취소 시 이미 생성한 출력이 일부 남을 수 있습니다. 오류 메시지와 폴더를 확인한 뒤 다시 실행합니다.
 
@@ -413,13 +425,13 @@ HandFlow 적용 경로는 이미 같은 중복 매핑을 차단하고 있습니�
 - 기본 UI에는 **Start Mocap**과 **Cancel**이 있습니다. **Solve > Enhance Hands (HandFlow)**는 기본 체크이며, 처리 중 설정은 잠깁니다. 전신 단계와 손 단계를 한 비동기 작업에서 순서대로 처리하므로 다시 시작 버튼을 누를 필요가 없습니다.
 - 전신에서 디코딩한 원본 PNG를 손 단계가 그대로 재사용합니다. 전신의 사람 영역 ViTPose와 손의 전체 화면 ViTPose는 입력 영역이 다르므로 합치지 않습니다. 모델, 해상도, 프레임 수, HandFlow steps/batch/seed, 회전 변환·리타깃·접촉 보정은 변경하지 않았습니다. 관절 제약도 추가하지 않았습니다.
 - `Reuse Checkpoints`를 켜면 손용 전체 화면 ViTPose 결과를 `Saved/CubelessBodyMocap/HandCueCache`에 별도로 저장합니다. PNG 내용·FPS·모델 파일·관련 실행 모듈 내용·엔진 버전이 같은 경우에만 검사한 수치 데이터를 재사용합니다. 최초 실행은 기존 손 추론을 수행하며, 캐시 효과는 같은 입력의 반복 실행에 해당합니다. 하드웨어/드라이버를 바꾼 후 수치를 새로 비교하려면 `Reuse Checkpoints`를 끄십시오.
-- HandFlow의 기존 `HandCache`와 전신 `Cache`는 유지됩니다. 원본/손 결과 전환은 비교 뷰에서 가능합니다. 기존 에셋과 JSON은 삭제하지 않습니다. 진단을 켠 경우에만 별도의 **Run hand diagnostic / Apply cached fingers** 버튼이 보입니다. 진단 선택은 **Start Mocap**의 HandFlow 체크박스를 덮어쓰지 않습니다.
+- HandFlow의 기존 `HandCache`와 전신 `Cache`는 유지됩니다. 원본/손 결과 전환은 비교 뷰에서 가능합니다. 기존 에셋과 JSON은 삭제하지 않습니다. 진단용 실행 API는 유지하며 진단 UI는 제거했습니다. 진단 선택은 **Start Mocap**의 HandFlow 체크박스를 덮어쓰지 않습니다.
 - Python에서 `extract(settings)`도 같은 자동 흐름을 사용합니다. 전신만 필요한 기존 자동화는 `enhance_hands=False`를 명시하십시오. 기존 `refine_hands` / `apply_hand_result` API는 진단·재적용용으로 유지됩니다.
 - **Reuse Checkpoints**를 끄면 전신 중간 결과, 손 검출, 외부 HandFlow 결과 캐시의 읽기·쓰기를 모두 생략합니다. 기존 캐시 파일은 삭제하지 않습니다. `metrics.json`의 `cache_reuse_enabled=false`, `cache_hit=false`로 손 단계의 실제 재계산 여부를 확인할 수 있습니다.
 
 ## 선택형 손가락 관절 후처리
 
-모캡 결과를 확인한 뒤 필요할 때만 적용하는 별도 기능입니다. 기존 `Start Mocap`과 기본 체크된 `Enhance Hands`는 그대로이며, 관절 후처리는 자동 실행하지 않습니다.
+현재는 Start Mocap 위의 본 보정 체크가 기본 켜짐이며 자동 실행합니다. 아래는 독립 후처리 API와 알고리즘의 이전 검증 기록입니다.
 
 1. `Postprocess > Enable Joint Correction`을 켭니다. 기본값은 해제입니다.
 2. `Joint Correction Source`를 비우면 현재 HandFlow 결과를 사용하고, 없으면 Preview Animation을 사용합니다. 저장된 이전 Manny 결과를 직접 지정할 수도 있습니다. 해당 결과와 같은 Target Mesh/Retargeter를 지정해야 합니다.

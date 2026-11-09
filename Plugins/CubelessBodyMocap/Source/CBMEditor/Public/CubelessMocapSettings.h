@@ -21,6 +21,15 @@ UCLASS()
 class CBMEDITOR_API UCubelessMocapSettings : public UObject {
  GENERATED_BODY()
 public:
+ UPROPERTY(EditAnywhere, Category="Workflow") bool AutoBoneCorrection=true;
+ UPROPERTY(EditAnywhere, Category="Workflow") bool SaveHandFlow=true;
+ UPROPERTY(EditAnywhere, Category="Workflow") bool SaveBoneCorrection=true;
+ UPROPERTY(EditAnywhere, Category="Workflow") float SavePlayRate=1;
+ UPROPERTY(EditAnywhere, Category="Workflow") float PreviewPlayRate=1;
+ UPROPERTY(EditAnywhere, Category="Output", meta=(DisplayName="애니메이션 이름",ToolTip="최종 저장할 애니메이션 이름입니다. 옵션을 바꿔도 이 이름과 경로의 에셋을 갱신합니다.")) FString SequenceName="MocapAnimation";
+ UPROPERTY(EditAnywhere, Category="Workflow") TObjectPtr<UAnimSequence> CorrectedBodyAnimation;
+ UPROPERTY(EditAnywhere, Category="Workflow") TObjectPtr<UAnimSequence> CorrectedHandAnimation;
+ UPROPERTY(EditAnywhere, Category="Workflow") TObjectPtr<UAnimSequence> ExportedSequence;
  UPROPERTY(EditAnywhere, Category="Input", meta=(FilePathFilter="mp4;mov;mkv;avi")) FFilePath Video;
  UPROPERTY(EditAnywhere, Category="Input") FFilePath FFmpeg;
  UPROPERTY(EditAnywhere, Category="Input") FDirectoryPath FrameDirectory;
@@ -41,7 +50,7 @@ public:
  UPROPERTY(VisibleAnywhere, Category="Hands") TObjectPtr<UAnimSequence> HandEnhancedAnimation;
  UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="Enhance Hands (HandFlow)", ToolTip="Checked by default. Start Mocap saves the body, then automatically applies HandFlow / HaMeR to fingers in a separate animation. Uncheck for body only. Model quality settings are unchanged.")) bool EnhanceHands=true;
  // Retain the serialized legacy field for existing scripts/results; normal Start uses EnhanceHands only.
- UPROPERTY() ECBMFingerBackend FingerBackend=ECBMFingerBackend::HandFlow;
+ UPROPERTY(EditAnywhere, Category="Workflow") ECBMFingerBackend FingerBackend=ECBMFingerBackend::HandFlow;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", AdvancedDisplay, meta=(ToolTip="Enable legacy WiLoR/MediaPipe inference and comparison controls only for diagnosis. This affects only Run hand diagnostic; Start Mocap still follows the HandFlow checkbox.")) bool EnableLegacyHandDiagnostics=false;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) ECBMDiagnosticFingerBackend DiagnosticFingerBackend=ECBMDiagnosticFingerBackend::WiLoR;
  ECBMFingerBackend SelectedFingerBackend() const {return EnableLegacyHandDiagnostics?(DiagnosticFingerBackend==ECBMDiagnosticFingerBackend::WiLoR?ECBMFingerBackend::WiLoR:ECBMFingerBackend::MediaPipe):(EnhanceHands?ECBMFingerBackend::HandFlow:ECBMFingerBackend::None);}
@@ -51,9 +60,9 @@ public:
  UPROPERTY(EditAnywhere, Category="Hands|HandFlow", meta=(ClampMin="1",ClampMax="8")) int32 HandFlowBatch=2;
  UPROPERTY(EditAnywhere, Category="Hands|HandFlow", meta=(ClampMin="0")) int32 HandFlowSeed=0;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(DisplayName="Write Model Diagnostics")) bool HandDiagnostics=false;
- UPROPERTY(VisibleAnywhere, Category="Hands|Comparison") TObjectPtr<UAnimSequence> HandComparisonBase;
+ UPROPERTY(EditAnywhere, Category="Hands|Comparison") TObjectPtr<UAnimSequence> HandComparisonBase;
  UPROPERTY(VisibleAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) TObjectPtr<UAnimSequence> WiLoRAnimation;
- UPROPERTY(VisibleAnywhere, Category="Hands|Comparison") TObjectPtr<UAnimSequence> HandFlowAnimation;
+ UPROPERTY(EditAnywhere, Category="Hands|Comparison") TObjectPtr<UAnimSequence> HandFlowAnimation;
  UPROPERTY(VisibleAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) TObjectPtr<UAnimSequence> MediaPipeAnimation;
  UPROPERTY(VisibleAnywhere, Category="Hands") FString HandEnhancedBackend;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) FFilePath MediaPipePython;
@@ -62,8 +71,8 @@ public:
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) FFilePath HandPython;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) FDirectoryPath WiLoRDirectory;
  UPROPERTY(EditAnywhere, Category="Hands", meta=(ClampMin="0",ClampMax="1")) float HandStrength=1;
- UPROPERTY(EditAnywhere, Category="Postprocess", meta=(DisplayName="Enable Joint Correction", ToolTip="Optional postprocess only; Start Mocap never runs it automatically. Corrects finger joint range and isolated temporal outliers in a new asset. No model inference; body, wrists and metacarpals stay unchanged.")) bool EnableJointCorrection=false;
- UPROPERTY(EditAnywhere, Category="Postprocess", meta=(ClampMin="0",ClampMax="1",EditCondition="EnableJointCorrection",ToolTip="1 applies the full animation envelope; lower values partially blend the correction and may leave range violations. Zero selects the source unchanged.")) float JointCorrectionStrength=1;
+ UPROPERTY(EditAnywhere, Category="Postprocess", meta=(DisplayName="Enable Joint Correction", ToolTip="Legacy direct API switch; the UI Start Mocap uses AutoBoneCorrection. Corrects finger joint range and isolated temporal outliers in a new asset. No model inference; body, wrists and metacarpals stay unchanged.")) bool EnableJointCorrection=false;
+ UPROPERTY(EditAnywhere, Category="Postprocess", meta=(ClampMin="0",ClampMax="1",ToolTip="1 applies the full animation envelope; lower values partially blend the correction and may leave range violations. Zero selects the source unchanged.")) float JointCorrectionStrength=1;
  UPROPERTY(EditAnywhere, Category="Postprocess", meta=(EditCondition="EnableJointCorrection",ToolTip="Saved, uncorrected Manny animation. Empty uses the current HandFlow result, then Preview Animation. Repeated applications always use this source.")) TObjectPtr<UAnimSequence> JointCorrectionSource;
  UPROPERTY(VisibleAnywhere, Category="Postprocess") TObjectPtr<UAnimSequence> JointComparisonSource;
  UPROPERTY(VisibleAnywhere, Category="Postprocess") TObjectPtr<UAnimSequence> JointCorrectedAnimation;
@@ -77,6 +86,9 @@ class CBMEDITOR_API UCubelessMocapLibrary : public UBlueprintFunctionLibrary {
  GENERATED_BODY()
 public:
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static void OpenWindow();
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool StartMocap(UCubelessMocapSettings* Settings, FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool SaveAnimationSequence(UCubelessMocapSettings* Settings, FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* ResolveSaveAnimation(UCubelessMocapSettings* Settings);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static void LoadPreview();
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool SavePreviewScreenshot();
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static FString GetJobStatus();

@@ -171,47 +171,36 @@ public:
  }
 };
 void SCBMComparison::Construct(const FArguments& Args){
- Settings=Args._Settings;
+ Settings=Args._Settings;Settings->PreviewHand=0;
  Player.Reset(NewObject<UMediaPlayer>());Player->PlayOnOpen=false;Player->SetLooping(false);
  Texture.Reset(NewObject<UMediaTexture>());Texture->SetMediaPlayer(Player.Get());Texture->UpdateResource();
  Brush.SetResourceObject(Texture.Get());Brush.ImageSize=FVector2D(490,750);Brush.DrawAs=ESlateBrushDrawType::Image;
  ChildSlot[SNew(SVerticalBox)
   +SVerticalBox::Slot().FillHeight(1)[SNew(SHorizontalBox)
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
-    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(FText::FromString("Source video"))]
+    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(FText::FromString(TEXT("원본 영상")))]
     +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SNew(SImage).Image(&Brush)]]]]
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
-    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){FString Label=TEXT("Selected asset");
-     if(Settings->JointCorrectedAnimation&&Settings->PreviewAnimation==Settings->JointCorrectedAnimation)Label=TEXT("Joint corrected (optional)");
-     else if(Settings->JointComparisonSource&&Settings->PreviewAnimation==Settings->JointComparisonSource)Label=TEXT("Before joint correction");
-     else if(Settings->PreviewAnimation==Settings->OriginalAnimation)Label=TEXT("No hand enhancement");
-     else if(Settings->HandComparisonBase==Settings->OriginalAnimation){
-      if(Settings->PreviewAnimation==Settings->WiLoRAnimation)Label=TEXT("WiLoR + MediaPipe");
-      else if(Settings->PreviewAnimation==Settings->HandFlowAnimation)Label=TEXT("HandFlow / HaMeR");
-      else if(Settings->PreviewAnimation==Settings->MediaPipeAnimation)Label=TEXT("MediaPipe (legacy)");}
-     return FText::FromString(TEXT("Unreal animation - ")+Label);}).ToolTipText_Lambda([this](){return FText::FromString(Settings->PreviewAnimation?Settings->PreviewAnimation->GetPathName():TEXT("No animation selected"));})]
+    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){FString Label=TEXT("선택된 결과");
+     if(Settings->PreviewAnimation==Settings->CorrectedHandAnimation&&Settings->PreviewAnimation)Label=TEXT("HandFlow + 본 보정");
+     else if(Settings->PreviewAnimation==Settings->CorrectedBodyAnimation&&Settings->PreviewAnimation)Label=TEXT("전신 + 본 보정");
+     else if(Settings->PreviewAnimation==Settings->HandFlowAnimation&&Settings->PreviewAnimation)Label=TEXT("HandFlow");
+     else if(Settings->PreviewAnimation==Settings->OriginalAnimation&&Settings->PreviewAnimation)Label=TEXT("전신 원본");
+     return FText::FromString(TEXT("언리얼 애니메이션 - ")+Label);}).ToolTipText_Lambda([this](){return FText::FromString(Settings->PreviewAnimation?Settings->PreviewAnimation->GetPathName():TEXT("No animation selected"));})]
     +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SAssignNew(View,SCBMAnimationViewport)]]]]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("No hand enhancement")).IsEnabled_Lambda([this](){return Settings->OriginalAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->OriginalAnimation;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("WiLoR + MediaPipe")).Visibility_Lambda([this](){return Settings->EnableLegacyHandDiagnostics?EVisibility::Visible:EVisibility::Collapsed;}).IsEnabled_Lambda([this](){return Settings->HandComparisonBase==Settings->OriginalAnimation&&Settings->WiLoRAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->WiLoRAnimation;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("HandFlow / HaMeR")).IsEnabled_Lambda([this](){return Settings->HandComparisonBase==Settings->OriginalAnimation&&Settings->HandFlowAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->HandFlowAnimation;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("MediaPipe (legacy)")).Visibility_Lambda([this](){return Settings->EnableLegacyHandDiagnostics?EVisibility::Visible:EVisibility::Collapsed;}).IsEnabled_Lambda([this](){return Settings->HandComparisonBase==Settings->OriginalAnimation&&Settings->MediaPipeAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->MediaPipeAnimation;return FReply::Handled();})]]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("영상 열기"))).OnClicked(this,&SCBMComparison::Load)]
+   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text_Lambda([this](){return FText::FromString(Player->IsPlaying()?TEXT("일시 정지"):TEXT("재생"));}).IsEnabled_Lambda([this](){return Player->IsReady()&&Settings->PreviewAnimation!=nullptr&&!Waiting;}).OnClicked_Lambda([this](){if(Player->IsPlaying()){Player->Pause();PlayAfterSeek=false;}else{if(Clock.Position>=Length-.02)Seek(0);if(Clock.Pending)PlayAfterSeek=true;else Player->SetRate(Settings->PreviewPlayRate);}return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("정지"))).OnClicked_Lambda([this](){Player->Pause();PlayAfterSeek=false;Seek(0);return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("재생 속도")))]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(80)[SNew(SSpinBox<float>).MinValue(.1f).MaxValue(4.f).Delta(.05f).ToolTipText(FText::FromString(TEXT("영상과 애니메이션을 함께 재생하는 속도입니다. 저장 플레이 레이트에는 영향을 주지 않습니다. 디코더가 지원하지 않는 속도는 적용하지 않습니다."))).Value_Lambda([this](){return Settings->PreviewPlayRate;}).OnValueChanged_Lambda([this](float V){if(Player->IsReady()&&!Player->SupportsRate(V,false)){Notice=TEXT("영상 디코더가 지원하지 않는 재생 속도입니다.");return;}Settings->PreviewPlayRate=V;if(Player->IsPlaying())Player->SetRate(V);})]]
+   +SHorizontalBox::Slot().FillWidth(1).Padding(8,0)[SNew(SSlider).ToolTipText(FText::FromString(TEXT("드래그하는 동안 영상과 애니메이션의 시점을 함께 이동합니다."))).PreventThrottling(true).IsEnabled_Lambda([this](){return Player->IsReady()&&Length>0;}).Value_Lambda([this](){return Length>0?Clock.Position/Length:0.f;}).OnMouseCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnMouseCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnControllerCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnControllerCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnValueChanged_Lambda([this](float V){Player->Pause();PlayAfterSeek=false;Seek(V*Length);})]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Before correction")).IsEnabled_Lambda([this](){return Settings->JointComparisonSource!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->JointComparisonSource;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("Joint corrected")).IsEnabled_Lambda([this](){return Settings->JointCorrectedAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->JointCorrectedAnimation;return FReply::Handled();})]]
-  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Load comparison")).OnClicked(this,&SCBMComparison::Load)]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text_Lambda([this](){return FText::FromString(Player->IsPlaying()?"Pause":"Play");}).IsEnabled_Lambda([this](){return Player->IsReady()&&Settings->PreviewAnimation!=nullptr&&!Waiting;}).OnClicked_Lambda([this](){if(Player->IsPlaying()){Player->Pause();PlayAfterSeek=false;}else{if(Clock.Position>=Length-.02)Seek(0);if(Clock.Pending)PlayAfterSeek=true;else Player->Play();}return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Stop")).OnClicked_Lambda([this](){Player->Pause();PlayAfterSeek=false;Seek(0);return FReply::Handled();})]
-   +SHorizontalBox::Slot().FillWidth(1).Padding(8,0)[SNew(SSlider).PreventThrottling(true).IsEnabled_Lambda([this](){return Player->IsReady()&&Length>0;}).Value_Lambda([this](){return Length>0?Clock.Position/Length:0.f;}).OnMouseCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnMouseCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnControllerCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnControllerCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnValueChanged_Lambda([this](float V){Player->Pause();PlayAfterSeek=false;Seek(V*Length);})]]
-  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Full body")).OnClicked_Lambda([this](){Settings->PreviewHand=0;Settings->PreviewYawOffset=0;Settings->PreviewZoom=1;View->NeedsFit=true;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Left hand")).OnClicked_Lambda([this](){Settings->PreviewHand=1;Settings->PreviewZoom=1;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Right hand")).OnClicked_Lambda([this](){Settings->PreviewHand=2;Settings->PreviewZoom=1;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString("Camera yaw"))]
-   +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).MinValue(-180).MaxValue(180).Value_Lambda([this](){return Settings->PreviewYawOffset;}).OnValueChanged_Lambda([this](float V){Settings->PreviewYawOffset=V;})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString("Zoom"))]
-   +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).MinValue(.5f).MaxValue(2.f).Delta(.05f).Value_Lambda([this](){return Settings->PreviewZoom;}).OnValueChanged_Lambda([this](float V){Settings->PreviewZoom=V;})]]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("카메라 초기화"))).OnClicked_Lambda([this](){Settings->PreviewHand=0;Settings->PreviewYawOffset=0;Settings->PreviewZoom=1;View->NeedsFit=true;return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("카메라 방향")))]
+   +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).ToolTipText(FText::FromString(TEXT("비교 카메라의 수평 방향을 회전합니다. 애니메이션은 변경하지 않습니다."))).MinValue(-180).MaxValue(180).Value_Lambda([this](){return Settings->PreviewYawOffset;}).OnValueChanged_Lambda([this](float V){Settings->PreviewYawOffset=V;})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("확대")))]
+   +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).ToolTipText(FText::FromString(TEXT("비교 뷰를 확대하거나 축소합니다."))).MinValue(.5f).MaxValue(2.f).Delta(.05f).Value_Lambda([this](){return Settings->PreviewZoom;}).OnValueChanged_Lambda([this](float V){Settings->PreviewZoom=V;})]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("%.2f / %.2f s  |  %s"),Clock.Position,Length,*Notice));})]];
 }
 SCBMComparison::~SCBMComparison(){Player->Close();Brush.SetResourceObject(nullptr);}
@@ -256,10 +245,10 @@ void SCBMComparison::Tick(const FGeometry& G,double T,float D){
   Length=FMath::Min(double(Settings->DurationSeconds),FMath::Max(0.,Player->GetDuration().GetTotalSeconds()-Settings->StartSeconds));
   if(Settings->PreviewAnimation)Length=FMath::Min(Length,double(Settings->PreviewAnimation->GetPlayLength()));
   const float MediaFPS=Player->GetVideoTrackFrameRate(INDEX_NONE,INDEX_NONE);
-  Clock.Advance(Player->GetTime().GetTotalSeconds()-Settings->StartSeconds,Length,1./(MediaFPS>0?MediaFPS:FMath::Max(Settings->FrameRate,1)),D,Player->IsPlaying());
-  if(PlayAfterSeek&&!Clock.Pending&&!Clock.Scrubbing){PlayAfterSeek=false;Player->Play();}
+  Clock.Advance(Player->GetTime().GetTotalSeconds()-Settings->StartSeconds,Length,1./(MediaFPS>0?MediaFPS:FMath::Max(Settings->FrameRate,1)),D*Settings->PreviewPlayRate,Player->IsPlaying());
+  if(PlayAfterSeek&&!Clock.Pending&&!Clock.Scrubbing){PlayAfterSeek=false;Player->SetRate(Settings->PreviewPlayRate);}
   if(Player->IsPlaying()&&Player->GetTime().GetTotalSeconds()-Settings->StartSeconds>=Length-.001)Player->Pause();
-  Notice=Settings->PreviewAnimation?TEXT("Video-synced. Yaw/Zoom adjust view; Full body restores source-facing view."):TEXT("Select Preview Animation after extraction");
+  Notice=Settings->PreviewAnimation?TEXT("영상과 동기화됩니다. 저장 옵션으로 비교 결과를 전환하세요."):TEXT("모캡 완료 후 결과가 표시됩니다.");
  }
  if(Settings->PreviewAnimation&&Settings->TargetMesh&&Settings->PreviewAnimation->GetSkeleton()!=Settings->TargetMesh->GetSkeleton()){
   Player->Pause();Notice=TEXT("Preview animation skeleton does not match target mesh");return;

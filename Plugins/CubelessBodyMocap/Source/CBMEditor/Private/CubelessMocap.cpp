@@ -40,6 +40,7 @@
 #include "Retargeter/IKRetargetProcessor.h"
 #include "UObject/SavePackage.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/MetaData.h"
 #include "Interfaces/IPluginManager.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/EngineVersion.h"
@@ -252,9 +253,11 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
 }
 #include "CBMHands.inl"
 #include "CBMJointPost.inl"
-bool UCubelessMocapLibrary::IsBusy(){check(IsInGameThread());return CurrentJob&&!CurrentJob->Done.Load();}
-void UCubelessMocapLibrary::Cancel(){check(IsInGameThread());if(CurrentJob&&!CurrentJob->Done.Load()){CurrentJob->Cancel.Store(true);FScopeLock L(&CurrentJob->Mutex);CurrentJob->Message=TEXT("Cancellation requested; waiting for the current native call to return.");}}
-FString UCubelessMocapLibrary::GetJobStatus(){check(IsInGameThread());if(!CurrentJob)return TEXT("Idle");auto J=CurrentJob;FScopeLock L(&J->Mutex);return FString::Printf(TEXT("%s | %.0f%% | %.1fs | peak RAM %.0f MiB\n%s"),*J->Stage,J->Progress*100,(J->Finished>0?J->Finished:FPlatformTime::Seconds())-J->Start,J->PeakProcess/1048576.0,*J->Message);}
+static double CBMPipelineStart=0,CBMPipelineEnd=0;
+static bool CBMPipelineActive=false,CBMPipelineDispatch=false,CBMPipelineCancel=false,CBMExportActive=false;
+bool UCubelessMocapLibrary::IsBusy(){check(IsInGameThread());return CBMExportActive||(CBMPipelineActive&&!CBMPipelineDispatch)||(CurrentJob&&!CurrentJob->Done.Load());}
+void UCubelessMocapLibrary::Cancel(){check(IsInGameThread());CBMPipelineCancel=true;if(CurrentJob&&!CurrentJob->Done.Load()){CurrentJob->Cancel.Store(true);FScopeLock L(&CurrentJob->Mutex);CurrentJob->Message=TEXT("Cancellation requested; waiting for the current native call to return.");}}
+FString UCubelessMocapLibrary::GetJobStatus(){check(IsInGameThread());if(!CurrentJob)return TEXT("Idle");auto J=CurrentJob;FScopeLock L(&J->Mutex);return (CBMPipelineStart>0?FString::Printf(TEXT("전체 처리 %.1f초 | "),(CBMPipelineEnd>0?CBMPipelineEnd:FPlatformTime::Seconds())-CBMPipelineStart):FString())+FString::Printf(TEXT("%s | %.0f%% | %.1fs | peak RAM %.0f MiB\n%s"),*J->Stage,J->Progress*100,(J->Finished>0?J->Finished:FPlatformTime::Seconds())-J->Start,J->PeakProcess/1048576.0,*J->Message);}
 bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
  if(!IsInGameThread()||!S){Result=TEXT("Start on the Editor game thread.");return false;}if(IsBusy()){Result=TEXT("Another job is running.");return false;}if(GEditor&&GEditor->PlayWorld){Result=TEXT("End PIE/SIE first.");return false;}
  if(!S->TargetMesh||!S->Retargeter||!S->OutputFolder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(S->OutputFolder)||S->FrameRate<1||S->FrameRate>120||!FMath::IsFinite(S->StartSeconds)||!FMath::IsFinite(S->DurationSeconds)||S->StartSeconds<0||S->DurationSeconds<=0||S->DurationSeconds>120){Result=TEXT("Invalid target, output folder, time range or FPS.");return false;}
@@ -274,3 +277,4 @@ bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
 }
 
 void UCubelessMocapLibrary::ShutdownJobs(){check(IsInGameThread());check(!IsBusy());if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();FTSTicker::GetCoreTicker().RemoveTicker(CurrentJob->SampleTicker);}CurrentJob.Reset();}
+#include "CBMWorkflow.inl"

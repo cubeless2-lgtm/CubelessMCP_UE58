@@ -43,6 +43,8 @@
 #include "UObject/MetaData.h"
 #include "Interfaces/IPluginManager.h"
 #include "Modules/ModuleManager.h"
+#include "CBMSoleGrounding.inl"
+#include "CBMFootSupport.inl"
 #include "Misc/EngineVersion.h"
 THIRD_PARTY_INCLUDES_START
 #include <Eigen/Dense>
@@ -57,7 +59,7 @@ struct FSolveData { TArray64<float> Shape,Pose,Translation,Keypoints,Boxes,Conta
 struct FCBMJob : TSharedFromThis<FCBMJob,ESPMode::ThreadSafe> {
  FCriticalSection Mutex;TAtomic<bool> Cancel{false},Done{false};TFuture<void> Worker;
  FString Stage=TEXT("Queued"),Message,Run,Dir,Video,FFmpeg,OutputFolder,CacheDir;
- double Start=FPlatformTime::Seconds(),Finished=0,Progress=0;int32 FPS=30,FrameCount=0;float StartSeconds=0,Duration=10;bool ImageLimbAlignment=false,FootLocking=true,RefineBody=false,Reuse=true,Success=false,FusedCHMR=false,CompactSAM=false,DumpStages=false;
+ double Start=FPlatformTime::Seconds(),Finished=0,Progress=0;int32 FPS=30,FrameCount=0;float StartSeconds=0,Duration=10;bool SoleGrounding=true,ImageLimbAlignment=false,FootLocking=true,RefineBody=false,Reuse=true,Success=false,FusedCHMR=false,CompactSAM=false,DumpStages=false;
  uint64 PeakProcess=0;TMap<FString,double> Timings;TMap<FString,uint64> Memory;TMap<FString,FString> StageHashes;float CameraFocal=0,CameraPitch=0,CameraRoll=0;
  // Accessed and destroyed only on the game thread. Global job retains ownership until its worker is joined.
  TStrongObjectPtr<USkeletalMesh> Target,Source;TStrongObjectPtr<UIKRetargeter> Retargeter;
@@ -259,11 +261,22 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
  FIKRetargetBatchOperationInputs Inputs;Inputs.AssetsToRetarget.Add(FAssetData(Anim.Get()));Inputs.SourceMesh=RetargetSource.Get();Inputs.TargetMesh=J->Target.Get();Inputs.IKRetargetAsset=J->Retargeter.Get();Inputs.TargetPath=Folder/TEXT("Animation");Inputs.bIncludeReferencedAssets=false;Inputs.bOverwriteExistingFiles=false;
  const TArray<FAssetData> Outputs=UIKRetargetBatchOperation::RunBatchRetarget(Inputs);
  if(Outputs.IsEmpty())return Fail(TEXT("Retargeting produced no assets. Source animation remains unsaved in ")+Folder);
- for(const FAssetData& A:Outputs){auto* Asset=Cast<UAnimSequence>(A.GetAsset());if(!Asset || Asset->GetSkeleton()!=J->Target.Get()->GetSkeleton())return Fail(TEXT("Retargeting returned an unexpected skeleton. Inspect the unsaved output."));if(J->ImageLimbAlignment){FCBMStage AlignStage(J,TEXT("ImageLimbAlignment"),.97);FString AlignmentReport;if(!CBMAlignTargetLimbPlanes(Asset,J->Target.Get(),Data,DebugOptimizedCamera,Origin,Focal,FVector2f(Raster)/2,J->FPS,AlignmentReport))return Fail(TEXT("Target alignment failed: ")+AlignmentReport);FFileHelper::SaveStringToFile(AlignmentReport,*(PreviewDir/TEXT("ImageAlignment.json")));}UPackage* Pkg=Asset->GetOutermost();FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;const FString File=FPackageName::LongPackageNameToFilename(Pkg->GetName(),FPackageName::GetAssetPackageExtension());if(!UPackage::SavePackage(Pkg,Asset,*File,Args))return Fail(TEXT("Could not save ")+Pkg->GetName());}
+ for(const FAssetData& A:Outputs){auto* Asset=Cast<UAnimSequence>(A.GetAsset());if(!Asset || Asset->GetSkeleton()!=J->Target.Get()->GetSkeleton())return Fail(TEXT("Retargeting returned an unexpected skeleton. Inspect the unsaved output."));if(J->ImageLimbAlignment){FCBMStage AlignStage(J,TEXT("ImageLimbAlignment"),.97);FString AlignmentReport;if(!CBMAlignTargetLimbPlanes(Asset,J->Target.Get(),Data,DebugOptimizedCamera,Origin,Focal,FVector2f(Raster)/2,J->FPS,AlignmentReport))return Fail(TEXT("Target alignment failed: ")+AlignmentReport);FFileHelper::SaveStringToFile(AlignmentReport,*(PreviewDir/TEXT("ImageAlignment.json")));}if(J->SoleGrounding&&J->FootLocking){FString SoleReport;if(!CBMGroundTargetSoles(Asset,J->Target.Get(),SoleReport))return Fail(TEXT("Sole grounding validation failed: ")+SoleReport);FFileHelper::SaveStringToFile(SoleReport,*(PreviewDir/TEXT("SoleGrounding.json")));}UPackage* Pkg=Asset->GetOutermost();FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;const FString File=FPackageName::LongPackageNameToFilename(Pkg->GetName(),FPackageName::GetAssetPackageExtension());if(!UPackage::SavePackage(Pkg,Asset,*File,Args))return Fail(TEXT("Could not save ")+Pkg->GetName());}
  J->Original.Reset(Cast<UAnimSequence>(Outputs[0].GetAsset()));J->OriginalGuid=J->Original->GetDataModel()->GenerateGuid();J->BodySaved=true;
  if(J->Settings.IsValid()){J->Settings->PreviewAnimation=J->Original.Get();J->Settings->OriginalAnimation=J->Settings->PreviewAnimation;J->Settings->JointComparisonSource=nullptr;J->Settings->JointCorrectedAnimation=nullptr;J->Settings->JointCorrectionReport.FilePath.Empty();J->Settings->JointCorrectionSource=nullptr;J->Settings->HandEnhancedAnimation=nullptr;J->Settings->HandComparisonBase=nullptr;J->Settings->WiLoRAnimation=nullptr;J->Settings->HandFlowAnimation=nullptr;J->Settings->MediaPipeAnimation=nullptr;}
   Result=TEXT("Saved animation in ")+Folder+FString::Printf(TEXT(" (%d/%d tracked frames)."),ValidCount,N);return true;};Exported=Export();
- });}return Exported;
+ });}
+ if(Exported&&J->SoleGrounding&&J->FootLocking){
+  FCBMStage Stage(J,TEXT("ContactFootInclination"),.99);CBMFootSupport::FInput Input;bool Ready=false;
+  OnGame([&](){if(!Cancelled()&&!(GEditor&&GEditor->PlayWorld))Ready=CBMGatherFootSupport(J->Original.Get(),J->Target.Get(),Data.Contacts.GetData(),Data.Contacts.Num(),Data.Keypoints.GetData(),Data.Keypoints.Num(),Input);});
+  if(Cancelled()){Result=TEXT("Cancelled before foot support solve; saved body preserved.");return false;}
+  if(Ready){const auto Correction=CBMFootSupport::Solve(Input,[&](){return Cancelled();});if(Correction.Cancelled){Result=TEXT("Cancelled before foot inclination application; saved body preserved.");return false;}
+   bool Applied=false;OnGame([&](){if(Cancelled()||(GEditor&&GEditor->PlayWorld))return;auto* Asset=J->Original.Get();Applied=CBMApplyFootSupport(Asset,J->Target.Get(),Input,Correction);if(Applied){FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;Applied=UPackage::SavePackage(Asset->GetOutermost(),Asset,*FPackageName::LongPackageNameToFilename(Asset->GetOutermost()->GetName(),FPackageName::GetAssetPackageExtension()),Args);if(Applied)J->OriginalGuid=Asset->GetDataModel()->GenerateGuid();}});
+   if(!Applied){Result=TEXT("Foot support application/save failed; inspect current output.");return false;}
+   FFileHelper::SaveStringToFile(CBMFootSupportReport(Correction),*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run/TEXT("FootSupport.json")));
+  }else FFileHelper::SaveStringToFile(TEXT("{\"applied\":false,\"reason\":\"unsupported rig or missing contact evidence\"}"),*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run/TEXT("FootSupport.json")));
+ }
+ return Exported;
 }
 #include "CBMHands.inl"
 #include "CBMJointPost.inl"
@@ -276,7 +289,7 @@ bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
  if(!IsInGameThread()||!S){Result=TEXT("Start on the Editor game thread.");return false;}if(IsBusy()){Result=TEXT("Another job is running.");return false;}if(GEditor&&GEditor->PlayWorld){Result=TEXT("End PIE/SIE first.");return false;}
  if(!S->TargetMesh||!S->Retargeter||!S->OutputFolder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(S->OutputFolder)||S->FrameRate<1||S->FrameRate>120||!FMath::IsFinite(S->StartSeconds)||!FMath::IsFinite(S->DurationSeconds)||S->StartSeconds<0||S->DurationSeconds<=0||S->DurationSeconds>120){Result=TEXT("Invalid target, output folder, time range or FPS.");return false;}
  if(CurrentJob&&CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();
- auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Dir=S->FrameDirectory.Path;J->Video=S->Video.FilePath;J->FFmpeg=S->FFmpeg.FilePath;J->FPS=S->FrameRate;J->Duration=S->DurationSeconds;J->StartSeconds=S->StartSeconds;J->ImageLimbAlignment=S->ImageLimbAlignment;J->FootLocking=S->FootLocking;J->RefineBody=S->RefineBody;J->Reuse=S->ReuseCheckpoints;J->DumpStages=CVarCBMDumpStages.GetValueOnGameThread()!=0;J->FusedCHMR=S->UseFusedCHMR&&UE::NNE::GetRuntime<INNERuntimeGPU>(TEXT("NNERuntimeORTDml")).IsValid()&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"));J->CompactSAM=J->FusedCHMR&&CVarCBMCompactSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"))&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"));J->OutputFolder=S->OutputFolder;J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;J->AutoHands=S->EnhanceHands;
+ auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Dir=S->FrameDirectory.Path;J->Video=S->Video.FilePath;J->FFmpeg=S->FFmpeg.FilePath;J->FPS=S->FrameRate;J->Duration=S->DurationSeconds;J->StartSeconds=S->StartSeconds;J->ImageLimbAlignment=S->ImageLimbAlignment;J->SoleGrounding=S->SoleGrounding;J->FootLocking=S->FootLocking;J->RefineBody=S->RefineBody;J->Reuse=S->ReuseCheckpoints;J->DumpStages=CVarCBMDumpStages.GetValueOnGameThread()!=0;J->FusedCHMR=S->UseFusedCHMR&&UE::NNE::GetRuntime<INNERuntimeGPU>(TEXT("NNERuntimeORTDml")).IsValid()&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"));J->CompactSAM=J->FusedCHMR&&CVarCBMCompactSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"))&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"));J->OutputFolder=S->OutputFolder;J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;J->AutoHands=S->EnhanceHands;
  if(J->AutoHands&&!CBMConfigureAutoHands(J,S,Result))return false;
  CurrentJob=J;
  J->SampleTicker=FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([J](float){FScopeLock L(&J->Mutex);J->PeakProcess=FMath::Max(J->PeakProcess,FPlatformMemory::GetStats().UsedPhysical);return !J->Done.Load();}),.25f);
@@ -292,3 +305,31 @@ bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
 
 void UCubelessMocapLibrary::ShutdownJobs(){check(IsInGameThread());check(!IsBusy());if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();FTSTicker::GetCoreTicker().RemoveTicker(CurrentJob->SampleTicker);}CurrentJob.Reset();}
 #include "CBMWorkflow.inl"
+
+UAnimSequence* UCubelessMocapLibrary::CreateSoleGroundedAnimation(UAnimSequence* Source,USkeletalMesh* Mesh,const FString& OutputFolder,FString& Result){
+ if(IsBusy()||(GEditor&&GEditor->PlayWorld)||!Source||Source->GetOutermost()->IsDirty()||!Mesh||Source->GetSkeleton()!=Mesh->GetSkeleton()||!OutputFolder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(OutputFolder)){Result=TEXT("Invalid source or busy editor");return nullptr;}
+ TGuardValue<bool> Guard(CBMExportActive,true);
+ const FString Name=Source->GetName()+TEXT("_Soles_")+FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8);
+ auto* Output=DuplicateObject<UAnimSequence>(Source,CreatePackage(*(OutputFolder/Name)),*Name);Output->SetFlags(RF_Public|RF_Standalone);
+ if(!CBMGroundTargetSoles(Output,Mesh,Result))return nullptr;
+ FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;
+ if(!UPackage::SavePackage(Output->GetOutermost(),Output,*FPackageName::LongPackageNameToFilename(OutputFolder/Name,FPackageName::GetAssetPackageExtension()),Args))return nullptr;
+ FAssetRegistryModule::AssetCreated(Output);return Output;
+}
+
+UAnimSequence* UCubelessMocapLibrary::CreateContactSupportedAnimation(UAnimSequence* Source,USkeletalMesh* Mesh,const FString& EvidenceDirectory,const FString& OutputFolder,FString& Result){
+ if(IsBusy()||(GEditor&&GEditor->PlayWorld)||!Source||Source->GetOutermost()->IsDirty()||!Mesh||!OutputFolder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(OutputFolder)){Result=TEXT("Invalid source or busy editor");return nullptr;}
+ TGuardValue<bool> Guard(CBMExportActive,true);TArray<uint8> Contacts,Keypoints;
+ FString EvidencePath=FPaths::ConvertRelativePathToFull(EvidenceDirectory);FPaths::NormalizeDirectoryName(EvidencePath);
+ FString Metadata;TSharedPtr<FJsonObject> Evidence;double Frames=0,FPS=0;
+ if(!CBMFootSupport::MatchesEvidenceSource(Source->GetName(),FPaths::GetCleanFilename(EvidencePath))||
+    !FFileHelper::LoadFileToString(Metadata,*(EvidencePath/TEXT("DebugBones.json")))||!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Metadata),Evidence)||!Evidence.IsValid()||
+    !Evidence->TryGetNumberField(TEXT("frames"),Frames)||!Evidence->TryGetNumberField(TEXT("fps"),FPS)||!FMath::IsFinite(Frames)||!FMath::IsFinite(FPS)||
+    Frames!=Source->GetDataModel()->GetNumberOfKeys()||FMath::Abs(FPS-Source->GetDataModel()->GetFrameRate().AsDecimal())>1.e-6){Result=TEXT("Cached evidence does not match source run, frame count or frame rate; no output created");return nullptr;}
+
+ if(!FFileHelper::LoadFileToArray(Contacts,*(EvidenceDirectory/TEXT("Contacts.f32")))||!FFileHelper::LoadFileToArray(Keypoints,*(EvidenceDirectory/TEXT("Keypoints25.f32")))||Contacts.Num()%4||Keypoints.Num()%4){Result=TEXT("Missing or malformed cached evidence");return nullptr;}
+ CBMFootSupport::FInput Input;if(!CBMGatherFootSupport(Source,Mesh,reinterpret_cast<const float*>(Contacts.GetData()),Contacts.Num()/4,reinterpret_cast<const float*>(Keypoints.GetData()),Keypoints.Num()/4,Input)){Result=TEXT("Unsupported rig or mismatched cached frames");return nullptr;}
+ const auto Correction=CBMFootSupport::Solve(Input,[](){return false;});Result=CBMFootSupportReport(Correction);
+ const FString Name=Source->GetName()+TEXT("_Contact_")+FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8);auto* Output=DuplicateObject<UAnimSequence>(Source,CreatePackage(*(OutputFolder/Name)),*Name);Output->SetFlags(RF_Public|RF_Standalone);Input.Guid=Output->GetDataModel()->GenerateGuid();
+ if(!CBMApplyFootSupport(Output,Mesh,Input,Correction))return nullptr;FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;if(!UPackage::SavePackage(Output->GetOutermost(),Output,*FPackageName::LongPackageNameToFilename(OutputFolder/Name,FPackageName::GetAssetPackageExtension()),Args))return nullptr;FAssetRegistryModule::AssetCreated(Output);return Output;
+}

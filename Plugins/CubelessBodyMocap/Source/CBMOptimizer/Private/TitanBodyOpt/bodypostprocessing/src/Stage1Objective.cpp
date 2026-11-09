@@ -1,6 +1,11 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "bodypostprocessing/Stage1Objective.h"
+#include "CBMContactEvidence.h"
+#include "HAL/IConsoleManager.h"
+
+// Candidate remains opt-in until target-mesh contact/slip validation passes.
+static TAutoConsoleVariable<int32> CVarCBMContactInterval(TEXT("cbm.ContactIntervalEvidence"),0,TEXT("Experimental two-endpoint contact evidence. Default off: some clips regress in slip."),ECVF_Default);
 
 #include <carbon/common/Defs.h>
 #include <carbon/utils/TaskThreadPool.h>
@@ -938,13 +943,11 @@ Stage1ObjectiveEval EvaluateStage1ObjectiveAndGradient(
                 continue;
             }
 
-            // Extract and apply sigmoid to contact predictions for frame t (current frame).
-            std::array<float, 4> contactConf = {1.0f, 1.0f, 1.0f, 1.0f};  // Default if no predictions
-            if (t < data.seqCases.size() && data.seqCases[t].staticConfLogits.size() >= 4) {
-                for (int i = 0; i < 4; ++i) {
-                    const float logit = data.seqCases[t].staticConfLogits[static_cast<size_t>(i)];
-                    contactConf[static_cast<size_t>(i)] = 1.0f / (1.0f + std::exp(-logit));  // sigmoid
-                }
+            // Contact velocity belongs to an interval, not its landing frame.
+            std::array<float, 4> contactConf = {0.f, 0.f, 0.f, 0.f};
+            if (t < data.seqCases.size() && data.seqCases[t].staticConfLogits.size() >= 4 && data.seqCases[t-1].staticConfLogits.size() >= 4) {
+                for (int i = 0; i < 4; ++i)
+                    contactConf[i] = CVarCBMContactInterval.GetValueOnAnyThread() ? CubelessContact::Interval(data.seqCases[t-1].staticConfLogits[i], data.seqCases[t].staticConfLogits[i]) : CubelessContact::Probability(data.seqCases[t].staticConfLogits[i]);
             }
 
             float frameSum = 0.0f;
@@ -987,13 +990,11 @@ Stage1ObjectiveEval EvaluateStage1ObjectiveAndGradient(
                     continue;
                 }
 
-                // Extract contact confidence for frame t.
-                std::array<float, 4> contactConf = {1.0f, 1.0f, 1.0f, 1.0f};
-                if (t < data.seqCases.size() && data.seqCases[t].staticConfLogits.size() >= 4) {
-                    for (int i = 0; i < 4; ++i) {
-                        const float logit = data.seqCases[t].staticConfLogits[static_cast<size_t>(i)];
-                        contactConf[static_cast<size_t>(i)] = 1.0f / (1.0f + std::exp(-logit));
-                    }
+                // Contact velocity belongs to an interval, not its landing frame.
+                std::array<float, 4> contactConf = {0.f, 0.f, 0.f, 0.f};
+                if (t < data.seqCases.size() && data.seqCases[t].staticConfLogits.size() >= 4 && data.seqCases[t-1].staticConfLogits.size() >= 4) {
+                    for (int i = 0; i < 4; ++i)
+                        contactConf[i] = CVarCBMContactInterval.GetValueOnAnyThread() ? CubelessContact::Interval(data.seqCases[t-1].staticConfLogits[i], data.seqCases[t].staticConfLogits[i]) : CubelessContact::Probability(data.seqCases[t].staticConfLogits[i]);
                 }
 
                 const float mt = mask[t];

@@ -39,6 +39,7 @@ public:
  UPROPERTY(EditAnywhere, Category="Input", meta=(ClampMin="0.1",ClampMax="120")) float DurationSeconds=10;
  UPROPERTY(EditAnywhere, Category="Input", meta=(ClampMin="1",ClampMax="120")) int32 FrameRate=30;
  UPROPERTY(EditAnywhere, Category="Solve") bool FootLocking=true;
+ UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="발바닥 지면 보완", ToolTip="신발 표면의 지면 침투를 높이 보완으로 줄입니다. 발목·앞꿈치 접지 신뢰도와 영상 검출, 높이·속도가 함께 지지를 나타내면 접촉점을 유지하며 발 기울기도 보완합니다. 미끄러짐과 회전 변화 검사를 통과한 구간만 적용하며 공중·불확실 구간과 HandFlow 손은 유지합니다. 기본 발 고정이 켜져 있을 때 적용합니다.")) bool SoleGrounding=true;
  UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="Refine Body from Video (Experimental)", EditCondition="FootLocking", ToolTip="Optional lower-body refinement using confident video keypoints, support-leg depth evidence and foot contacts. Fits global camera height; calibrated rotation and scale stay fixed. No joint-angle limits. Some clips retain foot penetration or projection errors. Off preserves the previous body optimizer.")) bool RefineBody=false;
  UPROPERTY(EditAnywhere, Category="Solve") bool ReuseCheckpoints=true;
  // Preserve weights, resolution and all frames; seeded camera calibration is shared by both modes.
@@ -88,6 +89,8 @@ class CBMEDITOR_API UCubelessMocapLibrary : public UBlueprintFunctionLibrary {
  GENERATED_BODY()
 public:
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static void OpenWindow();
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* CreateContactSupportedAnimation(UAnimSequence* Source, USkeletalMesh* Mesh, const FString& EvidenceDirectory, const FString& OutputFolder, FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* CreateSoleGroundedAnimation(UAnimSequence* Source, USkeletalMesh* Mesh, const FString& OutputFolder, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool StartMocap(UCubelessMocapSettings* Settings, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool SaveAnimationSequence(UCubelessMocapSettings* Settings, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* ResolveSaveAnimation(UCubelessMocapSettings* Settings);

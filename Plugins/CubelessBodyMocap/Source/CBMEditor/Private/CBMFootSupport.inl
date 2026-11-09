@@ -1,0 +1,23 @@
+#include "CBMFootSupport.h"
+static bool CBMGatherFootSupport(UAnimSequence* Anim,USkeletalMesh* Mesh,const float* Contacts,int ContactCount,const float* Keypoints,int KeypointCount,CBMFootSupport::FInput& I){
+ if(!Anim||!Mesh||Anim->GetSkeleton()!=Mesh->GetSkeleton()||!Mesh->GetImportedModel()||Mesh->GetImportedModel()->LODModels.IsEmpty())return false;
+ const auto& Ref=Mesh->GetRefSkeleton();const auto* M=Anim->GetDataModel();const int N=M->GetNumberOfKeys(),NB=Ref.GetNum();if(N<7||!Contacts||!Keypoints||ContactCount!=N*6||KeypointCount!=N*75)return false;
+ I.FPS=M->GetFrameRate().AsDecimal();if(!FMath::IsFinite(I.FPS)||I.FPS<=0||I.FPS>120)return false;I.Guid=M->GenerateGuid();I.Contacts.Append(Contacts,ContactCount);I.Keypoints.Append(Keypoints,KeypointCount);I.Bind=Ref.GetRefBonePose();for(int B=0;B<NB;++B){I.Parent.Add(Ref.GetParentIndex(B));if(B)I.Bind[B]=I.Bind[B]*I.Bind[I.Parent[B]];}
+ for(int S=0;S<2;++S){const FString Side=S==0?TEXT("l"):TEXT("r");I.Thigh[S]=Ref.FindBoneIndex(FName(TEXT("thigh_")+Side));I.Calf[S]=Ref.FindBoneIndex(FName(TEXT("calf_")+Side));I.Foot[S]=Ref.FindBoneIndex(FName(TEXT("foot_")+Side));I.Ball[S]=Ref.FindBoneIndex(FName(TEXT("ball_")+Side));for(int B:{I.Thigh[S],I.Calf[S],I.Foot[S],I.Ball[S]})if(B<0||!M->IsValidBoneTrackName(Ref.GetBoneName(B)))return false;if(I.Parent[I.Calf[S]]!=I.Thigh[S]||I.Parent[I.Foot[S]]!=I.Calf[S])return false;}
+ I.Local.Init(Ref.GetRefBonePose(),N);for(int B=0;B<NB;++B){TArray<FTransform> Track;if(M->IsValidBoneTrackName(Ref.GetBoneName(B))){M->GetBoneTrackTransforms(Ref.GetBoneName(B),Track);if(Track.Num()!=N)return false;for(int F=0;F<N;++F)I.Local[F][B]=Track[F];}for(int F=0;F<N;++F)if(I.Local[F][B].ContainsNaN()||!I.Local[F][B].GetRotation().IsNormalized()||!I.Local[F][B].GetScale3D().Equals(FVector::OneVector,1.e-5))return false;}
+ for(const auto& Section:Mesh->GetImportedModel()->LODModels[0].Sections)for(const auto& V:Section.SoftVertices){
+  CBMFootSupport::FPoint P;P.Rest=FVector(V.Position);P.Side=FVector::DistSquared(P.Rest,I.Bind[I.Foot[0]].GetTranslation())<FVector::DistSquared(P.Rest,I.Bind[I.Foot[1]].GetTranslation())?0:1;
+  const double Length=FVector::Distance(I.Bind[I.Foot[P.Side]].GetTranslation(),I.Bind[I.Ball[P.Side]].GetTranslation());if(Length<1||P.Rest.Z>I.Bind[I.Foot[P.Side]].GetTranslation().Z+.75*Length||FVector::Distance(P.Rest,I.Bind[I.Foot[P.Side]].GetTranslation())>2.5*Length)continue;
+  double Total=0,Leg=0;for(int K=0;K<MAX_TOTAL_INFLUENCES;++K)if(V.InfluenceWeights[K]){if(!Section.BoneMap.IsValidIndex(V.InfluenceBones[K]))return false;const int B=Section.BoneMap[V.InfluenceBones[K]];if(!I.Bind.IsValidIndex(B))return false;const double W=V.InfluenceWeights[K]/65535.;Total+=W;if(CBMFootSupport::Descendant(I,B,I.Calf[P.Side]))Leg+=W;P.Weights.Add({B,W,I.Bind[B].InverseTransformPosition(P.Rest)});}
+  if(Leg<.75||FMath::Abs(Total-1.)>.002)continue;for(auto& W:P.Weights)W.Weight/=Total;I.Points.Add(MoveTemp(P));
+ }return I.Points.Num()>40;
+}
+static FString CBMFootSupportReport(const CBMFootSupport::FResult& R){return FString::Printf(TEXT("{\"version\":\"support_anchor_v1\",\"supported_frames\":[%d,%d],\"candidate_segments\":[%d,%d],\"accepted_segments\":[%d,%d],\"maximum_angle_deg\":%.6f,\"maximum_ankle_displacement_cm\":%.6f,\"seconds\":%.6f,\"cancelled\":%s}"),R.Supported[0],R.Supported[1],R.Candidates[0],R.Candidates[1],R.Accepted[0],R.Accepted[1],FMath::RadiansToDegrees(R.MaxAngle),R.MaxAnkle,R.Seconds,R.Cancelled?TEXT("true"):TEXT("false"));}
+static bool CBMApplyFootSupport(UAnimSequence* Anim,USkeletalMesh* Mesh,const CBMFootSupport::FInput& I,const CBMFootSupport::FResult& R){
+ if(R.Cancelled||!Anim||Anim->GetDataModel()->GenerateGuid()!=I.Guid||R.Local.Num()!=I.Local.Num())return false;if(R.Accepted[0]+R.Accepted[1]==0)return true;
+ auto& C=Anim->GetController();const auto& Ref=Mesh->GetRefSkeleton();C.OpenBracket(FText::FromString(TEXT("Contact-supported foot inclination")),false);bool OK=true;
+ for(int Side=0;Side<2;++Side)if(R.Accepted[Side])for(int B:{I.Thigh[Side],I.Calf[Side],I.Foot[Side]}){TArray<FVector3f> P,S;TArray<FQuat4f> Q;for(const auto& Frame:R.Local){P.Add(FVector3f(Frame[B].GetTranslation()));S.Add(FVector3f(Frame[B].GetScale3D()));Q.Add(FQuat4f(Frame[B].GetRotation()));}OK&=C.SetBoneTrackKeys(Ref.GetBoneName(B),P,Q,S,false);}C.CloseBracket(false);
+ if(!OK)return false;
+ const auto* M=Anim->GetDataModel();for(int B=0;B<Ref.GetNum();++B)if(M->IsValidBoneTrackName(Ref.GetBoneName(B))){TArray<FTransform> T;M->GetBoneTrackTransforms(Ref.GetBoneName(B),T);if(T.Num()!=R.Local.Num())return false;for(int F=0;F<T.Num();++F)if(!T[F].Equals(R.Local[F][B],1.e-5))return false;}
+ return true;
+}

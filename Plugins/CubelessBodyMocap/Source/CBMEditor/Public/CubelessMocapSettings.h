@@ -21,6 +21,7 @@ UCLASS()
 class CBMEDITOR_API UCubelessMocapSettings : public UObject {
  GENERATED_BODY()
 public:
+ UPROPERTY(EditAnywhere, Category="Preview") bool DebugBones=false;
  UPROPERTY(EditAnywhere, Category="Workflow") bool AutoBoneCorrection=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool SaveHandFlow=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool SaveBoneCorrection=true;

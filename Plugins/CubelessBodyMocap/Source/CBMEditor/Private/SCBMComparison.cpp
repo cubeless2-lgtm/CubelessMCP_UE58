@@ -1,4 +1,6 @@
 #include "SCBMComparison.h"
+#include "SCBMDebugOverlay.h"
+#include "Widgets/SOverlay.h"
 #include "CubelessMocapSettings.h"
 #include "MediaPlayer.h"
 #include "MediaTexture.h"
@@ -178,8 +180,11 @@ void SCBMComparison::Construct(const FArguments& Args){
  ChildSlot[SNew(SVerticalBox)
   +SVerticalBox::Slot().FillHeight(1)[SNew(SHorizontalBox)
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
-    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text(FText::FromString(TEXT("원본 영상")))]
-    +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SNew(SImage).Image(&Brush)]]]]
+    +SVerticalBox::Slot().AutoHeight()[SNew(SHorizontalBox)
+     +SHorizontalBox::Slot().FillWidth(1)[SNew(STextBlock).Text(FText::FromString(TEXT("원본 영상")))]
+     +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text_Lambda([this](){return FText::FromString(Settings->DebugBones?TEXT("본 디버그 끄기"):TEXT("본 디버그 켜기"));}).ToolTipText(FText::FromString(TEXT("영상 검출·전신 모델·선택 애니메이션의 본을 원본 카메라로 투영합니다. 캐시만 사용하며 모캡 추론이나 에셋 변경을 하지 않습니다."))).OnClicked_Lambda([this](){Settings->DebugBones=!Settings->DebugBones;return FReply::Handled();})]]
+    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).AutoWrapText(true).Visibility_Lambda([this](){return Settings->DebugBones?EVisibility::Visible:EVisibility::Collapsed;}).Text_Lambda([this](){return FText::FromString(DebugOverlay?DebugOverlay->Status:FString());})]
+    +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SNew(SOverlay)+SOverlay::Slot()[SNew(SImage).Image(&Brush)]+SOverlay::Slot()[SAssignNew(DebugOverlay,SCBMDebugOverlay).Visibility(EVisibility::HitTestInvisible).Clipping(EWidgetClipping::ClipToBounds)]]]]]
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
     +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){FString Label=TEXT("선택된 결과");
      if(Settings->PreviewAnimation==Settings->CorrectedHandAnimation&&Settings->PreviewAnimation)Label=TEXT("HandFlow + 본 보정");
@@ -212,6 +217,7 @@ bool SCBMComparison::PrepareScreenshot(){
  const double Time=Player->IsReady()&&!Clock.Scrubbing&&!Clock.Pending?FMath::Clamp(Player->GetTime().GetTotalSeconds()-Settings->StartSeconds,0.,Length):Clock.Position;
  View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Time);
  View->Frame(Aspect,Settings->PreviewYawOffset,Settings->PreviewZoom,Settings->PreviewHand,Settings->MatchVideoCamera);
+ DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,View->Mesh.Get(),Settings->Video.FilePath,Settings->StartSeconds,Time,!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
  View->Camera->Viewport->Draw();FlushRenderingCommands();
  auto C=StaticCastSharedPtr<FCBMPreviewViewportClient>(View->Camera);auto O=MakeShared<FJsonObject>();
  O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
@@ -256,4 +262,5 @@ void SCBMComparison::Tick(const FGeometry& G,double T,float D){
  if(Player->IsReady()&&OpenedFile!=Settings->Video.FilePath){Player->Pause();Notice=TEXT("Video changed: click Load comparison before playback");}
  View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Clock.Position);
  View->Frame(Aspect,Settings->PreviewYawOffset,Settings->PreviewZoom,Settings->PreviewHand,Settings->MatchVideoCamera);
+ DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,View->Mesh.Get(),Settings->Video.FilePath,Settings->StartSeconds,Clock.Position,Player->IsReady()&&!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
 }

@@ -60,6 +60,20 @@ def infer(request,emit,n):
     torch.backends.cuda.matmul.allow_tf32=False;torch.backends.cudnn.allow_tf32=False
     root=UPSTREAM/'HandFlow';sys.path.insert(0,str(root));sys.path.insert(0,str(UPSTREAM/'HaMeR'))
     started=time.monotonic()
+    timings={};stage_started=started;gpu_events={}
+    def finish_stage(name):
+        nonlocal stage_started
+        torch.cuda.synchronize()
+        now=time.monotonic();timings[name]=now-stage_started;stage_started=now
+        from refine_wilor import atomic_json
+        atomic_json(project/'stage_profile.json',dict(stage_seconds=timings,elapsed_seconds=now-started))
+    def watch(module,name):
+        events=[];gpu_events[name]=events
+        def before(m,args):
+            a=torch.cuda.Event(enable_timing=True);b=torch.cuda.Event(enable_timing=True);a.record();events.append((a,b))
+        def after(m,args,out):events[-1][1].record()
+        return [module.register_forward_pre_hook(before),module.register_forward_hook(after)]
+
     keys=np.fromfile(project/'keypoints.f32',dtype=np.float32).reshape(n,133,3)
     actors=np.zeros((n,4),np.float32)
     image=cv2.imread(str(Path(request['frame_dir'])/'00000000.png'))
@@ -77,21 +91,26 @@ def infer(request,emit,n):
     # Match the validated independent pipeline: finish detection before loading
     # the large hand networks. Only small boxes/scores survive this phase.
     from ultralytics import YOLO
+    finish_stage('input_and_imports')
     detector=YOLO(str(BY_KEY['hand_detector'].path)).to('cuda')
+    finish_stage('detector_load')
     capture=Frames()
     candidates={}
     try:
         for i in range(n):
             ok,image=capture.read()
             if not ok:raise ValueError('Cannot read HandFlow video frame '+str(i))
-            prediction=detector.predict(image,conf=.3,verbose=False,imgsz=640,device=0,half=False)[0].boxes
-            allboxes[i],valid[i],scores[i]=assign_hands(prediction.xyxy.cpu().numpy(),prediction.conf.cpu().numpy(),prediction.cls.cpu().numpy(),wrists[i],actors[i])
-            if not valid[i].all():
-                weak=detector.predict(image,conf=.15,verbose=False,imgsz=640,device=0,half=False)[0].boxes
-                candidates[i]=(weak.xyxy.cpu().numpy(),weak.conf.cpu().numpy(),weak.cls.cpu().numpy())
-                del weak
+            # One forward/NMS pass. Lower-confidence survivors cannot suppress
+            # higher-score boxes; retain the same strict .3 strong threshold.
+            prediction=detector.predict(image,conf=.15,verbose=False,imgsz=640,device=0,half=False)[0].boxes
+            packed=prediction.data.cpu().numpy()
+            boxes,confidence,classes=packed[:,:4],packed[:,4],packed[:,5]
+            high=confidence>.3
+            allboxes[i],valid[i],scores[i]=assign_hands(boxes[high],confidence[high],classes[high],wrists[i],actors[i])
+            if not valid[i].all():candidates[i]=(boxes,confidence,classes)
             if i%30==0:emit('progress',stage='handflow',current=i,total=n,message='HandFlow: detecting this actor\'s hands')
     finally:capture.release()
+    finish_stage('hand_detection')
     del detector,prediction,image;gc.collect();torch.cuda.empty_cache()
     from handflow_detection import recover
     allboxes,valid,scores,recovered=recover(allboxes,valid,scores,candidates,wrists,request['fps'])
@@ -106,9 +125,9 @@ def infer(request,emit,n):
     os.environ['MANO_ROOT']=str(BY_KEY['mano_right'].path.parent)
     # Compress each frame immediately; never cache gigabytes of patch tokens.
     compressor=FrameCompressor(512,input_dim=1280,num_heads=16,num_layers=8).eval()
-    state=torch.load(BY_KEY['handflow'].path,map_location='cpu',weights_only=False)
+    state=torch.load(BY_KEY['handflow'].path,map_location='cpu',weights_only=False,mmap=True)
     state=state.get('module',state);state={k.removeprefix('module.'):v for k,v in state.items()}
-    compressor.load_state_dict({k.removeprefix('frame_compressor.'):v for k,v in state.items() if k.startswith('frame_compressor.')},strict=True)
+    compressor.load_state_dict({k.removeprefix('frame_compressor.'):v for k,v in state.items() if k.startswith('frame_compressor.')},strict=True,assign=True)
     del state;gc.collect();compressor.cuda()
     from hamer.models import HAMER
     from hamer.datasets.vitdet_dataset import ViTDetDataset
@@ -116,14 +135,19 @@ def infer(request,emit,n):
     config.MANO.MODEL_PATH=str(BY_KEY['mano_right'].path.parent);config.MANO.MEAN_PARAMS=str(BY_KEY['hand_mean'].path)
     config.MODEL.BBOX_SHAPE=[192,256];config.MODEL.BACKBONE.pop('PRETRAINED_WEIGHTS',None)
     hamer=HAMER(config,init_renderer=False).eval()
-    checkpoint=torch.load(BY_KEY['hand_hamer'].path,map_location='cpu',weights_only=False)
-    hamer.load_state_dict(checkpoint['state_dict'],strict=True);del checkpoint;gc.collect();hamer.cuda()
+    checkpoint=torch.load(BY_KEY['hand_hamer'].path,map_location='cpu',weights_only=False,mmap=True)
+    hamer.load_state_dict(checkpoint['state_dict'],strict=True,assign=True);del checkpoint;gc.collect();hamer.cuda()
+    # smplx indexes a Python transform list using parents[i]. Keeping this
+    # constant index tensor on CPU avoids a GPU scalar readback per joint.
+    hamer.mano.parents=hamer.mano.parents.cpu()
     tokens=np.empty((n,2,512),np.float32);landmarks=np.zeros((n,2,21,2),np.float32)
     intrinsics=np.zeros((n,2,4),np.float32)
     hamer_joints=np.zeros((n,2,21,3),np.float32)
     hamer_uv=np.zeros((n,2,21,2),np.float32)
     with torch.inference_mode():empty=compressor(torch.zeros(1,1,192,1280,device='cuda')).cpu().numpy()[0,0]
     tokens[:]=empty
+    finish_stage('hamer_compressor_load')
+    perf_hooks=watch(hamer.backbone,'hamer_backbone')+watch(hamer.mano_head,'hamer_head')+watch(hamer.mano,'mano_skinning')+watch(compressor,'compressor')
     captured=[];hook=hamer.backbone.register_forward_hook(lambda m,i,o:captured.append(o))
     free,_=torch.cuda.mem_get_info();batch_limit=int(request.get('handflow_batch',2))
     pending=[]
@@ -134,8 +158,10 @@ def infer(request,emit,n):
             for first in range(0,len(entries),size):
                 captured.clear();prediction=hamer({'img':images[first:first+size]})
                 feature=captured[-1].flatten(2).transpose(1,2)
-                compressed=compressor(feature[None]).squeeze(0).cpu().numpy()
-                outputs.extend([(compressed[k],prediction['pred_cam'][k].cpu().numpy(),prediction['pred_keypoints_3d'][k].cpu().numpy(),prediction['pred_keypoints_2d'][k].cpu().numpy()+.5) for k in range(len(compressed))])
+                compressed=compressor(feature[None]).squeeze(0)
+                # One readback per crop batch; keep FP32 and identical arithmetic.
+                packed=torch.cat((compressed,prediction['pred_cam'],prediction['pred_keypoints_3d'].flatten(1),prediction['pred_keypoints_2d'].flatten(1)),dim=1).cpu().numpy()
+                outputs.extend([(row[:512],row[512:515],row[515:578].reshape(21,3),row[578:].reshape(21,2)+.5) for row in packed])
                 captured.clear();del prediction
             return outputs
         predictions=retry_cuda(predict,min(batch_limit,len(entries)),lambda size:None)
@@ -167,15 +193,19 @@ def infer(request,emit,n):
                 if i%30==0:emit('progress',stage='handflow',current=i,total=n,message='HandFlow: detecting and encoding this actor\'s hands')
             if pending:execute(pending)
     finally:capture.release();hook.remove();captured.clear()
+    finish_stage('image_encoding_and_crops')
+    for h in perf_hooks:h.remove()
+    gpu_seconds={k:sum(a.elapsed_time(b) for a,b in v)/1000 for k,v in gpu_events.items()}
+    del perf_hooks,gpu_events
     del hamer,compressor,pending;gc.collect();torch.cuda.empty_cache()
     # Cached image tokens bypass the frozen image encoder. Do not allocate a
     # second unused HaMeR copy while loading the official temporal denoiser.
     import model.flow_matching.denoiser as architecture
     architecture.HaMeRBackbone=lambda **kwargs:torch.nn.Identity()
     model=architecture.HandPoseDenoiser(cfg).eval()
-    state=torch.load(BY_KEY['handflow'].path,map_location='cpu',weights_only=False);state=state.get('module',state)
+    state=torch.load(BY_KEY['handflow'].path,map_location='cpu',weights_only=False,mmap=True);state=state.get('module',state)
     state={k.removeprefix('module.'):v for k,v in state.items() if not k.removeprefix('module.').startswith('hamer_backbone.')}
-    model.load_state_dict(state,strict=True);del state;gc.collect();model.cuda()
+    model.load_state_dict(state,strict=True,assign=True);del state;gc.collect();model.cuda()
     from utils.inference_utils import split_sequence_into_windows,run_fm_inference_with_overlap
     class WindowBatches(torch.nn.Module):
         def __init__(self):super().__init__();self.network=model;self.limit=16
@@ -183,6 +213,7 @@ def infer(request,emit,n):
             def predict(size):
                 return torch.cat([self.network(x[i:i+size],t[i:i+size],{k:(v[i:i+size] if torch.is_tensor(v) and v.shape[0]==len(x) else v) for k,v in batch.items()}) for i in range(0,len(x),size)])
             return retry_cuda(predict,min(self.limit,len(x)),lambda size:setattr(self,'limit',size))
+    finish_stage('temporal_model_load')
     wrapper=WindowBatches();rotations=np.zeros((n,2,15,3,3),np.float32)
     # Weak recovered crops are image evidence for the local residual fit, not
     # trusted temporal feature anchors. Feeding uncertain features to the flow
@@ -211,6 +242,7 @@ def infer(request,emit,n):
                 mirror=np.diag([-1.,1.,1.]);r=mirror@r@mirror
             rotations[:,side]=r
             emit('progress',stage='handflow',current=side+1,total=2,message='HandFlow: refining finger motion over time')
+    finish_stage('temporal_inference')
     temporal_poses=np.stack(poses,1);betas=np.stack(betas_all,1);window_batch=wrapper.limit
     del wrapper,model;gc.collect();torch.cuda.empty_cache()
     from handflow_image_guidance import refine,observation_confidence
@@ -224,8 +256,9 @@ def infer(request,emit,n):
     guidance['ownership_confidence']='ViTPose wrists vs HaMeR projected root; close-hands ambiguity only, no side swapping'
     guidance['ownership_downweighted_frames_LR']=((ownership['reliability']<.9)&valid).sum(0).tolist()
     guidance['ownership_min_reliability_LR']=np.where(valid,ownership['reliability'],1).min(0).tolist()
+    finish_stage('image_guidance_and_cleanup')
     np.savez_compressed(project/'model_evidence.npz',rotations=rotations,valid=valid,recovered=recovered,boxes=allboxes,scores=scores,guidance_scores=guidance_scores,ownership_reliability=ownership['reliability'],ownership_wrist_error=ownership['own_wrist_error'],hamer_landmarks=landmarks,crop_intrinsics=intrinsics,camera_K=K,poses=poses,temporal_poses=temporal_poses,hamer_joints=hamer_joints,hamer_uv=hamer_uv,tokens=tokens,translations=np.stack(translations,1),betas=betas)
-    return rotations,valid,dict(fp32=True,seed=int(request.get('handflow_seed',0)),window=16,overlap=8,ode_steps=int(request.get('handflow_steps',3)),window_batch=window_batch,image_guidance=guidance,
+    return rotations,valid,dict(stage_seconds=timings,gpu_component_seconds=gpu_seconds,fp32=True,seed=int(request.get('handflow_seed',0)),window=16,overlap=8,ode_steps=int(request.get('handflow_steps',3)),window_batch=window_batch,image_guidance=guidance,
         crop_batch=batch_limit,seconds=time.monotonic()-started,body_and_wrists_unchanged=True,
         detection_recovery=dict(method='weak YOLO box + own wrist + two strong temporal anchors; image residual only, not temporal feature anchors',recovered_frames_LR=[np.flatnonzero(recovered[:,s]).tolist() for s in range(2)],score_floor=.15,max_anchor_seconds=.35,original_observations_preserved=True),
         missing='Temporal prediction; unavailable detections remain flagged',image_cache='Per-frame 512-D compressed tokens; no full-video image or patch cache')

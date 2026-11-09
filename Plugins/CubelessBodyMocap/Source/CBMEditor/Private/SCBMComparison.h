@@ -10,6 +10,7 @@ class UCubelessMocapSettings;
 class UMediaPlayer;
 class UMediaTexture;
 class SCBMAnimationViewport;
+class SCBMDebugOverlay;
 class SCBMComparison : public SCompoundWidget {
 public:
  bool PrepareScreenshot();
@@ -24,6 +25,7 @@ private:
  TStrongObjectPtr<UMediaTexture> Texture;
  FSlateBrush Brush;
  TSharedPtr<SCBMAnimationViewport> View;
+ TSharedPtr<SCBMDebugOverlay> DebugOverlay;
  FString OpenedFile,Notice;
  float Aspect=490.f/750.f;
  FCBMPreviewClock Clock;

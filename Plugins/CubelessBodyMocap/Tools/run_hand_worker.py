@@ -29,6 +29,7 @@ def sha(path):
 def signature(c):
     tools = Path(__file__).resolve().parent
     backend = c['backend']
+    verified_model_hashes = {}
     model_files = []
     runtime_files = []
     if backend == 'HandFlow':
@@ -38,7 +39,9 @@ def signature(c):
             path = root/entry['path']
             if not path.is_file():
                 raise FileNotFoundError('HandFlow model missing: '+str(path))
-            if sha(path) != entry['sha256']:
+            digest = sha(path)
+            verified_model_hashes[str(path.resolve())] = digest
+            if digest != entry['sha256']:
                 raise ValueError('HandFlow model SHA256 mismatch: '+str(path))
             model_files.append(path)
         runtime_files = [root/x['path'] for x in manifest['source_files']]
@@ -73,7 +76,7 @@ def signature(c):
         helper_site = tools.parent/'ThirdParty/MediaPipe/venv/Lib/site-packages'
         helper_runtime = {d.metadata['Name']: d.version for d in importlib.metadata.distributions(path=[str(helper_site)])}
     payload = dict(version=1, backend=backend, inputs=inputs, settings=settings, runtime=versions, helper_runtime=helper_runtime,
-                   python=sys.version, models={str(p.resolve()): sha(p) if p.is_file() else None for p in model_files},
+                   python=sys.version, models={str(p.resolve()): (verified_model_hashes[str(p.resolve())] if str(p.resolve()) in verified_model_hashes else sha(p)) if p.is_file() else None for p in model_files},
                    code={str(p.resolve()): sha(p) for p in sorted(set(list(tools.glob('*.py'))+runtime_files))})
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(), payload
 

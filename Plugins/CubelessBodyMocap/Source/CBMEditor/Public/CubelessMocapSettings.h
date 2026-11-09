@@ -22,6 +22,7 @@ class CBMEDITOR_API UCubelessMocapSettings : public UObject {
  GENERATED_BODY()
 public:
  UPROPERTY(EditAnywhere, Category="Preview") bool DebugBones=false;
+ UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="영상 관절 방향 보완", ToolTip="영상 관절과 시간 연속성으로 무릎·팔꿈치 방향을 보완합니다. 필요할 때 영상 전체의 골반·발 배치와 시간에 따라 부드럽게 변하는 골반 높이·깊이를 보완합니다. 골반 기울기는 유지합니다. 발 높이·이동 속도, 손가락과 손목·발목 회전은 유지하며 골반 이동에 따라 상체 위치도 함께 이동합니다. 오차와 회전 안정성 검사를 통과한 후보만 적용하며 관절 제한은 추가하지 않습니다.")) bool ImageLimbAlignment=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool AutoBoneCorrection=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool SaveHandFlow=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool SaveBoneCorrection=true;
@@ -46,7 +47,7 @@ public:
  UPROPERTY(EditAnywhere, Category="Output") TObjectPtr<UIKRetargeter> Retargeter;
  UPROPERTY(EditAnywhere, Category="Output") FString OutputFolder="/Game/CubelessMocap";
  UPROPERTY(EditAnywhere, Category="Preview") TObjectPtr<UAnimSequence> PreviewAnimation;
- UPROPERTY(EditAnywhere, Category="Preview", meta=(ToolTip="Match the body's estimated camera pitch/roll/FOV and approximate initial person framing. This changes only the comparison camera, never animation. Falls back to the standard front view if calibration is unavailable.")) bool MatchVideoCamera=true;
+ UPROPERTY(EditAnywhere, Category="Preview", meta=(ToolTip="영상 모델이 추정한 초점거리와 카메라를 비교 뷰에 사용합니다. 실제 촬영 렌즈의 측정값은 아니며 애니메이션은 바꾸지 않습니다.")) bool MatchVideoCamera=true;
  UPROPERTY(EditAnywhere, Category="Hands", meta=(ToolTip="Existing target animation to preserve. Refine changes finger and metacarpal rotations in a new asset; body and wrists stay unchanged.")) TObjectPtr<UAnimSequence> OriginalAnimation;
  UPROPERTY(VisibleAnywhere, Category="Hands") TObjectPtr<UAnimSequence> HandEnhancedAnimation;
  UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="Enhance Hands (HandFlow)", ToolTip="Checked by default. Start Mocap saves the body, then automatically applies HandFlow / HaMeR to fingers in a separate animation. Uncheck for body only. Model quality settings are unchanged.")) bool EnhanceHands=true;

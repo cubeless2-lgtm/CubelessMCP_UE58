@@ -121,6 +121,7 @@ struct FBodyTrackingOptimizerImpl
 	bool bEnableFootLocking = true;
 	bool bEvidenceRefinement = false;
 	float CameraHeightOffset = 0.f;
+	TArray<float> OptimizedCamera;
 
 	template <typename T>
 	static void CopyToStdVector(const T* InData, int64 InCount, std::vector<T>& OutVector)
@@ -499,6 +500,13 @@ bool FBodyTrackingOptimizer::Run(const FBodyTrackingOptimizerFrameData& InFrameD
 	}
 
 	Impl->CameraHeightOffset=TitanResult.cameraHeightOffset;
+ Impl->OptimizedCamera.Reset();
+ if(TitanResult.cameraInitR6D.size()!=6 || Impl->PerFrameRcw.Num()!=9 || Impl->PerFrameTcw.Num()!=3)return false;
+ float FitR[9];Rotation6dToMatrix(TitanResult.cameraInitR6D.data(),FitR);
+ for(int Row=0;Row<3;++Row)for(int Col=0;Col<3;++Col){float V=0;for(int K=0;K<3;++K)V+=FitR[Row*3+K]*Impl->PerFrameRcw[K*3+Col];Impl->OptimizedCamera.Add(V);}
+ for(int Row=0;Row<3;++Row){float V=Row==1?TitanResult.cameraHeightOffset:0.f;for(int K=0;K<3;++K)V+=FitR[Row*3+K]*Impl->PerFrameTcw[K];Impl->OptimizedCamera.Add(V*TitanResult.cameraScale);}
+ for(float V:Impl->OptimizedCamera)if(!FMath::IsFinite(V))return false;
+
 	Impl->FrameResults.Reserve(static_cast<int32>(TitanResult.frameResults.size()));
 	for (const TITAN_API_NAMESPACE::FrameOptimizationResult& Fr : TitanResult.frameResults)
 	{
@@ -510,6 +518,8 @@ bool FBodyTrackingOptimizer::Run(const FBodyTrackingOptimizerFrameData& InFrameD
 	Impl->bSucceeded = TitanResult.success;
 	return Impl->bSucceeded;
 }
+
+TArray<float> FBodyTrackingOptimizer::GetOptimizedCamera() const {return Impl->OptimizedCamera;}
 
 float FBodyTrackingOptimizer::GetCameraHeightOffset() const { return Impl->CameraHeightOffset; }
 

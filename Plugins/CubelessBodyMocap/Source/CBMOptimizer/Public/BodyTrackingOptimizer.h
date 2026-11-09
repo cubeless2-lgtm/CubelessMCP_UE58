@@ -50,6 +50,8 @@ public:
 	void EnableFootlocking(bool bInEnableFootLocking);
 	void EnableEvidenceRefinement(bool bEnabled);
 	float GetCameraHeightOffset() const;
+	/** Row-major world-to-camera R (9), then translation (3), including fitted camera parameters. */
+	TArray<float> GetOptimizedCamera() const;
 
 	/** Build frame data, run optimization, and store results. Returns true on success. */
 	bool Run(const FBodyTrackingOptimizerFrameData& InFrameData);

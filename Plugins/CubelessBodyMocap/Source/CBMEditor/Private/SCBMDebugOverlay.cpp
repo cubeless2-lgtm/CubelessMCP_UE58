@@ -8,30 +8,33 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "Rendering/DrawElements.h"
-void SCBMDebugOverlay::Update(bool Enabled,UAnimSequence* Anim,USkeletalMeshComponent* Mesh,const FString& Video,double Start,double Time,bool Sync){
- Show=false;if(!Enabled)return;
+void SCBMDebugOverlay::Update(bool Enabled,UAnimSequence* Anim,const FString& Video,double Start,double Time,bool Sync,TConstArrayView<FVector3f> ViewPoints,const FString& CameraMode){
+ Show=false;if(!Enabled){Key.Empty();return;}
  const FString Name=Anim?Anim->GetName():FString();const FString Run=Name.StartsWith(TEXT("Body_"))&&Name.Len()>=37?Name.Mid(5,32):FString();
- const FString NewKey=Run+TEXT("|")+FPaths::ConvertRelativePathToFull(Video)+FString::Printf(TEXT("|%.6f"),Start);
+ const FString Identity=Run+TEXT("|")+FPaths::ConvertRelativePathToFull(Video)+FString::Printf(TEXT("|%.6f"),Start);
+ if(Identity!=FileIdentity||FPlatformTime::Seconds()>=NextFileCheck){FileIdentity=Identity;NextFileCheck=FPlatformTime::Seconds()+1.;FileStamp.Reset();const FString Dir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run;
+  for(const FString& P:{Dir/TEXT("DebugBones.json"),Dir/TEXT("DebugBones.f32"),Video})FileStamp+=FString::Printf(TEXT("|%lld|%s"),IFileManager::Get().FileSize(*P),*IFileManager::Get().GetTimeStamp(*P).ToIso8601());}
+ const FString NewKey=Identity+FileStamp;
  if(NewKey!=Key){if(Pending.IsValid()&&!Pending.IsReady()){Status=TEXT("이전 캐시 읽기 완료 대기 중");return;}if(Pending.IsValid())Pending.Get();Key=NewKey;Data.Reset();const FString Dir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run;
  Pending=Async(EAsyncExecution::ThreadPool,[Dir,Video,Start]()->TSharedPtr<FData>{auto D=MakeShared<FData>();FString Text;TSharedPtr<FJsonObject> J;TArray<uint8> Bytes;
  if(!FFileHelper::LoadFileToString(Text,*(Dir/TEXT("DebugBones.json")))||!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),J)||!J.IsValid())return D;
  double Version=0,Frames=0;const TArray<TSharedPtr<FJsonValue>>* Camera=nullptr;
- if(!J->TryGetNumberField(TEXT("version"),Version)||Version!=1||!J->TryGetNumberField(TEXT("frames"),Frames)||Frames<1||Frames>14400||!J->TryGetNumberField(TEXT("fps"),D->FPS)||D->FPS<=0||!J->TryGetNumberField(TEXT("start"),D->Start)||!J->TryGetStringField(TEXT("video"),D->Video)||!J->TryGetStringField(TEXT("video_stamp"),D->Stamp)||!J->TryGetNumberField(TEXT("video_size"),D->Size)||!J->TryGetArrayField(TEXT("camera"),Camera)||Camera->Num()!=10)return D;
+ if(!J->TryGetNumberField(TEXT("version"),Version)||Version!=2||!J->TryGetNumberField(TEXT("frames"),Frames)||Frames<1||Frames>14400||!J->TryGetNumberField(TEXT("fps"),D->FPS)||D->FPS<=0||!J->TryGetNumberField(TEXT("start"),D->Start)||!J->TryGetStringField(TEXT("video"),D->Video)||!J->TryGetStringField(TEXT("video_stamp"),D->Stamp)||!J->TryGetNumberField(TEXT("video_size"),D->Size)||!J->TryGetArrayField(TEXT("camera"),Camera)||Camera->Num()!=10)return D;
  const FString Path=FPaths::ConvertRelativePathToFull(Video);if(!FPaths::IsSamePath(Path,D->Video)||FMath::Abs(Start-D->Start)>1.e-5||IFileManager::Get().FileSize(*Path)!=int64(D->Size)||IFileManager::Get().GetTimeStamp(*Path).ToIso8601()!=D->Stamp)return D;
  for(const auto& X:*Camera){double V;if(!X->TryGetNumber(V)||!FMath::IsFinite(V))return D;D->Camera.Add(V);}D->Frames=int32(Frames);
+ const TArray<TSharedPtr<FJsonValue>>* Fit=nullptr;if(!J->TryGetArrayField(TEXT("world_to_camera"),Fit)||Fit->Num()!=12)return D;for(const auto& X:*Fit){double V;if(!X->TryGetNumber(V)||!FMath::IsFinite(V))return D;D->Fit.Add(V);}
  if(D->Camera[0]<=0||D->Camera[1]<=0||D->Camera[2]<=0||IFileManager::Get().FileSize(*(Dir/TEXT("DebugBones.f32")))!=int64(D->Frames)*13*6*4||!FFileHelper::LoadFileToArray(Bytes,*(Dir/TEXT("DebugBones.f32"))))return D;
  D->Points.SetNumUninitialized(Bytes.Num()/4);FMemory::Memcpy(D->Points.GetData(),Bytes.GetData(),Bytes.Num());for(float X:D->Points)if(!FMath::IsFinite(X))return D;D->Valid=true;return D;});}
  if(Pending.IsValid()){if(!Pending.IsReady()){Status=TEXT("디버그 캐시 읽는 중 (추론 없음)");return;}Data=Pending.Get();Pending=TFuture<TSharedPtr<FData>>();}
  if(!Data||!Data->Valid){Status=TEXT("일치하는 디버그 캐시 없음 — 자동 재추론하지 않습니다");return;}
  if(!Sync){Status=TEXT("영상 이동 중 — 프레임 일치 후 표시");return;}
- if(!Mesh||!Anim||Time<0||Time*Data->FPS>Data->Frames-1+.01){Status=TEXT("결과 시간 범위를 확인하세요");return;}
+ if(!Anim||Time<0||Time*Data->FPS>Data->Frames-1+.01){Status=TEXT("결과 시간 범위를 확인하세요");return;}
+ if(ViewPoints.Num()!=13){Status=TEXT("3D 카메라 투영 준비 중");return;}
  int32 F=FMath::Clamp(FMath::RoundToInt(Time*Data->FPS),0,Data->Frames-1);Canvas=FVector2D(Data->Camera[1],Data->Camera[2]);Observed.Reset();Model.Reset();Applied.Reset();
- const TCHAR* Names[]={TEXT("pelvis"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l"),TEXT("thigh_r"),TEXT("calf_r"),TEXT("foot_r"),TEXT("upperarm_l"),TEXT("lowerarm_l"),TEXT("hand_l"),TEXT("upperarm_r"),TEXT("lowerarm_r"),TEXT("hand_r")};
- const auto& C=Data->Camera;const double CP=FMath::Cos(-C[3]),SP=FMath::Sin(-C[3]),CR=FMath::Cos(C[4]),SR=FMath::Sin(C[4]);
- for(int I=0;I<13;++I){const float* P=Data->Points.GetData()+(F*13+I)*6;Observed.Add(FVector3f(P[0],P[1],P[2]));Model.Add(FVector3f(P[3],P[4],P[5]));FVector3f UV(0,0,0);
- if(Mesh->GetBoneIndex(Names[I])!=INDEX_NONE){FVector V=Mesh->GetBoneLocation(Names[I],EBoneSpaces::ComponentSpace)/100.;double X=V.X+C[7],Y=V.Z+C[8]-C[5],Z=V.Y+C[9];double CX=CR*X-SP*SR*Y+CP*SR*Z,CY=-CP*Y-SP*Z+C[6],CZ=SR*X+SP*CR*Y-CP*CR*Z;if(CZ>.01)UV=FVector3f(C[0]*CX/CZ+C[1]*.5,C[0]*CY/CZ+C[2]*.5,1);}
- Applied.Add(UV);}
- Show=true;Status=FString::Printf(TEXT("초록: 2D 검출  |  자홍: 모델 추정  |  청록: 선택 애니메이션  |  %d 프레임\n검출은 정답이 아닙니다. 체형·관절 정의 차이가 포함됩니다."),F);Invalidate(EInvalidateWidgetReason::Paint);
+ // Cyan follows the real rendered view, including manual orbit/pan/dolly/FOV.
+ // The original model projection remains immutable in its own estimated camera.
+ for(int I=0;I<13;++I){const float* P=Data->Points.GetData()+(F*13+I)*6;Observed.Add(FVector3f(P[0],P[1],P[2]));Model.Add(FVector3f(P[3],P[4],P[5]));const auto& V=ViewPoints[I];Applied.Add(FVector3f(V.X*Canvas.X,V.Y*Canvas.Y,V.Z));}
+ Show=true;Status=FString::Printf(TEXT("초록: 2D 검출  |  자홍: 모델 추정  |  청록: 현재 3D 뷰  |  %d 프레임\n청록 카메라: %s. 자홍은 모델 추정 카메라 기준이며 검출은 정답이 아닙니다."),F,*CameraMode);Invalidate(EInvalidateWidgetReason::Paint);
 }
 int32 SCBMDebugOverlay::OnPaint(const FPaintArgs&,const FGeometry& G,const FSlateRect&,FSlateWindowElementList& Out,int32 Layer,const FWidgetStyle&,bool)const{
  if(!Show)return Layer;const int Edges[][2]={{0,1},{1,2},{2,3},{0,4},{4,5},{5,6},{7,8},{8,9},{10,11},{11,12},{7,10},{7,0},{10,0}};

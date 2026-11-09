@@ -5,6 +5,7 @@
 #include "MediaPlayer.h"
 #include "MediaTexture.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/AnimData/IAnimationDataModel.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "PreviewScene.h"
@@ -30,6 +31,7 @@
 class FCBMPreviewViewportClient : public FEditorViewportClient {
 public:
  int32 LastAA=-1,LastGI=-1,LastReflection=-1;
+ double RenderedHFOV=0,RenderedVFOV=0;
  FCBMPreviewViewportClient(FPreviewScene* Scene,const TSharedRef<SEditorViewport>& Widget)
   :FEditorViewportClient(nullptr,Scene,Widget){
   EngineShowFlags.SetLumenGlobalIllumination(false);
@@ -52,6 +54,13 @@ public:
  }
  virtual FSceneView* CalcSceneView(FSceneViewFamily* Family,const int32 StereoViewIndex=INDEX_NONE) override {
   auto* V=FEditorViewportClient::CalcSceneView(Family,StereoViewIndex);
+  if(V&&IsPerspective()&&V->UnscaledViewRect.Width()>0&&V->UnscaledViewRect.Height()>0){
+   // This comparison defines ViewFOV horizontally, independently of the
+   // level editor's global MaintainX/MaintainY preference.
+   FMatrix P=V->ProjectionMatrixUnadjustedForRHI;P.M[0][0]=1./FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(double(ViewFOV),1.,170.)*.5));
+   P.M[1][1]=P.M[0][0]*V->UnscaledViewRect.Width()/V->UnscaledViewRect.Height();V->UpdateProjectionMatrix(P);
+   RenderedHFOV=FMath::RadiansToDegrees(2*FMath::Atan(1./P.M[0][0]));RenderedVFOV=FMath::RadiansToDegrees(2*FMath::Atan(1./P.M[1][1]));
+  }
   if(V){V->AntiAliasingMethod=AAM_FXAA;LastAA=int32(V->AntiAliasingMethod);LastGI=int32(V->FinalPostProcessSettings.DynamicGlobalIlluminationMethod);LastReflection=int32(V->FinalPostProcessSettings.ReflectionMethod);}
   return V;
  }
@@ -85,12 +94,36 @@ public:
  int32 LastHand=0;
  bool LastMatch=false,CalibrationAvailable=false,FramingAvailable=false,UsingVideoCamera=false;
  float VideoFocal=0,VideoCX=0,VideoCY=0,VideoPitch=0,VideoRoll=0;
- FVector4f VideoBox;FString CalibrationRun;
+ FVector4f VideoBox;FString CalibrationRun;TArray<float> FittedCamera;FVector ExportOrigin=FVector::ZeroVector;bool ExactCamera=false;FVector MatchedLocation=FVector::ZeroVector;FRotator MatchedRotation=FRotator::ZeroRotator;float MatchedFOV=0;
+ bool IsMatchedView()const{return UsingVideoCamera&&ExactCamera&&FMath::IsNearlyZero(LastYaw)&&FMath::IsNearlyEqual(LastZoom,1.f)&&Camera->GetViewLocation().Equals(MatchedLocation,.01)&&Camera->GetViewRotation().Equals(MatchedRotation,.01)&&FMath::IsNearlyEqual(Camera->ViewFOV,MatchedFOV,.001f);}
+ bool IsExactCamera()const{return IsMatchedView();}
+ FString CameraMode()const{return IsMatchedView()?TEXT("영상 추정"):TEXT("수동 / 자유 시점");}
+ TArray<FVector3f> ProjectVisibleBones(){
+  TArray<FVector3f> Points;
+  if(!Camera||!Camera->Viewport||Camera->Viewport->GetSizeXY().GetMin()<=0)return Points;
+  FSceneViewFamilyContext Family(FSceneViewFamily::ConstructionValues(Camera->Viewport,Camera->GetScene(),Camera->EngineShowFlags));
+  const FSceneView* SV=Camera->CalcSceneView(&Family);if(!SV)return Points;
+  for(const TCHAR* Name:{TEXT("pelvis"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l"),TEXT("thigh_r"),TEXT("calf_r"),TEXT("foot_r"),TEXT("upperarm_l"),TEXT("lowerarm_l"),TEXT("hand_l"),TEXT("upperarm_r"),TEXT("lowerarm_r"),TEXT("hand_r")}){
+   FVector3f V(0,0,0);FVector2D P;const FVector World=Mesh->GetBoneLocation(Name);
+   if(Mesh->GetBoneIndex(Name)!=INDEX_NONE&&SV->WorldToScreen(World).W>FMath::Max(.001f,SV->NearClippingDistance)&&SV->WorldToPixel(World,P)&&FMath::IsFinite(P.X)&&FMath::IsFinite(P.Y))
+    V=FVector3f((P.X-SV->UnscaledViewRect.Min.X)/SV->UnscaledViewRect.Width(),(P.Y-SV->UnscaledViewRect.Min.Y)/SV->UnscaledViewRect.Height(),1);
+   Points.Add(V);
+  }return Points;
+ }
  FBox FrameBounds{ForceInit};
+ FString CalibrationSignature;double NextCalibrationCheck=0;
  void ReadCalibration(UAnimSequence* Anim){
   const FString Name=Anim?Anim->GetName():FString();const FString Run=Name.StartsWith(TEXT("Body_"))&&Name.Len()>=37?Name.Mid(5,32):FString();
-  if(Run==CalibrationRun)return;CalibrationRun=Run;CalibrationAvailable=false;FramingAvailable=false;NeedsFit=true;if(Run.IsEmpty())return;
-  const FString Dir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run;TArray<uint8> Data;
+  const bool NewRun=Run!=CalibrationRun;const double Now=FPlatformTime::Seconds();if(!NewRun&&Now<NextCalibrationCheck)return;NextCalibrationCheck=Now+1.;
+  const FString Dir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run;FString Stamp;
+  for(const TCHAR* File:{TEXT("Preview_OptimizedCamera.f32"),TEXT("Preview_Camera.f32"),TEXT("DebugBones.json")})Stamp+=IFileManager::Get().GetTimeStamp(*(Dir/File)).ToIso8601();
+  if(!NewRun&&Stamp==CalibrationSignature)return;CalibrationSignature=Stamp;
+  NeedsFit=NeedsFit||NewRun||IsMatchedView();CalibrationRun=Run;CalibrationAvailable=false;FramingAvailable=false;ExactCamera=false;FittedCamera.Reset();VideoFocal=0;if(Run.IsEmpty())return;
+  TArray<uint8> Data;
+  ExactCamera=false;ExportOrigin=FVector::ZeroVector;
+  FittedCamera.Reset();if(FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_OptimizedCamera.f32")))&&Data.Num()==48){FittedCamera.SetNumUninitialized(12);FMemory::Memcpy(FittedCamera.GetData(),Data.GetData(),48);for(float X:FittedCamera)if(!FMath::IsFinite(X)){FittedCamera.Reset();break;}}
+  if(FittedCamera.Num()==12){FString Text;TSharedPtr<FJsonObject> Meta;const TArray<TSharedPtr<FJsonValue>>* Values=nullptr;double Version=0;
+   if(FFileHelper::LoadFileToString(Text,*(Dir/TEXT("DebugBones.json")))&&FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),Meta)&&Meta.IsValid()&&Meta->TryGetNumberField(TEXT("version"),Version)&&Version==2&&Meta->TryGetArrayField(TEXT("camera"),Values)&&Values->Num()==10){double X,Y,Z;if((*Values)[7]->TryGetNumber(X)&&(*Values)[8]->TryGetNumber(Y)&&(*Values)[9]->TryGetNumber(Z)&&FMath::IsFinite(X)&&FMath::IsFinite(Y)&&FMath::IsFinite(Z)){ExportOrigin=FVector(X,Y,Z);ExactCamera=true;}}}
   if(!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Camera.f32")))&&!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Camera.f32"))))FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Camera_Ground.f32")));
   if(Data.Num()<20)return;float V[5];FMemory::Memcpy(V,Data.GetData(),20);for(float X:V)if(!FMath::IsFinite(X))return;
   VideoFocal=V[0];VideoCX=V[1];VideoCY=V[2];VideoPitch=V[3];VideoRoll=V[4];CalibrationAvailable=VideoFocal>1&&VideoCX>1&&VideoCY>1;
@@ -135,14 +168,18 @@ public:
     FrameBounds+=Mesh->GetBoneLocation(FName(*FString::Printf(TEXT("%s_%02d_%s"),Finger,I,Side)));
    FrameBounds=FrameBounds.ExpandBy(5.);
   }else if(NeedsFit){
-   // Fit once, preserving root movement throughout playback rather than following each pose.
-   FrameBounds=FBox(ForceInit);
+   // A fixed first-frame fit keeps legacy/free-camera framing independent of selection time.
+   FrameBounds=FBox(ForceInit);const auto& Ref=Mesh->GetSkeletalMeshAsset()->GetRefSkeleton();TArray<FTransform> Global=Ref.GetRefBonePose();
+   const auto* Model=Current?Current->GetDataModel():nullptr;
+   for(int B=0;B<Ref.GetNum();++B){if(Model&&Model->IsValidBoneTrackName(Ref.GetBoneName(B)))Global[B]=Model->GetBoneTrackTransform(Ref.GetBoneName(B),FFrameNumber(0));if(B>0)Global[B]=Global[B]*Global[Ref.GetParentIndex(B)];}
    for(const TCHAR* Name:{TEXT("pelvis"),TEXT("head"),TEXT("foot_l"),TEXT("foot_r"),TEXT("hand_l"),TEXT("hand_r"),TEXT("upperarm_l"),TEXT("upperarm_r")})
-    if(Mesh->GetBoneIndex(Name)!=INDEX_NONE)FrameBounds+=Mesh->GetBoneLocation(Name);
+    if(const int B=Ref.FindBoneIndex(Name);B!=INDEX_NONE)FrameBounds+=Global[B].GetTranslation();
    if(!FrameBounds.IsValid)FrameBounds=Mesh->Bounds.GetBox();
    FrameBounds=FrameBounds.ExpandBy(FVector(10,10,14));
   }
-  if(Hand||NeedsFit||Aspect!=LastAspect||Yaw!=LastYaw||Zoom!=LastZoom||LastMatch!=MatchVideo){
+  // A viewport resize must not reset a manually positioned camera. FOV is
+  // horizontal and the renderer already derives the vertical field of view.
+  if(Hand||NeedsFit||(Aspect!=LastAspect&&IsMatchedView())||Yaw!=LastYaw||Zoom!=LastZoom||LastMatch!=MatchVideo){
    const FVector Center=FrameBounds.GetCenter(),Extent=FrameBounds.GetExtent();
    const double Angle=FMath::DegreesToRadians(90.+Yaw);
    const FVector Out(FMath::Cos(Angle),FMath::Sin(Angle),0),Right(-Out.Y,Out.X,0);
@@ -155,9 +192,10 @@ public:
     // CV camera right/down/forward become the UE view's right/-up/forward.
     const double CP=FMath::Cos(-VideoPitch),SP=FMath::Sin(-VideoPitch),CR=FMath::Cos(VideoRoll),SR=FMath::Sin(VideoRoll);
     const FQuat Orbit(FVector::UpVector,FMath::DegreesToRadians(Yaw));
-    const FVector O=Orbit.RotateVector(FVector(-SR,CP*CR,-SP*CR));
-    const FVector R=Orbit.RotateVector(FVector(CR,CP*SR,-SP*SR));
-    const FVector U=Orbit.RotateVector(FVector(0,SP,CP));
+    FVector O=Orbit.RotateVector(FVector(-SR,CP*CR,-SP*CR));
+    FVector R=Orbit.RotateVector(FVector(CR,CP*SR,-SP*SR));
+    FVector U=Orbit.RotateVector(FVector(0,SP,CP));
+    if(FittedCamera.Num()==12){const auto& F=FittedCamera;O=Orbit.RotateVector(-FVector(F[6],F[8],F[7]));R=Orbit.RotateVector(FVector(F[0],F[2],F[1]));U=Orbit.RotateVector(-FVector(F[3],F[5],F[4]));}
     auto Span=[&](const FVector& A){return FMath::Abs(A.X)*Extent.X+FMath::Abs(A.Y)*Extent.Y+FMath::Abs(A.Z)*Extent.Z;};
     const double TanH=VideoCX/VideoFocal,TanV=TanH/FMath::Max(Aspect,.01f);
     Camera->ViewFOV=FMath::RadiansToDegrees(2*FMath::Atan(TanH));
@@ -165,7 +203,13 @@ public:
     const double D=Span(U)/(Fill*TanV)/FMath::Clamp(Zoom,.5f,2.f)+Span(O);
     FVector Aim=Center;
     if(FramingAvailable){const double X=(VideoBox.X+VideoBox.Z)/(2*VideoCX)-1,Y=1-(VideoBox.Y+VideoBox.W)/(2*VideoCY);Aim-=R*(X*D*TanH)+U*(Y*D*TanV);}
-    Camera->SetViewLocation(Aim+O*D);Camera->SetViewRotation(FRotationMatrix::MakeFromXY(-O,R).Rotator());
+    FVector Location=Aim+O*D;
+    if(ExactCamera){const auto& F=FittedCamera;
+     const FVector C(-(F[0]*F[9]+F[3]*F[10]+F[6]*F[11])-ExportOrigin.X,-(F[1]*F[9]+F[4]*F[10]+F[7]*F[11])-ExportOrigin.Y,-(F[2]*F[9]+F[5]*F[10]+F[8]*F[11])-ExportOrigin.Z);
+     Location=Orbit.RotateVector(FVector(C.X,C.Z,C.Y)*100.-Center)+Center;
+     Camera->ViewFOV=FMath::RadiansToDegrees(2*FMath::Atan(TanH/FMath::Clamp(Zoom,.5f,2.f)));
+    }
+    Camera->SetViewLocation(Location);Camera->SetViewRotation(FRotationMatrix::MakeFromXY(-O,R).Rotator());MatchedLocation=Camera->GetViewLocation();MatchedRotation=Camera->GetViewRotation();MatchedFOV=Camera->ViewFOV;
    }else{Camera->SetViewLocation(Center+Out*Distance);Camera->SetViewRotation((-Out).Rotation());}
    LastMatch=MatchVideo;
    LastAspect=Aspect;LastYaw=Yaw;LastZoom=Zoom;NeedsFit=false;Invalidate();
@@ -182,7 +226,7 @@ void SCBMComparison::Construct(const FArguments& Args){
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
     +SVerticalBox::Slot().AutoHeight()[SNew(SHorizontalBox)
      +SHorizontalBox::Slot().FillWidth(1)[SNew(STextBlock).Text(FText::FromString(TEXT("원본 영상")))]
-     +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text_Lambda([this](){return FText::FromString(Settings->DebugBones?TEXT("본 디버그 끄기"):TEXT("본 디버그 켜기"));}).ToolTipText(FText::FromString(TEXT("영상 검출·전신 모델·선택 애니메이션의 본을 원본 카메라로 투영합니다. 캐시만 사용하며 모캡 추론이나 에셋 변경을 하지 않습니다."))).OnClicked_Lambda([this](){Settings->DebugBones=!Settings->DebugBones;return FReply::Handled();})]]
+     +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text_Lambda([this](){return FText::FromString(Settings->DebugBones?TEXT("본 디버그 끄기"):TEXT("본 디버그 켜기"));}).ToolTipText(FText::FromString(TEXT("초록은 영상 검출, 자홍은 모델 추정 카메라의 원시 본, 청록은 오른쪽 3D 뷰에 실제 표시되는 본입니다. 수동 카메라 이동도 청록에 즉시 반영됩니다. 캐시만 사용하며 모캡 추론이나 에셋을 변경하지 않습니다."))).OnClicked_Lambda([this](){Settings->DebugBones=!Settings->DebugBones;return FReply::Handled();})]]
     +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).AutoWrapText(true).Visibility_Lambda([this](){return Settings->DebugBones?EVisibility::Visible:EVisibility::Collapsed;}).Text_Lambda([this](){return FText::FromString(DebugOverlay?DebugOverlay->Status:FString());})]
     +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SNew(SOverlay)+SOverlay::Slot()[SNew(SImage).Image(&Brush)]+SOverlay::Slot()[SAssignNew(DebugOverlay,SCBMDebugOverlay).Visibility(EVisibility::HitTestInvisible).Clipping(EWidgetClipping::ClipToBounds)]]]]]
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
@@ -206,9 +250,14 @@ void SCBMComparison::Construct(const FArguments& Args){
    +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).ToolTipText(FText::FromString(TEXT("비교 카메라의 수평 방향을 회전합니다. 애니메이션은 변경하지 않습니다."))).MinValue(-180).MaxValue(180).Value_Lambda([this](){return Settings->PreviewYawOffset;}).OnValueChanged_Lambda([this](float V){Settings->PreviewYawOffset=V;})]
    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("확대")))]
    +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).ToolTipText(FText::FromString(TEXT("비교 뷰를 확대하거나 축소합니다."))).MinValue(.5f).MaxValue(2.f).Delta(.05f).Value_Lambda([this](){return Settings->PreviewZoom;}).OnValueChanged_Lambda([this](float V){Settings->PreviewZoom=V;})]]
+  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).ToolTipText(FText::FromString(TEXT("가로 FOV = 2 × atan(영상 폭 / (2 × 초점거리))입니다. 첫 프레임에서 모델이 추정한 초점거리를 사용하며 실제 렌즈 정보가 아닙니다. 확대 조절은 표시 FOV만 바꿉니다."))).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("카메라: %s | 가로 FOV %.2f°"),*View->CameraMode(),View->Camera->ViewFOV));})]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("%.2f / %.2f s  |  %s"),Clock.Position,Length,*Notice));})]];
 }
 SCBMComparison::~SCBMComparison(){Player->Close();Brush.SetResourceObject(nullptr);}
+void SCBMComparison::UpdateDebugProjection(double Time,bool Synchronized){
+ ViewPoints=Settings->DebugBones?View->ProjectVisibleBones():TArray<FVector3f>();
+ DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,Settings->Video.FilePath,Settings->StartSeconds,Time,Synchronized,ViewPoints,View->CameraMode());
+}
 bool SCBMComparison::PrepareScreenshot(){
  if(!View||!View->Camera||!View->Camera->Viewport)return false;
  // Slate screenshot painting alone can reuse the previous viewport texture
@@ -217,15 +266,21 @@ bool SCBMComparison::PrepareScreenshot(){
  const double Time=Player->IsReady()&&!Clock.Scrubbing&&!Clock.Pending?FMath::Clamp(Player->GetTime().GetTotalSeconds()-Settings->StartSeconds,0.,Length):Clock.Position;
  View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Time);
  View->Frame(Aspect,Settings->PreviewYawOffset,Settings->PreviewZoom,Settings->PreviewHand,Settings->MatchVideoCamera);
- DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,View->Mesh.Get(),Settings->Video.FilePath,Settings->StartSeconds,Time,!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
+ UpdateDebugProjection(Time,!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
  View->Camera->Viewport->Draw();FlushRenderingCommands();
  auto C=StaticCastSharedPtr<FCBMPreviewViewportClient>(View->Camera);auto O=MakeShared<FJsonObject>();
  O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
  O->SetNumberField(TEXT("media_seconds"),Player->GetTime().GetTotalSeconds());O->SetBoolField(TEXT("scrubbing"),Clock.Scrubbing);O->SetBoolField(TEXT("seek_pending"),Clock.Pending);
  O->SetNumberField(TEXT("aa_method"),C->LastAA);O->SetNumberField(TEXT("gi_method"),C->LastGI);O->SetNumberField(TEXT("reflection_method"),C->LastReflection);
- O->SetBoolField(TEXT("video_camera_matched"),View->UsingVideoCamera);O->SetBoolField(TEXT("video_framing_available"),View->FramingAvailable);O->SetNumberField(TEXT("camera_pitch_radians"),View->VideoPitch);O->SetNumberField(TEXT("camera_roll_radians"),View->VideoRoll);O->SetNumberField(TEXT("horizontal_fov_degrees"),View->Camera->ViewFOV);
+ O->SetBoolField(TEXT("video_camera_matched"),View->UsingVideoCamera);O->SetBoolField(TEXT("exact_video_camera"),View->IsExactCamera());const FVector CL=View->Camera->GetViewLocation();O->SetNumberField(TEXT("camera_x"),CL.X);O->SetNumberField(TEXT("camera_y"),CL.Y);O->SetNumberField(TEXT("camera_z"),CL.Z);O->SetBoolField(TEXT("video_framing_available"),View->FramingAvailable);O->SetNumberField(TEXT("camera_pitch_radians"),View->VideoPitch);O->SetNumberField(TEXT("camera_roll_radians"),View->VideoRoll);O->SetNumberField(TEXT("horizontal_fov_degrees"),View->Camera->ViewFOV);
+ const FRotator ActualRotation=View->Camera->GetViewRotation();O->SetNumberField(TEXT("actual_camera_pitch_degrees"),ActualRotation.Pitch);O->SetNumberField(TEXT("actual_camera_yaw_degrees"),ActualRotation.Yaw);O->SetNumberField(TEXT("actual_camera_roll_degrees"),ActualRotation.Roll);O->SetStringField(TEXT("display_camera_mode"),View->CameraMode());
+ O->SetNumberField(TEXT("source_focal_pixels"),View->VideoFocal);O->SetNumberField(TEXT("rendered_horizontal_fov_degrees"),C->RenderedHFOV);O->SetNumberField(TEXT("vertical_fov_degrees"),C->RenderedVFOV);
+ {TArray<TSharedPtr<FJsonValue>> Points;const auto Canvas=DebugOverlay->GetCanvasSize();if(Canvas.X>0&&Canvas.Y>0)for(const auto& P:DebugOverlay->GetAppliedPoints()){auto J=MakeShared<FJsonObject>();J->SetNumberField(TEXT("x"),P.X/Canvas.X);J->SetNumberField(TEXT("y"),P.Y/Canvas.Y);J->SetBoolField(TEXT("in_front"),P.Z>.5f);Points.Add(MakeShared<FJsonValueObject>(J));}O->SetArrayField(TEXT("overlay_applied_uv"),Points);}
  O->SetBoolField(TEXT("lumen_gi"),C->EngineShowFlags.LumenGlobalIllumination);O->SetBoolField(TEXT("lumen_reflections"),C->EngineShowFlags.LumenReflections);O->SetBoolField(TEXT("temporal_aa"),C->EngineShowFlags.TemporalAA);O->SetBoolField(TEXT("motion_blur"),C->EngineShowFlags.MotionBlur);
- FString Json;FJsonSerializer::Serialize(O,TJsonWriterFactory<>::Create(&Json));FFileHelper::SaveStringToFile(Json,*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap/ComparisonPreview.json")));
+ // Record rendered projection independently of the overlay for camera parity checks.
+ {FSceneViewFamilyContext Family(FSceneViewFamily::ConstructionValues(C->Viewport,C->GetScene(),C->EngineShowFlags));FSceneView* SV=C->CalcSceneView(&Family);TArray<TSharedPtr<FJsonValue>> Points;
+  if(SV)for(const TCHAR* Name:{TEXT("pelvis"),TEXT("thigh_l"),TEXT("calf_l"),TEXT("foot_l"),TEXT("thigh_r"),TEXT("calf_r"),TEXT("foot_r"),TEXT("upperarm_l"),TEXT("lowerarm_l"),TEXT("hand_l"),TEXT("upperarm_r"),TEXT("lowerarm_r"),TEXT("hand_r")}){FVector2D P=FVector2D::ZeroVector;const bool Visible=SV->WorldToPixel(View->Mesh->GetBoneLocation(Name),P);auto Point=MakeShared<FJsonObject>();Point->SetStringField(TEXT("bone"),Name);Point->SetBoolField(TEXT("in_front"),Visible);Point->SetNumberField(TEXT("x"),(P.X-SV->UnscaledViewRect.Min.X)/FMath::Max(1,SV->UnscaledViewRect.Width()));Point->SetNumberField(TEXT("y"),(P.Y-SV->UnscaledViewRect.Min.Y)/FMath::Max(1,SV->UnscaledViewRect.Height()));Points.Add(MakeShared<FJsonValueObject>(Point));}O->SetArrayField(TEXT("rendered_bone_uv"),Points);}
+ FString Json;FJsonSerializer::Serialize(O,TJsonWriterFactory<>::Create(&Json));FFileHelper::SaveStringToFile(Json,*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap/ComparisonPreview.json")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
  return true;
 }
 FReply SCBMComparison::Load(){
@@ -262,5 +317,5 @@ void SCBMComparison::Tick(const FGeometry& G,double T,float D){
  if(Player->IsReady()&&OpenedFile!=Settings->Video.FilePath){Player->Pause();Notice=TEXT("Video changed: click Load comparison before playback");}
  View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Clock.Position);
  View->Frame(Aspect,Settings->PreviewYawOffset,Settings->PreviewZoom,Settings->PreviewHand,Settings->MatchVideoCamera);
- DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,View->Mesh.Get(),Settings->Video.FilePath,Settings->StartSeconds,Clock.Position,Player->IsReady()&&!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
+ UpdateDebugProjection(Clock.Position,Player->IsReady()&&!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
 }

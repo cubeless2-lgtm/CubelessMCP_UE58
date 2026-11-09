@@ -7,6 +7,7 @@
 #include "MediaTexture.h"
 #include "CBMPreviewClock.h"
 class UCubelessMocapSettings;
+class UAnimSequence;
 class UMediaPlayer;
 class UMediaTexture;
 class SCBMAnimationViewport;
@@ -32,6 +33,8 @@ private:
  double Length=0;
  bool PlayAfterSeek=false;
  bool Waiting=false;
+ TArray<FVector3f> ViewPoints;
+ void UpdateDebugProjection(double Time,bool Synchronized);
  FReply Load();
  void Seek(double Time);
 };

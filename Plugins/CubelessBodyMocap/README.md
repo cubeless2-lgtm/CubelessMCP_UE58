@@ -411,7 +411,7 @@ WiLoR는 MediaPipe 환경/모델이 설치되어 있으면 독립 관측을 자�
 
 ## 골반·다리 추가 보완 제거 (2026-11-09)
 
-다른 영상에서의 자세 왜곡 때문에 `Refine pelvis / legs`, 접지·시간축 추가 보완, 캐시 적용 및 전용 LowerBody Python 환경을 제거했습니다. 신규 설치에는 하체 전용 Python이 필요하지 않습니다. 기존 애니메이션 에셋·테스트 기록은 삭제하지 않으며 Preview Animation에서 직접 열 수 있습니다. 전신 추출의 기본 foot locking 및 HandFlow 손 경로는 유지합니다. 동기화 뷰의 영상 카메라·프레이밍은 전용 `Preview_*.f32`로 저장하고 이전 `FootMR_*` 카메라 파일도 읽습니다.
+다른 영상에서의 자세 왜곡 때문에 `Refine pelvis / legs`, 접지·시간축 추가 보완, 캐시 적용 및 전용 LowerBody Python 환경을 제거했습니다. 신규 설치에는 하체 전용 Python이 필요하지 않습니다. 기존 애니메이션 에셋·테스트 기록은 삭제하지 않으며 Preview Animation에서 직접 열 수 있습니다. 전신 추출의 기본 foot locking 및 HandFlow 손 경로는 유지합니다. 동기화 뷰의 영상 카메라·프레이밍은 전용 `Preview_*.f32`로 저장합니다.
 
 ## Manny 손바닥 체인 중복 매핑 수정 (2026-11-09)
 

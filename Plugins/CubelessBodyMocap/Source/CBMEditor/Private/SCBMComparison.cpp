@@ -124,10 +124,10 @@ public:
   FittedCamera.Reset();if(FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_OptimizedCamera.f32")))&&Data.Num()==48){FittedCamera.SetNumUninitialized(12);FMemory::Memcpy(FittedCamera.GetData(),Data.GetData(),48);for(float X:FittedCamera)if(!FMath::IsFinite(X)){FittedCamera.Reset();break;}}
   if(FittedCamera.Num()==12){FString Text;TSharedPtr<FJsonObject> Meta;const TArray<TSharedPtr<FJsonValue>>* Values=nullptr;double Version=0;
    if(FFileHelper::LoadFileToString(Text,*(Dir/TEXT("DebugBones.json")))&&FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),Meta)&&Meta.IsValid()&&Meta->TryGetNumberField(TEXT("version"),Version)&&Version==2&&Meta->TryGetArrayField(TEXT("camera"),Values)&&Values->Num()==10){double X,Y,Z;if((*Values)[7]->TryGetNumber(X)&&(*Values)[8]->TryGetNumber(Y)&&(*Values)[9]->TryGetNumber(Z)&&FMath::IsFinite(X)&&FMath::IsFinite(Y)&&FMath::IsFinite(Z)){ExportOrigin=FVector(X,Y,Z);ExactCamera=true;}}}
-  if(!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Camera.f32")))&&!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Camera.f32"))))FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Camera_Ground.f32")));
+  if(!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Camera.f32"))))FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Camera_Ground.f32")));
   if(Data.Num()<20)return;float V[5];FMemory::Memcpy(V,Data.GetData(),20);for(float X:V)if(!FMath::IsFinite(X))return;
   VideoFocal=V[0];VideoCX=V[1];VideoCY=V[2];VideoPitch=V[3];VideoRoll=V[4];CalibrationAvailable=VideoFocal>1&&VideoCX>1&&VideoCY>1;
-  if(FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Boxes.f32")))||FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Boxes.f32"))))for(int32 I=0;I+16<=Data.Num();I+=16){float B[4];FMemory::Memcpy(B,Data.GetData()+I,16);bool Valid=true;for(float X:B)Valid=Valid&&FMath::IsFinite(X);if(Valid&&B[2]>B[0]+1&&B[3]>B[1]+1){VideoBox=FVector4f(B[0],B[1],B[2],B[3]);FramingAvailable=true;break;}}
+  if(FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Boxes.f32"))))for(int32 I=0;I+16<=Data.Num();I+=16){float B[4];FMemory::Memcpy(B,Data.GetData()+I,16);bool Valid=true;for(float X:B)Valid=Valid&&FMath::IsFinite(X);if(Valid&&B[2]>B[0]+1&&B[3]>B[1]+1){VideoBox=FVector4f(B[0],B[1],B[2],B[3]);FramingAvailable=true;break;}}
  }
  void Construct(const FArguments&){
   Scene=MakeUnique<FCBMPreviewScene>();

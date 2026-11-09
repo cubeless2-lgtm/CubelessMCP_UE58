@@ -25,6 +25,13 @@ source_names={str(x.chain_name).lower():str(x.chain_name) for x in sc.get_retarg
 mappings={}
 for chain in tc.get_retarget_chains():
  name=str(chain.chain_name)
+ # The default op setup fuzzy-maps Manny metacarpals to the same SMPL
+ # phalanx chains. Clear those mappings explicitly: otherwise MCP motion
+ # is applied twice even when hand enhancement is disabled.
+ if name.lower().endswith('metacarpal'):
+  assert c.set_source_chain('',name), 'Cannot clear '+name
+  mappings[name]=''
+  continue
  # Terminal toes require terminal source chains; do not reuse foot -> ball.
  source_name=source_names.get(name.lower(),'')
  if source_name:

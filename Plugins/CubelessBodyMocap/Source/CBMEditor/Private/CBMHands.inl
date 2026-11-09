@@ -218,6 +218,7 @@ static bool CBMBakeHands(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,const 
  Report->SetStringField(TEXT("hand_calibration"),TEXT("palm_frame_terminal_axis_v1"));Report->SetStringField(TEXT("backend"),J->HandBackend);if(O->HasTypedField<EJson::Object>(TEXT("provenance")))Report->SetObjectField(TEXT("provenance"),O->GetObjectField(TEXT("provenance")));
  CBMWriteJson(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run/TEXT("preservation.json"),Report);
  if(J->Settings.IsValid()){
+  J->Settings->JointComparisonSource=nullptr;J->Settings->JointCorrectedAnimation=nullptr;J->Settings->JointCorrectionSource=nullptr;J->Settings->JointCorrectionReport.FilePath.Empty();
   if(J->Settings->HandComparisonBase!=Original){J->Settings->WiLoRAnimation=nullptr;J->Settings->HandFlowAnimation=nullptr;J->Settings->MediaPipeAnimation=nullptr;}
   J->Settings->HandComparisonBase=Original;
   if(J->HandBackend==TEXT("WiLoR"))J->Settings->WiLoRAnimation=Output;
@@ -227,23 +228,33 @@ static bool CBMBakeHands(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,const 
  Error=TEXT("Saved ")+Output->GetPathName()+TEXT(". Original body/wrists preserved; use comparison buttons.");return true;
 }
 
+#include "CBMHandInputCache.inl"
+
 static bool CBMSolveHands(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Message){
  const FString Work=FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run);
  auto Fail=[&](const FString& S){Message=S;return false;};ON_SCOPE_EXIT{ReleasePackages();};
+ if(!J->SharedHandFrames){
  J->Dir=Work/TEXT("Frames");IFileManager::Get().MakeDirectory(*J->Dir,true);
  {FCBMStage Stage(J,TEXT("Hand frame decode"),.02);
   const FString Args=FString::Printf(TEXT("-nostdin -v error -ss %.6f -i \"%s\" -vf fps=%d -frames:v %d -start_number 0 \"%s/%%08d.png\""),J->StartSeconds,*J->Video,J->FPS,J->FrameCount,*J->Dir);
   FProcHandle Proc=FPlatformProcess::CreateProc(*J->FFmpeg,*Args,false,true,true,nullptr,0,nullptr,nullptr);if(!Proc.IsValid())return Fail(TEXT("FFmpeg could not start."));ON_SCOPE_EXIT{FPlatformProcess::CloseProc(Proc);};
   while(FPlatformProcess::IsProcRunning(Proc)){if(J->Cancel.Load()){FPlatformProcess::TerminateProc(Proc,true);FPlatformProcess::WaitForProc(Proc);return Fail(TEXT("Cancelled."));}FPlatformProcess::Sleep(.05f);}int32 Code=-1;FPlatformProcess::GetProcReturnCode(Proc,&Code);if(Code)return Fail(TEXT("Hand frame decode failed."));
  }
+ }
  TArray<FString> Files;IFileManager::Get().FindFiles(Files,*(J->Dir/TEXT("*.png")),true,false);Files.Sort();if(Files.Num()!=J->FrameCount)return Fail(TEXT("Video does not contain the original animation's full frame range."));
+ for(int32 I=0;I<Files.Num();++I)if(Files[I]!=FString::Printf(TEXT("%08d.png"),I))return Fail(TEXT("Hand input frames must use sequential eight-digit names starting at zero."));
+ {FCBMStage Stage(J,TEXT("Hand cue fingerprint"),.07);CBMPrepareHandCueCache(J,Files);}
+ if(J->Cancel.Load())return Fail(TEXT("Cancelled."));
  TArray64<float> Keys;
+ if(!CBMHandCueCache(J,Keys,false)){
  {FCBMStage Stage(J,TEXT("Hand assignment keypoints"),.08);Cubeless::FModelFactory A,B;const auto PA=ModelPath(TEXT("ViTPose")),PB=ModelPath(TEXT("ViTPosePost"));
   if(!Loaded(J,{PA,PB},[&](){A=Cubeless::PrepareModel(Cast<UNNEModelData>(PA.ResolveObject()),true);B=Cubeless::PrepareModel(Cast<UNNEModelData>(PB.ResolveObject()),true);}))return Fail(TEXT("Cancelled loading keypoints."));
   auto Est=UE::BodyTracker::FEstimateKeypoints::FromInstances(A?A():nullptr,B?B():nullptr);A.Reset();B.Reset();if(!Est)return Fail(TEXT("Hand assignment model failed to initialize."));
   for(int32 I=0;I<Files.Num();++I){if(J->Cancel.Load())return Fail(TEXT("Cancelled."));Cubeless::FImageData Frame;if(!ReadFrame(J->Dir/Files[I],Frame))return Fail(TEXT("Cannot read hand frame."));const float Scale=FMath::Min(896.f/Frame.Height,1.f);Est->Run(Frame,FIntRect(0,0,FMath::RoundToInt(Frame.Width*Scale),FMath::RoundToInt(Frame.Height*Scale)),Keys);J->Update(FString::Printf(TEXT("Hand assignment %d/%d"),I+1,Files.Num()),.08+.25*I/Files.Num());}
   Est.Reset();
  }ReleasePackages();
+ CBMHandCueCache(J,Keys,true);}
+ J->StageHashes.Add(TEXT("HandAssignmentKeypoints"),FMD5::HashBytes(reinterpret_cast<const uint8*>(Keys.GetData()),Keys.Num()*sizeof(float)));
  if(Keys.Num()!=J->FrameCount*399||!FFileHelper::SaveArrayToFile(MakeArrayView(reinterpret_cast<const uint8*>(Keys.GetData()),Keys.Num()*int64(sizeof(float))),*(Work/TEXT("keypoints.f32"))))return Fail(TEXT("Cannot save hand assignment cues."));
  Keys.Empty();auto Config=MakeShared<FJsonObject>();Config->SetStringField(TEXT("repo"),J->WiLoRRepo);Config->SetStringField(TEXT("work"),Work);Config->SetStringField(TEXT("frame_dir"),J->Dir);
  OnGame([&](){
@@ -261,7 +272,7 @@ static bool CBMSolveHands(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FStri
   }
  });Config->SetNumberField(TEXT("frames"),J->FrameCount);Config->SetNumberField(TEXT("fps"),J->FPS);Config->SetStringField(TEXT("model"),J->HandModel);
  Config->SetStringField(TEXT("backend"),J->HandBackend);Config->SetStringField(TEXT("video"),J->Video);Config->SetNumberField(TEXT("start_seconds"),J->StartSeconds);
- Config->SetStringField(TEXT("cache_root"),FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap/HandCache")));
+ Config->SetStringField(TEXT("cache_root"),FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap/HandCache")));Config->SetBoolField(TEXT("reuse_cache"),J->Reuse);
  Config->SetStringField(TEXT("handflow_root"),J->HandFlowRoot);Config->SetNumberField(TEXT("handflow_steps"),J->HandFlowSteps);Config->SetNumberField(TEXT("handflow_batch"),J->HandFlowBatch);Config->SetNumberField(TEXT("handflow_seed"),J->HandFlowSeed);Config->SetBoolField(TEXT("diagnostics"),J->HandDiagnostics);
  if(!CBMWriteJson(Work/TEXT("request.json"),Config))return Fail(TEXT("Cannot write hand request."));
  {FCBMStage Stage(J,TEXT("Finger inference"),.35);const FString Args=FString::Printf(TEXT("-I \"%s\" --config \"%s\""),*J->HandScript,*(Work/TEXT("request.json")));
@@ -287,6 +298,7 @@ bool UCubelessMocapLibrary::ApplyHandResult(UCubelessMocapSettings* S,FString& R
  return CBMBakeHands(J,O,Result);
 }
 
+static FString CBMHandReadiness(UCubelessMocapSettings* S,ECBMFingerBackend Backend);
 bool UCubelessMocapLibrary::RefineHands(UCubelessMocapSettings* S,FString& Result){
  check(IsInGameThread());auto Fail=[&](const FString& M){Result=M;return false;};if(!S||IsBusy()||(GEditor&&GEditor->PlayWorld))return Fail(TEXT("End the current job and PIE first."));
  auto* Original=S->OriginalAnimation?S->OriginalAnimation.Get():S->PreviewAnimation.Get();
@@ -299,7 +311,7 @@ bool UCubelessMocapLibrary::RefineHands(UCubelessMocapSettings* S,FString& Resul
  const auto Plugin=IPluginManager::Get().FindPlugin(TEXT("CubelessBodyMocap"));const FString Script=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("Tools/run_hand_worker.py"));
  const FString Python=HandFlow?S->HandFlowPython.FilePath:MediaPipe?S->MediaPipePython.FilePath:S->HandPython.FilePath;
  const FString Repo=FPaths::ConvertRelativePathToFull(S->WiLoRDirectory.Path);
- const FString Ready=GetHandReadiness(S);if(Ready.StartsWith(TEXT("Missing")))return Fail(Ready);
+ const FString Ready=CBMHandReadiness(S,S->SelectedFingerBackend());if(Ready.StartsWith(TEXT("Missing")))return Fail(Ready);
  for(const auto& File:TArray<FString>{S->Video.FilePath,S->FFmpeg.FilePath,Python,Script})if(File.Contains(TEXT("\""))||!FPaths::FileExists(File))return Fail(TEXT("Missing required file: ")+File);
  if(S->HandFlowSteps<1||S->HandFlowSteps>32||S->HandFlowBatch<1||S->HandFlowBatch>8||S->HandFlowSeed<0)return Fail(TEXT("Invalid HandFlow settings."));
  const auto* Model=Original->GetDataModel();for(const auto& Bone:CBMFingerNames())if(!Model->IsValidBoneTrackName(Bone))return Fail(TEXT("Original lacks finger track: ")+Bone.ToString());
@@ -308,22 +320,22 @@ bool UCubelessMocapLibrary::RefineHands(UCubelessMocapSettings* S,FString& Resul
  auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=TEXT("Hands_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Original.Reset(Original);J->Source.Reset(Source);J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;J->Video=FPaths::ConvertRelativePathToFull(S->Video.FilePath);J->FFmpeg=S->FFmpeg.FilePath;J->HandPython=S->HandPython.FilePath;J->WiLoRRepo=Repo;J->HandScript=Script;J->FPS=Rate.Numerator;J->FrameCount=Count;J->StartSeconds=S->StartSeconds;J->HandStrength=S->HandStrength;J->OutputFolder=S->OutputFolder;CurrentJob=J;
  IFileManager::Get().MakeDirectory(*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run),true);
  J->OriginalGuid=Model->GenerateGuid();
- J->HandPython=Python;J->HandBackend=HandFlow?TEXT("HandFlow"):MediaPipe?TEXT("MediaPipe"):TEXT("WiLoR");J->HandFlowRoot=FPaths::ConvertRelativePathToFull(S->HandFlowDirectory.Path);J->HandFlowSteps=S->HandFlowSteps;J->HandFlowBatch=S->HandFlowBatch;J->HandFlowSeed=S->HandFlowSeed;J->HandDiagnostics=S->HandDiagnostics;J->HandModel=S->MediaPipeModel.FilePath;
+ J->HandPython=Python;J->HandBackend=HandFlow?TEXT("HandFlow"):MediaPipe?TEXT("MediaPipe"):TEXT("WiLoR");J->HandFlowRoot=FPaths::ConvertRelativePathToFull(S->HandFlowDirectory.Path);J->HandFlowSteps=S->HandFlowSteps;J->HandFlowBatch=S->HandFlowBatch;J->HandFlowSeed=S->HandFlowSeed;J->HandDiagnostics=S->HandDiagnostics;J->HandModel=S->MediaPipeModel.FilePath;J->Reuse=S->ReuseCheckpoints;J->HandKeypointsCode=CBMHandCueCodePaths();
  J->Worker=Async(EAsyncExecution::Thread,[J](){FString Message;const bool OK=CBMSolveHands(J,Message);{FScopeLock L(&J->Mutex);J->Success=OK;J->Finished=FPlatformTime::Seconds();J->Message=Message;J->Stage=OK?TEXT("Completed"):J->Cancel.Load()?TEXT("Cancelled"):TEXT("Failed");if(OK)J->Progress=1;}J->Profile();J->Done.Store(true);});Result=TEXT("Started finger-only job ")+J->Run;return true;
 }
 
-FString UCubelessMocapLibrary::GetHandReadiness(UCubelessMocapSettings* S){
+static FString CBMHandReadiness(UCubelessMocapSettings* S,ECBMFingerBackend Backend){
  if(!S)return TEXT("Missing settings");
- if(S->SelectedFingerBackend()==ECBMFingerBackend::None)return TEXT("Hand enhancement: none. Refine fingers selects the original animation; no hand inference. Existing results stay saved.");
- if(!S->EnableLegacyHandDiagnostics&&S->SelectedFingerBackend()!=ECBMFingerBackend::HandFlow)return TEXT("Legacy hand selection is diagnostic only. Choose HandFlow or enable Legacy Hand Diagnostics.");
+ if(Backend==ECBMFingerBackend::None)return TEXT("Hand enhancement off. Start Mocap saves body motion only; existing hand results stay saved.");
+ if(!S->EnableLegacyHandDiagnostics&&Backend!=ECBMFingerBackend::HandFlow)return TEXT("Legacy hand selection is diagnostic only. Choose HandFlow or enable Legacy Hand Diagnostics.");
  TArray<FString> Required;FString Description;
- if(S->SelectedFingerBackend()==ECBMFingerBackend::HandFlow){
+ if(Backend==ECBMFingerBackend::HandFlow){
   const FString Root=S->HandFlowDirectory.Path;
   Required.Add(S->HandFlowPython.FilePath);Required.Add(Root/TEXT("manifest.json"));
   for(const TCHAR* Name:{TEXT("handflow_denoiser.pt"),TEXT("normalization_stats.npz"),TEXT("hamer.ckpt"),TEXT("model_config.yaml"),TEXT("mano_mean_params.npz"),TEXT("detector.pt"),TEXT("MANO_RIGHT.pkl")})Required.Add(Root/TEXT("models")/Name);
   Required.Add(Root/TEXT("runtime/HandFlow/model/flow_matching/denoiser.py"));Required.Add(Root/TEXT("runtime/HaMeR/hamer/models/hamer.py"));
   Description=TEXT("HandFlow / HaMeR: image features + offline temporal inference (16-frame windows). No WiLoR pose input or estimator mixing. Missing detections remain flagged predictions.");
- }else if(S->SelectedFingerBackend()==ECBMFingerBackend::WiLoR){
+ }else if(Backend==ECBMFingerBackend::WiLoR){
   Required.Add(S->HandPython.FilePath);for(const TCHAR* Name:{TEXT("mano_data/MANO_RIGHT.pkl"),TEXT("mano_data/mano_mean_params.npz"),TEXT("pretrained_models/wilor_final.ckpt"),TEXT("pretrained_models/detector.pt"),TEXT("pretrained_models/model_config.yaml")})Required.Add(S->WiLoRDirectory.Path/Name);
   Description=TEXT("DIAGNOSTIC: WiLoR estimates rotations. MediaPipe observations assist hand identity and crop selection; its rotations are not mixed in. Existing gap filtering is retained.");
   const auto Plugin=IPluginManager::Get().FindPlugin(TEXT("CubelessBodyMocap"));const FString MP=Plugin->GetBaseDir()/TEXT("ThirdParty/MediaPipe");
@@ -332,4 +344,27 @@ FString UCubelessMocapLibrary::GetHandReadiness(UCubelessMocapSettings* S){
  FString Missing;for(const auto& File:Required)if(File.Contains(TEXT("\""))||!FPaths::FileExists(File))Missing+=TEXT("\n")+File;
  if(!Missing.IsEmpty())return TEXT("Missing optional hand files:")+Missing+TEXT("\nHandFlow setup: Tools/prepare_handflow.py --weights and ThirdParty/HandFlow/README.md. Original hands remain available; legacy backends are under Diagnostics.");
  return TEXT("Files ready (runtime/hash validation on start). ")+Description;
+}
+
+
+FString UCubelessMocapLibrary::GetHandReadiness(UCubelessMocapSettings* S){
+ if(!S)return TEXT("Missing settings");
+ FString Status=CBMHandReadiness(S,S->EnhanceHands?ECBMFingerBackend::HandFlow:ECBMFingerBackend::None);
+ if(S->EnableLegacyHandDiagnostics)Status+=TEXT("\nSeparate diagnostic action: ")+CBMHandReadiness(S,S->SelectedFingerBackend());
+ return Status;
+}
+
+// Capture all hand settings before launching the existing worker. Normal Start
+// always uses HandFlow, even when a legacy diagnostic panel is visible.
+static bool CBMConfigureAutoHands(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,UCubelessMocapSettings* S,FString& Error){
+ const FString Ready=CBMHandReadiness(S,ECBMFingerBackend::HandFlow);
+ if(Ready.StartsWith(TEXT("Missing"))){Error=Ready+TEXT("\nUncheck Enhance Hands for body only.");return false;}
+ if(!FMath::IsFinite(S->HandStrength)||S->HandStrength<0||S->HandStrength>1||S->HandFlowSteps<1||S->HandFlowSteps>32||S->HandFlowBatch<1||S->HandFlowBatch>8||S->HandFlowSeed<0){Error=TEXT("Invalid HandFlow settings.");return false;}
+ const auto Plugin=IPluginManager::Get().FindPlugin(TEXT("CubelessBodyMocap"));
+ J->HandScript=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("Tools/run_hand_worker.py"));
+ J->HandPython=S->HandFlowPython.FilePath;J->HandFlowRoot=FPaths::ConvertRelativePathToFull(S->HandFlowDirectory.Path);
+ for(const FString& File:{J->HandScript,J->HandPython})if(File.Contains(TEXT("\""))||!FPaths::FileExists(File)){Error=TEXT("Missing or invalid hand file: ")+File;return false;}
+ J->HandFlowSteps=S->HandFlowSteps;J->HandFlowBatch=S->HandFlowBatch;J->HandFlowSeed=S->HandFlowSeed;J->HandDiagnostics=S->HandDiagnostics;J->HandStrength=S->HandStrength;
+ J->WiLoRRepo=FPaths::ConvertRelativePathToFull(S->WiLoRDirectory.Path);J->HandModel=S->MediaPipeModel.FilePath;J->HandKeypointsCode=CBMHandCueCodePaths();
+ return true;
 }

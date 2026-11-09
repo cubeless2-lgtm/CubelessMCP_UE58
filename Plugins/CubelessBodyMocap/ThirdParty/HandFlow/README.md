@@ -18,7 +18,7 @@ only under **Hands → Diagnostics → Enable Legacy Hand Diagnostics**:
   fallback is explicitly reported.
 - **HandFlow / HaMeR**: HaMeR extracts image features and 2D hand
   conditions; HandFlow predicts a sequence using 16-frame overlapping windows,
-  overlap 2, three flow integration steps by default, FP32, fixed seed 0.
+  overlap 8, three flow integration steps by default, FP32, fixed seed 0.
   WiLoR's YOLO detector is used only to locate hands, not to supply hand poses.
   Missing detections are flagged temporal predictions, not recovered detections.
 - **MediaPipe only (diagnostic)** remains available with the diagnostic toggle.
@@ -36,32 +36,37 @@ running inference. It creates another saved result rather than overwriting one.
 
 ## Files and environment
 
+For a new computer, follow the numbered installation procedure in the
+[plugin README](../../README.md). It includes a standalone HandFlow environment,
+Chumpy, the required CUDA check, and the missing Seaborn dependency that the old
+base lock does not include. Do not copy another workstation's venv or `.pth`.
+
 `manifest.json` pins the source revision, every downloaded source SHA256, and
-seven model/config hashes. Run from the project root:
+seven model/config hashes. First place the user-licensed `MANO_RIGHT.pkl` in
+`ThirdParty/HandFlow/models/`. Then run from the project root:
 
 ```powershell
 python Plugins/CubelessBodyMocap/Tools/prepare_handflow.py --weights
 ```
 
-Supply the licensed `models/MANO_RIGHT.pkl` yourself (the existing user-supplied
-MANO model was copied for this workstation). Required files are listed in the
-manifest and the editor's readiness message. Missing HandFlow files do not
-disable other backends. The downloader refuses mismatched existing files.
+MANO is not downloaded by this command. Missing MANO makes setup fail even if
+other downloads finish. Required files are listed in the manifest and the
+editor's readiness message. Missing HandFlow files do not disable body extraction
+or the None hand option. The downloader refuses mismatched existing files and
+does not install Python packages.
 
-The local installation uses `venv/Scripts/python.exe`, Python 3.12.10 and Torch
+The existing development workstation uses `venv/Scripts/python.exe`, Python 3.12.10 and Torch
 2.8.0+cu128. `venv/Lib/site-packages/cbm_shared_torch.pth` reads the existing
 WiLoR environment's packages; no packages in that environment are modified.
 HandFlow-specific overrides are installed in its own venv and take precedence.
-The base WiLoR environment must remain installed. This avoids duplicating Torch
-while keeping HandFlow package writes separate. For a fully independent install,
-install the base WiLoR requirement lock and matching Torch wheels into this venv
-instead of creating the `.pth`, then install the overlay below.
-
-```powershell
-python -m venv Plugins/CubelessBodyMocap/ThirdParty/HandFlow/venv
-# Create the read-only base-package .pth or install the base dependencies first.
-Plugins/CubelessBodyMocap/ThirdParty/HandFlow/venv/Scripts/python.exe -m pip install --no-deps -r Plugins/CubelessBodyMocap/ThirdParty/HandFlow/requirements-overlay.txt
-```
+The base WiLoR environment must remain installed **for that shared installation**.
+This avoids duplicating Torch while keeping HandFlow package writes separate.
+It is not a requirement for new standalone installs. The main README installs
+the common package lock, matching Torch wheels, overlay and Chumpy directly into
+HandFlow's venv; it does not require WiLoR pose weights or the WiLoR repository.
+This independent fresh-PC procedure has been source-reviewed but has not yet
+been executed end-to-end on a clean machine. The current adapter requires CUDA;
+it does not provide a CPU fallback.
 
 The worker sets job-local YOLO settings and Win32 OpenGL before importing model
 code. Rendering is disabled during inference. Package versions, model hashes,

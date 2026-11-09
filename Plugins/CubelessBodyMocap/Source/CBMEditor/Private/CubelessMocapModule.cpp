@@ -58,13 +58,12 @@ public:
     Settings->MediaPipePython.FilePath=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/MediaPipe/venv/Scripts/python.exe"));
     Settings->HandFlowPython.FilePath=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/HandFlow/venv/Scripts/python.exe"));
     Settings->HandFlowDirectory.Path=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/HandFlow"));
-    Settings->FootPython.FilePath=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/LowerBody/venv/Scripts/python.exe"));
     Settings->MediaPipeModel.FilePath=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/MediaPipe/hand_landmarker.task"));
    }
    Settings->TargetMesh=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny.SKM_Manny"));
    Settings->Retargeter=LoadObject<UIKRetargeter>(nullptr,TEXT("/Game/CubelessMocap/Setup/RTG_CBM_SMPL_to_Manny.RTG_CBM_SMPL_to_Manny"));
   }
-  FDetailsViewArgs Args;Args.bAllowSearch=true;auto& Properties=FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");auto Details=Properties.CreateDetailView(Args);Details->SetObject(Settings.Get());
+  FDetailsViewArgs Args;Args.bAllowSearch=true;auto& Properties=FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");auto Details=Properties.CreateDetailView(Args);Details->SetObject(Settings.Get());Details->SetEnabled(TAttribute<bool>::CreateLambda([](){return !UCubelessMocapLibrary::IsBusy();}));
   auto Window=SNew(SWindow).Title(FText::FromString("Cubeless Body Mocap")).ClientSize(FVector2D(1220,850));
   TSharedPtr<SCBMComparison> ComparisonWidget;
   Window->SetContent(SNew(SVerticalBox)
@@ -72,14 +71,12 @@ public:
     +SHorizontalBox::Slot().FillWidth(.32f)[Details]
     +SHorizontalBox::Slot().FillWidth(.68f)[SAssignNew(ComparisonWidget,SCBMComparison).Settings(Settings.Get())]]
    +SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(UCubelessMocapLibrary::GetHandReadiness(Settings.Get()));})]
-   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(UCubelessMocapLibrary::GetFootReadiness(Settings.Get()));})]
    +SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]
+   +SVerticalBox::Slot().AutoHeight().Padding(8,0)[SNew(SButton).Text(FText::FromString("Apply joint correction (optional postprocess)")).ToolTipText(FText::FromString("Enable Joint Correction under Postprocess first. Saves a separate finger-only result; Start Mocap stays unchanged.")).IsEnabled_Lambda([this](){return Settings->EnableJointCorrection&&!UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::CorrectFingerJoints(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
    +SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(SHorizontalBox)
-    +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).Text(FText::FromString("Start extraction")).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::Extract(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(SButton).Text(FText::FromString("Refine fingers")).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::RefineHands(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(SButton).Text(FText::FromString("Apply cached fingers")).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::ApplyHandResult(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("Refine pelvis / legs")).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::RefineFeet(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("Apply cached legs")).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::ApplyFootResult(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
+    +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).Text(FText::FromString("Start Mocap")).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::Extract(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(SButton).Text(FText::FromString("Run hand diagnostic")).Visibility_Lambda([this](){return Settings->EnableLegacyHandDiagnostics?EVisibility::Visible:EVisibility::Collapsed;}).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::RefineHands(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(SButton).Text(FText::FromString("Apply cached fingers")).Visibility_Lambda([this](){return Settings->EnableLegacyHandDiagnostics?EVisibility::Visible:EVisibility::Collapsed;}).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString Result;if(!UCubelessMocapLibrary::ApplyHandResult(Settings.Get(),Result))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Result));return FReply::Handled();})]
     +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(SButton).Text(FText::FromString("Cancel")).IsEnabled_Lambda([](){return UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([](){UCubelessMocapLibrary::Cancel();return FReply::Handled();})]]);
   Comparison=ComparisonWidget;ExistingWindow=Window;
   FSlateApplication::Get().AddWindow(Window);

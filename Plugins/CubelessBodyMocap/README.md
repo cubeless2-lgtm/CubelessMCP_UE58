@@ -1,17 +1,245 @@
 # Cubeless Body Mocap 0.1.0
 
+## 다른 PC에서 처음 설치하기
+
+**Git에는 소스만 들어 있습니다.** 모델, FFmpeg 실행 파일, Python 가상환경, 컴파일된 DLL, Manny 리타깃 에셋, 테스트 영상·결과는 포함하지 않습니다. 아래 순서로 해당 PC에서 준비해야 합니다. 명령이 실패하면 다음 단계로 넘어가지 말고 [설치 오류 점검](#설치-오류-점검)을 확인하세요.
+
+검증 기준은 **Windows x64 / UE 5.8.4 CL58902052 / 독립 Python 3.12.10**입니다. 다른 UE 패치·플랫폼의 빌드와 새 PC에서의 전체 설치는 별도 검증 대상입니다. 아래 안내는 실제 준비 스크립트, 현재 설치 파일, 모델 manifest와 대조한 절차이며 깨끗한 다른 PC에서 일괄 설치를 완료했다는 의미는 아닙니다.
+
+| 사용 기능 | 필요한 준비 |
+|---|---|
+| 영상 → 전신 애니메이션 | 플러그인 Editor 빌드, 전신 원본 콘텐츠, **고정 시드 카메라 모델**, FFmpeg, 대상 메시·IK Retargeter |
+| 고속 전신 모드 | 위 항목 + fused CHMR, compact SAM2 모델 쌍. 없으면 해당 단계는 원본 경로 사용 |
+| HandFlow 손 보강 | 독립 HandFlow Python, CUDA 가능한 NVIDIA GPU·드라이버, HandFlow/HaMeR/검출기 파일, 사용자 제공 MANO |
+| WiLoR·MediaPipe 진단 | 선택 사항. 일반 설치에는 필요하지 않으며 [진단용 환경 설명](ThirdParty/README-Hands.md) 참조 |
+
+HandFlow의 현재 구현은 `.cuda()`를 사용하므로 CPU 전용이나 AMD/Intel GPU 경로로 자동 전환되지 않습니다. CUDA를 사용할 수 없다면 우선 손 보강을 `None (original hands)`으로 설정합니다. 전신 추출의 UE NNE/DirectML 경로와 외부 Python HandFlow/CUDA 경로는 서로 다릅니다.
+
+### 1. 소스·엔진·기본 도구
+
+1. 이 폴더 전체를 대상 프로젝트의 `Plugins/CubelessBodyMocap/`에 둡니다. `.uplugin`과 `Source`, `Tools`, `Resources`, `ThirdParty`의 작은 설정·라이선스 파일을 함께 보존합니다.
+2. UE 5.8.4와 해당 엔진이 지원하는 Visual Studio C++ 빌드 도구 및 Windows SDK를 준비합니다. DLL은 Git에 없으므로 해당 PC에서 **프로젝트 Editor 타깃**을 빌드해야 합니다.
+3. [독립 Python 3.12](https://www.python.org/downloads/release/python-31210/) 64비트와 Git을 준비합니다. 3.12.10은 이 프로젝트의 검증 버전이며 최신 Python 버전이라는 뜻은 아닙니다. Unreal 내장 Python에 pip 패키지를 설치하지 않습니다.
+4. 에디터의 Plugins 설정에서 `Cubeless Body Mocap`을 활성화하고 재시작·컴파일 안내를 따릅니다. 소스 설정의 `EnabledByDefault`는 `false`이고, 대상 `.uproject`의 활성화 변경은 이번 소스 배포에 포함되지 않았습니다. 의존 플러그인은 `NNERuntimeORT`, `IKRig`, `RigLogic`입니다. 뒤의 에셋 생성·모델 가져오기 단계에는 `Python Editor Script Plugin`도 활성화합니다. MCP는 필요하지 않습니다.
+
+이하 **PowerShell** 명령은 `.uproject`가 있는 폴더에서 실행합니다. 경로가 다른 PC에서는 첫 두 경로를 바꿉니다. `&`는 공백이 있는 실행 파일 경로를 호출하는 PowerShell 연산자입니다. 아래 변수는 같은 PowerShell 창에서 계속 사용합니다.
+
+```powershell
+Set-Location 'D:/Projects/MyProject'  # 실제 .uproject가 있는 폴더
+$CBMProject = (Get-Location).Path
+$CBMEngine = 'C:/Program Files/Epic Games/UE_5.8'
+$CBMPlugin = Join-Path $CBMProject 'Plugins/CubelessBodyMocap'
+Get-ChildItem -LiteralPath $CBMProject -Filter *.uproject
+py -3.12 --version
+```
+
+`py` 런처가 없다면 설치한 Python 3.12의 `python.exe` 전체 경로로 `py -3.12` 부분을 대체합니다. 기존 가상환경을 복사하거나 활성화한 상태로 진행하지 않습니다.
+
+### 2. 전신 원본 모델·SMPL 콘텐츠 복원
+
+준비 도구는 이용 권한이 있는 **MetaHuman Animator Markerless Motion Capture** 엔진 설치본에서 콘텐츠를 복사합니다. 준비 시 원본 데이터가 필요하지만, 복사 후 Cubeless 실행을 위해 원본 MetaHuman 플러그인을 프로젝트에서 활성화할 필요는 없습니다.
+
+현재 도구가 찾는 원본 경로는 정확히 다음과 같습니다.
+
+```text
+<UE 설치 폴더>/Engine/Plugins/Marketplace/MetaHumanBodyTracker_5.8/
+  MetaHumanBodyTracker.uplugin
+  Content/
+```
+
+Epic 설치 경로·버전이 다르면 자동 검색하지 않습니다. 설치 위치와 도구의 지원 버전을 먼저 확인하세요. 실행할 때 에디터는 닫아 두고, 복사 중인 에셋을 읽지 않도록 합니다.
+
+```powershell
+Test-Path "$CBMEngine/Engine/Plugins/Marketplace/MetaHumanBodyTracker_5.8/MetaHumanBodyTracker.uplugin"
+py -3.12 "$CBMPlugin/Tools/prepare_content.py" --engine "$CBMEngine"
+```
+
+도구는 `Content/Models/Offline`, `Content/Detectron2`, `Content/SAM2`, SMPL-X 데이터·메시·스켈레톤·IK Rig와 라이선스 고지를 준비합니다. 기존 파일을 덮어쓰지 않으며 기존 파일 검사는 크기 비교입니다. 이후 모델 변환 도구는 검토된 원본 SHA256을 추가 검사합니다. **원본 콘텐츠 복사만으로 설치가 끝나지는 않습니다. 다음 카메라 변환은 필수입니다.**
+
+현재 PC의 원본·변환 모델을 포함한 플러그인 Content는 약 6.1GB입니다. 모델 이용 조건과 원본 고지는 유지됩니다. 필요한 파일을 Git에 강제로 추가하는 방식으로 해결하지 않습니다.
+
+### 3. 모델 변환용 Python과 카메라·고속 모델 생성
+
+이 환경은 ONNX를 준비할 때만 사용합니다. 전신 추출 실행 자체는 Unreal C++/NNE에서 이루어집니다. HandFlow 환경과 분리합니다.
+
+```powershell
+$CBMModelEnv = Join-Path $CBMProject 'Saved/CubelessBodyMocap/ModelTools/venv'
+py -3.12 -m venv "$CBMModelEnv"
+$CBMModelPy = Join-Path $CBMModelEnv 'Scripts/python.exe'
+& $CBMModelPy -m pip install 'onnx==1.23.2' 'numpy==1.26.4'
+
+# 필수: 원본/고속 양쪽이 사용하는 고정 시드 카메라 모델
+& $CBMModelPy "$CBMPlugin/Tools/prepare_camera_seeded.py" --source "$CBMPlugin/Content/Models/Offline/camera_calib.uasset" --output "$CBMProject/Saved/CubelessBodyMocap/WristInvestigation/camera_calib_seeded.onnx"
+
+# 고속 모드를 사용할 경우: CHMR와 SAM2 쌍도 생성
+& $CBMModelPy "$CBMPlugin/Tools/prepare_chmr_fused.py" --source "$CBMPlugin/Content/Models/Offline/chmr_backbone.uasset" --output "$CBMProject/Saved/CubelessBodyMocap/CHMRModels/chmr_backbone_fused.onnx"
+& $CBMModelPy "$CBMPlugin/Tools/prepare_sam_compact.py" --source-dir "$CBMPlugin/Content/SAM2" --output-dir "$CBMProject/Saved/CubelessBodyMocap/CompactSAM"
+```
+
+기존 ONNX/변환 기록이 있으면 중단하는 도구입니다. 이미 준비된 설치에 반복 실행하거나 해시 검사를 제거하지 않습니다. 원본 모드만 사용할 경우 마지막 두 변환은 생략할 수 있지만 `camera_calib_seeded`는 생략할 수 없습니다.
+
+다음은 **PowerShell이 아니라 대상 프로젝트의 Unreal Editor Python 콘솔**에서 실행합니다. 플러그인을 빌드·활성화하고 에디터를 연 뒤 Output Log의 입력 모드를 Python으로 바꿉니다. `unreal` 모듈이 필요한 `import_*.py`를 외부 Python으로 실행하면 안 됩니다.
+
+```python
+import unreal
+from pathlib import Path
+cbm_tools = Path(unreal.Paths.project_dir()).resolve() / 'Plugins/CubelessBodyMocap/Tools'
+exec((cbm_tools / 'import_camera_seeded.py').read_text(encoding='utf-8-sig'))
+# 위에서 고속 모델도 생성했다면 각각 실행
+exec((cbm_tools / 'import_chmr_fused.py').read_text(encoding='utf-8-sig'))
+exec((cbm_tools / 'import_sam_compact.py').read_text(encoding='utf-8-sig'))
+```
+
+생성·저장되어야 할 Unreal 에셋 경로입니다. 기존 에셋이 있으면 import 스크립트도 덮어쓰지 않고 중단합니다.
+
+- 필수: `/CubelessBodyMocap/Models/Offline/camera_calib_seeded`
+- 고속: `/CubelessBodyMocap/Models/Offline/chmr_backbone_fused`
+- 고속: `/CubelessBodyMocap/SAM2/sam2_image_encoder_compact`, `/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact`
+
+### 4. FFmpeg 준비
+
+```powershell
+py -3.12 "$CBMPlugin/Tools/prepare_ffmpeg.py"
+& "$CBMPlugin/ThirdParty/FFmpeg/Win64/ffmpeg.exe" -version
+```
+
+`ThirdParty/FFmpeg/Win64/PROVENANCE.json`의 URL에서 내려받아 기록된 ZIP·실행 파일 SHA256을 검사합니다. 시스템 PATH 등록은 필요 없으며 UI가 위 플러그인 내부 경로를 기본 사용합니다. 실행 파일은 약 105MB이고 다운로드 ZIP·임시 공간은 별도로 필요합니다.
+
+**배포 URL은 최신 파일을 가리키므로 시간이 지나면 해시가 달라질 수 있습니다.** `Upstream archive changed`가 나오면 임의의 최신 파일을 검증된 버전으로 취급하지 않습니다. 이용 조건을 충족하는 기존 설치본의 동일 `ffmpeg.exe`를 위 위치에 복사하고 준비 스크립트를 다시 실행하면 실행 파일 해시를 확인할 수 있습니다. 새 버전을 쓰려면 별도로 검증하고 provenance를 갱신해야 합니다.
+
+### 5. HandFlow 모델 준비
+
+손 보강이 필요 없으면 이 절과 다음 절을 생략하고 UI의 `Enhance Hands (HandFlow)` 체크를 해제합니다. 기본값은 체크 상태이므로 모델을 준비하지 않았다면 해제해야 합니다.
+
+먼저 [공식 MANO 사이트](https://mano.is.tue.mpg.de/)에서 이용 조건에 동의하고 받은 `mano_v1_2`의 **`MANO_RIGHT.pkl`**을 준비합니다. `MANO_LEFT.pkl`, UV 파일, SMPL+H 다운로드는 이 손 경로에 필요하지 않습니다. MANO 파일은 자동 다운로드하지 않습니다.
+
+```powershell
+$CBMHandRoot = Join-Path $CBMPlugin 'ThirdParty/HandFlow'
+New-Item -ItemType Directory -Force -Path "$CBMHandRoot/models" | Out-Null
+# 새 설치에만 복사합니다. 이미 파일이 있다면 출처·해시부터 확인하세요.
+if (Test-Path "$CBMHandRoot/models/MANO_RIGHT.pkl") { throw 'MANO 파일이 이미 있습니다. 덮어쓰지 말고 확인하세요.' }
+Copy-Item -LiteralPath 'D:/Downloads/mano_v1_2/models/MANO_RIGHT.pkl' -Destination "$CBMHandRoot/models/MANO_RIGHT.pkl"
+py -3.12 "$CBMPlugin/Tools/prepare_handflow.py" --weights
+```
+
+`manifest.json`에 고정한 리비전·SHA256으로 runtime 소스와 아래 파일을 준비합니다. MANO도 같은 manifest의 해시와 일치해야 합니다. MANO를 먼저 두지 않으면 다른 다운로드가 일부 완료되어도 준비 작업은 실패합니다.
+
+| `ThirdParty/HandFlow/models/` 파일 | 역할 |
+|---|---|
+| `handflow_denoiser.pt`, `normalization_stats.npz` | HandFlow 시간축 모델·정규화 통계 |
+| `hamer.ckpt`, `model_config.yaml`, `mano_mean_params.npz` | HaMeR 영상 특징·설정·평균 파라미터 |
+| `detector.pt` | 손 영역 검출기. WiLoR 손 포즈 모델이 아님 |
+| `MANO_RIGHT.pkl` | 사용자가 준비하는 MANO 손 형상 |
+
+위 모델 파일 합계는 manifest 기준 약 **3.41GB**입니다. 현재 허용 MANO SHA256은 `45d60aa3b27ef9107a7afd4e00808f307fd91111e1cfa35afd5c4a62de264767`입니다. 다른 MANO 배포본이나 pickle이면 해시 검사를 우회하지 말고 호환성을 검토해야 합니다. 다운로드 실패 후에는 불일치 파일을 확인하고 원인을 해결한 뒤 다시 실행합니다. 일치하는 완료 파일은 재사용하며 `.partial`은 성공한 모델이 아닙니다.
+
+### 6. HandFlow 독립 Python 환경
+
+`prepare_handflow.py --weights`는 **Python 패키지를 설치하지 않습니다.** 새 PC에서는 아래처럼 HandFlow 자체 환경에 패키지를 설치합니다. 기존 PC의 `cbm_shared_torch.pth`는 다른 PC의 WiLoR 절대 경로를 가리키므로 복사하지 않습니다. 아래 방식은 WiLoR 가상환경·포즈 가중치 없이 패키지를 독립 설치하는 절차입니다. 기존 공유 환경의 완전한 신규 대체 설치는 아직 다른 PC에서 실행 검증하지 않았으므로 끝의 import/GPU 확인과 실제 짧은 추론을 모두 수행하세요.
+
+```powershell
+$CBMHandRoot = Join-Path $CBMPlugin 'ThirdParty/HandFlow'
+if (Test-Path "$CBMHandRoot/venv") { throw '신규 환경용 절차입니다. 기존 venv는 먼저 상태를 확인하세요.' }
+py -3.12 -m venv "$CBMHandRoot/venv"
+$CBMHandPy = Join-Path $CBMHandRoot 'venv/Scripts/python.exe'
+
+# 검증 PC의 Torch/CUDA 조합. 다른 조합은 별도 검증 대상입니다.
+& $CBMHandPy -m pip install 'torch==2.8.0' 'torchvision==0.23.0' --index-url https://download.pytorch.org/whl/cu128
+# 파일 이름은 WiLoR이지만 공통 Python 의존성 목록입니다. WiLoR 모델은 설치하지 않습니다.
+& $CBMHandPy -m pip install --no-deps -r "$CBMPlugin/ThirdParty/WiLoR/requirements-hands.txt"
+# HandFlow용 버전이 마지막에 적용되어야 합니다(ultralytics 8.3.80 등).
+& $CBMHandPy -m pip install --no-deps -r "$CBMHandRoot/requirements-overlay.txt"
+# 기존 lock에 빠져 있지만 Ultralytics가 선언한 의존성
+& $CBMHandPy -m pip install --no-deps 'seaborn==0.13.2'
+```
+
+Torch 조합은 [공식 이전 버전 설치 안내](https://pytorch.org/get-started/previous-versions/#v280)를 참조했습니다. 고정 패키지 목록과 overlay 순서를 유지하기 위해 나머지는 `--no-deps`로 설치하며, 다음 `pip check`에서 누락·충돌이 없는지 반드시 확인합니다. [seaborn 0.13.2](https://pypi.org/project/seaborn/0.13.2/)는 기존 공유 환경의 `pip check`에서 발견한 누락을 새 설치 절차에 명시한 것입니다. 현재 사용 중인 환경은 이 문서 작업으로 변경하지 않았습니다.
+
+MANO pickle에 필요한 구형 `chumpy`는 아래 고정 소스의 순수 Python 패키지를 설치합니다. 과거 pip 빌드 경로의 Python 3.12 호환 문제를 피하며, worker의 기존 NumPy/inspect 호환 처리가 함께 필요합니다.
+
+```powershell
+$CBMChumpy = Join-Path $CBMProject 'Saved/CubelessBodyMocap/SetupSources/chumpy'
+git clone --no-checkout https://github.com/mattloper/chumpy.git "$CBMChumpy"
+git -C "$CBMChumpy" checkout --detach 580566eafc9ac68b2614b64d6f7aaa84eebb70da
+Copy-Item -LiteralPath "$CBMChumpy/chumpy" -Destination "$CBMHandRoot/venv/Lib/site-packages/chumpy" -Recurse
+Copy-Item -LiteralPath "$CBMChumpy/LICENSE.txt" -Destination "$CBMHandRoot/venv/Lib/site-packages/chumpy/LICENSE.txt"
+
+& $CBMHandPy -m pip check
+& $CBMHandPy -c "import torch,torchvision,numpy,scipy,cv2,smplx,torchdiffeq,lmdb,dill; print(torch.__version__,torchvision.__version__); print('CUDA:',torch.cuda.is_available()); assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0))"
+```
+
+`pip check`가 통과해도 모델·MANO 로딩까지 검증한 것은 아닙니다. `chumpy`는 호환 처리가 없는 별도 `import chumpy`만으로 검사하지 말고, 아래 UI에서 실제 짧은 HandFlow 작업까지 확인합니다. 현재 버전은 CUDA 필수이며 `CUDA: False`를 CPU 추론 성공으로 해석하지 않습니다. 가상환경·wheel 캐시의 추가 디스크 공간도 필요합니다.
+
+### 7. Manny 메시·리타깃 프리셋 생성
+
+Git에 리타깃 `.uasset`을 넣지 않았으므로 새 프로젝트에서 생성해야 합니다. Unreal의 Manny 콘텐츠를 준비해 다음 두 경로가 있는지 먼저 확인합니다. 다른 폴더에 둔 메시에는 현재 생성 스크립트를 그대로 실행하지 말고 경로를 맞추거나 직접 해당 캐릭터용 IK Retargeter를 구성합니다.
+
+```text
+/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny
+/Game/Characters/UE5_Mannequins/Rigs/IK_UE5_Mannequin_Retarget
+```
+
+원본 모델 복원이 끝난 뒤 **Unreal Editor Python 콘솔**에서 실행합니다.
+
+```python
+import unreal
+from pathlib import Path
+cbm_tools = Path(unreal.Paths.project_dir()).resolve() / 'Plugins/CubelessBodyMocap/Tools'
+exec((cbm_tools / 'create_mannequin_preset.py').read_text(encoding='utf-8-sig'))
+```
+
+`/Game/CubelessMocap/Setup/`에 `IK_CBM_SMPL`, `IK_CBM_Manny`, `RTG_CBM_SMPL_to_Manny`를 저장합니다. 골반을 root로 덮어쓰지 않는 설정과 독립 발가락 체인을 포함합니다. 기존 동명의 에셋이 하나라도 있으면 생성하지 않으므로, 기존 설정을 확인하고 사용할지 판단합니다. 프리셋 생성 스크립트가 Manny 메시나 원본 모델까지 내려받는 것은 아닙니다.
+
+### 8. 창에서 경로 확인 후 짧은 영상으로 점검
+
+**Tools → Cubeless Body Mocap**에서 다음 항목을 확인합니다. 프리셋 생성 전에 창을 열었다면 메시·Retargeter를 직접 다시 선택합니다.
+
+| UI 항목 | 값 |
+|---|---|
+| FFmpeg | `<Plugin>/ThirdParty/FFmpeg/Win64/ffmpeg.exe` |
+| Target Mesh | `SKM_Manny` |
+| Retargeter | `RTG_CBM_SMPL_to_Manny` |
+| Enhance Hands (HandFlow) | 기본 체크. 모델이 준비되지 않았거나 원본 손을 원하면 해제 |
+| HandFlow Python | `<Plugin>/ThirdParty/HandFlow/venv/Scripts/python.exe` |
+| HandFlow Directory | `<Plugin>/ThirdParty/HandFlow` (`models` 하위 폴더가 아님) |
+
+`Video`를 해당 PC의 영상으로 지정하고 30 FPS, 2~5초로 **Start Mocap**을 실행합니다. **Enhance Hands (HandFlow)**가 체크되어 있으면 전신 결과를 저장한 뒤 같은 작업에서 HandFlow 손 보강까지 자동 실행합니다. 체크를 해제하면 전신만 저장합니다. 손 결과는 별도 애니메이션이며 전신 원본은 유지됩니다. 손 처리에 실패하거나 취소해도 이미 저장된 전신 결과는 남습니다. 필요한 손 모델 파일이 없으면 시작 전에 안내하므로 체크를 해제해 전신만 처리할 수 있습니다.
+
+준비 상태 표시는 주로 파일 존재 검사이며 실제 Python import·CUDA·모델 호환성 검사를 대체하지 않습니다. `Completed`와 출력 애니메이션, 손 보존 기록, 영상과의 전체 재생을 확인합니다. 오류는 `Saved/CubelessBodyMocap/` 아래 해당 작업의 `worker.log`, `worker_status.json`, 전신 `profile.json` 및 에디터 로그를 확인합니다. 모델·중간 ONNX·빌드 결과 외에도 영상 프레임과 실행 캐시를 저장할 여유 공간이 필요합니다.
+
+### 설치 오류 점검
+
+| 증상 | 확인할 내용 |
+|---|---|
+| `Install the Epic markerless plugin...` | 원본 엔진 설치의 `MetaHumanBodyTracker_5.8` 경로·descriptor 존재 여부 |
+| `Unreviewed source asset` / 모델 해시 불일치 | 검증한 원본 모델 버전인지 확인. 해시 검사를 제거하지 않음 |
+| `camera_calib_seeded` 없음 | ONNX 생성과 Unreal import 두 단계 모두 수행했는지 확인 |
+| `No module named unreal` | `import_*.py`/프리셋 스크립트를 외부 Python에서 실행한 경우. UE Python 콘솔 사용 |
+| `Upstream archive changed` | FFmpeg 최신 URL의 내용 변경. 동일 검증 파일 확보 또는 새 버전 검증 필요 |
+| `Missing ... MANO_RIGHT.pkl` | HandFlow `models` 아래 제공 여부 및 manifest 해시 확인 |
+| HandFlow 파일은 Ready인데 import 실패 | HandFlow Python 경로, base 요구사항→overlay 순서, Chumpy, `pip check` 확인 |
+| `CUDA: False` / CUDA 초기화 실패 | NVIDIA GPU·드라이버 및 CUDA Torch wheel 확인. HandFlow CPU fallback 없음 |
+| CUDA 메모리 부족 | `HandFlow Batch`를 1로 낮추고 다른 GPU 작업 점유를 확인. 배치 1에서도 부족하면 중단하며 품질 축소를 자동 보장하지 않음 |
+| 프리셋 없음/기본 Target이 비어 있음 | Manny 원본 콘텐츠와 7단계 생성 여부 확인. 창에서 경로 다시 지정 |
+
+기존 PC의 가상환경·절대 경로 설정을 통째로 복사하는 대신 각 PC에서 환경을 다시 만듭니다. 모델·MANO·코드의 파일별 이용 조건은 [HandFlow 고지](ThirdParty/HandFlow/README.md#provenance-and-terms)와 `Resources/Licenses`를 따릅니다. 프로젝트 전체가 하나의 MIT 라이선스라는 뜻은 아닙니다.
+
+---
+
+이하에는 기능 설명과 기존 설치의 검증 이력을 보존합니다. 과거 벤치마크 JSON 및 프로젝트 `cubeless/studies` 자료는 소스 전용 배포에서 제외될 수 있으며, 신규 설치에 필수인 파일은 아닙니다.
+
 일반 손 보강은 `None (original hands)`와 `HandFlow / HaMeR`만 선택하며 기본값은 HandFlow입니다. WiLoR·MediaPipe는 `Hands > Diagnostics > Enable Legacy Hand Diagnostics`를 켰을 때만 추론·캐시 재적용·비교에 사용합니다. 기존 애니메이션은 계속 열 수 있습니다. [모델 준비·선택·파일별 조건](ThirdParty/HandFlow/README.md)을 확인하세요. HandFlow의 손 겹침 관측 신뢰도와 회전 가속 보정으로 test2 5.5초 주변 과보정과 회전 튐이 감소했습니다. 7.03초 개선과 7.7초 제스처도 유지됐지만, 가려진 손의 정확한 형태나 손끼리의 관통까지 해결한 것은 아닙니다. 상세 수정 전후 비교는 프로젝트 `cubeless/studies/StandaloneBodyMocap/HandFlowOcclusion20261108.md`에 기록했습니다.
 
 영상 근거를 이용한 선택형 다리 보정은 `Refine Body from Video (Experimental)`에서 켭니다. `Foot Locking`이 필요하며 기본값은 꺼짐입니다. test2·test3에서 과한 지지 다리 굽힘과 대부분의 미끄러짐 지표가 개선됐지만, 일부 발 관통·영상 오차는 증가했습니다. 모델 가중치나 관절 제한은 변경하지 않습니다. 비교와 한계는 프로젝트의 `cubeless/studies/StandaloneBodyMocap/BodyDepth20261108.md`를 참조합니다.
 
 UE 5.8.4 CL58902052용 Windows Editor 전용 테스트 버전입니다. MetaHuman 원본 플러그인을 비활성화한 프로젝트에서 빌드했습니다. 에디터 플러그인 로딩과 Manny 프리셋 생성·저장을 확인했습니다. 추론 모델 로딩과 기존 영상의 8프레임 추출·저장을 확인했습니다. 이후 동일한 10초 전체 클립의 속도·메모리·에디터 응답도 재측정했습니다. 시각적 동작 품질 비교와 패키징은 추가 검증 대상입니다.
 
-## 테스트 준비
+## 설치 완료 후 테스트 준비
 
 1. 에디터를 열고 **Tools → Cubeless Body Mocap**을 선택합니다.
 2. FFmpeg 경로, Target Mesh(Manny), Retargeter가 자동 선택됩니다.
 3. 동영상 파일을 선택하고 2~5초 구간, 30 FPS로 시작합니다. `Fast Mode (Off: Original)`을 켜면 고속, 끄면 원본 계산 경로를 사용합니다.
-4. **Start extraction**을 누릅니다. 동일 10초 영상의 추출·저장은 확인했으며, 동작 품질은 생성한 애니메이션을 재생해 확인합니다.
+4. **Start Mocap**을 누릅니다. 동일 10초 영상의 추출·저장은 확인했으며, 동작 품질은 생성한 애니메이션을 재생해 확인합니다.
 
 준비된 프리셋은 `/Game/CubelessMocap/Setup/RTG_CBM_SMPL_to_Manny`입니다. 원본 IK Rig를 수정하지 않고 전용 소스·대상 IK Rig를 복제했으며 22개 체인 매핑, 5개 기본 retarget op, 대상 기준 자세 자동 정렬을 저장했습니다. 같은 UE5 스켈레톤의 Quinn을 쓰려면 Target Mesh를 Quinn으로 바꿀 수 있으나 Quinn에 대한 실제 결과는 미검증입니다.
 
@@ -26,7 +254,7 @@ UE 5.8.4 CL58902052용 Windows Editor 전용 테스트 버전입니다. MetaHuma
 
 - Manny와 준비된 Retargeter가 기본 선택됩니다. 다른 캐릭터에는 해당 캐릭터용 리타기터를 지정합니다.
 - Output Folder는 `/Game/` 아래를 지정합니다. 매 실행 고유 Take 폴더를 만들어 기존 결과를 덮어쓰지 않습니다.
-- **Start extraction**을 누릅니다. 결과 Animation Sequence는 `Take_<id>/Animation` 아래에 저장됩니다. 임시 소스 애니메이션은 저장하지 않습니다.
+- **Start Mocap**을 누릅니다. 결과 Animation Sequence는 `Take_<id>/Animation` 아래에 저장됩니다. 임시 소스 애니메이션은 저장하지 않습니다.
 - 생성한 애니메이션을 열어 대상 캐릭터에서 미리보기·재생합니다. 발 미끄러짐, 몸 방향, 크기, 루트 이동과 영상 마지막 프레임을 확인합니다.
 - 대상 캐릭터·Retargeter는 수정하지 않습니다. 저장 실패나 취소 시 이미 생성한 출력이 일부 남을 수 있습니다. 오류 메시지와 폴더를 확인한 뒤 다시 실행합니다.
 
@@ -38,7 +266,7 @@ UE 5.8.4 CL58902052용 Windows Editor 전용 테스트 버전입니다. MetaHuma
 
 검출기 → SAM2 추적기 → ViTPose → CHMR → Hue 순서로 세션을 교체합니다. 단계가 끝나면 사용이 끝난 자체 모델 패키지를 명시적으로 언로드합니다. 더티 상태이거나 별도 에셋 편집기에서 열린 모델은 자동 언로드하지 않습니다. 사용자 에셋이나 Undo 기록을 초기화하지 않습니다.
 
-**Start extraction**은 작업을 시작하고 즉시 돌아옵니다. 창 하단에 단계·진행률·시간·에디터 프로세스 메모리 피크가 표시됩니다. **Cancel**은 취소를 요청합니다. 진행 중인 단일 ORT 세션 생성/추론 호출은 중간에 강제 종료할 수 없으므로 반환을 기다린 뒤 중단합니다. Hue는 각 denoising step 사이, 보정기는 목적함수 평가 사이에서도 취소를 확인합니다. 최종 에셋 저장·GC·로드 완료 처리에는 짧은 메인 스레드 대기가 남을 수 있습니다.
+**Start Mocap**은 작업을 시작하고 즉시 돌아옵니다. 창 하단에 단계·진행률·시간·에디터 프로세스 메모리 피크가 표시됩니다. **Cancel**은 취소를 요청합니다. 진행 중인 단일 ORT 세션 생성/추론 호출은 중간에 강제 종료할 수 없으므로 반환을 기다린 뒤 중단합니다. Hue는 각 denoising step 사이, 보정기는 목적함수 평가 사이에서도 취소를 확인합니다. 최종 에셋 저장·GC·로드 완료 처리에는 짧은 메인 스레드 대기가 남을 수 있습니다.
 
 동시 작업과 PIE/SIE 중 시작을 거절합니다. 실행 중 에디터 닫기를 요청하면 먼저 취소를 요청하며, 작업이 정리된 뒤 다시 닫아야 합니다. 강제 종료나 DLL 동적 언로드는 사용하지 않습니다.
 
@@ -169,25 +397,53 @@ test2에서 기존 검출245개를 그대로 보존하고68개의 손/프레임 
 WiLoR는 MediaPipe 환경/모델이 설치되어 있으면 독립 관측을 자동 생성하고 기본 padding2.0과 후보1.6의 영상 관절 일치도를 비교합니다. 선택한 회전은 여전히 WiLoR 출력입니다. 관측이 없으면 기본 크롭을 유지합니다. 외부 worker 설정의 `adaptive_crop:false`는 기본 크롭 경로를 사용하며, `landmark_reference`는 동일 입력임을 검증한 관측 JSON 캐시를 지정합니다. 이 검사는 추가 처리 비용이 듭니다. test2 손 단계의 이번 측정은 MediaPipe57.28초, 참조를 재사용한 WiLoR123.51초였으며 전체 추출 시간은 아닙니다. 실제 모델/언리얼 전후 비교와 남은 가림·충돌 문제는 `cubeless/studies/StandaloneBodyMocap/ModelRefine20261108.md`에 기록했습니다.
 
 
-## 골반·다리 단독 보완 / FootMR 제거 (2026-11-08)
+## 골반·다리 추가 보완 제거 (2026-11-09)
 
-FootMR 기능과 전용 모델을 제거했습니다. `Lower Body > Refine Pelvis and Legs from Video (Experimental)`을 켜고 `Refine pelvis / legs`를 누르면 기존 전신·손 결과에서 하체만 별도로 보완합니다. `Before legs` / `Pelvis / legs` 버튼으로 비교합니다. 기본값은 꺼짐이며 기존 HandFlow 기본값은 유지합니다.
+다른 영상에서의 자세 왜곡 때문에 `Refine pelvis / legs`, 접지·시간축 추가 보완, 캐시 적용 및 전용 LowerBody Python 환경을 제거했습니다. 신규 설치에는 하체 전용 Python이 필요하지 않습니다. 기존 애니메이션 에셋·테스트 기록은 삭제하지 않으며 Preview Animation에서 직접 열 수 있습니다. 전신 추출의 기본 foot locking 및 HandFlow 손 경로는 유지합니다. 동기화 뷰의 영상 카메라·프레이밍은 전용 `Preview_*.f32`로 저장하고 이전 `FootMR_*` 카메라 파일도 읽습니다.
 
-`Refine Supported Ankle and Forefoot`를 끄면 발목 **월드 방향**과 상체 월드 자세를 유지하며, 바뀐 종아리에 대한 발목 로컬 역보상만 적용합니다. 이 모드에서는 손·손목·발가락 로컬 트랙을 정확히 보존합니다. 이 옵션을 켜면 지지/전환 구간의 발목과 앞꿈치 회전을 실제 대상 신발 형상과 지면에 맞춥니다. 공중 구간의 발 방향과 HandFlow 손은 보존합니다. 두 옵션의 기본값은 꺼짐이고 관절 제한은 없습니다.
+## Manny 손바닥 체인 중복 매핑 수정 (2026-11-09)
 
-옆모습에서 하체 보완이 원본 다리의 앞뒤 깊이를 뒤집던 오류를 수정했습니다. 접지 회전 보완을 포함한 test2/test3 검증에서 최대 침투는 약0.39/0.35cm였지만 일부 미끄러짐과 원본 발 회전 튐은 남습니다. 별도 모델을 설치하지 않으며 FootMR을 재도입하지 않습니다. 수정 원인, 옵션별 보존 범위와 실제 전후 수치는 `cubeless/studies/StandaloneBodyMocap/LegDepthAndSupport20261108.md`에 기록했습니다.
+`create_mannequin_preset.py`는 Manny의 `*Metacarpal` 8개 체인을 명시적으로 미매핑 처리합니다. 기본 자동 매핑이 SMPL 손가락 체인을 손바닥뼈에도 연결해, 손 보강을 끈 전신 결과에 손가락 움직임이 중복 적용되는 문제를 막습니다. 기존 프리셋을 사용하는 PC에서는 IK Retargeter의 해당 8개 체인 Source Chain을 `None`으로 지정하고 저장합니다. 기존 애니메이션은 자동으로 바뀌지 않습니다.
 
-`Lower Body Python`은 독립된 `ThirdParty/LowerBody/venv/Scripts/python.exe`를 기본 사용합니다. 독립 Python 3.12로 `Tools/prepare_lower_body.py`를 실행하면 고정 버전의 numpy/scipy/psutil만 설치되며 손 모델 환경은 변경하지 않습니다. 손 모델이나 발 모델을 추론하지 않습니다. 저장된 전신 관측의 `FootMRInput.json`/`FootMR_Keypoints25.f32`/`FootMR_Camera.f32` 파일명은 이전 결과 호환을 위한 이름일 뿐 FootMR 의존성이 아닙니다. 새 결과와 캐시는 각각 `/Legs/`와 `Saved/CubelessBodyMocap/LowerBodyCache/`에 분리합니다. 검증 결과: `cubeless/studies/StandaloneBodyMocap/LegsOnly20261108.md`.
-
-
-후속 test2/test3 리뷰에서 하체 미끄러짐 기준을 발목 피벗에서 실제 밑창 중심으로 바꾸고, 접지 단계의 최종 밑창 이동·회전 연속성과 착지 전환을 보완했습니다. 원본 손과 공중 발 방향은 유지합니다. 실제 native 전후 수치와 남은 오류는 `cubeless/studies/StandaloneBodyMocap/SupportReview20261108.md`를 참조하십시오.
-
-### 전체 구간의 시간 연속성 보완 (2026-11-09)
-
-`Stabilize Foot Rotation Outliers`를 추가했습니다. 하체·접지 보완을 켠 상태에서 선택하면 공중을 포함해 불균일한 회전으로 판정된 발 프레임만 시간축으로 보완합니다. 그 외 공중 발 방향과 HandFlow 손은 보존하며 관절 제한은 추가하지 않습니다. 기본값은 꺼짐입니다. 하체 출력 위치·회전의 연속성도 보완했고, 재생 중 3D 뷰가 영상 프레임 사이의 포즈를 표시하도록 수정했습니다. test2/test3 전체의 회전 불균일 지표는 약 27% 감소했지만, 이는 전체 품질 향상률이 아닙니다. 일부 빠른 회전의 약화와 잔여 미끄러짐이 있어 전체 재생으로 비교해야 합니다. 상세 수치는 `cubeless/studies/StandaloneBodyMocap/TemporalFeet20261109.md`를 참조하십시오.
+HandFlow 적용 경로는 이미 같은 중복 매핑을 차단하고 있습니다. 이번 수정은 블러·가림 구간의 손 추정 정확도를 높이는 변경이 아니며 관절 제한도 추가하지 않습니다. 현재 작업 PC의 기본 프리셋에는 수정이 적용됐습니다. test5 403프레임의 회전 전달 및 42포즈 매핑 비교 결과는 프로젝트 검증 기록 `cubeless/records/verification/hand-retarget-20261109/report.md`를 참조합니다.
 
 
-Stationary supported-foot refinement (2026-11-09): with lower-body and support-rotation refinement enabled, confident stationary foot observations lasting at least nine samples (0.3 s at the current 30 FPS worker input) strengthen sole stabilization in both fitting stages. This common rule is not tied to test2 timestamps. Existing saved animations remain unchanged until refinement is rerun. HandFlow tracks remain protected; no joint limits are added. See cubeless/studies/StandaloneBodyMocap/StationaryFeet20261109.md for measured benefits and transition-motion tradeoffs.
+### 단일 시작과 품질 유지 최적화
 
+- 기본 UI에는 **Start Mocap**과 **Cancel**이 있습니다. **Solve > Enhance Hands (HandFlow)**는 기본 체크이며, 처리 중 설정은 잠깁니다. 전신 단계와 손 단계를 한 비동기 작업에서 순서대로 처리하므로 다시 시작 버튼을 누를 필요가 없습니다.
+- 전신에서 디코딩한 원본 PNG를 손 단계가 그대로 재사용합니다. 전신의 사람 영역 ViTPose와 손의 전체 화면 ViTPose는 입력 영역이 다르므로 합치지 않습니다. 모델, 해상도, 프레임 수, HandFlow steps/batch/seed, 회전 변환·리타깃·접촉 보정은 변경하지 않았습니다. 관절 제약도 추가하지 않았습니다.
+- `Reuse Checkpoints`를 켜면 손용 전체 화면 ViTPose 결과를 `Saved/CubelessBodyMocap/HandCueCache`에 별도로 저장합니다. PNG 내용·FPS·모델 파일·관련 실행 모듈 내용·엔진 버전이 같은 경우에만 검사한 수치 데이터를 재사용합니다. 최초 실행은 기존 손 추론을 수행하며, 캐시 효과는 같은 입력의 반복 실행에 해당합니다. 하드웨어/드라이버를 바꾼 후 수치를 새로 비교하려면 `Reuse Checkpoints`를 끄십시오.
+- HandFlow의 기존 `HandCache`와 전신 `Cache`는 유지됩니다. 원본/손 결과 전환은 비교 뷰에서 가능합니다. 기존 에셋과 JSON은 삭제하지 않습니다. 진단을 켠 경우에만 별도의 **Run hand diagnostic / Apply cached fingers** 버튼이 보입니다. 진단 선택은 **Start Mocap**의 HandFlow 체크박스를 덮어쓰지 않습니다.
+- Python에서 `extract(settings)`도 같은 자동 흐름을 사용합니다. 전신만 필요한 기존 자동화는 `enhance_hands=False`를 명시하십시오. 기존 `refine_hands` / `apply_hand_result` API는 진단·재적용용으로 유지됩니다.
+- **Reuse Checkpoints**를 끄면 전신 중간 결과, 손 검출, 외부 HandFlow 결과 캐시의 읽기·쓰기를 모두 생략합니다. 기존 캐시 파일은 삭제하지 않습니다. `metrics.json`의 `cache_reuse_enabled=false`, `cache_hit=false`로 손 단계의 실제 재계산 여부를 확인할 수 있습니다.
 
-Contact transitions (2026-11-09): qualified stationary observations now fade symmetrically across seven samples. A modest support-velocity adjustment, contact-weighted trajectory continuity and video-qualified near-ground sole samples reduce residual drift without hard foot locking or joint-angle limits. Existing HandFlow tracks remain unchanged. Detailed test2/test3 results, pose changes and remaining slip/rotation tradeoffs: cubeless/studies/StandaloneBodyMocap/TransitionFeet20261109.md.
+## 선택형 손가락 관절 후처리
+
+모캡 결과를 확인한 뒤 필요할 때만 적용하는 별도 기능입니다. 기존 `Start Mocap`과 기본 체크된 `Enhance Hands`는 그대로이며, 관절 후처리는 자동 실행하지 않습니다.
+
+1. `Postprocess > Enable Joint Correction`을 켭니다. 기본값은 해제입니다.
+2. `Joint Correction Source`를 비우면 현재 HandFlow 결과를 사용하고, 없으면 Preview Animation을 사용합니다. 저장된 이전 Manny 결과를 직접 지정할 수도 있습니다. 해당 결과와 같은 Target Mesh/Retargeter를 지정해야 합니다.
+3. `Joint Correction Strength`를 조절하고 `Apply joint correction (optional postprocess)`를 누릅니다. 1은 전체 보정, 중간값은 부분 적용이며 범위 이탈이 남을 수 있습니다. 0은 원본을 선택하고 새 에셋을 만들지 않습니다.
+4. `Before correction`과 `Joint corrected`로 같은 재생 시점에서 비교합니다. 원본은 수정하지 않으며 결과는 Output Folder의 `JointCorrection`에 `_JointCorrected_` 접미사로 저장됩니다. 반복 적용은 보정 전 소스를 사용하고, 보정 결과에 다시 누적하는 것은 거절합니다.
+
+손가락 30개 본의 **로컬 회전만** 수정합니다. 나머지 131개 Manny 본(전신, 손목, metacarpal 포함), 모든 본의 위치·스케일, 프레임 수와 FPS는 저장 전에 원본과 정확히 대조합니다. 추가 학습이나 모델 추론, WiLoR/MediaPipe 혼합, 발·골반 보완은 수행하지 않습니다.
+
+`run_joint_post.py`, `joint_constraints.py`, `joint_contact.py`는 기존 HandFlow Python의 NumPy/SciPy만 사용합니다. 추가 모델·Python 환경이 필요 없으며 GPU 추론도 없습니다. 외부 비동기 작업과 기존 Cancel을 사용합니다. Python/스크립트가 없으면 원본을 보존하고 필요한 경로를 안내합니다.
+
+회전은 현재 Manny 결과를 기존 손 리타깃 변환으로 역산해 중립 SMPL 손의 공통 회전으로 복원합니다. 역변환→정변환 오차가 0.01°를 넘으면 중단합니다. 좌우 손, index/middle/pinky/ring/thumb 순서, 관절별 중립 축을 명시적으로 사용하며 이미 적용된 평균 자세·손바닥·말단 축 보정을 중복 적용하지 않습니다. 엄지는 손바닥 안쪽을 향하는 별도 사선 굽힘 축과 넓은 기저 관절 범위를 사용합니다.
+
+범위는 애니메이션용 근사 프로파일이며 사람 모두에게 동일한 의학적 가동 범위를 보증하지 않습니다. 경계 부근은 부드럽게 투영하고, 범위 이탈 또는 일치하는 영상 관측의 낮은 신뢰도가 있는 짧은 회전 반전만 시간축 보완 대상으로 삼습니다. 신뢰도 자료가 없는 기존 에셋은 범위를 벗어난 관절만 시간축 보완 대상으로 삼습니다. 전체 영상에 저역통과 필터를 적용하지 않습니다.
+
+v4는 굽힘이 커질수록 긴 손가락의 벌림·비틀림 허용 폭을 줄이고, 중간·끝 관절이 독립적으로 크게 옆으로 꺾이거나 비틀리지 않도록 여유 범위를 좁혔습니다. 엄지는 별도의 넓은 프로파일을 유지합니다. 이상이 확인된 축만 시간축 보완하므로, 옆 꺾임 때문에 정상 굽힘까지 보간하지 않습니다. 현재 Manny 본의 길이와 기준 축으로 만든 캡슐로 같은 손의 손가락 사이 관통을 줄입니다. 같은 손가락의 첫 마디와 끝 마디도 검사하며, 바로 연결된 마디와 손바닥 기저끼리의 접촉은 제외합니다. 깊은 겹침을 더 크게 벌점화하고, 네 손가락을 펴는 대신 엄지의 작은 이동으로 주먹의 접촉을 해결할 여지를 늘렸습니다.
+
+관통 회피로 **추가하는 보정량만** 시간축으로 완화하며, 추가 보정의 프레임 간 변화는 30fps 기준 3°(90°/초) 이내로 제한합니다. 원본 제스처의 회전 속도를 이 값으로 제한하지 않습니다. 정상 접촉과 빠른 동작을 과도하게 바꾸지 않도록 보정 폭을 제한하므로 일부 겹침이 남을 수 있습니다. 캡슐은 실제 스킨의 근사이며 손바닥·몸·반대편 손과의 충돌 해결이나 블러에 가려진 실제 제스처 복원을 보장하지 않습니다. 정상 범위의 잘못된 모델 추정은 그대로 남을 수 있습니다.
+
+`Joint Correction Report` 및 `Saved/CubelessBodyMocap/JointPost_<ID>/`의 `metrics.json`, `preservation.json`, `joint_diagnostics.npz`, `request.json`, `profile.json`에서 설정·코드 해시·보정량·처리 시간·보존 검사를 확인할 수 있습니다. 후처리 자체는 추론 캐시와 분리된 새 결과를 만들므로 다시 추론할 필요가 없습니다. test2·test3·test5 전체 비교와 남은 사례는 프로젝트의 `cubeless/records/verification/finger-fist-contact-20261109/report.md`에 기록했습니다.
+
+### 블러 구간의 영상 보강 신뢰도 수정
+
+HandFlow 이후 HaMeR 영상 관측에 맞추는 단계에서, 낮은 신뢰도의 2D 관측이 시간축 자세를 과도하게 바꾸는 경우를 수정했습니다. `handflow_image_guidance.py`는 보조 점수0.3~0.7 사이에서 영상 오차의 영향력을 부드럽게 낮추고 기존 시간축 자세를 더 강하게 유지합니다. 0.7 이상은 기존 영상 가중치를 유지합니다. 이 점수는 손 형태 정답 확률이나 직접적인 블러 측정값이 아닙니다. 정상 제스처·가려진 실제 동작의 복원을 보증하지 않으며, WiLoR/MediaPipe 결과를 섞지 않습니다. 변경된 스크립트 해시가 기존 손 추론 캐시와 새 계산을 구분합니다. 저장된 애니메이션은 자동 변경하지 않습니다. 이 수정은 새 HandFlow 계산에 적용되고, 위 관절 후처리는 계속 별도 선택 기능입니다.
+
+기준 자세에서 해부학적 축을 구성하는 설계는 [manotorch의 AxisLayer](https://github.com/lixiny/manotorch/blob/master/manotorch/axislayer.py), 운동학적 후처리의 범위와 한계는 [Corrective Filter Based on Kinematics of Human Hand for Pose Estimation](https://www.frontiersin.org/journals/virtual-reality/articles/10.3389/frvir.2021.663618/full)을 참고했습니다. 외부 코드를 복사하거나 추가 가중치를 편입하지 않았으며, 이 구현의 축·수치 프로파일은 별도로 작성했습니다.
+
+CPU 회귀 검사는 HandFlow Python으로 `Tools/test_joint_constraints.py`를 실행합니다. 검증 범위는 정상적인 빠른 굽힘 보존, 좌우/엄지 축, 고립된 비정상 회전, 강도 0, quaternion 부호 동등성, 굽힘별 범위, 캡슐 FK·미분·관통 감소·보정 변화량, Windows 상태 파일의 일시적 읽기 잠금입니다.

@@ -37,25 +37,14 @@ public:
  UPROPERTY(EditAnywhere, Category="Output") FString OutputFolder="/Game/CubelessMocap";
  UPROPERTY(EditAnywhere, Category="Preview") TObjectPtr<UAnimSequence> PreviewAnimation;
  UPROPERTY(EditAnywhere, Category="Preview", meta=(ToolTip="Match the body's estimated camera pitch/roll/FOV and approximate initial person framing. This changes only the comparison camera, never animation. Falls back to the standard front view if calibration is unavailable.")) bool MatchVideoCamera=true;
- UPROPERTY(EditAnywhere, Category="Lower Body", meta=(ToolTip="Saved animation to preserve, including HandFlow fingers. Empty uses the current preview. A separate output is created.")) TObjectPtr<UAnimSequence> FootInputAnimation;
- UPROPERTY(EditAnywhere, Category="Lower Body", meta=(Units="cm", ToolTip="Horizontal ground plane for optional contact refinement, in target animation component space.")) float FootGroundHeight=0;
- UPROPERTY(EditAnywhere, Category="Lower Body", meta=(DisplayName="Refine Pelvis and Legs from Video (Experimental)", ToolTip="Independent lower-body fit using existing video keypoints; no FootMR model. Preserves ankle WORLD orientation by local counter-rotation against the changed calf. Changes pelvis and leg motion; compensates spine_01 to preserve upper-body world motion and HandFlow fingers. No joint-angle limits. Off preserves all existing body tracks. Uses an approximate camera projection; review before use.")) bool FootVideoLowerBody=false;
- UPROPERTY(VisibleAnywhere, Category="Lower Body|Comparison") bool FootResultHasLowerBody=false;
- UPROPERTY(EditAnywhere, Category="Lower Body", meta=(EditCondition="FootVideoLowerBody", DisplayName="Refine Supported Ankle and Forefoot", ToolTip="Optional model-free shoe contact fitting. Allows ankle and forefoot rotation only in support/transition frames; airborne world orientation stays preserved unless Stabilize Foot Rotation Outliers is enabled; hands stay preserved. No joint-angle limits. Off keeps ankle world orientation for every frame.")) bool FootSupportRotation=false;
- UPROPERTY(VisibleAnywhere, Category="Lower Body|Comparison") bool FootResultHasSupportRotation=false;
- UPROPERTY(EditAnywhere, Category="Lower Body", meta=(EditCondition="FootVideoLowerBody && FootSupportRotation", DisplayName="Stabilize Foot Rotation Outliers", ToolTip="Optional centred temporal cleanup of detected uneven foot rotations, including flight. Preserves other airborne orientations, upper body and HandFlow hands. No joint-angle limits.")) bool FootTemporalCleanup=false;
- UPROPERTY(VisibleAnywhere, Category="Lower Body|Comparison") bool FootResultHasTemporalCleanup=false;
- UPROPERTY(EditAnywhere, Category="Lower Body|Setup", meta=(DisplayName="Lower Body Python", ToolTip="Independent CPU-only LowerBody environment with numpy, scipy and psutil. Prepare with Tools/prepare_lower_body.py using standalone Python 3.12. No hand runtime or model weights are required.")) FFilePath FootPython;
- UPROPERTY(EditAnywhere, Category="Lower Body|Setup", meta=(ToolTip="Optional override: body run folder containing FootMRInput.json. Empty resolves the Body_<run> animation name.")) FDirectoryPath FootBodyData;
- UPROPERTY(EditAnywhere, Category="Lower Body", meta=(FilePathFilter="json")) FFilePath FootResult;
- UPROPERTY(VisibleAnywhere, Category="Lower Body|Comparison") TObjectPtr<UAnimSequence> FootComparisonBase;
- UPROPERTY(VisibleAnywhere, Category="Lower Body|Comparison") TObjectPtr<UAnimSequence> LowerBodyAnimation;
  UPROPERTY(EditAnywhere, Category="Hands", meta=(ToolTip="Existing target animation to preserve. Refine changes finger and metacarpal rotations in a new asset; body and wrists stay unchanged.")) TObjectPtr<UAnimSequence> OriginalAnimation;
  UPROPERTY(VisibleAnywhere, Category="Hands") TObjectPtr<UAnimSequence> HandEnhancedAnimation;
- UPROPERTY(EditAnywhere, Category="Hands", meta=(DisplayName="Hand Enhancement", EditCondition="!EnableLegacyHandDiagnostics", ToolTip="Choose original hands or HandFlow / HaMeR temporal inference. Existing animations and cached diagnostic results remain available.")) ECBMFingerBackend FingerBackend=ECBMFingerBackend::HandFlow;
- UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", AdvancedDisplay, meta=(ToolTip="Enable legacy WiLoR/MediaPipe inference and comparison controls only for diagnosis. This overrides Hand Enhancement until disabled.")) bool EnableLegacyHandDiagnostics=false;
+ UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="Enhance Hands (HandFlow)", ToolTip="Checked by default. Start Mocap saves the body, then automatically applies HandFlow / HaMeR to fingers in a separate animation. Uncheck for body only. Model quality settings are unchanged.")) bool EnhanceHands=true;
+ // Retain the serialized legacy field for existing scripts/results; normal Start uses EnhanceHands only.
+ UPROPERTY() ECBMFingerBackend FingerBackend=ECBMFingerBackend::HandFlow;
+ UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", AdvancedDisplay, meta=(ToolTip="Enable legacy WiLoR/MediaPipe inference and comparison controls only for diagnosis. This affects only Run hand diagnostic; Start Mocap still follows the HandFlow checkbox.")) bool EnableLegacyHandDiagnostics=false;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) ECBMDiagnosticFingerBackend DiagnosticFingerBackend=ECBMDiagnosticFingerBackend::WiLoR;
- ECBMFingerBackend SelectedFingerBackend() const {return EnableLegacyHandDiagnostics?(DiagnosticFingerBackend==ECBMDiagnosticFingerBackend::WiLoR?ECBMFingerBackend::WiLoR:ECBMFingerBackend::MediaPipe):FingerBackend;}
+ ECBMFingerBackend SelectedFingerBackend() const {return EnableLegacyHandDiagnostics?(DiagnosticFingerBackend==ECBMDiagnosticFingerBackend::WiLoR?ECBMFingerBackend::WiLoR:ECBMFingerBackend::MediaPipe):(EnhanceHands?ECBMFingerBackend::HandFlow:ECBMFingerBackend::None);}
  UPROPERTY(EditAnywhere, Category="Hands|HandFlow") FFilePath HandFlowPython;
  UPROPERTY(EditAnywhere, Category="Hands|HandFlow") FDirectoryPath HandFlowDirectory;
  UPROPERTY(EditAnywhere, Category="Hands|HandFlow", meta=(ClampMin="1",ClampMax="32")) int32 HandFlowSteps=3;
@@ -73,6 +62,12 @@ public:
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) FFilePath HandPython;
  UPROPERTY(EditAnywhere, Category="Hands|Diagnostics", meta=(EditCondition="EnableLegacyHandDiagnostics", EditConditionHides)) FDirectoryPath WiLoRDirectory;
  UPROPERTY(EditAnywhere, Category="Hands", meta=(ClampMin="0",ClampMax="1")) float HandStrength=1;
+ UPROPERTY(EditAnywhere, Category="Postprocess", meta=(DisplayName="Enable Joint Correction", ToolTip="Optional postprocess only; Start Mocap never runs it automatically. Corrects finger joint range and isolated temporal outliers in a new asset. No model inference; body, wrists and metacarpals stay unchanged.")) bool EnableJointCorrection=false;
+ UPROPERTY(EditAnywhere, Category="Postprocess", meta=(ClampMin="0",ClampMax="1",EditCondition="EnableJointCorrection",ToolTip="1 applies the full animation envelope; lower values partially blend the correction and may leave range violations. Zero selects the source unchanged.")) float JointCorrectionStrength=1;
+ UPROPERTY(EditAnywhere, Category="Postprocess", meta=(EditCondition="EnableJointCorrection",ToolTip="Saved, uncorrected Manny animation. Empty uses the current HandFlow result, then Preview Animation. Repeated applications always use this source.")) TObjectPtr<UAnimSequence> JointCorrectionSource;
+ UPROPERTY(VisibleAnywhere, Category="Postprocess") TObjectPtr<UAnimSequence> JointComparisonSource;
+ UPROPERTY(VisibleAnywhere, Category="Postprocess") TObjectPtr<UAnimSequence> JointCorrectedAnimation;
+ UPROPERTY(VisibleAnywhere, Category="Postprocess") FFilePath JointCorrectionReport;
  UPROPERTY(EditAnywhere, Category="Preview", meta=(ClampMin="-180",ClampMax="180",Units="deg")) float PreviewYawOffset=0;
  UPROPERTY(EditAnywhere, Category="Preview", meta=(ClampMin="0.5",ClampMax="2.0")) float PreviewZoom=1;
  UPROPERTY(EditAnywhere, Category="Preview", meta=(ClampMin="0",ClampMax="2")) int32 PreviewHand=0;
@@ -91,8 +86,6 @@ public:
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool Extract(UCubelessMocapSettings* Settings, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool RefineHands(UCubelessMocapSettings* Settings, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool ApplyHandResult(UCubelessMocapSettings* Settings, FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool CorrectFingerJoints(UCubelessMocapSettings* Settings, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static FString GetHandReadiness(UCubelessMocapSettings* Settings);
- UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool RefineFeet(UCubelessMocapSettings* Settings, FString& Result);
- UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool ApplyFootResult(UCubelessMocapSettings* Settings, FString& Result);
- UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static FString GetFootReadiness(UCubelessMocapSettings* Settings);
 };

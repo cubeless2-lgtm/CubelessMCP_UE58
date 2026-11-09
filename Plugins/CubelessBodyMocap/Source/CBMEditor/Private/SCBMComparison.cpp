@@ -89,10 +89,10 @@ public:
   const FString Name=Anim?Anim->GetName():FString();const FString Run=Name.StartsWith(TEXT("Body_"))&&Name.Len()>=37?Name.Mid(5,32):FString();
   if(Run==CalibrationRun)return;CalibrationRun=Run;CalibrationAvailable=false;FramingAvailable=false;NeedsFit=true;if(Run.IsEmpty())return;
   const FString Dir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run;TArray<uint8> Data;
-  if(!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Camera.f32"))))FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Camera_Ground.f32")));
+  if(!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Camera.f32")))&&!FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Camera.f32"))))FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Camera_Ground.f32")));
   if(Data.Num()<20)return;float V[5];FMemory::Memcpy(V,Data.GetData(),20);for(float X:V)if(!FMath::IsFinite(X))return;
   VideoFocal=V[0];VideoCX=V[1];VideoCY=V[2];VideoPitch=V[3];VideoRoll=V[4];CalibrationAvailable=VideoFocal>1&&VideoCX>1&&VideoCY>1;
-  if(FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Boxes.f32"))))for(int32 I=0;I+16<=Data.Num();I+=16){float B[4];FMemory::Memcpy(B,Data.GetData()+I,16);bool Valid=true;for(float X:B)Valid=Valid&&FMath::IsFinite(X);if(Valid&&B[2]>B[0]+1&&B[3]>B[1]+1){VideoBox=FVector4f(B[0],B[1],B[2],B[3]);FramingAvailable=true;break;}}
+  if(FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("Preview_Boxes.f32")))||FFileHelper::LoadFileToArray(Data,*(Dir/TEXT("FootMR_Boxes.f32"))))for(int32 I=0;I+16<=Data.Num();I+=16){float B[4];FMemory::Memcpy(B,Data.GetData()+I,16);bool Valid=true;for(float X:B)Valid=Valid&&FMath::IsFinite(X);if(Valid&&B[2]>B[0]+1&&B[3]>B[1]+1){VideoBox=FVector4f(B[0],B[1],B[2],B[3]);FramingAvailable=true;break;}}
  }
  void Construct(const FArguments&){
   Scene=MakeUnique<FCBMPreviewScene>();
@@ -182,8 +182,9 @@ void SCBMComparison::Construct(const FArguments& Args){
     +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SNew(SImage).Image(&Brush)]]]]
    +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
     +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){FString Label=TEXT("Selected asset");
-     if(Settings->PreviewAnimation==Settings->OriginalAnimation)Label=TEXT("No hand enhancement");
-     else if(Settings->PreviewAnimation==Settings->LowerBodyAnimation)Label=Settings->FootResultHasTemporalCleanup?TEXT("Pelvis/legs + foot support + temporal cleanup (hands preserved)"):Settings->FootResultHasSupportRotation?TEXT("Pelvis/legs + supported ankles/toes (airborne + hands preserved)"):TEXT("Pelvis/legs only (ankle world orientation + hands preserved)");
+     if(Settings->JointCorrectedAnimation&&Settings->PreviewAnimation==Settings->JointCorrectedAnimation)Label=TEXT("Joint corrected (optional)");
+     else if(Settings->JointComparisonSource&&Settings->PreviewAnimation==Settings->JointComparisonSource)Label=TEXT("Before joint correction");
+     else if(Settings->PreviewAnimation==Settings->OriginalAnimation)Label=TEXT("No hand enhancement");
      else if(Settings->HandComparisonBase==Settings->OriginalAnimation){
       if(Settings->PreviewAnimation==Settings->WiLoRAnimation)Label=TEXT("WiLoR + MediaPipe");
       else if(Settings->PreviewAnimation==Settings->HandFlowAnimation)Label=TEXT("HandFlow / HaMeR");
@@ -196,8 +197,9 @@ void SCBMComparison::Construct(const FArguments& Args){
    +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("HandFlow / HaMeR")).IsEnabled_Lambda([this](){return Settings->HandComparisonBase==Settings->OriginalAnimation&&Settings->HandFlowAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->HandFlowAnimation;return FReply::Handled();})]
    +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("MediaPipe (legacy)")).Visibility_Lambda([this](){return Settings->EnableLegacyHandDiagnostics?EVisibility::Visible:EVisibility::Collapsed;}).IsEnabled_Lambda([this](){return Settings->HandComparisonBase==Settings->OriginalAnimation&&Settings->MediaPipeAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->MediaPipeAnimation;return FReply::Handled();})]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Before legs")).IsEnabled_Lambda([this](){return Settings->FootComparisonBase!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->FootComparisonBase;return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("Pelvis / legs")).IsEnabled_Lambda([this](){return Settings->LowerBodyAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->LowerBodyAnimation;return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Before correction")).IsEnabled_Lambda([this](){return Settings->JointComparisonSource!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->JointComparisonSource;return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString("Joint corrected")).IsEnabled_Lambda([this](){return Settings->JointCorrectedAnimation!=nullptr;}).OnClicked_Lambda([this](){Settings->PreviewAnimation=Settings->JointCorrectedAnimation;return FReply::Handled();})]]
+  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
    +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Load comparison")).OnClicked(this,&SCBMComparison::Load)]
    +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text_Lambda([this](){return FText::FromString(Player->IsPlaying()?"Pause":"Play");}).IsEnabled_Lambda([this](){return Player->IsReady()&&Settings->PreviewAnimation!=nullptr&&!Waiting;}).OnClicked_Lambda([this](){if(Player->IsPlaying()){Player->Pause();PlayAfterSeek=false;}else{if(Clock.Position>=Length-.02)Seek(0);if(Clock.Pending)PlayAfterSeek=true;else Player->Play();}return FReply::Handled();})]
    +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString("Stop")).OnClicked_Lambda([this](){Player->Pause();PlayAfterSeek=false;Seek(0);return FReply::Handled();})]

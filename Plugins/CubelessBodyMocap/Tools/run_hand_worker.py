@@ -65,7 +65,7 @@ def signature(c):
         inputs['video'] = sha(c['video'])
     # Source asset identity is rebound on cache load; physical predictions depend
     # on source rest geometry, video interval and camera, all included here.
-    settings = {k: v for k, v in c.items() if k not in {'work', 'frame_dir', 'source_asset', 'repo', 'model', 'handflow_root', 'video', 'cache_root'}}
+    settings = {k: v for k, v in c.items() if k not in {'work', 'frame_dir', 'source_asset', 'repo', 'model', 'handflow_root', 'video', 'cache_root', 'reuse_cache'}}
     # WiLoR launches MediaPipe in its own interpreter; include that environment
     # as well, rather than fingerprinting only this parent's installed packages.
     helper_runtime = {}
@@ -107,8 +107,9 @@ def run(c):
         key, identity = signature(c)
         cache = Path(c['cache_root'])/c['backend']/key
         receipt = cache/'complete.json'
+        reuse_cache = c.get('reuse_cache', True)
         hit = False
-        if receipt.is_file():
+        if reuse_cache and receipt.is_file():
             entry = json.loads(receipt.read_text())
             hit = entry['signature'] == key and all((cache/name).is_file() and sha(cache/name) == digest for name, digest in entry['files'].items())
             if hit:
@@ -126,13 +127,14 @@ def run(c):
                 raise ValueError('Hand inputs, code or models changed during processing; result not applied')
             names = [p.name for p in work.iterdir() if p.name in {
                 'hands.json', 'metrics.json', 'detection.json', 'hand_diagnostics.npz', 'model_evidence.npz', 'contact_evidence.npz', 'geometry_rejections.json'}]
-            staging = cache.parent/(key+'.partial-'+uuid.uuid4().hex)
-            staging.mkdir(parents=True)
-            for name in names:
-                shutil.copy2(work/name, staging/name)
-            atomic_json(staging/'complete.json', dict(signature=key, files={name: sha(staging/name) for name in names}))
-            if not cache.exists():
-                staging.replace(cache)
+            if reuse_cache:
+                staging = cache.parent/(key+'.partial-'+uuid.uuid4().hex)
+                staging.mkdir(parents=True)
+                for name in names:
+                    shutil.copy2(work/name, staging/name)
+                atomic_json(staging/'complete.json', dict(signature=key, files={name: sha(staging/name) for name in names}))
+                if not cache.exists():
+                    staging.replace(cache)
             # A damaged existing cache is not silently overwritten. Its new
             # verified generation remains available in this run and staging.
         result = json.loads((work/'hands.json').read_text())
@@ -145,7 +147,7 @@ def run(c):
         metrics.update(source_asset=c['source_asset'], worker_wall_seconds=time.perf_counter()-started,
                        worker_peak_process_tree_mib=peak[0]/1048576. if peak[0] else None,
                        worker_memory_measurement='sampled process-tree RSS' if peak[0] else 'unavailable: optional psutil not installed',
-                       cache_hit=hit, cache_signature=key)
+                       cache_hit=hit, cache_signature=key, cache_reuse_enabled=reuse_cache)
         atomic_json(work/'metrics.json', metrics)
         atomic_json(work/'hand_identity.json', identity)
         atomic_json(work/'worker_status.json', dict(stage='Completed', done=c['frames'], frames=c['frames']))

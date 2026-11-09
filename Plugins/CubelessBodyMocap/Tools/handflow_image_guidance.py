@@ -9,6 +9,11 @@ limits, WiLoR input, mean-pose correction or wrist/body output is involved.
 import time
 
 
+def image_reliability(scores):
+    """Smooth weak-observation attenuation; accepts NumPy or Torch arrays."""
+    return ((scores-.3)/.4).clip(0,1)**2
+
+
 def observation_confidence(scores, uv_crop, wrists, boxes, crop_intrinsics, camera_k):
     """Downweight ambiguous wrist ownership only when the two wrists are close.
 
@@ -107,6 +112,13 @@ def refine(poses, betas, hamer_joints, hamer_uv, scores, model_root, crop_focal,
             rhs[observed].reshape(-1, 42, 1)).solution.transpose(1, 2)
         scale = (uv[:, 5]-uv[:, 17]).norm(dim=-1).clamp_min(.08)
         total_score = score.sum().clamp_min(1)
+        # A detected box is not proof of the finger pose. Weak image cues can
+        # otherwise drag a plausible temporal pose into a crossed finger
+        # configuration to match a blurred 2D projection. Keep strong evidence
+        # unchanged, suppress weak reprojection and increase its temporal prior.
+        reliability = image_reliability(score)
+        image_score = score*reliability
+        pose_prior = .03 + .5*(1-reliability)
         # 2D alone cannot distinguish bent fingers from depth-aligned straight
         # fingers. Use HaMeR's own 3D observations as a weak direction cue.
         # Both hands are still canonical RIGHT MANO here; left mirroring occurs
@@ -144,14 +156,14 @@ def refine(poses, betas, hamer_joints, hamer_uv, scores, model_root, crop_focal,
             residual = (pred-uv[i:end])/scale[i:end, None, None]
             error = torch.nn.functional.smooth_l1_loss(
                 residual, torch.zeros_like(residual), beta=.15, reduction='none').mean((1, 2))
-            (((error+direction_weight*direction_error*direction_confidence[i:end])*score[i:end]).sum()/total_score).backward()
+            (((error*image_score[i:end]+direction_weight*direction_error*direction_confidence[i:end]*score[i:end])).sum()/total_score).backward()
         correction = delta.reshape(n, 2, 15, 3)
         continuity = (correction[1:]-correction[:-1]).square().mean() if n > 1 else delta.sum()*0
         # Residual continuity alone can preserve a sudden change in the base
         # pose. Also penalize changes of final angular velocity, softly and
         # symmetrically in time, while retaining the image evidence term.
         acceleration = rotation_acceleration((base+delta).reshape(n, 2, 15, 3))
-        (.03*delta.square().mean() + 3.*continuity + 6.*acceleration).backward()
+        ((pose_prior*delta.square().mean((1,2))).mean() + 3.*continuity + 6.*acceleration).backward()
         optimizer.step()
         if emit and iteration % 25 == 0:
             emit(iteration, 100)
@@ -164,7 +176,9 @@ def refine(poses, betas, hamer_joints, hamer_uv, scores, model_root, crop_focal,
         result = poses.copy()
         result[:, :, 3:] = final.cpu().numpy().reshape(n, 2, 45)
         details = dict(applied=True, method='HaMeR 2D/3D observations + HandFlow residual prior',
-                       version='confidence_bone_directions_v1',
+                       version='confidence_reprojection_prior_v2',
+                       image_confidence_range=[.3,.7],image_confidence_power=2,
+                       weak_observation_pose_prior=.53,
                        bone_direction_weight=direction_weight,
                        bone_direction_confidence_range=[.6, .8],
                        bone_direction_confidence_power=2,

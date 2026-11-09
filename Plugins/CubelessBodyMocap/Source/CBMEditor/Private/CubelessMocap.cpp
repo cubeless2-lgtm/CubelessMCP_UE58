@@ -41,6 +41,8 @@
 #include "UObject/SavePackage.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Interfaces/IPluginManager.h"
+#include "Modules/ModuleManager.h"
+#include "Misc/EngineVersion.h"
 THIRD_PARTY_INCLUDES_START
 #include <Eigen/Dense>
 THIRD_PARTY_INCLUDES_END
@@ -58,20 +60,22 @@ struct FCBMJob : TSharedFromThis<FCBMJob,ESPMode::ThreadSafe> {
  // Accessed and destroyed only on the game thread. Global job retains ownership until its worker is joined.
  TStrongObjectPtr<USkeletalMesh> Target,Source;TStrongObjectPtr<UIKRetargeter> Retargeter;
  TStrongObjectPtr<UAnimSequence> Original;FGuid OriginalGuid;FString HandPython,WiLoRRepo,HandScript,HandBackend,HandModel,HandFlowRoot;int32 HandFlowSteps=3,HandFlowBatch=2,HandFlowSeed=0;bool HandDiagnostics=false;float HandStrength=1;
- bool FootLowerBody=false,FootSupportRotation=false,FootTemporalCleanup=false;float FootGroundZ=0;TSharedPtr<FJsonObject> FootContext;FString FootContextSignature;
- FString FootData;FQuat FootBasis[2];double FootProbeError=0;
  TWeakObjectPtr<UCubelessMocapSettings> Settings;
+ bool AutoHands=false,BodySaved=false,HandsStarted=false,SharedHandFrames=false,HandKeypointsCacheHit=false;
+ FString HandKeypointsCacheDir,HandKeypointsCode;
  TSharedPtr<FStreamableHandle> LoadHandle;TArray<FSoftObjectPath> StageAssets;FTSTicker::FDelegateHandle SampleTicker;
- void Update(const FString& InStage,double P=-1) {FScopeLock L(&Mutex);Stage=InStage;if(P>=0)Progress=P;PeakProcess=FMath::Max(PeakProcess,FPlatformMemory::GetStats().UsedPhysical);}
+ void Update(const FString& InStage,double P=-1) {FScopeLock L(&Mutex);Stage=(AutoHands?(HandsStarted?TEXT("Hands 2/2: "):TEXT("Body 1/2: ")):TEXT(""))+InStage;if(P>=0)Progress=AutoHands?(HandsStarted?.7+.3*FMath::Clamp(P,0.,1.):.7*FMath::Clamp(P,0.,1.)):P;PeakProcess=FMath::Max(PeakProcess,FPlatformMemory::GetStats().UsedPhysical);}
  void Profile() { // Worker only; copy shared fields under lock.
   auto O=MakeShared<FJsonObject>();{FScopeLock L(&Mutex);O->SetStringField(TEXT("stage"),Stage);O->SetStringField(TEXT("message"),Message);O->SetNumberField(TEXT("peak_process_mib"),PeakProcess/1048576.0);}
   O->SetStringField(TEXT("tracking_model"),CompactSAM?TEXT("compact_features_v1"):TEXT("reference"));O->SetNumberField(TEXT("elapsed_seconds"),FPlatformTime::Seconds()-Start);O->SetNumberField(TEXT("frames"),FrameCount);O->SetStringField(TEXT("chmr_model"),FusedCHMR?TEXT("fused_attention_v1"):TEXT("reference"));
   O->SetStringField(TEXT("pipeline_version"),TEXT("v5_compact_sam"));O->SetNumberField(TEXT("camera_focal_pixels"),CameraFocal);O->SetNumberField(TEXT("camera_pitch_radians"),CameraPitch);O->SetNumberField(TEXT("camera_roll_radians"),CameraRoll);auto H=MakeShared<FJsonObject>();for(auto& X:StageHashes)H->SetStringField(X.Key,X.Value);O->SetObjectField(TEXT("stage_numeric_md5"),H);
-  O->SetBoolField(TEXT("refine_body_requested"),RefineBody);O->SetBoolField(TEXT("refine_body_enabled"),RefineBody&&FootLocking&&HandBackend.IsEmpty());O->SetStringField(TEXT("body_refinement_version"),TEXT("video_support_depth_v1"));
+  O->SetBoolField(TEXT("refine_body_requested"),RefineBody);O->SetBoolField(TEXT("refine_body_enabled"),RefineBody&&FootLocking&&(AutoHands||HandBackend.IsEmpty()));O->SetStringField(TEXT("body_refinement_version"),TEXT("video_support_depth_v1"));
   auto T=MakeShared<FJsonObject>();for(auto& X:Timings)T->SetNumberField(X.Key,X.Value);O->SetObjectField(TEXT("stage_seconds"),T);
   auto M=MakeShared<FJsonObject>();for(auto& X:Memory)M->SetNumberField(X.Key,X.Value/1048576.0);O->SetObjectField(TEXT("process_mib_at_stage_end"),M);
-  if(!HandBackend.IsEmpty()){O->SetStringField(TEXT("pipeline_version"),TEXT("finger_only_v1"));O->SetStringField(TEXT("hand_backend"),HandBackend);O->SetStringField(TEXT("chmr_model"),TEXT("not_run"));O->SetStringField(TEXT("tracking_model"),TEXT("not_run"));}
-  if(HandBackend==TEXT("VideoLegs")){O->SetStringField(TEXT("pipeline_version"),TEXT("pelvis_legs_only_v1"));O->RemoveField(TEXT("hand_backend"));O->SetStringField(TEXT("lower_body_backend"),TEXT("VideoLegs"));}
+  if(!HandBackend.IsEmpty()){O->SetStringField(TEXT("hand_backend"),HandBackend);if(!AutoHands){O->SetStringField(TEXT("pipeline_version"),TEXT("finger_only_v1"));O->SetStringField(TEXT("chmr_model"),TEXT("not_run"));O->SetStringField(TEXT("tracking_model"),TEXT("not_run"));}}
+  O->SetBoolField(TEXT("auto_handflow"),AutoHands);O->SetBoolField(TEXT("body_saved"),BodySaved);O->SetBoolField(TEXT("hand_frames_reused"),SharedHandFrames);O->SetBoolField(TEXT("hand_keypoints_cache_hit"),HandKeypointsCacheHit);
+  if(AutoHands)O->SetStringField(TEXT("pipeline_version"),TEXT("body_then_handflow_v1"));
+  if(HandBackend==TEXT("JointCorrection"))O->SetStringField(TEXT("pipeline_version"),TEXT("finger_joint_post_v1"));
   FString Text;auto W=TJsonWriterFactory<>::Create(&Text);FJsonSerializer::Serialize(O,W);FFileHelper::SaveStringToFile(Text,*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run/TEXT("profile.json")));
  }
 };
@@ -115,7 +119,7 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
   FCBMStage Stage(J,TEXT("Decode"),0.01);
   if(!FPaths::FileExists(J->Video)||!FPaths::FileExists(J->FFmpeg)||J->Video.Contains(TEXT("\"")))return Fail(TEXT("Select an existing video and FFmpeg executable, or a PNG directory."));
   J->Dir=FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run/TEXT("Frames"));IFileManager::Get().MakeDirectory(*J->Dir,true);
-  const FString Args=FString::Printf(TEXT("-nostdin -v error -ss %.3f -i \"%s\" -t %.3f -vf fps=%d -start_number 0 \"%s/%%08d.png\""),J->StartSeconds,*J->Video,J->Duration,J->FPS,*J->Dir);
+  const FString Args=FString::Printf(TEXT("-nostdin -v error -ss %.6f -i \"%s\" -t %.3f -vf fps=%d -start_number 0 \"%s/%%08d.png\""),J->StartSeconds,*J->Video,J->Duration,J->FPS,*J->Dir);
   FProcHandle Proc=FPlatformProcess::CreateProc(*J->FFmpeg,*Args,false,true,true,nullptr,0,nullptr,nullptr);if(!Proc.IsValid())return Fail(TEXT("FFmpeg could not start."));
   ON_SCOPE_EXIT{FPlatformProcess::CloseProc(Proc);};
   while(FPlatformProcess::IsProcRunning(Proc)){if(Cancelled()){FPlatformProcess::TerminateProc(Proc,true);FPlatformProcess::WaitForProc(Proc);return Fail(TEXT("Cancelled during decode."));}FPlatformProcess::Sleep(.05f);}
@@ -198,10 +202,11 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
  }if(Cancelled())return Fail(TEXT("Cancelled after optimization; no assets created."));
  DumpFloats(J,TEXT("Optimizer_Pose"),Data.Pose);DumpFloats(J,TEXT("Optimizer_Translation"),Data.Translation);DumpFloats(J,TEXT("Contacts"),Data.Contacts);DumpFloats(J,TEXT("Keypoints25"),Data.Keypoints);
  int32 First=0;while(!Valid[First])++First;int32 Last=First;for(int32 I=0;I<N;++I){if(Valid[I])Last=I;else {for(int32 B=0;B<165;++B)Data.Pose[I*165+B]=Data.Pose[Last*165+B];for(int32 B=0;B<3;++B)Data.Translation[I*3+B]=Data.Translation[Last*3+B];}}
- // Persist optional FootMR inputs once; foot jobs never repeat body extraction.
- const FString FootDir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run;
- auto SaveFootFloats=[&](const TCHAR* Name,const TArray64<float>& A){return FFileHelper::SaveArrayToFile(MakeArrayView(reinterpret_cast<const uint8*>(A.GetData()),A.Num()*int64(sizeof(float))),*(FootDir/Name));};
- const bool FootInputsSaved=SaveFootFloats(TEXT("FootMR_Pose.f32"),Data.Pose)&&SaveFootFloats(TEXT("FootMR_Keypoints25.f32"),Data.Keypoints)&&SaveFootFloats(TEXT("FootMR_Boxes.f32"),Data.Boxes)&&SaveFootFloats(TEXT("FootMR_Camera.f32"),TArray64<float>{Focal,float(Raster.X)/2,float(Raster.Y)/2,Pitch,Roll});
+ // Persist camera/framing for the synchronized comparison view independently of diagnostics.
+ const FString PreviewDir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run;
+ auto SavePreviewFloats=[&](const TCHAR* Name,const TArray64<float>& A){return FFileHelper::SaveArrayToFile(MakeArrayView(reinterpret_cast<const uint8*>(A.GetData()),A.Num()*int64(sizeof(float))),*(PreviewDir/Name));};
+ SavePreviewFloats(TEXT("Preview_Boxes.f32"),Data.Boxes);
+ SavePreviewFloats(TEXT("Preview_Camera.f32"),TArray64<float>{Focal,float(Raster.X)/2,float(Raster.Y)/2,Pitch,Roll});
  // Solving uses native SMPL coordinates; export uses the grounded SMPL mesh bind space.
  // Root translation below subtracts HeightOffset, so pelvis must include it exactly once.
  Body.SetShape(Average);Body.SetAccountForHeight(true);const int32 Bones=BoneNames.Num();TArray<TArray<FVector3f>> Pos,Scale;TArray<TArray<FQuat4f>> Rot;Pos.SetNum(Bones);Scale.SetNum(Bones);Rot.SetNum(Bones);const FVector Origin(Data.Translation[First*3],0,Data.Translation[First*3+2]);
@@ -240,16 +245,13 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
  const TArray<FAssetData> Outputs=UIKRetargetBatchOperation::RunBatchRetarget(Inputs);
  if(Outputs.IsEmpty())return Fail(TEXT("Retargeting produced no assets. Source animation remains unsaved in ")+Folder);
  for(const FAssetData& A:Outputs){auto* Asset=Cast<UAnimSequence>(A.GetAsset());if(!Asset || Asset->GetSkeleton()!=J->Target.Get()->GetSkeleton())return Fail(TEXT("Retargeting returned an unexpected skeleton. Inspect the unsaved output."));UPackage* Pkg=Asset->GetOutermost();FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;const FString File=FPackageName::LongPackageNameToFilename(Pkg->GetName(),FPackageName::GetAssetPackageExtension());if(!UPackage::SavePackage(Pkg,Asset,*File,Args))return Fail(TEXT("Could not save ")+Pkg->GetName());}
- if(FootInputsSaved&&!J->Video.IsEmpty()&&FPaths::FileExists(J->Video)){
- auto O=MakeShared<FJsonObject>();O->SetNumberField(TEXT("version"),1);O->SetStringField(TEXT("body_asset"),Outputs[0].GetObjectPathString());O->SetNumberField(TEXT("frames"),N);O->SetNumberField(TEXT("fps"),J->FPS);O->SetStringField(TEXT("video"),FPaths::ConvertRelativePathToFull(J->Video));O->SetNumberField(TEXT("video_size"),IFileManager::Get().FileSize(*J->Video));O->SetNumberField(TEXT("video_mtime"),double(IFileManager::Get().GetTimeStamp(*J->Video).ToUnixTimestamp()));O->SetNumberField(TEXT("start_seconds"),J->StartSeconds);
- FString Json;auto Writer=TJsonWriterFactory<>::Create(&Json);FJsonSerializer::Serialize(O,Writer);FFileHelper::SaveStringToFile(Json,*(FootDir/TEXT("FootMRInput.json")));
- }
- if(J->Settings.IsValid()){J->Settings->PreviewAnimation=Cast<UAnimSequence>(Outputs[0].GetAsset());J->Settings->OriginalAnimation=J->Settings->PreviewAnimation;J->Settings->FootInputAnimation=nullptr;J->Settings->FootComparisonBase=nullptr;J->Settings->LowerBodyAnimation=nullptr;J->Settings->HandEnhancedAnimation=nullptr;J->Settings->HandComparisonBase=nullptr;J->Settings->WiLoRAnimation=nullptr;J->Settings->HandFlowAnimation=nullptr;J->Settings->MediaPipeAnimation=nullptr;}
+ J->Original.Reset(Cast<UAnimSequence>(Outputs[0].GetAsset()));J->OriginalGuid=J->Original->GetDataModel()->GenerateGuid();J->BodySaved=true;
+ if(J->Settings.IsValid()){J->Settings->PreviewAnimation=J->Original.Get();J->Settings->OriginalAnimation=J->Settings->PreviewAnimation;J->Settings->JointComparisonSource=nullptr;J->Settings->JointCorrectedAnimation=nullptr;J->Settings->JointCorrectionReport.FilePath.Empty();J->Settings->JointCorrectionSource=nullptr;J->Settings->HandEnhancedAnimation=nullptr;J->Settings->HandComparisonBase=nullptr;J->Settings->WiLoRAnimation=nullptr;J->Settings->HandFlowAnimation=nullptr;J->Settings->MediaPipeAnimation=nullptr;}
   Result=TEXT("Saved animation in ")+Folder+FString::Printf(TEXT(" (%d/%d tracked frames)."),ValidCount,N);return true;};Exported=Export();
  });}return Exported;
 }
 #include "CBMHands.inl"
-#include "CBMFeet.inl"
+#include "CBMJointPost.inl"
 bool UCubelessMocapLibrary::IsBusy(){check(IsInGameThread());return CurrentJob&&!CurrentJob->Done.Load();}
 void UCubelessMocapLibrary::Cancel(){check(IsInGameThread());if(CurrentJob&&!CurrentJob->Done.Load()){CurrentJob->Cancel.Store(true);FScopeLock L(&CurrentJob->Mutex);CurrentJob->Message=TEXT("Cancellation requested; waiting for the current native call to return.");}}
 FString UCubelessMocapLibrary::GetJobStatus(){check(IsInGameThread());if(!CurrentJob)return TEXT("Idle");auto J=CurrentJob;FScopeLock L(&J->Mutex);return FString::Printf(TEXT("%s | %.0f%% | %.1fs | peak RAM %.0f MiB\n%s"),*J->Stage,J->Progress*100,(J->Finished>0?J->Finished:FPlatformTime::Seconds())-J->Start,J->PeakProcess/1048576.0,*J->Message);}
@@ -257,10 +259,17 @@ bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
  if(!IsInGameThread()||!S){Result=TEXT("Start on the Editor game thread.");return false;}if(IsBusy()){Result=TEXT("Another job is running.");return false;}if(GEditor&&GEditor->PlayWorld){Result=TEXT("End PIE/SIE first.");return false;}
  if(!S->TargetMesh||!S->Retargeter||!S->OutputFolder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(S->OutputFolder)||S->FrameRate<1||S->FrameRate>120||!FMath::IsFinite(S->StartSeconds)||!FMath::IsFinite(S->DurationSeconds)||S->StartSeconds<0||S->DurationSeconds<=0||S->DurationSeconds>120){Result=TEXT("Invalid target, output folder, time range or FPS.");return false;}
  if(CurrentJob&&CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();
- auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Dir=S->FrameDirectory.Path;J->Video=S->Video.FilePath;J->FFmpeg=S->FFmpeg.FilePath;J->FPS=S->FrameRate;J->Duration=S->DurationSeconds;J->StartSeconds=S->StartSeconds;J->FootLocking=S->FootLocking;J->RefineBody=S->RefineBody;J->Reuse=S->ReuseCheckpoints;J->DumpStages=CVarCBMDumpStages.GetValueOnGameThread()!=0;J->FusedCHMR=S->UseFusedCHMR&&UE::NNE::GetRuntime<INNERuntimeGPU>(TEXT("NNERuntimeORTDml")).IsValid()&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"));J->CompactSAM=J->FusedCHMR&&CVarCBMCompactSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"))&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"));J->OutputFolder=S->OutputFolder;J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;CurrentJob=J;
+ auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Dir=S->FrameDirectory.Path;J->Video=S->Video.FilePath;J->FFmpeg=S->FFmpeg.FilePath;J->FPS=S->FrameRate;J->Duration=S->DurationSeconds;J->StartSeconds=S->StartSeconds;J->FootLocking=S->FootLocking;J->RefineBody=S->RefineBody;J->Reuse=S->ReuseCheckpoints;J->DumpStages=CVarCBMDumpStages.GetValueOnGameThread()!=0;J->FusedCHMR=S->UseFusedCHMR&&UE::NNE::GetRuntime<INNERuntimeGPU>(TEXT("NNERuntimeORTDml")).IsValid()&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"));J->CompactSAM=J->FusedCHMR&&CVarCBMCompactSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"))&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"));J->OutputFolder=S->OutputFolder;J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;J->AutoHands=S->EnhanceHands;
+ if(J->AutoHands&&!CBMConfigureAutoHands(J,S,Result))return false;
+ CurrentJob=J;
  J->SampleTicker=FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([J](float){FScopeLock L(&J->Mutex);J->PeakProcess=FMath::Max(J->PeakProcess,FPlatformMemory::GetStats().UsedPhysical);return !J->Done.Load();}),.25f);
  IFileManager::Get().MakeDirectory(*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run),true);
- J->Worker=Async(EAsyncExecution::Thread,[J](){FString Message;const bool OK=Solve(J,Message);if(!OK&&J->Cancel.Load())Message=TEXT("Cancelled. Completed checkpoints were preserved.");{FScopeLock L(&J->Mutex);J->Success=OK;J->Finished=FPlatformTime::Seconds();J->Message=Message;J->Stage=OK?TEXT("Completed"):J->Cancel.Load()?TEXT("Cancelled"):TEXT("Failed");if(OK)J->Progress=1;}J->Profile();UE_LOG(LogCubelessMocap,Display,TEXT("[CBM] %s: %s"),OK?TEXT("Completed"):TEXT("Stopped"),*Message);J->Done.Store(true);});
+ J->Worker=Async(EAsyncExecution::Thread,[J](){FString Message;bool OK=Solve(J,Message);
+  if(OK&&J->AutoHands){
+   if(J->Cancel.Load()){OK=false;Message=TEXT("Cancelled after body save; HandFlow not started.");}
+   else {J->HandsStarted=true;J->HandBackend=TEXT("HandFlow");J->SharedHandFrames=true;OK=CBMSolveHands(J,Message);}
+  }
+  if(!OK){if(J->Cancel.Load())Message=TEXT("Cancelled. Completed checkpoints were preserved.");if(J->BodySaved)Message+=TEXT(" Body animation was saved and remains available; hand enhancement was not completed.");}{FScopeLock L(&J->Mutex);J->Success=OK;J->Finished=FPlatformTime::Seconds();J->Message=Message;J->Stage=OK?TEXT("Completed"):J->Cancel.Load()?TEXT("Cancelled"):TEXT("Failed");if(OK)J->Progress=1;}J->Profile();UE_LOG(LogCubelessMocap,Display,TEXT("[CBM] %s: %s"),OK?TEXT("Completed"):TEXT("Stopped"),*Message);J->Done.Store(true);});
  Result=TEXT("Started job ")+J->Run;return true;
 }
 

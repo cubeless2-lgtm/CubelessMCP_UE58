@@ -17,12 +17,19 @@ enum class ECBMDiagnosticFingerBackend : uint8 {
  WiLoR UMETA(DisplayName="WiLoR + MediaPipe (diagnostic)"),
  MediaPipe UMETA(DisplayName="MediaPipe only (diagnostic)")
 };
+UENUM()
+enum class ECBMImageAlignmentMode : uint8 {
+ Legacy UMETA(DisplayName="기존 보완"),
+ Temporal UMETA(DisplayName="전체 시간축 보완")
+};
 UCLASS()
 class CBMEDITOR_API UCubelessMocapSettings : public UObject {
  GENERATED_BODY()
 public:
  UPROPERTY(EditAnywhere, Category="Preview") bool DebugBones=false;
  UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="영상 관절 방향 보완", ToolTip="영상 관절과 시간 연속성으로 무릎·팔꿈치 방향을 보완합니다. 필요할 때 영상 전체의 골반·발 배치와 시간에 따라 부드럽게 변하는 골반 높이·깊이를 보완합니다. 골반 기울기는 유지합니다. 발 높이·이동 속도, 손가락과 손목·발목 회전은 유지하며 골반 이동에 따라 상체 위치도 함께 이동합니다. 오차와 회전 안정성 검사를 통과한 후보만 적용하며 관절 제한은 추가하지 않습니다.")) bool ImageLimbAlignment=true;
+ UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="영상 보완 방식", EditCondition="ImageLimbAlignment", ToolTip="기존 보완 또는 전체 시간축 보완 중 하나만 실행합니다. 시간축 방식은 기존 HandFlow Python의 NumPy·SciPy를 사용하며 추가 모델 추론은 하지 않습니다. 접지한 발과 손목을 유지하며 다리·팔꿈치 방향을 맞춥니다. 상체·골반은 진단하고 원래 자세를 보존합니다.")) ECBMImageAlignmentMode ImageAlignmentMode=ECBMImageAlignmentMode::Legacy;
+
  UPROPERTY(EditAnywhere, Category="Workflow") bool AutoBoneCorrection=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool SaveHandFlow=true;
  UPROPERTY(EditAnywhere, Category="Workflow") bool SaveBoneCorrection=true;

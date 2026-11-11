@@ -7,3 +7,5 @@
 !/source/youtube_clipper.py
 !/source/build.py
 !/source/requirements.txt
+!/source/test_output_options.py
+!/source/settings.example.json

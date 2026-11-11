@@ -28,6 +28,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
+static const FText& CBMPreviewRealtimeReason(){static const FText Reason=NSLOCTEXT("CubelessBodyMocap","PreviewInference","Cubeless motion preview waiting for inference");return Reason;}
 class FCBMPreviewViewportClient : public FEditorViewportClient {
 public:
  int32 LastAA=-1,LastGI=-1,LastReflection=-1;
@@ -253,7 +254,7 @@ void SCBMComparison::Construct(const FArguments& Args){
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).ToolTipText(FText::FromString(TEXT("가로 FOV = 2 × atan(영상 폭 / (2 × 초점거리))입니다. 첫 프레임에서 모델이 추정한 초점거리를 사용하며 실제 렌즈 정보가 아닙니다. 확대 조절은 표시 FOV만 바꿉니다."))).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("카메라: %s | 가로 FOV %.2f°"),*View->CameraMode(),View->Camera->ViewFOV));})]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("%.2f / %.2f s  |  %s"),Clock.Position,Length,*Notice));})]];
 }
-SCBMComparison::~SCBMComparison(){Player->Close();Brush.SetResourceObject(nullptr);}
+SCBMComparison::~SCBMComparison(){if(InferenceRenderingSuspended&&View.IsValid()&&View->Camera.IsValid())View->Camera->RemoveRealtimeOverride(CBMPreviewRealtimeReason(),false);Player->Close();Brush.SetResourceObject(nullptr);}
 void SCBMComparison::UpdateDebugProjection(double Time,bool Synchronized){
  ViewPoints=Settings->DebugBones?View->ProjectVisibleBones():TArray<FVector3f>();
  DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,Settings->Video.FilePath,Settings->StartSeconds,Time,Synchronized,ViewPoints,View->CameraMode());
@@ -269,7 +270,7 @@ bool SCBMComparison::PrepareScreenshot(){
  UpdateDebugProjection(Time,!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
  View->Camera->Viewport->Draw();FlushRenderingCommands();
  auto C=StaticCastSharedPtr<FCBMPreviewViewportClient>(View->Camera);auto O=MakeShared<FJsonObject>();
- O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
+ O->SetBoolField(TEXT("inference_rendering_suspended"),InferenceRenderingSuspended);O->SetBoolField(TEXT("preview_realtime"),View->Camera->IsRealtime());O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
  O->SetNumberField(TEXT("media_seconds"),Player->GetTime().GetTotalSeconds());O->SetBoolField(TEXT("scrubbing"),Clock.Scrubbing);O->SetBoolField(TEXT("seek_pending"),Clock.Pending);
  O->SetNumberField(TEXT("aa_method"),C->LastAA);O->SetNumberField(TEXT("gi_method"),C->LastGI);O->SetNumberField(TEXT("reflection_method"),C->LastReflection);
  O->SetBoolField(TEXT("video_camera_matched"),View->UsingVideoCamera);O->SetBoolField(TEXT("exact_video_camera"),View->IsExactCamera());const FVector CL=View->Camera->GetViewLocation();O->SetNumberField(TEXT("camera_x"),CL.X);O->SetNumberField(TEXT("camera_y"),CL.Y);O->SetNumberField(TEXT("camera_z"),CL.Z);O->SetBoolField(TEXT("video_framing_available"),View->FramingAvailable);O->SetNumberField(TEXT("camera_pitch_radians"),View->VideoPitch);O->SetNumberField(TEXT("camera_roll_radians"),View->VideoRoll);O->SetNumberField(TEXT("horizontal_fov_degrees"),View->Camera->ViewFOV);
@@ -311,6 +312,12 @@ void SCBMComparison::Tick(const FGeometry& G,double T,float D){
   if(Player->IsPlaying()&&Player->GetTime().GetTotalSeconds()-Settings->StartSeconds>=Length-.001)Player->Pause();
   Notice=Settings->PreviewAnimation?TEXT("영상과 동기화됩니다. 저장 옵션으로 비교 결과를 전환하세요."):TEXT("모캡 완료 후 결과가 표시됩니다.");
  }
+ const bool SuspendRendering=Settings->PauseEditorRendering&&UCubelessMocapLibrary::IsBusy()&&!Settings->PreviewAnimation;
+ if(SuspendRendering){
+  if(!InferenceRenderingSuspended){View->Camera->AddRealtimeOverride(false,CBMPreviewRealtimeReason());Player->Pause();PlayAfterSeek=false;InferenceRenderingSuspended=true;}
+  Notice=TEXT("모캡 계산 중에는 결과 대기 중인 미리보기를 잠시 멈춥니다.");return;
+ }
+ if(InferenceRenderingSuspended){View->Camera->RemoveRealtimeOverride(CBMPreviewRealtimeReason(),false);InferenceRenderingSuspended=false;}
  if(Settings->PreviewAnimation&&Settings->TargetMesh&&Settings->PreviewAnimation->GetSkeleton()!=Settings->TargetMesh->GetSkeleton()){
   Player->Pause();Notice=TEXT("Preview animation skeleton does not match target mesh");return;
  }

@@ -33,6 +33,7 @@ private:
  double Length=0;
  bool PlayAfterSeek=false;
  bool Waiting=false;
+ bool InferenceRenderingSuspended=false;
  TArray<FVector3f> ViewPoints;
  void UpdateDebugProjection(double Time,bool Synchronized);
  FReply Load();

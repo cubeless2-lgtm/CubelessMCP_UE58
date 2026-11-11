@@ -27,6 +27,8 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "Editor.h"
+#include "EditorViewportClient.h"
+#include "LevelEditorViewport.h"
 #include "Misc/PackageName.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -52,6 +54,8 @@ THIRD_PARTY_INCLUDES_END
 DEFINE_LOG_CATEGORY_STATIC(LogCubelessMocap, Log, All);
 static TAutoConsoleVariable<int32> CVarCBMCompactSAM(TEXT("cbm.CompactSAM"),1,TEXT("Enable compact SAM2 and row-parallel resize for the next fast-mode job; 0 is the previous fast baseline."),ECVF_Default);
 static TAutoConsoleVariable<int32> CVarCBMDumpStages(TEXT("cbm.DumpStages"),0,TEXT("Write numeric stage diagnostics for the next job to its Saved folder."),ECVF_Default);
+static TAutoConsoleVariable<int32> CVarCBMSAMQueryRows(TEXT("cbm.SAM2QueryRows"),512,TEXT("512: use the separately prepared FP32 SAM2 query-row model in fast mode. 0: original attention graph. Keeps every query, memory frame and object pointer."),ECVF_Default);
+static TAutoConsoleVariable<int32> CVarCBMFusedSAM(TEXT("cbm.SAM2FusedAttention"),0,TEXT("Use the separately prepared FP32 fused SAM2 attention model in fast mode. Preserves all queries, memory frames, object pointers and original Q/K scaling."),ECVF_Default);
 
 struct FSolveData { TArray64<float> Shape,Pose,Translation,Keypoints,Boxes,Contacts;TArray64<bool> ValidFrame;TFunction<bool()> ShouldCancel; };
 #include "CBMImageAlignment.inl"
@@ -60,7 +64,8 @@ struct FCBMJob : TSharedFromThis<FCBMJob,ESPMode::ThreadSafe> {
  FCriticalSection Mutex;TAtomic<bool> Cancel{false},Done{false};TFuture<void> Worker;
  FString Stage=TEXT("Queued"),Message,Run,Dir,Video,FFmpeg,OutputFolder,CacheDir;
  ECBMImageAlignmentMode AlignmentMode=ECBMImageAlignmentMode::Legacy;FString AlignmentPython;
- double Start=FPlatformTime::Seconds(),Finished=0,Progress=0;int32 FPS=30,FrameCount=0;float StartSeconds=0,Duration=10;bool SoleGrounding=true,ImageLimbAlignment=false,FootLocking=true,RefineBody=false,Reuse=true,Success=false,FusedCHMR=false,CompactSAM=false,DumpStages=false;
+ double Start=FPlatformTime::Seconds(),Finished=0,Progress=0;int32 FPS=30,FrameCount=0;float StartSeconds=0,Duration=10;bool SoleGrounding=true,ImageLimbAlignment=false,FootLocking=true,RefineBody=false,Reuse=true,Success=false,FusedCHMR=false,CompactSAM=false,FusedSAMAttention=false,DumpStages=false;
+ int32 AttentionQueryRows=0;TArray<double> TrackingFrameSeconds;bool LevelRenderingPaused=false;int32 PausedLevelViewports=0;
  uint64 PeakProcess=0;TMap<FString,double> Timings;TMap<FString,uint64> Memory;TMap<FString,FString> StageHashes;float CameraFocal=0,CameraPitch=0,CameraRoll=0;
  // Accessed and destroyed only on the game thread. Global job retains ownership until its worker is joined.
  TStrongObjectPtr<USkeletalMesh> Target,Source;TStrongObjectPtr<UIKRetargeter> Retargeter;
@@ -73,6 +78,8 @@ struct FCBMJob : TSharedFromThis<FCBMJob,ESPMode::ThreadSafe> {
  void Profile() { // Worker only; copy shared fields under lock.
   auto O=MakeShared<FJsonObject>();{FScopeLock L(&Mutex);O->SetStringField(TEXT("stage"),Stage);O->SetStringField(TEXT("message"),Message);O->SetNumberField(TEXT("peak_process_mib"),PeakProcess/1048576.0);}
   O->SetStringField(TEXT("tracking_model"),CompactSAM?TEXT("compact_features_v1"):TEXT("reference"));O->SetNumberField(TEXT("elapsed_seconds"),FPlatformTime::Seconds()-Start);O->SetNumberField(TEXT("frames"),FrameCount);O->SetStringField(TEXT("chmr_model"),FusedCHMR?TEXT("fused_attention_v1"):TEXT("reference"));
+  O->SetStringField(TEXT("attention_model"),FusedSAMAttention?TEXT("fused_fp32_v1"):AttentionQueryRows?TEXT("query_rows512_fp32_v1"):TEXT("reference"));O->SetNumberField(TEXT("attention_query_rows"),AttentionQueryRows);O->SetStringField(TEXT("tracking_precision"),TEXT("float32"));O->SetBoolField(TEXT("level_rendering_paused"),LevelRenderingPaused);O->SetNumberField(TEXT("paused_level_viewports"),PausedLevelViewports);
+  if(TrackingFrameSeconds.Num()){TArray<double> Sorted=TrackingFrameSeconds;Sorted.Sort();auto F=MakeShared<FJsonObject>();F->SetNumberField(TEXT("count"),Sorted.Num());F->SetNumberField(TEXT("median"),Sorted[Sorted.Num()/2]);F->SetNumberField(TEXT("p95"),Sorted[FMath::Clamp(FMath::CeilToInt(Sorted.Num()*.95)-1,0,Sorted.Num()-1)]);F->SetNumberField(TEXT("max"),Sorted.Last());O->SetObjectField(TEXT("tracking_frame_seconds"),F);}
   O->SetStringField(TEXT("pipeline_version"),TEXT("v5_compact_sam"));O->SetNumberField(TEXT("camera_focal_pixels"),CameraFocal);O->SetNumberField(TEXT("camera_pitch_radians"),CameraPitch);O->SetNumberField(TEXT("camera_roll_radians"),CameraRoll);auto H=MakeShared<FJsonObject>();for(auto& X:StageHashes)H->SetStringField(X.Key,X.Value);O->SetObjectField(TEXT("stage_numeric_md5"),H);
   O->SetStringField(TEXT("image_alignment_mode"),AlignmentMode==ECBMImageAlignmentMode::Temporal?TEXT("temporal_v1"):TEXT("legacy_v12"));
   O->SetBoolField(TEXT("image_limb_alignment_requested"),ImageLimbAlignment);O->SetBoolField(TEXT("refine_body_requested"),RefineBody);O->SetBoolField(TEXT("refine_body_enabled"),RefineBody&&FootLocking&&(AutoHands||HandBackend.IsEmpty()));O->SetStringField(TEXT("body_refinement_version"),TEXT("video_support_depth_v1"));
@@ -86,6 +93,14 @@ struct FCBMJob : TSharedFromThis<FCBMJob,ESPMode::ThreadSafe> {
  }
 };
 static TSharedPtr<FCBMJob,ESPMode::ThreadSafe> CurrentJob;
+static const FText& CBMLevelRealtimeReason(){static const FText Reason=NSLOCTEXT("CubelessBodyMocap","OfflineInference","Cubeless motion inference");return Reason;}
+static void CBMSetLevelRenderingPaused(FCBMJob& Job,bool Pause){
+ check(IsInGameThread());if(Job.LevelRenderingPaused==Pause)return;
+ int32 Count=0;if(GEditor)for(auto* Viewport:GEditor->GetLevelViewportClients())if(Viewport){if(Pause)Viewport->AddRealtimeOverride(false,CBMLevelRealtimeReason());else Viewport->RemoveRealtimeOverride(CBMLevelRealtimeReason(),false);++Count;}
+ Job.LevelRenderingPaused=Pause;if(Pause)Job.PausedLevelViewports=Count;
+ UE_LOG(LogCubelessMocap,Display,TEXT("[CBM] level rendering %s for %s (%d viewports)"),Pause?TEXT("paused"):TEXT("restored"),*Job.Run,Count);
+}
+
 struct FCBMStage {
  TSharedRef<FCBMJob,ESPMode::ThreadSafe> J;FString Name;double Start=FPlatformTime::Seconds();
  FCBMStage(TSharedRef<FCBMJob,ESPMode::ThreadSafe> In,const TCHAR* N,double P):J(In),Name(N){J->Update(Name,P);UE_LOG(LogCubelessMocap,Display,TEXT("[CBM] stage %s begin"),*Name);}
@@ -138,7 +153,7 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
  if(N<2||N>14400)return Fail(TEXT("Expected 2..14400 sequential PNG frames."));
  Cubeless::FImageData Frame;if(!ReadFrame(J->Dir/Files[0],Frame))return Fail(TEXT("Cannot read first frame."));const FIntPoint Size(Frame.Width,Frame.Height);const FIntPoint Raster=UE::BodyTracker::Utils::CalculateAdjustedSize(Size.X,Size.Y,896);
  auto FrameAt=[&](int32 I){return !Cancelled()&&ReadFrame(J->Dir/Files[I],Frame)&&Frame.Width==Size.X&&Frame.Height==Size.Y;};
- FSHA1 Hasher;const FString Version=FString::Printf(TEXT("CBM_pipeline_v5_compact_sam_fps%d_chmr%d_sam%d"),J->FPS,int32(J->FusedCHMR),int32(J->CompactSAM));FTCHARToUTF8 VersionBytes(*Version);Hasher.Update((const uint8*)VersionBytes.Get(),VersionBytes.Length());
+ FSHA1 Hasher;FString Version=FString::Printf(TEXT("CBM_pipeline_v5_compact_sam_fps%d_chmr%d_sam%d"),J->FPS,int32(J->FusedCHMR),int32(J->CompactSAM));if(J->FusedSAMAttention)Version+=TEXT("_attention_fused_v1");else if(J->AttentionQueryRows)Version+=FString::Printf(TEXT("_attention_rows%d_v1"),J->AttentionQueryRows);FTCHARToUTF8 VersionBytes(*Version);Hasher.Update((const uint8*)VersionBytes.Get(),VersionBytes.Length());
  if(J->Reuse){FCBMStage Stage(J,TEXT("Fingerprint"),.02);TArray<uint8> Bytes;for(const auto& F:Files){if(Cancelled())return Fail(TEXT("Cancelled."));if(!FFileHelper::LoadFileToArray(Bytes,*(J->Dir/F)))return Fail(TEXT("Cannot read frame for cache."));Hasher.Update(Bytes.GetData(),Bytes.Num());}Hasher.Final();uint8 Hash[20];Hasher.GetHash(Hash);J->CacheDir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap/Cache")/BytesToHex(Hash,20);IFileManager::Get().MakeDirectory(*J->CacheDir,true);}
  float Focal=0,Pitch=0,Roll=0;
  {FCBMStage Stage(J,TEXT("Camera"),.03);
@@ -158,12 +173,12 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
   for(int32 I=0;I<N;++I){if(!FrameAt(I))return Fail(TEXT("Cancelled or invalid frame."));FImage Image(Frame.Width,Frame.Height,ERawImageFormat::BGRA8);Image.RawData=Frame.Data;auto D=Detector->Detect(Image);if(D.Num()&&D[0].Score>=.7f){First=I;Detection=D[0];break;}}
   Detector.Reset();ReleasePackages();if(First==INDEX_NONE)return Fail(TEXT("No person detected."));if(Cancelled())return Fail(TEXT("Cancelled."));
   TUniqueFunction<TUniquePtr<UE::NNE::Segmentation::ITracker>()> MakeTracker;
-  P={FSoftObjectPath(J->CompactSAM?TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"):TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder")),FSoftObjectPath(J->CompactSAM?TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"):TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder")),FSoftObjectPath(TEXT("/CubelessBodyMocap/SAM2/sam2_memory_encoder")),FSoftObjectPath(TEXT("/CubelessBodyMocap/SAM2/sam2_memory_attention")),FSoftObjectPath(TEXT("/CubelessBodyMocap/SAM2/sam2_weights"))};
-  if(!Loaded(J,P,[&](){UE::NNE::Segmentation::SAM2::FMakeParams Params;Params.CompactFeatures=J->CompactSAM;Params.ImageEncoderData=LoadObject<UNNEModelData>(nullptr,*P[0].ToString());Params.MaskDecoderData=LoadObject<UNNEModelData>(nullptr,*P[1].ToString());MakeTracker=UE::NNE::Segmentation::SAM2::Prepare(Params);}))return Fail(TEXT("Cancelled loading tracker."));auto Tracker=MakeTracker?MakeTracker():nullptr;MakeTracker.Reset();if(!Tracker)return Fail(TEXT("Tracker initialization failed."));
+  P={FSoftObjectPath(J->CompactSAM?TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"):TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder")),FSoftObjectPath(J->CompactSAM?TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"):TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder")),FSoftObjectPath(TEXT("/CubelessBodyMocap/SAM2/sam2_memory_encoder")),FSoftObjectPath(J->FusedSAMAttention?TEXT("/CubelessBodyMocap/SAM2/sam2_memory_attention_fused"):J->AttentionQueryRows==512?TEXT("/CubelessBodyMocap/SAM2/sam2_memory_attention_rows512"):TEXT("/CubelessBodyMocap/SAM2/sam2_memory_attention")),FSoftObjectPath(TEXT("/CubelessBodyMocap/SAM2/sam2_weights"))};
+  if(!Loaded(J,P,[&](){UE::NNE::Segmentation::SAM2::FMakeParams Params;Params.CompactFeatures=J->CompactSAM;Params.ImageEncoderData=LoadObject<UNNEModelData>(nullptr,*P[0].ToString());Params.MaskDecoderData=LoadObject<UNNEModelData>(nullptr,*P[1].ToString());Params.MemoryAttentionData=LoadObject<UNNEModelData>(nullptr,*P[3].ToString());MakeTracker=UE::NNE::Segmentation::SAM2::Prepare(Params);}))return Fail(TEXT("Cancelled loading tracker."));auto Tracker=MakeTracker?MakeTracker():nullptr;MakeTracker.Reset();if(!Tracker)return Fail(TEXT("Tracker initialization failed."));
   Valid.Init(false,N);Boxes.SetNumZeroed(N);
   const float ImageScale=FMath::Min(896.f/Size.Y,1.f);
   for(int32 I=First;I<N;++I){J->Update(FString::Printf(TEXT("Tracking %d/%d"),I+1,N),.05+.20*I/N);if(!FrameAt(I))return Fail(TEXT("Cancelled or invalid frame."));FImage Image(Frame.Width,Frame.Height,ERawImageFormat::BGRA8);Image.RawData=Frame.Data;
-   auto T=I==First?Tracker->Initialize(Image,MakeArrayView(&Detection,1)):Tracker->Track(Image);
+   const double FrameStart=FPlatformTime::Seconds();auto T=I==First?Tracker->Initialize(Image,MakeArrayView(&Detection,1)):Tracker->Track(Image);J->TrackingFrameSeconds.Add(FPlatformTime::Seconds()-FrameStart);
    if(T.Num()&&T[0].Score>=.5f){Valid[I]=true;Boxes[I]=T[0].Box.Scale(ImageScale);Boxes[I].InflateRect(10);}
   }for(const auto& Timing:Tracker->GetProfileTimings())J->Timings.Add(TEXT("SAM2_")+Timing.Key,Timing.Value);Tracker.Reset();Checkpoint(J,TEXT("Tracking"),IO,true);
  }}ReleasePackages();if(Cancelled())return Fail(TEXT("Cancelled."));
@@ -291,15 +306,21 @@ static bool CBMPipelineActive=false,CBMPipelineDispatch=false,CBMPipelineCancel=
 bool UCubelessMocapLibrary::IsBusy(){check(IsInGameThread());return CBMExportActive||(CBMPipelineActive&&!CBMPipelineDispatch)||(CurrentJob&&!CurrentJob->Done.Load());}
 void UCubelessMocapLibrary::Cancel(){check(IsInGameThread());CBMPipelineCancel=true;if(CurrentJob&&!CurrentJob->Done.Load()){CurrentJob->Cancel.Store(true);FScopeLock L(&CurrentJob->Mutex);CurrentJob->Message=TEXT("Cancellation requested; waiting for the current native call to return.");}}
 FString UCubelessMocapLibrary::GetJobStatus(){check(IsInGameThread());if(!CurrentJob)return TEXT("Idle");auto J=CurrentJob;FScopeLock L(&J->Mutex);return (CBMPipelineStart>0?FString::Printf(TEXT("전체 처리 %.1f초 | "),(CBMPipelineEnd>0?CBMPipelineEnd:FPlatformTime::Seconds())-CBMPipelineStart):FString())+FString::Printf(TEXT("%s | %.0f%% | %.1fs | peak RAM %.0f MiB\n%s"),*J->Stage,J->Progress*100,(J->Finished>0?J->Finished:FPlatformTime::Seconds())-J->Start,J->PeakProcess/1048576.0,*J->Message);}
+FString UCubelessMocapLibrary::GetViewportRenderingState(){
+ check(IsInGameThread());auto O=MakeShared<FJsonObject>();TArray<TSharedPtr<FJsonValue>> Viewports;
+ if(GEditor)for(auto* V:GEditor->GetLevelViewportClients())if(V){auto R=MakeShared<FJsonObject>();R->SetBoolField(TEXT("realtime"),V->IsRealtime());R->SetBoolField(TEXT("has_override"),V->IsRealtimeOverrideSet());R->SetBoolField(TEXT("mocap_override"),V->HasRealtimeOverride(CBMLevelRealtimeReason()));R->SetStringField(TEXT("override_message"),V->GetRealtimeOverrideMessage().ToString());R->SetNumberField(TEXT("type"),int32(V->GetViewportType()));Viewports.Add(MakeShared<FJsonValueObject>(R));}
+ O->SetArrayField(TEXT("level_viewports"),Viewports);O->SetBoolField(TEXT("job_rendering_paused"),CurrentJob&&CurrentJob->LevelRenderingPaused);O->SetBoolField(TEXT("job_busy"),IsBusy());FString Text;auto Writer=TJsonWriterFactory<>::Create(&Text);FJsonSerializer::Serialize(O,Writer);return Text;
+}
 bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
  if(!IsInGameThread()||!S){Result=TEXT("Start on the Editor game thread.");return false;}if(IsBusy()){Result=TEXT("Another job is running.");return false;}if(GEditor&&GEditor->PlayWorld){Result=TEXT("End PIE/SIE first.");return false;}
  if(!S->TargetMesh||!S->Retargeter||!S->OutputFolder.StartsWith(TEXT("/Game/"))||!FPackageName::IsValidLongPackageName(S->OutputFolder)||S->FrameRate<1||S->FrameRate>120||!FMath::IsFinite(S->StartSeconds)||!FMath::IsFinite(S->DurationSeconds)||S->StartSeconds<0||S->DurationSeconds<=0||S->DurationSeconds>120){Result=TEXT("Invalid target, output folder, time range or FPS.");return false;}
  if(S->ImageLimbAlignment&&S->ImageAlignmentMode==ECBMImageAlignmentMode::Temporal){FString Python=S->HandFlowPython.FilePath;if(Python.IsEmpty())Python=FPaths::ConvertRelativePathToFull(IPluginManager::Get().FindPlugin(TEXT("CubelessBodyMocap"))->GetBaseDir()/TEXT("ThirdParty/HandFlow/venv/Scripts/python.exe"));if(!FPaths::FileExists(Python)){Result=TEXT("Temporal alignment requires HandFlow Python with NumPy/SciPy. Prepare it or select Legacy before starting.");return false;}}
- if(CurrentJob&&CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();
- auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Dir=S->FrameDirectory.Path;J->Video=S->Video.FilePath;J->FFmpeg=S->FFmpeg.FilePath;J->FPS=S->FrameRate;J->Duration=S->DurationSeconds;J->StartSeconds=S->StartSeconds;J->ImageLimbAlignment=S->ImageLimbAlignment;J->AlignmentMode=S->ImageAlignmentMode;J->AlignmentPython=S->HandFlowPython.FilePath;if(J->AlignmentPython.IsEmpty())J->AlignmentPython=FPaths::ConvertRelativePathToFull(IPluginManager::Get().FindPlugin(TEXT("CubelessBodyMocap"))->GetBaseDir()/TEXT("ThirdParty/HandFlow/venv/Scripts/python.exe"));J->SoleGrounding=S->SoleGrounding;J->FootLocking=S->FootLocking;J->RefineBody=S->RefineBody;J->Reuse=S->ReuseCheckpoints;J->DumpStages=CVarCBMDumpStages.GetValueOnGameThread()!=0;J->FusedCHMR=S->UseFusedCHMR&&UE::NNE::GetRuntime<INNERuntimeGPU>(TEXT("NNERuntimeORTDml")).IsValid()&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"));J->CompactSAM=J->FusedCHMR&&CVarCBMCompactSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"))&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"));J->OutputFolder=S->OutputFolder;J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;J->AutoHands=S->EnhanceHands;
+ if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();CBMSetLevelRenderingPaused(*CurrentJob,false);}
+ if(!CBMPipelineActive&&!CBMPipelineDispatch){CBMPipelineStart=0;CBMPipelineEnd=0;}
+ auto J=MakeShared<FCBMJob,ESPMode::ThreadSafe>();J->Run=FGuid::NewGuid().ToString(EGuidFormats::Digits);J->Dir=S->FrameDirectory.Path;J->Video=S->Video.FilePath;J->FFmpeg=S->FFmpeg.FilePath;J->FPS=S->FrameRate;J->Duration=S->DurationSeconds;J->StartSeconds=S->StartSeconds;J->ImageLimbAlignment=S->ImageLimbAlignment;J->AlignmentMode=S->ImageAlignmentMode;J->AlignmentPython=S->HandFlowPython.FilePath;if(J->AlignmentPython.IsEmpty())J->AlignmentPython=FPaths::ConvertRelativePathToFull(IPluginManager::Get().FindPlugin(TEXT("CubelessBodyMocap"))->GetBaseDir()/TEXT("ThirdParty/HandFlow/venv/Scripts/python.exe"));J->SoleGrounding=S->SoleGrounding;J->FootLocking=S->FootLocking;J->RefineBody=S->RefineBody;J->Reuse=S->ReuseCheckpoints;J->DumpStages=CVarCBMDumpStages.GetValueOnGameThread()!=0;J->FusedCHMR=S->UseFusedCHMR&&UE::NNE::GetRuntime<INNERuntimeGPU>(TEXT("NNERuntimeORTDml")).IsValid()&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/Models/Offline/chmr_backbone_fused"));J->CompactSAM=J->FusedCHMR&&CVarCBMCompactSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_image_encoder_compact"))&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_mask_decoder_compact"));J->FusedSAMAttention=J->CompactSAM&&CVarCBMFusedSAM.GetValueOnGameThread()!=0&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_memory_attention_fused"));J->AttentionQueryRows=!J->FusedSAMAttention&&J->CompactSAM&&CVarCBMSAMQueryRows.GetValueOnGameThread()==512&&FPackageName::DoesPackageExist(TEXT("/CubelessBodyMocap/SAM2/sam2_memory_attention_rows512"))?512:0;J->OutputFolder=S->OutputFolder;J->Target.Reset(S->TargetMesh);J->Retargeter.Reset(S->Retargeter);J->Settings=S;J->AutoHands=S->EnhanceHands;
  if(J->AutoHands&&!CBMConfigureAutoHands(J,S,Result))return false;
- CurrentJob=J;
- J->SampleTicker=FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([J](float){FScopeLock L(&J->Mutex);J->PeakProcess=FMath::Max(J->PeakProcess,FPlatformMemory::GetStats().UsedPhysical);return !J->Done.Load();}),.25f);
+ CurrentJob=J;if(S->PauseEditorRendering)CBMSetLevelRenderingPaused(*J,true);
+ J->SampleTicker=FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([J](float){{FScopeLock L(&J->Mutex);J->PeakProcess=FMath::Max(J->PeakProcess,FPlatformMemory::GetStats().UsedPhysical);}if(J->Done.Load()){CBMSetLevelRenderingPaused(*J,false);return false;}return true;}),.25f);
  IFileManager::Get().MakeDirectory(*(FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/J->Run),true);
  J->Worker=Async(EAsyncExecution::Thread,[J](){FString Message;bool OK=Solve(J,Message);
   if(OK&&J->AutoHands){
@@ -310,7 +331,7 @@ bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
  Result=TEXT("Started job ")+J->Run;return true;
 }
 
-void UCubelessMocapLibrary::ShutdownJobs(){check(IsInGameThread());check(!IsBusy());if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();FTSTicker::GetCoreTicker().RemoveTicker(CurrentJob->SampleTicker);}CurrentJob.Reset();}
+void UCubelessMocapLibrary::ShutdownJobs(){check(IsInGameThread());check(!IsBusy());if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();FTSTicker::GetCoreTicker().RemoveTicker(CurrentJob->SampleTicker);CBMSetLevelRenderingPaused(*CurrentJob,false);}if(GEditor)for(auto* Viewport:GEditor->GetLevelViewportClients())if(Viewport)Viewport->RemoveRealtimeOverride(CBMLevelRealtimeReason(),false);CurrentJob.Reset();}
 #include "CBMWorkflow.inl"
 
 UAnimSequence* UCubelessMocapLibrary::CreateSoleGroundedAnimation(UAnimSequence* Source,USkeletalMesh* Mesh,const FString& OutputFolder,FString& Result){

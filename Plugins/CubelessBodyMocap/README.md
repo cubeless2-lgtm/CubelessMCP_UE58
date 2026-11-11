@@ -605,3 +605,23 @@ v10 이후의 추가 탐색은 총10° 상한을 늘리지 않습니다. 일부 
 실행 폴더의 `TemporalAlignmentInput.json`, `TemporalAlignmentOutput.json`, `TemporalAlignment.log`와 `profile.json`에 방식, 체인별 수용 여부·오차·누락 프레임, 상체·골반 진단, 코드·입력 해시 및 계산 시간을 기록합니다. 기존 에셋은 자동 변경하지 않으며 새 모캡 결과를 프리뷰와 최종 시퀀스 저장에 동일하게 사용합니다.
 
 현재 시간축 방식의 검사는 전체 평균 오차와 최대 회전 변화 기준입니다. 일부 짧은 구간의 팔꿈치·무릎 방향은 기존 방식보다 나빠질 수 있어 기존 보완을 기본값으로 유지합니다. 취소·재시작·연속 실행 검증은 수행했지만, 게임 스레드 디스패치 변경의 독립적인 스레드·수명 코드 리뷰는 아직 완료되지 않았습니다.
+
+## 추적 메모리와 GPU 경합 점검 (2026-11-12)
+
+고속 모드에서 `sam2_memory_attention_rows512`가 있으면 SAM2의 4096개 query를 512개씩 나누어 계산합니다. 모든 key/value, 메모리 프레임, 객체 포인터, 원본 가중치와 FP32 정밀도를 유지합니다. `cbm.SAM2QueryRows 0`은 원본 attention 그래프로 돌아갑니다. 파생 모델이 없거나 고속 모드를 끄면 기존 모델을 사용합니다. 캐시는 attention 방식별로 분리합니다.
+
+모델 변환용 Python에 `onnx==1.23.2`를 준비한 뒤 다음 명령으로 생성합니다. 원본 모델과 기존 출력은 덮어쓰지 않으며 SHA256과 가중치 동일 여부를 provenance에 기록합니다.
+
+```powershell
+& $CBMModelPy "$CBMPlugin/Tools/prepare_sam_attention.py" --source "$CBMPlugin/Content/SAM2/sam2_memory_attention.uasset" --output "$CBMProject/Saved/CubelessBodyMocap/AttentionModels/sam2_memory_attention_rows512.onnx" --mode rows --query-rows 512
+```
+
+동일 프로젝트 에디터 Python에서 `exec((cbm_tools / 'import_sam_attention.py').read_text(encoding='utf-8-sig'))`로 가져옵니다. 기존 애셋은 보존합니다. 모델·ONNX·가상환경은 Git에 포함하지 않습니다.
+
+**추론 중 에디터 렌더링 일시정지**는 레벨 뷰포트와 결과를 기다리는 모캡 미리보기에 임시 realtime override를 적용합니다. 완료·실패·취소 시 자체 override만 제거하며 사용자의 기본 설정과 다른 시스템의 override를 보존합니다. 모델, 영상 해상도, FPS 또는 프레임 수를 줄이는 옵션이 아닙니다.
+
+프로파일에는 attention 방식, 프레임별 처리 시간의 중앙값·p95·최댓값, 단계별 시간과 렌더링 일시정지 여부를 기록합니다. `GetViewportRenderingState()` 진단은 현재 상태를 JSON으로 반환합니다. `cbm.SAM2FusedAttention 1`은 별도 준비한 fused FP32 모델의 실험 옵션이며 기본값은 0입니다. 속도 우위와 전체 최종 애니메이션 품질을 확인하지 않은 fused 모델을 기본 활성화하지 않습니다.
+
+450프레임·30fps의 실제 영상에서 rows512 결과를 원본 최종 Manny 애니메이션과 비교한 결과, 전신 123개 및 손가락 38개 트랙의 72,450개 로컬 변환에서 위치·회전·스케일 차이가 모두 0이었습니다. 같은 32프레임 비교에서 추적 중 샘플링한 전용 GPU 메모리 최댓값은 4382→3618MiB였습니다. 연산 시간 자체의 뚜렷한 개선은 확인되지 않았습니다. 과거 약 36분의 지연은 이후 같은 입력에서 재현되지 않아, 현재 약 3분의 추적 시간을 코드 변경만의 효과로 해석하면 안 됩니다.
+
+상세 측정과 남은 검증 범위는 `cubeless/studies/StandaloneBodyMocap/tracking-performance-20261112.md`를 참고하세요.

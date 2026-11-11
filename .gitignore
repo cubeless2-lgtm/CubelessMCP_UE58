@@ -111,3 +111,8 @@
 
 # Bundled local FFmpeg binary is restored from the pinned provenance.
 /Plugins/CubelessBodyMocap/ThirdParty/FFmpeg/Win64/*.exe
+
+# Standalone YouTube clipper sources; local binaries and videos stay ignored.
+!/Tools/
+/Tools/*
+!/Tools/YouTubeClipper/

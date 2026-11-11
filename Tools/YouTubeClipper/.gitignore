@@ -1,0 +1,9 @@
+# Publish reproducible source only; binaries, environments and clips stay local.
+/*
+!/.gitignore
+!/README.md
+!/source/
+/source/*
+!/source/youtube_clipper.py
+!/source/build.py
+!/source/requirements.txt

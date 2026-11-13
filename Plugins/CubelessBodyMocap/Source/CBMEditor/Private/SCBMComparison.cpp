@@ -1,4 +1,7 @@
 #include "SCBMComparison.h"
+#include "SCBMRangeSlider.h"
+#include "CBMClipRange.h"
+#include "Widgets/Layout/SSplitter.h"
 #include "SCBMDebugOverlay.h"
 #include "Widgets/SOverlay.h"
 #include "CubelessMocapSettings.h"
@@ -218,33 +221,43 @@ public:
  }
 };
 void SCBMComparison::Construct(const FArguments& Args){
- Settings=Args._Settings;Settings->PreviewHand=0;
+ Settings=Args._Settings;Settings->PreviewHand=0;ResultStart=Settings->StartSeconds;ResultDuration=Settings->DurationSeconds;
  Player.Reset(NewObject<UMediaPlayer>());Player->PlayOnOpen=false;Player->SetLooping(false);
  Texture.Reset(NewObject<UMediaTexture>());Texture->SetMediaPlayer(Player.Get());Texture->UpdateResource();
  Brush.SetResourceObject(Texture.Get());Brush.ImageSize=FVector2D(490,750);Brush.DrawAs=ESlateBrushDrawType::Image;
  ChildSlot[SNew(SVerticalBox)
-  +SVerticalBox::Slot().FillHeight(1)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
+  +SVerticalBox::Slot().FillHeight(1)[SAssignNew(VideoSplitter,SSplitter)
+   +SSplitter::Slot().Value(.5f)[SNew(SVerticalBox)
     +SVerticalBox::Slot().AutoHeight()[SNew(SHorizontalBox)
      +SHorizontalBox::Slot().FillWidth(1)[SNew(STextBlock).Text(FText::FromString(TEXT("원본 영상")))]
      +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text_Lambda([this](){return FText::FromString(Settings->DebugBones?TEXT("본 디버그 끄기"):TEXT("본 디버그 켜기"));}).ToolTipText(FText::FromString(TEXT("초록은 영상 검출, 자홍은 모델 추정 카메라의 원시 본, 청록은 오른쪽 3D 뷰에 실제 표시되는 본입니다. 수동 카메라 이동도 청록에 즉시 반영됩니다. 캐시만 사용하며 모캡 추론이나 에셋을 변경하지 않습니다."))).OnClicked_Lambda([this](){Settings->DebugBones=!Settings->DebugBones;return FReply::Handled();})]]
     +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).AutoWrapText(true).Visibility_Lambda([this](){return Settings->DebugBones?EVisibility::Visible:EVisibility::Collapsed;}).Text_Lambda([this](){return FText::FromString(DebugOverlay?DebugOverlay->Status:FString());})]
     +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SNew(SOverlay)+SOverlay::Slot()[SNew(SImage).Image(&Brush)]+SOverlay::Slot()[SAssignNew(DebugOverlay,SCBMDebugOverlay).Visibility(EVisibility::HitTestInvisible).Clipping(EWidgetClipping::ClipToBounds)]]]]]
-   +SHorizontalBox::Slot().FillWidth(1).Padding(4)[SNew(SVerticalBox)
-    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){FString Label=TEXT("선택된 결과");
-     if(Settings->PreviewAnimation==Settings->CorrectedHandAnimation&&Settings->PreviewAnimation)Label=TEXT("HandFlow + 본 보정");
-     else if(Settings->PreviewAnimation==Settings->CorrectedBodyAnimation&&Settings->PreviewAnimation)Label=TEXT("전신 + 본 보정");
+   +SSplitter::Slot().Value(.5f)[SNew(SVerticalBox)
+    +SVerticalBox::Slot().AutoHeight()[SNew(STextBlock).Text_Lambda([this](){if(ReviewSource)return FText::FromString(TEXT("언리얼 애니메이션 - 원본 구간 선택 중"));if(!Settings->PreviewAnimation)return FText::FromString(TEXT("언리얼 애니메이션 - 계산 전"));FString Label=TEXT("선택된 결과");
+     if(Settings->PreviewAnimation==Settings->CorrectedHandAnimation&&Settings->PreviewAnimation)Label=TEXT("HandFlow + 손가락 보정");
+     else if(Settings->PreviewAnimation==Settings->CorrectedBodyAnimation&&Settings->PreviewAnimation)Label=TEXT("전신 + 손가락 보정");
      else if(Settings->PreviewAnimation==Settings->HandFlowAnimation&&Settings->PreviewAnimation)Label=TEXT("HandFlow");
      else if(Settings->PreviewAnimation==Settings->OriginalAnimation&&Settings->PreviewAnimation)Label=TEXT("전신 원본");
      return FText::FromString(TEXT("언리얼 애니메이션 - ")+Label);}).ToolTipText_Lambda([this](){return FText::FromString(Settings->PreviewAnimation?Settings->PreviewAnimation->GetPathName():TEXT("No animation selected"));})]
     +SVerticalBox::Slot().FillHeight(1)[SNew(SScaleBox).Stretch(EStretch::ScaleToFit)[SNew(SBox).WidthOverride_Lambda([this](){return 750*Aspect;}).HeightOverride(750)[SAssignNew(View,SCBMAnimationViewport)]]]]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("영상 열기"))).OnClicked(this,&SCBMComparison::Load)]
-   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text_Lambda([this](){return FText::FromString(Player->IsPlaying()?TEXT("일시 정지"):TEXT("재생"));}).IsEnabled_Lambda([this](){return Player->IsReady()&&Settings->PreviewAnimation!=nullptr&&!Waiting;}).OnClicked_Lambda([this](){if(Player->IsPlaying()){Player->Pause();PlayAfterSeek=false;}else{if(Clock.Position>=Length-.02)Seek(0);if(Clock.Pending)PlayAfterSeek=true;else Player->SetRate(Settings->PreviewPlayRate);}return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("정지"))).OnClicked_Lambda([this](){Player->Pause();PlayAfterSeek=false;Seek(0);return FReply::Handled();})]
-   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("재생 속도")))]
-   +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(80)[SNew(SSpinBox<float>).MinValue(.1f).MaxValue(4.f).Delta(.05f).ToolTipText(FText::FromString(TEXT("영상과 애니메이션을 함께 재생하는 속도입니다. 저장 플레이 레이트에는 영향을 주지 않습니다. 디코더가 지원하지 않는 속도는 적용하지 않습니다."))).Value_Lambda([this](){return Settings->PreviewPlayRate;}).OnValueChanged_Lambda([this](float V){if(Player->IsReady()&&!Player->SupportsRate(V,false)){Notice=TEXT("영상 디코더가 지원하지 않는 재생 속도입니다.");return;}Settings->PreviewPlayRate=V;if(Player->IsPlaying())Player->SetRate(V);})]]
-   +SHorizontalBox::Slot().FillWidth(1).Padding(8,0)[SNew(SSlider).ToolTipText(FText::FromString(TEXT("드래그하는 동안 영상과 애니메이션의 시점을 함께 이동합니다."))).PreventThrottling(true).IsEnabled_Lambda([this](){return Player->IsReady()&&Length>0;}).Value_Lambda([this](){return Length>0?Clock.Position/Length:0.f;}).OnMouseCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnMouseCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnControllerCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnControllerCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnValueChanged_Lambda([this](float V){Player->Pause();PlayAfterSeek=false;Seek(V*Length);})]]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text_Lambda([this](){return FText::FromString(Player->IsPlaying()?TEXT("일시 정지"):TEXT("재생"));}).IsEnabled_Lambda([this](){return Player->IsReady()&&!Waiting&&!InferenceRenderingSuspended&&OpenedFile==Settings->Video.FilePath;}).OnClicked_Lambda([this](){FString M;Control(Player->IsPlaying()?TEXT("pause"):TEXT("play"),0,M);return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString(TEXT("정지"))).OnClicked_Lambda([this](){FString M;Control(TEXT("stop"),0,M);return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("◀ 1f"))).ToolTipText(FText::FromString(TEXT("원본 영상 FPS 기준 이전 프레임으로 탐색합니다. 디코더 seek 후 표시됩니다."))).IsEnabled_Lambda([this](){return Player->IsReady()&&!UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){StepFrame(-1);return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("1f ▶"))).ToolTipText(FText::FromString(TEXT("원본 영상 FPS 기준 다음 프레임으로 탐색합니다."))).IsEnabled_Lambda([this](){return Player->IsReady()&&!UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){StepFrame(1);return FReply::Handled();})]
+   +SHorizontalBox::Slot().FillWidth(1).Padding(8,0)[SNew(SSlider).ToolTipText(FText::FromString(TEXT("영상과 표시 결과의 시점을 이동합니다. 원본 전체 모드에서 계산 구간을 선택하세요."))).PreventThrottling(true).IsEnabled_Lambda([this](){return Player->IsReady()&&Length>0&&!UCubelessMocapLibrary::IsBusy();}).Value_Lambda([this](){return Length>0?Clock.Position/Length:0.f;}).OnMouseCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnMouseCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnControllerCaptureBegin_Lambda([this](){Player->Pause();PlayAfterSeek=false;Clock.Scrubbing=true;}).OnControllerCaptureEnd_Lambda([this](){Clock.Scrubbing=false;Seek(Clock.Position);}).OnValueChanged_Lambda([this](float V){Player->Pause();PlayAfterSeek=false;Seek(V*Length);})]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(STextBlock).Text(FText::FromString(TEXT("재생 속도 ")))]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(64)[SNew(SSpinBox<float>).MinValue(.1f).MaxValue(4.f).Delta(.05f).ToolTipText(FText::FromString(TEXT("미리보기 영상/애니메이션의 재생 속도입니다. 내보내기 RateScale과 별개입니다."))).Value_Lambda([this](){return Settings->PreviewPlayRate;}).OnValueChanged_Lambda([this](float V){FString M;Control(TEXT("rate"),V,M);})]]]
+  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SCBMRangeSlider).ToolTipText(FText::FromString(TEXT("양쪽 파란 핸들로 계산할 시작/끝을 지정합니다. 끝은 제외 경계이며 최대 120초입니다. 분석 FPS 격자에 맞춥니다."))).IsEnabled_Lambda([this](){return CanEditRange();}).Duration_Lambda([this](){return SourceDuration();}).Start_Lambda([this](){return double(Settings->StartSeconds);}).End_Lambda([this](){return double(Settings->StartSeconds+Settings->DurationSeconds);}).OnChanged_Lambda([this](double A,double B){SetRange(A,B);})]
+  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text_Lambda([this](){return FText::FromString(ReviewSource?(Settings->PreviewAnimation?TEXT("결과 구간 보기"):TEXT("선택 구간 미리보기")):TEXT("원본 전체 / 구간 선택"));}).IsEnabled_Lambda([this](){return Player->IsReady()&&!UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){if(ReviewSource)ShowResult();else ReviewVideo();return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("시작 ")))]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(85)[SNew(SSpinBox<double>).MinValue(0).Delta(.1).Value_Lambda([this](){return double(Settings->StartSeconds);}).IsEnabled_Lambda([this](){return CanEditRange();}).OnValueCommitted_Lambda([this](double V,ETextCommit::Type){SetRange(V,Settings->StartSeconds+Settings->DurationSeconds);})]]
+   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString(TEXT("현재를 시작"))).IsEnabled_Lambda([this](){return CanEditRange();}).OnClicked_Lambda([this](){SetRange(PlaybackStart+Clock.Position,Settings->StartSeconds+Settings->DurationSeconds);return FReply::Handled();})]
+   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(STextBlock).Text(FText::FromString(TEXT("끝 ")))]
+   +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(85)[SNew(SSpinBox<double>).MinValue(0).Delta(.1).Value_Lambda([this](){return double(Settings->StartSeconds+Settings->DurationSeconds);}).IsEnabled_Lambda([this](){return CanEditRange();}).OnValueCommitted_Lambda([this](double V,ETextCommit::Type){SetRange(Settings->StartSeconds,V);})]]
+   +SHorizontalBox::Slot().AutoWidth().Padding(4,0)[SNew(SButton).Text(FText::FromString(TEXT("현재까지 포함"))).IsEnabled_Lambda([this](){return CanEditRange();}).OnClicked_Lambda([this](){SetRange(Settings->StartSeconds,PlaybackStart+Clock.Position+1./FMath::Max(Settings->FrameRate,1));return FReply::Handled();})]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(SHorizontalBox)
    +SHorizontalBox::Slot().AutoWidth()[SNew(SButton).Text(FText::FromString(TEXT("카메라 초기화"))).OnClicked_Lambda([this](){Settings->PreviewHand=0;Settings->PreviewYawOffset=0;Settings->PreviewZoom=1;View->NeedsFit=true;return FReply::Handled();})]
    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("카메라 방향")))]
@@ -252,25 +265,25 @@ void SCBMComparison::Construct(const FArguments& Args){
    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("확대")))]
    +SHorizontalBox::Slot().FillWidth(1)[SNew(SSpinBox<float>).ToolTipText(FText::FromString(TEXT("비교 뷰를 확대하거나 축소합니다."))).MinValue(.5f).MaxValue(2.f).Delta(.05f).Value_Lambda([this](){return Settings->PreviewZoom;}).OnValueChanged_Lambda([this](float V){Settings->PreviewZoom=V;})]]
   +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).ToolTipText(FText::FromString(TEXT("가로 FOV = 2 × atan(영상 폭 / (2 × 초점거리))입니다. 첫 프레임에서 모델이 추정한 초점거리를 사용하며 실제 렌즈 정보가 아닙니다. 확대 조절은 표시 FOV만 바꿉니다."))).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("카메라: %s | 가로 FOV %.2f°"),*View->CameraMode(),View->Camera->ViewFOV));})]
-  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("%.2f / %.2f s  |  %s"),Clock.Position,Length,*Notice));})]];
+  +SVerticalBox::Slot().AutoHeight().Padding(4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){return FText::FromString(FString::Printf(TEXT("원본 %.3fs · %df / %.2ffps  |  구간 %.2f / %.2fs\n%s"),PlaybackStart+Clock.Position,FMath::RoundToInt((PlaybackStart+Clock.Position)*SourceFPS()),SourceFPS(),Clock.Position,Length,*Notice));})]];
 }
 SCBMComparison::~SCBMComparison(){if(InferenceRenderingSuspended&&View.IsValid()&&View->Camera.IsValid())View->Camera->RemoveRealtimeOverride(CBMPreviewRealtimeReason(),false);Player->Close();Brush.SetResourceObject(nullptr);}
 void SCBMComparison::UpdateDebugProjection(double Time,bool Synchronized){
- ViewPoints=Settings->DebugBones?View->ProjectVisibleBones():TArray<FVector3f>();
- DebugOverlay->Update(Settings->DebugBones,Settings->PreviewAnimation,Settings->Video.FilePath,Settings->StartSeconds,Time,Synchronized,ViewPoints,View->CameraMode());
+ ViewPoints=Settings->DebugBones&&!ReviewSource?View->ProjectVisibleBones():TArray<FVector3f>();
+ DebugOverlay->Update(Settings->DebugBones&&!ReviewSource,Settings->PreviewAnimation,Settings->Video.FilePath,PlaybackStart,Time,Synchronized,ViewPoints,View->CameraMode());
 }
 bool SCBMComparison::PrepareScreenshot(){
  if(!View||!View->Camera||!View->Camera->Viewport)return false;
  // Slate screenshot painting alone can reuse the previous viewport texture
  // when the editor is background-throttled. Evaluate and draw the requested
  // pose/camera explicitly before reading pixels for comparison evidence.
- const double Time=Player->IsReady()&&!Clock.Scrubbing&&!Clock.Pending?FMath::Clamp(Player->GetTime().GetTotalSeconds()-Settings->StartSeconds,0.,Length):Clock.Position;
- View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Time);
+ const double Time=Player->IsReady()&&!Clock.Scrubbing&&!Clock.Pending?FMath::Clamp(Player->GetTime().GetTotalSeconds()-PlaybackStart,0.,Length):Clock.Position;
+ View->Pose(Settings->TargetMesh,DisplayAnimation(),Time);
  View->Frame(Aspect,Settings->PreviewYawOffset,Settings->PreviewZoom,Settings->PreviewHand,Settings->MatchVideoCamera);
  UpdateDebugProjection(Time,!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
  View->Camera->Viewport->Draw();FlushRenderingCommands();
  auto C=StaticCastSharedPtr<FCBMPreviewViewportClient>(View->Camera);auto O=MakeShared<FJsonObject>();
- O->SetBoolField(TEXT("inference_rendering_suspended"),InferenceRenderingSuspended);O->SetBoolField(TEXT("preview_realtime"),View->Camera->IsRealtime());O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
+ O->SetBoolField(TEXT("review_source"),ReviewSource);O->SetNumberField(TEXT("playback_start"),PlaybackStart);O->SetNumberField(TEXT("selection_start"),Settings->StartSeconds);O->SetNumberField(TEXT("selection_end_exclusive"),Settings->StartSeconds+Settings->DurationSeconds);O->SetBoolField(TEXT("media_playing"),Player->IsPlaying());O->SetNumberField(TEXT("source_fps"),SourceFPS());O->SetBoolField(TEXT("inference_rendering_suspended"),InferenceRenderingSuspended);O->SetBoolField(TEXT("preview_realtime"),View->Camera->IsRealtime());O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
  O->SetNumberField(TEXT("media_seconds"),Player->GetTime().GetTotalSeconds());O->SetBoolField(TEXT("scrubbing"),Clock.Scrubbing);O->SetBoolField(TEXT("seek_pending"),Clock.Pending);
  O->SetNumberField(TEXT("aa_method"),C->LastAA);O->SetNumberField(TEXT("gi_method"),C->LastGI);O->SetNumberField(TEXT("reflection_method"),C->LastReflection);
  O->SetBoolField(TEXT("video_camera_matched"),View->UsingVideoCamera);O->SetBoolField(TEXT("exact_video_camera"),View->IsExactCamera());const FVector CL=View->Camera->GetViewLocation();O->SetNumberField(TEXT("camera_x"),CL.X);O->SetNumberField(TEXT("camera_y"),CL.Y);O->SetNumberField(TEXT("camera_z"),CL.Z);O->SetBoolField(TEXT("video_framing_available"),View->FramingAvailable);O->SetNumberField(TEXT("camera_pitch_radians"),View->VideoPitch);O->SetNumberField(TEXT("camera_roll_radians"),View->VideoRoll);O->SetNumberField(TEXT("horizontal_fov_degrees"),View->Camera->ViewFOV);
@@ -285,15 +298,22 @@ bool SCBMComparison::PrepareScreenshot(){
  return true;
 }
 FReply SCBMComparison::Load(){
+ if(!OpenedFile.IsEmpty()&&OpenedFile!=Settings->Video.FilePath){Settings->PreviewAnimation=nullptr;Settings->OriginalAnimation=nullptr;Settings->HandFlowAnimation=nullptr;Settings->CorrectedBodyAnimation=nullptr;Settings->CorrectedHandAnimation=nullptr;Settings->ExportedSequence=nullptr;}
+ ReviewSource=!UCubelessMocapLibrary::IsBusy()&&!Settings->PreviewAnimation;
+ if(!ReviewSource){ResultStart=Settings->StartSeconds;ResultDuration=Settings->DurationSeconds;}
+ PlaybackStart=ReviewSource?0.:ResultStart;
  Player->Close();OpenedFile=Settings->Video.FilePath;Clock.Reset();Length=0;PlayAfterSeek=false;
  View->NeedsFit=true;
  Waiting=Player->OpenFile(OpenedFile);Notice=Waiting?TEXT("Opening video..."):TEXT("Cannot open video");
  return FReply::Handled();
 }
-void SCBMComparison::Seek(double Time){
- if(!Player->IsReady())return;
- Clock.Request(Time,Length);if(!Player->Seek(FTimespan::FromSeconds(Settings->StartSeconds+Clock.Position))){Clock.Pending=false;Notice=TEXT("Video seek unavailable");}
- View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Clock.Position);
+bool SCBMComparison::Seek(double Time){
+ if(!Player->IsReady())return false;
+ const double F=SourceFPS();Time=FMath::RoundToDouble((PlaybackStart+Time)*F)/F-PlaybackStart;
+ Clock.Request(Time,Length);SeekTarget=PlaybackStart+Clock.Position;SeekBegan=FPlatformTime::Seconds();SeekRetries=0;SeekFailed=false;SeekExact=false;SeekError=0;
+ if(!Player->Seek(FTimespan::FromSeconds(SeekTarget))){Clock.Pending=false;SeekFailed=true;Notice=TEXT("Video seek unavailable");}
+ View->Pose(Settings->TargetMesh,DisplayAnimation(),Clock.Position);
+ return !SeekFailed;
 }
 void SCBMComparison::Tick(const FGeometry& G,double T,float D){
  SCompoundWidget::Tick(G,T,D);
@@ -304,13 +324,24 @@ void SCBMComparison::Tick(const FGeometry& G,double T,float D){
   Seek(0);
  }
  if(Player->IsReady()){
-  Length=FMath::Min(double(Settings->DurationSeconds),FMath::Max(0.,Player->GetDuration().GetTotalSeconds()-Settings->StartSeconds));
-  if(Settings->PreviewAnimation)Length=FMath::Min(Length,double(Settings->PreviewAnimation->GetPlayLength()));
+  Length=ReviewSource?SourceDuration():FMath::Min(ResultDuration,FMath::Max(0.,SourceDuration()-PlaybackStart));
+  if(DisplayAnimation())Length=FMath::Min(Length,double(DisplayAnimation()->GetPlayLength()));
   const float MediaFPS=Player->GetVideoTrackFrameRate(INDEX_NONE,INDEX_NONE);
-  Clock.Advance(Player->GetTime().GetTotalSeconds()-Settings->StartSeconds,Length,1./(MediaFPS>0?MediaFPS:FMath::Max(Settings->FrameRate,1)),D*Settings->PreviewPlayRate,Player->IsPlaying());
+  const double Frame=1./(MediaFPS>0?MediaFPS:FMath::Max(Settings->FrameRate,1));const bool WasPending=Clock.Pending;
+  Clock.Advance(Player->GetTime().GetTotalSeconds()-PlaybackStart,Length,Frame,D*Settings->PreviewPlayRate,Player->IsPlaying());
+  if(WasPending&&!Clock.Pending){SeekError=Player->GetTime().GetTotalSeconds()-SeekTarget;SeekExact=true;}
+  if(Clock.Pending&&!Clock.Scrubbing&&!Player->IsPlaying()&&!UCubelessMocapLibrary::IsBusy()){
+   const double Elapsed=FPlatformTime::Seconds()-SeekBegan,Actual=Player->GetTime().GetTotalSeconds();
+   // Some decoders expose their first sample at +1/+2 frames. Only at the
+   // source start, acknowledge that actual sample explicitly (never as exact).
+   const bool FirstSample=Elapsed>=1.5&&SeekTarget<Frame*.5&&Actual>=0&&Actual<=Frame*2.1;
+   if(FirstSample||Elapsed>=3){Clock.Pending=false;Clock.Observe(Actual-PlaybackStart,Length,Frame*.5);SeekError=Actual-SeekTarget;SeekExact=false;SeekFailed=!FirstSample;if(SeekFailed)PlayAfterSeek=false;}
+  }
   if(PlayAfterSeek&&!Clock.Pending&&!Clock.Scrubbing){PlayAfterSeek=false;Player->SetRate(Settings->PreviewPlayRate);}
-  if(Player->IsPlaying()&&Player->GetTime().GetTotalSeconds()-Settings->StartSeconds>=Length-.001)Player->Pause();
-  Notice=Settings->PreviewAnimation?TEXT("영상과 동기화됩니다. 저장 옵션으로 비교 결과를 전환하세요."):TEXT("모캡 완료 후 결과가 표시됩니다.");
+  if(Player->IsPlaying()&&Player->GetTime().GetTotalSeconds()-PlaybackStart>=Length-.001)Player->Pause();
+  Notice=ReviewSource?(Settings->FrameDirectory.Path.IsEmpty()?TEXT("원본 전체를 확인하며 파란 핸들로 계산 구간을 선택하세요."):TEXT("기존 프레임 폴더가 지정되어 구간 편집이 잠겼습니다. 영상 구간을 선택하려면 고급 설정에서 비우세요.")):(Settings->PreviewAnimation?TEXT("계산한 구간과 선택 결과를 동기화합니다. 위 결과 선택기로 비교하세요."):TEXT("선택한 원본 구간을 검토합니다. 모캡을 실행하면 3D 결과가 표시됩니다."));
+  if(SeekFailed)Notice=TEXT("영상 탐색을 완료하지 못했습니다. 실제 디코더 시각을 표시합니다. 다시 탐색하세요.");
+  else if(!SeekExact&&!Clock.Pending&&FMath::Abs(SeekError)>Frame*.5)Notice=FString::Printf(TEXT("디코더의 첫 표시 프레임으로 이동했습니다. 요청과 차이 %.3f초입니다."),SeekError);
  }
  const bool SuspendRendering=Settings->PauseEditorRendering&&UCubelessMocapLibrary::IsBusy()&&!Settings->PreviewAnimation;
  if(SuspendRendering){
@@ -322,7 +353,73 @@ void SCBMComparison::Tick(const FGeometry& G,double T,float D){
   Player->Pause();Notice=TEXT("Preview animation skeleton does not match target mesh");return;
  }
  if(Player->IsReady()&&OpenedFile!=Settings->Video.FilePath){Player->Pause();Notice=TEXT("Video changed: click Load comparison before playback");}
- View->Pose(Settings->TargetMesh,Settings->PreviewAnimation,Clock.Position);
+ View->Pose(Settings->TargetMesh,DisplayAnimation(),Clock.Position);
  View->Frame(Aspect,Settings->PreviewYawOffset,Settings->PreviewZoom,Settings->PreviewHand,Settings->MatchVideoCamera);
  UpdateDebugProjection(Clock.Position,Player->IsReady()&&!Clock.Pending&&!Clock.Scrubbing&&OpenedFile==Settings->Video.FilePath);
+}
+
+double SCBMComparison::SourceDuration()const{return Player->IsReady()?FMath::Max(0.,Player->GetDuration().GetTotalSeconds()):0.;}
+double SCBMComparison::SourceFPS()const{const float F=Player->GetVideoTrackFrameRate(INDEX_NONE,INDEX_NONE);return F>0?F:double(FMath::Max(Settings->FrameRate,1));}
+UAnimSequence* SCBMComparison::DisplayAnimation()const{return ReviewSource?nullptr:Settings->PreviewAnimation.Get();}
+bool SCBMComparison::CanEditRange()const{return ReviewSource&&Settings->FrameDirectory.Path.IsEmpty()&&Player->IsReady()&&OpenedFile==Settings->Video.FilePath&&!UCubelessMocapLibrary::IsBusy()&&FCBMClipRange::Normalize(0,SourceDuration(),0,SourceDuration(),Settings->FrameRate).Y>0;}
+void SCBMComparison::OpenSourceVideo(){if(OpenedFile!=Settings->Video.FilePath||!Player->IsReady())Load();Player->Pause();PlayAfterSeek=false;ReviewSource=true;PlaybackStart=0;Length=SourceDuration();Seek(0);}
+bool SCBMComparison::ReviewVideo(){Player->Pause();PlayAfterSeek=false;const double Absolute=PlaybackStart+Clock.Position;ReviewSource=true;PlaybackStart=0;Length=SourceDuration();return Seek(Absolute);}
+bool SCBMComparison::ShowResult(bool PreserveTime){if(!Player->IsReady())return false;const bool WasSource=ReviewSource;const double Absolute=PlaybackStart+Clock.Position;if(!Settings->OriginalAnimation&&!Settings->HandFlowAnimation){ResultStart=Settings->StartSeconds;ResultDuration=Settings->DurationSeconds;}Player->Pause();PlayAfterSeek=false;ReviewSource=false;PlaybackStart=ResultStart;Length=FMath::Min(ResultDuration,FMath::Max(0.,SourceDuration()-PlaybackStart));if(DisplayAnimation())Length=FMath::Min(Length,double(DisplayAnimation()->GetPlayLength()));if(PreserveTime&&!WasSource&&Clock.Position<=Length){View->Pose(Settings->TargetMesh,DisplayAnimation(),Clock.Position);return true;}return Seek(PreserveTime?Absolute-PlaybackStart:0);}
+bool SCBMComparison::StepFrame(int32 Direction){Player->Pause();PlayAfterSeek=false;const double F=SourceFPS();return Seek((FMath::RoundToDouble((PlaybackStart+Clock.Position)*F)+Direction)/F-PlaybackStart);}
+void SCBMComparison::SetRange(double A,double B){
+ if(!CanEditRange()||!FMath::IsFinite(A)||!FMath::IsFinite(B))return;
+ const FVector2D Bounds=FCBMClipRange::Normalize(A,B,Settings->StartSeconds,SourceDuration(),Settings->FrameRate);
+ Settings->StartSeconds=Bounds.X;Settings->DurationSeconds=Bounds.Y-Bounds.X;
+}
+
+bool SCBMComparison::Control(const FString& Action,double Value,FString& Message){
+ if(!FMath::IsFinite(Value)){Message=TEXT("nonfinite_value");return false;}
+ if(UCubelessMocapLibrary::IsBusy()&&Action!=TEXT("pause")){Message=TEXT("busy");return false;}
+ if(Action==TEXT("rate")){
+  if(Value<.1||Value>4||(Player->IsReady()&&!Player->SupportsRate(Value,false))){Message=TEXT("unsupported_preview_rate");return false;}
+  if(Player->IsPlaying()&&!Player->SetRate(Value)){Message=TEXT("playback_rate_rejected");return false;}Settings->PreviewPlayRate=Value;Message=TEXT("preview_rate_set");return true;
+ }
+ if(!Player->IsReady()||Waiting||OpenedFile!=Settings->Video.FilePath){Message=TEXT("media_not_ready_or_video_changed");return false;}
+ bool Applied=true;
+ if(Action==TEXT("source"))Applied=ReviewVideo();
+ else if(Action==TEXT("result"))Applied=ShowResult();
+ else if(Action==TEXT("pause")){Player->Pause();PlayAfterSeek=false;}
+ else if(Action==TEXT("stop")){Player->Pause();PlayAfterSeek=false;Applied=Seek(0);}
+ else if(Action==TEXT("play")){
+  if(InferenceRenderingSuspended){Message=TEXT("inference_rendering_suspended");return false;}
+  if(Clock.Position>=Length-.02&&!Seek(0)){Message=TEXT("seek_rejected");return false;}
+  if(Clock.Pending)PlayAfterSeek=true;
+  else if(!Player->SetRate(Settings->PreviewPlayRate)){Message=TEXT("playback_rate_rejected");return false;}
+ }
+ else if(Action==TEXT("seek")){Player->Pause();PlayAfterSeek=false;Applied=Seek(Value-PlaybackStart);}
+ else if(Action==TEXT("step")){
+  if(Value!=FMath::RoundToDouble(Value)||FMath::Abs(Value)>10000){Message=TEXT("step_requires_integer_frames_up_to_10000");return false;}
+  Applied=StepFrame(int32(Value));
+ }else{Message=TEXT("unknown_action: source,result,play,pause,stop,seek,step,rate");return false;}
+ Message=!Applied?TEXT("seek_rejected"):Clock.Pending?TEXT("seek_accepted; poll seek_pending and seek_failed"):TEXT("applied");return Applied;
+}
+bool SCBMComparison::EditRange(double A,double B,FString& Message){
+ if(!FMath::IsFinite(A)||!FMath::IsFinite(B)||B<=A){Message=TEXT("range_requires_finite_start_before_exclusive_end");return false;}
+ if(!Player->IsReady()||Waiting||OpenedFile!=Settings->Video.FilePath||UCubelessMocapLibrary::IsBusy()||!Settings->FrameDirectory.Path.IsEmpty()){
+  Message=TEXT("range_unavailable: media_not_ready,video_changed,busy,or_frame_directory");return false;
+ }
+ if(FCBMClipRange::Normalize(0,SourceDuration(),0,SourceDuration(),Settings->FrameRate).Y<=0){Message=TEXT("source_too_short");return false;}
+ if(!ReviewSource)ReviewVideo();
+ if(!CanEditRange()){Message=TEXT("source_too_short");return false;}
+ SetRange(A,B);Message=TEXT("range_set; see normalized state bounds");return true;
+}
+void SCBMComparison::SetVideoFraction(float Value){VideoSplitter->SlotAt(0).SetSizeValue(Value);VideoSplitter->SlotAt(1).SetSizeValue(1-Value);}
+TSharedRef<FJsonObject> SCBMComparison::ReadState()const{
+ auto O=MakeShared<FJsonObject>();const bool Ready=Player->IsReady();
+ const double Time=Ready&&!Clock.Scrubbing&&!Clock.Pending?FMath::Clamp(Player->GetTime().GetTotalSeconds()-PlaybackStart,0.,Length):Clock.Position;
+ O->SetBoolField(TEXT("media_ready"),Ready&&!Waiting&&OpenedFile==Settings->Video.FilePath);O->SetBoolField(TEXT("media_error"),Player->HasError());
+ O->SetBoolField(TEXT("review_source"),ReviewSource);O->SetBoolField(TEXT("media_playing"),Player->IsPlaying());O->SetBoolField(TEXT("seek_pending"),Clock.Pending);O->SetBoolField(TEXT("scrubbing"),Clock.Scrubbing);
+ O->SetBoolField(TEXT("seek_failed"),SeekFailed);O->SetBoolField(TEXT("seek_exact"),SeekExact);O->SetNumberField(TEXT("seek_error_seconds"),SeekError);O->SetNumberField(TEXT("seek_retry_count"),SeekRetries);O->SetBoolField(TEXT("play_after_seek"),PlayAfterSeek);O->SetNumberField(TEXT("media_rate"),Player->GetRate());
+ O->SetNumberField(TEXT("source_duration"),SourceDuration());O->SetNumberField(TEXT("source_fps"),SourceFPS());O->SetNumberField(TEXT("playback_start"),PlaybackStart);O->SetNumberField(TEXT("playback_length"),Length);
+ O->SetNumberField(TEXT("preview_seconds"),Time);O->SetNumberField(TEXT("media_seconds"),Player->GetTime().GetTotalSeconds());O->SetNumberField(TEXT("requested_source_seconds"),SeekTarget);O->SetNumberField(TEXT("result_start"),ResultStart);O->SetNumberField(TEXT("result_duration"),ResultDuration);
+ O->SetNumberField(TEXT("source_frame"),FMath::RoundToInt64((PlaybackStart+Time)*SourceFPS()));
+ O->SetNumberField(TEXT("evaluated_animation_seconds"),View->Mesh->GetSingleNodeInstance()?View->Mesh->GetSingleNodeInstance()->GetCurrentTime():-1.);
+ O->SetNumberField(TEXT("selection_start"),Settings->StartSeconds);O->SetNumberField(TEXT("selection_end_exclusive"),Settings->StartSeconds+Settings->DurationSeconds);
+ O->SetBoolField(TEXT("range_editable"),CanEditRange());O->SetBoolField(TEXT("inference_rendering_suspended"),InferenceRenderingSuspended);
+ O->SetNumberField(TEXT("video_fraction"),VideoSplitter->SlotAt(0).GetSizeValue());O->SetStringField(TEXT("notice"),Notice);return O;
 }

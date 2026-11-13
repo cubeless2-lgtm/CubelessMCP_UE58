@@ -1,5 +1,6 @@
 #include "Modules/ModuleManager.h"
 #include "CubelessMocapSettings.h"
+#include "CubelessMocapWindowLibrary.h"
 #include "UObject/CoreRedirects.h"
 #include "UObject/StrongObjectPtr.h"
 #include "ToolMenus.h"
@@ -20,12 +21,57 @@
 #include "ImageUtils.h"
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
+#include "DesktopPlatformModule.h"
+#include "IDesktopPlatform.h"
+#include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SExpandableArea.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Notifications/SProgressBar.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "Styling/AppStyle.h"
+#include "Editor.h"
+#include "Subsystems/AssetEditorSubsystem.h"
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Animation/AnimSequence.h"
 class FCubelessMocapModule : public IModuleInterface {
+ friend class UCubelessMocapWindowLibrary;
  TStrongObjectPtr<UCubelessMocapSettings> Settings;
  FDelegateHandle CanCloseHandle;TWeakPtr<SWindow> ExistingWindow;
  TWeakPtr<SCBMComparison> Comparison;
+ TWeakPtr<SSplitter> LayoutSplitter;
  FString SaveNotice;
 public:
+ UCubelessMocapSettings* GetWindowSettings();
+ bool SetVideo(const FString& Path,FString& Message);
+ TSharedRef<FJsonObject> ReadWindowState()const;
+ FString Reply(const FString& Action,bool Success,const FString& Message)const;
+ FString ChangeLayout(float PreviewFraction,float VideoFraction,FVector2D Size);
+ FString CloseWindow();
+ FText ResultLabel()const{return FText::FromString(Settings->SaveHandFlow?(Settings->SaveBoneCorrection?TEXT("HandFlow + 손가락 보정"):TEXT("HandFlow")):(Settings->SaveBoneCorrection?TEXT("전신 + 손가락 보정"):TEXT("전신 원본")));}
+ bool SelectResult(bool Hands,bool Correct,FString* Message=nullptr){
+  if(UCubelessMocapLibrary::IsBusy()||!Settings.IsValid()||!(Hands?Settings->HandFlowAnimation:Settings->OriginalAnimation)){if(Message)*Message=TEXT("busy_or_source_missing");return false;}Settings->SaveHandFlow=Hands;Settings->SaveBoneCorrection=Correct;
+  Settings->PreviewAnimation=UCubelessMocapLibrary::ResolveSaveAnimation(Settings.Get());
+  if(!Settings->PreviewAnimation)Settings->PreviewAnimation=Hands?Settings->HandFlowAnimation:Settings->OriginalAnimation;
+  if(auto P=Comparison.Pin())P->ShowResult(true);
+  if(Message)*Message=UCubelessMocapLibrary::ResolveSaveAnimation(Settings.Get())?TEXT("selected"):TEXT("selected_uncorrected_preview; correction runs on export");return true;
+ }
+ TSharedRef<SWidget> ResultMenu(){
+  FMenuBuilder Menu(true,nullptr);
+  for(int32 I=0;I<4;++I){const bool Hands=(I&2)!=0,Correct=(I&1)!=0;
+   const TCHAR* Labels[]={TEXT("전신 원본"),TEXT("전신 + 손가락 보정"),TEXT("HandFlow"),TEXT("HandFlow + 손가락 보정")};
+   Menu.AddMenuEntry(FText::FromString(Labels[I]),FText::FromString(TEXT("선택한 결과를 미리 보고 내보냅니다. 없는 손가락 보정은 내보낼 때만 계산합니다.")),FSlateIcon(),FUIAction(FExecuteAction::CreateLambda([this,Hands,Correct](){SelectResult(Hands,Correct);}),FCanExecuteAction::CreateLambda([this,Hands](){return !UCubelessMocapLibrary::IsBusy()&&(Hands?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr);}),FIsActionChecked::CreateLambda([this,Hands,Correct](){return Settings->SaveHandFlow==Hands&&Settings->SaveBoneCorrection==Correct;})),NAME_None,EUserInterfaceActionType::RadioButton);
+  }return Menu.MakeWidget();
+ }
+ FReply ChooseVideo(){
+  TArray<FString> Files;auto* Desktop=FDesktopPlatformModule::Get();
+  if(Desktop&&Desktop->OpenFileDialog(FSlateApplication::Get().FindBestParentWindowHandleForDialogs(ExistingWindow.Pin()),TEXT("모캡 영상 열기"),FPaths::GetPath(Settings->Video.FilePath),TEXT(""),TEXT("동영상|*.mp4;*.mov;*.mkv;*.avi"),0,Files)&&Files.Num()){
+   FString Message;if(!SetVideo(Files[0],Message))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(Message));
+  }return FReply::Handled();
+ }
+ static FText Summary(){FString Full=UCubelessMocapLibrary::GetJobStatus(),First;return FText::FromString(Full.Split(TEXT("\n"),&First,nullptr)?First:Full);}
+ static TOptional<float> Progress(){FString Full=UCubelessMocapLibrary::GetJobStatus();int32 End=Full.Find(TEXT("%"));if(End==INDEX_NONE)return 0.f;int32 Start=Full.Find(TEXT("|"),ESearchCase::CaseSensitive,ESearchDir::FromEnd,End);return FMath::Clamp(FCString::Atof(*Full.Mid(Start+1,End-Start-1))/100.f,0.f,1.f);}
  void LoadPreview(){if(auto P=Comparison.Pin())P->LoadPreview();}
  bool SavePreviewScreenshot(){
   auto P=Comparison.Pin();if(!P||!P->PrepareScreenshot())return false;
@@ -89,33 +135,44 @@ public:
   VisibleProperties.Add(TEXT("HandFlowSteps"));if(auto* P=FindFProperty<FProperty>(UCubelessMocapSettings::StaticClass(),TEXT("HandFlowSteps"))){P->SetMetaData(TEXT("DisplayName"),TEXT("HandFlow 추론 스텝"));P->SetMetaData(TEXT("ToolTip"),TEXT("시간축 추론 반복 수입니다. 기본 3이며 변경하면 처리 시간과 결과가 달라집니다."));}
   VisibleProperties.Add(TEXT("HandFlowBatch"));if(auto* P=FindFProperty<FProperty>(UCubelessMocapSettings::StaticClass(),TEXT("HandFlowBatch"))){P->SetMetaData(TEXT("DisplayName"),TEXT("HandFlow 배치"));P->SetMetaData(TEXT("ToolTip"),TEXT("동시에 처리할 손 이미지 수입니다. 높이면 메모리 사용량이 늘어납니다."));}
   VisibleProperties.Add(TEXT("HandFlowSeed"));if(auto* P=FindFProperty<FProperty>(UCubelessMocapSettings::StaticClass(),TEXT("HandFlowSeed"))){P->SetMetaData(TEXT("DisplayName"),TEXT("HandFlow 시드"));P->SetMetaData(TEXT("ToolTip"),TEXT("동일 설정의 추론을 재현하기 위한 난수 시드입니다."));}
-  VisibleProperties.Add(TEXT("ImageLimbAlignment"));VisibleProperties.Add(TEXT("ImageAlignmentMode"));VisibleProperties.Add(TEXT("JointCorrectionStrength"));if(auto* P=FindFProperty<FProperty>(UCubelessMocapSettings::StaticClass(),TEXT("JointCorrectionStrength"))){P->SetMetaData(TEXT("DisplayName"),TEXT("본 보정 강도"));P->SetMetaData(TEXT("ToolTip"),TEXT("손가락 관절 범위와 관통 보정의 강도입니다. 1은 전체 적용, 0은 원본입니다. 전신과 손목은 바꾸지 않습니다."));}
+  VisibleProperties.Add(TEXT("ImageLimbAlignment"));VisibleProperties.Add(TEXT("ImageAlignmentMode"));VisibleProperties.Add(TEXT("JointCorrectionStrength"));if(auto* P=FindFProperty<FProperty>(UCubelessMocapSettings::StaticClass(),TEXT("JointCorrectionStrength"))){P->SetMetaData(TEXT("DisplayName"),TEXT("손가락 보정 강도"));P->SetMetaData(TEXT("ToolTip"),TEXT("손가락 관절 범위와 관통 보정의 강도입니다. 1은 전체 적용, 0은 원본입니다. 전신과 손목은 바꾸지 않습니다."));}
   VisibleProperties.Add(TEXT("MatchVideoCamera"));if(auto* P=FindFProperty<FProperty>(UCubelessMocapSettings::StaticClass(),TEXT("MatchVideoCamera"))){P->SetMetaData(TEXT("DisplayName"),TEXT("영상 카메라 맞춤"));P->SetMetaData(TEXT("ToolTip"),TEXT("영상의 추정 카메라와 구도를 비교 뷰에 적용합니다. 애니메이션 데이터는 변경하지 않습니다."));}
-  FDetailsViewArgs Args;Args.bHideSelectionTip=true;Args.bAllowSearch=true;auto& Properties=FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");auto Details=Properties.CreateDetailView(Args);
-  Details->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateLambda([VisibleProperties](const FPropertyAndParent& P){return P.Property.GetOwnerClass()!=UCubelessMocapSettings::StaticClass()||VisibleProperties.Contains(P.Property.GetFName());}));
-  Details->SetObject(Settings.Get());Details->SetEnabled(TAttribute<bool>::CreateLambda([](){return !UCubelessMocapLibrary::IsBusy();}));
-  auto Check=[this](const TCHAR* Label,const TCHAR* Tip,bool UCubelessMocapSettings::* Field,bool Preview){return SNew(SCheckBox).ToolTipText(FText::FromString(Tip)).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).IsChecked_Lambda([this,Field](){return Settings.Get()->*Field?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}).OnCheckStateChanged_Lambda([this,Field,Preview](ECheckBoxState V){Settings.Get()->*Field=V==ECheckBoxState::Checked;if(Preview){Settings->PreviewAnimation=UCubelessMocapLibrary::ResolveSaveAnimation(Settings.Get());if(!Settings->PreviewAnimation)Settings->PreviewAnimation=Settings->SaveHandFlow?Settings->HandFlowAnimation:Settings->OriginalAnimation;}})[SNew(STextBlock).Text(FText::FromString(Label))];};
-  auto Window=SNew(SWindow).Title(FText::FromString(TEXT("Cubeless Body Mocap"))).ClientSize(FVector2D(1280,900));TSharedPtr<SCBMComparison> ComparisonWidget;
+  // Environment and inference tuning remain available, but do not obscure daily work.
+  TSet<FName> Advanced;for(const TCHAR* N:{TEXT("FFmpeg"),TEXT("FrameDirectory"),TEXT("HandFlowPython"),TEXT("HandFlowDirectory"),TEXT("HandFlowSteps"),TEXT("HandFlowBatch"),TEXT("HandFlowSeed"),TEXT("UseFusedCHMR"),TEXT("PauseEditorRendering"),TEXT("JointCorrectionStrength")})Advanced.Add(N);
+  VisibleProperties.Remove(TEXT("StartSeconds"));VisibleProperties.Remove(TEXT("DurationSeconds"));
+  auto& Properties=FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+  auto MakeDetails=[&](bool IsAdvanced){FDetailsViewArgs Args;Args.bHideSelectionTip=true;Args.bAllowSearch=true;auto D=Properties.CreateDetailView(Args);
+   D->SetIsPropertyVisibleDelegate(FIsPropertyVisible::CreateLambda([VisibleProperties,Advanced,IsAdvanced](const FPropertyAndParent& P){return P.Property.GetOwnerClass()!=UCubelessMocapSettings::StaticClass()||(VisibleProperties.Contains(P.Property.GetFName())&&Advanced.Contains(P.Property.GetFName())==IsAdvanced);}));
+   D->SetObject(Settings.Get());D->SetEnabled(TAttribute<bool>::CreateLambda([](){return !UCubelessMocapLibrary::IsBusy();}));return D;};
+  auto Basic=MakeDetails(false),AdvancedDetails=MakeDetails(true);
+  auto Check=[this](const TCHAR* Label,bool UCubelessMocapSettings::* Field){return SNew(SCheckBox).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).IsChecked_Lambda([this,Field](){return Settings.Get()->*Field?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}).OnCheckStateChanged_Lambda([this,Field](ECheckBoxState V){Settings.Get()->*Field=V==ECheckBoxState::Checked;})[SNew(STextBlock).Text(FText::FromString(Label))];};
+  auto Window=SNew(SWindow).Title(FText::FromString(TEXT("Cubeless Body Mocap"))).ClientSize(FVector2D(1440,960)).MinWidth(1000).MinHeight(720);TSharedPtr<SCBMComparison> ComparisonWidget;TSharedPtr<SSplitter> LayoutWidget;
   Window->SetContent(SNew(SVerticalBox)
-   +SVerticalBox::Slot().FillHeight(1)[SNew(SHorizontalBox)
-    +SHorizontalBox::Slot().FillWidth(.30f)[Details]
-    +SHorizontalBox::Slot().FillWidth(.70f)[SAssignNew(ComparisonWidget,SCBMComparison).Settings(Settings.Get())]]
-   +SVerticalBox::Slot().AutoHeight().Padding(8,4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]
-   +SVerticalBox::Slot().AutoHeight().Padding(8,4)[SNew(SHorizontalBox)
-    +SHorizontalBox::Slot().AutoWidth().Padding(0,0,16,0)[SNew(STextBlock).Text(FText::FromString(TEXT("모캡 실행 옵션")))]
-    +SHorizontalBox::Slot().AutoWidth().Padding(0,0,16,0)[Check(TEXT("HandFlow"),TEXT("전신 추출 후 HandFlow 손 추론과 영상 보강을 실행합니다. 기본 켜짐입니다."),&UCubelessMocapSettings::EnhanceHands,false)]
-    +SHorizontalBox::Slot().AutoWidth()[Check(TEXT("본 보정"),TEXT("모캡 후 손가락 관절 범위·관통을 보정합니다. 전신·손목 보정은 아닙니다. 현재 선택한 결과만 한 번 보정하며 다른 저장 조합은 저장할 때 보정합니다. 기본 켜짐입니다."),&UCubelessMocapSettings::AutoBoneCorrection,false)]]
-   +SVerticalBox::Slot().AutoHeight().Padding(8,4)[SNew(SHorizontalBox)
-    +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).Text(FText::FromString(TEXT("Start Mocap"))).ToolTipText(FText::FromString(TEXT("위 실행 옵션에 따라 전신 → HandFlow → 본 보정을 진행합니다. 최종 에셋은 아래 저장 버튼으로 저장하세요."))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){SaveNotice.Empty();FString R;if(!UCubelessMocapLibrary::StartMocap(Settings.Get(),R))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(R));return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(SButton).Text(FText::FromString(TEXT("취소"))).ToolTipText(FText::FromString(TEXT("진행 중인 계산과 이후 단계를 취소합니다. 이미 완료한 작업 결과는 남습니다."))).IsEnabled_Lambda([](){return UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([](){UCubelessMocapLibrary::Cancel();return FReply::Handled();})]]
-   +SVerticalBox::Slot().AutoHeight().Padding(8,6)[SNew(SHorizontalBox)
-    +SHorizontalBox::Slot().FillWidth(1)[SNew(SButton).Text(FText::FromString(TEXT("애니메이션 시퀀스 저장"))).ToolTipText(FText::FromString(TEXT("옆의 옵션으로 같은 경로의 애니메이션을 갱신합니다. 본 보정이 없으면 보정만 계산한 뒤 저장하며 전신·HandFlow는 다시 추론하지 않습니다."))).IsEnabled_Lambda([this](){return !UCubelessMocapLibrary::IsBusy()&&(Settings->SaveHandFlow?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr);}).OnClicked_Lambda([this](){if(!UCubelessMocapLibrary::SaveAnimationSequence(Settings.Get(),SaveNotice))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(SaveNotice));return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(12,0)[Check(TEXT("HandFlow"),TEXT("계산된 HandFlow 손 결과를 저장에 포함합니다. 바꾸면 오른쪽 뷰도 해당 결과로 바뀝니다."),&UCubelessMocapSettings::SaveHandFlow,true)]
-    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[Check(TEXT("본 보정"),TEXT("손가락 관절·관통 보정을 포함합니다. 해당 보정이 없으면 저장할 때 계산합니다. 계산 전 비교 뷰에는 보정 전 결과가 표시됩니다."),&UCubelessMocapSettings::SaveBoneCorrection,true)]
-    +SHorizontalBox::Slot().AutoWidth().Padding(8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("플레이 레이트")))]
-    +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(90)[SNew(SSpinBox<float>).MinValue(.1f).MaxValue(4.f).Delta(.05f).ToolTipText(FText::FromString(TEXT("저장할 애니메이션의 RateScale입니다. 1은 원래 속도, 0.5는 절반 속도입니다. 키프레임은 재샘플링하지 않으며 아래 미리보기 속도와 별개입니다."))).Value_Lambda([this](){return Settings->SavePlayRate;}).OnValueChanged_Lambda([this](float V){Settings->SavePlayRate=V;})]]]
-   +SVerticalBox::Slot().AutoHeight().Padding(8,4)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){if(!UCubelessMocapLibrary::IsBusy()&&!UCubelessMocapLibrary::ResolveSaveAnimation(Settings.Get()))return FText::FromString((Settings->SaveHandFlow?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr)?TEXT("본 보정은 저장할 때 계산합니다. 현재 뷰는 보정 전 결과입니다."):TEXT("선택한 전신 또는 HandFlow 결과가 없습니다. 실행 옵션을 확인하고 모캡을 실행하세요."));return FText::FromString(SaveNotice);})]);
-  Comparison=ComparisonWidget;ExistingWindow=Window;
+   +SVerticalBox::Slot().AutoHeight().Padding(6)[SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).Padding(6)[SNew(SHorizontalBox)
+    +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("1  영상 열기"))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Raw(this,&FCubelessMocapModule::ChooseVideo)]
+    +SHorizontalBox::Slot().AutoWidth().Padding(8,2)[SNew(SButton).Text(FText::FromString(TEXT("2  모캡 실행"))).ToolTipText(FText::FromString(TEXT("선택한 구간과 계산 옵션으로 모캡을 실행합니다. 결과는 검토 후 별도로 내보냅니다."))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){SaveNotice.Empty();FString R;if(!UCubelessMocapLibrary::StartMocap(Settings.Get(),R))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(R));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("취소"))).IsEnabled_Lambda([](){return UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([](){UCubelessMocapLibrary::Cancel();return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(12,2)[SNew(SButton).Text(FText::FromString(TEXT("3  선택 결과 내보내기"))).ToolTipText(FText::FromString(TEXT("선택한 결과를 출력 경로에 저장합니다. 없는 손가락 보정만 추가 계산하며 전신·손 추론을 반복하지 않습니다."))).IsEnabled_Lambda([this](){return !UCubelessMocapLibrary::IsBusy()&&(Settings->SaveHandFlow?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr);}).OnClicked_Lambda([this](){if(!UCubelessMocapLibrary::SaveAnimationSequence(Settings.Get(),SaveNotice))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(SaveNotice));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("저장 에셋 열기"))).IsEnabled_Lambda([this](){return !UCubelessMocapLibrary::IsBusy()&&Settings->ExportedSequence!=nullptr;}).OnClicked_Lambda([this](){GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Settings->ExportedSequence);return FReply::Handled();})]
+    +SHorizontalBox::Slot().FillWidth(1).Padding(12,4)[SNew(STextBlock).Text_Lambda([this](){return FText::FromString(FPaths::GetCleanFilename(Settings->Video.FilePath));}).ToolTipText_Lambda([this](){return FText::FromString(Settings->Video.FilePath);})]]]
+   +SVerticalBox::Slot().AutoHeight().Padding(10,2)[SNew(SHorizontalBox)
+    +SHorizontalBox::Slot().AutoWidth().Padding(0,0,8,0)[SNew(STextBlock).Text(FText::FromString(TEXT("표시 / 내보낼 결과")))]
+    +SHorizontalBox::Slot().AutoWidth()[SNew(SComboButton).OnGetMenuContent_Raw(this,&FCubelessMocapModule::ResultMenu).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).ButtonContent()[SNew(STextBlock).Text_Lambda([this](){return ResultLabel();})]]
+    +SHorizontalBox::Slot().AutoWidth().Padding(20,0,6,0)[SNew(STextBlock).Text(FText::FromString(TEXT("저장 플레이 레이트")))]
+    +SHorizontalBox::Slot().AutoWidth()[SNew(SBox).WidthOverride(80)[SNew(SSpinBox<float>).MinValue(.1f).MaxValue(4.f).Delta(.05f).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).ToolTipText(FText::FromString(TEXT("내보낼 애니메이션의 RateScale입니다. 아래 재생 속도와 별개이며 키프레임을 재샘플링하지 않습니다."))).Value_Lambda([this](){return Settings->SavePlayRate;}).OnValueChanged_Lambda([this](float V){Settings->SavePlayRate=V;})]]
+    +SHorizontalBox::Slot().FillWidth(1).Padding(12,0)[SNew(STextBlock).AutoWrapText(true).Text_Lambda([this](){if(!UCubelessMocapLibrary::IsBusy()&&!UCubelessMocapLibrary::ResolveSaveAnimation(Settings.Get()))return FText::FromString((Settings->SaveHandFlow?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr)?TEXT("손가락 보정은 내보낼 때 계산합니다. 현재는 보정 전 결과입니다."):TEXT("계산 후 결과를 선택할 수 있습니다."));return FText::FromString(SaveNotice);})]]
+   +SVerticalBox::Slot().FillHeight(1).Padding(6)[SAssignNew(LayoutWidget,SSplitter)
+    +SSplitter::Slot().Value(.75f)[SAssignNew(ComparisonWidget,SCBMComparison).Settings(Settings.Get())]
+    +SSplitter::Slot().Value(.25f)[SNew(SVerticalBox)
+     +SVerticalBox::Slot().AutoHeight().Padding(8)[SNew(STextBlock).Text(FText::FromString(TEXT("계산할 옵션"))).Font(FAppStyle::GetFontStyle("BoldFont"))]
+     +SVerticalBox::Slot().AutoHeight().Padding(8,2)[Check(TEXT("HandFlow 손 보강"),&UCubelessMocapSettings::EnhanceHands)]
+     +SVerticalBox::Slot().AutoHeight().Padding(8,2)[Check(TEXT("손가락 관절 보정"),&UCubelessMocapSettings::AutoBoneCorrection)]
+     +SVerticalBox::Slot().FillHeight(1)[Basic]
+     +SVerticalBox::Slot().AutoHeight()[SNew(SExpandableArea).InitiallyCollapsed(true).HeaderContent()[SNew(STextBlock).Text(FText::FromString(TEXT("고급 / 실행 환경")))].BodyContent()[SNew(SBox).MaxDesiredHeight(300)[AdvancedDetails]]]]]
+   +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(STextBlock).Text_Static(&FCubelessMocapModule::Summary).ToolTipText_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]
+   +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(SProgressBar).Percent_Static(&FCubelessMocapModule::Progress)]
+   +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(SExpandableArea).InitiallyCollapsed(true).HeaderContent()[SNew(STextBlock).Text(FText::FromString(TEXT("상세 처리 로그")))].BodyContent()[SNew(STextBlock).AutoWrapText(true).Text_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]]);
+  Comparison=ComparisonWidget;ExistingWindow=Window;LayoutSplitter=LayoutWidget;
   FSlateApplication::Get().AddWindow(Window);
  }
  virtual bool SupportsDynamicReloading() override {return false;}
@@ -126,3 +183,5 @@ IMPLEMENT_MODULE(FCubelessMocapModule,CBMEditor)
 void UCubelessMocapLibrary::OpenWindow() { FModuleManager::LoadModuleChecked<FCubelessMocapModule>(TEXT("CBMEditor")).Open(); }
 void UCubelessMocapLibrary::LoadPreview() { FModuleManager::LoadModuleChecked<FCubelessMocapModule>(TEXT("CBMEditor")).LoadPreview(); }
 bool UCubelessMocapLibrary::SavePreviewScreenshot() { return FModuleManager::LoadModuleChecked<FCubelessMocapModule>(TEXT("CBMEditor")).SavePreviewScreenshot(); }
+
+#include "CBMWindowControl.inl"

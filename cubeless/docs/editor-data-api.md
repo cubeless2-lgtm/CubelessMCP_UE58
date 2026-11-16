@@ -1,5 +1,53 @@
 # Editor 데이터 조회와 명시적 갱신
 
+## 2026-11-17 수집된 Python 노출 오류 대응
+
+다운로드 폴더의 원문 192건, 132개 signature를 모두 대조했다. 처음 분류한 표준 API 후보 47개는 모두 실제 예제 호출 결과를 확보했다. 신규 공개 도구는 총 16개이며, 기존 도구 2개도 확장했다. 항목별 현재 판정과 검증 범위는 `records/operations/exposure-requests-20261116/triage.json`, 최초 구현 결과는 같은 폴더의 `completion.json`, 후속 재검토·수정·배포 결과는 `review-publication-20261117.json`에 기록한다. 기존 구현은 현재 소스와 이전 검증을 재사용한 경우도 있으며, 원문 RX 작업 132개를 모두 재현했다는 뜻은 아니다.
+
+현재 프로젝트에서 처리 가능한 130개 signature는 구현·기존 API·호출 수정·잘못된 API 요청으로 정리했다. 원본 정의가 없는 `RXSKLODSectionBakeSettings.separate_bones`(24), `WB_EventScene_LoginBonus_C.board_settings`(40)는 원본 RX 플러그인/에셋이 필요하며, 사용자는 후속 재검토·커밋·푸시 범위에서 이 2건을 제외했다. 최초 전체 수집 요청의 미해결 상태는 보존한다. 사용자의 지시에 따라 단일 에이전트로 검증했으며 **별도 독립 검토는 미수행**으로 남긴다.
+
+`cubeless_mcp_ue58.registration.authoring_access_toolset.CubelessAuthoringAccessTools`에 다음 조회 도구를 추가했다.
+
+| 도구 | 범위 |
+|---|---|
+| `inspect_animation_sampling_rate(asset_path)` | AnimSequence의 native sampling rate 분자·분모. 기존 C++ 구현에 빠져 있던 공개 등록을 연결했다. |
+| `inspect_preview_mesh_reference(asset_path)` | Skeleton/AnimationAsset에 저장된 프리뷰 메시 soft path와 할당·로드 상태. 참조 메시를 로드하거나 fallback을 찾지 않는다. 원본 에셋 경로 해석은 로드를 수행할 수 있다. |
+| `inspect_skeletal_mesh_authoring_data(asset_path)` | LOD 수·원문 설정, raw 본 이름·부모 인덱스, mesh-only 소켓, post-process LOD 임계값. 컴파일 중인 메시는 대기하지 않고 거절한다. |
+| `inspect_rigvm_unit_catalog(name_filter="*", include_deprecated=false, offset=0, limit=128)` | 이미 로드된 RigVM unit·dispatch 구조체를 정렬해 페이지 조회한다. 기본값은 폐기 구조체를 제외하며 포함 요청 시 폐기 버전을 표시한다. 템플릿 notation 전체 목록이나 노드 생성·컴파일 보증은 아니다. |
+| `inspect_editor_actor_metadata(actor_path)` | 이미 로드된 Actor의 tick 가능 여부·숨김 flag와 GroupActor 직접 멤버. 재귀 subgroup 확장·tick·가시성 변경은 수행하지 않는다. |
+| `inspect_component_registration_state(component_path)` | 이미 로드된 일반 ActorComponent의 등록 상태, owner/world 경로와 template 여부. |
+| `inspect_object_class_hierarchy(object_path)` | 이미 로드된 객체의 클래스 상속 경로 또는 UClass 자체의 상속 경로. 클래스 로드·CDO 생성·Blueprint 컴파일은 수행하지 않는다. |
+| `inspect_editor_authoring_details(object_path)` | 고정 타입별 저장 데이터: AnimBlueprint skeleton/override, Landscape 크기, named reroute 선언, 플랫폼별 mesh 최소 LOD, override materials, Font typeface, Optimus 변수, WidgetTree 멤버, Skeleton virtual bones, RigVM 폐기 진단, Sequencer binding ID. 일부 값은 native export-text다. |
+| `inspect_embedded_rich_curves(object_path)` | 직접 편집 가능한 FRichCurve의 키·탄젠트·가중치·무한대 보간. transient/cooked cache는 제외하며 임의 객체를 재귀 export하지 않는다. |
+| `inspect_rigvm_library_functions(object_path)` | 실제 RigVM 함수 목록과 public/private 상태. |
+| `inspect_editor_viewport_configuration()` | Editor와 LocalPlayer의 현재 config CDO aspect-axis constraint. 설정을 바꾸지 않는다. |
+| `inspect_rigvm_template_catalog(...)` | 이미 등록된 template notation 페이지 조회. registry를 강제로 채우거나 노드 호환성을 보장하지 않는다. |
+| `deactivate_editor_niagara_component(component_path, execute=false)` | 등록된 Actor 소유 Editor/EditorPreview Niagara component의 native DeactivateImmediate. GPU 완료나 저장을 보장하지 않는다. |
+| `create_editor_preview_widget(owner_path, widget_class_path, widget_name, execute=false)` | 로드된 구체 UserWidget 클래스를 transient Editor/null-world WidgetTree 소유로 생성한다. 런타임 의존성 감사와 소유권·기존 멤버 보호 검사를 적용한다. |
+| `release_editor_preview_widget(object_path, execute=false)` | 이 Python adapter가 보유한 preview 참조만 해제한다. 다른 소유자의 위젯을 파괴하거나 사용자 panel에서 제거하지 않는다. |
+
+나머지 신규 도구 `append_montage_segment`는 `cubeless_mcp_ue58.registration.animation_editing_toolset.CubelessAnimationEditingTools`에 등록했다. 이미 로드되고 데이터 모델이 준비된 동일 Skeleton의 `/Game` AnimSequence 전체를 기존 slot 끝에 추가한다. segment의 local rate/loop는 1이며 원본 asset RateScale은 반영한다. 원본의 런타임 참조는 변경 lease 진입 전에 로드되어 있어야 한다. 기본 `execute=false`, `save=false`이며 자동 재시도·원자적 롤백은 없다. 불확실한 변경 결과는 실제 상태를 확인해야 한다. 엔진의 notify-track 초기화, link/length 갱신, CommonTargetFrameRate 정규화만 사전에 계산한 기대 상태에 반영하며 다른 authored 값의 보호 검사는 유지한다.
+
+기존 `inspect_specialized_anim_graph`에는 node 좌표와 저장된 compiler-message flag/type/text를 추가했다. 새 컴파일 결과는 아니다. 기존 `tick_skeletal_animation`은 등록된 Actor 소유 DebugSkelMeshComponent의 EditorPreview world도 허용하도록 확장했다. PIE/SIE는 허용하지 않는다.
+
+UE 5.8.4 CL58902052의 현재 프로젝트 Development Editor 빌드가 성공했다. 초기 공식 MCP 20건에 이어 native 경로 22건, preview widget 7건, 실제 엔진 automation 2건이 통과했다. automation은 비어 있지 않은 XYZ curve 키와 WidgetTree, 실제 preview animation tick/Niagara deactivation을 검사했다. 정상 MathFloatAdd와 폐기 SelectBool을 transient graph에 생성해 폐기 진단도 확인했다. Editor 재시작 후 16개 공개 도구 등록, generated widget 클래스 상속, 저장된 몽타주의 cold reload를 확인했다. 몽타주는 Idle 7.566666603초 + Walk 1.5초, 세그먼트 2개, Default→Loop/Loop→Loop 연결이 유지되었다. 저장 출력의 직접 hard/soft 의존성에서 MCP 참조는 없었다. 별도 cook/package/game 실행이나 GPU 검증은 하지 않았다.
+
+Text3D와 AppleProResMedia는 이 프로젝트에서 필요한 동안만 활성화해 `get_editor_property("text")`와 `AppleProResEncoderCodec.PRO_RES_422LT`를 실제 호출했다. 이후 `.uproject`를 작업 전 바이트와 정확히 일치하도록 복구하고 정상 프로젝트 설정으로 다시 빌드했다. text mesh 생성과 ProRes 인코딩 자체를 검증한 것은 아니다.
+
+표준 경로의 주요 수정은 GeometryScript 반환 tuple의 index-list 추출, owning sequence 기반 display/tick rate 및 channel `evaluate_keys(range, rate)`, GUID 문자열 비교, `get_editor_property`를 통한 BlendParameter/BoneReference/Actor layers 접근이다. SequenceRecorder 이름은 `SequenceRecorderActorGroup.get_editor_property("SequenceName")`, mocap viewport getter는 `CubelessMocapLibrary`에 있다. `reattach_on_world_bound`는 설치 엔진에 없는 authoring API이며, deprecated binding Space는 현재 relative/fixed ID 데이터와 구분한다. Python에 없는 PixelDepthOffset enum은 기존 `list_material_nodes`의 native root 연결 조회로 처리한다. `analyze_material_graph`는 static switch parameter의 name/association/index와 override 상태를 이미 반환한다. 선택한 테스트 인스턴스의 switch 목록은 비어 있었으므로 비어 있지 않은 layered override 검증으로 확대하지 않는다.
+
+CDO/빈 배열로 확인한 Landscape 크기·Optimus 변수·override materials, 비어 있지 않은 GroupActor, 원본 RX 클래스의 동작 등은 각 receipt에 적힌 범위만 검증되었다. 최초 빌드 실패와 snapshot 검증 실패, 검증 스크립트의 잘못된 가정은 삭제하지 않았다. 실패 시 부분 변경된 작업 소유 fixture는 실제 상태 확인 후 별도로 보존했으며 불확실한 append를 재실행하지 않았다.
+
+### 같은 날 후속 코드 재검토와 수정
+
+몽타주 `sequence_path`에 Python 경로 검사와 native `SafeObjectPath` 검사를 추가했다. 전체 package와 각 object name이 엔진 `NAME_SIZE`를 넘거나 subobject 형식이면 `FindObject` 전에 거절한다. package path와 canonical object path는 모두 허용한다. preview widget은 잘못된 owner/name 같은 사전 오류를 `mutation_attempted=false`, `changed=false`, `change_state_known=true`로 반환하며, native 호출 이후의 SDK 예외만 변경 결과가 불확실한 것으로 취급한다.
+
+실제 회귀 검사에서 NUL이 들어간 이름이 Python→FString 변환 중 잘려 다른 이름의 위젯이 생성되는 문제를 발견했다. Python에서 제어 문자를 먼저 거절하고 UTF-16 길이를 제한했으며, 엔진에서 자동 이름 생성으로 해석되는 `None`도 Python/native 양쪽에서 거절한다. 최초 재현에서 생성된 작업 소유 transient 위젯은 반환 경로와 실제 상태를 확인한 뒤 adapter 참조만 해제했다. 해당 실패 기록은 보존했다.
+
+Niagara 갱신은 소유 Actor의 파괴 중 상태와 동일 world 소속을 확인하고, preview world를 강한 참조로 유지하며 콜백 이후 등록 상태도 확인하도록 보강했다. 공개 설명의 EditorPreview 허용 범위도 실제 구현에 맞췄다. 단일 에이전트 소스 재검토와 실제 Editor 회귀 검증이며 별도 독립 검토로 표시하지 않는다. 패키징·게임 실행 검증 범위는 추가하지 않았다.
+
+최종 Development Editor 빌드 후 새 프로세스에서 경계값·오류 상태·위젯 생성/해제 회귀 12건, 정상 몽타주 원본 경로 2건과 엔진 automation 2건이 통과했다. 신규 공개 도구 16개 등록과 기존 몽타주 cold reload도 다시 확인했다. Niagara의 일반 preview deactivation은 실행 검증했고 콜백 중 강제 파괴/등록 해제를 주입한 검사는 수행하지 않았다. 검증용 Editor는 PIE/미저장 패키지가 없는 것을 확인한 뒤 정상 종료했다. raw helper와 실행 기록은 프로젝트 방침에 따라 로컬에 유지하며 소스·native automation·사용 문서만 배포한다.
+
 Slack `기능확장.md`의 호출 실패 목록을 설치 UE 5.8.4 CL58902052와 Cubeless 구현에 대조해 보강했다. 모찌의 실패 목록은 조사 자료이며, 모찌 라이브러리나 RX 게임 코드를 수정하지 않았다. 공식 MCP 서버와 엔진 소스도 변경하지 않았다.
 
 공식 Toolset 이름은 `cubeless_mcp_ue58.registration.editor_data_toolset.CubelessEditorDataTools`다. 아래 도구의 반환값은 구조화된 결과를 담은 JSON 문자열이다. 새 DLL과 Python 파일을 함께 적용하고 Editor를 다시 시작해야 한다. 현재 적용·연결 상태는 이번 작업 보고서의 `deployment`를 확인한다.

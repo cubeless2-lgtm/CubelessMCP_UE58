@@ -9,7 +9,7 @@ ACTIONS = frozenset((
     'remove_notify', 'set_notify_timing', 'add_sync_marker',
     'remove_sync_markers', 'rename_sync_marker', 'add_montage_section',
     'remove_montage_section', 'set_montage_section_next', 'set_montage_section_time',
-    'add_montage_slot'))
+    'add_montage_slot', 'append_montage_segment'))
 
 
 def edit(action, asset_path, arguments, execute=False, save=False,
@@ -24,6 +24,11 @@ def edit(action, asset_path, arguments, execute=False, save=False,
             raise ValueError('Execution and save options must be booleans')
         if allow_remove is not None and type(allow_remove) is not bool:
             raise ValueError('allow_remove must be boolean')
+        if action == 'append_montage_segment':
+            sequence_path = arguments.get('sequence_path')
+            editor_data._validate_path(sequence_path)
+            if not sequence_path.startswith('/Game/'):
+                raise ValueError('Segment source must be an explicit project animation path')
         if action in ('add_notify', 'add_notify_state'):
             class_path = arguments.get('notify_class')
             editor_data._validate_path(class_path)

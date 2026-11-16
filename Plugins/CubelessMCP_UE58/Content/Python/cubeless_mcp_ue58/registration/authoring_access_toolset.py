@@ -10,6 +10,90 @@ class CubelessAuthoringAccessTools(unreal.ToolsetDefinition):
 
     @toolset_registry.tool_call
     @staticmethod
+    def create_editor_preview_widget(owner_path: str, widget_class_path: str, widget_name: str, execute: bool = False) -> str:
+        """Create a UserWidget only in an already-loaded transient WidgetTree or current Editor/null-world UserWidget's transient tree. Concrete class must already be loaded and pass runtime-reference independence audit. Default preflight; explicit execute; max64 retained instances and256 existing owner widgets. Initialize callbacks may execute and failure may leave a created object. No PIE/game world, viewport insertion, attachment, asset save or rollback/replay. Result path is retained by this Python adapter until release/reload/shutdown."""
+        return domain.create_preview_widget(owner_path,widget_class_path,widget_name,execute)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def release_editor_preview_widget(object_path: str, execute: bool = False) -> str:
+        """Release only this adapter's retained reference to a previously created preview widget. Does not remove it from a panel or destroy objects held elsewhere; no save. Default preflight."""
+        return domain.release_preview_widget(object_path,execute)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_editor_viewport_configuration() -> str:
+        """Read Editor viewport and LocalPlayer config CDO aspect-axis constraints. No settings write, rendering toggle or resize."""
+        return domain.global_inspection('inspect_editor_viewport_configuration')
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_rigvm_template_catalog(name_filter: str = '*', offset: int = 0, limit: int = 128) -> str:
+        """Page actual registered RigVM template notations, '*' for all, otherwise case-insensitive substring<=256 chars. Limit1..256. Requires loaded RigVM; no registry population, node creation or compile proof. Use inspect_editor_authoring_details on a RigVMGraph to diagnose existing deprecated units before compilation."""
+        return domain.global_inspection('inspect_rig_vm_template_catalog',(name_filter,offset,limit))
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def deactivate_editor_niagara_component(component_path: str, execute: bool = False) -> str:
+        """DeactivateImmediate on an exact registered actor-owned component in the current Editor or EditorPreview world; no PIE/SIE/CDO. Default preflight, explicit execution, authored input, owner/world/registration guards, no save/replay. Engine callbacks may run; failure retains unknown/partial state. Not GPU completion. Requires Niagara loaded."""
+        return domain.invoke('deactivate_editor_niagara_component',component_path,(execute,),mutation=execute,loaded_only=True)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_editor_authoring_details(object_path: str) -> str:
+        """Read a fixed stored-data profile: AnimBlueprint TargetSkeleton/ParentAssetOverrides, Landscape component sizes, NamedReroute declaration, StaticMesh platform minimum LOD, MeshComponent override materials, Font default typeface names, Optimus variables or Editor WidgetTree members. Reflected property values are native export-text strings. Max4096 entries, property text1M chars. No compile/save/widget construction or runtime execution. Requires relevant feature plugins loaded; asset path resolution may load."""
+        return domain.invoke('inspect_editor_authoring_details', object_path)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_embedded_rich_curves(object_path: str) -> str:
+        """Read direct reflected FRichCurve properties with full keys/tangents/default/infinity, including Niagara float/vector curve data interfaces. Max32 curves/16384 finite keys. No recursive traversal, curve mutation or save. Asset resolution may load; use an exact loaded subobject path for Niagara internals."""
+        return domain.invoke('inspect_embedded_rich_curves', object_path)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_rigvm_library_functions(object_path: str) -> str:
+        """Read an already-loaded RigVMFunctionLibrary's function paths and native public flags. Max4096 functions. Pass the library object path from the rig, not the graph or Blueprint path. No construction, graph mutation, compile or save."""
+        return domain.invoke('inspect_rig_vm_library_functions', object_path, loaded_only=True)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_editor_actor_metadata(actor_path: str) -> str:
+        """Read an exact already-loaded Actor's tick capability, Editor/game hidden flags and direct GroupActor member paths (max4096). No recursive subgroup expansion, actor load, tick or mutation. No PIE/SIE."""
+        return domain.invoke('inspect_editor_actor_metadata', actor_path, loaded_only=True)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_component_registration_state(component_path: str) -> str:
+        """Read an exact already-loaded ActorComponent's registration flag, owner/world paths and template flag. Does not register, tick or instantiate a component. No PIE/SIE."""
+        return domain.invoke('inspect_component_registration_state', component_path, loaded_only=True)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_object_class_hierarchy(object_path: str) -> str:
+        """Read an already-loaded object's exact class and superclass paths, or an already-loaded UClass itself and its superclasses. Max128 ready classes. No class/asset load, CDO creation or Blueprint compile."""
+        return domain.invoke('inspect_object_class_hierarchy', object_path, loaded_only=True)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_preview_mesh_reference(asset_path: str) -> str:
+        """Read the stored Skeleton/AnimationAsset preview mesh soft path without loading that mesh or searching for a fallback. Distinguish assigned and already loaded; source asset resolution may load."""
+        return domain.invoke('inspect_preview_mesh_reference', asset_path)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_skeletal_mesh_authoring_data(asset_path: str) -> str:
+        """Read ready SkeletalMesh LOD info as native authored text, raw bone names/parent indices, mesh-only sockets and post-process LOD threshold. Max32 LODs/2MiB LOD text,16384 raw bones,4096 sockets. No build/wait/save or evaluated-pose claim."""
+        return domain.invoke('inspect_skeletal_mesh_authoring_data', asset_path)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_rigvm_unit_catalog(name_filter: str = '*', include_deprecated: bool = False, offset: int = 0, limit: int = 128) -> str:
+        """Page loaded reflected RigVM unit and dispatch-factory declarations, including RigVMFunction structs. Filter '*' means all names; otherwise a case-insensitive substring<=256 chars. Deprecated structs excluded by default or explicitly marked when included. Limit1..256. Requires ControlRig/RigVM loaded. No module load/node creation or template-notation/constructibility proof. Prefer If dispatch to deprecated SelectBool: DISPATCH_RigVMDispatch_If(in Condition,in True,in False,out Result)."""
+        return domain.rigvm_unit_catalog(name_filter, include_deprecated, offset, limit)
+
+    @toolset_registry.tool_call
+    @staticmethod
     def inspect_asset_editing_state(asset_path: str) -> str:
         """Observe exact loaded asset package dirty state and all open asset editors, including other open objects in its package. Does not open/focus/close/save editors. Observation is not an exclusive lock or overwrite permission."""
         return domain.invoke('inspect_asset_editing_state', asset_path, loaded_only=True)
@@ -41,8 +125,14 @@ class CubelessAuthoringAccessTools(unreal.ToolsetDefinition):
     @toolset_registry.tool_call
     @staticmethod
     def inspect_specialized_anim_graph(asset_path: str) -> str:
-        """Read Blueprint or exact loaded EdGraph source nodes/comments, ControlRig actual class accessor and PoseDriver DrivenName targets. Max4096 graphs/16384 nodes/4096 targets. Existing generic graph tools remain the editing route; no compile/save."""
+        """Read Blueprint or exact loaded EdGraph source nodes/comments/positions and stored compiler-message flag/type/text, ControlRig actual class accessor and PoseDriver DrivenName targets. Max4096 graphs/16384 nodes/4096 targets. Diagnostics reflect the last stored compiler result, not a fresh compile. Existing generic graph tools remain the editing route; no compile/save."""
         return domain.invoke('inspect_specialized_anim_graph', asset_path)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def inspect_animation_sampling_rate(asset_path: str) -> str:
+        """Read an AnimSequence's native target sampling frame rate as numerator/denominator. This is not compressed-key count or playback speed. No edit, compression or save; asset resolution may load the sequence."""
+        return domain.invoke('inspect_animation_native_data', asset_path, expected_classes=('AnimSequence',))
 
     @toolset_registry.tool_call
     @staticmethod
@@ -83,7 +173,7 @@ class CubelessAuthoringAccessTools(unreal.ToolsetDefinition):
     @toolset_registry.tool_call
     @staticmethod
     def tick_skeletal_animation(component_path: str, delta_seconds: float = 0.03333333333333333, refresh_bone_transforms: bool = True, execute: bool = False) -> str:
-        """TickAnimation(delta0..1,false), optionally RefreshBoneTransforms, on exact registered Editor component. Explicit execution; no PIE/SIE/templates. AnimBP/Notify callbacks may run: inspect actual state after failure and do not replay. Not game-world advancement, physics simulation, GPU completion or asset save."""
+        """TickAnimation(delta0..1,false), optionally RefreshBoneTransforms, on an exact registered current Editor component, or DebugSkelMeshComponent owned by a live actor in an EditorPreview world. Explicit execution; no PIE/SIE/templates. AnimBP/Notify callbacks may run: inspect actual state after failure and do not replay. Not game-world advancement, physics simulation, GPU completion or asset save."""
         return domain.invoke('tick_skeletal_animation', component_path, (delta_seconds, refresh_bone_transforms, execute), mutation=execute, loaded_only=True)
 
     @toolset_registry.tool_call

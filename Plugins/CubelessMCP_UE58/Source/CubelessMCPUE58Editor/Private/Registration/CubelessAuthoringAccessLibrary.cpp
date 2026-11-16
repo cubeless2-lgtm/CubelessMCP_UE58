@@ -1,6 +1,19 @@
 #include "Registration/CubelessAuthoringAccessLibrary.h"
 #include "Compatibility/UE58/CubelessAuthoringAccessApi.h"
 using namespace Cubeless::UE58::AuthoringAccess;
+UUserWidget* UCubelessAuthoringAccessLibrary::CreateEditorPreviewWidget(UObject* O,UClass* C,const FString& N,bool E,FString& R){return CreatePreviewWidget(O,C,N,E,R);}
+FString UCubelessAuthoringAccessLibrary::InspectEditorViewportConfiguration(){return EditorViewportConfiguration();}
+FString UCubelessAuthoringAccessLibrary::InspectRigVMTemplateCatalog(const FString& F,int32 O,int32 L){return RigVMTemplateCatalog(F,O,L);}
+FString UCubelessAuthoringAccessLibrary::DeactivateEditorNiagaraComponent(UObject* O,bool E){return DeactivateNiagara(O,E);}
+FString UCubelessAuthoringAccessLibrary::InspectEditorAuthoringDetails(UObject* O){return EditorAuthoringDetails(O);}
+FString UCubelessAuthoringAccessLibrary::InspectEmbeddedRichCurves(UObject* O){return EmbeddedRichCurves(O);}
+FString UCubelessAuthoringAccessLibrary::InspectRigVMLibraryFunctions(UObject* O){return RigVMLibraryFunctions(O);}
+FString UCubelessAuthoringAccessLibrary::InspectEditorActorMetadata(UObject* O){return EditorActorMetadata(O);}
+FString UCubelessAuthoringAccessLibrary::InspectComponentRegistrationState(UObject* O){return ComponentRegistrationState(O);}
+FString UCubelessAuthoringAccessLibrary::InspectObjectClassHierarchy(UObject* O){return ObjectClassHierarchy(O);}
+FString UCubelessAuthoringAccessLibrary::InspectPreviewMeshReference(UObject* O){return PreviewMeshReference(O);}
+FString UCubelessAuthoringAccessLibrary::InspectSkeletalMeshAuthoringData(UObject* O){return SkeletalMeshAuthoringData(O);}
+FString UCubelessAuthoringAccessLibrary::InspectRigVMUnitCatalog(const FString& F,bool D,int32 O,int32 L){return RigVMUnitCatalog(F,D,O,L);}
 FString UCubelessAuthoringAccessLibrary::InspectAssetEditingState(UObject* O){return EditorState(O);}
 FString UCubelessAuthoringAccessLibrary::InspectFloatCurve(UObject* O){return Curve(O);}
 FString UCubelessAuthoringAccessLibrary::SetFloatCurveKeys(UObject* O,const FString& K,bool R,bool E,bool S,bool D){return SetCurve(O,K,R,E,S,D);}

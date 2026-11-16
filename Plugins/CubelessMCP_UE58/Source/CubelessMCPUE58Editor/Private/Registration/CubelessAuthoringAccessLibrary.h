@@ -2,6 +2,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "CubelessAuthoringAccessLibrary.generated.h"
+class UUserWidget;
 
 // Editor authoring only; never insert these calls in generated game graphs.
 UCLASS()
@@ -9,6 +10,32 @@ class UCubelessAuthoringAccessLibrary : public UBlueprintFunctionLibrary
 {
  GENERATED_BODY()
 public:
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static UUserWidget* CreateEditorPreviewWidget(UObject* Owner,UClass* WidgetClass,const FString& Name,bool Execute,FString& Result);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectEditorViewportConfiguration();
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectRigVMTemplateCatalog(const FString& Filter,int32 Offset,int32 Limit);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString DeactivateEditorNiagaraComponent(UObject* Object,bool Execute);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectEditorAuthoringDetails(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectEmbeddedRichCurves(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectRigVMLibraryFunctions(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectEditorActorMetadata(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectComponentRegistrationState(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectObjectClassHierarchy(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectPreviewMeshReference(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectSkeletalMeshAuthoringData(UObject* Object);
+ UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
+ static FString InspectRigVMUnitCatalog(const FString& Filter,bool IncludeDeprecated,int32 Offset,int32 Limit);
  UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")
  static FString InspectAssetEditingState(UObject* Object);
  UFUNCTION(BlueprintCallable,meta=(AIIgnore,DevelopmentOnly),Category="Cubeless|Internal")

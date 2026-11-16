@@ -109,3 +109,9 @@ class CubelessAnimationEditingTools(unreal.ToolsetDefinition):
     def add_montage_slot(asset_path: str, slot_name: str, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
         """Add an empty Montage slot track using an existing Skeleton slot in the same group; max64 tracks. Does not create a Skeleton slot or populate animation segments."""
         return domain.edit('add_montage_slot', asset_path, {'slot_name': slot_name}, execute, save, allow_save_dirty_package)
+
+    @toolset_registry.tool_call
+    @staticmethod
+    def append_montage_segment(asset_path: str, slot_name: str, sequence_path: str, execute: bool = False, save: bool = False, allow_save_dirty_package: bool = False) -> str:
+        """Append one full already-loaded /Game AnimSequence at the end of an existing Montage slot, rate1/loop1, same Skeleton. Source and audited runtime references must already be loaded; no implicit source load or compressed-sequence access. Final timeline must align to the Montage model frame rate. Initializes the Engine default Notify track only when both tracks and Notifies are empty; calls UpdateLinkableElements and SetCompositeLength using callback/source preservation, explicit execute/save and Montage acquisition/nondefault-Notify persistence guards. Does not replace segments, trim source, create slots or rewire section links. No atomic rollback/replay; source and target may be partial after callback failure."""
+        return domain.edit('append_montage_segment', asset_path, {'slot_name': slot_name, 'sequence_path': sequence_path}, execute, save, allow_save_dirty_package)

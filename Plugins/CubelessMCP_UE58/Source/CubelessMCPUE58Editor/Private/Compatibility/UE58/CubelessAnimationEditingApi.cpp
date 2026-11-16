@@ -1,4 +1,5 @@
 #include "Compatibility/UE58/CubelessAnimationEditingApi.h"
+#include "Compatibility/UE58/CubelessAnimationProductionApi.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimMontage.h"
 #include "Animation/AnimComposite.h"
@@ -309,7 +310,7 @@ bool Numeric(const TSharedPtr<J>& P,const TCHAR* K,float& V,float Low,float High
 bool SafeObjectPath(const FString& Value)
 {
  if(Value.IsEmpty()||Value.Len()>2048||Value[0]!='/')return false;
- // Notify classes are top-level UClasses, not subobjects or export-text literals.
+ // Class and segment-source inputs are top-level objects, not subobjects or export-text literals.
  const int32 Dot=Value.Find(TEXT("."));
  if(Dot<=1||Dot==Value.Len()-1||Value.Find(TEXT("."),ESearchCase::CaseSensitive,ESearchDir::FromStart,Dot+1)!=INDEX_NONE||Value.Contains(TEXT(":"))||Value.Contains(TEXT("'"))||Value.Contains(TEXT("\"")))return false;
  if(Value.Len()-Dot-1>=NAME_SIZE||Value.Find(TEXT("/"),ESearchCase::CaseSensitive,ESearchDir::FromStart,Dot+1)!=INDEX_NONE)return false;
@@ -485,6 +486,7 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
   if(Verbosity==ELogVerbosity::Error&&ScriptError.IsEmpty())ScriptError=FString(Message).Left(4096);
   FScriptExceptionHandler::LoggingExceptionHandler(Verbosity,Message,Stack);
  });
+ TStrongObjectPtr<UAnimSequence> SegmentSource;Snapshot SegmentSourceBefore;FString SegmentSourcePath;float SegmentTimelineLength=0;float SegmentExpectedLength=0;FFrameRate SegmentCommonRate;
  auto Check=[&](const Snapshot& Want)->bool
  {
   auto Unknown=[&](){R->SetBoolField(TEXT("change_state_known"),false);return false;};
@@ -502,7 +504,9 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
   if(CheckPatchChannel&&!CheckPatchChannel()){Error=TEXT("Float channel identity, times or key data changed unexpectedly");return Unknown();}
   if(!Equal(Want,Current,R)){Error=TEXT("Unexpected authored asset change across engine callback");return Unknown();}
   Snapshot ActualSkeleton;SkeletonState(Skeleton.Get(),ActualSkeleton);
-  if(!Equal(SkeletonBefore,ActualSkeleton,R)){Error=TEXT("Skeleton authored state changed");return Unknown();}return true;
+  if(!Equal(SkeletonBefore,ActualSkeleton,R)){Error=TEXT("Skeleton authored state changed");return Unknown();}
+  if(SegmentSource.IsValid()){if(!Live(SegmentSource.Get())||Path(SegmentSource.Get())!=SegmentSourcePath||SegmentSource->GetSkeleton()!=Skeleton.Get()){Error=TEXT("Segment source identity/readiness changed");return Unknown();}Snapshot SourceNow;if(!Capture(SegmentSource.Get(),SourceNow,Error)||!Equal(SegmentSourceBefore,SourceNow,R)){Error=TEXT("Segment source authored data changed");return Unknown();}}
+  return true;
  };
  UAnimSequence* S=Cast<UAnimSequence>(A);UAnimMontage* M=Cast<UAnimMontage>(A);
  float TimelineLength=A->GetPlayLength();
@@ -744,6 +748,25 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
   if(Action==TEXT("remove_montage_section")&&(M->CompositeSections.Num()<=1||M->CompositeSections[Index].GetTime()==0))return Fail(TEXT("Keep the last section and the section at time0"));
   if(Action==TEXT("set_montage_section_next")&&(!Name(P,TEXT("next_section"),Other,true)||(Other!=NAME_None&&M->GetSectionIndex(Other)==INDEX_NONE)))return Fail(TEXT("Existing next section or empty string to terminate required"));
  }
+ else if(Action==TEXT("append_montage_segment"))
+ {
+  FString SourcePath;if(!M||!Name(P,TEXT("slot_name"),N)||!P->TryGetStringField(TEXT("sequence_path"),SourcePath)||!SourcePath.StartsWith(TEXT("/Game/"))||SourcePath.Len()>2048)return Fail(TEXT("Montage, existing slot_name and bounded explicit /Game sequence_path required"));
+  if(!SourcePath.Contains(TEXT(".")))SourcePath+=TEXT(".")+FPackageName::GetLongPackageAssetName(SourcePath);
+  if(!SafeObjectPath(SourcePath)||!FPackageName::IsValidObjectPath(SourcePath))return Fail(TEXT("Canonical source object path with each name and complete package shorter than NAME_SIZE required"));
+  auto* Source=FindObject<UAnimSequence>(nullptr,*SourcePath);if(!Live(Source)||Source->GetClass()!=UAnimSequence::StaticClass()||Source->GetSkeleton()!=Skeleton.Get()||!Source->IsDataModelValid())return Fail(TEXT("Already-loaded exact AnimSequence with same Skeleton and valid model required"));
+  TrackIndex=M->SlotAnimTracks.IndexOfByPredicate([&](const auto& T){return T.SlotName==N;});if(TrackIndex==INDEX_NONE)return Fail(TEXT("Montage slot absent; create it explicitly first"));
+  if(M->AnimNotifyTracks.IsEmpty()&&!M->Notifies.IsEmpty())return Fail(TEXT("Existing Notifies without an authored track require explicit repair"));
+  R->SetBoolField(TEXT("initializes_default_notify_track"),M->AnimNotifyTracks.IsEmpty());
+  int32 Count=0;for(const auto& T:M->SlotAnimTracks)Count+=T.AnimTrack.AnimSegments.Num();if(Count>=4096)return Fail(TEXT("Segment4096 budget exceeded"));
+  Time=M->SlotAnimTracks[TrackIndex].AnimTrack.GetLength();FAnimSegment PlannedSegment;PlannedSegment.SetAnimReference(Source,true);Duration=PlannedSegment.GetLength();SegmentTimelineLength=FMath::Max(TimelineLength,Time+Duration);
+  if(!FMath::IsFinite(Time)||!FMath::IsFinite(Duration)||Time<0||Duration<=0||!FMath::IsFinite(SegmentTimelineLength)||SegmentTimelineLength>86400||!M->IsDataModelValid())return Fail(TEXT("Finite positive source duration and valid Montage model required; timeline max86400 seconds"));
+  const FFrameRate Rate=M->GetDataModel()->GetFrameRate();if(!Rate.IsValid()||Rate.AsDecimal()<=0)return Fail(TEXT("Valid Montage model frame rate required"));SegmentExpectedLength=float(Rate.AsSeconds(Rate.AsFrameTime(SegmentTimelineLength).RoundToFrame()));if(!FMath::IsNearlyEqual(SegmentExpectedLength,SegmentTimelineLength,1.e-5f))return Fail(TEXT("Final segment timeline must align with Montage model frames"));
+  SegmentSource.Reset(Source);SegmentSourcePath=Path(Source);if(!Capture(Source,SegmentSourceBefore,Error))return Fail(Error);
+  bool FirstRate=true,CompatibleRates=true;auto RateInput=[&](const UAnimSequenceBase* Base){if(!Base||Base==M)return;const FFrameRate Rate=Base->GetSamplingFrameRate();if(!Rate.IsValid()||Rate.AsDecimal()<=0){CompatibleRates=false;return;}if(FirstRate){SegmentCommonRate=Rate;FirstRate=false;}else if(SegmentCommonRate.IsMultipleOf(Rate))SegmentCommonRate=Rate;else if(SegmentCommonRate!=Rate&&!Rate.IsMultipleOf(SegmentCommonRate))CompatibleRates=false;};
+  for(int32 SlotIndex=0;SlotIndex<M->SlotAnimTracks.Num();++SlotIndex){for(const auto& V:M->SlotAnimTracks[SlotIndex].AnimTrack.AnimSegments)RateInput(V.GetAnimReference().Get());if(SlotIndex==TrackIndex)RateInput(Source);}if(!CompatibleRates)SegmentCommonRate=FFrameRate(0,0);
+  if(!AnimationProduction::AuditRuntimeInput(Source,Error,R))return Fail(Error);
+  R->SetStringField(TEXT("segment_source"),SegmentSourcePath);R->SetNumberField(TEXT("segment_start"),Time);R->SetNumberField(TEXT("segment_duration"),Duration);R->SetNumberField(TEXT("planned_montage_length"),SegmentExpectedLength);
+ }
  else if(Action==TEXT("add_montage_slot"))
  {if(!M||!Name(P,TEXT("slot_name"),N)||!Skeleton->ContainsSlotName(N)||M->SlotAnimTracks.Num()>=64||M->SlotAnimTracks.ContainsByPredicate([&](const auto& T){return T.SlotName==N;}))return Fail(TEXT("Existing skeleton slot, unused montage track and max64 slots required"));if(M->SlotAnimTracks.Num()&&Skeleton->GetSlotGroupName(M->SlotAnimTracks[0].SlotName)!=Skeleton->GetSlotGroupName(N))return Fail(TEXT("Montage slots must belong to the same skeleton group"));}
  else return Fail(TEXT("Unknown fixed animation edit action"));
@@ -875,14 +898,19 @@ FString Edit(UObject* Object,const FString& Action,const FString& Arguments,bool
    M->CompositeSections.Sort([](const FCompositeSection& L,const FCompositeSection& Rhs){return L.GetTime()<Rhs.GetTime();});
   }
   else if(Action==TEXT("add_montage_slot")){FSlotAnimationTrack T;T.SlotName=N;M->SlotAnimTracks.Add(T);}
+  else if(Action==TEXT("append_montage_segment"))
+  {FAnimSegment V;V.SetAnimReference(SegmentSource.Get(),true);V.StartPos=Time;M->SlotAnimTracks[TrackIndex].AnimTrack.AnimSegments.Add(V);M->InitializeNotifyTrack();M->UpdateLinkableElements();}
   // Pure authored edits above do not dispatch user callbacks. Establish expected
   // values before engine refresh/PostEditChange/dirty/save boundaries.
    if(!CheckNotifyLeases(A,NotifyLeases,R))return Fail(TEXT("Notify identity changed during authored edits"));
    if(!Capture(A,Expected,Error))return Fail(Error);
+   if(Action==TEXT("append_montage_segment"))
+   {const float CalculatedLength=M->CalculateSequenceLength();R->SetNumberField(TEXT("calculated_montage_length"),CalculatedLength);if(!FMath::IsNearlyEqual(CalculatedLength,SegmentTimelineLength,1.e-5f))return Fail(TEXT("Engine segment timeline differs from admitted append plan"));Expected.Add(TEXT("$length"),Number(SegmentExpectedLength));const auto* LengthProperty=FindFProperty<FFloatProperty>(M->GetClass(),TEXT("SequenceLength"));if(!LengthProperty)return Fail(TEXT("Expected native Montage SequenceLength property unavailable"));FString LengthText;LengthProperty->ExportTextItem_Direct(LengthText,&SegmentExpectedLength,nullptr,M,PPF_None);Expected.Add(TEXT("asset.SequenceLength"),LengthText+TEXT("|exact=")+Number(SegmentExpectedLength));R->SetStringField(TEXT("stage"),TEXT("set_composite_length"));M->SetCompositeLength(CalculatedLength);if(!Check(Expected))return Fail(Error);}
  }
  R->SetStringField(TEXT("stage"),TEXT("refresh"));
  A->RefreshCacheData();if(!Check(Expected))return Fail(Error);
  if(S&&Marker){S->RefreshSyncMarkerDataFromAuthored();if(!Check(Expected))return Fail(Error);}
+ if(Action==TEXT("append_montage_segment")){const auto* RateProperty=FindFProperty<FStructProperty>(M->GetClass(),TEXT("CommonTargetFrameRate"));if(!RateProperty)return Fail(TEXT("Expected native CommonTargetFrameRate property unavailable"));FString RateText;RateProperty->ExportTextItem_Direct(RateText,&SegmentCommonRate,nullptr,M,PPF_None);Expected.Add(TEXT("asset.CommonTargetFrameRate"),RateText);}
  R->SetStringField(TEXT("stage"),TEXT("post_edit"));A->PostEditChange();if(!Check(Expected))return Fail(Error);
  R->SetStringField(TEXT("stage"),TEXT("mark_dirty"));A->MarkPackageDirty();if(!Check(Expected))return Fail(Error);
  R->SetBoolField(TEXT("changed"),!Equal(Before,Expected,MakeShared<J>()));R->SetBoolField(TEXT("change_state_known"),true);

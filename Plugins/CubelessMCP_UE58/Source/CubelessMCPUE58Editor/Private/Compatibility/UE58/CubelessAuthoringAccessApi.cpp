@@ -1,20 +1,42 @@
 #include "Compatibility/UE58/CubelessAuthoringAccessApi.h"
+#include "Compatibility/UE58/CubelessAnimationProductionApi.h"
 #include "Editor.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Engine/Blueprint.h"
 #include "Engine/TimelineTemplate.h"
 #include "Engine/Texture2D.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/Font.h"
+#include "Animation/AnimBlueprint.h"
+#include "LandscapeComponent.h"
+#include "Materials/MaterialExpressionNamedReroute.h"
+#include "Components/MeshComponent.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
+#include "Components/PanelWidget.h"
+#include "OptimusVariableDescription.h"
+#include "RigVMModel/RigVMFunctionLibrary.h"
+#include "RigVMModel/Nodes/RigVMLibraryNode.h"
+#include "RigVMModel/Nodes/RigVMUnitNode.h"
+#include "RigVMCore/RigVMRegistry.h"
+#include "Settings/LevelEditorViewportSettings.h"
+#include "Engine/LocalPlayer.h"
+#include "Sections/MovieScene3DConstraintSection.h"
+#include "Sections/MovieSceneCameraCutSection.h"
+#include "NiagaraComponent.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/SkeletalMeshSocket.h"
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Animation/Skeleton.h"
 #include "Animation/AnimSequence.h"
+#include "Animation/DebugSkelMeshComponent.h"
 #include "Animation/PoseAsset.h"
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "Animation/AnimInstance.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/Actor.h"
+#include "Editor/GroupActor.h"
 #include "Curves/CurveFloat.h"
 #include "Curves/CurveVector.h"
 #include "Curves/CurveLinearColor.h"
@@ -23,6 +45,8 @@
 #include "AnimGraphNode_ControlRig.h"
 #include "AnimGraphNode_PoseDriver.h"
 #include "ControlRig.h"
+#include "RigVMCore/RigVMStruct.h"
+#include "RigVMCore/RigVMDispatchFactory.h"
 #include "OptimusDeformer.h"
 #include "OptimusDiagnostic.h"
 #include "OptimusNodeGraph.h"
@@ -31,6 +55,7 @@
 #include "Serialization/JsonSerializer.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
+#include "Misc/CoreMisc.h"
 #include "UObject/Package.h"
 #include "UObject/SavePackage.h"
 #include "UObject/StrongObjectPtr.h"
@@ -39,6 +64,10 @@
 #include "UObject/UnrealType.h"
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
+#include "PreviewScene.h"
+#include "NiagaraDataInterfaceVectorCurve.h"
+#include "Components/CanvasPanel.h"
+#include "Components/TextBlock.h"
 #include "Components/SceneComponent.h"
 #include "Engine/World.h"
 #include "ReferenceSkeleton.h"
@@ -264,10 +293,162 @@ FString AnimNodes(UObject* Object)
  FContext C(TEXT("inspect_specialized_anim_graph"),Object);if(!C.Ready)return C.Finish(false);TArray<UEdGraph*> Graphs;if(auto* BP=Cast<UBlueprint>(Object))BP->GetAllGraphs(Graphs);else if(auto* G=Cast<UEdGraph>(Object))Graphs.Add(G);else return C.Fail(TEXT("blueprint_or_graph_required"),TEXT("Loaded Blueprint/AnimBlueprint or exact EdGraph required."));
  if(Graphs.Num()>4096)return C.Fail(TEXT("graph_bound"),TEXT("Graph inventory bound4096."));TArray<TSharedPtr<FJsonValue>> Rows;int32 Count=0;
  for(UEdGraph* G:Graphs){if(!Live(G))return C.Fail(TEXT("graph_not_ready"),TEXT("Graph pending load or unavailable."));for(UEdGraphNode* N:G->Nodes){if(++Count>16384||!Live(N))return C.Fail(TEXT("node_bound_or_not_ready"),TEXT("At most16384 ready nodes."));auto O=MakeShared<J>();O->SetStringField(TEXT("graph"),Path(G));O->SetStringField(TEXT("object"),Path(N));O->SetStringField(TEXT("class"),Path(N->GetClass()));O->SetStringField(TEXT("node_guid"),N->NodeGuid.ToString());O->SetStringField(TEXT("comment"),N->NodeComment);
+  O->SetNumberField(TEXT("node_pos_x"),N->NodePosX);O->SetNumberField(TEXT("node_pos_y"),N->NodePosY);O->SetBoolField(TEXT("has_compiler_message"),N->bHasCompilerMessage);O->SetNumberField(TEXT("compiler_message_type"),N->ErrorType);O->SetStringField(TEXT("compiler_message"),N->ErrorMsg);
   if(auto* Rig=Cast<UAnimGraphNode_ControlRig>(N))O->SetStringField(TEXT("control_rig_class"),Path(Rig->Node.GetControlRigAssetReference().GetBlueprintClass()));
   if(auto* Driver=Cast<UAnimGraphNode_PoseDriver>(N)){TArray<FString> Names;if(Driver->Node.PoseTargets.Num()>4096)return C.Fail(TEXT("pose_target_bound"),TEXT("PoseDriver target bound4096."));for(const auto& V:Driver->Node.PoseTargets)Names.Add(V.DrivenName.ToString());O->SetArrayField(TEXT("pose_driver_driven_names"),Strings(Names));}
   Rows.Add(Row(O));}}
  C.R->SetArrayField(TEXT("nodes"),Rows);C.R->SetStringField(TEXT("scope"),TEXT("Native source node inventory/comment; ControlRig.GetControlRigClass and PoseDriver.DrivenName (not nonexistent target_name). No compile/save."));return C.Finish(C.Current());
+}
+UUserWidget* CreatePreviewWidget(UObject* Owner,UClass* WidgetClass,const FString& Name,bool Execute,FString& Result)
+{
+ FContext C(TEXT("create_editor_preview_widget"),Owner);if(!C.Ready||GIsImportingT3D){Result=C.Fail(TEXT("idle_editor_required"),TEXT("Idle Editor outside T3D import required."));return nullptr;}
+ auto Fail=[&](const TCHAR* Code,const FString& Message)->UUserWidget*{Result=C.Fail(Code,Message);return nullptr;};
+ UWidgetTree* Tree=Cast<UWidgetTree>(Owner);UUserWidget* Parent=Cast<UUserWidget>(Owner);
+ if(Parent){if(Parent->IsTemplate()||(Parent->GetWorld()&&Parent->GetWorld()!=C.World.Get()))return Fail(TEXT("editor_preview_owner_required"),TEXT("Owner must be a transient null-world/current Editor UserWidget or WidgetTree."));const auto* P=FindFProperty<FObjectPropertyBase>(Parent->GetClass(),TEXT("WidgetTree"));if(P)Tree=Cast<UWidgetTree>(P->GetObjectPropertyValue_InContainer(Parent));}
+ if(!Live(Tree)||Tree->GetOutermost()!=GetTransientPackage()||!Live(WidgetClass)||!WidgetClass->IsChildOf(UUserWidget::StaticClass())||WidgetClass->HasAnyClassFlags(CLASS_Abstract|CLASS_Deprecated|CLASS_NewerVersionExists)||Writing)return Fail(TEXT("transient_preview_inputs_required"),TEXT("Ready transient WidgetTree and concrete already-loaded UserWidget class required; no reentry."));
+ UObject* const TreeOuter=Tree->GetOuter();UUserWidget* TreeOwner=Cast<UUserWidget>(TreeOuter);UWorld* TreeWorld=TreeOwner?TreeOwner->GetWorld():nullptr;TStrongObjectPtr<UWorld> HeldWorld(TreeWorld);FSnapshot OwnerBefore;
+ if(TreeOwner&&(!Live(TreeOwner)||TreeOwner->IsTemplate()||(TreeWorld&&TreeWorld!=C.World.Get()&&TreeWorld->WorldType!=EWorldType::EditorPreview)||!OwnerBefore.Capture(TreeOwner)))return Fail(TEXT("editor_tree_owner_required"),TEXT("Owning UserWidget must be a ready transient Editor/EditorPreview/null-world instance with bounded authored inputs."));
+ auto TreeContext=[&](){if(!Live(Tree)||Tree->GetOuter()!=TreeOuter)return false;if(TreeOwner&&(!Live(TreeOwner)||TreeOwner->GetWorld()!=TreeWorld||(TreeWorld&&(!Live(TreeWorld)||(TreeWorld!=C.World.Get()&&TreeWorld->WorldType!=EWorldType::EditorPreview)))))return false;if(Parent){const auto* P=FindFProperty<FObjectPropertyBase>(Parent->GetClass(),TEXT("WidgetTree"));if(!P||P->GetObjectPropertyValue_InContainer(Parent)!=Tree)return false;}return true;};
+ if(Name.IsEmpty()||Name.Len()>128||!FName::IsValidXName(Name,INVALID_OBJECTNAME_CHARACTERS))return Fail(TEXT("widget_name_invalid"),TEXT("Explicit valid object name<=128 chars required."));
+ for(const TCHAR Character:Name)if(Character<32)return Fail(TEXT("widget_name_invalid"),TEXT("Control characters are not allowed in widget names."));
+ const FName WidgetName(*Name);if(WidgetName.IsNone())return Fail(TEXT("widget_name_invalid"),TEXT("Explicit non-None name required; no automatic naming."));if(FindObjectFast<UObject>(Tree,WidgetName))return Fail(TEXT("widget_name_exists"),TEXT("Requested name already exists in the exact owner tree; no replacement."));
+ TStrongObjectPtr<UWidgetTree> HeldTree(Tree);TStrongObjectPtr<UClass> HeldClass(WidgetClass);FString Error;
+ UWidget* const RootBefore=Tree->RootWidget;TArray<UWidget*> Before;Tree->GetAllWidgets(Before);if(Before.Num()>256)return Fail(TEXT("preview_tree_bound"),TEXT("At most256 existing widgets in preview owner tree."));
+ TArray<FSnapshot> Preserved;TArray<TStrongObjectPtr<UWidget>> Holds;for(auto* W:Before){if(!Live(W))return Fail(TEXT("widget_not_ready"),TEXT("Existing widget not ready."));Holds.Emplace(W);FSnapshot S;if(!S.Capture(W))return Fail(TEXT("widget_snapshot_bound"),TEXT("Existing authored widget snapshot exceeds bound."));Preserved.Add(MoveTemp(S));}
+ if(!AnimationProduction::AuditRuntimeInput(WidgetClass,Error,C.R))return Fail(TEXT("widget_class_dependency_rejected"),Error);
+ if(!C.Current()||!TreeContext()||GIsImportingT3D||Tree->RootWidget!=RootBefore||WidgetClass->HasAnyClassFlags(CLASS_NewerVersionExists))return Fail(TEXT("preview_inputs_changed"),TEXT("Preview inputs changed during input reference audit."));if(TreeOwner&&!OwnerBefore.Same(C,TEXT("class_reference_audit"))){Result=C.Finish(false);return nullptr;}for(auto& S:Preserved)if(!S.Same(C,TEXT("class_reference_audit"))){Result=C.Finish(false);return nullptr;}
+ C.R->SetStringField(TEXT("owner_tree"),Path(Tree));C.R->SetStringField(TEXT("widget_class"),Path(WidgetClass));if(!Execute){Result=C.Finish(C.Current());return nullptr;}
+ if(!C.Current())return Fail(TEXT("context_changed"),TEXT("Context changed before creation."));TGuardValue<bool> Busy(Writing,true);C.Begin(TEXT("create_widget_instance"));
+ UUserWidget* Created=CreateWidget<UUserWidget>(Tree,WidgetClass,WidgetName);C.R->SetStringField(TEXT("created_widget"),Path(Created));
+ bool Stable=C.Current()&&TreeContext()&&!GIsImportingT3D&&Live(Tree)&&Tree==HeldTree.Get()&&Tree->RootWidget==RootBefore&&Live(WidgetClass)&&!WidgetClass->HasAnyClassFlags(CLASS_NewerVersionExists)&&WidgetClass==HeldClass.Get()&&Live(Created)&&Created->GetOuter()==Tree&&Created->GetClass()==WidgetClass&&Created->GetFName()==WidgetName;
+ if(TreeOwner)Stable=OwnerBefore.Same(C,TEXT("widget_initialize"))&&Stable;
+ for(int32 I=0;I<Preserved.Num();++I)Stable=Preserved[I].Same(C,TEXT("widget_initialize"))&&Stable;
+ if(!Stable){Result=C.Fail(TEXT("widget_initialization_context_changed"),TEXT("Widget initialization or callbacks changed inputs; created object may remain. No rollback, save, viewport insertion or replay."));return Created;}
+ Created->SetFlags(RF_Transient);C.Known(true);Result=C.Finish(true);return Created;
+}
+FString EditorAuthoringDetails(UObject* Object)
+{
+ FContext C(TEXT("inspect_editor_authoring_details"),Object);if(!C.Ready)return C.Finish(false);
+ TArray<FName> Fields;FString Profile;auto PropertiesOut=MakeShared<J>();
+ auto Export=[&](UObject* O,FName Name,const TSharedRef<J>& Out)->bool{const FProperty* P=FindFProperty<FProperty>(O->GetClass(),Name);if(!P){C.Error(TEXT("expected_property_unavailable"),Name.ToString());return false;}if(const auto* A=CastField<FArrayProperty>(P)){FScriptArrayHelper H(A,A->ContainerPtrToValuePtr<void>(O));if(H.Num()>4096){C.Error(TEXT("property_array_bound"),TEXT("At most4096 property array entries."));return false;}}FString Text;P->ExportTextItem_Direct(Text,P->ContainerPtrToValuePtr<void>(O),nullptr,O,PPF_None);if(Text.Len()>1048576){C.Error(TEXT("property_text_bound"),TEXT("Property export exceeds1M characters."));return false;}Out->SetStringField(Name.ToString(),Text);return true;};
+ if(Cast<UAnimBlueprint>(Object)){Profile=TEXT("anim_blueprint");Fields={TEXT("TargetSkeleton"),TEXT("ParentAssetOverrides")};}
+ else if(const auto* Skeleton=Cast<USkeleton>(Object)){Profile=TEXT("skeleton_virtual_bones");const auto& Bones=Skeleton->GetVirtualBones();if(Bones.Num()>16384)return C.Fail(TEXT("virtual_bone_bound"),TEXT("At most16384 virtual bones."));TArray<TSharedPtr<FJsonValue>> Rows;for(const auto& B:Bones){auto R=MakeShared<J>();R->SetStringField(TEXT("source"),B.SourceBoneName.ToString());R->SetStringField(TEXT("target"),B.TargetBoneName.ToString());R->SetStringField(TEXT("name"),B.VirtualBoneName.ToString());Rows.Add(Row(R));}PropertiesOut->SetArrayField(TEXT("virtual_bones"),Rows);}
+ else if(Cast<ULandscapeComponent>(Object)){Profile=TEXT("landscape_component");Fields={TEXT("ComponentSizeQuads"),TEXT("SubsectionSizeQuads"),TEXT("NumSubsections")};}
+ else if(Cast<UMaterialExpressionNamedRerouteUsage>(Object)){Profile=TEXT("named_reroute_usage");Fields={TEXT("Declaration")};}
+ else if(const auto* Section=Cast<UMovieScene3DConstraintSection>(Object))
+ {Profile=TEXT("constraint_binding");const auto ID=Section->GetConstraintBindingID();PropertiesOut->SetStringField(TEXT("guid"),ID.GetGuid().ToString(EGuidFormats::DigitsWithHyphens));PropertiesOut->SetNumberField(TEXT("relative_sequence_id"),ID.GetRelativeSequenceID().GetInternalValue());PropertiesOut->SetBoolField(TEXT("fixed"),ID.IsFixedBinding());const auto* Parent=FindFProperty<FIntProperty>(FMovieSceneObjectBindingID::StaticStruct(),TEXT("ResolveParentIndex"));if(Parent)PropertiesOut->SetNumberField(TEXT("resolve_parent_index"),Parent->GetPropertyValue_InContainer(&ID));PropertiesOut->SetStringField(TEXT("binding_id_text"),[&](){FString S;FMovieSceneObjectBindingID::StaticStruct()->ExportText(S,&ID,nullptr,nullptr,PPF_None,nullptr);return S;}());}
+ else if(const auto* CameraCut=Cast<UMovieSceneCameraCutSection>(Object))
+ {Profile=TEXT("camera_binding");const auto ID=CameraCut->GetCameraBindingID();PropertiesOut->SetStringField(TEXT("guid"),ID.GetGuid().ToString(EGuidFormats::DigitsWithHyphens));PropertiesOut->SetNumberField(TEXT("relative_sequence_id"),ID.GetRelativeSequenceID().GetInternalValue());PropertiesOut->SetBoolField(TEXT("fixed"),ID.IsFixedBinding());}
+ else if(const auto* Graph=Cast<URigVMGraph>(Object))
+ {Profile=TEXT("rigvm_deprecation_diagnostics");const auto Nodes=Graph->GetNodes();if(Nodes.Num()>16384)return C.Fail(TEXT("node_bound"),TEXT("At most16384 RigVM nodes."));TArray<TSharedPtr<FJsonValue>> Warnings;for(const auto* N:Nodes){if(!Live(N))return C.Fail(TEXT("node_not_ready"),TEXT("RigVM node unavailable."));if(const auto* Unit=Cast<URigVMUnitNode>(N)){const auto* S=Unit->GetScriptStruct();if(S&&S->HasMetaData(TEXT("Deprecated"))){auto R=MakeShared<J>();R->SetStringField(TEXT("node"),Path(N));R->SetStringField(TEXT("struct"),Path(S));R->SetStringField(TEXT("deprecated_version"),S->GetMetaData(TEXT("Deprecated")));R->SetStringField(TEXT("warning"),TEXT("Deprecated RigVM unit; prefer current dispatch templates. SelectBool alternatives use DISPATCH_RigVMDispatch_If(in Condition,in True,in False,out Result)."));Warnings.Add(Row(R));}}}PropertiesOut->SetArrayField(TEXT("warnings"),Warnings);PropertiesOut->SetBoolField(TEXT("has_deprecated_units"),!Warnings.IsEmpty());}
+ else if(const auto* Mesh=Cast<UStaticMesh>(Object))
+ {if(Mesh->IsCompiling())return C.Fail(TEXT("mesh_compiling"),TEXT("No wait on compiling mesh."));Profile=TEXT("static_mesh_min_lod");PropertiesOut->SetNumberField(TEXT("default"),Mesh->GetMinLOD().Default);auto Overrides=MakeShared<J>();if(Mesh->GetMinLOD().PerPlatform.Num()>4096)return C.Fail(TEXT("platform_bound"),TEXT("At most4096 platform overrides."));for(const auto& P:Mesh->GetMinLOD().PerPlatform)Overrides->SetNumberField(P.Key.ToString(),P.Value);PropertiesOut->SetObjectField(TEXT("per_platform"),Overrides);}
+ else if(Cast<UMeshComponent>(Object)){Profile=TEXT("mesh_component_overrides");Fields={TEXT("OverrideMaterials")};}
+ else if(const auto* Font=Cast<UFont>(Object))
+ {Profile=TEXT("font_typefaces");const auto& Composite=Font->GetInternalCompositeFont();if(Composite.DefaultTypeface.Fonts.Num()>4096||Composite.SubTypefaces.Num()>1024)return C.Fail(TEXT("typeface_bound"),TEXT("Font typeface inventory exceeds bounds."));TArray<FString> Names;for(const auto& Entry:Composite.DefaultTypeface.Fonts)Names.Add(Entry.Name.ToString());PropertiesOut->SetArrayField(TEXT("default_typeface_names"),Strings(Names));}
+ else if(const auto* Deformer=Cast<UOptimusDeformer>(Object))
+ {Profile=TEXT("optimus_variables");const auto& Vars=Deformer->GetVariables();if(Vars.Num()>4096)return C.Fail(TEXT("variable_bound"),TEXT("At most4096 variables."));TArray<TSharedPtr<FJsonValue>> Rows;for(auto* V:Vars){if(!Live(V))return C.Fail(TEXT("variable_not_ready"),TEXT("Variable description not ready."));auto R=MakeShared<J>();R->SetStringField(TEXT("object"),Path(V));if(!Export(V,TEXT("VariableName"),R)||!Export(V,TEXT("DataType"),R))return C.Finish(false);Rows.Add(Row(R));}PropertiesOut->SetArrayField(TEXT("variables"),Rows);}
+ else
+ {
+  UWidgetTree* Tree=Cast<UWidgetTree>(Object);
+  if(auto* Widget=Cast<UUserWidget>(Object)){if(Widget->GetWorld()&&Widget->GetWorld()!=C.World.Get())return C.Fail(TEXT("editor_widget_required"),TEXT("Only null-world or current Editor-world widgets are inspected."));const auto* P=FindFProperty<FObjectPropertyBase>(Widget->GetClass(),TEXT("WidgetTree"));if(P)Tree=Cast<UWidgetTree>(P->GetObjectPropertyValue_InContainer(Widget));}
+  if(Tree){Profile=TEXT("widget_tree");if(!Live(Tree))return C.Fail(TEXT("widget_tree_not_ready"),TEXT("WidgetTree is not ready."));TArray<UWidget*> Widgets;Tree->GetAllWidgets(Widgets);if(Widgets.Num()>4096)return C.Fail(TEXT("widget_bound"),TEXT("At most4096 source-local widgets."));TArray<TSharedPtr<FJsonValue>> Rows;for(const auto* W:Widgets){if(!Live(W))return C.Fail(TEXT("widget_not_ready"),TEXT("Widget unavailable."));auto R=MakeShared<J>();R->SetStringField(TEXT("name"),W->GetName());R->SetStringField(TEXT("object"),Path(W));R->SetStringField(TEXT("class"),Path(W->GetClass()));R->SetStringField(TEXT("parent"),Path(W->GetParent()));Rows.Add(Row(R));}PropertiesOut->SetStringField(TEXT("tree"),Path(Tree));PropertiesOut->SetArrayField(TEXT("widgets"),Rows);}
+  else return C.Fail(TEXT("authoring_type_not_supported"),TEXT("Expected AnimBlueprint, LandscapeComponent, NamedRerouteUsage, StaticMesh, MeshComponent, Font, OptimusDeformer, WidgetTree or a ready Editor UserWidget."));
+ }
+ for(const FName Field:Fields)if(!Export(Object,Field,PropertiesOut))return C.Finish(false);
+ C.R->SetStringField(TEXT("profile"),Profile);C.R->SetObjectField(TEXT("properties"),PropertiesOut);C.R->SetStringField(TEXT("scope"),TEXT("Fixed type-specific stored Editor data; reflected values are native export-text strings, not guessed JSON. No compiler/save, widget construction, module load or runtime execution."));return C.Finish(C.Current());
+}
+FString EmbeddedRichCurves(UObject* Object)
+{
+ FContext C(TEXT("inspect_embedded_rich_curves"),Object);if(!C.Ready)return C.Finish(false);TArray<TSharedPtr<FJsonValue>> Rows;int64 Total=0;
+ for(TFieldIterator<FStructProperty> It(Object->GetClass());It;++It){if(It->Struct!=FRichCurve::StaticStruct()||!It->HasAnyPropertyFlags(CPF_Edit)||It->HasAnyPropertyFlags(CPF_Transient|CPF_Deprecated))continue;for(int32 I=0;I<It->ArrayDim;++I){const auto* Curve=It->ContainerPtrToValuePtr<FRichCurve>(Object,I);Total+=Curve->GetNumKeys();if(Total>16384||Rows.Num()>=32||!FiniteCurve(*Curve))return C.Fail(TEXT("rich_curve_bound_or_nonfinite"),TEXT("At most32 direct authored rich curves/16384 finite keys."));auto R=MakeShared<J>();R->SetStringField(TEXT("property"),It->ArrayDim==1?It->GetName():It->GetName()+FString::Printf(TEXT("[%d]"),I));R->SetObjectField(TEXT("curve"),CurveData(*Curve));Rows.Add(Row(R));}}
+ C.R->SetArrayField(TEXT("curves"),Rows);C.R->SetStringField(TEXT("scope"),TEXT("Direct reflected FRichCurve properties only, including Niagara float/vector curve data interfaces. No recursive arbitrary object export, evaluation, mutation or save."));return C.Finish(C.Current());
+}
+FString RigVMLibraryFunctions(UObject* Object)
+{
+ FContext C(TEXT("inspect_rigvm_library_functions"),Object);if(!C.Ready)return C.Finish(false);const auto* Library=Cast<URigVMFunctionLibrary>(Object);if(!Library)return C.Fail(TEXT("rigvm_function_library_required"),TEXT("Exact already-loaded RigVMFunctionLibrary object required."));const auto Functions=Library->GetFunctions();if(Functions.Num()>4096)return C.Fail(TEXT("function_bound"),TEXT("At most4096 functions."));TArray<TSharedPtr<FJsonValue>> Rows;for(auto* F:Functions){if(!Live(F))return C.Fail(TEXT("function_not_ready"),TEXT("Function node unavailable."));auto R=MakeShared<J>();R->SetStringField(TEXT("name"),F->GetName());R->SetStringField(TEXT("object"),Path(F));R->SetBoolField(TEXT("public"),Library->IsFunctionPublic(F->GetFName()));Rows.Add(Row(R));}C.R->SetArrayField(TEXT("functions"),Rows);return C.Finish(C.Current());
+}
+FString EditorViewportConfiguration()
+{
+ FContext C(TEXT("inspect_editor_viewport_configuration"),GetTransientPackage());if(!C.Ready)return C.Finish(false);const auto* V=GetDefault<ULevelEditorViewportSettings>();const auto* P=GetDefault<ULocalPlayer>();C.R->SetNumberField(TEXT("editor_aspect_ratio_axis_constraint"),V->AspectRatioAxisConstraint);C.R->SetNumberField(TEXT("local_player_aspect_ratio_axis_constraint"),P->AspectRatioAxisConstraint);C.R->SetStringField(TEXT("scope"),TEXT("Current config CDO values only; no settings write, viewport resize, PIE or rendering toggle."));return C.Finish(C.Current());
+}
+FString RigVMTemplateCatalog(const FString& Filter,int32 Offset,int32 Limit)
+{
+ FContext C(TEXT("inspect_rigvm_template_catalog"),GetTransientPackage());if(!C.Ready)return C.Finish(false);if(Filter.Len()>256||Offset<0||Limit<1||Limit>256)return C.Fail(TEXT("catalog_page_invalid"),TEXT("Filter<=256 chars, offset>=0,limit1..256."));TArray<FString> Values;
+ {FRigVMRegistryReadLock Lock;const auto& Templates=FRigVMRegistry::Get().GetTemplates();if(Templates.Num()>65536)return C.Fail(TEXT("template_bound"),TEXT("At most65536 registered templates."));for(const auto& T:Templates){const FString N=T.GetNotation().ToString();if(Filter==TEXT("*")||N.Contains(Filter))Values.Add(N);}}
+ Values.Sort();if(Offset>Values.Num())return C.Fail(TEXT("offset_invalid"),TEXT("Offset exceeds inventory."));const int32 End=Offset+FMath::Min(Limit,Values.Num()-Offset);TArray<FString> Page;for(int32 I=Offset;I<End;++I)Page.Add(Values[I]);C.R->SetArrayField(TEXT("notations"),Strings(Page));C.R->SetNumberField(TEXT("total"),Values.Num());C.R->SetNumberField(TEXT("next_offset"),End);C.R->SetBoolField(TEXT("has_more"),End<Values.Num());C.R->SetStringField(TEXT("scope"),TEXT("Existing registered template notations only; does not populate registry, create nodes or prove compile compatibility."));return C.Finish(C.Current());
+}
+FString DeactivateNiagara(UObject* Object,bool Execute)
+{
+ FContext C(TEXT("deactivate_editor_niagara_component"),Object);if(!C.Ready)return C.Finish(false);auto* N=Cast<UNiagaraComponent>(Object);auto* Owner=N?N->GetOwner():nullptr;
+ UWorld* ComponentWorld=N?N->GetWorld():nullptr;const bool EditorPreview=ComponentWorld&&ComponentWorld->WorldType==EWorldType::EditorPreview;
+ if(!N||N->IsTemplate()||!Live(Owner)||Owner->IsActorBeingDestroyed()||!Live(ComponentWorld)||Owner->GetWorld()!=ComponentWorld||(!EditorPreview&&ComponentWorld!=C.World.Get())||!N->IsRegistered()||Writing)
+  return C.Fail(TEXT("placed_editor_niagara_required"),TEXT("Registered component owned by a live actor in the current Editor or EditorPreview world required; no CDO/PIE/SIE/reentry."));
+ const bool Active=N->IsActive();C.R->SetBoolField(TEXT("active_before"),Active);if(!Execute)return C.Finish(true);
+ FSnapshot Before;if(!Before.Capture(N))return C.Fail(TEXT("snapshot_bound"),TEXT("Authored snapshot bound."));
+ TStrongObjectPtr<AActor> Keep(Owner);TStrongObjectPtr<UWorld> KeepWorld(ComponentWorld);TGuardValue<bool> Busy(Writing,true);
+ C.Begin(TEXT("deactivate_immediate"));N->DeactivateImmediate();
+ if(!C.Current()||!Before.Same(C,TEXT("deactivate_immediate"))||!Live(Keep.Get())||Keep->IsActorBeingDestroyed()||!Live(KeepWorld.Get())||N->GetOwner()!=Keep.Get()||N->GetWorld()!=ComponentWorld||Keep->GetWorld()!=ComponentWorld||!N->IsRegistered()||(EditorPreview&&ComponentWorld->WorldType!=EWorldType::EditorPreview))
+  return C.Fail(TEXT("niagara_context_changed"),TEXT("Component authored state, registration, owner or world changed during callbacks; no replay."));
+ C.R->SetBoolField(TEXT("active_after"),N->IsActive());C.R->SetBoolField(TEXT("gpu_completion_verified"),false);C.Known(Active!=N->IsActive());return C.Finish(true);
+}
+FString EditorActorMetadata(UObject* Object)
+{
+ FContext C(TEXT("inspect_editor_actor_metadata"),Object);if(!C.Ready)return C.Finish(false);auto* A=Cast<AActor>(Object);if(!A||A->IsActorBeingDestroyed())return C.Fail(TEXT("actor_required"),TEXT("Ready Actor required."));
+ C.R->SetBoolField(TEXT("can_ever_tick"),A->CanEverTick());C.R->SetBoolField(TEXT("hidden_in_editor"),A->IsHiddenEd());C.R->SetBoolField(TEXT("hidden_in_game"),A->IsHidden());
+ auto* G=Cast<AGroupActor>(A);C.R->SetBoolField(TEXT("is_group_actor"),G!=nullptr);TArray<TSharedPtr<FJsonValue>> Rows;
+ if(G){TArray<AActor*> Members;G->GetGroupActors(Members,false);if(Members.Num()>4096)return C.Fail(TEXT("group_inventory_bound"),TEXT("At most4096 direct group members."));for(const auto* M:Members){if(!Live(M))return C.Fail(TEXT("group_member_not_ready"),TEXT("Group member unavailable."));Rows.Add(MakeShared<FJsonValueString>(Path(M)));}}
+ C.R->SetArrayField(TEXT("direct_group_members"),Rows);C.R->SetStringField(TEXT("scope"),TEXT("Observed flags and direct GroupActor members only; no recursive subgroup expansion, tick or visibility changes."));return C.Finish(C.Current());
+}
+FString ComponentRegistrationState(UObject* Object)
+{
+ FContext C(TEXT("inspect_component_registration_state"),Object);if(!C.Ready)return C.Finish(false);const auto* A=Cast<UActorComponent>(Object);if(!A)return C.Fail(TEXT("actor_component_required"),TEXT("ActorComponent required."));
+ C.R->SetBoolField(TEXT("registered"),A->IsRegistered());C.R->SetStringField(TEXT("owner"),Path(A->GetOwner()));C.R->SetStringField(TEXT("world"),Path(A->GetWorld()));C.R->SetBoolField(TEXT("is_template"),A->IsTemplate());return C.Finish(C.Current());
+}
+FString ObjectClassHierarchy(UObject* Object)
+{
+ FContext C(TEXT("inspect_object_class_hierarchy"),Object);if(!C.Ready)return C.Finish(false);const UClass* K=Cast<UClass>(Object);if(!K)K=Object->GetClass();TArray<TSharedPtr<FJsonValue>> Rows;
+ for(;K;K=K->GetSuperClass()){if(!Live(K)||Rows.Num()>=128)return C.Fail(TEXT("class_hierarchy_bound_or_not_ready"),TEXT("Ready class chain of at most128 entries required."));Rows.Add(MakeShared<FJsonValueString>(Path(K)));}
+ C.R->SetArrayField(TEXT("classes"),Rows);C.R->SetStringField(TEXT("scope"),TEXT("Exact class then superclasses; no generated class creation, CDO construction, Blueprint compile or class load."));return C.Finish(C.Current());
+}
+FString PreviewMeshReference(UObject* Object)
+{
+ FContext C(TEXT("inspect_preview_mesh_reference"),Object);if(!C.Ready)return C.Finish(false);
+ if(!Cast<USkeleton>(Object)&&!Cast<UAnimationAsset>(Object))return C.Fail(TEXT("animation_or_skeleton_required"),TEXT("AnimationAsset or Skeleton required."));
+ // GetPreviewMesh (including the const overload) synchronously loads the soft reference.
+ // Read the stored property instead; never choose a fallback mesh or load the target.
+ const auto* P=FindFProperty<FSoftObjectProperty>(Object->GetClass(),TEXT("PreviewSkeletalMesh"));
+ if(!P)return C.Fail(TEXT("preview_reference_unavailable"),TEXT("Stored PreviewSkeletalMesh soft reference unavailable."));
+ const FSoftObjectPtr V=P->GetPropertyValue_InContainer(Object);
+ C.R->SetStringField(TEXT("preview_mesh_path"),V.ToSoftObjectPath().ToString());
+ C.R->SetBoolField(TEXT("preview_mesh_loaded"),V.IsValid());
+ C.R->SetBoolField(TEXT("preview_mesh_assigned"),!V.IsNull());
+ C.R->SetStringField(TEXT("scope"),TEXT("Stored reference only; no fallback search or referenced mesh load."));return C.Finish(C.Current());
+}
+FString SkeletalMeshAuthoringData(UObject* Object)
+{
+ FContext C(TEXT("inspect_skeletal_mesh_authoring_data"),Object);if(!C.Ready)return C.Finish(false);
+ const auto* M=Cast<USkeletalMesh>(Object);if(!M||M->IsCompiling())return C.Fail(TEXT("ready_skeletal_mesh_required"),TEXT("Non-compiling SkeletalMesh required; no wait or build."));
+ const int32 LODCount=M->GetLODNum();const auto& Ref=M->GetRefSkeleton();const auto& Sockets=M->GetMeshOnlySocketList();
+ if(LODCount<0||LODCount>32||Ref.GetRawBoneNum()>16384||Sockets.Num()>4096)return C.Fail(TEXT("inventory_bound"),TEXT("Bounds:32 LODs,16384 raw bones,4096 mesh sockets."));
+ TArray<TSharedPtr<FJsonValue>> Rows;int64 TextBytes=0;
+ for(int32 I=0;I<LODCount;++I){const auto* Info=M->GetLODInfo(I);if(!Info)return C.Fail(TEXT("lod_info_unavailable"),TEXT("LOD info unavailable."));FString Text;FSkeletalMeshLODInfo::StaticStruct()->ExportText(Text,Info,nullptr,nullptr,PPF_None,nullptr);TextBytes+=int64(Text.Len())*sizeof(TCHAR);if(TextBytes>2*1024*1024)return C.Fail(TEXT("lod_export_bound"),TEXT("LOD export bound2MiB."));auto R=MakeShared<J>();R->SetNumberField(TEXT("lod_index"),I);R->SetStringField(TEXT("authored_data_text"),Text);Rows.Add(Row(R));}
+ C.R->SetArrayField(TEXT("lod_info"),Rows);C.R->SetNumberField(TEXT("lod_count"),LODCount);C.R->SetNumberField(TEXT("post_process_anim_bp_lod_threshold"),M->GetPostProcessAnimGraphLODThreshold());
+ Rows.Reset();for(int32 I=0;I<Ref.GetRawBoneNum();++I){auto R=MakeShared<J>();R->SetStringField(TEXT("name"),Ref.GetBoneName(I).ToString());R->SetNumberField(TEXT("parent_index"),Ref.GetParentIndex(I));Rows.Add(Row(R));}C.R->SetArrayField(TEXT("raw_bones"),Rows);
+ Rows.Reset();for(const auto* S:Sockets){if(!Live(S))return C.Fail(TEXT("socket_not_ready"),TEXT("Mesh socket unavailable or pending load."));auto R=MakeShared<J>();R->SetStringField(TEXT("object"),Path(S));R->SetStringField(TEXT("name"),S->SocketName.ToString());R->SetStringField(TEXT("bone_name"),S->BoneName.ToString());Rows.Add(Row(R));}C.R->SetArrayField(TEXT("mesh_only_sockets"),Rows);
+ C.R->SetStringField(TEXT("scope"),TEXT("Stored mesh LOD authoring data, raw reference hierarchy and mesh-only sockets; no evaluated pose or inherited Skeleton socket merge."));return C.Finish(C.Current());
+}
+FString RigVMUnitCatalog(const FString& Filter,bool IncludeDeprecated,int32 Offset,int32 Limit)
+{
+ FContext C(TEXT("inspect_rigvm_unit_catalog"),GetTransientPackage());if(!C.Ready)return C.Finish(false);
+ if(Filter.Len()>256||Offset<0||Limit<1||Limit>256)return C.Fail(TEXT("catalog_page_invalid"),TEXT("Filter<=256 characters, offset>=0, limit1..256 required."));
+ TArray<UScriptStruct*> Found;int32 Scanned=0;
+ for(TObjectIterator<UScriptStruct> It;It;++It){if(++Scanned>65536)return C.Fail(TEXT("struct_inventory_bound"),TEXT("Loaded struct inventory exceeds65536."));UScriptStruct* S=*It;if(!Live(S)||S==FRigVMStruct::StaticStruct()||S==FRigVMDispatchFactory::StaticStruct())continue;if(!S->IsChildOf(FRigVMStruct::StaticStruct())&&!S->IsChildOf(FRigVMDispatchFactory::StaticStruct()))continue;if(!IncludeDeprecated&&S->HasMetaData(TEXT("Deprecated")))continue;if(!Filter.IsEmpty()&&!S->GetName().Contains(Filter)&&!S->GetMetaData(TEXT("DisplayName")).Contains(Filter))continue;Found.Add(S);}
+ Found.Sort([](const UScriptStruct& A,const UScriptStruct& B){return A.GetPathName()<B.GetPathName();});
+ if(Offset>Found.Num())return C.Fail(TEXT("catalog_offset_invalid"),TEXT("Offset exceeds current filtered inventory."));
+ TArray<TSharedPtr<FJsonValue>> Rows;const int32 End=Offset+FMath::Min(Limit,Found.Num()-Offset);
+ for(int32 I=Offset;I<End;++I){const auto* S=Found[I];auto R=MakeShared<J>();R->SetStringField(TEXT("struct_path"),Path(S));R->SetStringField(TEXT("display_name"),S->GetMetaData(TEXT("DisplayName")));R->SetBoolField(TEXT("is_dispatch_factory"),S->IsChildOf(FRigVMDispatchFactory::StaticStruct()));R->SetBoolField(TEXT("deprecated"),S->HasMetaData(TEXT("Deprecated")));R->SetStringField(TEXT("deprecated_version"),S->GetMetaData(TEXT("Deprecated")));R->SetStringField(TEXT("category"),S->GetMetaData(TEXT("Category")));Rows.Add(Row(R));}
+ C.R->SetArrayField(TEXT("units"),Rows);C.R->SetNumberField(TEXT("total"),Found.Num());C.R->SetNumberField(TEXT("next_offset"),End);C.R->SetBoolField(TEXT("has_more"),End<Found.Num());C.R->SetStringField(TEXT("scope"),TEXT("Loaded reflected RigVM unit and dispatch-factory declarations, including RigVMFunction structs. Not a constructibility/compile proof or a complete template-notation registry; no modules loaded or nodes created."));return C.Finish(C.Current());
 }
 FString Animation(UObject* Object)
 {
@@ -294,10 +475,11 @@ FString SkeletalComponent(UObject* Object,const FString& Action,bool Disabled,do
 {
  FContext C(TEXT("skeletal_component_authoring_access"),Object);if(!C.Ready)return C.Finish(false);auto* S=Cast<USkeletalMeshComponent>(Object);if(!S)return C.Fail(TEXT("skeletal_component_required"),TEXT("SkeletalMeshComponent required."));C.R->SetStringField(TEXT("physics_asset"),Path(S->GetPhysicsAsset()));C.R->SetBoolField(TEXT("disable_post_process_blueprint"),S->GetDisablePostProcessBlueprint());
  if(Action==TEXT("inspect"))return C.Finish(C.Current());
- auto* Owner=S->GetOwner();if(!C.World.IsValid()||!Live(Owner)||Owner->IsActorBeingDestroyed()||S->IsTemplate()||!S->IsRegistered()||S->GetWorld()!=C.World.Get()||Writing||!FMath::IsFinite(Delta)||Delta<0||Delta>1)return C.Fail(TEXT("placed_editor_component_required"),TEXT("Ready registered component in current Editor world, no reentry; delta0..1 seconds required."));if(!Execute)return C.Finish(true);
+ auto* Owner=S->GetOwner();UWorld* ComponentWorld=S->GetWorld();const bool PreviewTick=Action==TEXT("tick")&&S->IsA<UDebugSkelMeshComponent>()&&ComponentWorld&&ComponentWorld->WorldType==EWorldType::EditorPreview;
+ if(!C.World.IsValid()||!Live(Owner)||Owner->IsActorBeingDestroyed()||S->IsTemplate()||!S->IsRegistered()||(!PreviewTick&&ComponentWorld!=C.World.Get())||Writing||!FMath::IsFinite(Delta)||Delta<0||Delta>1)return C.Fail(TEXT("placed_editor_component_required"),TEXT("Ready registered current Editor component, or DebugSkelMeshComponent in EditorPreview for tick only; delta0..1 seconds."));if(!Execute)return C.Finish(true);
  TStrongObjectPtr<AActor> KeepOwner(Owner);TStrongObjectPtr<UObject> Mesh(S->GetSkeletalMeshAsset());TStrongObjectPtr<UAnimInstance> Anim(S->GetAnimInstance());const FTransform Transform=S->GetRelativeTransform(),ActorTransform=Owner->GetActorTransform();
  FSnapshot Input;if(!Input.Capture(S,{TEXT("bDisablePostProcessBlueprint")}))return C.Fail(TEXT("snapshot_bound"),TEXT("Component authored-property snapshot bound exceeded."));const bool Before=S->GetDisablePostProcessBlueprint();if(Action==TEXT("post_process")&&Before==Disabled)return C.Finish(true);
- auto ContextStable=[&](){if(!C.Current())return false;if(!Live(KeepOwner.Get())||S->GetOwner()!=KeepOwner.Get()||KeepOwner->IsActorBeingDestroyed()||KeepOwner->GetWorld()!=C.World.Get()||S->GetWorld()!=C.World.Get()||!KeepOwner->GetActorTransform().Equals(ActorTransform,0)||S->GetSkeletalMeshAsset()!=Mesh.Get()||!S->GetRelativeTransform().Equals(Transform,0)||!S->IsRegistered()){C.Error(TEXT("component_context_changed"),TEXT("Owner/world/transform/mesh/registration changed at callback boundary; no subsequent animation writer dispatched. Inspect actual state before another request."));return false;}return true;};
+ auto ContextStable=[&](){if(!C.Current())return false;if(!Live(KeepOwner.Get())||S->GetOwner()!=KeepOwner.Get()||KeepOwner->IsActorBeingDestroyed()||KeepOwner->GetWorld()!=ComponentWorld||S->GetWorld()!=ComponentWorld||(PreviewTick&&ComponentWorld->WorldType!=EWorldType::EditorPreview)||!KeepOwner->GetActorTransform().Equals(ActorTransform,0)||S->GetSkeletalMeshAsset()!=Mesh.Get()||!S->GetRelativeTransform().Equals(Transform,0)||!S->IsRegistered()){C.Error(TEXT("component_context_changed"),TEXT("Owner/world/transform/mesh/registration changed at callback boundary; no subsequent animation writer dispatched. Inspect actual state before another request."));return false;}return true;};
  TGuardValue<bool> Busy(Writing,true);C.Begin(Action==TEXT("tick")?TEXT("tick_animation"):TEXT("set_post_process"));
  if(Action==TEXT("post_process")){S->Modify();if(!Input.Same(C,TEXT("modify_component"))||!ContextStable())return C.Finish(false);if(S->GetDisablePostProcessBlueprint()!=Before)return C.Fail(TEXT("post_process_changed_after_modify"),TEXT("Post-process flag changed in Modify callback; setter not dispatched."));S->SetDisablePostProcessBlueprint(Disabled);}
  else S->TickAnimation(float(Delta),false);
@@ -486,6 +668,28 @@ bool FAuthoringSpecializedNodesTest::RunTest(const FString& Parameters)
   auto DriverRow=Rows[1]->AsObject();const auto& Names=DriverRow->GetArrayField(TEXT("pose_driver_driven_names"));if(!TestEqual(TEXT("Pose target count"),Names.Num(),2))return false;TestEqual(TEXT("First driven name"),Names[0]->AsString(),FString(TEXT("Smile_L")));TestEqual(TEXT("Second driven name"),Names[1]->AsString(),FString(TEXT("Jaw_Open")));TestEqual(TEXT("Driver comment"),DriverRow->GetStringField(TEXT("comment")),Driver->NodeComment);TestFalse(TEXT("Read-only inspection"),Result->GetBoolField(TEXT("mutation_attempted")));
  }
  TestEqual(TEXT("Source Blueprint unchanged"),Fixture.Package->IsDirty(),Dirty);return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAuthoringReportedReadersTest,"CubelessMCP.AuthoringAccess.ReportedReaders",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAuthoringReportedReadersTest::RunTest(const FString& Parameters)
+{
+ TStrongObjectPtr<UNiagaraDataInterfaceVectorCurve> Curves(NewObject<UNiagaraDataInterfaceVectorCurve>());
+ Curves->XCurve.AddKey(0,2);Curves->YCurve.AddKey(0,3);Curves->ZCurve.AddKey(0,4);
+ auto R=RegressionResult(EmbeddedRichCurves(Curves.Get()));if(!TestTrue(TEXT("Rich-curve response"),R.IsValid()&&R->GetBoolField(TEXT("success"))))return false;
+ const auto& Rows=R->GetArrayField(TEXT("curves"));if(!TestEqual(TEXT("Only authored XYZ curves; cooked caches excluded"),Rows.Num(),3))return false;
+ for(int32 I=0;I<3;++I)TestEqual(TEXT("Native rich key value"),Rows[I]->AsObject()->GetObjectField(TEXT("curve"))->GetArrayField(TEXT("keys"))[0]->AsObject()->GetNumberField(TEXT("value")),double(I+2));
+ TStrongObjectPtr<UFont> Font(NewObject<UFont>());auto& Fonts=Font->GetMutableInternalCompositeFont().DefaultTypeface.Fonts;Fonts.AddDefaulted();Fonts.Last().Name=TEXT("ExposureRegular");R=RegressionResult(EditorAuthoringDetails(Font.Get()));TestTrue(TEXT("Font read"),R.IsValid()&&R->GetBoolField(TEXT("success")));TestEqual(TEXT("Exact default typeface name"),R->GetObjectField(TEXT("properties"))->GetArrayField(TEXT("default_typeface_names"))[0]->AsString(),FString(TEXT("ExposureRegular")));
+ TStrongObjectPtr<UWidgetTree> Tree(NewObject<UWidgetTree>());auto* Canvas=Tree->ConstructWidget<UCanvasPanel>();auto* Text=Tree->ConstructWidget<UTextBlock>();Canvas->AddChild(Text);Tree->RootWidget=Canvas;R=RegressionResult(EditorAuthoringDetails(Tree.Get()));TestTrue(TEXT("Widget tree read"),R.IsValid()&&R->GetBoolField(TEXT("success")));TestEqual(TEXT("Actual nonempty widget tree"),R->GetObjectField(TEXT("properties"))->GetArrayField(TEXT("widgets")).Num(),2);
+ return true;
+}
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAuthoringPreviewComponentsTest,"CubelessMCP.AuthoringAccess.PreviewComponents",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FAuthoringPreviewComponentsTest::RunTest(const FString& Parameters)
+{
+ FPreviewScene Scene(FPreviewScene::ConstructionValues().AllowAudioPlayback(false));auto* Owner=Scene.GetWorld()->SpawnActor<AActor>();if(!TestNotNull(TEXT("Owned preview actor"),Owner))return false;
+ ON_SCOPE_EXIT{if(IsValid(Owner))Owner->Destroy();};
+ auto* Mesh=NewObject<UDebugSkelMeshComponent>(Owner);Owner->AddInstanceComponent(Mesh);Mesh->RegisterComponentWithWorld(Scene.GetWorld());auto R=RegressionResult(SkeletalComponent(Mesh,TEXT("tick"),false,1.0/30.0,true,true));TestTrue(TEXT("Registered EditorPreview tick returns"),R.IsValid()&&R->GetBoolField(TEXT("success")));if(R.IsValid()&&R->GetBoolField(TEXT("success")))TestTrue(TEXT("Tick dispatched"),R->GetBoolField(TEXT("pose_tick_returned")));
+ auto* FX=NewObject<UNiagaraComponent>(Owner);Owner->AddInstanceComponent(FX);FX->RegisterComponentWithWorld(Scene.GetWorld());FX->SetActiveFlag(true);R=RegressionResult(DeactivateNiagara(FX,true));TestTrue(TEXT("EditorPreview immediate deactivation returns"),R.IsValid()&&R->GetBoolField(TEXT("success")));TestFalse(TEXT("Actual component inactive after engine method"),FX->IsActive());
+ Mesh->DestroyComponent();FX->DestroyComponent();return true;
 }
 
 #endif

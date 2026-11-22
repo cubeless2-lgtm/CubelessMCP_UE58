@@ -6,20 +6,6 @@
   "Plugins": [
     {"Name": "CubelessKimodo", "Enabled": true, "TargetAllowList": ["Editor"]},
     {
-      "Name": "RX_SkeletalVolumeLOD",
-      "Enabled": true,
-      "TargetAllowList": [
-        "Editor"
-      ]
-    },
-    {
-      "Name": "RX_SMLODGen",
-      "Enabled": true,
-      "TargetAllowList": [
-        "Editor"
-      ]
-    },
-    {
       "Name": "PythonScriptPlugin",
       "Enabled": true,
       "TargetAllowList": [

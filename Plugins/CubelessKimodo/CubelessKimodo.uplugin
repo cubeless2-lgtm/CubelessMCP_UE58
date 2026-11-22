@@ -1,0 +1,51 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1",
+  "FriendlyName": "Cubeless Kimodo",
+  "CanContainContent": true,
+  "EnabledByDefault": false,
+  "Plugins": [
+    {
+      "Name": "GeometryScripting",
+      "Enabled": true,
+      "TargetAllowList": ["Editor"]
+    },
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ]
+    },
+    {
+      "Enabled": true,
+      "TargetAllowList": [
+        "Editor"
+      ],
+      "Name": "ToolsetRegistry"
+    },
+    {
+      "TargetAllowList": [
+        "Editor"
+      ],
+      "Enabled": true,
+      "Name": "GeometryCache"
+    },
+    {
+      "TargetAllowList": [
+        "Editor"
+      ],
+      "Enabled": true,
+      "Name": "AlembicImporter"
+    }
+  ],
+  "EditorOnly": true,
+  "Modules": [
+    {
+      "Name": "KimodoAuthoring",
+      "LoadingPhase": "PostEngineInit",
+      "Type": "Editor"
+    }
+  ]
+}

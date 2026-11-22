@@ -4,6 +4,7 @@
   "Category": "",
   "Description": "",
   "Plugins": [
+    {"Name": "CubelessKimodo", "Enabled": true, "TargetAllowList": ["Editor"]},
     {
       "Name": "RX_SkeletalVolumeLOD",
       "Enabled": true,

@@ -1,0 +1,1 @@
+{"schema_version":1,"expected_fps":30,"markers":[{"id":"raise_right_hand","effector":"hand_r","mode":"offset","space":"component","start_frame":12,"end_frame":36,"offset_cm":[0,0,5],"blend_in_frames":4,"blend_out_frames":4,"weight":1}]}

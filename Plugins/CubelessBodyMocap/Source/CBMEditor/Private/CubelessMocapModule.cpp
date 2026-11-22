@@ -35,6 +35,14 @@
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Animation/AnimSequence.h"
+// Handle pose history before focused children and global editor commands.
+class SCBMPoseKeyboardRoot : public SCompoundWidget {
+public:
+ SLATE_BEGIN_ARGS(SCBMPoseKeyboardRoot){} SLATE_DEFAULT_SLOT(FArguments,Content) SLATE_EVENT(FOnKeyDown,OnPoseKey) SLATE_END_ARGS()
+ FOnKeyDown Handler;
+ void Construct(const FArguments& A){Handler=A._OnPoseKey;ChildSlot[A._Content.Widget];}
+ virtual FReply OnPreviewKeyDown(const FGeometry& G,const FKeyEvent& E)override{return Handler.IsBound()?Handler.Execute(G,E):FReply::Unhandled();}
+};
 class FCubelessMocapModule : public IModuleInterface {
  friend class UCubelessMocapWindowLibrary;
  TStrongObjectPtr<UCubelessMocapSettings> Settings;
@@ -96,6 +104,8 @@ public:
  }
  void Menus(){FToolMenuOwnerScoped Owner(this);auto* Menu=UToolMenus::Get()->ExtendMenu("LevelEditor.MainMenu.Tools");Menu->FindOrAddSection("Cubeless").AddMenuEntry("CubelessBodyMocap",FText::FromString(TEXT("Cubeless Body Mocap")),FText::FromString(TEXT("Extract body motion from video")),FSlateIcon(),FUIAction(FExecuteAction::CreateRaw(this,&FCubelessMocapModule::Open)));}
  void Open(){
+  // Preview worlds/components must never be captured by an outer MCP transaction.
+  TGuardValue<ITransaction*> NoPreviewTransaction(GUndo,nullptr);
   if(auto W=ExistingWindow.Pin()){W->ShowWindow();W->BringToFront(true);return;}
   if (const auto Main=FModuleManager::LoadModuleChecked<IMainFrameModule>(TEXT("MainFrame")).GetParentWindow()) {
    Main->ShowWindow();Main->BringToFront(true);
@@ -111,7 +121,7 @@ public:
     Settings->HandFlowDirectory.Path=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/HandFlow"));
     Settings->MediaPipeModel.FilePath=FPaths::ConvertRelativePathToFull(Plugin->GetBaseDir()/TEXT("ThirdParty/MediaPipe/hand_landmarker.task"));
    }
-   Settings->TargetMesh=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Characters/UE5_Mannequins/Meshes/SKM_Manny.SKM_Manny"));
+   Settings->TargetMesh=LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Characters/UE5_Mannequins/Meshes/SKM_Quinn.SKM_Quinn"));
    Settings->Retargeter=LoadObject<UIKRetargeter>(nullptr,TEXT("/Game/CubelessMocap/Setup/RTG_CBM_SMPL_to_Manny.RTG_CBM_SMPL_to_Manny"));
   }
   TSet<FName> VisibleProperties;
@@ -147,12 +157,13 @@ public:
   auto Basic=MakeDetails(false),AdvancedDetails=MakeDetails(true);
   auto Check=[this](const TCHAR* Label,bool UCubelessMocapSettings::* Field){return SNew(SCheckBox).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).IsChecked_Lambda([this,Field](){return Settings.Get()->*Field?ECheckBoxState::Checked:ECheckBoxState::Unchecked;}).OnCheckStateChanged_Lambda([this,Field](ECheckBoxState V){Settings.Get()->*Field=V==ECheckBoxState::Checked;})[SNew(STextBlock).Text(FText::FromString(Label))];};
   auto Window=SNew(SWindow).Title(FText::FromString(TEXT("Cubeless Body Mocap"))).ClientSize(FVector2D(1440,960)).MinWidth(1000).MinHeight(720);TSharedPtr<SCBMComparison> ComparisonWidget;TSharedPtr<SSplitter> LayoutWidget;
-  Window->SetContent(SNew(SVerticalBox)
+  Window->SetContent(SNew(SCBMPoseKeyboardRoot).OnPoseKey(FOnKeyDown::CreateLambda([this](const FGeometry& G,const FKeyEvent& E){auto C=Comparison.Pin();return C?C->PoseHistoryKey(G,E):FReply::Unhandled();}))[SNew(SVerticalBox)
    +SVerticalBox::Slot().AutoHeight().Padding(6)[SNew(SBorder).BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder")).Padding(6)[SNew(SHorizontalBox)
     +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("1  영상 열기"))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Raw(this,&FCubelessMocapModule::ChooseVideo)]
-    +SHorizontalBox::Slot().AutoWidth().Padding(8,2)[SNew(SButton).Text(FText::FromString(TEXT("2  모캡 실행"))).ToolTipText(FText::FromString(TEXT("선택한 구간과 계산 옵션으로 모캡을 실행합니다. 결과는 검토 후 별도로 내보냅니다."))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){SaveNotice.Empty();FString R;if(!UCubelessMocapLibrary::StartMocap(Settings.Get(),R))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(R));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("2  수동 마커 편집"))).ToolTipText(FText::FromString(TEXT("현재 모캡 결과에 수동 마커만 추가합니다. 자동 샘플링이나 재추론은 하지 않습니다."))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){FString R;if(!UCubelessMocapLibrary::StartRepresentativePreview(Settings.Get(),R))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(R));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(8,2)[SNew(SButton).Text(FText::FromString(TEXT("3  전체 모캡"))).ToolTipText(FText::FromString(TEXT("선택한 구간과 계산 옵션으로 모캡을 실행합니다. 결과는 검토 후 별도로 내보냅니다."))).IsEnabled_Lambda([](){return !UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([this](){SaveNotice.Empty();FString R;if(!UCubelessMocapLibrary::StartMocap(Settings.Get(),R))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(R));return FReply::Handled();})]
     +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("취소"))).IsEnabled_Lambda([](){return UCubelessMocapLibrary::IsBusy();}).OnClicked_Lambda([](){UCubelessMocapLibrary::Cancel();return FReply::Handled();})]
-    +SHorizontalBox::Slot().AutoWidth().Padding(12,2)[SNew(SButton).Text(FText::FromString(TEXT("3  선택 결과 내보내기"))).ToolTipText(FText::FromString(TEXT("선택한 결과를 출력 경로에 저장합니다. 없는 손가락 보정만 추가 계산하며 전신·손 추론을 반복하지 않습니다."))).IsEnabled_Lambda([this](){return !UCubelessMocapLibrary::IsBusy()&&(Settings->SaveHandFlow?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr);}).OnClicked_Lambda([this](){if(!UCubelessMocapLibrary::SaveAnimationSequence(Settings.Get(),SaveNotice))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(SaveNotice));return FReply::Handled();})]
+    +SHorizontalBox::Slot().AutoWidth().Padding(12,2)[SNew(SButton).Text(FText::FromString(TEXT("4  선택 결과 내보내기"))).ToolTipText(FText::FromString(TEXT("선택한 결과를 출력 경로에 저장합니다. 없는 손가락 보정만 추가 계산하며 전신·손 추론을 반복하지 않습니다."))).IsEnabled_Lambda([this](){return !UCubelessMocapLibrary::IsBusy()&&(Settings->SaveHandFlow?Settings->HandFlowAnimation!=nullptr:Settings->OriginalAnimation!=nullptr);}).OnClicked_Lambda([this](){if(!UCubelessMocapLibrary::SaveAnimationSequence(Settings.Get(),SaveNotice))FMessageDialog::Open(EAppMsgType::Ok,FText::FromString(SaveNotice));return FReply::Handled();})]
     +SHorizontalBox::Slot().AutoWidth().Padding(2)[SNew(SButton).Text(FText::FromString(TEXT("저장 에셋 열기"))).IsEnabled_Lambda([this](){return !UCubelessMocapLibrary::IsBusy()&&Settings->ExportedSequence!=nullptr;}).OnClicked_Lambda([this](){GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(Settings->ExportedSequence);return FReply::Handled();})]
     +SHorizontalBox::Slot().FillWidth(1).Padding(12,4)[SNew(STextBlock).Text_Lambda([this](){return FText::FromString(FPaths::GetCleanFilename(Settings->Video.FilePath));}).ToolTipText_Lambda([this](){return FText::FromString(Settings->Video.FilePath);})]]]
    +SVerticalBox::Slot().AutoHeight().Padding(10,2)[SNew(SHorizontalBox)
@@ -171,7 +182,7 @@ public:
      +SVerticalBox::Slot().AutoHeight()[SNew(SExpandableArea).InitiallyCollapsed(true).HeaderContent()[SNew(STextBlock).Text(FText::FromString(TEXT("고급 / 실행 환경")))].BodyContent()[SNew(SBox).MaxDesiredHeight(300)[AdvancedDetails]]]]]
    +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(STextBlock).Text_Static(&FCubelessMocapModule::Summary).ToolTipText_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]
    +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(SProgressBar).Percent_Static(&FCubelessMocapModule::Progress)]
-   +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(SExpandableArea).InitiallyCollapsed(true).HeaderContent()[SNew(STextBlock).Text(FText::FromString(TEXT("상세 처리 로그")))].BodyContent()[SNew(STextBlock).AutoWrapText(true).Text_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]]);
+   +SVerticalBox::Slot().AutoHeight().Padding(10,3)[SNew(SExpandableArea).InitiallyCollapsed(true).HeaderContent()[SNew(STextBlock).Text(FText::FromString(TEXT("상세 처리 로그")))].BodyContent()[SNew(STextBlock).AutoWrapText(true).Text_Lambda([](){return FText::FromString(UCubelessMocapLibrary::GetJobStatus());})]]]);
   Comparison=ComparisonWidget;ExistingWindow=Window;LayoutSplitter=LayoutWidget;
   FSlateApplication::Get().AddWindow(Window);
  }

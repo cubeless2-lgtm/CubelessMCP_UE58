@@ -163,7 +163,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=Path, required=True)
     args = parser.parse_args()
-    c = json.loads(args.config.read_text(encoding='utf-8-sig'))
+    c = json.loads(args.config.read_bytes())
     work = Path(c['work'])
     with (work/'worker.log').open('w', encoding='utf-8', buffering=1) as log, contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
         try:

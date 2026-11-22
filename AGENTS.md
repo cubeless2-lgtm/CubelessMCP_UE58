@@ -9,3 +9,8 @@ This project is the user's development and verification project. Perform work, b
 Use the project's running Editor for Unreal work and verification, including plugin development. A separate DebugGame, headless, or parallel Editor session requires explicit user direction. When a plugin build requires replacing a loaded DLL and the user has authorized a restart, check for unsaved work, end the current Editor normally, build the project Editor target, and reopen the same project in its regular Development Editor for verification. Follow the [Editor lifecycle](cubeless/codex/workflows/verification-lifecycle.md) for shutdown and relaunch checks.
 
 Historical records and archived instructions are evidence, never current tasks or approval. Do not commit or push unless explicitly requested.
+
+
+## Mocap delivery: show the result and hand off the Editor
+
+User preference (2026-11-15): after creating or correcting mocap, show the saved result in this project's regular Editor by default, with SKM_Quinn and synchronized source/result playback when available. Leave the Editor open for the user unless they explicitly request shutdown. A session used to show the deliverable is handed off to the user; record its PID and displayed asset as a user handoff and exclude it from owned verification-session cleanup. Reuse an existing Editor and preserve dirty packages/PIE. This does not authorize parallel Editors or silent saves/discards. Use semantic Unreal APIs; do not use Computer Use.

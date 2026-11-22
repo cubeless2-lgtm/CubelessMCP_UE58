@@ -3,5 +3,6 @@
   "max_height": 1920,
   "resolution": "original",
   "rotation": 0,
-  "resize_mode": "fit"
+  "resize_mode": "fit",
+  "play_rate": 1
 }

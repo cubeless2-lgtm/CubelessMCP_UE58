@@ -1,17 +1,20 @@
+#include "CBMDebugProvenance.h"
 // All state transitions run on the game thread. Reentrant ticks never dispatch
 // another stage while a native asset operation pumps Slate.
 UAnimSequence* UCubelessMocapLibrary::ResolveSaveAnimation(UCubelessMocapSettings* S){
  if(!S)return nullptr;
- if(S->SaveBoneCorrection)return S->SaveHandFlow?S->CorrectedHandAnimation.Get():S->CorrectedBodyAnimation.Get();
- return S->SaveHandFlow?S->HandFlowAnimation.Get():S->OriginalAnimation.Get();
+ UAnimSequence* Base=S->SaveBoneCorrection?(S->SaveHandFlow?S->CorrectedHandAnimation.Get():S->CorrectedBodyAnimation.Get()):(S->SaveHandFlow?S->HandFlowAnimation.Get():S->OriginalAnimation.Get());
+ return Base&&Base==S->RepresentativeAppliedSource&&S->RepresentativeAppliedAnimation?S->RepresentativeAppliedAnimation.Get():Base;
 }
 bool UCubelessMocapLibrary::StartMocap(UCubelessMocapSettings* S,FString& Result){
  if(!S||IsBusy()){Result=TEXT("진행 중인 작업이 끝난 뒤 시작하세요.");return false;}
+ if(!S->RepresentativeCorrections.IsEmpty()&&S->RepresentativeInput!=CBMRepresentativeInput(S)){Result=TEXT("영상/구간/메시가 바뀌었습니다. 대표 자세 보정을 다시 준비하세요.");return false;}
  auto Work=TStrongObjectPtr<UCubelessMocapSettings>(DuplicateObject<UCubelessMocapSettings>(S,GetTransientPackage()));
+ Work->IKEnabled=false;S->RepresentativeAppliedSource=nullptr;S->RepresentativeAppliedAnimation=nullptr;
  Work->OutputFolder=TEXT("/Game/_MCP_Temp/CBMWork/Take_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
  if(Work->AutoBoneCorrection&&!FPaths::FileExists(Work->HandFlowPython.FilePath)){Result=TEXT("본 보정에 필요한 HandFlow Python 환경을 준비하세요.");return false;}
  Work->OriginalAnimation=nullptr;Work->HandFlowAnimation=nullptr;Work->HandEnhancedAnimation=nullptr;Work->HandComparisonBase=nullptr;Work->JointCorrectedAnimation=nullptr;
- if(!Extract(Work.Get(),Result))return false;
+ if(!Extract(Work.Get(),Result))return false;S->IKEnabled=false;
  S->OriginalAnimation=nullptr;S->HandFlowAnimation=nullptr;S->HandComparisonBase=nullptr;S->PreviewAnimation=nullptr;
  S->SaveHandFlow=S->EnhanceHands;S->SaveBoneCorrection=S->AutoBoneCorrection;S->CorrectedBodyAnimation=nullptr;S->CorrectedHandAnimation=nullptr;
  CBMPipelineStart=FPlatformTime::Seconds();CBMPipelineEnd=0;CBMPipelineActive=true;CBMPipelineCancel=false;
@@ -20,7 +23,10 @@ bool UCubelessMocapLibrary::StartMocap(UCubelessMocapSettings* S,FString& Result
   if(Pumping)return true;TGuardValue<bool> Guard(Pumping,true);
   if(CurrentJob&&!CurrentJob->Done.Load())return true;
   auto* Target=Owner.Get();
-  auto Finish=[&](){CBMPipelineEnd=FPlatformTime::Seconds();CBMPipelineActive=false;if(Target){Target->PreviewAnimation=ResolveSaveAnimation(Target);if(!Target->PreviewAnimation)Target->PreviewAnimation=Target->HandFlowAnimation?Target->HandFlowAnimation:Target->OriginalAnimation;}return false;};
+  auto Finish=[&](){CBMPipelineEnd=FPlatformTime::Seconds();CBMPipelineActive=false;if(Target){Target->PreviewAnimation=ResolveSaveAnimation(Target);if(!Target->PreviewAnimation)Target->PreviewAnimation=Target->HandFlowAnimation?Target->HandFlowAnimation:Target->OriginalAnimation;
+   if(CurrentJob&&CurrentJob->Success&&!Target->RepresentativeCorrections.IsEmpty()&&Target->PreviewAnimation){FString Error;const FString P=Target->PreviewAnimation->GetOutermost()->GetName()+TEXT("_Pose_")+FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8);if(auto* A=ApplyRepresentativeCorrections(Target,Target->PreviewAnimation,P,Error))Target->PreviewAnimation=A;else {FScopeLock L(&CurrentJob->Mutex);CurrentJob->Success=false;CurrentJob->Stage=TEXT("Failed");CurrentJob->Message=Error;}}
+  if(Target->PreviewAnimation)UCubelessMocapLibrary::LoadPreview();
+  }return false;};
   if(!Target)return Finish();
   if(Step==0&&Work->OriginalAnimation){Target->OriginalAnimation=Work->OriginalAnimation;Target->HandFlowAnimation=Work->HandFlowAnimation;Target->HandComparisonBase=Work->HandComparisonBase;Target->HandResult=Work->HandResult;Target->HandEnhancedAnimation=Work->HandEnhancedAnimation;Target->JointCorrectedAnimation=nullptr;Target->JointComparisonSource=nullptr;}
   if(CBMPipelineCancel||!CurrentJob||!CurrentJob->Success)return Finish();
@@ -77,6 +83,7 @@ static bool CBMCorrectAndSave(UCubelessMocapSettings* S,UAnimSequence* Source,FS
 bool UCubelessMocapLibrary::SaveAnimationSequence(UCubelessMocapSettings* S,FString& Result){
  auto Fail=[&](const FString& M){Result=M;UE_LOG(LogCubelessMocap,Warning,TEXT("%s"),*M);return false;};
  if(!S||IsBusy()||(GEditor&&GEditor->PlayWorld))return Fail(TEXT("작업과 PIE가 끝난 뒤 저장하세요."));
+ if(S->IKEnabled)return SaveIKAnimation(S,S->OutputFolder/S->SequenceName,Result)!=nullptr;
  UAnimSequence* Source=ResolveSaveAnimation(S);
  const bool NeedsCorrection=!Source&&S->SaveBoneCorrection;
  if(NeedsCorrection)Source=S->SaveHandFlow?S->HandFlowAnimation.Get():S->OriginalAnimation.Get();
@@ -90,6 +97,7 @@ bool UCubelessMocapLibrary::SaveAnimationSequence(UCubelessMocapSettings* S,FStr
  if(Output&&(Output==Source||Output->GetOutermost()->IsDirty()||Output->GetSkeleton()!=Source->GetSkeleton()))return Fail(TEXT("저장 대상이 편집 중이거나 스켈레톤이 다릅니다. 해당 에셋을 먼저 확인하세요."));
  if(Source->GetOutermost()->IsDirty())return Fail(TEXT("입력 애니메이션에 미저장 변경이 있습니다."));
  if(NeedsCorrection)return CBMCorrectAndSave(S,Source,Result);
+ if(!S->RepresentativeCorrections.IsEmpty()&&Source!=S->RepresentativeAppliedAnimation){FString Error;const FString P=Source->GetOutermost()->GetName()+TEXT("_Pose_")+FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8);Source=ApplyRepresentativeCorrections(S,Source,P,Error);if(!Source)return Fail(Error);}
  const auto* Model=Source->GetDataModel();TArray<FName> Names;Model->GetBoneTrackNames(Names);
  TArray<TArray<FTransform>> Tracks;for(FName Name:Names){TArray<FTransform> T;Model->GetBoneTrackTransforms(Name,T);if(T.Num()!=Model->GetNumberOfKeys())return Fail(TEXT("입력 트랙 길이가 올바르지 않습니다."));Tracks.Add(MoveTemp(T));}
  TGuardValue<bool> Saving(CBMExportActive,true);
@@ -105,6 +113,7 @@ bool UCubelessMocapLibrary::SaveAnimationSequence(UCubelessMocapSettings* S,FStr
  if(Output->GetDataModel()->GetFrameRate()!=Model->GetFrameRate()||Output->GetDataModel()->GetNumberOfKeys()!=Model->GetNumberOfKeys())return Fail(TEXT("저장 시간축 검증 실패."));
  // Controllers normalize float quaternions: permit roundoff, never resample keys.
  for(int32 I=0;I<Names.Num();++I){TArray<FTransform> Written;Output->GetDataModel()->GetBoneTrackTransforms(Names[I],Written);if(Written.Num()!=Tracks[I].Num())return Fail(TEXT("저장 트랙 길이 검증 실패."));for(int32 F=0;F<Written.Num();++F)if(!Written[F].Equals(Tracks[I][F],1.e-5))return Fail(TEXT("저장 트랙 보존 검증 실패: ")+Names[I].ToString());}
+ const FString DebugRun=CBMDebugRun(Source,S->OriginalAnimation);if(!DebugRun.IsEmpty())Output->GetPackage()->GetMetaData().SetValue(Output,TEXT("CubelessMocapDebugRun"),*DebugRun);
  Output->RateScale=S->SavePlayRate;Output->GetPackage()->GetMetaData().SetValue(Output,TEXT("CubelessMocapExport"),TEXT("1"));Output->MarkPackageDirty();
  FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;const FString File=FPackageName::LongPackageNameToFilename(PackageName,FPackageName::GetAssetPackageExtension());
  if(!UPackage::SavePackage(Output->GetOutermost(),Output,*File,Args))return Fail(TEXT("저장 실패. 미저장 에셋을 확인하세요."));

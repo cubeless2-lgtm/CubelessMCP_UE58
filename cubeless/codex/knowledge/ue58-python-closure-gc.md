@@ -33,3 +33,11 @@ FA 정상 bootstrap은 gc.disable()이나 타입 패치를 사용하지 않았�
 HD에서는 Python에 PCG UObject를 반환하지 않는 Editor 전용 C++ 진단으로 임시 `UPCGGraph`와 stock `UPCGCreatePointsSettings` 노드 1개를 생성했다. 모듈이 소유한 Python fixture에서 기본 자동 GC를 유지하고, 생성 후 `gc.collect()` 132개 반환, 다음 게임 스레드 프레임 2→3의 정확한 graph/node/settings 소유·멤버십 관찰, 명시적 strong reference 해제, 해제 후 `gc.collect()` 442개 반환을 확인했다. 저장·생성 작업·컴파일 요청은 0회다. 근거는 `REC/native-canary-HD.json`과 `REC/HD-execution-report.json`이다.
 
 이 결과는 과거 Python wrapper/임시 exec 수명 경로와 이번 순수 C++ 경로의 증거를 구분한다. Python weakref 배치 결함이 고쳐졌거나 PCG의 모든 생성·selector 교체·컴포넌트 실행·Blueprint 컴파일·종료 경계가 안전하다는 뜻은 아니다. 기존 PCG 작업 게이트는 변경하지 않았으며, 향후에는 실제 변경 경로에 맞는 증거를 사용한다. 정상 Editor 종료와 강제 Unreal GC는 이번 진단에서 검증하지 않았다.
+
+## UE 5.8.4 RailHouse 에디터 검증, 2026-11-21
+
+이날 12:07:50, 12:29:13, 12:31:57(KST)에 발생한 세 건의 덤프에서 PythonScriptPlugin의 타입 RVA는 모두 `0x253090`이었다. CPython 3.11.8에서 약한 참조 목록을 따라가다가 `python311.dll+0xd8b06`에서 `0x7465736c6f18`을 읽으려 했다. 현재 DLL의 타입 이름은 `builtin_function_or_method_with_closure`이며 객체 크기와 weakref 오프셋은 모두 40바이트였다. 마지막 크래시는 공식 MCP 요청이 반환된 후 PIE 시작 시점에 발생했다.
+
+RailHouse 검증 실행기 `Saved/RailHouseStudy/run_gait.py`는 `rail_fixture.py`를 사용한다. 각 요청의 Python 모듈을 고유 키로 등록하고, 해당 요청이 등록한 Slate 콜백이 살아 있는 동안 소유한다. 마지막 콜백이 등록을 해제하고 반환하면 네이티브 bound callable과 전역 사전을 해제한 뒤 키를 제거한다.
+
+기본 자동 GC가 켜진 같은 에디터에서 중첩 `exec`가 저장한 `BlueprintEditorLibrary.get_basic_type_by_name`을 두 번째 Slate 틱에 호출했다. 콜백이 등록을 해제한 뒤에도 결과를 기록할 수 있었고, 다음 독립 요청에서 해당 모듈이 정리됐음을 확인했다. 결과는 `Saved/RailHouseStudy/rail_fixture_live_result.json`에 기록했다. 이 검증은 RailHouse 실행기의 호출 수명을 대상으로 한다. 엔진 타입 자체의 수정이나 강제 GC 스트레스 테스트는 수행하지 않았다.

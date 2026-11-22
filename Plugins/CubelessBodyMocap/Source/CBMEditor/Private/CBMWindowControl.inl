@@ -18,6 +18,7 @@ TSharedRef<FJsonObject> FCubelessMocapModule::ReadWindowState()const{
  if(auto L=LayoutSplitter.Pin())O->SetNumberField(TEXT("preview_fraction"),L->SlotAt(0).GetSizeValue());
  if(Settings.IsValid()){
   const auto* S=Settings.Get();auto Path=[](const UObject* A){return A?A->GetPathName():FString();};
+  O->SetStringField(TEXT("representative_state"),UCubelessMocapLibrary::GetRepresentativeState(Settings.Get()));
   O->SetStringField(TEXT("video"),S->Video.FilePath);O->SetNumberField(TEXT("analysis_fps"),S->FrameRate);
   O->SetBoolField(TEXT("save_hand_flow"),S->SaveHandFlow);O->SetBoolField(TEXT("save_finger_correction"),S->SaveBoneCorrection);
   O->SetNumberField(TEXT("preview_rate"),S->PreviewPlayRate);O->SetNumberField(TEXT("save_rate"),S->SavePlayRate);
@@ -54,3 +55,7 @@ FString UCubelessMocapWindowLibrary::SelectResult(bool HandFlow,bool FingerCorre
 FString UCubelessMocapWindowLibrary::SetLayout(float PreviewFraction,float VideoFraction,FVector2D WindowSize){return CBMWindowModule().ChangeLayout(PreviewFraction,VideoFraction,WindowSize);}
 FString UCubelessMocapWindowLibrary::GetState(){return CBMWindowJson(CBMWindowModule().ReadWindowState());}
 FString UCubelessMocapWindowLibrary::Close(){return CBMWindowModule().CloseWindow();}
+
+FString UCubelessMocapWindowLibrary::PickPoseBoneAt(FVector2D ViewportPixel,bool Cycle){auto& M=CBMWindowModule();auto P=M.Comparison.Pin();FString Text=TEXT("window_closed");const bool OK=P&&P->PickPoseBoneAt(ViewportPixel,Cycle,Text);return M.Reply(TEXT("pick_pose_bone"),OK,Text);}
+FString UCubelessMocapWindowLibrary::PosePointer(const FString& Action,FVector2D ViewportPixel){auto& M=CBMWindowModule();auto P=M.Comparison.Pin();FString Text=TEXT("window_closed");const bool OK=P&&P->PosePointer(Action,ViewportPixel,Text);return M.Reply(TEXT("pose_pointer"),OK,Text);}
+FString UCubelessMocapWindowLibrary::GetPoseGizmoState(){auto P=CBMWindowModule().Comparison.Pin();return P?P->GetPoseGizmoState():TEXT("{\"visible\":false,\"hover_axis\":-1,\"active_axis\":-1,\"segments\":[]}");}

@@ -22,6 +22,13 @@ public:
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString SelectResult(bool HandFlow, bool FingerCorrection);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString SetLayout(float PreviewFraction, float VideoFraction, FVector2D WindowSize);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString GetState();
+ // Viewport-local pixels; shares nearest-joint/segment and overlap-cycle logic with mouse input.
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString PickPoseBoneAt(FVector2D ViewportPixel,bool Cycle=false);
+ // Native viewport-local pointer operations: hover, press, drag, release, leave, cancel.
+ // Shares gizmo picking, gestures and transforms with the physical mouse; no OS input.
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString PosePointer(const FString& Action,FVector2D ViewportPixel);
+ // Projected gizmo segments plus hovered/active axes (-1 none, 0 X, 1 Y, 2 Z, 3 center).
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString GetPoseGizmoState();
  // Closes only the tool window, refuses while a mocap/save job is running.
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Window") static FString Close();
 };

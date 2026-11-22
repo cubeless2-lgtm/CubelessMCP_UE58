@@ -8,9 +8,9 @@
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "Rendering/DrawElements.h"
-void SCBMDebugOverlay::Update(bool Enabled,UAnimSequence* Anim,const FString& Video,double Start,double Time,bool Sync,TConstArrayView<FVector3f> ViewPoints,const FString& CameraMode){
+void SCBMDebugOverlay::Update(bool Enabled,UAnimSequence* Anim,const FString& Video,double Start,double Time,bool Sync,TConstArrayView<FVector3f> ViewPoints,const FString& EvidenceRun){
  Show=false;if(!Enabled){Key.Empty();return;}
- const FString Name=Anim?Anim->GetName():FString();const FString Run=Name.StartsWith(TEXT("Body_"))&&Name.Len()>=37?Name.Mid(5,32):FString();
+ const FString Run=EvidenceRun;
  const FString Identity=Run+TEXT("|")+FPaths::ConvertRelativePathToFull(Video)+FString::Printf(TEXT("|%.6f"),Start);
  if(Identity!=FileIdentity||FPlatformTime::Seconds()>=NextFileCheck){FileIdentity=Identity;NextFileCheck=FPlatformTime::Seconds()+1.;FileStamp.Reset();const FString Dir=FPaths::ProjectSavedDir()/TEXT("CubelessBodyMocap")/Run;
   for(const FString& P:{Dir/TEXT("DebugBones.json"),Dir/TEXT("DebugBones.f32"),Video})FileStamp+=FString::Printf(TEXT("|%lld|%s"),IFileManager::Get().FileSize(*P),*IFileManager::Get().GetTimeStamp(*P).ToIso8601());}
@@ -19,6 +19,7 @@ void SCBMDebugOverlay::Update(bool Enabled,UAnimSequence* Anim,const FString& Vi
  Pending=Async(EAsyncExecution::ThreadPool,[Dir,Video,Start]()->TSharedPtr<FData>{auto D=MakeShared<FData>();FString Text;TSharedPtr<FJsonObject> J;TArray<uint8> Bytes;
  if(!FFileHelper::LoadFileToString(Text,*(Dir/TEXT("DebugBones.json")))||!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text),J)||!J.IsValid())return D;
  double Version=0,Frames=0;const TArray<TSharedPtr<FJsonValue>>* Camera=nullptr;
+ J->TryGetBoolField(TEXT("representative_draft"),D->Draft);
  if(!J->TryGetNumberField(TEXT("version"),Version)||Version!=2||!J->TryGetNumberField(TEXT("frames"),Frames)||Frames<1||Frames>14400||!J->TryGetNumberField(TEXT("fps"),D->FPS)||D->FPS<=0||!J->TryGetNumberField(TEXT("start"),D->Start)||!J->TryGetStringField(TEXT("video"),D->Video)||!J->TryGetStringField(TEXT("video_stamp"),D->Stamp)||!J->TryGetNumberField(TEXT("video_size"),D->Size)||!J->TryGetArrayField(TEXT("camera"),Camera)||Camera->Num()!=10)return D;
  const FString Path=FPaths::ConvertRelativePathToFull(Video);if(!FPaths::IsSamePath(Path,D->Video)||FMath::Abs(Start-D->Start)>1.e-5||IFileManager::Get().FileSize(*Path)!=int64(D->Size)||IFileManager::Get().GetTimeStamp(*Path).ToIso8601()!=D->Stamp)return D;
  for(const auto& X:*Camera){double V;if(!X->TryGetNumber(V)||!FMath::IsFinite(V))return D;D->Camera.Add(V);}D->Frames=int32(Frames);
@@ -29,12 +30,16 @@ void SCBMDebugOverlay::Update(bool Enabled,UAnimSequence* Anim,const FString& Vi
  if(!Data||!Data->Valid){Status=TEXT("일치하는 디버그 캐시 없음 — 자동 재추론하지 않습니다");return;}
  if(!Sync){Status=TEXT("영상 이동 중 — 프레임 일치 후 표시");return;}
  if(!Anim||Time<0||Time*Data->FPS>Data->Frames-1+.01){Status=TEXT("결과 시간 범위를 확인하세요");return;}
- if(ViewPoints.Num()!=13){Status=TEXT("3D 카메라 투영 준비 중");return;}
+ if(ViewPoints.Num()!=13){Status=TEXT("결과 본 준비 중");return;}
  int32 F=FMath::Clamp(FMath::RoundToInt(Time*Data->FPS),0,Data->Frames-1);Canvas=FVector2D(Data->Camera[1],Data->Camera[2]);Observed.Reset();Model.Reset();Applied.Reset();
- // Cyan follows the real rendered view, including manual orbit/pan/dolly/FOV.
- // The original model projection remains immutable in its own estimated camera.
- for(int I=0;I<13;++I){const float* P=Data->Points.GetData()+(F*13+I)*6;Observed.Add(FVector3f(P[0],P[1],P[2]));Model.Add(FVector3f(P[3],P[4],P[5]));const auto& V=ViewPoints[I];Applied.Add(FVector3f(V.X*Canvas.X,V.Y*Canvas.Y,V.Z));}
- Show=true;Status=FString::Printf(TEXT("초록: 2D 검출  |  자홍: 모델 추정  |  청록: 현재 3D 뷰  |  %d 프레임\n청록 카메라: %s. 자홍은 모델 추정 카메라 기준이며 검출은 정답이 아닙니다."),F,*CameraMode);Invalidate(EInvalidateWidgetReason::Paint);
+ // Project the current result bones into the fixed, recorded video camera.
+ // This changes with animation time, but never with the 3D preview camera.
+ for(int I=0;I<13;++I){const float* P=Data->Points.GetData()+(F*13+I)*6;Observed.Add(FVector3f(P[0],P[1],P[2]));Model.Add(FVector3f(P[3],P[4],P[5]));
+  if(Data->Draft){Model.Last().Z=0;Applied.Add(FVector3f(0,0,0));continue;}
+  const auto& V=ViewPoints[I];const double X=V.X*.01+Data->Camera[7],Y=V.Z*.01+Data->Camera[8],Z=V.Y*.01+Data->Camera[9];const auto& R=Data->Fit;
+  const double CX=R[0]*X+R[1]*Y+R[2]*Z+R[9],CY=R[3]*X+R[4]*Y+R[5]*Z+R[10],CZ=R[6]*X+R[7]*Y+R[8]*Z+R[11];
+  Applied.Add(CZ>.001?FVector3f(Data->Camera[0]*CX/CZ+Canvas.X*.5,Data->Camera[0]*CY/CZ+Canvas.Y*.5,1):FVector3f(0,0,0));}
+ Show=true;Status=Data->Draft?TEXT("대표 자세: 초록 2D 검출만 표시합니다. 오른쪽은 자세 편집용 자유 카메라입니다. 촬영 카메라/이동 정합은 전체 계산에서 수행합니다."):FString::Printf(TEXT("초록: 2D 검출 | 자홍: 모델 추정 | 청록: 결과 본 (영상 카메라 고정) | %d 프레임\n청록선은 프리뷰 카메라 회전·이동·확대와 독립적입니다. 검출은 정답이 아닙니다."),F);Invalidate(EInvalidateWidgetReason::Paint);
 }
 int32 SCBMDebugOverlay::OnPaint(const FPaintArgs&,const FGeometry& G,const FSlateRect&,FSlateWindowElementList& Out,int32 Layer,const FWidgetStyle&,bool)const{
  if(!Show)return Layer;const int Edges[][2]={{0,1},{1,2},{2,3},{0,4},{4,5},{5,6},{7,8},{8,9},{10,11},{11,12},{7,10},{7,0},{10,0}};

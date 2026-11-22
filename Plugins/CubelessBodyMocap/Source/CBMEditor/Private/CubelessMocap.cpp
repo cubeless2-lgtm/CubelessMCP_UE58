@@ -43,6 +43,8 @@
 #include "UObject/SavePackage.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/MetaData.h"
+#include "CBMRepresentative.h"
+#include "CBMPoseIK.h"
 #include "Interfaces/IPluginManager.h"
 #include "Modules/ModuleManager.h"
 #include "CBMSoleGrounding.inl"
@@ -149,7 +151,9 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
   while(FPlatformProcess::IsProcRunning(Proc)){if(Cancelled()){FPlatformProcess::TerminateProc(Proc,true);FPlatformProcess::WaitForProc(Proc);return Fail(TEXT("Cancelled during decode."));}FPlatformProcess::Sleep(.05f);}
   int32 Code=-1;FPlatformProcess::GetProcReturnCode(Proc,&Code);if(Code)return Fail(TEXT("FFmpeg decode failed."));
  }
- TArray<FString> Files;IFileManager::Get().FindFiles(Files,*(J->Dir/TEXT("*.png")),true,false);Files.Sort();const int32 N=Files.Num();J->FrameCount=N;
+ TArray<FString> Files;IFileManager::Get().FindFiles(Files,*(J->Dir/TEXT("*.png")),true,false);Files.Sort();
+ 
+ const int32 N=Files.Num();J->FrameCount=N;
  if(N<2||N>14400)return Fail(TEXT("Expected 2..14400 sequential PNG frames."));
  Cubeless::FImageData Frame;if(!ReadFrame(J->Dir/Files[0],Frame))return Fail(TEXT("Cannot read first frame."));const FIntPoint Size(Frame.Width,Frame.Height);const FIntPoint Raster=UE::BodyTracker::Utils::CalculateAdjustedSize(Size.X,Size.Y,896);
  auto FrameAt=[&](int32 I){return !Cancelled()&&ReadFrame(J->Dir/Files[I],Frame)&&Frame.Width==Size.X&&Frame.Height==Size.Y;};
@@ -209,6 +213,7 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
   auto Drain=[&](){return Est->Run(Data.Pose,Data.Translation,Data.Shape,Data.Contacts).LastWindow;};
   for(int32 I=0;I<N;++I){if(Cancelled())return Fail(TEXT("Cancelled."));if(Valid[I]){if(Est->EnqueValidFrame(Focal,FIntVector2(Size),MakeArrayView(Tokens.GetData()+I*8192,8192),Boxes[I],MakeArrayView(Keys.GetData()+I*399,399)))Drain();}else Est->EnqueInvalidFrame();}
   for(int32 Flush=0;;++Flush){J->Update(TEXT("Hue temporal solve (50 steps per window)"),.70);if(Cancelled())return Fail(TEXT("Cancelled."));if(Flush>N+16)return Fail(TEXT("Temporal solver did not finish."));if(Drain())break;}
+  
   if(Cancelled())return Fail(TEXT("Cancelled."));Est.Reset();Checkpoint(J,TEXT("Hue"),IO,true);
  }}DumpFloats(J,TEXT("Hue_Pose"),Data.Pose);DumpFloats(J,TEXT("Hue_Translation"),Data.Translation);DumpFloats(J,TEXT("Hue_Shape"),Data.Shape);Tokens.Empty();Keys.Empty();Boxes.Empty();ReleasePackages();if(Cancelled())return Fail(TEXT("Cancelled."));
  if(Data.Pose.Num()!=N*165||Data.Translation.Num()!=N*3||Data.Shape.Num()!=N*10||Data.Contacts.Num()!=N*6)return Fail(TEXT("Inconsistent temporal result sizes."));
@@ -230,9 +235,9 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
  float DebugCameraHeight=0;TArray<float> DebugOptimizedCamera;
  float GroundY=0;{FCBMStage Stage(J,TEXT("Ground"),.80);if(!Ground(Data,Body,Average,Pitch,Roll,GroundY))return Fail(TEXT("Ground conversion failed."));if(Cancelled())return Fail(TEXT("Cancelled."));}
  DumpFloats(J,TEXT("Ground_Pose"),Data.Pose);DumpFloats(J,TEXT("Ground_Translation"),Data.Translation);DumpFloats(J,TEXT("Camera_Ground"),TArray64<float>{Focal,float(Raster.X)/2,float(Raster.Y)/2,Pitch,Roll,GroundY});
- { FCBMStage OptStage(J,TEXT("Optimizer"),.83);Cubeless::SetOptimizerCancellation(Cancelled);ON_SCOPE_EXIT{Cubeless::SetOptimizerCancellation({});};FBodyTrackingOptimizer Opt;const auto* D=Body.GetSmplxData();if(!Opt.Initialize(D->Verts,D->Faces,D->JointReg,D->Weights,D->BlendShapes))return Fail(TEXT("Optimizer initialization failed."));Opt.SetCamera(Focal,FVector2f(Raster)/2,Pitch,Roll,FVector(0,GroundY,0));Opt.EnableFootlocking(J->FootLocking);Opt.EnableEvidenceRefinement(J->RefineBody);
+  FCBMStage OptStage(J,TEXT("Optimizer"),.83);Cubeless::SetOptimizerCancellation(Cancelled);ON_SCOPE_EXIT{Cubeless::SetOptimizerCancellation({});};FBodyTrackingOptimizer Opt;const auto* D=Body.GetSmplxData();if(!Opt.Initialize(D->Verts,D->Faces,D->JointReg,D->Weights,D->BlendShapes))return Fail(TEXT("Optimizer initialization failed."));Opt.SetCamera(Focal,FVector2f(Raster)/2,Pitch,Roll,FVector(0,GroundY,0));Opt.EnableFootlocking(J->FootLocking);Opt.EnableEvidenceRefinement(J->RefineBody);
   FBodyTrackingOptimizerFrameData O;O.Pose=Data.Pose;O.Translation=Data.Translation;O.Shape=Data.Shape;O.Keypoints=Data.Keypoints;O.BoundingBoxes=Data.Boxes;O.StaticContactLogits=Data.Contacts;O.ValidFrame=Data.ValidFrame;O.NumFrames=N;O.Fps=J->FPS;if(!Opt.Run(O)||!Opt.ApplyResult(Data.Pose,Data.Translation,N))return Fail(TEXT("Body optimization failed."));DebugCameraHeight=Opt.GetCameraHeightOffset();DebugOptimizedCamera=Opt.GetOptimizedCamera();DumpFloats(J,TEXT("Optimizer_CameraHeight"),TArray64<float>{Opt.GetCameraHeightOffset()});
- }if(Cancelled())return Fail(TEXT("Cancelled after optimization; no assets created."));
+ if(Cancelled())return Fail(TEXT("Cancelled after optimization; no assets created."));
  DumpFloats(J,TEXT("Optimizer_Pose"),Data.Pose);DumpFloats(J,TEXT("Optimizer_Translation"),Data.Translation);DumpFloats(J,TEXT("Contacts"),Data.Contacts);DumpFloats(J,TEXT("Keypoints25"),Data.Keypoints);
  int32 First=0;while(!Valid[First])++First;int32 Last=First;for(int32 I=0;I<N;++I){if(Valid[I])Last=I;else {for(int32 B=0;B<165;++B)Data.Pose[I*165+B]=Data.Pose[Last*165+B];for(int32 B=0;B<3;++B)Data.Translation[I*3+B]=Data.Translation[Last*3+B];}}
  // Persist camera/framing for the synchronized comparison view independently of diagnostics.
@@ -303,7 +308,8 @@ static bool Solve(const TSharedRef<FCBMJob,ESPMode::ThreadSafe>& J,FString& Resu
 #include "CBMJointPost.inl"
 static double CBMPipelineStart=0,CBMPipelineEnd=0;
 static bool CBMPipelineActive=false,CBMPipelineDispatch=false,CBMPipelineCancel=false,CBMExportActive=false;
-bool UCubelessMocapLibrary::IsBusy(){check(IsInGameThread());return CBMExportActive||(CBMPipelineActive&&!CBMPipelineDispatch)||(CurrentJob&&!CurrentJob->Done.Load());}
+
+bool UCubelessMocapLibrary::IsBusy(){check(IsInGameThread());return CBMIKBusy()||CBMExportActive||(CBMPipelineActive&&!CBMPipelineDispatch)||(CurrentJob&&!CurrentJob->Done.Load());}
 void UCubelessMocapLibrary::Cancel(){check(IsInGameThread());CBMPipelineCancel=true;if(CurrentJob&&!CurrentJob->Done.Load()){CurrentJob->Cancel.Store(true);FScopeLock L(&CurrentJob->Mutex);CurrentJob->Message=TEXT("Cancellation requested; waiting for the current native call to return.");}}
 FString UCubelessMocapLibrary::GetJobStatus(){check(IsInGameThread());if(!CurrentJob)return TEXT("Idle");auto J=CurrentJob;FScopeLock L(&J->Mutex);return (CBMPipelineStart>0?FString::Printf(TEXT("전체 처리 %.1f초 | "),(CBMPipelineEnd>0?CBMPipelineEnd:FPlatformTime::Seconds())-CBMPipelineStart):FString())+FString::Printf(TEXT("%s | %.0f%% | %.1fs | peak RAM %.0f MiB\n%s"),*J->Stage,J->Progress*100,(J->Finished>0?J->Finished:FPlatformTime::Seconds())-J->Start,J->PeakProcess/1048576.0,*J->Message);}
 FString UCubelessMocapLibrary::GetViewportRenderingState(){
@@ -331,7 +337,7 @@ bool UCubelessMocapLibrary::Extract(UCubelessMocapSettings* S,FString& Result){
  Result=TEXT("Started job ")+J->Run;return true;
 }
 
-void UCubelessMocapLibrary::ShutdownJobs(){check(IsInGameThread());check(!IsBusy());if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();FTSTicker::GetCoreTicker().RemoveTicker(CurrentJob->SampleTicker);CBMSetLevelRenderingPaused(*CurrentJob,false);}if(GEditor)for(auto* Viewport:GEditor->GetLevelViewportClients())if(Viewport)Viewport->RemoveRealtimeOverride(CBMLevelRealtimeReason(),false);CurrentJob.Reset();}
+void UCubelessMocapLibrary::ShutdownJobs(){check(IsInGameThread());check(!IsBusy());CBMIKShutdown();if(CurrentJob){if(CurrentJob->Worker.IsValid())CurrentJob->Worker.Wait();FTSTicker::GetCoreTicker().RemoveTicker(CurrentJob->SampleTicker);CBMSetLevelRenderingPaused(*CurrentJob,false);}if(GEditor)for(auto* Viewport:GEditor->GetLevelViewportClients())if(Viewport)Viewport->RemoveRealtimeOverride(CBMLevelRealtimeReason(),false);CurrentJob.Reset();}
 #include "CBMWorkflow.inl"
 
 UAnimSequence* UCubelessMocapLibrary::CreateSoleGroundedAnimation(UAnimSequence* Source,USkeletalMesh* Mesh,const FString& OutputFolder,FString& Result){
@@ -361,3 +367,6 @@ UAnimSequence* UCubelessMocapLibrary::CreateContactSupportedAnimation(UAnimSeque
  const FString Name=Source->GetName()+TEXT("_Contact_")+FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(8);auto* Output=DuplicateObject<UAnimSequence>(Source,CreatePackage(*(OutputFolder/Name)),*Name);Output->SetFlags(RF_Public|RF_Standalone);Input.Guid=Output->GetDataModel()->GenerateGuid();
  if(!CBMApplyFootSupport(Output,Mesh,Input,Correction))return nullptr;FSavePackageArgs Args;Args.TopLevelFlags=RF_Public|RF_Standalone;if(!UPackage::SavePackage(Output->GetOutermost(),Output,*FPackageName::LongPackageNameToFilename(OutputFolder/Name,FPackageName::GetAssetPackageExtension()),Args))return nullptr;FAssetRegistryModule::AssetCreated(Output);return Output;
 }
+
+#include "CBMBodyContact.inl"
+#include "CBMRepresentative.inl"

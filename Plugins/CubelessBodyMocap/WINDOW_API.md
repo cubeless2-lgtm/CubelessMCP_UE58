@@ -86,3 +86,77 @@ message = unreal.CubelessMocapLibrary.save_animation_sequence(settings)
 ```
 
 화면 확인이 필요하면 기존 `unreal.CubelessMocapLibrary.save_preview_screenshot()`이 엔진에서 직접 렌더링한 PNG를 저장합니다. 이 호출에도 OS 화면 조작이나 Computer Use가 필요하지 않습니다.
+
+본 디버그는 `settings.set_editor_property('debug_bones', True)`로 제어합니다. 기본값은 켜짐이며 청록 선은 원본 영상의 고정 카메라를 사용합니다. `preview_yaw_offset`과 `preview_zoom`을 바꿔도 영상 위 청록 좌표는 움직이지 않습니다. 저장·보정본은 원본 실행 ID 메타데이터로 캐시를 찾고, 없는 경우 창의 `original_animation` 연결을 사용합니다. 스크린샷 옆 `ComparisonPreview.json`의 `overlay_applied_uv`로13개 투영 좌표를 직접 검증할 수 있습니다.
+
+재생 타임라인은 파란 구간 막대 위의 빨간 막대입니다. 레일 폭/높이는 구간 막대와 같고 빨간 단일 핸들이 현재 위치를 나타냅니다. 드래그와 방향키/Home/End로 이동한 뒤 일시 정지합니다. 아래 파란 막대는 계산 구간 선택 용도를 유지합니다.
+
+영상 끝에서 WMF가 Seek를 수락하고도 시각을 이동하지 않는 경우 같은 영상 디코더를 한 번 다시 열어 요청 시각과 재생 의도를 복구합니다. 정지한 일반 탐색의 복구도 한 번으로 제한하고 이후 열기/탐색 시간 초과는 실패로 반환합니다. `seek_retry_count`, `seek_pending`, `seek_failed`, `play_after_seek`를 확인하세요. stop은 현재 검토 구간의 시작으로 돌아가며 에셋을 변경하지 않습니다. 실제 영상 끝난 뒤 재생, 정지/재생 반복 및 일시 정지/재생을 검증했습니다.
+
+
+## 대표 자세와 Undo
+
+`start_representative_preview(settings)`로 임시 대표 자세를 준비합니다. `get_representative_state(settings)`의 `frames`, `ready_seconds`, `input_matches`, `preview_animation`, `corrections`, `undo_steps`, `redo_steps`를 확인합니다. 이력 생성 전에는 undo/redo 필드가 없을 수 있습니다.
+
+```python
+l = unreal.CubelessMocapLibrary
+s = w.get_settings()
+w.control('representative', 2)  # seek_pending=false 이후 편집
+l.begin_representative_edit(s)
+l.set_representative_correction(s, 2, 'spine_01', unreal.Rotator(pitch=5.))
+l.end_representative_edit(s)
+w.control('undo_pose')
+w.control('redo_pose')
+```
+
+`pose_begin`/`pose_end`도 같은 이력 묶기를 제공합니다. `pose_rotate_x/y/z`와 각도(호출당 ±15도)는 화면 기즈모와 같은 월드 축 회전 경로를 사용합니다. 원본 로컬 좌표 보정은 set_representative_correction을 사용합니다. 대표 자세가 선택된 시각과 입력이 일치해야 합니다.
+
+`apply_representative_corrections(settings, source, new_package)`는 깨끗한 전체 모캡을 새 에셋에 저장합니다. 보정이 없으면 source 자체를 반환하고 새 파일을 만들지 않습니다. 세션은 실행 폴더의 representative_edits.json을 `load_representative_session(settings, file)`로 복원합니다. Undo 이력은 복원되지 않습니다.
+
+`displayed_source_seconds`, `source_display_mode`, `displayed_frame_rate`는 실제 표시 프레임의 시각·방식·분석 FPS입니다. `media_seconds`는 디코더 시각을 유지합니다. PNG 프레임 표시 시 3D와 디버그는 표시 시각에 맞춰 평가합니다. 스크린샷 JSON은 displayed_frame_file, gizmo_visible, pose_selected_bone, pose_selected_world_quat도 기록합니다.
+
+
+
+## 수동 마커와 정확한 본 선택
+
+
+`get_representative_state`의 version4는 수동으로 지정한 `frames`, `markers`를 제공합니다. 각 marker에는 index, frame, seconds(분석 시작 기준), origin(manual), selected, edited가 있습니다. `selected_bone` / `selected_sample`도 조회할 수 있습니다. 마커 삽입 시 보정 곡선을 유지하고 Sample 인덱스를 재매핑하므로 새 인덱스는 반환 상태에서 다시 읽습니다. 삽입·삭제는 기존 undo_pose / redo_pose에 포함됩니다.
+
+`pick_pose_bone_at(unreal.Vector2D(x,y), cycle=False)`는 3D 뷰포트 내부 픽셀 좌표에서 화면 클릭과 같은 선택 로직을 사용합니다. OS 입력을 주입하지 않습니다. 관절점 우선, 거리·깊이 순서, 부모 본의 연결선, cycle=True인 겹침 후보 순환을 지원합니다. reply.message는 선택한 본 이름 또는 실패 이유입니다. 탐색 중/계산 중에는 거부합니다. 스크린샷 JSON의 pickable_bones, viewport_width/height는 실제 선택 기하를 확인하는 진단 자료입니다. bone_display_scale과 bone_pick_scale은 3입니다.
+
+
+## IK 편집과 수동 마커
+
+자동 간격 마커와 GIF/보조 영상 보정 API는 제거했습니다. 시작/끝을 포함한 모든 마커는 사용자가 직접 추가하며 자동 생성하지 않습니다. 이전의 대표 프레임 선행 추론은 사용하지 않습니다. `start_representative_preview(settings)`는 현재 모캡 결과의 빈 수동 마커 세션만 준비하는 호환 함수입니다.
+
+```python
+window = unreal.CubelessMocapWindowLibrary
+lib = unreal.CubelessMocapLibrary
+s = window.get_settings()
+lib.begin_ik_edit(s)  # 현재 결과에서 시작, 보정이 없으면 자세 변화 없음
+lib.set_ik_range(s, 2.0, 4.0, 0.25)  # 애니메이션 초, 양쪽 연결은 구간 안
+lib.set_ik_control(s, 'foot_l', unreal.Vector(0, 3, 0), unreal.Rotator())
+print(lib.get_ik_state(s, 3.0))
+lib.save_ik_animation(s, '/Game/CubelessMocap/AN_Quinn_IK_NewName')
+```
+
+컨트롤 이름: pelvis, foot_l/r, knee_l/r, hand_l/r, elbow_l/r, thumb_tip_l/r, index_tip_l/r, middle_tip_l/r, ring_tip_l/r, pinky_tip_l/r. 이동 단위는 cm이며 컴포넌트 축, 회전은 컴포넌트 축 델타입니다. 길이를 늘리지 않고 도달 가능한 범위에서 풉니다. 무릎/팔꿈치는 방향 핸들이며 손끝은 세 관절을 함께 푸는 FABRIK 핸들입니다. 기본 엔진 Control Rig Blueprint를 변경하지 않는 에디터 전용 IK 레이어입니다.
+
+`control('ik_begin')`, `control('ik_filter', 0..3)`(몸/왼손/오른손/전체), `control('ik_range_start', seconds)`, `control('ik_range_end', seconds)`와 기존 `pose_translate_x/y/z`, `pose_rotate_x/y/z`, `pose_begin/end`, `undo_pose/redo_pose`가 화면과 같은 코드를 사용합니다. `ik_state`에는 소스 GUID, 범위, 연결 시간, 핸들 좌표와 레이어가, `ik_screen_handles`에는 선택용 뷰포트 픽셀이 있습니다. `pick_pose_bone_at(pixel, cycle)`는 IK 모드에서 핸들을 선택합니다.
+
+새 경로만 저장할 수 있으며 기존 에셋을 덮어쓰지 않습니다. 결과는 표준 AnimSequence이며 에디터 플러그인 런타임 의존성이 없습니다. 보정 없는 변환은 원본 키를 그대로 복제합니다. 저장 후에는 새 결과를 기준으로 IK 편집을 유지합니다. 수동 마커·편집 구간·현재 시각은 유지하고, 이미 저장한 레이어를 다시 적용하지 않습니다. 다른 애니메이션으로 바꿨다면 begin_ik_edit를 호출합니다.
+
+현재 에디터 세션에서는 소스 애니메이션·메시·원본 데이터 GUID·영상 입력 조건별로 미저장 보정, 구간, 수동 마커와 Undo/Redo 이력을 보관합니다. 다른 결과에서 편집한 뒤 돌아와 `begin_ik_edit`를 호출하면 해당 소스의 상태를 복원합니다. 원본 데이터가 달라진 소스에 이전 레이어를 자동 적용하지 않습니다. 에디터 종료 전에는 새 애니메이션으로 저장해야 합니다.
+
+IK 모드에서는 마커 추가·삭제, 자세 보정, 구간 및 연결 시간 변경을 하나의 작업 순서로 Undo/Redo합니다. `control('ik_ease', seconds)` 또는 같은 구간의 `set_ik_range`로 연결 시간을 바꾸면 그 구간의 기존 보정 레이어에도 즉시 반영됩니다. 슬라이더 드래그는 Undo 한 단계로 묶입니다.
+
+원본에 특정 본 트랙이 없으면 대상 메시의 기준 자세로 새 트랙을 초기화한 뒤 선택 구간만 보정합니다. 이때 구간 밖 기준 자세를 보존합니다. 새 트랙의 쿼터니언은 부호가 반대여도 같은 회전일 수 있으므로 기준 자세 비교에는 회전 각도 오차를 사용합니다.
+
+
+### 기즈모 포인터 제어와 강조 표시
+
+기즈모에 포인터를 올리면 해당 축/링/중앙 핸들이 노란색으로 강조됩니다. 누른 상태에서는 더 밝고 굵게 표시하며, 드래그 중 다른 축을 지나도 누른 축을 유지합니다. 선택 모드 Q에서는 기즈모를 숨깁니다. Shift+클릭은 겹친 관절을 선택/순환하고, 일반 클릭은 보이는 기즈모를 우선합니다. 화살촉과 스케일 상자도 렌더링과 같은 선분으로 판정합니다.
+
+`get_pose_gizmo_state()`는 `visible`, `hover_axis`, `active_axis`, 뷰포트 크기, 중심과 투영된 `segments`를 반환합니다. 축 번호는 -1 없음, 0 X, 1 Y, 2 Z, 3 중앙입니다. `pose_pointer(action, unreal.Vector2D(x,y))`는 화면 안의 좌표로 `hover`, `press`, `drag`, `release`, `leave`, `cancel`을 처리합니다. 실제 마우스의 Hover/Press/Drag/Release 구현을 공유하며 OS 입력이나 Computer Use가 필요하지 않습니다.
+
+`press` → 여러 번의 `drag` → `release`가 Undo 한 단계입니다. `leave`는 hover만 지우고 캡처 중인 드래그는 유지합니다. `cancel`은 포커스 상실처럼 현재 값을 유지한 채 제스처를 종료하므로 값을 되돌리려면 `control('undo_pose')`를 사용합니다. 재생, 편집 불가 상태, 선택/도구 변경 시 활성 드래그를 종료합니다. IK 모드의 스케일은 기존 정책대로 허용하지 않습니다.

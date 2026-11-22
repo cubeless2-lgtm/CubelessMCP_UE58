@@ -22,11 +22,56 @@ enum class ECBMImageAlignmentMode : uint8 {
  Legacy UMETA(DisplayName="기존 보완"),
  Temporal UMETA(DisplayName="전체 시간축 보완")
 };
+USTRUCT(BlueprintType)
+struct FCBMRepresentativeCorrection {
+ GENERATED_BODY()
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FName Bone;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) int32 Sample=0;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FRotator Delta=FRotator::ZeroRotator;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FVector Translation=FVector::ZeroVector;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FVector Scale=FVector::OneVector;
+};
+USTRUCT(BlueprintType)
+struct FCBMIKEdit {
+ GENERATED_BODY()
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FName Control;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FVector Translation=FVector::ZeroVector;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) FRotator Rotation=FRotator::ZeroRotator;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) double Start=0;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) double End=1;
+ UPROPERTY(EditAnywhere,BlueprintReadWrite) double Ease=.2;
+};
 UCLASS()
 class CBMEDITOR_API UCubelessMocapSettings : public UObject {
  GENERATED_BODY()
 public:
- UPROPERTY(EditAnywhere, Category="Preview") bool DebugBones=false;
+ UPROPERTY(Transient) bool IKEnabled=false;
+ UPROPERTY(Transient) TObjectPtr<UAnimSequence> IKSource;
+ UPROPERTY(Transient) FGuid IKSourceGuid;
+ UPROPERTY(Transient) TObjectPtr<USkeletalMesh> IKMesh;
+ UPROPERTY(Transient) TArray<FCBMIKEdit> IKEdits;
+ UPROPERTY(Transient) FName IKSelected=TEXT("foot_l");
+ UPROPERTY(Transient) double IKStart=0;
+ UPROPERTY(Transient) double IKEnd=1;
+ UPROPERTY(Transient) double IKEase=.2;
+ UPROPERTY(Transient) int32 IKFilter=0;
+ UPROPERTY(Transient) bool IKPlaying=false;
+ UPROPERTY(EditAnywhere, Category="Preview") bool DebugBones=true;
+ UPROPERTY(Transient) int32 PoseGizmoMode=1;
+ UPROPERTY(Transient) TObjectPtr<UAnimSequence> RepresentativeAnimation;
+ UPROPERTY(Transient) TObjectPtr<UAnimSequence> RepresentativeAppliedAnimation;
+ UPROPERTY(Transient) TObjectPtr<UAnimSequence> RepresentativeAppliedSource;
+ UPROPERTY(Transient) TArray<int32> RepresentativeFrames;
+
+
+ UPROPERTY(Transient) TArray<FCBMRepresentativeCorrection> RepresentativeCorrections;
+ UPROPERTY(Transient) FString RepresentativeInput;
+ UPROPERTY(Transient) int32 RepresentativeTotalFrames=0;
+ UPROPERTY(Transient) double RepresentativeSeconds=0;
+ UPROPERTY(Transient) bool ShowPoseSkeleton=false;
+ UPROPERTY(Transient) bool HidePoseMesh=false;
+ UPROPERTY(Transient) int32 SelectedRepresentative=0;
+ UPROPERTY(Transient) FName SelectedPoseBone=TEXT("spine_01");
  UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="영상 관절 방향 보완", ToolTip="영상 관절과 시간 연속성으로 무릎·팔꿈치 방향을 보완합니다. 필요할 때 영상 전체의 골반·발 배치와 시간에 따라 부드럽게 변하는 골반 높이·깊이를 보완합니다. 골반 기울기는 유지합니다. 발 높이·이동 속도, 손가락과 손목·발목 회전은 유지하며 골반 이동에 따라 상체 위치도 함께 이동합니다. 오차와 회전 안정성 검사를 통과한 후보만 적용하며 관절 제한은 추가하지 않습니다.")) bool ImageLimbAlignment=true;
  UPROPERTY(EditAnywhere, Category="Solve", meta=(DisplayName="영상 보완 방식", EditCondition="ImageLimbAlignment", ToolTip="기존 보완 또는 전체 시간축 보완 중 하나만 실행합니다. 시간축 방식은 기존 HandFlow Python의 NumPy·SciPy를 사용하며 추가 모델 추론은 하지 않습니다. 접지한 발과 손목을 유지하며 다리·팔꿈치 방향을 맞춥니다. 상체·골반은 진단하고 원래 자세를 보존합니다.")) ECBMImageAlignmentMode ImageAlignmentMode=ECBMImageAlignmentMode::Legacy;
 
@@ -96,10 +141,29 @@ UCLASS()
 class CBMEDITOR_API UCubelessMocapLibrary : public UBlueprintFunctionLibrary {
  GENERATED_BODY()
 public:
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Body Mocap|IK") static bool BeginIKEdit(UCubelessMocapSettings* Settings,FString& Result);
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Body Mocap|IK") static bool SetIKRange(UCubelessMocapSettings* Settings,double Start,double End,double Ease,FString& Result);
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Body Mocap|IK") static bool SetIKControl(UCubelessMocapSettings* Settings,FName Control,FVector Translation,FRotator Rotation,FString& Result);
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Body Mocap|IK") static FString GetIKState(UCubelessMocapSettings* Settings,double Seconds);
+ UFUNCTION(BlueprintCallable,Category="Cubeless|Body Mocap|IK") static UAnimSequence* SaveIKAnimation(UCubelessMocapSettings* Settings,const FString& OutputPackage,FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static void OpenWindow();
+ // Explicit two-phase offline contact correction; source animation is never replaced.
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Contact") static bool ExportBodyContactData(UAnimSequence* Animation, USkeletalMesh* Mesh, const FString& Directory, FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Contact") static UAnimSequence* ApplyBodyContactData(UAnimSequence* Animation, USkeletalMesh* Mesh, const FString& File, const FString& OutputPackage, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* CreateContactSupportedAnimation(UAnimSequence* Source, USkeletalMesh* Mesh, const FString& EvidenceDirectory, const FString& OutputFolder, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* CreateSoleGroundedAnimation(UAnimSequence* Source, USkeletalMesh* Mesh, const FString& OutputFolder, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool StartMocap(UCubelessMocapSettings* Settings, FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool StartRepresentativePreview(UCubelessMocapSettings* Settings,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool SetRepresentativeTransform(UCubelessMocapSettings* Settings,int32 Sample,FName Bone,FVector Translation,FRotator Rotation,FVector Scale,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool SetRepresentativeCorrection(UCubelessMocapSettings* Settings,int32 Sample,FName Bone,FRotator Delta,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static FString GetRepresentativeState(UCubelessMocapSettings* Settings);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool LoadRepresentativeSession(UCubelessMocapSettings* Settings,const FString& File,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool AddRepresentativeMarker(UCubelessMocapSettings* Settings,int32 Frame,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool RemoveRepresentativeMarker(UCubelessMocapSettings* Settings,int32 Frame,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool BeginRepresentativeEdit(UCubelessMocapSettings* Settings);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static void EndRepresentativeEdit(UCubelessMocapSettings* Settings);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static bool UndoRepresentativeEdit(UCubelessMocapSettings* Settings,bool Redo,FString& Result);
+ UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap|Representative") static UAnimSequence* ApplyRepresentativeCorrections(UCubelessMocapSettings* Settings,UAnimSequence* Source,const FString& OutputPackage,FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static bool SaveAnimationSequence(UCubelessMocapSettings* Settings, FString& Result);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static UAnimSequence* ResolveSaveAnimation(UCubelessMocapSettings* Settings);
  UFUNCTION(BlueprintCallable, Category="Cubeless|Body Mocap") static void LoadPreview();

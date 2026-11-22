@@ -4,6 +4,7 @@
   "Category": "",
   "Description": "",
   "Plugins": [
+    {"Name": "CubelessBodyMocap", "Enabled": true, "TargetAllowList": ["Editor"], "SupportedTargetPlatforms": ["Win64"]},
     {"Name": "CubelessKimodo", "Enabled": true, "TargetAllowList": ["Editor"]},
     {
       "Name": "PythonScriptPlugin",

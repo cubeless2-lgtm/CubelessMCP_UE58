@@ -29,6 +29,10 @@ The launcher checks Engine/Build/Build.version for UE 5.8.x before starting any 
 
 When replacing a loaded plugin DLL requires a restart and the user has authorized it, verify the current Editor's project and PID. Check dirty packages, PIE/SIE and pending work. Preserve the session if any work is unsaved or its state is uncertain. Close the current Editor normally, confirm its PID has exited, and build the exact Development Editor target for this project. After a successful build, relaunch the same `.uproject` in its regular Development Editor. Verify the new PID, project identity and plugin load before continuing validation there.
 
+## Hand off a mocap delivery to the user
+
+For mocap creation/correction, follow the project's AGENTS.md delivery preference: display the saved result in the regular Editor and leave it open by default. Once the displayed asset and live PID are recorded as a user handoff, that Editor is user-owned and must not be closed by the verification cleanup below. Do not keep an external polling/verification process alive just to hold the Editor open. Close only when the user explicitly asks, or use a separately authorized clean restart for a build.
+
 ## Finish an owned verification session
 
 Do not use `-ExecutePythonScript` plus unconditional keep-alive as an unattended indefinite session. A one-shot script should finish without keep-alive. A multi-stage verification session may keep alive only while its owning runner is active. That runner must have a bounded execution deadline and a finally cleanup path after evidence publication. A timeout does not authorize force-kill or uncertain mutation replay.

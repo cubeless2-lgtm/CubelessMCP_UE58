@@ -1,8 +1,9 @@
-"""Windows GUI and CLI for making precise YouTube clips."""
+"""Windows GUI and CLI for making online and local video clips."""
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 from pathlib import Path
 import queue
@@ -26,18 +27,22 @@ def parse_time(value: str) -> float:
     total = 0.0
     for part in parts:
         total = total * 60 + float(part)
+    if not math.isfinite(total):
+        raise ValueError("시간 값이 너무 큽니다. 유한한 숫자로 입력하세요.")
     return total
 
 
 def validate(url: str, start: str, end: str) -> tuple[str, float, float]:
     url = url.strip()
-    if not url.startswith(("https://", "http://")):
+    if "://" not in url:
         url = "https://" + url
+    if any(char.isspace() for char in url):
+        raise ValueError("영상 주소 안에는 공백을 넣을 수 없습니다.")
     parsed = urlparse(url)
-    if parsed.scheme not in ("https", "http") or (parsed.hostname or "").lower() not in {
-        "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"
-    }:
-        raise ValueError("youtube.com 또는 youtu.be 영상 주소를 입력하세요.")
+    if parsed.scheme not in ("https", "http") or not parsed.hostname:
+        raise ValueError("http:// 또는 https:// 형식의 영상 주소를 입력하세요.")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("아이디·비밀번호가 포함된 주소는 지원하지 않습니다.")
     a, b = parse_time(start), parse_time(end)
     if b <= a:
         raise ValueError("종료 시간은 시작 시간보다 커야 합니다.")
@@ -68,7 +73,38 @@ def ffmpeg_path() -> str:
 
 
 RESOLUTION_PRESETS = ("원본 유지", "1920x1080", "1080x1920", "1280x720", "720x1280", "640x360", "360x640", "3840x2160")
+PLAY_RATE_PRESETS = ("0.125", "0.25", "0.5", "0.75", "1", "1.25", "1.5", "2", "3", "4", "8")
 RESIZE_MODES = {"여백 추가 (비율 유지)": "fit", "잘라 채우기": "fill", "늘려 맞추기": "stretch"}
+
+
+def play_rate(config: dict) -> float:
+    """One validation contract shared by GUI, worker, CLI and saved settings."""
+    raw = config.get("play_rate", 1)
+    try:
+        rate = float(raw)
+    except (TypeError, ValueError):
+        raise ValueError("재생 속도는 0.125~8배 범위의 숫자로 입력하세요.") from None
+    if isinstance(raw, bool) or not math.isfinite(rate) or not 0.125 <= rate <= 8:
+        raise ValueError("재생 속도는 0.125~8배 범위의 숫자로 입력하세요.")
+    return rate
+
+
+def audio_filters(rate: float, output_seconds: float) -> str:
+    # Chaining 0.5..2 factors preserves pitch, including rates outside that interval.
+    factors = []
+    remainder = rate
+    while remainder < .5:
+        factors.append(.5)
+        remainder /= .5
+    while remainder > 2:
+        factors.append(2.)
+        remainder /= 2
+    if not math.isclose(remainder, 1):
+        factors.append(remainder)
+    filters = [f"asetpts=PTS/{rate:.12g}"] + [f"atempo={factor:.12g}" for factor in factors]
+    # Account for tempo-filter tail latency without extending past the output cap.
+    filters.append(f"apad=whole_dur={output_seconds:.12g}")
+    return ",".join(filters)
 
 
 def output_options(config: dict) -> tuple[str, int, str]:
@@ -93,10 +129,13 @@ def output_options(config: dict) -> tuple[str, int, str]:
     return value, rotation, mode
 
 
-def video_filters(config: dict) -> str:
+def video_filters(config: dict, output_seconds: float | None = None) -> str:
     resolution, rotation, mode = output_options(config)
+    rate = play_rate(config)
+    # Drop fast-motion frames before expensive spatial filters; slow motion duplicates after them.
+    filters = [f"setpts=PTS/{rate:.12g}", "fps=fps=source_fps:round=near"] if rate > 1 else []
     # Normalize display pixels before rotation (including anamorphic inputs).
-    filters = ["scale=iw*sar:ih", "setsar=1"]
+    filters.extend(["scale=iw*sar:ih", "setsar=1"])
     if rotation == 90:
         filters.append("transpose=clock")
     elif rotation == 180:
@@ -116,8 +155,21 @@ def video_filters(config: dict) -> str:
     else:
         filters.append("pad=ceil(iw/2)*2:ceil(ih/2)*2:0:0")
     filters.append("setsar=1")
+    if rate != 1:
+        if rate < 1:
+            filters.extend([f"setpts=PTS/{rate:.12g}", "fps=fps=source_fps:round=near"])
+        if output_seconds is not None:
+            # CFR slow motion may need the final source frame held until the target end.
+            filters.append(f"tpad=stop_mode=clone:stop_duration={output_seconds:.12g}")
     return ",".join(filters)
 
+
+
+def duration_from_log(log: str) -> float:
+    match = re.search(r"^  Duration: (\d+):(\d+):([\d.]+)", log, re.MULTILINE)
+    if not match:
+        raise ValueError("영상 길이를 확인할 수 없습니다. MP4 등 길이 정보가 있는 영상을 선택하세요.")
+    return int(match[1])*3600 + int(match[2])*60 + float(match[3])
 
 
 def local_duration(source: Path) -> float:
@@ -125,14 +177,19 @@ def local_duration(source: Path) -> float:
     result = subprocess.run([ffmpeg_path(), "-hide_banner", "-nostdin", "-i", str(source)],
                             capture_output=True, encoding="utf-8", errors="replace",
                             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-    match = re.search(r"Duration: (\d+):(\d+):([\d.]+)", result.stderr)
-    if not match:
-        raise ValueError("로컬 영상 길이를 확인할 수 없습니다. MP4 등 길이 정보가 있는 영상을 선택하세요.")
-    return int(match[1])*3600 + int(match[2])*60 + float(match[3])
+    return duration_from_log(result.stderr)
+
+
+
+def download_format(height: int) -> str:
+    # Unknown heights are allowed; known heights must respect the chosen limit.
+    cap = f"[height<=?{height}]"
+    return f"bv{cap}[vcodec^=avc1]+ba[ext=m4a]/bv{cap}+ba/b{cap}/bv{cap}"
 
 
 def make_clip(config: dict) -> Path:
     output_options(config)
+    play_rate(config)
     if config.get("input_file"):
         source = Path(config["input_file"]).expanduser().resolve()
         if not source.is_file():
@@ -168,11 +225,12 @@ def make_clip(config: dict) -> Path:
     with tempfile.TemporaryDirectory(prefix="youtube-clip-", dir=owned_temp) as temp:
         work = Path(temp)
         opts = {
-            "format": f"bv[height<={height}][vcodec^=avc1]+ba[ext=m4a]/bv[height<={height}]+ba/b[height<={height}]/b",
+            "format": download_format(height),
             "outtmpl": str(work / "source.%(ext)s"),
             "ffmpeg_location": ffmpeg,
             "merge_output_format": "mp4",
             "noplaylist": True,
+            "playlistend": 1,
             "socket_timeout": 20,
             "retries": 2,
             "fragment_retries": 2,
@@ -185,6 +243,8 @@ def make_clip(config: dict) -> Path:
         emit("log", message="영상 정보 확인 중…")
         with yt_dlp.YoutubeDL(opts) as dl:
             info = dl.extract_info(url, download=False)
+            if info.get("_type") in ("playlist", "multi_video"):
+                raise ValueError("재생목록·여러 영상 게시물은 지원하지 않습니다. 개별 영상 주소를 사용하세요.")
             if info.get("is_live") or info.get("live_status") in ("is_live", "is_upcoming"):
                 raise ValueError("진행 중이거나 예정된 라이브는 지원하지 않습니다.")
             duration = info.get("duration")
@@ -193,21 +253,26 @@ def make_clip(config: dict) -> Path:
             emit("metadata", title=info.get("title", ""), duration=duration)
             emit("log", message="원본을 임시 저장합니다. 긴 영상은 다운로드에 시간이 걸립니다.")
             dl.process_info(info)
-        candidates = [p for p in work.iterdir() if p.suffix in (".mp4", ".webm", ".mkv", ".mov")]
-        merged = work / "source.mp4"
-        source = merged if merged.exists() else next((p for p in candidates if p.stem == "source"), None)
-        if source is None:
+        # yt-dlp tracks the final path after merging/remuxing; do not guess by extension.
+        source = Path(info["filepath"]) if info.get("filepath") else None
+        if source is None or not source.is_file():
             raise RuntimeError("다운로드한 영상 파일을 찾지 못했습니다.")
+        actual_duration = local_duration(source)
+        if end > actual_duration + 0.05:
+            raise ValueError(f"종료 시간이 영상 길이({actual_duration:g}초)를 초과합니다.")
         return encode_clip(source, config, start, end, info)
 
 
 def encode_clip(source: Path, config: dict, start: float, end: float, info: dict) -> Path:
     """Shared local/YouTube encoder. Rotation is applied before output sizing."""
     resolution, rotation, mode = output_options(config)
+    rate = play_rate(config)
+    source_seconds = end - start
+    output_seconds = source_seconds / rate
     ffmpeg = ffmpeg_path()
     dest = Path(config["output_dir"]).expanduser().resolve()
     dest.mkdir(parents=True, exist_ok=True)
-    emit("log", message=f"출력: {resolution} / 시계방향 {rotation}° / {mode}")
+    emit("log", message=f"출력: {resolution} / 시계방향 {rotation}° / {mode} / {rate:g}배 ({output_seconds:g}초)")
     video_id = re.sub(r"[^A-Za-z0-9_-]", "", info.get("id", "video"))[:40] or "video"
     stamp = time.strftime("%Y%m%d_%H%M%S")
     name = f"{video_id}_{start:g}s-{end:g}s_{stamp}_{uuid.uuid4().hex[:6]}.mp4"
@@ -215,25 +280,37 @@ def encode_clip(source: Path, config: dict, start: float, end: float, info: dict
     pending = dest / (name + ".partial.mp4")
     emit("progress", percent=None, message="지정한 구간을 MP4로 인코딩 중…")
     command = [ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-n",
-               "-ss", str(start), "-i", str(source), "-t", str(end - start),
-               "-map", "0:v:0", "-map", "0:a:0?", "-vf", video_filters(config),
+               "-ss", str(start), "-t", str(source_seconds), "-i", str(source),
+               "-t", str(output_seconds),
+               "-map", "0:v:0", "-map", "0:a:0?", "-vf", video_filters(config, output_seconds),
                "-metadata:s:v:0", "rotate=0", "-c:v", "libx264", "-preset", "fast",
                "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-               "-movflags", "+faststart", str(pending)]
+               "-movflags", "+faststart"]
+    if rate != 1:
+        command += ["-fps_mode", "cfr", "-af", audio_filters(rate, output_seconds)]
+    command.append(str(pending))
     creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     try:
         result = subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace", creationflags=creationflags)
         if result.returncode:
             raise RuntimeError("인코딩 실패: " + result.stderr[-1800:])
         emit("log", message="완성된 영상의 디코딩 상태 확인 중…")
-        check = subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-xerror", "-i", str(pending),
-                                "-f", "null", "-"], capture_output=True, encoding="utf-8", errors="replace", creationflags=creationflags)
+        check = subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-v", "info", "-xerror", "-i", str(pending),
+                                "-map", "0:v:0", "-map", "0:a:0?",
+                                "-progress", "pipe:1", "-nostats", "-f", "null", "-"], capture_output=True, encoding="utf-8", errors="replace", creationflags=creationflags)
         if check.returncode:
+            if "matches no streams" in check.stderr:
+                raise ValueError("선택한 구간에 출력할 영상 프레임이 없습니다. 구간을 늘리거나 재생 속도를 낮추세요.")
             raise RuntimeError("영상 검증 실패: " + check.stderr[-1800:])
+        frames = [int(value) for value in re.findall(r"^frame=(\d+)", check.stdout, re.MULTILINE)]
+        if not frames or max(frames) == 0:
+            raise ValueError("선택한 구간에 출력할 영상 프레임이 없습니다. 구간을 늘리거나 재생 속도를 낮추세요.")
+        actual_seconds = duration_from_log(check.stderr)
         pending.rename(output)
     finally:
         pending.unlink(missing_ok=True)
-    emit("complete", path=str(output), seconds=end-start, title=info.get("title", ""),
+    emit("complete", path=str(output), seconds=output_seconds, source_seconds=source_seconds,
+         play_rate=rate, actual_seconds=actual_seconds, title=info.get("title", ""),
          resolution=resolution, rotation=rotation, resize_mode=mode)
     return output
 
@@ -248,9 +325,18 @@ def settings_path() -> Path:
     return default_output_dir().parent / "settings.json"
 
 
+def resolve_gui_folder(value: str) -> Path:
+    if not value.strip():
+        raise ValueError("저장 폴더를 지정하세요.")
+    folder = Path(value).expanduser()
+    if not folder.is_absolute():
+        folder = settings_path().parent / folder
+    return folder.resolve()
+
+
 def load_settings() -> dict:
     defaults = {"output_dir": str(default_output_dir()), "max_height": 1920,
-                "resolution": "original", "rotation": 0, "resize_mode": "fit"}
+                "resolution": "original", "rotation": 0, "resize_mode": "fit", "play_rate": 1}
     path = settings_path()
     if path.exists():
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -258,9 +344,8 @@ def load_settings() -> dict:
             raise ValueError("settings.json의 최상위 값은 JSON 객체여야 합니다.")
         defaults.update({k: data[k] for k in defaults if k in data})
     output_options(defaults)
-    folder = Path(defaults["output_dir"]).expanduser()
-    if not folder.is_absolute():
-        defaults["output_dir"] = str(path.parent / folder)
+    defaults["play_rate"] = play_rate(defaults)
+    defaults["output_dir"] = str(resolve_gui_folder(defaults["output_dir"]))
     if defaults["max_height"] not in (720, 1080, 1920, 2160):
         raise ValueError("settings.json의 max_height를 확인하세요.")
     return defaults
@@ -269,7 +354,7 @@ def load_settings() -> dict:
 def save_settings(config: dict) -> Path:
     resolution, rotation, mode = output_options(config)
     data = {k: config[k] for k in ("output_dir", "max_height")}
-    data.update(resolution=resolution, rotation=rotation, resize_mode=mode)
+    data.update(resolution=resolution, rotation=rotation, resize_mode=mode, play_rate=play_rate(config))
     path = settings_path()
     pending = path.with_suffix(".json.tmp")
     pending.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -277,14 +362,48 @@ def save_settings(config: dict) -> Path:
     return path
 
 
+def read_worker_events(process, events):
+    try:
+        for line in process.stdout:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                event = None
+            if not isinstance(event, dict) or not isinstance(event.get("event"), str):
+                event = {"event": "log", "message": line.strip()}
+            events.put(event)
+    except Exception as exc:
+        events.put({"event": "error", "message": f"작업 로그를 읽지 못했습니다: {exc}"})
+    finally:
+        process.stdout.close()
+        events.put({"event": "exit", "code": process.wait()})
+
+
+def start_worker(config: dict):
+    work = Path(tempfile.mkdtemp(prefix="YouTubeClipper-"))
+    try:
+        config_file = work / "job.json"
+        config_file.write_text(json.dumps(dict(config, work_dir=str(work)), ensure_ascii=False), encoding="utf-8")
+        command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        process = subprocess.Popen(command + ["--worker", str(config_file)], stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env,
+                                   creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    except Exception:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    return process, work
+
+
 def gui():
     import tkinter as tk
     from tkinter import ttk, filedialog, messagebox
 
     root = tk.Tk()
-    root.title("YouTube 구간 저장")
-    root.geometry("820x780")
-    root.minsize(740, 720)
+    root.title("영상 구간 저장")
+    root.geometry("820x850")
+    root.minsize(740, 800)
     root.configure(bg="#f4f6fb")
     style = ttk.Style(root)
     style.theme_use("clam")
@@ -297,14 +416,14 @@ def gui():
     panel = ttk.Frame(root, padding=25)
     panel.pack(fill="both", expand=True)
     panel.columnconfigure(0, weight=1)
-    ttk.Label(panel, text="YouTube 구간 저장", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-    ttk.Label(panel, text="유튜브 또는 로컬 영상을 자르고, 출력 해상도와 전체 회전을 지정합니다.").grid(row=1, column=0, sticky="w", pady=(5, 18))
+    ttk.Label(panel, text="영상 구간 저장", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+    ttk.Label(panel, text="지원 사이트의 영상·로컬 파일을 자르고, 해상도·회전·재생 속도를 지정합니다.").grid(row=1, column=0, sticky="w", pady=(5, 18))
     try:
         prefs = load_settings()
     except Exception as exc:
         messagebox.showwarning("설정 확인", f"설정 파일을 읽지 못해 기본값으로 시작합니다. 파일은 유지합니다.\n{exc}")
         prefs = {"output_dir": str(default_output_dir()), "max_height": 1920,
-                 "resolution": "original", "rotation": 0, "resize_mode": "fit"}
+                 "resolution": "original", "rotation": 0, "resize_mode": "fit", "play_rate": 1}
     url_var = tk.StringVar()
     start_var, end_var = tk.StringVar(value="1"), tk.StringVar(value="10")
     folder_var = tk.StringVar(value=prefs["output_dir"])
@@ -312,8 +431,9 @@ def gui():
     resolution_var = tk.StringVar(value="원본 유지" if prefs["resolution"] == "original" else prefs["resolution"])
     rotation_var = tk.StringVar(value=str(prefs["rotation"]))
     resize_var = tk.StringVar(value=next(k for k, v in RESIZE_MODES.items() if v == prefs["resize_mode"]))
+    rate_var = tk.StringVar(value=f'{prefs["play_rate"]:g}')
     status_var = tk.StringVar(value="주소를 붙여 넣어 시작하세요.")
-    ttk.Label(panel, text="유튜브 주소 또는 로컬 동영상 경로").grid(row=2, column=0, sticky="w")
+    ttk.Label(panel, text="영상 주소 (YouTube·Instagram 등) 또는 로컬 동영상 경로").grid(row=2, column=0, sticky="w")
     url_entry = ttk.Entry(panel, textvariable=url_var)
     url_entry.grid(row=3, column=0, sticky="ew", padx=(0, 110), pady=(4, 12))
     def choose_video():
@@ -341,6 +461,9 @@ def gui():
         ttk.Label(transforms, text=label).grid(row=0, column=i, sticky="w")
         ttk.Combobox(transforms, textvariable=var, values=choices, width=19,
                      state="readonly" if readonly else "normal").grid(row=1, column=i, sticky="ew", padx=(0, 8), pady=4)
+    ttk.Label(transforms, text="재생 속도 (배, 0.125~8)").grid(row=2, column=0, sticky="w", pady=(8, 0))
+    ttk.Combobox(transforms, textvariable=rate_var, values=PLAY_RATE_PRESETS, width=19).grid(row=3, column=0, sticky="ew", padx=(0, 8), pady=4)
+    ttk.Label(transforms, text="0.5배: 2배 길이 / 2배: 절반 길이 · 소리 높이 유지", wraplength=460).grid(row=3, column=1, columnspan=2, sticky="w")
     ttk.Label(panel, text="회전 후 지정 해상도로 맞춥니다. 원본 유지는 90°/270° 회전 시 가로·세로가 바뀝니다.", wraplength=740).grid(row=7, column=0, sticky="w", pady=(0, 12))
     ttk.Label(panel, text="저장 폴더").grid(row=8, column=0, sticky="w")
     folder_row = ttk.Frame(panel)
@@ -362,7 +485,7 @@ def gui():
     log = tk.Text(panel, height=8, font=("맑은 고딕", 9), relief="flat", bg="white", wrap="word", state="disabled")
     log.grid(row=13, column=0, sticky="nsew", pady=(10, 4))
     panel.rowconfigure(13, weight=1)
-    ttk.Label(panel, text="원본은 임시 저장 후 정리합니다. 로그인·연령·지역 제한 영상은 실패할 수 있습니다.", wraplength=650).grid(row=14, column=0, sticky="w")
+    ttk.Label(panel, text="원본은 임시 저장 후 정리합니다. 사이트 미지원·로그인·비공개·지역 제한 등으로 실패할 수 있습니다.", wraplength=650).grid(row=14, column=0, sticky="w")
     events = queue.Queue()
     state = {"process": None, "last": None, "work": None, "config": None}
 
@@ -372,28 +495,13 @@ def gui():
         log.see("end")
         log.configure(state="disabled")
 
-    def read_events(process):
-        try:
-            for line in process.stdout:
-                try:
-                    events.put(json.loads(line))
-                except json.JSONDecodeError:
-                    events.put({"event": "log", "message": line.strip()})
-            process.wait()
-        finally:
-            events.put({"event": "exit", "code": process.returncode})
-
     def option_config():
-        if not folder_var.get().strip():
-            raise ValueError("저장 폴더를 지정하세요.")
-        folder = Path(folder_var.get()).expanduser()
-        if not folder.is_absolute():
-            folder = default_output_dir().parent / folder
+        folder = resolve_gui_folder(folder_var.get())
         config = {"output_dir": str(folder), "max_height": int(height_var.get()),
                   "resolution": resolution_var.get(), "rotation": int(rotation_var.get()),
-                  "resize_mode": RESIZE_MODES[resize_var.get()]}
+                  "resize_mode": RESIZE_MODES[resize_var.get()], "play_rate": rate_var.get()}
         resolution, rotation, mode = output_options(config)
-        config.update(resolution=resolution, rotation=rotation, resize_mode=mode)
+        config.update(resolution=resolution, rotation=rotation, resize_mode=mode, play_rate=play_rate(config))
         return config
 
     def save_preferences():
@@ -419,23 +527,13 @@ def gui():
                 raise ValueError("저장 폴더를 지정하세요.")
             config = option_config()
             config.update(source_config, start=a, end=b)
-            work = Path(tempfile.mkdtemp(prefix="YouTubeClipper-"))
-            config["work_dir"] = str(work)
-            config_file = work / "job.json"
-            config_file.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
-            command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
-            command += ["--worker", str(config_file)]
-            env = os.environ.copy()
-            env["PYTHONIOENCODING"] = "utf-8"
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                                       encoding="utf-8", errors="replace", env=env,
-                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            process, work = start_worker(config)
             state.update(process=process, work=work, config=config)
             start_button.configure(state="disabled")
             status_var.set("작업을 시작합니다…")
             progress.start(12)
-            append(f"구간: {a:g}초 → {b:g}초 ({b-a:g}초)")
-            threading.Thread(target=read_events, args=(process,), daemon=True).start()
+            append(f"원본 구간: {a:g}초 → {b:g}초 ({b-a:g}초) · {config['play_rate']:g}배 → 결과 {(b-a)/config['play_rate']:g}초")
+            threading.Thread(target=read_worker_events, args=(process, events), daemon=True).start()
         except Exception as exc:
             messagebox.showerror("입력 확인", str(exc))
 
@@ -445,9 +543,12 @@ def gui():
             os.startfile(target)
 
     def open_folder():
-        folder = Path(state["last"]).parent if state["last"] else Path(folder_var.get()).expanduser()
-        folder.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(folder))
+        try:
+            folder = Path(state["last"]).parent if state["last"] else resolve_gui_folder(folder_var.get())
+            folder.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(folder))
+        except Exception as exc:
+            messagebox.showerror("폴더 열기 실패", str(exc))
 
     start_button = ttk.Button(buttons, text="영상 저장", style="Accent.TButton", command=begin)
     start_button.pack(side="left")
@@ -457,7 +558,8 @@ def gui():
     ttk.Button(buttons, text="저장 폴더 열기", command=open_folder).pack(side="left")
 
     def poll():
-        while True:
+        # Bound work per UI tick so a burst of logs cannot starve input handling.
+        for _ in range(100):
             try:
                 event = events.get_nowait()
             except queue.Empty:
@@ -477,7 +579,7 @@ def gui():
             elif kind == "complete":
                 state["last"] = event["path"]
                 result_button.configure(state="normal")
-                status_var.set(f"완료 · {event['seconds']:g}초 MP4")
+                status_var.set(f"완료 · {event.get('actual_seconds', event['seconds']):g}초 MP4 · {event.get('play_rate', 1):g}배")
                 append("저장됨: " + event["path"])
             elif kind == "exit":
                 progress.stop()
@@ -518,9 +620,9 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if sys.stderr is not None:
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    parser = argparse.ArgumentParser(description="YouTube clipper. No arguments opens the Windows GUI.")
+    parser = argparse.ArgumentParser(description="Online / local video clipper. No arguments opens the Windows GUI.")
     inputs = parser.add_mutually_exclusive_group()
-    inputs.add_argument("--url")
+    inputs.add_argument("--url", help="다운로드 엔진이 지원하는 개별 영상 주소 (YouTube·Instagram 등)")
     inputs.add_argument("--input-file", help="로컬 동영상 파일 (다운로드 없이 변환)")
     parser.add_argument("--start", default="1")
     parser.add_argument("--end", default="10")
@@ -529,6 +631,7 @@ def main():
     parser.add_argument("--resolution", default="original", help="최종 가로x세로, 예: 1920x1080. 기본 original")
     parser.add_argument("--rotation", type=int, default=0, choices=(0, 90, 180, 270), help="시계방향 전체 회전")
     parser.add_argument("--resize-mode", default="fit", choices=("fit", "fill", "stretch"))
+    parser.add_argument("--play-rate", type=float, default=1, help="재생 속도 0.125~8배. 원본 구간 기준으로 자른 뒤 속도 적용")
     parser.add_argument("--worker", help=argparse.SUPPRESS)
     args = parser.parse_args()
     if not args.worker and not args.url and not args.input_file:
